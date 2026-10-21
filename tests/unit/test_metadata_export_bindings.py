@@ -43,6 +43,7 @@ from provisa.core.models import (
     Column,
     Domain,
     MetadataExportConfig,
+    MetadataExportTarget,
     ProvisaConfig,
     Role,
     Source,
@@ -78,9 +79,9 @@ def snapshot():
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
-def _config(provider: str) -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True,
+def _config(provider: str) -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog",
         provider=provider,
         endpoint="https://catalog.example",
         token="t",
@@ -488,8 +489,10 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
     exporter = _Exporter()
 
     async def _export_config(org_id):
+        # REQ-2118: the bindings are kept per target, under the target's id.
         return MetadataExportConfig(
-            enabled=True, provider="atlas", endpoint="https://catalog.example"
+            enabled=True,
+            targets=[{"id": "atlas", "provider": "atlas", "endpoint": "https://catalog.example"}],
         )
 
     async def _model(*args, **kwargs):
@@ -502,7 +505,7 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
     monkeypatch.setattr(
         publishing,
         "build_snapshot",
-        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None: (
+        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None: (
             snapshot
         ),
     )
@@ -522,9 +525,9 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
         raising=False,
     )
 
-    result = await publishing.publish_snapshot("acme")
+    results = await publishing.publish_snapshot("acme")
 
-    assert result.ok
+    assert results["atlas"].ok
     # The provider was handed both stored bindings before it published.
     assert seen["bindings"][uri] == ("guid-1", "legacy.public.orders@provisa")
     async with db.acquire() as conn:

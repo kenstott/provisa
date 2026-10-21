@@ -256,3 +256,30 @@ def test_every_container_relationship_names_exactly_one_container_end():  # REQ-
         if rel["relationshipCategory"] in ("COMPOSITION", "AGGREGATION"):
             containers = [rel["endDef1"]["isContainer"], rel["endDef2"]["isContainer"]]
             assert containers.count(True) == 1, (rel["name"], containers)
+
+
+def test_a_view_member_has_no_source_container():  # REQ-2119
+    """A view is Provisa's own, read from no source: it maps with no source (native) or database
+    (rdbms) container, and the publish does not fail looking one up."""
+    from provisa.api.metadata_export.atlas import to_entities
+
+    view = Table(
+        source_id="__derived__",
+        domain_id="pet-store",
+        schema_name="views",
+        table_name="pet_names",
+        product_id="prod",
+        view_sql='SELECT p.petId AS id FROM "pet-store"."pets" p',
+        columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
+    )
+    config = _config()
+    snapshot = build_snapshot(
+        _config(tables=[*config.tables, view]), org_id="acme", dialect="postgres", contexts={}
+    )
+    for entities, container in (
+        (to_native_entities(snapshot), "source"),
+        (to_entities(snapshot), "db"),
+    ):
+        tables = {e.attributes["name"]: e for e in entities if e.kind == "table"}
+        assert tables["pet_names"].relationships == {}
+        assert container in tables["pets"].relationships

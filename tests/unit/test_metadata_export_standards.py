@@ -42,7 +42,7 @@ from provisa.core.models import (
     Column,
     DataProduct,
     Domain,
-    MetadataExportConfig,
+    MetadataExportTarget,
     ProvisaConfig,
     Relationship,
     RLSRule,
@@ -150,9 +150,9 @@ def snapshot():
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
-def _export_config(provider: str) -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True, provider=provider, endpoint="https://catalog.example/", timeout_seconds=5
+def _export_config(provider: str) -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog", provider=provider, endpoint="https://catalog.example/", timeout_seconds=5
     )
 
 
@@ -456,7 +456,7 @@ async def _type_get(self, url, params=None, headers=None):
 async def test_openmetadata_publish_upserts_every_entity(snapshot, monkeypatch):
     seen: list[str] = []
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         seen.append(url)
         return httpx.Response(
             200, json=_entity_response(url, json), request=httpx.Request("PUT", url)
@@ -478,7 +478,7 @@ async def test_openmetadata_publish_upserts_every_entity(snapshot, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_openmetadata_publish_reports_the_rejected_entity(snapshot, monkeypatch):
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         request = httpx.Request("PUT", url)
         if url.endswith("/tables") and json["name"] == "order_totals":
             return httpx.Response(400, text="rejected", request=request)
@@ -505,7 +505,7 @@ async def test_openmetadata_publish_reports_a_steward_whose_user_the_catalog_ref
 ):
     """REQ-609: a domain whose steward could not be published must not publish as unstewarded."""
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         request = httpx.Request("PUT", url)
         if url.endswith("/users"):
             return httpx.Response(403, text="refused", request=request)
@@ -527,7 +527,7 @@ async def test_openmetadata_publish_reports_relationships_it_could_not_declare(
     """A custom property the target refuses costs the relationships, not every table."""
     sent: list[dict] = []
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         request = httpx.Request("PUT", url)
         if "/metadata/types/" in url:
             return httpx.Response(403, text="refused", request=request)

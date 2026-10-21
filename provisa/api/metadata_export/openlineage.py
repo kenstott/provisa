@@ -244,6 +244,7 @@ def _dataset_facets(
             productId=product.id,
             name=product.name,
             **({"owner": product.owner.id} if product.owner is not None else {}),
+            odps=product.odps_fields(),  # REQ-2118
         )
 
     asset_prefix = table.ref.fqn()

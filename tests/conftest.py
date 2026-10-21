@@ -243,6 +243,9 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_openmetadata": ["openmetadata-db", "elasticsearch", "openmetadata"],
     # Atlas embeds its own HBase and Solr, so the one service is the whole target.
     "requires_atlas": ["atlas"],
+    # REQ-2119: GMS starts after its one-shot setup jobs, which compose runs as its dependencies
+    # (_COMPANIONS); the stack's Kafka, which carries its change log, is started with them and kept.
+    "requires_datahub": ["datahub-gms"],
     # REQ-1265: the directory the LDAP auth provider signs in against.
     "requires_ldap": ["openldap"],
     # REQ-1265: the identity provider the SAML auth provider signs in through.
@@ -284,6 +287,8 @@ _HEAVY_MARKERS = frozenset(
         "requires_openmetadata",
         # An embedded HBase, an embedded Solr and the Atlas JVM in one container.
         "requires_atlas",
+        # GMS's JVM, its MySQL and an Elasticsearch of its own.
+        "requires_datahub",
     }
 )
 
@@ -296,7 +301,20 @@ _HEAVY_MARKERS = frozenset(
 # splunk's own healthcheck start_period is 420s (docker-compose.test.yml) precisely because a full
 # Splunk init runs ~125s natively and longer under amd64 emulation; a 180s wait would abandon the
 # container mid-boot and fail the test on a machine that was going to succeed.
-_SERVICE_WAIT_TIMEOUT: dict[str, int] = {"atlas": 900, "splunk": 600}
+_SERVICE_WAIT_TIMEOUT: dict[str, int] = {"atlas": 900, "splunk": 600, "datahub-gms": 600}
+
+# A heavy service's own dependencies that compose starts with it and that go with it: removed
+# beside it, so the next heavy test starts with the VM clear. Shared core services (Kafka) are not
+# listed: other tests use them.
+_COMPANIONS: dict[str, list[str]] = {
+    "datahub-gms": ["datahub-mysql", "datahub-search", "datahub-mysql-setup", "datahub-upgrade"],
+}
+
+
+def _with_companions(services: list[str]) -> list[str]:
+    return sorted({*services, *(c for s in services for c in _COMPANIONS.get(s, []))})
+
+
 _DEFAULT_WAIT_TIMEOUT = 180
 
 # The splunk service bind-mounts the vendored CIM add-on (docker-compose.test.yml). Splunk loads
@@ -383,6 +401,7 @@ _ITEST_PORT_ENV = [
     "MARQUEZ_PORT",
     "OPENMETADATA_PORT",
     "ATLAS_PORT",
+    "DATAHUB_GMS_PORT",
     "LDAP_PORT",
     "SAML_IDP_PORT",
     # Not a container's port: the test's own service-provider server binds it. It is leased
@@ -920,7 +939,7 @@ def _heavy_db_service(request):  # pyright: ignore
                             *_ITEST_COMPOSE_ARGS,
                             "rm",
                             "-fsv",
-                            *sorted(services),
+                            *_with_companions(services),
                         ],
                         cwd=_REPO_ROOT,
                         env=_itest_compose_env(),
@@ -931,7 +950,7 @@ def _heavy_db_service(request):  # pyright: ignore
             # below then destroys the evidence — on CI that left an exasol boot failure
             # with no engine log and no healthcheck output at all. Dump both before the
             # container goes away.
-            _dump_service_diagnostics(sorted(services))
+            _dump_service_diagnostics(_with_companions(services))
             raise last_error
         yield
     finally:
@@ -939,7 +958,7 @@ def _heavy_db_service(request):  # pyright: ignore
         # heavy-DB test starts with the VM clear. Runs even when setup failed (e.g. OOM
         # exit 137) to stop crash-looping containers that would otherwise starve core services.
         subprocess.run(
-            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "rm", "-fsv", *sorted(services)],
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "rm", "-fsv", *_with_companions(services)],
             cwd=_REPO_ROOT,
             env=_itest_compose_env(),
             check=False,

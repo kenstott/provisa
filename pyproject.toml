@@ -403,6 +403,7 @@ markers = [
     "requires_marquez: requires the Marquez OpenLineage server (docker compose up marquez)",
     "requires_openmetadata: requires the OpenMetadata server (docker compose up openmetadata)",
     "requires_atlas: requires the Apache Atlas server (docker compose up atlas)",
+    "requires_datahub: requires the DataHub GMS server (docker compose up datahub-gms)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",
     "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",

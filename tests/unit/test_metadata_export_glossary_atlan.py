@@ -37,7 +37,7 @@ from provisa.api.metadata_export.model import (
     GlossaryTermEdge,
     MetadataSnapshot,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportTarget
 
 ORG = "org-1"
 GLOSSARY_QN = f"provisa/{ORG}/glossary"
@@ -46,8 +46,8 @@ GLOSSARY_PROBE_ROUTE = f"/api/meta/entity/uniqueAttribute/type/{GLOSSARY_TYPE}"
 
 def _export(bindings: dict[str, tuple[str, str]] | None = None) -> AtlanExport:
     export = AtlanExport(
-        MetadataExportConfig(
-            enabled=True,
+        MetadataExportTarget(
+            id="catalog",
             provider="atlan",
             endpoint="https://tenant.atlan.com",
             token="t",

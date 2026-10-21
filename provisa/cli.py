@@ -327,14 +327,15 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     except urllib.error.URLError as exc:
         print(f"cannot reach the Provisa API at {api}: {exc.reason}", file=sys.stderr)
         return 1
-    ok = payload["ok"]
-    print(
-        f"{'ok' if ok else 'PARTIAL'}: published {payload['total_published']} assets "
-        f"via {payload['provider']}"
-    )
-    for err in payload["errors"]:
-        print(f"  ! {err['asset']}: {err['message']}", file=sys.stderr)
-    return 0 if ok else 1
+    # REQ-2118: one publish reaches every target the org has, each reported on its own line.
+    for target in payload["targets"]:
+        print(
+            f"{'ok' if target['ok'] else 'PARTIAL'}: {target['id']} ({target['provider']}) "
+            f"published {target['total_published']} assets"
+        )
+        for err in target["errors"]:
+            print(f"  ! {target['id']}: {err['asset']}: {err['message']}", file=sys.stderr)
+    return 0 if payload["ok"] else 1
 
 
 class ApiRefused(SystemExit):

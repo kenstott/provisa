@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "「{{id}}」を削除すると、その中のすべてのソース、ドメイン、テーブル、ロールが全メンバーに対して破棄されます。この操作は元に戻せません。確認のため {{id}} と入力してください。",
     "colId": "ID",
     "colName": "名前",
+    "colTier": "プラン",
     "colMembers": "メンバー",
     "colActions": "操作",
     "empty": "組織がありません",
@@ -52,6 +53,11 @@
     "revokeInvite": "{{org}} の招待を無効化",
     "invitePagination": "招待リンクのページネーション",
     "orgIdDesc": "2〜40 文字、小文字の英字と数字で、先頭は英字です。スキーマ名とサブドメインになり、後から変更できません。",
-    "spentStatus": "利用済み"
+    "spentStatus": "利用済み",
+    "tierFor": "{{name}} のプラン",
+    "tierNotSet": "未設定",
+    "tier_free": "無料",
+    "tier_standard": "スタンダード",
+    "tier_premium": "プレミアム"
   }
 }

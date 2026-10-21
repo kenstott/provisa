@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "Eliminar \"{{id}}\" destruye todos sus orígenes, dominios, tablas y roles, para todos sus miembros. Esto no se puede deshacer. Escriba {{id}} para confirmar.",
     "colId": "ID",
     "colName": "Nombre",
+    "colTier": "Plan",
     "colMembers": "Miembros",
     "colActions": "Acciones",
     "empty": "No hay organizaciones",
@@ -52,6 +53,11 @@
     "revokeInvite": "Revocar invitación de {{org}}",
     "invitePagination": "Paginación de enlaces de invitación",
     "orgIdDesc": "De 2 a 40 caracteres, letras minúsculas y dígitos, comenzando con una letra. Se convierte en el nombre del esquema y en el subdominio, y no se puede cambiar después.",
-    "spentStatus": "Canjeado por completo"
+    "spentStatus": "Canjeado por completo",
+    "tierFor": "Plan de {{name}}",
+    "tierNotSet": "Sin definir",
+    "tier_free": "Gratuito",
+    "tier_standard": "Estándar",
+    "tier_premium": "Premium"
   }
 }

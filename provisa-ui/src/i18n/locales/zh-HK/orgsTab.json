@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "刪除「{{id}}」會銷毀其中的所有數據來源、網域、數據表及角色，並影響其中所有成員。此操作無法還原。請輸入 {{id}} 以確認。",
     "colId": "ID",
     "colName": "名稱",
+    "colTier": "方案",
     "colMembers": "成員",
     "colActions": "動作",
     "empty": "沒有組織",
@@ -52,6 +53,11 @@
     "revokeInvite": "撤銷 {{org}} 的邀請",
     "invitePagination": "邀請連結分頁",
     "orgIdDesc": "2 至 40 個字元，只可使用小寫字母及數字，並須以字母開頭。它會成為結構描述名稱及子網域，其後無法變更。",
-    "spentStatus": "已全數兌換"
+    "spentStatus": "已全數兌換",
+    "tierFor": "{{name}} 的方案",
+    "tierNotSet": "未設定",
+    "tier_free": "免費版",
+    "tier_standard": "標準版",
+    "tier_premium": "進階版"
   }
 }

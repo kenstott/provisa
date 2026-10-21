@@ -39,7 +39,7 @@ from provisa.api.metadata_export.openmetadata import (
     GLOSSARY_DISPLAY_NAME,
     OpenMetadataExport,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportTarget
 
 GLOSSARY = "provisa_acme"
 
@@ -75,9 +75,9 @@ def _snapshot(terms, edges=()) -> MetadataSnapshot:
     return MetadataSnapshot(org_id="acme", glossary_terms=list(terms), glossary_edges=list(edges))
 
 
-def _export_config() -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True,
+def _export_config() -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog",
         provider="openmetadata",
         endpoint="https://catalog.example/",
         timeout_seconds=5,
@@ -94,7 +94,7 @@ def _mock_transport(monkeypatch, live_terms: dict[str, dict] | None = None):
     calls: list[tuple[str, str, object]] = []
     live = live_terms or {}
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         calls.append(("PUT", url, json))
         if url.endswith("/glossaries"):
             body = {"id": "gid-1", "fullyQualifiedName": json["name"]}

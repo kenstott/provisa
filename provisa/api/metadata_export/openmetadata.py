@@ -164,6 +164,11 @@ class Entity:  # REQ-1069
     # assigned the user, which only the server knows, so :meth:`publish` substitutes the id it
     # got back when it upserted that user.
     owned_by: str | None = None
+    # How the body is sent: an upsert is a PUT; a test result is a POST of a new one.
+    method: str = "PUT"
+    # REQ-2118: the table a data contract attaches to, by its OpenMetadata FQN. Its import takes
+    # the table's server-assigned id, which only the table's own upsert returns.
+    for_table: str | None = None
 
 
 def _service_fqn(source_id: str) -> str:
@@ -181,6 +186,12 @@ def _schema_fqn(table: TableAsset) -> str:
 
 def _table_fqn(table: TableAsset) -> str:
     return f"{_schema_fqn(table)}.{table.ref.parts[-1]}"
+
+
+def _member_fqn(ref: AssetRef) -> str:
+    """A data product member's OpenMetadata FQN, from its table ref (source, schema, table)."""
+    source_id, schema_name, table_name = ref.parts
+    return f"{_database_fqn(source_id)}.{schema_name}.{table_name}"
 
 
 def _column_fqn(table: TableAsset, column_name: str) -> str:
@@ -297,7 +308,8 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
     if tag_fqns:
         body["tags"] = [_tag_label(fqn) for fqn in tag_fqns]
     if table.domain_id:
-        body["domain"] = table.domain_id
+        # OpenMetadata 1.8+: an entity names its domains as a list.
+        body["domains"] = [table.domain_id]
     edges = [edge for edge in snapshot.relationships if edge.source.fqn() == table.ref.fqn()]
     if edges:
         body["extension"] = {
@@ -323,6 +335,28 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
     return Entity(asset=table.ref, path="/api/v1/tables", kind="table", body=body)
 
 
+def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
+    """Each data product member's ODCS 3.1 contract, through OpenMetadata's ODCS import
+    (REQ-2118): the same document Provisa serves at /data-products/{id}/contracts/."""
+    from provisa.api.metadata_export.odps import odcs_contract
+
+    by_fqn = {table.ref.fqn(): table for table in snapshot.tables}
+    entities = []
+    for product in snapshot.data_products:
+        for member in product.members:
+            table = by_fqn[member.fqn()]
+            entities.append(
+                Entity(
+                    asset=table.ref,
+                    path="/api/v1/dataContracts/odcs",
+                    kind="data_contract",
+                    body=odcs_contract(snapshot, product, table),
+                    for_table=_table_fqn(table),
+                )
+            )
+    return entities
+
+
 def _data_product_entity(product: DataProductAsset) -> Entity:
     """A published DataProductAsset as OpenMetadata's own DataProducts construct (REQ-1634).
 
@@ -332,9 +366,15 @@ def _data_product_entity(product: DataProductAsset) -> Entity:
     """
     body: dict[str, Any] = {
         "name": product.id,
-        "domain": product.domain_id,
-        "description": product.description,
-        "assets": [{"fullyQualifiedName": ref.fqn(), "type": "table"} for ref in product.members],
+        "domains": [product.domain_id],
+        # REQ-2118: OpenMetadata's data product has a description and no field for the rest of
+        # the ODPS fields, so they follow the purpose in it.
+        "description": product.described(),
+        # A member by OpenMetadata's own FQN (service.database.schema.table), the key its table
+        # upsert returns and table_ids holds; Provisa's source.schema.table matches no table.
+        "assets": [
+            {"fullyQualifiedName": _member_fqn(ref), "type": "table"} for ref in product.members
+        ],
     }
     if product.name and product.name != product.id:
         body["displayName"] = product.name
@@ -453,7 +493,6 @@ def _data_quality_entities(snapshot: MetadataSnapshot) -> list[Entity]:
                     "name": _test_case_name(assertion, table),
                     "entityLink": _entity_link(assertion, table),
                     "testDefinition": definition_name,
-                    "testSuite": suite_name,
                     "description": (
                         f"{assertion.definition}\n\n"
                         f"Severity: {assertion.severity}. "
@@ -474,9 +513,11 @@ def _data_quality_entities(snapshot: MetadataSnapshot) -> list[Entity]:
             results.append(
                 Entity(
                     asset=assertion.asset,
-                    path=f"/api/v1/dataQuality/testCases/{case_fqn}/testCaseResult",
+                    # OpenMetadata 2.0: a result is posted to the results resource, by case FQN.
+                    path=f"/api/v1/dataQuality/testCases/testCaseResults/{case_fqn}",
                     kind="test_case_result",
                     body=result_body,
+                    method="POST",
                 )
             )
     # Results last: a result addresses its test case by FQN, and OpenMetadata rejects one it
@@ -633,6 +674,8 @@ def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     entities.extend(_table_entity(snapshot, table) for table in snapshot.tables)
     # REQ-1634: after the tables their members reference, before lineage/dataquality.
     entities.extend(_data_product_entity(product) for product in snapshot.data_products)
+    # REQ-2118: each member's ODCS contract, imported onto the member table once it exists.
+    entities.extend(_data_contract_entities(snapshot))
     # REQ-1443: after the tables, because a test case's entityLink addresses the table it
     # observes and OpenMetadata resolves that link at creation time.
     entities.extend(_data_quality_entities(snapshot))
@@ -1426,9 +1469,39 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                         # REQ-1389: a PUT replaces the fields sent, so the live entity's
                         # human-owned state is read and carried through first.
                         await self._merge_live_table(client, entity, result)
-                response = await client.put(
-                    self._url(entity.path), json=entity.body, headers=self._headers()
-                )
+                params: dict[str, str] = {}
+                if entity.for_table is not None:
+                    table_id = table_ids.get(entity.for_table)
+                    if table_id is None:
+                        # The member table's own upsert failed and is already reported.
+                        result.errors.append(
+                            AssetError(
+                                asset=entity.asset,
+                                message=(
+                                    f"{entity.kind} {entity.asset.fqn()}: table "
+                                    f"{entity.for_table!r} was not upserted, so the contract "
+                                    "has nothing to attach to"
+                                ),
+                            )
+                        )
+                        continue
+                    # REQ-2118: replace, so the contract is exactly the one Provisa serves.
+                    params = {"entityId": table_id, "entityType": "table", "mode": "replace"}
+                if entity.method == "POST":
+                    response = await client.post(
+                        self._url(entity.path), json=entity.body, headers=self._headers()
+                    )
+                elif params:
+                    response = await client.put(
+                        self._url(entity.path),
+                        json=entity.body,
+                        headers=self._headers(),
+                        params=params,
+                    )
+                else:
+                    response = await client.put(
+                        self._url(entity.path), json=entity.body, headers=self._headers()
+                    )
                 if entity.kind == "table" and response.status_code < 400:
                     body = response.json()
                     table_ids[body["fullyQualifiedName"]] = body["id"]
