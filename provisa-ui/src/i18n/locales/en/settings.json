@@ -820,6 +820,10 @@
         "label": "Demo sandbox inactivity limit",
         "help": "A demo sandbox nobody has used for this long is deleted, with everything in it."
       },
+      "demo_stores_linger": {
+        "label": "Demo stores kept after use",
+        "help": "How long a demo's databases stay up after its last sandbox closes. Opened again before then, it opens at once; after it, they are stopped, and its next visitor waits while they start."
+      },
       "ai_base_url": {
         "label": "Sandbox AI endpoint",
         "help": "The OpenAI-wire endpoint (OpenRouter's is https://openrouter.ai/api/v1) every demo sandbox's AI features use. Unset: no AI in sandboxes."

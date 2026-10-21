@@ -83786,7 +83786,14 @@
     newer Provisa than the one pulling it is refused by name, and so is one in an older demo format than it reads (the format
     its manifest names, bumped when a demo''s files gain something a reader requires), when it is pulled or loaded, naming
     the bundle and saying to pull its latest. Only the OCI distribution API is spoken, so no registry client is needed where
-    a demo runs.'
+    a demo runs. (Amended 2026-10-21, DEMO STORES LINGER:) A demo''s stores start when it is first asked for (its first
+    open since the node started) and are taken down sandbox.demo_stores_linger seconds (an operator setting, default 1800)
+    after its last sandbox closes, unless it is opened again first: the node cannot hold every demo''s stores at once. The
+    tier marks the time in the demo''s requested marker when it closes the last sandbox and marks it requested again on
+    an open; once the time has passed the node takes the stores down as it takes down an older version''s (its data
+    dropped from the shared stores, its own services removed) but keeps its images and bundle, so it comes back without
+    a pull, and clears its ready and requested
+    markers, so the next open asks for it again and its visitor waits while it starts.'
   use_case: The maintainer changes an example query of the weblogs demo and merges it; minutes later the live demos page's
     next sandbox and a solution engineer's next start-ui-install.sh --demo weblogs both have the change, with no release cut.
   scenario: 'Given the weblogs bundle is published

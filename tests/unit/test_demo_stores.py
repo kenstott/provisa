@@ -576,6 +576,22 @@ def test_dropping_a_version_removes_the_images_its_services_ran_that_no_containe
     assert not any(" prune" in x for x in lines)
 
 
+def test_stopping_a_lingered_out_version_keeps_the_images_its_services_ran(monkeypatch, tmp_path):
+    """A demo whose stores lingered out is brought back at its next open: its data and its own
+    services go, its images stay, so it comes back without a pull (REQ-2049)."""
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
+    monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
+    monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
+    monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
+    suffix = ds.namespace("reviews", "v1")
+    runner = FakeRunner({"NOT datistemplate": f"shop{suffix}\n", "{{.Image}}": "reviews-api:1\n"})
+    ds.Demo(runner, "reviews", "v1", None).drop({"postgres"}, keep_images=True)
+    lines = runner.lines()
+    assert any(f'DROP DATABASE IF EXISTS "shop{suffix}"' in line for line in lines)
+    assert lines[-1] == "docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans"
+    assert not any("image rm" in line or "ancestor=" in line for line in lines)
+
+
 _STREAMING = {
     "services": {
         "kafka": {
