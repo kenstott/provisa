@@ -68,6 +68,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/tables/profile3d/terrain/ProfileTerrain.tsx": "the view controls above the profile terrain",
   "pages/tables/profile3d/joint/ProfileJointCloud.tsx": "the view controls above the joint cloud",
   "pages/tables/profile3d/drift/ProfileDriftStrata.tsx": "the view controls above the drift strata",
+  "components/graph3d/GraphExplorer.tsx":
+    "the layer, filter and preset controls above the data product graph",
   "pages/tables/ProfilerPanel.tsx": "the add-metric picker above the profile results",
 };
 
