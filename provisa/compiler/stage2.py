@@ -337,10 +337,10 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
-            scope_col = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
-            if scope_col is None:
+            scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
+            if scope_cols is None:
                 continue
-            predicate = f"{scope_col} IN ({id_list})"
+            predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
             existing = gov.rls_rules.get(tm.table_id)
             # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
             gov.rls_rules[tm.table_id] = (

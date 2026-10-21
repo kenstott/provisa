@@ -17,7 +17,7 @@ edge to that table is read over the governed SQL path, on the DuckDB engine with
 its own and on the test stack's Trino.
 """
 
-# Requirements: REQ-2126
+# Requirements: REQ-2126, REQ-2129
 
 from __future__ import annotations
 
@@ -100,4 +100,28 @@ async def test_the_products_view_is_derived_from_the_table_it_reads(server):
         rows = next(iter(rows.values()))
     assert [(r["kind"], r["direction"], r["target_relation"], r["hops"]) for r in rows] == [
         ("lineage", "upstream", "dpe.orders", 1)
+    ], rows
+
+
+async def test_the_views_columns_are_derived_from_the_tables_columns(server):
+    """REQ-2129: the same build's column edges, read through column_lineage_edges."""
+    async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
+        resp = await client.post(
+            "/data/sql",
+            json={
+                "sql": "SELECT source_relation, source_column, target_relation, target_column, "
+                "via FROM meta.column_lineage_edges WHERE target_relation = 'dpe.view_open_orders'",
+                "role": "org_admin",
+            },
+        )
+    assert resp.status_code == 200, f"{resp.text}\n{server.dump_stderr_debug()[-6000:]}"
+    body = resp.json()
+    rows = body.get("data") or body.get("rows") or []
+    if isinstance(rows, dict):
+        rows = next(iter(rows.values()))
+    assert sorted(
+        (r["source_relation"], r["source_column"], r["target_column"], r["via"]) for r in rows
+    ) == [
+        ("dpe.orders", "customer", "customer", "dpe.view_open_orders"),
+        ("dpe.orders", "id", "id", "dpe.view_open_orders"),
     ], rows

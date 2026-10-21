@@ -584,12 +584,14 @@ def has_capability(
     return capability.value in capabilities
 
 
-# The two meta views whose ROWS describe registered tables/columns and are therefore subject to
-# the REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view column that carries the
-# DESCRIBED table's id, so the row filter is "<column> IN (<reachable table ids>)".
-META_ROW_SCOPED_VIEWS: dict[str, str] = {
-    "registered_tables_meta": "id",
-    "table_columns_meta": "table_id",
+# The meta views whose ROWS describe registered tables/columns and are therefore subject to the
+# REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view columns that carry the
+# DESCRIBED tables' ids, so the row filter is "<column> IN (<reachable table ids>)" for each.
+META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
+    "registered_tables_meta": ("id",),
+    "table_columns_meta": ("table_id",),
+    # REQ-2129: an edge is seen only where both of its columns are.
+    "column_lineage_edges": ("source_table_id", "target_table_id"),
 }
 
 
@@ -597,6 +599,8 @@ META_ROW_SCOPED_VIEWS: dict[str, str] = {
 # without view_governance reads them under -- lineage, as REQ-1640's lineage section is.
 GOVERNANCE_META_ROWS: dict[str, str] = {
     "data_product_edges": "kind <> 'lineage'",
+    # REQ-2129: column lineage is governance metadata whole.
+    "column_lineage_edges": "1 = 0",
 }
 
 

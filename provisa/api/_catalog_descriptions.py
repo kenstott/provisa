@@ -58,6 +58,9 @@ _META: dict[str, str] = {
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships, and the relations upstream and downstream of "
     "its tables in lineage — one row per product, target and kind",
+    # REQ-2129
+    "column_lineage_edges": "The model's column lineage — each column a view or command derives "
+    "from another registered column, naming the view or command",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
@@ -165,6 +168,22 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "other table",
         "checked_table_id": "For a checker table, the table its data-quality contract scans; "
         "empty for any other table",
+    },
+    # REQ-2129
+    "column_lineage_edges": {
+        "id": "Edge identifier",
+        "source_relation": "The relation the derivation reads (domain.table)",
+        "source_column": "The column it reads, by its SQL name",
+        "target_relation": "The relation the derivation produces (domain.table)",
+        "target_column": "The column it produces, by its SQL name",
+        "via": "The view (its relation) or the command (its name) that derives the target",
+        "via_kind": "view or command",
+        "source_table_id": "The registered table the source column belongs to",
+        "source_column_name": "The source column's stored name",
+        "target_table_id": "The registered table the target column belongs to",
+        "target_column_name": "The target column's stored name",
+        "source_column_key": "Synthesized column identity (table_id:column_name) of the source",
+        "target_column_key": "Synthesized column identity (table_id:column_name) of the target",
     },
     # REQ-2126
     "data_product_edges": {

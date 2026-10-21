@@ -498,6 +498,21 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-2126: a data product's links to the rest of the model, one row per product, target and
     # kind.
     "data_product_edges": _data_product_edges_sql(),
+    # REQ-2129: the model's column lineage, one row per edge whose two ends are registered
+    # columns, keyed to table_columns by the same column_key the glossary and tags join on.
+    "column_lineage_edges": """
+        CREATE OR REPLACE VIEW column_lineage_edges AS
+        SELECT e.id, e.source_relation, e.source_column, e.target_relation, e.target_column,
+               e.via, e.via_kind, e.source_table_id, e.source_column_name,
+               e.target_table_id, e.target_column_name,
+               CAST(e.source_table_id AS TEXT) || ':' || e.source_column_name
+                   AS source_column_key,
+               CAST(e.target_table_id AS TEXT) || ':' || e.target_column_name
+                   AS target_column_key
+        FROM lineage_edges e
+        JOIN registered_tables s ON s.id = e.source_table_id AND NOT s.draft
+        JOIN registered_tables t ON t.id = e.target_table_id AND NOT t.draft
+    """,
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS

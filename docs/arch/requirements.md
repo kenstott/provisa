@@ -25922,15 +25922,15 @@ The Data Product detail panel has a Knowledge Graph panel, one of its masonry pa
 
 ### REQ-2129 · Data Catalog Integration {#REQ-2129}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The meta domain has a view-only column_lineage_edges view with one row per column-level lineage edge: the source relation and column, the target relation and column, and the view that derives the target. It holds the same lineage between registered relations as the federation column lineage graph (GET /admin/lineage/federation) across all domains, so a cross-domain ancestry chain is never cut. A view's internal steps (CTEs, subqueries) are folded: each row joins one of the view's input columns to one of its output columns, through any internal steps, and names that view; a command's write is a row from its input to the written column, naming the command. It is derived from compiled views: each model build writes its edges to a lineage edge table in the control plane, replacing all of them, with the same function that builds /admin/lineage/federation, so the two never differ. The table is derived state and is never edited. Its endpoints relate to table_columns_meta, so a client can traverse from a member column to its upstream columns by relationships. A caller sees an edge only if both of its ends are visible to that caller in table_columns_meta. The view is in the GOVERNANCE tier and needs view_governance, as [REQ-1640](#REQ-1640)'s lineage section does.
 
 **Use case:** Expanding a table to its columns in the data product graph, with the lineage layer on, shows which upstream columns feed each column. Any meta-domain client can answer the same question with one query.
 
-**Code:** —
+**Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/admin/lineage_router.py`, `provisa/lineage/edges.py`, `provisa/lineage/merge.py`, `provisa/security/rights.py`, `provisa/compiler/stage2.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** —
+**Tests:** `tests/unit/test_column_lineage_edges.py`, `tests/integration/test_data_product_edges_e2e.py`
 
 ## 10. UI & Admin Surfaces
 
