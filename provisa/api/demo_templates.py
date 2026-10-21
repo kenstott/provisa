@@ -382,14 +382,19 @@ def prefetch_connector_bundles() -> None:
 
 def embedding_models() -> list[Any]:  # list[VectorModelConfig]
     """The local (huggingface) embedding models the published demos declare and enable, once
-    each: the sonnets demo's, which its search tables embed a phrase with."""
+    each: the sonnets and cloudpolicy demos', which their search tables embed a phrase with.
+
+    Read from each demo's own configuration file, whether or not its stores are up: a bundled
+    tier starts no demo's stores at boot, and a model left to the first search that needs it
+    took that search past its 60s request timeout. A model's declaration names no store."""
+    from provisa.core.config_loader import read_config_with_includes
+    from provisa.core.models import VectorModelConfig
+
     seen: dict[str, Any] = {}
     for demo in published_demos().values():
-        if not demo.stores_ready:
-            # Its configuration names its stores' data only once they are up; a model it
-            # declares is then loaded by the request that embeds with it.
-            continue
-        for model in template_seed(demo.template_org).vector_models:
+        raw = read_config_with_includes(demo.directory / "config.yaml")
+        for declared in raw.get("vector_models", []):
+            model = VectorModelConfig(**declared)
             if model.provider == "huggingface" and model.enabled:
                 seen.setdefault(model.id, model)
     return list(seen.values())
