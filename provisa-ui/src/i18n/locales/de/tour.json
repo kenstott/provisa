@@ -1433,13 +1433,9 @@
         "title": "Spalten aus den Typen der Funktion",
         "description": "churn_risk ist eine Tabelle, weil ihr Docstring @table sagt. Ihre Spalten sind die Felder der RiskRow, die sie zurückgibt. Ihre Parameter sind ihre Argumente: der Kunde und jedes Merkmal, auf dem das Modell trainiert wurde."
       },
-      "churnprodRefused": {
-        "title": "Ein Lesen ohne Kunden, abgelehnt",
-        "description": "Die Funktion gibt customer_id keinen Standardwert, also wird ein Lesen ohne ihn abgelehnt, bevor Code läuft. Die Ablehnung nennt jeden fehlenden Parameter."
-      },
       "churnprodJoin": {
         "title": "Der Join, der das Modell speist",
-        "description": "Diese Beziehung verbindet die Merkmale der Kunden mit churn_risk und nennt die Merkmale, die sie übergibt. Ein Join über sie liest die Merkmale, die Sie sehen dürfen, ruft das Modell einmal je Kunde auf und fügt die Scores wieder an."
+        "description": "Diese Beziehung verknüpft jeden Kunden mit dem Score des Modells, sodass ein Join über die Kunden jeden einzelnen bewertet."
       },
       "churnprodAtRisk": {
         "title": "Die Liste der gefährdeten Kunden",

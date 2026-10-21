@@ -443,7 +443,10 @@ export function RelationshipsPage() {
     if (!relSearch.trim()) return true;
     const q = relSearch.toLowerCase();
     return (
-      r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q)
+      r.sourceTableName.toLowerCase().includes(q) ||
+      r.targetTableName.toLowerCase().includes(q) ||
+      // A relationship is also found by its alias: a tour step names it so (demoTour.ts).
+      (r.alias ?? "").toLowerCase().includes(q)
     );
   };
 

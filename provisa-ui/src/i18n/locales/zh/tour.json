@@ -1433,13 +1433,9 @@
         "title": "来自函数类型的列",
         "description": "churn_risk 是一张表，因为它的 docstring 写着 @table。它的列是它返回的 RiskRow 的字段。它的参数就是函数的参数：客户，以及模型训练时用到的每个特征。"
       },
-      "churnprodRefused": {
-        "title": "不指定客户的读取被拒绝",
-        "description": "函数没有为 customer_id 提供默认值，所以省略它的读取会在任何代码运行之前被拒绝。拒绝信息会列出每个缺少的参数。"
-      },
       "churnprodJoin": {
         "title": "为模型提供数据的 join",
-        "description": "这个关系把客户的特征连接到 churn_risk，并指明它传入的特征。基于它的 join 读取你可以看到的特征，为每位客户调用一次模型，再把分数连接回来。"
+        "description": "此关系将每位客户与模型的评分关联，因此对客户进行连接时会为每一位客户评分。"
       },
       "churnprodAtRisk": {
         "title": "流失风险客户清单",
