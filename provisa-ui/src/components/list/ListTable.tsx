@@ -235,7 +235,13 @@ export function ListHead<T = never>({
               </Table.Th>
             );
           }
-          return <Table.Th key={i}>{c}</Table.Th>;
+          // The actions column's header is pinned with its cells (ListActions).
+          const actions = isValidElement(c) && c.type === ListActionsHead;
+          return (
+            <Table.Th key={i} className={actions ? "list-actions" : undefined}>
+              {c}
+            </Table.Th>
+          );
         })}
       </Table.Tr>
     </Table.Thead>
@@ -338,6 +344,20 @@ export interface ListRowProps extends Omit<
   selected?: boolean;
 }
 
+/**
+ * A row's actions: its last cell, pinned at the visible end of the row, so a list wider than its
+ * room scrolls under them and they are never cut (App.css .list-actions). Its column's header is
+ * `ListActionsHead`.
+ */
+export function ListActions({ children }: { children: ReactNode }) {
+  return <Table.Td className="list-actions">{children}</Table.Td>;
+}
+
+/** The header of a row's actions column (`ListActions`): pinned with it. */
+export function ListActionsHead({ children }: { children?: ReactNode }) {
+  return <>{children}</>;
+}
+
 export function ListRow({ children, testId, onClick, selected, ...aria }: ListRowProps) {
   // list-row: the item rows App.css stripes (every even item row, detail rows excluded).
   const cls = ["list-row", onClick ? "clickable" : "", selected ? "row-selected" : ""]
@@ -419,7 +439,11 @@ function capCells(
             ? cell.props.style
             : ({ ...cell.props.style, "--list-cell-cap": `${cap}px` } as CSSProperties),
       },
-      <ListCell text={text}>{cell.props.children}</ListCell>,
+      // A cell the page marked one-line (data-list-one-line) is cut like a single value, whatever
+      // its spaces: an error message that would otherwise hold the column wide.
+      <ListCell text={text} oneLine={"data-list-one-line" in cell.props}>
+        {cell.props.children}
+      </ListCell>,
     );
   });
 }

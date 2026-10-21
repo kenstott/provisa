@@ -61,6 +61,17 @@ describe("a cell of text", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent(TOKEN);
   });
 
+  it("a one-line column's text, words and all: one line, cut, whole in the hint", async () => {
+    cutCells("side");
+    const error = "refresh failed: the source did not answer in time";
+    render(<ListCell text={error} oneLine />);
+    const cell = screen.getByText(error);
+    expect(cell).toHaveClass("list-cell--token", "list-cell--one-line");
+    expect(cell).not.toHaveClass("list-cell--words");
+    await userEvent.hover(cell);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(error);
+  });
+
   it("a few short words are words: they wrap at their spaces, with no minimum width", () => {
     render(<ListCell text="10/9/2026, 6:00:00 AM" />);
     const cell = screen.getByText("10/9/2026, 6:00:00 AM");
@@ -298,6 +309,10 @@ describe("the rules that make it so in a browser", () => {
   it("wrapped text and a long single value give up width down to their minimums", () => {
     expect(rule(".list-cell--wide")).toContain("min-width: var(--list-wrap-min)");
     expect(rule(".list-cell--token")).toContain("min-width: var(--list-cut-min)");
+  });
+
+  it("a one-line column gives up width down to its header", () => {
+    expect(rule(".list-cell--token.list-cell--one-line")).toContain("min-width: 0");
   });
 
   it("a header is shown whole", () => {

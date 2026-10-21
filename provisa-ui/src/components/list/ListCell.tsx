@@ -31,10 +31,13 @@ import { useCut } from "./useCut";
  */
 export function ListCell({
   text,
+  oneLine = false,
   children = text,
 }: {
   /** The cell's value as text: what decides how it is cut, and what the hint shows whole. */
   text: string;
+  /** Cut on one line like a single value, whatever its spaces (a page's one-line column). */
+  oneLine?: boolean;
   /** How the page drew that text, where it gave it a look of its own (code, a dimmed line). */
   children?: ReactNode;
 }) {
@@ -42,15 +45,15 @@ export function ListCell({
   // Text with a space in it wraps; a single value gives up width only when it is longer than what
   // it keeps when squeezed.
   const value = text.trim();
-  const words = /\s/.test(value);
-  const kind = words ? "words" : value.length > LIST_CUT_MIN_CHARS ? "token" : "value";
+  const words = !oneLine && /\s/.test(value);
+  const kind = words ? "words" : oneLine || value.length > LIST_CUT_MIN_CHARS ? "token" : "value";
   // Only text longer than a wrapped column's minimum is held to that minimum.
   const wide = words && value.length > LIST_WRAP_MIN_CHARS;
   return (
     <Tip text={cut ? text : false}>
       <div
         ref={ref}
-        className={`list-cell list-cell--${kind}${wide ? " list-cell--wide" : ""}`}
+        className={`list-cell list-cell--${kind}${wide ? " list-cell--wide" : ""}${oneLine ? " list-cell--one-line" : ""}`}
         data-cut={cut || undefined}
         tabIndex={cut ? 0 : undefined}
       >
