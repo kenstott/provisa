@@ -196,6 +196,8 @@ A function that takes a parameter named `loader` is called once per batch instea
 
 The function returns the same shape: a hash from each key it was given to that key's rows, ordinary rows of the table. Provisa gives each key's rows to every joining row that shared the key, and a key can map to no rows or many. Matching by the hash, not by the rows' values, keeps a sparse key matched: the function fills its missing fields with defaults, so the values it sees differ from the joining row's. Provisa computes the hash; the function only echoes back the keys it was given. The function still declares its row type alone, a list of rows, and each key's rows are of that type. Its parameters beside `loader` need defaults, because a loader call passes `loader` alone.
 
+A function can cap its batch size, as DataLoader's `maxBatchSize` does, by declaring `loader N` in any of three places: a `@loader 100` line beside `@table` in its docstring or JSDoc, a `/* @loader 100 */` comment just before the `loader` parameter in TypeScript, or an `Annotated` string on the parameter in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa then splits the keys into batches of that size, calls the function once per batch, and merges the answers by hash. Without a size, one batch holds every key. Discovery refuses by name a size on a function with no `loader` parameter, a size that isn't a positive integer, and two sizes on one function.
+
 Use `loader` when one call over many keys does better than many calls over one:
 
 - Scoring a model over a whole batch in one vectorized pass.
