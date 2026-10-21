@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "即場加入一個數據源",
-        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（在 provisa.dev 發佈的 <code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
+        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（<code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
         "acting": "正在加入數據源"
       },
       "step4": {

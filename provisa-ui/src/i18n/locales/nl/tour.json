@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Een bron, live toegevoegd",
-        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>, gepubliceerd op provisa.dev) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
+        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
         "acting": "Bron toevoegen"
       },
       "step4": {

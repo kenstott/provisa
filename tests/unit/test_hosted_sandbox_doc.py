@@ -51,6 +51,11 @@ def test_the_cap_is_the_settings_default():
     assert count == _defaults()["sandbox.max_concurrent"]
 
 
+def test_the_demo_databases_linger_is_the_settings_default():
+    minutes = int(re.search(r"for (\d+) minutes", _row("sandbox.demo_stores_linger")).group(1))  # type: ignore[union-attr]
+    assert minutes * 60 == _defaults()["sandbox.demo_stores_linger"]
+
+
 def test_every_sandbox_setting_is_on_the_page():
     for setting in DECLARED:
         _row(setting.key)

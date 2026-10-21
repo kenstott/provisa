@@ -425,7 +425,10 @@ def _ok(response: httpx.Response, what: str) -> None:
 # the names of its data), and the version marked ready (<name>/ready). The tier asks for a demo at
 # its first open, and again when the registry names a version newer than the ready one (the node
 # always pulls the latest published); it records in <name>/in-use the versions its open sandboxes
-# and template read, which the node keeps.
+# and template read, which the node keeps. When a demo's last sandbox closes, the tier rewrites
+# <name>/requested as the time its stores are taken down (sandbox.demo_stores_linger after the
+# close); an open before then marks it requested again, and at that time the node takes its stores
+# down and clears <name>/requested and <name>/ready, so the next open asks for it again.
 
 _PKG_NAMED = Path(__file__).resolve().parents[1] / "_config" / "demo" / "named"
 _REPO_NAMED = Path(__file__).resolve().parents[2] / "demo" / "named"
@@ -489,6 +492,27 @@ def request(name: str) -> None:
     (its first open since the node started)."""
     _write(bundles_root() / name / "requested", "requested")
     (bundles_root() / WANTED_SIGNAL).touch()
+
+
+#: ``<name>/requested`` once demo ``name``'s last sandbox has closed: the time its stores are
+#: taken down unless it is asked for again first (``until <epoch seconds>``).
+LINGER_PREFIX = "until "
+
+
+def linger(name: str, until: float) -> None:
+    """Demo ``name``'s last sandbox has closed: the node takes its stores down at ``until`` (epoch
+    seconds) unless it is asked for again first (scripts/demo_stores_sync.sh). A demo not asked
+    for is left as it is: none of its stores is up."""
+    marker = bundles_root() / name / "requested"
+    if marker.is_file():
+        _write(marker, f"{LINGER_PREFIX}{int(until)}")
+
+
+def hold(name: str) -> None:
+    """Demo ``name`` is opened again: one lingering since its last sandbox closed is kept up."""
+    marker = bundles_root() / name / "requested"
+    if (_read(marker) or "").startswith(LINGER_PREFIX):
+        _write(marker, "requested")
 
 
 def record_in_use(name: str, versions: set[str]) -> None:

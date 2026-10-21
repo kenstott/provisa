@@ -1671,6 +1671,62 @@ async def _delete_source(id: str) -> MutationResult:
     )
 
 
+async def _register_draft_table(
+    info: StrawberryInfo, input: SourceInput
+) -> MutationResult | None:  # REQ-2113
+    """A single-file CSV or Parquet source's table, set up with the source as a draft (out
+    of service until a steward takes it out of draft, REQ-1921): named after the source and
+    typed from its file as Register Table proposes it, every role seeing every column. None
+    when it is set up; else the source stands and why its table was not set up is said."""
+    from provisa.api.admin.schema_query import resolve_available_columns_metadata
+    from provisa.api.app import state
+    from provisa.core.source_downloads import DOWNLOAD_TYPES
+
+    def _without(reason: str) -> MutationResult:
+        return MutationResult(
+            success=True,
+            message=f"Source {input.id!r} created; its table was not set up: {reason}",
+            code="schema.source_created_without_table",
+            params={"source": input.id, "reason": reason},
+        )
+
+    if input.type not in DOWNLOAD_TYPES:
+        return _without(f"a {input.type} source has no single table to set up")
+    if not input.table_domain_id:
+        return _without("no domain was chosen for it")
+    columns = await resolve_available_columns_metadata(input.id, "main", input.id)
+    if not columns:
+        return _without("its file has no columns")
+    import re
+
+    def _snake(name: str) -> str:
+        # As the Register Table form names a column's alias (naming.ts toSnakeCase).
+        name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+        return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
+
+    # What the Register Table form gives a new table by default: every role sees each column,
+    # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
+    roles = sorted(state.roles or {})
+    table = TableInput(
+        source_id=input.id,
+        domain_id=input.table_domain_id,
+        schema_name="main",
+        table_name=input.id,
+        columns=[
+            ColumnInput(
+                name=c.name,
+                visible_to=roles,
+                alias=_snake(c.name) if _snake(c.name) != c.name else None,
+                data_type=c.data_type,
+                description=c.comment,
+            )
+            for c in columns
+        ],
+    )
+    result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
+    return None if result.success else _without(result.message)
+
+
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
@@ -2177,7 +2233,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             await reschedule_org_triggers()
         if input.register_table_draft:  # REQ-2113
-            refused = await self._register_draft_table(info, input)
+            refused = await _register_draft_table(info, input)
             if refused is not None:
                 return refused
         return MutationResult(
@@ -2186,61 +2242,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.source_created",
             params={"source": input.id},
         )
-
-    async def _register_draft_table(
-        self, info: StrawberryInfo, input: SourceInput
-    ) -> MutationResult | None:  # REQ-2113
-        """A single-file CSV or Parquet source's table, set up with the source as a draft (out
-        of service until a steward takes it out of draft, REQ-1921): named after the source and
-        typed from its file as Register Table proposes it, every role seeing every column. None
-        when it is set up; else the source stands and why its table was not set up is said."""
-        from provisa.api.admin.schema_query import resolve_available_columns_metadata
-        from provisa.api.app import state
-        from provisa.core.source_downloads import DOWNLOAD_TYPES
-
-        def _without(reason: str) -> MutationResult:
-            return MutationResult(
-                success=True,
-                message=f"Source {input.id!r} created; its table was not set up: {reason}",
-                code="schema.source_created_without_table",
-                params={"source": input.id, "reason": reason},
-            )
-
-        if input.type not in DOWNLOAD_TYPES:
-            return _without(f"a {input.type} source has no single table to set up")
-        if not input.table_domain_id:
-            return _without("no domain was chosen for it")
-        columns = await resolve_available_columns_metadata(input.id, "main", input.id)
-        if not columns:
-            return _without("its file has no columns")
-        import re
-
-        def _snake(name: str) -> str:
-            # As the Register Table form names a column's alias (naming.ts toSnakeCase).
-            name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-            return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
-
-        # What the Register Table form gives a new table by default: every role sees each column,
-        # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
-        roles = sorted(state.roles or {})
-        table = TableInput(
-            source_id=input.id,
-            domain_id=input.table_domain_id,
-            schema_name="main",
-            table_name=input.id,
-            columns=[
-                ColumnInput(
-                    name=c.name,
-                    visible_to=roles,
-                    alias=_snake(c.name) if _snake(c.name) != c.name else None,
-                    data_type=c.data_type,
-                    description=c.comment,
-                )
-                for c in columns
-            ],
-        )
-        result = await self.register_table(info, table)  # pyright: ignore[reportCallIssue]
-        return None if result.success else _without(result.message)
 
     @strawberry.mutation
     async def stage_kaggle_dataset(  # REQ-1780, REQ-1781, REQ-1782

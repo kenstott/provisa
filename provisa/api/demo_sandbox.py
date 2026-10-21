@@ -346,10 +346,16 @@ async def demo_directory_of(org_id: str) -> Path | None:
 
 async def note_in_use(name: str) -> None:
     """Tell the node which versions of bundled demo ``name`` are still read: the ready one (its
-    template's) and each its open sandboxes were opened from (REQ-2049)."""
+    template's) and each its open sandboxes were opened from (REQ-2049). With none open, its stores
+    linger ``sandbox.demo_stores_linger`` seconds before the node takes them down; with one open,
+    they stay up."""
+    import time
+
     from provisa.api.admin.orgs_router import _admin_pool
     from provisa.core.demo_bundles import (
         bundled_demos,
+        hold,
+        linger,
         own_demo_directory,
         ready_version,
         record_in_use,
@@ -372,6 +378,11 @@ async def note_in_use(name: str) -> None:
         if directory is not None:
             versions.add(directory.name)
     await asyncio.to_thread(record_in_use, name, versions)  # type: ignore[arg-type]
+    if orgs_open:
+        await asyncio.to_thread(hold, name)
+    else:
+        until = time.time() + int(settings_registry.value("sandbox.demo_stores_linger"))
+        await asyncio.to_thread(linger, name, until)
 
 
 _touched: dict[str, float] = {}

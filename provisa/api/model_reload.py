@@ -26,6 +26,8 @@ does not reload another.
 
 from __future__ import annotations
 
+import asyncio
+
 import dataclasses
 
 import json
@@ -280,6 +282,14 @@ async def publish_routes_over_declared_rows(rt: "OrgRuntime") -> None:
         from provisa.federation.declared_replica_rows import adopt_declared_rows
 
         rows_directory = declared_rows_directory(rt.org_id)
+        # REQ-2101 (amended): the org files its directory ships, in its own folder before any of its
+        # sources reads one -- a sandbox's from the demo version it was opened from.
+        from provisa.core.declared_org_files import adopt_declared_org_files
+        from provisa.core.demo_bundles import own_demo_directory
+
+        files_directory = rows_directory or own_demo_directory(rt.org_id)
+        if files_directory is not None:
+            await asyncio.to_thread(adopt_declared_org_files, rt.org_id, files_directory)
         if rows_directory is not None:
             # REQ-2101: the code archives the directory declares are the org's uploads, kept
             # before any of its code sources is read.

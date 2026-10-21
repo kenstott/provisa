@@ -45,6 +45,7 @@ async def test_status_demo_no_auth_is_unsecured(monkeypatch):
         "demo_tour": [],  # REQ-2010
         "demo_landing": None,  # REQ-2010: no tour, no landing
         "demo_notebook": [],  # REQ-2084: no notebook
+        "demo_org_files": [],  # REQ-2101: no org files
     }
 
 
@@ -68,6 +69,7 @@ async def test_status_demo_firebase_config_is_enforced(monkeypatch):
         "demo_tour": [],  # REQ-2010
         "demo_landing": None,  # REQ-2010: no tour, no landing
         "demo_notebook": [],  # REQ-2084: no notebook
+        "demo_org_files": [],  # REQ-2101: no org files
     }
 
 
@@ -88,6 +90,7 @@ async def test_status_non_demo_no_auth_needs_setup(monkeypatch):
         "demo_tour": [],  # REQ-2010
         "demo_landing": None,  # REQ-2010: no tour, no landing
         "demo_notebook": [],  # REQ-2084: no notebook
+        "demo_org_files": [],  # REQ-2101: no org files
     }
 
 

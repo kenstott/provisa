@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "ソースをその場で追加",
-        "description": "ソースはこうして追加します。ピッカーが一覧全体を表示して開き、<strong>Parquet File</strong> が選ばれ、ファイルのアドレス（provisa.dev で公開している <code>supplies.parquet</code>）が入力され、保存で作成されました。新しい <strong>supplies</strong> ソースは、そのファイルをその場で読み取ります。",
+        "description": "ソースはこうして追加します。ピッカーが一覧全体を表示して開き、<strong>Parquet File</strong> が選ばれ、ファイルのアドレス（<code>supplies.parquet</code>）が入力され、保存で作成されました。新しい <strong>supplies</strong> ソースは、そのファイルをその場で読み取ります。",
         "acting": "ソースを追加しています"
       },
       "step4": {
