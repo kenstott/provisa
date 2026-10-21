@@ -439,7 +439,11 @@ function capCells(
             ? cell.props.style
             : ({ ...cell.props.style, "--list-cell-cap": `${cap}px` } as CSSProperties),
       },
-      <ListCell text={text}>{cell.props.children}</ListCell>,
+      // A cell the page marked one-line (data-list-one-line) is cut like a single value, whatever
+      // its spaces: an error message that would otherwise hold the column wide.
+      <ListCell text={text} oneLine={"data-list-one-line" in cell.props}>
+        {cell.props.children}
+      </ListCell>,
     );
   });
 }

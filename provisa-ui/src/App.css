@@ -577,6 +577,11 @@ main {
   /* Broken at any letter, not first at a hyphen, so its one line is filled before the ellipsis. */
   word-break: break-all;
 }
+/* A one-line column (an error message) gives up width first: down to its header, not to a cut
+ * value's minimum; the whole text is in the cell's tip. */
+.list-cell--token.list-cell--one-line {
+  min-width: 0;
+}
 /* A pill or a control in a cell the page drew is never cut: it keeps its own width, and text set
  * beside it in the same row (ListTable's capGroupText) gives way instead. */
 .list-cell-drawn .mantine-Badge-root,
