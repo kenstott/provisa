@@ -412,6 +412,8 @@ const PULL: Record<EdgeKind, number> = {
 const LANE_GAP = 4;
 
 const TREE_GAP = 3;
+/** Wider across than down: a level's names sit side by side. */
+const TREE_SPREAD = 5;
 
 /** REQ-2130: a top-down tree over the term edges (``a`` is a kind or part of ``b``): each term a
  * level below the deepest term it is a kind or part of; a term in no edge on a row of its own. */
@@ -433,11 +435,14 @@ function treeLayout(g: GraphData): Map<string, [number, number, number]> {
   }
   const loose = g.nodes.filter((n) => !depth.has(n.id)).map((n) => n.id);
   if (loose.length > 0) levels.set(deepest - 1, loose);
+  // Centred on its middle level, so the camera's view of the whole tree is centred too.
+  const all = [...levels.keys()];
+  const mid = (Math.min(...all) + Math.max(...all)) / 2;
   const out = new Map<string, [number, number, number]>();
   for (const [d, members] of levels) {
     members.sort();
     members.forEach((id, i) =>
-      out.set(id, [(i - (members.length - 1) / 2) * TREE_GAP, d * TREE_GAP, 0]),
+      out.set(id, [(i - (members.length - 1) / 2) * TREE_SPREAD, (d - mid) * TREE_GAP, 0]),
     );
   }
   return out;

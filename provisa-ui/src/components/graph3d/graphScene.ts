@@ -139,8 +139,10 @@ export class GraphScene extends BaseScene<GraphHover> {
 
   resetView(instant = false) {
     if (this.frontal) {
-      const span = Math.max(this.extentX / Math.max(this.aspect, 0.5), this.extentY) * 2.2 + 4;
-      this.flyTo(new THREE.Vector3(0, 0, span), new THREE.Vector3(0, 0, 0), instant);
+      // Back far enough that the whole layout, and a margin round it, fits the field of view.
+      const half = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const fit = Math.max(this.extentY + 2, (this.extentX + 2) / Math.max(this.aspect, 0.5));
+      this.flyTo(new THREE.Vector3(0, 0, fit / half), new THREE.Vector3(0, 0, 0), instant);
       return;
     }
     const base = this.extent * 2.6 + 6;
