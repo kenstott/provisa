@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# Build pg_duckdb (v1.0.0 embeds DuckDB v1.3.2) against our cached PG 16.2 source build,
-# so the artifact drops into pgserver's embedded PG 16.2 (same major). Long build: compiles DuckDB.
+# Build pg_duckdb (v1.1.1 embeds DuckDB v1.4.3) against our cached PG 16.11 source build,
+# so the artifact drops into pgserver's embedded PG 16.11 (same major). Long build: compiles DuckDB.
 # Proven install route is the same as file_fdw/postgres_fdw (scripts/prove_embedded_fdw.sh).
 set -euo pipefail
 
 CACHE="${PROVISA_FDW_CACHE:-$HOME/.cache/provisa-fdw}"
-PREFIX="$CACHE/pg162"
+PREFIX="$CACHE/pg1611"
 PGC="$PREFIX/bin/pg_config"
-[ -x "$PGC" ] || { echo "FAIL: cached PG 16.2 not built at $PREFIX (run prove_embedded_fdw.sh first)"; exit 1; }
+[ -x "$PGC" ] || { echo "FAIL: cached PG 16.11 not built at $PREFIX (run prove_embedded_fdw.sh first)"; exit 1; }
 
-# v1.0.0 supports PG 14-17 and avoids ExecCheckOneRelPerms, which pg_duckdb calls from v1.1.0 on
-# (src/pgduckdb_planner.cpp) and PostgreSQL declares from 16.10 on; pgserver's fixed PG 16.2 backend
-# lacks it, so v1.1.x does not compile here.
-TAG="${PG_DUCKDB_TAG:-v1.0.0}"
+# pg_duckdb calls ExecCheckOneRelPerms from v1.1.0 on (src/pgduckdb_planner.cpp), which PostgreSQL
+# declares from 16.10 on: v1.1.x needs pixeltable-pgserver's 16.11, not pgserver 0.1.4's 16.2 (REQ-901).
+TAG="${PG_DUCKDB_TAG:-v1.1.1}"
+# The extensions compiled in follow the tag's DuckDB: httpfs at the commit that pg_duckdb release
+# pins (third_party/pg_duckdb_extensions.cmake), iceberg at the commit that DuckDB release pins
+# (.github/config/extensions/iceberg.cmake), since pg_duckdb pins none.
+case "$TAG" in
+  v1.1.1) HTTPFS=9c7d34977b10346d0b4cbbde5df807d1dab0b2bf; ICEBERG=1c0c4c60818f58b603fc50d5267b1f1202fe5484 ;;  # DuckDB v1.4.3
+  *) echo "FAIL: no extension pins for pg_duckdb $TAG"; exit 1 ;;
+esac
 SRC="$CACHE/pg_duckdb-$TAG"
 echo "== 1. clone pg_duckdb $TAG + duckdb submodule (shallow) =="
 if [ ! -d "$SRC/.git" ]; then
@@ -21,23 +27,23 @@ if [ ! -d "$SRC/.git" ]; then
 fi
 
 # Pin the DuckDB extensions compiled into pg_duckdb (reproducible builds): file readers + object
-# storage (httpfs) + iceberg. iceberg's v1.3-ossivalis branch matches DuckDB v1.3.2 (pg_duckdb v1.0.0);
-# its aws-sdk-cpp[sso,sts,identity-management]/avro-c/roaring deps come from vcpkg (see USE_MERGED_...).
-cat > "$SRC/third_party/pg_duckdb_extensions.cmake" <<'EOF'
+# storage (httpfs) + iceberg. iceberg's aws-sdk-cpp[sso,sts,identity-management]/avro-c/roaring deps
+# come from vcpkg (see USE_MERGED_...).
+cat > "$SRC/third_party/pg_duckdb_extensions.cmake" <<EOF
 duckdb_extension_load(json)
 duckdb_extension_load(icu)
 duckdb_extension_load(httpfs
     GIT_URL https://github.com/duckdb/duckdb-httpfs
-    GIT_TAG 7ce5308ed8fe48b593538dbd54344a2fc0695bc7
-    INCLUDE_DIR extension/httpfs/include
+    GIT_TAG $HTTPFS
+    INCLUDE_DIR src/include
 )
 duckdb_extension_load(iceberg
     GIT_URL https://github.com/duckdb/duckdb-iceberg
-    GIT_TAG v1.3-ossivalis
+    GIT_TAG $ICEBERG
 )
 EOF
 
-echo "== 2. build pg_duckdb against cached PG 16.2 ($("$PGC" --version)) =="
+echo "== 2. build pg_duckdb against cached PG 16.11 ($("$PGC" --version)) =="
 cd "$SRC"
 export PG_CONFIG="$PGC"
 # DuckDB's httpfs extension (S3/HTTP reach) needs OpenSSL; macOS ships only LibreSSL headers.

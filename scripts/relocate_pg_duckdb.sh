@@ -4,7 +4,7 @@
 # Proves the release-artifact shape. Re-signs ad-hoc (install_name_tool invalidates arm64 signatures).
 set -euo pipefail
 
-CACHE="${PROVISA_FDW_CACHE:-$HOME/.cache/provisa-fdw}/pg162"
+CACHE="${PROVISA_FDW_CACHE:-$HOME/.cache/provisa-fdw}/pg1611"
 SRC="$CACHE/lib/postgresql"
 OUT="${1:-$CACHE/pg_duckdb_bundle}"   # self-contained staging dir (the future release payload)
 rm -rf "$OUT"; mkdir -p "$OUT"
