@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "Maior arquivo enviado",
         "help": "O maior arquivo que uma fonte SQLite, DuckDB, CSV ou Parquet pode receber por envio no formulário da fonte; um maior é recusado, citando este limite. É melhor ler um arquivo maior onde ele está, em um armazenamento de objetos."
+      },
+      "download_roots": {
+        "label": "Diretórios dos quais arquivos de fontes podem ser baixados",
+        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os seus links; nenhum por padrão. Adicione um para que um steward possa copiar um arquivo dentro dele para a pasta da organização. Um servidor de muitas organizações não copia nenhum arquivo próprio, diga o que disser esta configuração."
       }
     },
     "polly": {

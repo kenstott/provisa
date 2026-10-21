@@ -22,7 +22,15 @@ import type { LineageGraphData } from "../../api/lineage";
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
 import { LineageLegend } from "./LineageLegend";
 import type { DescribeColumn } from "./column-descriptions";
-import { FOOTER_H, ROLE_STYLE, ROW_H, buildLineageModel, rowWidth } from "./lineage-layout";
+import {
+  FOOTER_H,
+  ROLE_STYLE,
+  ROW_H,
+  buildLineageModel,
+  nativeHeadHeight,
+  rowWidth,
+} from "./lineage-layout";
+import type { LineageLinks } from "./lineage-links";
 import type { Role } from "./lineage-layout";
 import { Tip, TipSurface } from "../Tip";
 
@@ -69,6 +77,10 @@ interface LineageDagProps {
   stats?: boolean;
   // A field's registered description, shown at the cursor while it hovers the row.
   describeColumn?: DescribeColumn;
+  // REQ-2116: where each element is defined, as far as the user's rights open it; a click on a
+  // field, a double click on a box or a click on a command's edge opens it.
+  links?: LineageLinks;
+  onOpenLink?: (href: string) => void;
 }
 
 export function LineageDag({
@@ -86,6 +98,8 @@ export function LineageDag({
   legend = false,
   stats = false,
   describeColumn,
+  links,
+  onOpenLink,
 }: LineageDagProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<CyCore | null>(null);
@@ -114,9 +128,13 @@ export function LineageDag({
   // state while React is rendering.
   const clickRef = useRef(onNodeClick);
   const toggleRef = useRef(onToggleRelation);
+  const openRef = useRef(onOpenLink);
+  const linksRef = useRef(links);
   useEffect(() => {
     clickRef.current = onNodeClick;
     toggleRef.current = onToggleRelation;
+    openRef.current = onOpenLink;
+    linksRef.current = links;
   });
 
   useEffect(() => {
@@ -165,6 +183,22 @@ export function LineageDag({
               grabbable: false,
             })),
       ),
+      // REQ-2116: a native box's head -- its source's logo and the address it is read from.
+      ...model.boxes
+        .filter((b) => !b.collapsed && b.native)
+        .map((b) => ({
+          data: {
+            id: `${b.id}:head`,
+            parent: b.id,
+            head: "yes",
+            label: b.native!.lines.join("\n"),
+            logo: b.native!.logo,
+            w: rowWidth(b),
+            tw: rowWidth(b) - 34, // the logo's column is not text
+            h: nativeHeadHeight(b.native!) - 1,
+          },
+          grabbable: false,
+        })),
       ...model.boxes
         .filter((b) => !b.collapsed && b.unused > 0)
         .map((b) => ({
@@ -184,6 +218,7 @@ export function LineageDag({
           target: e.target,
           label: e.count > 1 ? `${e.count} columns` : e.label,
           command: e.command ? "yes" : "no",
+          commandName: e.commandName ?? "",
         },
       })),
     ];
@@ -281,6 +316,38 @@ export function LineageDag({
           // neighbour, so the seam between fields stays one straight line.
           selector: 'node[row = "yes"][first = "yes"], node[row = "yes"][last = "yes"]',
           style: { shape: "round-rectangle", "corner-radius": "6px" },
+        },
+        {
+          // REQ-2116: the head of a native box: the source's logo at the left, its address beside.
+          selector: 'node[head = "yes"]',
+          style: {
+            shape: "round-rectangle",
+            "corner-radius": "6px",
+            width: "data(w)",
+            height: "data(h)",
+            "background-color": "#fff4e6",
+            "background-opacity": 1,
+            "border-width": 0,
+            "background-image": "data(logo)",
+            "background-width": "16px",
+            "background-height": "16px",
+            "background-position-x": "6px",
+            "background-position-y": "50%",
+            "background-clip": "none",
+            label: "data(label)",
+            "text-valign": "center",
+            "text-halign": "center",
+            "text-justification": "left",
+            "text-margin-x": 10,
+            "text-wrap": "wrap",
+            "text-max-width": "data(tw)",
+            "text-overflow-wrap": "anywhere",
+            "line-height": 1.3,
+            "font-size": 10,
+            "font-family": "monospace",
+            color: "#495057",
+            events: "no",
+          },
         },
         {
           selector: 'node[footer = "yes"]',
@@ -404,7 +471,9 @@ export function LineageDag({
         setHint({
           x: at.x,
           y: at.y,
-          text: collapsed ? "Click to expand" : "Click to collapse",
+          text:
+            (collapsed ? "Click to expand" : "Click to collapse") +
+            (linksRef.current?.relation(relation) ? " · double-click to open" : ""),
           // A collapsed box previews every column of its relation; an expanded one shows them.
           columns: collapsed
             ? graph.nodes.filter((n) => n.relation === relation).map((n) => n.column)
@@ -424,7 +493,22 @@ export function LineageDag({
         if (relation) toggleRef.current?.(relation);
         return;
       }
-      if (target.data("row") === "yes") clickRef.current?.(target.id());
+      if (target.data("row") === "yes") {
+        clickRef.current?.(target.id());
+        const href = linksRef.current?.node(target.id());
+        if (href) openRef.current?.(href);
+      }
+    });
+    // REQ-2116: a box opens where its relation is defined on a double click (a click toggles it).
+    cy.on("dbltap", 'node[box = "yes"]', (evt) => {
+      const relation = (evt.target as NodeSingular).data("relation") as string;
+      const href = relation ? linksRef.current?.relation(relation) : null;
+      if (href) openRef.current?.(href);
+    });
+    cy.on("tap", "edge", (evt) => {
+      const name = evt.target.data("commandName") as string;
+      const href = name ? linksRef.current?.command(name) : null;
+      if (href) openRef.current?.(href);
     });
 
     // Layered left to right: the read order of lineage. Inside a box the rows are one layer,
@@ -515,6 +599,10 @@ export function LineageDag({
         if (!model || model.collapsed) return;
         model.rows.forEach((r, i) => cy.getElementById(r.id).position({ x: 0, y: i * ROW_H }));
         cy.getElementById(`${box.id()}:unused`).position({ x: 0, y: model.rows.length * ROW_H });
+        if (model.native) {
+          const h = nativeHeadHeight(model.native);
+          cy.getElementById(`${box.id()}:head`).position({ x: 0, y: -ROW_H / 2 - h / 2 });
+        }
       });
       // Shelves wide enough that the grid takes the container's shape rather than a tall strip.
       const el = containerRef.current;
@@ -553,7 +641,7 @@ export function LineageDag({
         boxNodes.forEach((box) => {
           if (!box.isParent()) return;
           const rows = box
-            .children('[row = "yes"], [footer = "yes"]')
+            .children('[row = "yes"], [footer = "yes"], [head = "yes"]')
             .sort((a, b) => a.position("y") - b.position("y"));
           rows.forEach((r, i) => {
             r.data("first", i === 0 ? "yes" : "no");
@@ -586,7 +674,28 @@ export function LineageDag({
       });
     };
 
+    // REQ-2116: a native box's head sits above its fields. ELK lays it out with them (so the box
+    // has its height when the boxes are placed) wherever crossing minimization puts it; the box's
+    // children are then stacked again from its top, head first, fields in the order ELK gave them.
+    const placeHeads = () => {
+      cy.nodes('[head = "yes"]').forEach((head: NodeSingular) => {
+        const fields = head
+          .parent()
+          .children('[row = "yes"], [footer = "yes"]')
+          .sort((a: NodeSingular, b: NodeSingular) => a.position("y") - b.position("y"));
+        if (fields.empty()) return;
+        const stack = [head, ...(fields.toArray() as NodeSingular[])];
+        let y = Math.min(...stack.map((n) => n.position("y") - n.height() / 2));
+        const x = fields[0].position("x");
+        for (const n of stack) {
+          n.position({ x, y: y + n.height() / 2 });
+          y += n.height() + 1;
+        }
+      });
+    };
+
     const finish = () => {
+      placeHeads();
       packIsolated();
       dressBoxes();
       drawLanes();
@@ -669,7 +778,7 @@ export function LineageDag({
         <div
           style={{ position: "absolute", insetInlineStart: 8, bottom: 8, pointerEvents: "none" }}
         >
-          <LineageLegend />
+          <LineageLegend native={graph.nodes.some((n) => n.kind === "native")} />
         </div>
       )}
       {stats && (

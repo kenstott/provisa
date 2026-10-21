@@ -13,7 +13,7 @@
 //
 //   runtime   node | bun | deno (Node); python (Python)
 //   code      a package at an exact version, a Git repository at a commit, or an uploaded archive
-//   lockfile  a lockfile given beside a package reference (a published package carries none)
+//   lockfile  a lockfile given beside code that carries none
 //   entry     a Python source's entry module, when its code has more than one
 //   mode      REQ-2098: dev (its code on this server) or built (its image on a remote host); a
 //             built source also keeps its remote host and the code hash it is pinned to, which
@@ -101,10 +101,9 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
             subdirectory: (fields.code_subdirectory ?? "").trim(),
           }
         : { kind: "upload", upload: fields.code_upload ?? "" };
-  const lockfile =
-    origin === "package" && fields.lockfile_upload
-      ? { filename: fields.lockfile_filename, upload: fields.lockfile_upload }
-      : null;
+  const lockfile = fields.lockfile_upload
+    ? { filename: fields.lockfile_filename, upload: fields.lockfile_upload }
+    : null;
   const entry = (fields.code_entry ?? "").trim();
   const secrets = secretsMapping(declaredSecrets(fields));
   const cap = (fields.code_llm_cap ?? "").trim();

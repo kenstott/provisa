@@ -104,6 +104,20 @@ def test_a_code_sources_configuration_is_its_mapping():
 
 
 @pytest.mark.parametrize(
+    "code",
+    [
+        {"kind": "git", "repository": "https://g/r", "commit": "c"},
+        {"kind": "upload", "upload": "h"},
+        {"kind": "pypi", "package": "p", "version": "1"},
+    ],
+)
+def test_a_lockfile_may_be_given_beside_any_code(code):
+    lockfile = {"filename": "uv.lock", "upload": "x"}
+    config = code_source.config_of("python", {"code": code, "lockfile": lockfile})
+    assert config.lockfile == lockfile
+
+
+@pytest.mark.parametrize(
     ("source_type", "mapping", "code"),
     [
         (
@@ -117,14 +131,6 @@ def test_a_code_sources_configuration_is_its_mapping():
             "codesource.code_kind",
         ),
         ("python", {"code": {"kind": "pypi", "package": "p"}}, "codesource.code_incomplete"),
-        (
-            "python",
-            {
-                "code": {"kind": "upload", "upload": "h"},
-                "lockfile": {"filename": "uv.lock", "upload": "x"},
-            },
-            "codesource.lockfile_beside_kept_code",
-        ),
     ],
 )
 def test_a_configuration_that_cannot_be_used_is_refused_by_name(source_type, mapping, code):

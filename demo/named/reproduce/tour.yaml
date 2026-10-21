@@ -35,7 +35,7 @@ steps:
   table: reproduce-db.positions
 - key: reproduceLineage
   route: /lineage
-  capability: table_registration
+  capability: view_governance
   lineage: >-
     SELECT e.desk, e.exposure FROM "reproduce"."view_exposure" AS e
 - key: reproduceRefreshes

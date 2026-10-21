@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "Largest uploaded file",
         "help": "The largest file a SQLite, DuckDB, CSV or Parquet source may be given by upload from the source form; a larger one is refused, naming this limit. A larger file is better read where it is, from an object store."
+      },
+      "download_roots": {
+        "label": "Directories source files may be downloaded from",
+        "help": "The directories a CSV or Parquet source's file may be downloaded from by its path on this server, once its links are followed; none by default. Add one to let a steward copy a file under it into the organization's folder. A server of many organizations copies no file of its own whatever this says."
       }
     },
     "polly": {

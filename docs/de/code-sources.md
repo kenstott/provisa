@@ -39,7 +39,7 @@ Code mit Abhängigkeiten braucht ein Lockfile, und jede Installation folgt ihm e
 | Deno | `deno.lock` |
 | Python | `uv.lock` (mit seiner `pyproject.toml`), `pylock.toml` oder eine `requirements.txt` mit `--hash` in jeder Zeile |
 
-Ein veröffentlichtes Paket bringt sein Lockfile selten mit, deshalb nimmt das Formular eines neben der Paketangabe entgegen.
+Ein Lockfile ist optional, aber ohne eines können sich zwei Installationen desselben Codes unterscheiden, sodass ein Test, der heute besteht, morgen an einer neuen Version einer Abhängigkeit scheitern kann. Für eine jedes Mal identische Installation muss der Code ein Lockfile mitbringen, oder Sie erstellen eines und geben es hier an. Ein gebautes Image ist bereits festgelegt. Sobald Sie das Image der Quelle bauen ([Image bauen](#running-on-a-remote-host)), stecken seine Abhängigkeiten darin, und wenn dieses Image Ihre Tests und Ihr CI/CD durchläuft, ist das getestete Image dasjenige, das läuft. Ein Lockfile zählt für den Dev-Modus und für jeden neuen Build des Images. Code, der sein eigenes Lockfile mitbringt, wird daraus installiert: ein Git-Repository oder Upload mit einem Lockfile, oder ein npm-Paket, dessen Autor `npm-shrinkwrap.json` veröffentlicht hat (npm veröffentlicht `package-lock.json` nie). Code ohne Lockfile wird mit frei schwankenden Abhängigkeiten installiert: ein Git-Repository oder Upload ohne Lockfile, die meisten npm-Pakete und Python-Pakete aus PyPI, deren Wheels keinen Platz dafür haben. Geben Sie neben solchem Code ein Lockfile an, damit jede Installation identisch ist. Mancher Code braucht keines, weil die Art seiner Verteilung bereits jede Abhängigkeit festlegt.
 
 Kein Paket darf eigene Installationsskripte ausführen: npm installiert mit `--ignore-scripts`, und Python installiert nur Wheels und baut nie aus einer Quelldistribution.
 
@@ -56,6 +56,93 @@ Ihr Code läuft in einem eigenen Worker-Prozess, in einer Sandbox. Er kann seine
 Die Tabelle einer Code-Quelle wird gelandet, nie an Ort und Stelle gelesen. Provisa ruft die Funktion mit den Argumenten des Lesezugriffs auf, prüft jede Zeile gegen die Spalten und hält die Zeilen unter diesen Argumenten für die Cache-TTL der Tabelle vor. Sichtbarkeit, Masken und Zeilenregeln gelten dann für die gelandeten Zeilen, wie für jede Tabelle.
 
 Argumente übergeben Sie wie jeden Tabellenparameter: als `_nf_`-Bedingungen in SQL und als Feldargumente in GraphQL.
+
+## Gebündelte Schlüssel: der Parameter `loader` {: #batched-keys }
+
+Ein Join kann eine Code-Tabelle erreichen: Die Zeilen einer anderen Tabelle liefern ihre Parameter, etwa Kunden, die mit ihrem Churn-Score verknüpft werden. Standardmäßig ruft Provisa die Funktion einmal für jede eindeutige Kombination von Argumenten auf, die die verknüpften Zeilen liefern, und sendet alle diese Aufrufe in einer Anfrage an den Worker.
+
+Eine Funktion mit einem Parameter namens `loader` wird stattdessen einmal pro Batch aufgerufen, nach dem Muster, das DataLoader aus GraphQL bekannt gemacht hat. `loader` ist ein Hash: ein Dict (in TypeScript ein Objekt) von einem stabilen Hash jedes Schlüssels auf den Schlüssel selbst, ein JSON-Objekt mit den Werten der verknüpften Zeilen für die übrigen Parameter der Funktion. Provisa entfernt doppelte Schlüssel, sodass jede eindeutige Kombination von Werten einmal vorkommt. Ein Schlüssel ist dünn besetzt: Ein Feld ohne Wert fehlt, statt als null gesendet zu werden, sodass der eigene Standardwert der Funktion gilt, wie bei einem einzelnen Aufruf.
+
+Die Funktion gibt dieselbe Form zurück: einen Hash von jedem erhaltenen Schlüssel auf die Zeilen dieses Schlüssels, gewöhnliche Zeilen der Tabelle. Provisa gibt die Zeilen jedes Schlüssels an jede verknüpfte Zeile, die diesen Schlüssel teilte, und ein Schlüssel kann auf keine oder viele Zeilen zeigen. Die Zuordnung über den Hash statt über die Werte der Zeilen hält einen dünn besetzten Schlüssel zugeordnet: Die Funktion füllt seine fehlenden Felder mit Standardwerten, also unterscheiden sich die Werte, die sie sieht, von denen der verknüpften Zeile. Provisa berechnet den Hash; die Funktion gibt nur die erhaltenen Schlüssel zurück. Die Funktion deklariert weiterhin nur ihren Zeilentyp, eine Liste von Zeilen, und die Zeilen jedes Schlüssels haben diesen Typ. Ihre Parameter neben `loader` brauchen Standardwerte, weil ein Loader-Aufruf nur `loader` übergibt.
+
+Eine Funktion kann ihre Batchgröße begrenzen, wie `maxBatchSize` bei DataLoader, indem sie `loader N` an einer von drei Stellen deklariert: eine Zeile `@loader 100` neben `@table` im Docstring oder JSDoc, ein Kommentar `/* @loader 100 */` direkt vor dem Parameter `loader` in TypeScript oder ein `Annotated`-String am Parameter in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa teilt die Schlüssel dann in Batches dieser Größe, ruft die Funktion einmal pro Batch auf und führt die Antworten über den Hash zusammen. Ohne Größe enthält ein Batch alle Schlüssel. Die Erkennung lehnt mit Namen ab: eine Größe an einer Funktion ohne Parameter `loader`, eine Größe, die keine positive ganze Zahl ist, und zwei Größen an einer Funktion.
+
+Verwenden Sie `loader`, wenn ein Aufruf über viele Schlüssel besser ist als viele Aufrufe über je einen:
+
+- Ein Modell über einen ganzen Batch in einem vektorisierten Durchgang bewerten.
+- Anfragen an eine API oder ein Sprachmodell bündeln, das viele Eingaben auf einmal annimmt.
+- Einmal pro Batch vorbereiten, etwa ein Modell laden oder eine Verbindung öffnen, statt einmal pro Schlüssel.
+
+Diese Python-Funktion bewertet jeden Kunden eines Batches in einem Durchgang:
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    score: float
+
+
+def churn_score(
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
+```
+
+Mit einer Kundentabelle verknüpft, wird sie mit einem `loader` wie `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` aufgerufen. Der zweite Schlüssel trägt nur `customer_id`, also gelten für Plan und Region die Standardwerte. Die Funktion gibt `{"9f2c...": [...], "41ab...": [...], ...}` zurück, und Provisa gibt jede Liste von Zeilen an jede Kundenzeile, die diesen Schlüssel teilte.
+
+Dieselbe Funktion in TypeScript:
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id?: string,
+  plan = "basic",
+  region = "US",
+  loader?: Record<string, CustomerKey>,
+): Promise<Score[]> {
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
+}
+```
 
 ## Ein Beispiel {: #an-example }
 

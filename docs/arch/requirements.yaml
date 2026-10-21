@@ -59758,7 +59758,7 @@
   - data-products.md
   - metadata-export.md
 - id: REQ-1636
-  status: complete
+  status: in-progress
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -59794,7 +59794,7 @@
   tests:
   - tests/steps/steps_data_products.py
   - tests/unit/test_metadata_export_engine_native.py
-  notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: delivered; verified against the code'
+  notes: 'Reopened 2026-10-20 by the lead: an audit found bigquery_dataplex sends PUT /v1/dataProducts, which matches neither the Dataplex nor the Analytics Hub API, and set_runtime_resolver is called only from tests, so publish returns nothing in production. Its replacement is REQ-2118. Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: delivered; verified against the code'
   docs:
   - metadata-export.md
 - id: REQ-1637
@@ -81719,6 +81719,9 @@
   - provisa-ui/src/lib/sandboxSession.ts
   - provisa-ui/src/components/JoinNotice.tsx
   - docs/hosted-sandbox.md
+  tests:
+  - tests/integration/test_sandbox_visitor_walk.py
+  - tests/unit/test_sandbox_visitor_walk_state.py
 - id: REQ-1998
   status: proposed
   since: 2026-10
@@ -85580,7 +85583,7 @@ Then it is refused by name and told to run a host built for this Provisa version
   related_reqs:
   - REQ-1984
   - REQ-1993
-  notes: "Maintainer 2026-10-19, through the lead: remote Node and Python code sources; Provisa dials the host; dev and built modes; Build image with a daemonless rootless builder, pushed to Container Registries or downloaded; fixed internal port 7443 with a required compose variable; pairing code; rows travel only as Arrow IPC batches (sets of rows: table, stream, set-returning command), control and single values JSON, the protocol version bumped; use the term remote host everywhere; Registered Remote Hosts carry no Python/Node classification."
+  notes: "Maintainer 2026-10-20, through the lead (environments): a remote code source's host binding (address, port, pairing) and its code pin are like any source's URI and auth: an environment keeps them or overrides them as it does for every other source, and neither travels with a model promotion. To change a code source, point the test environment at another remote host running the new image and pin it there; production keeps its host and pin until the new image is deployed to its host and re-pinned. CI/CD of remote hosts is left to devops. Maintainer 2026-10-19, through the lead: remote Node and Python code sources; Provisa dials the host; dev and built modes; Build image with a daemonless rootless builder, pushed to Container Registries or downloaded; fixed internal port 7443 with a required compose variable; pairing code; rows travel only as Arrow IPC batches (sets of rows: table, stream, set-returning command), control and single values JSON, the protocol version bumped; use the term remote host everywhere; Registered Remote Hosts carry no Python/Node classification."
   code:
   - provisa/codesource/worker.py
   - provisa/codesource/remote.py
@@ -85951,7 +85954,7 @@ Then the image is built through Provisa's Build image API and the compose snippe
   - REQ-1993
   notes: "Maintainer 2026-10-20, through the lead: a Provisa VS Code plugin, queued after REQ-2098; link the pushdown (2100) and services (2104-2106) requirements when they reach main. Scope agreed: the code-source loop; no model editing; a docs page for the existing GraphQL/SQL extensions instead of a query editor."
 - id: REQ-2113
-  status: proposed
+  status: complete
   since: 2026-10
   group: 4. Source Connectors
   category: Source Registration
@@ -85974,6 +85977,22 @@ Then it is refused by name and nothing is copied"
   related_reqs:
   - REQ-1997
   - REQ-1992
+  code:
+  - provisa/core/source_downloads.py
+  - provisa/api/admin/schema_common.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/core/settings_catalog.py
+  - provisa/core/env_source_files.py
+  - provisa/federation/replica_builds.py
+  - provisa/api/mcp/chat.py
+  - provisa-ui/src/pages/sources/FileLocationFields.tsx
+  - site/demo-data/make_supplies.py
+  tests:
+  - tests/unit/test_source_downloads.py
+  - tests/unit/test_source_draft_table.py
+  - tests/unit/test_env_source_files.py
+  - tests/unit/test_mcp_chat_prompt_rules.py
+  - provisa-ui/src/pages/sources/__tests__/fileDownload.test.tsx
   notes: "Maintainer 2026-10-20, through the lead: download a CSV or Parquet source's file into the org folder and /files; Polly can take a fully resolved path (file mount, http, s3) to a single file, add it to the download UI and run it. Queued as one requirement, with the allowed-directories setting for mount paths. Maintainer: a file mount cannot work in a multi-tenant org, so it is single-tenant only. Maintainer: Polly differentiates a single CSV or Parquet source request from a more complex file request. Maintainer: a single CSV or Parquet source gets its table set up at once, in draft, as a choice when the source is created."
 - id: REQ-2114
   status: proposed
@@ -86023,3 +86042,102 @@ Then she is told by name and the form is unchanged"
   - REQ-1092
   - REQ-2113
   notes: "Maintainer 2026-10-20, through the lead: separately, Polly needs to be able to fill in fields, navigate to screens and press buttons. Maintainer: in the demo Polly must SHOW the creation via the UI, so in the app she makes a change through its screen. Maintainer: in particular the demo shows the big list of potential sources. Maintainer: Polly uses the APIs as well; the UI route is for when she is asked to do something and show each step. Maintainer: any request to show, demo or teach uses the UI, not the API. Maintainer: extend it to the tour: tour steps fill fields and press buttons with the same actions, since most demos only show the results of setup. Maintainer: tours fill in only what is very unlikely to fail, like a static, known URI, or manipulating something handled within Provisa, or filling a form in, canceling it, and saying it was set up already."
+- id: REQ-2116
+  status: complete
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Column-Level Lineage Graph
+  feature: lineage-and-provenance-column-lineage
+  priority: SHOULD
+  type: behavioral
+  description: "Lineage reaches below the registered table to the source itself. Each source node of the lineage graph (REQ-1160) gains one hop beneath it: the native address the rows are read from and the raw field each column is taken from, with any renaming on the way (row location, path flattening, naming convention, alias). For an API (OpenAPI, remote GraphQL, a branded source) that is the operation with its address and fixed parameters, the row location and each raw field as it is read (a top-level field, an object kept as one JSON column). For a document or search store it is the collection or index and the field path. For a file it is the path or glob. For Kafka it is the topic and message field. For a code source it is the function and the field it returns. For a SQL database it is the native schema, table and column. The landing node says how the table is served: virtual (read at each statement) or a replica, with its freshness and last load. Each native node carries its source's visual branding, the same icon and type label the Sources page shows for it (Kaggle, CSV, Parquet, Salesforce, PostgreSQL and so on, brand before carrier), so the graph shows at a glance where each column comes from. Every element of the lineage graph links to where it is defined: a native node to its source, a table or column to the table, a view or materialized view to its definition, a relationship to the relationship, a command to the command, a metric to the metric, and a transform's named function to its documentation; a link opens the element as the user's own rights allow. Credentials and secret references are never shown. The native hop is shown only to a user who can see the source's configuration (source registration); anyone else sees lineage from the registered table upward, as before. (Amended 2026-10-20, LINKS AND NAMES:) A built-in SQL function or operator has no page of its own and is not linked; a command, whether called inline or writing a table, opens on the Commands page. Only the elements the graph draws are linked: it draws no relationship or metric. The Lineage page asks view_governance, as its endpoints do. A registered column is drawn by its SQL name (its alias, else its name under the naming convention), the name a view reads it by, so the native hop and the views meet on one node."
+  use_case: An auditor asks where a masked column physically comes from and is shown the API endpoint and raw field path that land in the table, and through which views it reaches the report.
+  scenario: "Given an OpenAPI source whose GET /v2/customers rows sit under data.items and whose postalCode field is registered as postal_code
+
+When a user with source registration opens the lineage of a view that reads postal_code
+
+Then the graph shows GET /v2/customers, the row location data.items, the raw field postalCode, the virtual table customers and the view
+
+When a user without source registration opens it
+
+Then the graph starts at customers.postal_code"
+  tests:
+  - tests/unit/test_lineage_native.py
+  - provisa-ui/src/components/lineage/__tests__/lineage-native.test.ts
+  - provisa-ui/src/__tests__/tourRouteCapabilities.test.ts
+  related_reqs:
+  - REQ-1160
+  - REQ-862
+  notes: "Maintainer 2026-10-20, through the lead: lineage shows the original back data source; for an API, the actual endpoint and the raw names moving into the landing table, even if virtual. Queued. Maintainer: the nodes get visual branding by source (Kaggle, CSV, etc.). Maintainer: every element in the lineage a hyperlink to its definition, where possible."
+- id: REQ-2117
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: SHOULD
+  type: behavioral
+  description: "Databricks Unity Catalog joins the data product export (docs/data-products.md, metadata export) as a target that approximates a data product, as the BigQuery Analytics Hub target does (REQ-1636): Unity Catalog has no data-product entity. One data product becomes one Unity Catalog schema, <catalog>.<product id>, holding a view over each member table, the view reading the member at its real catalog, schema and table name as the org's Databricks runtime reports it (databricks_runtime.py _phys_parts); a schema cannot hold another schema's tables, and nothing is copied. The product's ODPS fields (owner, team, purpose, limitations, usage, version) are written to the schema's comment and Unity Catalog tags, and each member table and column carries its description and governance tags. The product may also be published to other data teams in the same enterprise as a Delta Share of that schema or a listing in a Databricks private exchange; sharing needs the members in Delta format. The export's rules hold as for every target: only member tables publish, a product with no exported members does not publish, and masked columns carry their MASKED governance tag, never the rule body. It is a listing in Unity Catalog's terms, aligned in spirit to a data product since Unity Catalog has none, not an ETL flow."
+  use_case: A data team on Databricks finds the Customer 360 product as one schema in Catalog Explorer, with its owner, purpose and version, and another data team in the same enterprise subscribes to it through a private exchange.
+  scenario: "Given a data product customer_360 with two member tables on a Databricks-backed org and the Unity Catalog target configured
+
+When the metadata export runs
+
+Then the schema <catalog>.customer_360 holds both tables, its comment and tags carry the product's owner, purpose and version, and a product with no members publishes nothing"
+  related_reqs:
+  - REQ-1636
+  - REQ-987
+  notes: "Maintainer 2026-10-20, through the lead: Unity Catalog does not support data products; create an entry that approximates one, as the BigQuery target does. Queued."
+- id: REQ-2118
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: SHOULD
+  type: behavioral
+  description: "The data product export publishes Provisa's data products as listings in the internal catalogs an enterprise's other data teams use. It is not a set of one-off ETL flows: the data product, its members, owner and fields stay defined once in Provisa, and each target receives a listing in that catalog's own data-product terms or, where a catalog has none, the closest thing to one in spirit. The scope is internal publishing only, never a public or paid listing: data team A in an enterprise publishes its data products for data team B in the same enterprise. When team B also uses Provisa it reaches A's products in Provisa itself; these targets are for the team B that does not, and works in BigQuery, Purview, DataZone or its own catalog. An org may publish to several targets at once, each publish going to every one configured (today an org has exactly one). Every data product field reaches each target: owner, team, purpose, limitations, usage and version, mapped onto the target's own fields (today only owner and purpose are carried). Approvers are the holders of the product's owner role, and a target's access groups map from Provisa roles; no new approver fields are added. Contracts are per member table: each member gets an ODCS 3.1 contract built from what Provisa knows of it (columns and types, freshness, quality checks), and the product's ODPS document names its members' contracts; the product's SLA stays prose. Masked columns are published with their MASKED governance tag and never the rule body, as the export does today. Targets: Google Dataplex data products, one per product (dataProducts.create, dataAssets.create) with owners, description and documentation, the member tables as assets, access groups and approvers from roles, and each member asset's refresh cadence from its freshness; this replaces the bigquery_dataplex target, which sends a request matching neither the Dataplex nor the Analytics Hub API and is never wired in production (REQ-1636 is reopened for it). Microsoft Purview Unified Catalog data products, in the product's governance domain with owners, use case, member assets and an access policy naming the approvers, beside the existing Purview Data Map path through the Atlas adapter. AWS DataZone / SageMaker Catalog, one data product in the owning project with its member assets, its fields in metadata forms and consumers requesting it by subscription. An ODPS document and the members' ODCS contracts are also written per product, so a catalog importing either standard (Collibra, DataHub, OpenMetadata, Alation) reads them. Alation's Data Products App is a later phase, built when an Alation account is available to test against; Dataplex, Purview and DataZone are tested against the project's GCP, Azure and AWS accounts. The ODPS field set on a data product (id, domain, name, owner role, team role, purpose, limitations, usage, version, status, SLA as prose, support, support contact, publish, custom properties) is recorded here; code traces it to REQ-1660 in error."
+  use_case: A platform team publishes its Customer 360 product once, and data teams across the company find it, read its contract and request access in the catalog their part of the company already uses.
+  scenario: "Given a data product customer_360 with two member tables and the Dataplex target configured for the organisation's project
+
+When the metadata export runs
+
+Then a Dataplex data product customer_360 exists with both tables as assets, its owners, its access group approvers and its refresh cadence, and a product with no members publishes nothing
+
+When the ODPS and ODCS export runs
+
+Then customer_360's ODPS document and an ODCS 3.1 contract for each member table are written and import into OpenMetadata"
+  related_reqs:
+  - REQ-1636
+  - REQ-2117
+  - REQ-1634
+  - REQ-1389
+  notes: "Maintainer 2026-10-20, through the lead: add the internal-marketplace targets other than Snowflake (which is fine as is), scoped to an enterprise publishing internally to other data teams. Maintainer: this is data team A in enterprise 1 publishing for data team B in enterprise 1, partly just part of Provisa; the issue is when team A uses Provisa and team B does not and uses BigQuery. Maintainer: not one-off ETL flows, but the data products infra creating listings in other locations that match a data product's terminology or, if not available, align to it in spirit. Decisions: several targets per org; contracts per member table; approvers derived from roles; Alation later (no account); others tested on existing cloud accounts. Research: Dataplex data products, Purview Unified Catalog (API in preview), AWS DataZone, Alation, and ODPS/ODCS for the catalogs that import them."
+- id: REQ-2119
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: MUST
+  type: behavioral
+  description: "Every metadata export target has an end-to-end test against the real service, and no target is complete without one. Each test publishes a snapshot through the production publish path, with no injected seam or faked transport, and reads the published entities back from the target to check them: the data product with its fields and members, the tables and columns with descriptions and governance tags, glossary terms, lineage and data-quality outcomes where the target takes them. A wiring test publishes through that same path and fails when a configured target receives nothing. Self-hostable targets (OpenMetadata, DataHub, Apache Atlas, an OpenLineage receiver) run in containers the test starts. Cloud and SaaS targets (Snowflake Horizon, BigQuery and Dataplex, Microsoft Purview, AWS DataZone, Databricks Unity Catalog, Collibra, Atlan, Alation) run against the project's own accounts, the same way the warehouse lanes do. A test that cannot reach its target fails; it is never skipped. Unit tests with faked HTTP remain for request shaping but do not count as proof that a target works."
+  use_case: A target whose requests match no real API, or that is never wired in production, fails its end-to-end test instead of passing on a fake.
+  scenario: "Given the Snowflake Horizon target configured against the project's Snowflake account and a data product with two members
+
+When the end-to-end test publishes through the production path
+
+Then it reads back an organization listing and a share holding both members, with the product's fields
+
+Given a target that the production path never calls
+
+When the wiring test publishes
+
+Then it fails naming the target"
+  related_reqs:
+  - REQ-1069
+  - REQ-1635
+  - REQ-1636
+  - REQ-2117
+  - REQ-2118
+  notes: "Maintainer 2026-10-20, through the lead: all must have e2e tests. Prompted by the audit finding that bigquery_dataplex passed unit tests on a faked transport and an injected runtime while matching no Google API and never running in production. Existing e2e: Atlas, OpenLineage, OpenMetadata only."

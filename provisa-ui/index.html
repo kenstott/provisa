@@ -201,6 +201,9 @@
           }
 
           function frame() {
+            // The status note appears later and reflows the centred column, moving the mark;
+            // follow it every frame so the loop stays centred in the halo.
+            reanchor();
             // Fade the prior frame → flowing streaks. Low alpha = long-lived rivers.
             ctx.fillStyle = "rgba(15,17,23,0.085)";
             ctx.fillRect(0, 0, W, H);

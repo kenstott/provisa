@@ -47,6 +47,11 @@ export interface SourceFormState {
   path: string;
   allowedDomains: string;
   description: string;
+  // REQ-2113: where a CSV or Parquet source's file is downloaded from ("" or absent = read in
+  // place), and, for a new one, whether its table is set up with it as a draft and in which domain.
+  downloadFrom?: string;
+  registerTableDraft?: boolean;
+  tableDomainId?: string | null;
 }
 
 export interface CdcState {
@@ -303,7 +308,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
           />
         </FormField>
       )}
-      {UPLOAD_TYPES.has(form.type) && <FileLocationFields form={form} setForm={setForm} />}
+      {UPLOAD_TYPES.has(form.type) && (
+        <FileLocationFields form={form} setForm={setForm} creating={props.editingSourceId === null} />
+      )}
       {CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(location) && (
         <ObjectStoreCredentialFields
           store={objectStoreOf(location)!}

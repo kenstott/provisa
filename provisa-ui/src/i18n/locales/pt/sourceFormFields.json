@@ -97,6 +97,15 @@
     "uploadNeedsId": "Informe primeiro o ID da fonte: o arquivo é guardado sob ele.",
     "uploadedFileHint": "O arquivo enviado desta fonte, guardado na pasta da sua organização. Envie outro para substituí-lo.",
     "fileLocationsHint": "{files}/… nos arquivos da organização, um caminho no servidor, um endereço https://, ou s3://, gs:// ou az:// com as credenciais do armazenamento; ou envie o arquivo.",
-    "fileDatabaseLocationsHint": "{files}/… nos arquivos da organização, um caminho no servidor, um endereço https://, ou s3://, gs:// ou az:// com as credenciais do armazenamento (lá, somente leitura); ou envie o arquivo."
+    "fileDatabaseLocationsHint": "{files}/… nos arquivos da organização, um caminho no servidor, um endereço https://, ou s3://, gs:// ou az:// com as credenciais do armazenamento (lá, somente leitura); ou envie o arquivo.",
+    "fileInPlace": "Ler onde está",
+    "fileDownload": "Baixar uma cópia",
+    "downloadFrom": "Baixar de",
+    "downloadFromHint": "Um arquivo: seu caminho neste servidor, num diretório que o operador permite, um endereço https:// ou s3:// com as credenciais do armazenamento. Uma cópia é guardada na pasta da sua organização e baixada de novo quando o TTL de cache da fonte expira.",
+    "downloadFromHintRemote": "Um arquivo: um endereço https:// ou s3:// com as credenciais do armazenamento. Uma cópia é guardada na pasta da sua organização e baixada de novo quando o TTL de cache da fonte expira.",
+    "draftTable": "Configurar a tabela agora, como rascunho",
+    "draftTableHint": "Com o nome e os tipos que Registrar tabela proporia a partir do arquivo, e fora de serviço até um steward tirá-la do rascunho.",
+    "draftTableDomain": "Domínio da tabela",
+    "fileMode": "Seu arquivo"
   }
 }

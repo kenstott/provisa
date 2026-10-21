@@ -441,7 +441,9 @@
       "role_session_var_name_invalid": "Der Name des Sitzungswerts '{{name}}' darf nur Buchstaben, Ziffern und Unterstriche enthalten und nicht mit einer Ziffer beginnen",
       "role_session_var_name_repeated": "Der Sitzungswert '{{name}}' ist doppelt benannt",
       "role_description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
-      "rls_rule_description_missing": "Eine Zeilenregel braucht eine Beschreibung, wofür sie da ist"
+      "rls_rule_description_missing": "Eine Zeilenregel braucht eine Beschreibung, wofür sie da ist",
+      "file_download_refused": "Quelle {{source}}: {{reason}}",
+      "source_created_without_table": "Quelle {{source}} angelegt; ihre Tabelle wurde nicht eingerichtet: {{reason}}"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

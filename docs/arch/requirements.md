@@ -18392,7 +18392,7 @@ New engine-native MetadataExport adapter(s), alongside the vendor-neutral ones (
 
 ### REQ-1636 · Data Catalog Integration {#REQ-1636}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to [REQ-1635](#REQ-1635)'s snowflake_horizon.py: populates BigQuery Dataplex catalog entries and registers each DataProduct ([REQ-1634](#REQ-1634)) as a BigQuery Analytics Hub listing, backed by a dataset containing the product's member tables. Same engine-aware shape as [REQ-1635](#REQ-1635): resolves each member TableAsset's semantic_uri/AssetRef to its actual landed BigQuery object identity (project.dataset.table) via provisa/federation/bigquery_runtime.py before calling Dataplex/Analytics Hub's catalog API, unlike the vendor-neutral adapters (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py; [REQ-1069](#REQ-1069)), which need no such resolution. Runs only when BigQuery is the configured engine and [REQ-1633](#REQ-1633)'s BigQuery landing terminal exists for the member tables being published; otherwise skipped.
 
@@ -24364,7 +24364,7 @@ provisa.dev has a live demos page with one card for each published named demo: i
 
 **Code:** `scripts/gen-site-demos.mjs`, `site/demos.html`, `provisa/api/sandbox_tier.py`, `provisa/api/demo_templates.py`, `provisa/api/demo_sandbox.py`, `provisa/api/demo_sandbox_router.py`, `provisa/security/sandbox_egress.py`, `provisa/core/sandbox_limits.py`, `provisa/core/settings_catalog_sandbox.py`, `provisa-ui/src/pages/demos/DemoOpenPage.tsx`, `provisa-ui/src/lib/sandboxSession.ts`, `provisa-ui/src/components/JoinNotice.tsx`, `docs/hosted-sandbox.md`
 
-**Tests:** —
+**Tests:** `tests/integration/test_sandbox_visitor_walk.py`, `tests/unit/test_sandbox_visitor_walk_state.py`
 
 ## 4. Source Connectors
 
@@ -25740,15 +25740,15 @@ A Visual Studio Code extension for Node and Python code sources, published on th
 
 ### REQ-2113 · Source Registration {#REQ-2113}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A CSV or Parquet source can be given its file by download, a third way beside a path and an upload ([REQ-1997](#REQ-1997)). The steward gives one fully resolved path to a single file: a file mount path, an https:// URL or an s3:// URL. Provisa fetches it (an s3:// address with the source's existing S3 credentials, an https:// address with none), and streams the bytes through the upload path into the org's folder under files/<source id>/<name>, with the same size limit (sources.max_upload_bytes), encryption and one-rename swap as an upload. From then on the source reads that local file, and an environment fork copies it as it copies an upload. When the file is fetched again follows the source's freshness declaration: a TTL fetches it again once it lapses, TTL -1 fetches it once and keeps it. On a multi-tenant deployment an https:// or s3:// address that resolves, at any redirect, to a private, loopback or link-local address is refused by name, so no tenant can make Provisa fetch from inside its network (the cloud metadata server among them). A file mount path may only name a file under a directory the operator lists in a setting, which has its admin UI as every setting does, as logs.allowed_roots does for log sources; a path outside them is refused by name. On a multi-tenant deployment (multitenancy: true) a file mount path is refused by name whatever the setting holds: the server's disk is the platform's, shared by every org, so no tenant may copy from it; only https:// and s3:// are offered there, in the form and by Polly. Polly offers the same: given one fully resolved path to a single file, she works out CSV or Parquet from the file, fills in the download form and proposes the source through propose_source. She creates it and runs the download only after the user confirms in the conversation (create_source_now), and can then register its table (register_table_now). The create form of a single-file CSV or Parquet source offers to set up its table at once, as a draft (out of service until a steward takes it out of draft; [REQ-1921](#REQ-1921)), named and typed from the file as the Register Table form would propose it; the choice is on by default, and Polly makes the same draft table when she creates such a source. She tells the two kinds of request apart by what the path names: a path to one CSV or Parquet file is a single-file CSV or Parquet source given its file by download; a directory, a glob or several files is a files source ([REQ-788](#REQ-788)) over that path, proposed and confirmed the same way, its tables registered from what the source offers (list_native_tables, propose_table). She acts as the chatting user, so only a user with source_registration can do this through her.
 
 **Use case:** An analyst pastes the URL of a public Parquet file into Polly's chat, confirms, and queries a governed table read from the org's own copy of the file.
 
-**Code:** —
+**Code:** `provisa/core/source_downloads.py`, `provisa/api/admin/schema_common.py`, `provisa/api/admin/schema_mutation.py`, `provisa/core/settings_catalog.py`, `provisa/core/env_source_files.py`, `provisa/federation/replica_builds.py`, `provisa/api/mcp/chat.py`, `provisa-ui/src/pages/sources/FileLocationFields.tsx`, `site/demo-data/make_supplies.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_source_downloads.py`, `tests/unit/test_source_draft_table.py`, `tests/unit/test_env_source_files.py`, `tests/unit/test_mcp_chat_prompt_rules.py`, `provisa-ui/src/pages/sources/__tests__/fileDownload.test.tsx`
 
 ## 10. UI & Admin Surfaces
 
@@ -25771,6 +25771,56 @@ Polly can perform every action the UI can, as the chatting user, through the adm
 Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. Her usual route for a change is the admin API ([REQ-2114](#REQ-2114)). Whenever the user asks her to show, demo or teach something ('do xyz and show me each step', 'show me how to add a source', 'teach me relationships'), she makes each change the UI can make through the UI instead, on its screen: she opens the page, fills in its form and presses its button, so the user sees how it is done there. Creating a source, she opens the source picker with its whole list of source types and lets it be seen before she chooses one, as a user would; the demo shows that list. The product tour uses the same actions: a tour step may carry steps (fill a field, choose an option, press a button, show a list), run by the same code as Polly's, so a tour builds objects live on screen instead of only showing what setup built, and whatever Polly can show a tour can script. A tour step's press of a button that changes something runs as part of the tour the visitor started, without a further question. A tour fills in only values very unlikely to fail, such as a static, known address (a file Provisa publishes, a store the demo itself runs), and manipulates things handled within Provisa itself (registering a table, adding a relationship, defining a view, setting a rule, running a query). Where a step depends on something that could fail live, the tour may fill in the form to show how it is done, press Cancel, and say the demo set it up already, then show the one built at setup. Which objects a demo builds live and which it keeps built at setup is decided demo by demo, on that rule. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions ([REQ-2114](#REQ-2114)).
 
 **Use case:** A new user asks Polly how to add a source; she opens the Sources page, fills in the form in front of them, and presses Create once they confirm.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2116 · Column-Level Lineage Graph {#REQ-2116}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Lineage reaches below the registered table to the source itself. Each source node of the lineage graph ([REQ-1160](#REQ-1160)) gains one hop beneath it: the native address the rows are read from and the raw field each column is taken from, with any renaming on the way (row location, path flattening, naming convention, alias). For an API (OpenAPI, remote GraphQL, a branded source) that is the operation with its address and fixed parameters, the row location and each raw field as it is read (a top-level field, an object kept as one JSON column). For a document or search store it is the collection or index and the field path. For a file it is the path or glob. For Kafka it is the topic and message field. For a code source it is the function and the field it returns. For a SQL database it is the native schema, table and column. The landing node says how the table is served: virtual (read at each statement) or a replica, with its freshness and last load. Each native node carries its source's visual branding, the same icon and type label the Sources page shows for it (Kaggle, CSV, Parquet, Salesforce, PostgreSQL and so on, brand before carrier), so the graph shows at a glance where each column comes from. Every element of the lineage graph links to where it is defined: a native node to its source, a table or column to the table, a view or materialized view to its definition, a relationship to the relationship, a command to the command, a metric to the metric, and a transform's named function to its documentation; a link opens the element as the user's own rights allow. Credentials and secret references are never shown. The native hop is shown only to a user who can see the source's configuration (source registration); anyone else sees lineage from the registered table upward, as before. (Amended 2026-10-20, LINKS AND NAMES:) A built-in SQL function or operator has no page of its own and is not linked; a command, whether called inline or writing a table, opens on the Commands page. Only the elements the graph draws are linked: it draws no relationship or metric. The Lineage page asks view_governance, as its endpoints do. A registered column is drawn by its SQL name (its alias, else its name under the naming convention), the name a view reads it by, so the native hop and the views meet on one node.
+
+**Use case:** An auditor asks where a masked column physically comes from and is shown the API endpoint and raw field path that land in the table, and through which views it reaches the report.
+
+**Code:** —
+
+**Tests:** `tests/unit/test_lineage_native.py`, `provisa-ui/src/components/lineage/__tests__/lineage-native.test.ts`, `provisa-ui/src/__tests__/tourRouteCapabilities.test.ts`
+
+### REQ-2117 · Data Catalog Integration {#REQ-2117}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Databricks Unity Catalog joins the data product export (docs/data-products.md, metadata export) as a target that approximates a data product, as the BigQuery Analytics Hub target does ([REQ-1636](#REQ-1636)): Unity Catalog has no data-product entity. One data product becomes one Unity Catalog schema, <catalog>.<product id>, holding a view over each member table, the view reading the member at its real catalog, schema and table name as the org's Databricks runtime reports it (databricks_runtime.py _phys_parts); a schema cannot hold another schema's tables, and nothing is copied. The product's ODPS fields (owner, team, purpose, limitations, usage, version) are written to the schema's comment and Unity Catalog tags, and each member table and column carries its description and governance tags. The product may also be published to other data teams in the same enterprise as a Delta Share of that schema or a listing in a Databricks private exchange; sharing needs the members in Delta format. The export's rules hold as for every target: only member tables publish, a product with no exported members does not publish, and masked columns carry their MASKED governance tag, never the rule body. It is a listing in Unity Catalog's terms, aligned in spirit to a data product since Unity Catalog has none, not an ETL flow.
+
+**Use case:** A data team on Databricks finds the Customer 360 product as one schema in Catalog Explorer, with its owner, purpose and version, and another data team in the same enterprise subscribes to it through a private exchange.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2118 · Data Catalog Integration {#REQ-2118}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The data product export publishes Provisa's data products as listings in the internal catalogs an enterprise's other data teams use. It is not a set of one-off ETL flows: the data product, its members, owner and fields stay defined once in Provisa, and each target receives a listing in that catalog's own data-product terms or, where a catalog has none, the closest thing to one in spirit. The scope is internal publishing only, never a public or paid listing: data team A in an enterprise publishes its data products for data team B in the same enterprise. When team B also uses Provisa it reaches A's products in Provisa itself; these targets are for the team B that does not, and works in BigQuery, Purview, DataZone or its own catalog. An org may publish to several targets at once, each publish going to every one configured (today an org has exactly one). Every data product field reaches each target: owner, team, purpose, limitations, usage and version, mapped onto the target's own fields (today only owner and purpose are carried). Approvers are the holders of the product's owner role, and a target's access groups map from Provisa roles; no new approver fields are added. Contracts are per member table: each member gets an ODCS 3.1 contract built from what Provisa knows of it (columns and types, freshness, quality checks), and the product's ODPS document names its members' contracts; the product's SLA stays prose. Masked columns are published with their MASKED governance tag and never the rule body, as the export does today. Targets: Google Dataplex data products, one per product (dataProducts.create, dataAssets.create) with owners, description and documentation, the member tables as assets, access groups and approvers from roles, and each member asset's refresh cadence from its freshness; this replaces the bigquery_dataplex target, which sends a request matching neither the Dataplex nor the Analytics Hub API and is never wired in production ([REQ-1636](#REQ-1636) is reopened for it). Microsoft Purview Unified Catalog data products, in the product's governance domain with owners, use case, member assets and an access policy naming the approvers, beside the existing Purview Data Map path through the Atlas adapter. AWS DataZone / SageMaker Catalog, one data product in the owning project with its member assets, its fields in metadata forms and consumers requesting it by subscription. An ODPS document and the members' ODCS contracts are also written per product, so a catalog importing either standard (Collibra, DataHub, OpenMetadata, Alation) reads them. Alation's Data Products App is a later phase, built when an Alation account is available to test against; Dataplex, Purview and DataZone are tested against the project's GCP, Azure and AWS accounts. The ODPS field set on a data product (id, domain, name, owner role, team role, purpose, limitations, usage, version, status, SLA as prose, support, support contact, publish, custom properties) is recorded here; code traces it to [REQ-1660](#REQ-1660) in error.
+
+**Use case:** A platform team publishes its Customer 360 product once, and data teams across the company find it, read its contract and request access in the catalog their part of the company already uses.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2119 · Data Catalog Integration {#REQ-2119}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Every metadata export target has an end-to-end test against the real service, and no target is complete without one. Each test publishes a snapshot through the production publish path, with no injected seam or faked transport, and reads the published entities back from the target to check them: the data product with its fields and members, the tables and columns with descriptions and governance tags, glossary terms, lineage and data-quality outcomes where the target takes them. A wiring test publishes through that same path and fails when a configured target receives nothing. Self-hostable targets (OpenMetadata, DataHub, Apache Atlas, an OpenLineage receiver) run in containers the test starts. Cloud and SaaS targets (Snowflake Horizon, BigQuery and Dataplex, Microsoft Purview, AWS DataZone, Databricks Unity Catalog, Collibra, Atlan, Alation) run against the project's own accounts, the same way the warehouse lanes do. A test that cannot reach its target fails; it is never skipped. Unit tests with faked HTTP remain for request shaping but do not count as proof that a target works.
+
+**Use case:** A target whose requests match no real API, or that is never wired in production, fails its end-to-end test instead of passing on a fake.
 
 **Code:** —
 

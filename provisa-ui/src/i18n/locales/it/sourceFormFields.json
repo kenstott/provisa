@@ -97,6 +97,15 @@
     "uploadNeedsId": "Inserisci prima l'ID della sorgente: il file viene conservato sotto di esso.",
     "uploadedFileHint": "Il file caricato di questa sorgente, conservato nella cartella della tua organizzazione. Caricane uno nuovo per sostituirlo.",
     "fileLocationsHint": "{files}/… nei file dell'organizzazione, un percorso sul server, un indirizzo https://, oppure s3://, gs:// o az:// con le credenziali dell'archivio; oppure carica il file.",
-    "fileDatabaseLocationsHint": "{files}/… nei file dell'organizzazione, un percorso sul server, un indirizzo https://, oppure s3://, gs:// o az:// con le credenziali dell'archivio (lì in sola lettura); oppure carica il file."
+    "fileDatabaseLocationsHint": "{files}/… nei file dell'organizzazione, un percorso sul server, un indirizzo https://, oppure s3://, gs:// o az:// con le credenziali dell'archivio (lì in sola lettura); oppure carica il file.",
+    "fileInPlace": "Leggerlo dove si trova",
+    "fileDownload": "Scaricare una copia",
+    "downloadFrom": "Scarica da",
+    "downloadFromHint": "Un file: il suo percorso su questo server in una directory consentita dall'operatore, un indirizzo https:// oppure s3:// con le credenziali dell'archivio. Una copia viene conservata nella cartella della tua organizzazione e scaricata di nuovo alla scadenza del TTL di cache della sorgente.",
+    "downloadFromHintRemote": "Un file: un indirizzo https:// oppure s3:// con le credenziali dell'archivio. Una copia viene conservata nella cartella della tua organizzazione e scaricata di nuovo alla scadenza del TTL di cache della sorgente.",
+    "draftTable": "Imposta subito la sua tabella, come bozza",
+    "draftTableHint": "Con il nome e i tipi che Registra tabella proporrebbe dal file, e fuori servizio finché uno steward non la toglie dalla bozza.",
+    "draftTableDomain": "Dominio della sua tabella",
+    "fileMode": "Il suo file"
   }
 }

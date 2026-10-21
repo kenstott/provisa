@@ -11,7 +11,7 @@
 """A sandbox's tour is warmed as it opens: every step's work, one request at a time, in tour order,
 through the transports a step uses, with the visitor's credential (REQ-2006, REQ-2010)."""
 
-# Requirements: REQ-2006, REQ-2010
+# Requirements: REQ-2006, REQ-2010, REQ-2065
 
 from __future__ import annotations
 
@@ -105,3 +105,19 @@ def test_the_warmup_sends_each_request_as_the_visitor_and_carries_on_past_a_refu
     assert "answered 500" in caplog.text  # the refusal is logged, and the rest still sent
     # the completion line shows at the hosted tier's WARNING level, once
     assert caplog.text.count("sandbox sbxabc tour warmed") == 1
+
+
+def test_the_warmup_s_requests_are_marked_as_its_own_and_no_one_else_s():
+    """REQ-2065: the app reads WARMING on each warm-up request and skips the sandbox's touch, so a
+    warm-up still running when the visitor's tab closes does not revive the sandbox."""
+    marked: list[bool] = []
+
+    async def app(scope, receive, send):
+        await receive()
+        marked.append(demo_warmup.WARMING.get())
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    asyncio.run(demo_warmup._warm(app, "sbxabc", {"Authorization": "Bearer t"}, DEMOS / "weblogs"))
+    assert marked and all(marked)
+    assert demo_warmup.WARMING.get() is False  # a request of the visitor's own is not marked

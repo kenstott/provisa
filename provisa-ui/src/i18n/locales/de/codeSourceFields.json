@@ -14,7 +14,7 @@
     "version": "Version",
     "versionHint": "Eine exakte Version, etwa 1.2.0.",
     "lockfile": "Lockfile",
-    "lockfileHint": "Ein veröffentlichtes Paket enthält selten sein Lockfile. Geben Sie eines an ({{names}}), wenn das Paket Abhängigkeiten hat.",
+    "lockfileHint": "Optional. Für identische Installationen, die beim Testen zählen, muss der Code ein Lockfile mitbringen, oder Sie geben hier eines an ({{names}}).",
     "lockfilePlaceholder": "Kein Lockfile",
     "repository": "Repository-URL",
     "commit": "Commit",

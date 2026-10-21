@@ -11,6 +11,7 @@
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -91,7 +92,9 @@ export function CommandsPage() {
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ name: string; data: unknown } | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
-  const [expandedFn, setExpandedFn] = useState<string | null>(null);
+  // `?command=<name>` opens that command's detail -- a lineage edge links to the command it names.
+  const [searchParams] = useSearchParams();
+  const [expandedFn, setExpandedFn] = useState<string | null>(() => searchParams.get("command"));
   const [expandedWh, setExpandedWh] = useState<string | null>(null);
   const [fnPage, setFnPage] = useState(1);
   const [whPage, setWhPage] = useState(1);

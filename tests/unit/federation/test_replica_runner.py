@@ -12,6 +12,7 @@ PostgreSQL's advisory locks are in ``tests/integration/test_replica_build_locks_
 """
 
 import asyncio
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -28,6 +29,11 @@ from provisa.federation.replica_runner import (
 from provisa.federation.replica_state import RetryPolicy
 
 ORG = "org1"
+
+# PostgreSQL advisory locks are held server-wide, not per database: every xdist worker's control
+# plane shares one server, so each worker process names an engine of its own, or a slot another
+# worker's test holds reads here as taken.
+ENGINE = f"trino@engine-{uuid.uuid4().hex[:8]}:8080"
 
 
 def _async(fn):
@@ -88,7 +94,7 @@ class _Node:
         per_node=1,
         engine_jobs=2,
         cap=None,
-        engine="trino@engine:8080",
+        engine=ENGINE,
         retry=60.0,
     ):
         self.tasks: list[asyncio.Task] = []
@@ -207,7 +213,7 @@ async def test_a_source_at_its_cap_leaves_the_build_requested_and_the_replica_un
     other = BuildLocks(url).claim()
     try:
         assert other.try_replica(ORG, _key(0))
-        assert other.try_engine_slot("trino@engine:8080", 1)
+        assert other.try_engine_slot(ENGINE, 1)
     finally:
         other.close()
     slot = node.locks.try_node_slot(1)
@@ -251,12 +257,12 @@ async def test_the_engine_job_cap_holds_across_nodes_and_a_dead_builder_frees_it
 
     # A builder that dies: its claim's locks go with it, and the slot is free at once.
     dead = BuildLocks(url).claim()
-    assert dead.try_engine_slot("trino@engine:8080", 1)
+    assert dead.try_engine_slot(ENGINE, 1)
     survivor = BuildLocks(url).claim()
     try:
-        assert not survivor.try_engine_slot("trino@engine:8080", 1)
+        assert not survivor.try_engine_slot(ENGINE, 1)
         dead.close()  # what the operating system does to a dead process's open files
-        assert survivor.try_engine_slot("trino@engine:8080", 1)
+        assert survivor.try_engine_slot(ENGINE, 1)
     finally:
         survivor.close()
 

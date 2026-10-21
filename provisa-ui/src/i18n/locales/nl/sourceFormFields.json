@@ -97,6 +97,15 @@
     "uploadNeedsId": "Vul eerst de ID van de bron in: het bestand wordt daaronder bewaard.",
     "uploadedFileHint": "Het geüploade bestand van deze bron, bewaard in de map van uw organisatie. Upload een nieuw bestand om het te vervangen.",
     "fileLocationsHint": "{files}/… in de bestanden van de organisatie, een pad op de server, een https://-adres, of s3://, gs:// of az:// met de inloggegevens van de opslag; of upload het bestand.",
-    "fileDatabaseLocationsHint": "{files}/… in de bestanden van de organisatie, een pad op de server, een https://-adres, of s3://, gs:// of az:// met de inloggegevens van de opslag (daar alleen-lezen); of upload het bestand."
+    "fileDatabaseLocationsHint": "{files}/… in de bestanden van de organisatie, een pad op de server, een https://-adres, of s3://, gs:// of az:// met de inloggegevens van de opslag (daar alleen-lezen); of upload het bestand.",
+    "fileInPlace": "Lezen waar het staat",
+    "fileDownload": "Een kopie downloaden",
+    "downloadFrom": "Downloaden van",
+    "downloadFromHint": "Eén bestand: het pad op deze server in een map die de beheerder toestaat, een https://-adres of s3:// met de gegevens van de opslag. Een kopie wordt in de map van uw organisatie bewaard en opnieuw opgehaald zodra de cache-TTL van de bron verloopt.",
+    "downloadFromHintRemote": "Eén bestand: een https://-adres of s3:// met de gegevens van de opslag. Een kopie wordt in de map van uw organisatie bewaard en opnieuw opgehaald zodra de cache-TTL van de bron verloopt.",
+    "draftTable": "De tabel nu inrichten, als concept",
+    "draftTableHint": "Benoemd en getypeerd vanuit het bestand zoals Tabel registreren het zou voorstellen, en buiten gebruik tot een steward het concept vrijgeeft.",
+    "draftTableDomain": "Domein van de tabel",
+    "fileMode": "Het bestand"
   }
 }

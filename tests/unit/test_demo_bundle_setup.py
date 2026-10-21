@@ -607,7 +607,9 @@ def test_every_store_loaded_at_its_first_start_is_healthy_only_once_loaded():
 _VERSION = "202610160000-abc1234"
 
 
-def _sync(tmp_path, *args: str, requested: bool = False, in_use: str | None = None):
+def _sync(
+    tmp_path, *args: str, requested: bool = False, in_use: str | None = None, ask_on_pull=False
+):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
     import os
@@ -623,14 +625,27 @@ def _sync(tmp_path, *args: str, requested: bool = False, in_use: str | None = No
     calls = tmp_path / "calls"
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "pull").write_text(f"#!/usr/bin/env bash\necho {bundles}/weblogs/{_VERSION}\n")
+    # ask_on_pull: a visitor opens weblogs while the run pulls a second demo, after weblogs was
+    # synced, as the tier asks (provisa.core.demo_bundles.request): its requested file, then
+    # the signal.
+    if ask_on_pull:
+        (bundles / "later" / _VERSION).mkdir(parents=True)
+    ask = (
+        f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f"echo requested > {bundles}/weblogs/requested; touch {bundles}/.wanted; }}\n"
+        if ask_on_pull
+        else ""
+    )
+    (fake / "pull").write_text(
+        f'#!/usr/bin/env bash\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
+    )
     (fake / "pull").chmod(0o755)
     (fake / "demo_stores.py").write_text(
         f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
     )
     env = {
         **os.environ,
-        "PROVISA_DEMO_BUNDLES": "weblogs",
+        "PROVISA_DEMO_BUNDLES": "weblogs,later" if ask_on_pull else "weblogs",
         "DEMO_BUNDLES_DIR": str(bundles),
         "DEMO_PULL": str(fake / "pull"),
         "DEMO_PULL_INTO": str(bundles),
@@ -664,6 +679,17 @@ def test_a_demo_asked_for_has_its_stores_brought_up_and_its_version_marked_ready
     assert run.returncode == 0, run.stderr
     assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
     assert (demo / "ready").read_text().strip() == _VERSION
+
+
+def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp_path):
+    """An open during a sync touches <bundles>/.wanted while the service runs, which systemd's
+    path unit drops: the run goes again, so the stores come up now rather than at the timer's
+    next tick (a first open on the sandbox tier waited up to 15 minutes)."""
+    run, demo, asked = _sync(tmp_path, ask_on_pull=True)
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert (demo / "ready").read_text().strip() == _VERSION
+    assert not (demo.parent / ".wanted").exists()
 
 
 def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_path):

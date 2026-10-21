@@ -21,9 +21,10 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlglot.errors import SqlglotError
 
-from provisa.api.admin.capabilities import require_capability_request
-from provisa.lineage.graph import build_column_graph
+from provisa.api.admin.capabilities import has_capability_request, require_capability_request
+from provisa.lineage.graph import LineageGraph, build_column_graph
 from provisa.lineage.merge import MergedGraph
+from provisa.lineage.native import NativeTable, natives_payload, sql_column_name, with_native_hop
 from provisa.core.models import DERIVED_SOURCE_ID
 
 router = APIRouter()
@@ -54,15 +55,20 @@ def lineage_graph_for(
     *,
     views: list[tuple[str, str]] | None = None,
     materialized: set[str] | None = None,
+    natives: list[NativeTable] | None = None,
+    relations: list[str] | None = None,
 ) -> dict:
     """Build the render-ready lineage graph JSON for ``sql`` (REQ-1160/REQ-1161). Pure core, testable
     without the app: ``commands`` maps command name → its registry dict so inline command nodes splice
     their declared taint-closure. When ``sql`` references a registered view (``views`` = (relation,
     definition) pairs), that view's own definition is expanded and stitched in — so selecting from a
-    view or MV shows its FULL lineage down to base sources, not the view as an opaque leaf. Raises
-    ValueError on unparseable SQL (surfaced as 422 by the endpoint)."""
+    view or MV shows its FULL lineage down to base sources, not the view as an opaque leaf.
+    ``natives`` are the base tables' native hops (REQ-2116), drawn beneath their source columns.
+    ``relations`` are the registered base tables, by which a bare table reference is named in full
+    (as the federation graph names it) so it is the registry's own node.
+    Raises ValueError on unparseable SQL (surfaced as 422 by the endpoint)."""
     from provisa.lineage.graph import requalify_relations
-    from provisa.lineage.merge import build_federation_graph, merge_graphs
+    from provisa.lineage.merge import _bare_to_full, build_federation_graph, merge_graphs
 
     try:
         stmt = build_column_graph(sql, dialect=dialect, commands=commands or {})
@@ -73,20 +79,31 @@ def lineage_graph_for(
     # pet_store.test). Expand ALL of them, not just the directly-referenced ones, so the statement
     # traces through every intervening view down to the base sources — the FULL lineage.
     closure = _referenced_view_closure(sql, view_map, dialect)
-    if not closure:
-        return stmt.to_dict()
     # The statement graph names a ``schema.table`` reference by its bare table (sqlglot drops the
     # schema), so ``pet_store.test`` becomes ``test`` and would NOT match the view's qualified output
     # node. Requalify those refs to the full relation first, so the stitch lands.
-    requalify_relations(stmt, {rel.split(".")[-1]: rel for rel, _ in closure})
+    requalify_relations(stmt, _bare_to_full([rel for rel, _ in closure], relations or []))
+    if not closure:
+        return _with_natives(stmt, natives or [])
     # Expand each view to its own lineage (down to base sources), then stitch the statement on top: a
     # view's output node ``<schema>.<table>.<col>`` shares the id the statement (or a downstream view)
     # reads it by, so merge_graphs connects them. A ``SELECT *`` (empty statement graph) simply yields
     # the view's lineage — exactly "the lineage of the columns in this view".
     fed = build_federation_graph(
-        closure, commands=commands or {}, materialized_relations=materialized or set()
+        closure,
+        commands=commands or {},
+        materialized_relations=materialized or set(),
+        extra_relations=relations or [],
     )
-    return merge_graphs([fed.graph, stmt]).to_dict()
+    return _with_natives(merge_graphs([fed.graph, stmt]).graph, natives or [])
+
+
+def _with_natives(graph: LineageGraph, natives: list[NativeTable]) -> dict:
+    """``graph``'s payload with the native hop beneath its source columns (REQ-2116)."""
+    with_native_hop(graph, natives)
+    out = graph.to_dict()
+    out["natives"] = natives_payload(graph, natives)
+    return out
 
 
 def _referenced_view_closure(
@@ -120,8 +137,23 @@ async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
     commands = getattr(state, "tracked_functions", None) or {}
     view_rows = await _fetch_view_rows(state)
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
+    natives = await _native_tables(request, state)
+    relations = sorted(
+        {
+            _relation_of(r["domain_id"], r["table_name"])
+            for r in await _fetch_registry_columns(state)
+        }
+    )
     try:
-        return lineage_graph_for(body.sql, commands, body.dialect, views=views, materialized=mats)
+        return lineage_graph_for(
+            body.sql,
+            commands,
+            body.dialect,
+            views=views,
+            materialized=mats,
+            natives=natives,
+            relations=relations,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -156,7 +188,9 @@ async def _fetch_view_rows(state) -> list[dict]:
 async def _fetch_registry_columns(state) -> list[dict]:
     """Every registered relation's columns with their per-role visibility (REQ-1625/REQ-1626).
 
-    One row per (relation, column): ``domain_id``, ``table_name``, ``column_name``, ``visible_to``.
+    One row per (relation, column): ``domain_id``, ``table_name``, ``column_name``, ``alias``,
+    ``visible_to``. A column's node is named by its SQL name (``sql_column_name``), the name a view
+    reads it by, so the registry's column and a view's reference to it are one node.
     This is the registry's whole surface — base tables as well as views — so Complete Lineage can show
     a registered table that nothing derives from, and can seed the role cut from what a role may query."""
     from sqlalchemy import select
@@ -171,6 +205,7 @@ async def _fetch_registry_columns(state) -> list[dict]:
                 registered_tables.c.domain_id,
                 registered_tables.c.table_name,
                 table_columns.c.column_name,
+                table_columns.c.alias,
                 table_columns.c.visible_to,
             ).select_from(
                 registered_tables.join(
@@ -210,7 +245,7 @@ def _role_seeds(
             continue
         relation = _relation_of(row["domain_id"], row["table_name"])
         relations.add(relation)
-        seeds.add(f"{relation}.{row['column_name']}")
+        seeds.add(f"{relation}.{sql_column_name(row)}")
     return seeds, relations
 
 
@@ -318,6 +353,9 @@ async def federation_graph(
         for n in merged.graph.nodes.values()
         if n.relation is None or n.relation not in described
     }
+    # REQ-2116: the native hop joins after the seeds are taken: it is what a seed derives from.
+    natives = await _native_tables(request, state)
+    with_native_hop(merged.graph, natives)
     if seeds:
         scoped_graph = ancestor_closure(merged.graph, seeds)
         # A cycle survives only if the whole loop is inside the perspective — a partially-cut cycle is
@@ -327,7 +365,9 @@ async def federation_graph(
             cycles=[c for c in merged.cycles if all(n in scoped_graph.nodes for n in c.nodes)],
         )
     if focus is None:
-        return merged.to_dict()
+        out = merged.to_dict()
+        out["natives"] = natives_payload(merged.graph, natives)
+        return out
     try:
         scoped = slice_graph(merged.graph, focus, direction=direction, depth=depth)
     except ValueError as exc:
@@ -335,6 +375,7 @@ async def federation_graph(
     out = scoped.to_dict()
     kept = set(scoped.nodes)
     out["cycles"] = [c.to_dict() for c in merged.cycles if any(n in kept for n in c.nodes)]
+    out["natives"] = natives_payload(scoped, natives)
     return out
 
 
@@ -360,14 +401,97 @@ def _with_registry_columns(
         relation = _relation_of(row["domain_id"], row["table_name"])
         if relation not in seed_relations:
             continue
-        node_id = f"{relation}.{row['column_name']}"
+        column = sql_column_name(row)
+        node_id = f"{relation}.{column}"
         if node_id in graph.nodes:
             continue
         graph.nodes[node_id] = Node(
             id=node_id,
-            column=row["column_name"],
+            column=column,
             relation=relation,
             kind="source",
             materialized=False,
         )
     return merged
+
+
+async def _native_tables(request: Request, state) -> list[NativeTable]:
+    """Every registered base table's native hop (REQ-2116): where its source reads it, the raw
+    field of each column and how the table is served. Shown only to a user who can see the
+    sources' configuration (source registration); anyone else gets none."""
+    if not has_capability_request(request, "source_registration"):
+        return []
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import api_endpoints, kafka_topics
+    from provisa.federation.replica_routing import resolved_cache_ttl, served_tables
+    from provisa.federation.replica_state import read_all
+    from provisa.lineage.native import native_address, native_table, served
+
+    if getattr(state, "model_db", None) is None:
+        return []
+    registered, sources, replicas = await served_tables(state)
+    async with state.model_db.acquire() as conn:
+        endpoints = {
+            (r.source_id, r.table_name): dict(r._mapping)
+            for r in (
+                await conn.execute_core(
+                    select(
+                        api_endpoints.c.source_id,
+                        api_endpoints.c.table_name,
+                        api_endpoints.c.method,
+                        api_endpoints.c.path,
+                        api_endpoints.c.default_params,
+                        api_endpoints.c.response_root,
+                    )
+                )
+            ).fetchall()
+        }
+        topics = {
+            (r.source_id, r.table_name): r.topic
+            for r in (
+                await conn.execute_core(
+                    select(
+                        kafka_topics.c.source_id, kafka_topics.c.table_name, kafka_topics.c.topic
+                    )
+                )
+            ).fetchall()
+        }
+    records = {}
+    if replicas:
+        async with state.tenant_db.acquire() as conn:
+            records = {r.key: r for r in await read_all(conn)}
+    graphql = getattr(state, "graphql_remote_sources", {}) or {}
+    out: list[NativeTable] = []
+    for reg in registered:
+        source = sources.get(reg["source_id"])
+        if source is None:  # a view, or a built-in source: nothing native beneath it
+            continue
+        key = (reg["source_id"], reg["schema_name"], reg["table_name"])
+        spec = next(
+            (
+                t
+                for t in (graphql.get(source.id) or {}).get("tables", [])
+                if t.get("sql_name") == reg["table_name"]
+            ),
+            None,
+        )
+        stype = source.type.value if hasattr(source.type, "value") else str(source.type)
+        address = native_address(
+            stype,
+            reg,
+            source,
+            endpoint=endpoints.get((source.id, reg["table_name"])),
+            graphql=spec,
+            topic=topics.get((source.id, reg["table_name"])),
+        )
+        record = records.get(key)
+        serving = served(
+            key in replicas,
+            resolved_cache_ttl(source, reg),
+            record.current_at if record is not None else None,
+            record.next_refresh_at if record is not None else None,
+        )
+        relation = _relation_of(reg["domain_id"], reg["table_name"])
+        out.append(native_table(relation, source, reg, address, serving))
+    return out

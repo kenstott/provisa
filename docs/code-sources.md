@@ -39,7 +39,7 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 | Deno | `deno.lock` |
 | Python | `uv.lock` (with its `pyproject.toml`), `pylock.toml`, or a `requirements.txt` with `--hash` on every line |
 
-A published package rarely carries its lockfile, so the form takes one beside the package reference.
+A lockfile is optional, but without one two installs of the same code can differ, so a test that passes today can fail tomorrow on a new dependency version. For an identical install every time, the code must carry a lockfile, or you create one and give it here. A built image is fixed already. Once you build the source's image ([Build image](#running-on-a-remote-host)), its dependencies are inside it, and if that image is what goes through your testing and CI/CD, the image you tested is the one that runs. A lockfile matters for dev mode and for each new build of the image. Code that carries its own lockfile installs from it: a Git repo or upload with one, or an npm package whose author published `npm-shrinkwrap.json` (npm never publishes `package-lock.json`). Code without one installs with its dependencies floating: a Git repo or upload with no lockfile, most npm packages, and Python packages from PyPI, whose wheels have no place for one. Give a lockfile beside such code so every install is identical. Some code needs none, because the way it is distributed already fixes every dependency.
 
 No package gets to run its own install scripts: npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution.
 
@@ -187,6 +187,93 @@ In the container, its network policy is the code's egress boundary; the server's
 A code source's table is landed, never read in place. Provisa calls the function with the read's arguments, checks each row against the columns, and keeps the rows under those arguments for the table's cache TTL. Visibility, masks and row rules then apply to the landed rows, as they do for any table.
 
 You pass arguments the way you pass any table parameter: as `_nf_` conditions in SQL and as field arguments in GraphQL.
+
+## Batched keys: the `loader` parameter {: #batched-keys }
+
+A join can reach a code table: the rows of another table supply its parameters, as in customers joined to their churn score. By default Provisa calls the function once for each distinct set of arguments the joining rows give, and sends all those calls to the worker in one request.
+
+A function that takes a parameter named `loader` is called once per batch instead, the pattern GraphQL's DataLoader made familiar. `loader` is a hash: a dict (an object in TypeScript) from a stable hash of each key to the key itself, a JSON object holding the joining rows' values for the function's other parameters. Provisa de-duplicates the keys, so each distinct combination of values appears once. A key is sparse: a field with no value is left out rather than sent as null, so the function's own default applies, as it does on a single call.
+
+The function returns the same shape: a hash from each key it was given to that key's rows, ordinary rows of the table. Provisa gives each key's rows to every joining row that shared the key, and a key can map to no rows or many. Matching by the hash, not by the rows' values, keeps a sparse key matched: the function fills its missing fields with defaults, so the values it sees differ from the joining row's. Provisa computes the hash; the function only echoes back the keys it was given. The function still declares its row type alone, a list of rows, and each key's rows are of that type. Its parameters beside `loader` need defaults, because a loader call passes `loader` alone.
+
+A function can cap its batch size, as DataLoader's `maxBatchSize` does, by declaring `loader N` in any of three places: a `@loader 100` line beside `@table` in its docstring or JSDoc, a `/* @loader 100 */` comment just before the `loader` parameter in TypeScript, or an `Annotated` string on the parameter in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa then splits the keys into batches of that size, calls the function once per batch, and merges the answers by hash. Without a size, one batch holds every key. Discovery refuses by name a size on a function with no `loader` parameter, a size that isn't a positive integer, and two sizes on one function.
+
+Use `loader` when one call over many keys does better than many calls over one:
+
+- Scoring a model over a whole batch in one vectorized pass.
+- Batching requests to an API or a language model that accepts many inputs at once.
+- Setting up once per batch, such as loading a model or opening a connection, rather than once per key.
+
+This Python function scores every customer of a batch in one pass:
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    score: float
+
+
+def churn_score(
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
+```
+
+Joined to a table of customers, it is called with a `loader` such as `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. The second key carries only `customer_id`, so its plan and region take the defaults. The function returns `{"9f2c...": [...], "41ab...": [...], ...}`, and Provisa gives each list of rows to every customer row that shared that key.
+
+The same function in TypeScript:
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id?: string,
+  plan = "basic",
+  region = "US",
+  loader?: Record<string, CustomerKey>,
+): Promise<Score[]> {
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
+}
+```
 
 ## An example {: #an-example }
 

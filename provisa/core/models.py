@@ -327,6 +327,11 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # probe_type=hash, the poll node reads only this marker's exists+mtime+size (or ETag/Last-Modified)
     # as its freshness token — never scanning the data. None = no sentinel (the probe degrades to TTL).
     sentinel_path: str | None = None
+    # REQ-2113: where a CSV or Parquet source's file is downloaded from -- a file mount path under
+    # sources.download_roots, an https:// URL or an s3:// URL -- into the org's folder, where
+    # ``path`` then names it ({files}/<id>/<name>). Fetched again as the source's TTL lapses;
+    # once for TTL -1. None = the source reads ``path`` where it is.
+    download_from: str | None = None
     # REQ-860: opt-in source-level freshness gate. When true, a query reading a table from this
     # source is gated by a freshness decision (built from change_signal + cache_ttl via the
     # freshness module, REQ-856/858) before execution; a stale/failed verdict triggers the caller's

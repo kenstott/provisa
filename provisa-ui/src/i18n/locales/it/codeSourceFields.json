@@ -14,7 +14,7 @@
     "version": "Versione",
     "versionHint": "Una versione esatta, come 1.2.0.",
     "lockfile": "File di lock",
-    "lockfileHint": "Un pacchetto pubblicato raramente include il suo file di lock. Fornitene uno ({{names}}) quando il pacchetto ha dipendenze.",
+    "lockfileHint": "Facoltativo. Per installazioni identiche, che contano nei test, il codice deve includere un file di lock, oppure ne fornite uno qui ({{names}}).",
     "lockfilePlaceholder": "Nessun file di lock",
     "repository": "URL del repository",
     "commit": "Commit",

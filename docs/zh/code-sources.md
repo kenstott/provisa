@@ -39,7 +39,7 @@ Node 代码在 Node.js、Bun 或 Deno 上运行，由您选择。Python 代码�
 | Deno | `deno.lock` |
 | Python | `uv.lock`（连同其 `pyproject.toml`）、`pylock.toml`，或每行都带 `--hash` 的 `requirements.txt` |
 
-已发布的包很少附带锁文件，所以表单允许在包引用旁边提供一个。
+锁文件是可选的，但没有它，同一份代码的两次安装可能不同，今天通过的测试明天可能因某个依赖的新版本而失败。要让每次安装都完全相同，代码必须自带锁文件，或者由您创建一个并在这里提供。构建好的镜像已经固定。一旦您构建了数据源的镜像（[构建镜像](#running-on-a-remote-host)），它的依赖就在镜像里；如果经过您的测试和 CI/CD 的正是这个镜像，那么运行的就是您测试过的镜像。锁文件对 dev 模式和镜像的每次新构建都很重要。自带锁文件的代码按它安装：带锁文件的 Git 仓库或上传，或作者发布了 `npm-shrinkwrap.json` 的 npm 包（npm 从不发布 `package-lock.json`）。没有锁文件的代码安装时依赖版本不固定：没有锁文件的 Git 仓库或上传、大多数 npm 包，以及来自 PyPI 的 Python 包（wheel 中没有放锁文件的位置）。请在这类代码旁边提供一个锁文件，让每次安装都完全相同。有些代码不需要锁文件，因为它的分发方式已经固定了每个依赖。
 
 任何包都不能运行自己的安装脚本：npm 以 `--ignore-scripts` 安装，Python 只安装 wheel，从不从源码发行版构建。
 
@@ -56,6 +56,93 @@ Node 代码在 Node.js、Bun 或 Deno 上运行，由您选择。Python 代码�
 代码数据源的表会先落地，从不就地读取。Provisa 用读取的参数调用函数，按列检查每一行，并在表的缓存 TTL 内按这些参数保存这些行。之后，可见性、掩码和行规则会作用于落地的行，和任何表一样。
 
 传参方式与任何表参数相同：在 SQL 中用 `_nf_` 条件，在 GraphQL 中用字段参数。
+
+## 批量键：`loader` 参数 {: #batched-keys }
+
+连接可以到达代码表：另一个表的行为它提供参数，例如把客户连接到他们的流失评分。默认情况下，Provisa 对连接行给出的每一组不同参数调用一次函数，并把所有这些调用放在一个请求中发给 worker。
+
+带有名为 `loader` 参数的函数则改为每个批次调用一次，即 GraphQL 的 DataLoader 推广开来的模式。`loader` 是一个哈希：一个字典（在 TypeScript 中是对象），从每个键的稳定哈希映射到键本身，即一个 JSON 对象，存放连接行为函数其他参数提供的值。Provisa 会去除重复的键，因此每种不同的取值组合只出现一次。键是稀疏的：没有值的字段会被省略，而不是以 null 发送，于是函数自己的默认值生效，与单次调用时一样。
+
+函数返回同样的形状：一个哈希，从它收到的每个键映射到该键的行，即表的普通行。Provisa 把每个键的行交给共享该键的每一个连接行，一个键可以对应零行或多行。按哈希而不是按行的取值匹配，能让稀疏键也保持匹配：函数会用默认值填补它缺失的字段，因此函数看到的值与连接行的值不同。哈希由 Provisa 计算；函数只需原样返回它收到的键。函数仍然只声明它的行类型，即行的列表，每个键的行都是这个类型。与 `loader` 并列的参数必须有默认值，因为 loader 调用只传入 `loader`。
+
+函数可以限制批次大小，就像 DataLoader 的 `maxBatchSize`，方法是在三处之一声明 `loader N`：在 docstring 或 JSDoc 中 `@table` 旁边写一行 `@loader 100`；在 TypeScript 中紧挨 `loader` 参数之前写注释 `/* @loader 100 */`；或在 Python 中给该参数加一个 `Annotated` 字符串，`loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`。Provisa 随后把键拆分成该大小的批次，每个批次调用一次函数，并按哈希合并结果。不声明大小时，一个批次包含所有键。发现过程会按名称拒绝：在没有 `loader` 参数的函数上声明大小、大小不是正整数，以及一个函数声明了两个大小。
+
+当一次处理多个键的调用比多次各处理一个键的调用更好时，使用 `loader`：
+
+- 在一次向量化运算中为整个批次的模型打分。
+- 把请求批量发送给一次可接受多个输入的 API 或语言模型。
+- 每个批次只准备一次，例如加载模型或打开连接，而不是每个键一次。
+
+这个 Python 函数一次为批次中的每个客户打分：
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    score: float
+
+
+def churn_score(
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
+```
+
+连接到客户表时，它以类似 `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` 的 `loader` 被调用。第二个键只带有 `customer_id`，所以它的 plan 和 region 取默认值。函数返回 `{"9f2c...": [...], "41ab...": [...], ...}`，Provisa 把每个行列表交给共享该键的每一个客户行。
+
+同一个函数的 TypeScript 写法：
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id?: string,
+  plan = "basic",
+  region = "US",
+  loader?: Record<string, CustomerKey>,
+): Promise<Score[]> {
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
+}
+```
 
 ## 示例 {: #an-example }
 

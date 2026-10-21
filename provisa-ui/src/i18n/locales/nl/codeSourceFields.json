@@ -14,7 +14,7 @@
     "version": "Versie",
     "versionHint": "Een exacte versie, zoals 1.2.0.",
     "lockfile": "Lockfile",
-    "lockfileHint": "Een gepubliceerd pakket bevat zelden zijn lockfile. Geef er een ({{names}}) wanneer het pakket afhankelijkheden heeft.",
+    "lockfileHint": "Optioneel. Voor identieke installaties, die belangrijk zijn bij testen, moet de code een lockfile bevatten, of geeft u er hier een ({{names}}).",
     "lockfilePlaceholder": "Geen lockfile",
     "repository": "Repository-URL",
     "commit": "Commit",

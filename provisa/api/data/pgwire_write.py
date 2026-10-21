@@ -42,6 +42,13 @@ def start_write_server(source: Any) -> None:
     stype = source.type.value if hasattr(source.type, "value") else str(source.type)
     if stype not in PGWIRE_SERVER_WRITTEN:
         return
+    from provisa.core.cache_ttl import NEVER_EXPIRES
+    from provisa.federation.declared_replica_rows import declares_rows
+
+    # REQ-2089: a source whose rows its config declares, landed once (TTL -1), is never contacted;
+    # there is no service behind it to start a server for.
+    if source.cache_ttl == NEVER_EXPIRES and declares_rows(source.id):
+        return
     from provisa.core.connection_loop import spawn_background
     from provisa.federation.pgwire_replica import start_endpoint
 

@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "Grootste geüploade bestand",
         "help": "Het grootste bestand dat een SQLite-, DuckDB-, CSV- of Parquet-bron via upload in het bronformulier kan krijgen; een groter bestand wordt geweigerd met vermelding van deze limiet. Een groter bestand leest u beter waar het staat, uit een objectopslag."
+      },
+      "download_roots": {
+        "label": "Mappen waaruit bronbestanden gedownload mogen worden",
+        "help": "De mappen waaruit het bestand van een CSV- of Parquet-bron via het pad op deze server gedownload mag worden, nadat de links ervan zijn gevolgd; standaard geen. Voeg er een toe zodat een steward een bestand daarin naar de map van de organisatie kan kopiëren. Een server met veel organisaties kopieert geen eigen bestand, wat hier ook staat."
       }
     },
     "polly": {

@@ -16,7 +16,9 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export interface LineageTransformOp {
   name: string;
-  kind: "sql_function" | "operator" | "command" | "identity" | "constant";
+  // REQ-2001: command_write names the statement command that writes the target; REQ-2116: rename
+  // says how a source's raw field became the registered column (path, alias, naming).
+  kind: "sql_function" | "operator" | "command" | "identity" | "constant" | "command_write" | "rename";
   args?: string[]; // REQ-1160: literal arguments, so an edge reads as a formula — substring(1, 3)
 }
 
@@ -24,8 +26,27 @@ export interface LineageNode {
   id: string;
   column: string;
   relation: string | null;
-  kind: "source" | "derived" | "command";
+  // REQ-2116: native is the raw field a source reads, beneath a registered table's column.
+  kind: "source" | "derived" | "command" | "native";
   materialized: boolean;
+}
+
+/** REQ-2116: where a registered table is read from natively, and how it is served. Sent only to a
+ *  user with source registration; it carries no credential. */
+export interface LineageNative {
+  relation: string; // the registered relation the hop lands in
+  source: string;
+  type: string;
+  hints: Record<string, string>; // the brand keys sourceTypeLabel reads, nothing else
+  address: { what: string; value: string }[];
+  served:
+    | { mode: "virtual" }
+    | {
+        mode: "replica";
+        cache_ttl: number | null;
+        last_load: string | null;
+        next_load: string | null;
+      };
 }
 
 export interface LineageEdge {
@@ -46,6 +67,7 @@ export interface LineageGraphData {
   edges: LineageEdge[];
   outputs: string[];
   cycles?: LineageCycle[];
+  natives?: Record<string, LineageNative>; // by native relation ("native:<relation>")
 }
 
 /**

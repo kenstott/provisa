@@ -79,6 +79,23 @@ class StoreError(RuntimeError):
     """A demo's stores cannot be brought up or taken down as asked."""
 
 
+#: How much of a failed store's log its error carries.
+LOG_TAIL = "60"
+
+
+def container_logs(runner: "Runner", cids: list[str]) -> str:
+    """The end of each container's log, by container, for an error raised over it."""
+    parts = []
+    for cid in cids:
+        try:
+            # Both of its streams: a store says why it exits on either.
+            said = runner.run(["sh", "-c", f'docker logs --tail {LOG_TAIL} "$1" 2>&1', "logs", cid])
+            parts.append(f"--- docker logs {cid} ---\n{said}")
+        except StoreError as unread:
+            parts.append(f"--- docker logs {cid} could not be read: {unread} ---")
+    return "\n".join(parts) if parts else "(no container to read a log from)"
+
+
 def namespace(name: str, version: str) -> str:
     """The suffix a demo version's data is named with in a shared instance."""
     if not _NAME.match(name):
@@ -152,7 +169,12 @@ class Shared:
         self.env = env
 
     def start(self, kind: str) -> None:
-        self.runner.run(["env", *self._env(), *self.base, "up", "-d", "--wait", kind])
+        try:
+            self.runner.run(["env", *self._env(), *self.base, "up", "-d", "--wait", kind])
+        except StoreError as failed:
+            # A store that exits before it is healthy says why only in its own log.
+            cids = self.runner.run(["env", *self._env(), *self.base, "ps", "-a", "-q", kind])
+            raise StoreError(f"{failed}\n{container_logs(self.runner, cids.split())}") from failed
 
     def _env(self) -> list[str]:
         return [f"{k}={v}" for k, v in sorted(self.env.items())]
@@ -614,7 +636,11 @@ class Demo:
         ]
 
     def stores(self) -> list[Store]:
-        return stores_of(json.loads(self.runner.run(self._compose("config", "--format", "json"))))
+        # Not interpolated: the file names its stores' data by variables (<STEM>_NS) this reading
+        # is what sets, so it cannot need them set (required as ${VAR?...} where a service reads
+        # one, a producer's TOPIC_SUFFIX). A store's own labels and image are literal.
+        config = self._compose("config", "--format", "json", "--no-interpolate")
+        return stores_of(json.loads(self.runner.run(config)))
 
     def up(self) -> dict[str, str]:
         """Start what the demo version needs, load its data, and say where its stores are."""
@@ -625,7 +651,14 @@ class Demo:
             for s in stores
             if s.kind is None and s.labels.get("com.provisa.demo.port_env")
         )
-        found: dict[str, str] = {}
+        # Every store's data names, before any compose command reads them: a shared store's data
+        # is under the version's suffix, a store the demo runs itself holds it under its own names
+        # (empty: a Postgres with pgvector, which no shared instance is, runs so).
+        for store in stores:
+            ns_env = store.labels.get("com.provisa.demo.ns_env")
+            if ns_env:
+                self.names[ns_env] = "" if store.kind is None else self.suffix
+        found: dict[str, str] = dict(self.names)
         for store in stores:
             if store.kind is None:
                 continue
@@ -649,8 +682,6 @@ class Demo:
             # Kafka holds no data of a bundle's: its topics are the producers', named with the suffix.
             host, port = self.shared.address(store.kind, self.network)
             found.update(self._where(store, host, port))
-            found[store.labels["com.provisa.demo.ns_env"]] = self.suffix
-            self.names[store.labels["com.provisa.demo.ns_env"]] = self.suffix
         own = [s.service for s in stores if s.kind is None]
         if own:
             # The demo's own services alone: a shared store it names is not started for it.
@@ -667,7 +698,11 @@ class Demo:
                 # load wrote its marker: it would never load the rest, as it loads only into an
                 # empty volume. The data is the bundle's, so its volumes are recreated, once.
                 self.runner.run(self._compose("down", "-v", "--remove-orphans"))
-                self.runner.run(up)
+                try:
+                    self.runner.run(up)
+                except StoreError as failed:
+                    cids = self.runner.run(self._compose("ps", "-a", "-q", *own)).split()
+                    raise StoreError(f"{failed}\n{container_logs(self.runner, cids)}") from failed
             # Started for this boot alone: docker restarting at the node's next start starts none.
             cids = self.runner.run(self._compose("ps", "-q")).split()
             if cids:
@@ -675,11 +710,6 @@ class Demo:
             for store in stores:
                 if store.kind is None and store.labels.get("com.provisa.demo.host_env"):
                     found.update(self._where(store, *self._own_address(store)))
-                # A store the demo runs itself holds its data under its own names: the suffix its
-                # config names them with is empty (a Postgres with pgvector, which no shared
-                # instance is, runs so).
-                if store.kind is None and store.labels.get("com.provisa.demo.ns_env"):
-                    found[store.labels["com.provisa.demo.ns_env"]] = ""
         return found
 
     def _where(self, store: Store, host: str, port: str) -> dict[str, str]:

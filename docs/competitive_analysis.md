@@ -1,6 +1,6 @@
 # Competitive Analysis
 
-Products: Provisa, Neo4j, Apollo GraphOS, Starburst, Hasura
+Products: Provisa, Neo4j, Apollo GraphOS, Starburst, Hasura; Latttice in its own section
 
 ---
 
@@ -65,3 +65,24 @@ Hasura DDN offers two ways to put your own code behind the API: lambda connector
 ### Self-hosting DDN
 
 Hasura documents two ways to run DDN on your own infrastructure. Self-hosting the v3 engine and connectors "on your own Docker-based infrastructure" comes without a control plane: "no built-in CI/CD (or build versioning), schema registry, API analytics" ([Deployment](https://hasura.io/docs/3.0/deployment/overview/)). Private DDN Self-Hosted puts the control plane and the data plane on your infrastructure; "an enterprise license is required for this offering" and "a Kubernetes cluster is required for installing DDN" ([Self-Hosted](https://hasura.io/docs/3.0/architecture/private/self-hosted)). Provisa installs the same product on a laptop, a single VM, a VM cluster or Kubernetes.
+
+## Data Product Platforms: Latttice
+
+Latttice (spelled with three t's) is the "Data Product Workbench" of Data Tiles Ltd, founded in 2024 by Cameron Price ([team](https://latttice.com/team), [founder](https://cameron-price.com/)). Business teams build governed data products from data already in the company's platforms, and data teams set the policies. The facts below come from Data Tiles' own pages, linked in each row; no independent coverage was found as of 2026-10-20.
+
+| | Latttice | Provisa |
+|---|---|---|
+| What it is | A no-code workbench and control plane above existing platforms: catalog, policy, lineage, contracts and trust scores. "Governed, business-built data products that people and AI can use, without moving data into a new platform" ([home](https://latttice.com), [product](https://latttice.com/product)) | A self-hosted data access layer: sources federated into one governed model, served over many protocols |
+| Who builds | Business domain owners author data products; data teams set policy ([press release](https://markets.financialcontent.com/prnews/article/prlog-2026-6-30-data-tiles-introduces-the-decision-driven-enterprise-to-north-america)) | Stewards register sources, tables, relationships and views; analysts and applications query them |
+| Editions | Latttice for Collibra, listed on the [Collibra Marketplace](https://marketplace.collibra.com/listings/data-product-workbench-for-collibra/); Latttice for Snowflake, in private preview ([home](https://latttice.com)) | One product |
+| Query execution | A "federated query plane" with pushdown to the source, no copy by default, and optional managed copies ("Accelerate"). No query engine is named ([deployment](https://latttice.com/deployment), [product](https://latttice.com/product)) | The statement is compiled once and governed whole; a single-source read goes direct to the source, and a cross-source read runs in Trino, DuckDB or Postgres. Replicas and materialized views are declared |
+| Sources | Snowflake, Databricks, Redshift/S3/Glue, Synapse/ADLS/Purview, SAP, Salesforce, Collibra, Alation, Power BI, Tableau, listed as "a snapshot" ([integrations](https://latttice.com/integrations)) | 73 connectors across relational, NoSQL, graph, search, streaming, files, APIs and Node or Python code sources |
+| Serving | BI, SQL, REST and GraphQL ([product](https://latttice.com/product)); the home page lists REST, SQL and JDBC, and the deployment page lists REST, MCP and GPT, so the pages disagree on MCP and GraphQL | GraphQL, SQL over pgwire, JDBC, Cypher and Bolt, gRPC, JSON:API, OpenAPI, Arrow Flight, MCP and a Python client |
+| Governance | Policy-as-code, RBAC, ABAC, purpose-based access, row, column and cell-level controls, PII/PHI classification, masking, audit and column-level lineage ([product](https://latttice.com/product)) | Roles with inheritance, row rules, column grants and masks, domains, sensitivity tiers, audit and column-level lineage, applied the same way on every protocol |
+| Data residency | Region-aware residency enforcement and a cross-cloud policy fabric ([deployment](https://latttice.com/deployment)) | Regions: every table has a home region, replicas move only where a region allows, and row rules decide what crosses |
+| AI | LattticeGPT for natural-language questions, AI-assisted authoring, and an "AI Readiness" score of 8 dimensions and 36 metrics ([home](https://latttice.com), [product](https://latttice.com/product)) | Polly, an assistant that answers over the governed model and acts as the user; MCP for outside agents |
+| Delivery | Commercial and closed. Customer-hosted licence, Kubernetes and one-click deployment, and a hosted trial ([deployment](https://latttice.com/deployment), [legal](https://data-tiles.com/legal), [trial](https://latttice.app/trial-signup)) | Laptop, single VM, VM cluster or Kubernetes, air-gapped included; a managed cloud at cloud.provisa.dev |
+| Pricing | Not published ([home](https://latttice.com)) | Not compared |
+| Market presence | North America launch announced 2026-06-30 ([press release](https://markets.financialcontent.com/prnews/article/prlog-2026-6-30-data-tiles-introduces-the-decision-driven-enterprise-to-north-america)). No funding, named customers or public repository found | Public repository at github.com/kenstott/provisa; alpha releases |
+
+Where the two do not compare: Latttice sells a data-product operating model, with a marketplace of products, lifecycle contracts and SLAs, readiness scoring, and the "Decision-Driven Enterprise" framing. Provisa has no counterpart to those; its subject is the governed query and serving layer beneath them.

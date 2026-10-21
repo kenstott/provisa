@@ -39,7 +39,7 @@ Provisa קורא את ההצהרות של הקוד עצמו: תגי JSDoc וטי
 | Deno | `deno.lock` |
 | Python | `uv.lock` (עם ה-`pyproject.toml` שלו), `pylock.toml`, או `requirements.txt` עם `--hash` בכל שורה |
 
-חבילה שפורסמה כמעט אף פעם לא כוללת את ה-lockfile שלה, ולכן הטופס מקבל אחד לצד הפניית החבילה.
+lockfile הוא אופציונלי, אבל בלעדיו שתי התקנות של אותו קוד עלולות להיות שונות, כך שבדיקה שעוברת היום עלולה להיכשל מחר בגלל גרסה חדשה של תלות. להתקנה זהה בכל פעם, הקוד חייב לכלול lockfile, או שאתם יוצרים אחד ומספקים אותו כאן. אימג' שנבנה כבר מקובע. ברגע שאתם בונים את האימג' של המקור ([בניית אימג'](#running-on-a-remote-host)), התלויות שלו נמצאות בתוכו, ואם האימג' הזה הוא מה שעובר את הבדיקות ואת ה-CI/CD שלכם, האימג' שבדקתם הוא זה שרץ. ל-lockfile יש משמעות במצב dev ובכל בנייה חדשה של האימג'. קוד שכולל lockfile משלו מותקן ממנו: מאגר Git או העלאה שיש בהם אחד, או חבילת npm שהמחבר שלה פרסם `npm-shrinkwrap.json` ‏(npm לעולם אינו מפרסם את `package-lock.json`). קוד בלי lockfile מותקן עם תלויות שאינן מקובעות: מאגר Git או העלאה בלי lockfile, רוב חבילות npm, וחבילות Python מ-PyPI, שב-wheels שלהן אין מקום לאחד. ספקו lockfile לצד קוד כזה כדי שכל התקנה תהיה זהה. יש קוד שאינו צריך אחד, כי אופן ההפצה שלו כבר מקבע כל תלות.
 
 אף חבילה לא מורשית להריץ סקריפטי התקנה משלה: npm מתקין עם `--ignore-scripts`, ו-Python מתקין רק wheels ולעולם לא בונה מהפצת קוד מקור.
 
@@ -56,6 +56,93 @@ Provisa קורא את ההצהרות של הקוד עצמו: תגי JSDoc וטי
 טבלה של מקור קוד מונחתת, ולעולם לא נקראת במקומה. Provisa קורא לפונקציה עם הארגומנטים של הקריאה, בודק כל שורה מול העמודות, ושומר את השורות תחת הארגומנטים האלה למשך ה-TTL של המטמון של הטבלה. אחר כך חלים על השורות המונחתות נראות, מסכות וחוקי שורה, כמו על כל טבלה.
 
 ארגומנטים מעבירים כמו כל פרמטר של טבלה: כתנאי `_nf_` ב-SQL וכארגומנטים של שדה ב-GraphQL.
+
+## מפתחות באצווה: הפרמטר `loader` {: #batched-keys }
+
+‏join יכול להגיע לטבלת קוד: השורות של טבלה אחרת מספקות את הפרמטרים שלה, כמו לקוחות שמצורפים לציון הנטישה שלהם. כברירת מחדל Provisa קורא לפונקציה פעם אחת לכל צירוף נפרד של ארגומנטים שהשורות המצורפות נותנות, ושולח את כל הקריאות האלה ל-worker בבקשה אחת.
+
+פונקציה שמקבלת פרמטר בשם `loader` נקראת במקום זאת פעם אחת לכל אצווה, לפי הדפוס ש-DataLoader של GraphQL הפך למוכר. ‏`loader` הוא hash: מילון (אובייקט ב-TypeScript) מ-hash יציב של כל מפתח אל המפתח עצמו, אובייקט JSON שמחזיק את ערכי השורות המצורפות עבור שאר הפרמטרים של הפונקציה. Provisa מסיר מפתחות כפולים, כך שכל צירוף נפרד של ערכים מופיע פעם אחת. מפתח הוא דליל: שדה בלי ערך מושמט במקום להישלח כ-null, כך שערך ברירת המחדל של הפונקציה עצמה חל, כמו בקריאה יחידה.
+
+הפונקציה מחזירה את אותה צורה: hash מכל מפתח שקיבלה אל השורות של אותו מפתח, שורות רגילות של הטבלה. Provisa נותן את השורות של כל מפתח לכל שורה מצורפת שחלקה את המפתח, ומפתח יכול להצביע על אפס שורות או על הרבה. התאמה לפי ה-hash, ולא לפי ערכי השורות, שומרת על התאמה של מפתח דליל: הפונקציה ממלאת את השדות החסרים שלו בערכי ברירת מחדל, ולכן הערכים שהיא רואה שונים מאלה של השורה המצורפת. ‏Provisa מחשב את ה-hash; הפונקציה רק מחזירה את המפתחות שקיבלה. הפונקציה עדיין מצהירה רק על סוג השורה שלה, רשימת שורות, והשורות של כל מפתח הן מהסוג הזה. הפרמטרים שלה לצד `loader` צריכים ערכי ברירת מחדל, כי קריאת loader מעבירה רק את `loader`.
+
+פונקציה יכולה להגביל את גודל האצווה שלה, כמו `maxBatchSize` של DataLoader, באמצעות הצהרת `loader N` באחד משלושה מקומות: שורת `@loader 100` לצד `@table` ב-docstring או ב-JSDoc, הערת `/* @loader 100 */` ממש לפני הפרמטר `loader` ב-TypeScript, או מחרוזת `Annotated` על הפרמטר ב-Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. ‏Provisa מחלק אז את המפתחות לאצוות בגודל הזה, קורא לפונקציה פעם אחת לכל אצווה, ומאחד את התשובות לפי ה-hash. בלי גודל, אצווה אחת מחזיקה את כל המפתחות. הגילוי דוחה בשם גודל בפונקציה בלי פרמטר `loader`, גודל שאינו מספר שלם חיובי, ושני גדלים בפונקציה אחת.
+
+השתמשו ב-`loader` כשקריאה אחת על מפתחות רבים עדיפה על קריאות רבות על מפתח אחד:
+
+- הרצת מודל על אצווה שלמה במעבר וקטורי אחד.
+- איגוד בקשות ל-API או למודל שפה שמקבל קלטים רבים בבת אחת.
+- הכנה פעם אחת לכל אצווה, כמו טעינת מודל או פתיחת חיבור, במקום פעם אחת לכל מפתח.
+
+פונקציית ה-Python הזו נותנת ציון לכל לקוח באצווה במעבר אחד:
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    score: float
+
+
+def churn_score(
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
+```
+
+כשהיא מצורפת לטבלת לקוחות, היא נקראת עם `loader` כמו `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. המפתח השני נושא רק את `customer_id`, ולכן התוכנית והאזור שלו מקבלים את ערכי ברירת המחדל. הפונקציה מחזירה `{"9f2c...": [...], "41ab...": [...], ...}`, ו-Provisa נותן כל רשימת שורות לכל שורת לקוח שחלקה את המפתח הזה.
+
+אותה פונקציה ב-TypeScript:
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id?: string,
+  plan = "basic",
+  region = "US",
+  loader?: Record<string, CustomerKey>,
+): Promise<Score[]> {
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
+}
+```
 
 ## דוגמה {: #an-example }
 
