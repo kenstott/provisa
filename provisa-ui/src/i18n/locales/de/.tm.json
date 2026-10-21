@@ -8147,5 +8147,15 @@
   "de/tour.json::tour.steps.bankingAsRestated.title": "As restated since",
   "de/sqlCanvasTableCard.json::sqlCanvasTableCard.allColumns": "All columns ({{selected}} of {{total}})",
   "de/sqlCanvasTableCard.json::sqlCanvasTableCard.unjoined": "{{tables}} isn't joined to the other tables",
-  "de/sqlCanvasTableCard.json::sqlCanvasTableCard.joinsUnavailable": "The joins this role may write could not be read: {{reason}}"
+  "de/sqlCanvasTableCard.json::sqlCanvasTableCard.joinsUnavailable": "The joins this role may write could not be read: {{reason}}",
+  "de/adminPage.json::adminPage.apolloSubgraph": "Apollo Federation subgraph",
+  "de/adminPage.json::adminPage.apolloSubgraphEnabled": "Serve as a subgraph",
+  "de/adminPage.json::adminPage.apolloSubgraphEnabledHint": "Adds _service and _entities to /data/graphql for the role below, so an Apollo Router can compose this organization into a supergraph.",
+  "de/adminPage.json::adminPage.apolloSubgraphName": "Subgraph name",
+  "de/adminPage.json::adminPage.apolloSubgraphNameHint": "The name the supergraph knows this subgraph by.",
+  "de/adminPage.json::adminPage.apolloSubgraphRole": "Serves as role",
+  "de/adminPage.json::adminPage.apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role and every entity it fetches is governed as this role: its row rules, masks and visibility.",
+  "de/serverErrors.json::serverErrors.settings.federation_unknown_field": "Not a federation setting: {{fields}}",
+  "de/serverErrors.json::serverErrors.settings.federation_invalid": "Invalid federation setting: {{error}}",
+  "de/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization"
 }

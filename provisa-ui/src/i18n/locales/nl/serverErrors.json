@@ -491,7 +491,10 @@
       "unknown_encryption_provider": "onbekende encryptieprovider '{{provider}}'",
       "unknown_engine": "onbekende engine '{{engine}}'; geldig: {{valid}}",
       "use_domains_invalid": "use_domains moet true, false of null zijn",
-      "claims_with_multitenancy": "Een multi-tenant-implementatie kan roltoewijzingen niet uit aanmeldclaims lezen: zij kent rollen zelf toe, per organisatie, en claims zouden die overschrijven. Stel de bron van de toewijzingen in op Provisa."
+      "claims_with_multitenancy": "Een multi-tenant-implementatie kan roltoewijzingen niet uit aanmeldclaims lezen: zij kent rollen zelf toe, per organisatie, en claims zouden die overschrijven. Stel de bron van de toewijzingen in op Provisa.",
+      "federation_unknown_field": "Geen federatie-instelling: {{fields}}",
+      "federation_invalid": "Ongeldige federatie-instelling: {{error}}",
+      "federation_role_unknown": "De federatierol '{{role}}' is geen rol van deze organisatie"
     },
     "setup": {
       "admin_credentials_required": "admin_username en admin_password vereist",

@@ -491,7 +491,10 @@
       "unknown_encryption_provider": "provedor de criptografia desconhecido '{{provider}}'",
       "unknown_engine": "mecanismo desconhecido '{{engine}}'; válidos: {{valid}}",
       "use_domains_invalid": "use_domains deve ser true, false ou null",
-      "claims_with_multitenancy": "Uma implantação multilocatário não pode ler as atribuições de funções das claims de início de sessão: ela própria concede as funções, por organização, e as claims iriam substituí-las. Defina a origem das atribuições como Provisa."
+      "claims_with_multitenancy": "Uma implantação multilocatário não pode ler as atribuições de funções das claims de início de sessão: ela própria concede as funções, por organização, e as claims iriam substituí-las. Defina a origem das atribuições como Provisa.",
+      "federation_unknown_field": "Não é uma configuração de federação: {{fields}}",
+      "federation_invalid": "Configuração de federação inválida: {{error}}",
+      "federation_role_unknown": "A função de federação '{{role}}' não é uma função desta organização"
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password obrigatórios",

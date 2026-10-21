@@ -43,15 +43,6 @@ FEDERATION_IMPORTS = ["@key", "@shareable", "@external"]
 
 
 @dataclass
-class FederationConfig:  # REQ-259
-    """Configuration for Apollo Federation v2 subgraph support."""
-
-    enabled: bool = False
-    version: int = 2
-    service_name: str = "provisa"
-
-
-@dataclass
 class _EntityType:
     """Internal: entity type with key fields for federation."""
 
@@ -162,14 +153,16 @@ def build_federation_schema(  # REQ-259
         entity_types.append(entity)
         type_name_to_entity[type_name] = entity
 
-    if not entity_types:
-        raise ValueError("No entity types found for federation")
-
-    # _Entity union of all entity types
-    entity_union = GraphQLUnionType(
-        "_Entity",
-        types=[e.gql_type for e in entity_types],
-        description="Federation entity union.",
+    # A subgraph whose role sees no table with a designated primary key has no entities: it
+    # offers _service alone, as the Federation spec has it (no _Entity union, no _entities).
+    entity_union = (
+        GraphQLUnionType(
+            "_Entity",
+            types=[e.gql_type for e in entity_types],
+            description="Federation entity union.",
+        )
+        if entity_types
+        else None
     )
 
     # Store key directive metadata as extensions on entity types
@@ -199,22 +192,36 @@ def build_federation_schema(  # REQ-259
             GraphQLNonNull(service_type),
             resolve=lambda _obj, _info: {"sdl": fed_sdl},
         )
-        fields["_entities"] = GraphQLField(
-            GraphQLNonNull(GraphQLList(entity_union)),
-            args={
-                "representations": GraphQLArgument(
-                    GraphQLNonNull(GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, _AnyScalar))))
-                ),
-            },
-        )
+        if entity_union is not None:
+            # Resolved by provisa/api/data/federation.py, through the governed pipeline.
+            fields["_entities"] = GraphQLField(
+                GraphQLNonNull(GraphQLList(entity_union)),
+                args={
+                    "representations": GraphQLArgument(
+                        GraphQLNonNull(
+                            GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, _AnyScalar)))
+                        )
+                    ),
+                },
+            )
         return fields
 
     new_query = cast(GraphQLObjectType, GraphQLObjectType("Query", make_query_fields))
+    extra = [_AnyScalar, service_type] + ([entity_union] if entity_union is not None else [])
 
     return GraphQLSchema(
         query=new_query,
         mutation=base_schema.mutation_type,
-        types=[_AnyScalar, entity_union, service_type],
+        subscription=base_schema.subscription_type,
+        types=[
+            *(
+                t
+                for name, t in base_schema.type_map.items()
+                if not name.startswith("__") and t is not query_type
+            ),
+            *extra,
+        ],
+        directives=base_schema.directives,
     )
 
 
