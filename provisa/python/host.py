@@ -49,7 +49,7 @@ from pathlib import Path
 
 BATCH = 1000
 #: The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-PROTOCOL = 2
+PROTOCOL = 3
 _EXACT = 2**53 - 1
 _HEAD = struct.Struct(">I")
 _ID = struct.Struct(">Q")
@@ -235,25 +235,28 @@ class Host:
         call_id: int,
         name: str,
         kind: str,
-        args: list,
-        names: list[str],
+        calls: list[tuple[list, list[str]]],
         schema: str | None,
         traceparent: str | None = None,
     ) -> None:
+        """Run the call: the function once for each of ``calls`` (its arguments and their names),
+        in order, every set's rows sent under ``call_id`` and one end after the last (REQ-2099:
+        one round trip for every argument set a join feeds the table)."""
         started = time.process_time()
         _bind_call(call_id, traceparent)
         try:
             fn = getattr(self.module, name, None)
             if not inspect.isfunction(fn) or name not in exported(self.module):
                 raise LookupError(f"the code has no function {name}")
-            positional, keywords = _call_arguments(from_wire(args), names)
             rows_schema = None
             if schema is not None:
                 import base64
 
                 pa = _arrow()
                 rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
-            await self._run(call_id, fn, kind, positional, keywords, rows_schema)
+            for args, names in calls:
+                positional, keywords = _call_arguments(from_wire(args), names)
+                await self._run(call_id, fn, kind, positional, keywords, rows_schema)
             # REQ-2106: the CPU the call took in this process (every thread of it).
             cpu_ms = round((time.process_time() - started) * 1000, 3)
             await self.send({"op": "end", "id": call_id, "cpu_ms": cpu_ms})
@@ -391,13 +394,18 @@ async def serve(
             if task is not None:
                 task.cancel()
         elif op == "call":
+            # One argument set, or a table's several (REQ-2099: ``calls``), served in order.
+            calls = (
+                [(c["args"], c["names"]) for c in message["calls"]]
+                if "calls" in message
+                else [(message["args"], message["names"])]
+            )
             host.running[message["id"]] = asyncio.create_task(
                 host.serve(
                     message["id"],
                     message["export"],
                     message["kind"],
-                    message["args"],
-                    message["names"],
+                    calls,
                     message["schema"],
                     message.get("traceparent"),
                 )

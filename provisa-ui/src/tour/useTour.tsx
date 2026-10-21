@@ -722,7 +722,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
           }
           await nextPaint();
           if (cancelled) return;
-        } else if (route && route !== currentPathRef.current) {
+        } else if (
+          route &&
+          // The page actually shown, as well as the one the tour last sent the visitor to: a
+          // record of the last navigation goes stale when the page changes under the tour, and
+          // a step that trusted it would wait on its own page's anchor from another page.
+          (route !== currentPathRef.current ||
+            route !== `${window.location.pathname}${window.location.search}`)
+        ) {
           currentPathRef.current = route;
           if (step.openBranch) {
             // Land on the explorer with the branch's demo query pre-filled + auto-run,

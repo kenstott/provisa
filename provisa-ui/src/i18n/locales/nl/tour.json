@@ -1433,13 +1433,9 @@
         "title": "Kolommen uit de typen van de functie",
         "description": "churn_risk is een tabel omdat de docstring @table zegt. De kolommen zijn de velden van de RiskRow die ze teruggeeft. De parameters zijn de argumenten: de klant en elk kenmerk waarop het model is getraind."
       },
-      "churnprodRefused": {
-        "title": "Een lezing zonder klant, geweigerd",
-        "description": "De functie geeft customer_id geen standaardwaarde, dus een lezing die hem weglaat wordt geweigerd voordat er code draait. De weigering noemt elke ontbrekende parameter."
-      },
       "churnprodJoin": {
         "title": "De join die het model voedt",
-        "description": "Deze relatie koppelt de kenmerken van de klanten aan churn_risk en noemt de kenmerken die ze doorgeeft. Een join erover leest de kenmerken die u mag zien, roept het model één keer per klant aan en voegt de scores weer toe."
+        "description": "Deze relatie koppelt elke klant aan de score van het model, zodat een join over klanten elke klant een score geeft."
       },
       "churnprodAtRisk": {
         "title": "De lijst van klanten met risico",

@@ -1433,13 +1433,9 @@
         "title": "來自函數類型的欄",
         "description": "churn_risk 是一個表，因為它的 docstring 寫着 @table。它的欄是它回傳的 RiskRow 的欄位。它的參數就是函數的參數：客戶，以及模型訓練時用到的每個特徵。"
       },
-      "churnprodRefused": {
-        "title": "不指定客戶的讀取被拒絕",
-        "description": "函數沒有為 customer_id 提供預設值，所以省略它的讀取會在任何代碼運行之前被拒絕。拒絕訊息會列出每個缺少的參數。"
-      },
       "churnprodJoin": {
         "title": "為模型提供數據的 join",
-        "description": "這個關係把客戶的特徵連接到 churn_risk，並指明它傳入的特徵。基於它的 join 讀取你可以看到的特徵，為每位客戶呼叫一次模型，再把分數連接回來。"
+        "description": "此關係將每位客戶與模型的評分連接，因此對客戶進行連接時會為每一位客戶評分。"
       },
       "churnprodAtRisk": {
         "title": "流失風險客戶清單",

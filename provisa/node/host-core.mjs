@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BATCH = 1000;
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 const IR_KEY = "provisa.ir";
 const WHOLE_ROW = "$row";
 let Arrow = null;
@@ -163,47 +163,57 @@ export class Connection {
     this.write(frame(Buffer.concat([head, Buffer.from(ipc)])));
   }
 
-  async serve({ id, export: name, kind, args, schema: schemaText }) {
+  /** The call: the function once per argument set -- the one `args`, or a table's several
+   * (`calls`, REQ-2099) in order -- every set's rows sent under the call's id. */
+  async serve({ id, export: name, kind, args, calls, schema: schemaText }) {
     const fn = this.bundle[name];
     if (typeof fn !== "function") throw new Error(`the bundle exports no function ${name}`);
     const state = { cancelled: false, iterator: null };
     this.running.set(id, state);
     try {
-      let result = fn(...revive(args));
-      if (kind !== "stream") result = await result;
-      if (schemaText === null || schemaText === undefined) {
-        // A single value, or a command whose result is not rows: its JSON value message.
-        this.send({ op: "value", id, value: result ?? null });
-        return;
+      const sets = calls ? calls.map((c) => c.args) : [args];
+      for (const set of sets) {
+        if (state.cancelled) break;
+        await this.serveOne(id, state, fn, kind, set, schemaText);
       }
-      const schema = arrow().tableFromIPC(Buffer.from(schemaText, "base64")).schema;
-      if (!iterable(result)) throw new Error(`a ${typeof result} is not a collection of rows`);
-      if (Array.isArray(result)) {
-        for (let i = 0; i < result.length && !state.cancelled; i += BATCH) {
-          this.sendRows(id, result.slice(i, i + BATCH), schema);
-        }
-        return;
-      }
-      const iterator = result[Symbol.asyncIterator] ? result[Symbol.asyncIterator]() : result[Symbol.iterator]();
-      state.iterator = iterator;
-      let batch = [];
-      for (;;) {
-        const step = await iterator.next();
-        if (step.done || state.cancelled) break;
-        if (kind === "stream") {
-          this.sendRows(id, [step.value], schema); // a stream's row goes as it comes
-        } else {
-          batch.push(step.value);
-          if (batch.length >= BATCH) {
-            this.sendRows(id, batch, schema);
-            batch = [];
-          }
-        }
-      }
-      if (batch.length && !state.cancelled) this.sendRows(id, batch, schema);
     } finally {
       this.running.delete(id);
     }
+  }
+
+  async serveOne(id, state, fn, kind, args, schemaText) {
+    let result = fn(...revive(args));
+    if (kind !== "stream") result = await result;
+    if (schemaText === null || schemaText === undefined) {
+      // A single value, or a command whose result is not rows: its JSON value message.
+      this.send({ op: "value", id, value: result ?? null });
+      return;
+    }
+    const schema = arrow().tableFromIPC(Buffer.from(schemaText, "base64")).schema;
+    if (!iterable(result)) throw new Error(`a ${typeof result} is not a collection of rows`);
+    if (Array.isArray(result)) {
+      for (let i = 0; i < result.length && !state.cancelled; i += BATCH) {
+        this.sendRows(id, result.slice(i, i + BATCH), schema);
+      }
+      return;
+    }
+    const iterator = result[Symbol.asyncIterator] ? result[Symbol.asyncIterator]() : result[Symbol.iterator]();
+    state.iterator = iterator;
+    let batch = [];
+    for (;;) {
+      const step = await iterator.next();
+      if (step.done || state.cancelled) break;
+      if (kind === "stream") {
+        this.sendRows(id, [step.value], schema); // a stream's row goes as it comes
+      } else {
+        batch.push(step.value);
+        if (batch.length >= BATCH) {
+          this.sendRows(id, batch, schema);
+          batch = [];
+        }
+      }
+    }
+    if (batch.length && !state.cancelled) this.sendRows(id, batch, schema);
   }
 
   dispatch(message) {

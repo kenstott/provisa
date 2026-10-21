@@ -85796,7 +85796,7 @@ And a second build keeps it once, and an archive that is not a usable bundle is 
   feature: semantic-model-relationships
   priority: MUST
   type: behavioral
-  description: "A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them."
+  description: "A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them. (Amended 2026-10-20, ONE CALL:) The distinct argument sets go to the code's host in one call, and the host calls the function once per set in its own process, every set's rows coming back under that call in the sets' order: no round trip per set. Functions are unchanged."
   use_case: "A churn model packaged as a Python code table, churn_risk(customer_id, plan, tenure_months, ...), is joined to the customers' features view: each customer the analyst may read is scored with that customer's features, emails masked, and a regional role's join scores only its region's customers."
   scenario: "Given a relationship from customers to churn_risk with parameters {customer_id: id, email: email, plan: plan, tenure_months: tenure_months}, a row rule region = 'EU' and a regex mask on email for the analyst
 
@@ -85815,8 +85815,15 @@ And SELECT score FROM churn_risk is refused for its required parameters before t
   - provisa/api/admin/types.py
   - provisa/api/admin/schema_mutation.py
   - provisa-ui/src/components/relationships/ParametersPanel.tsx
+  - provisa/codesource/worker.py
+  - provisa/python/host.py
+  - provisa/node/host-core.mjs
   tests:
   - tests/unit/test_relationship_fed_code_table.py
+  - tests/unit/test_code_worker.py
+  - tests/unit/test_python_source.py
+  - tests/unit/test_node_host_argument_sets.py
+  - tests/integration/test_churnprod_at_risk_timing.py
   stakeholders:
   - data-engineer
 - id: REQ-2097

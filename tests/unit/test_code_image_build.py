@@ -34,6 +34,7 @@ import pytest
 
 from provisa.codesource import image_build, oci
 from provisa.codesource.bundle import content_hash
+from provisa.codesource.worker import PROTOCOL
 from provisa.runtime_deps.code_runtimes import RUNTIMES, LINUX_ARM64, LINUX_X64
 
 from tests.unit.test_code_image_oci import _Registry
@@ -188,7 +189,7 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
     assert config["User"] == "65532:65532" and config["ExposedPorts"] == {"7443/tcp": {}}
     assert config["Labels"] == {
         "dev.provisa.codehost": "1",
-        "dev.provisa.protocol": "2",
+        "dev.provisa.protocol": str(PROTOCOL),
         "dev.provisa.runtime": "python",
         "dev.provisa.code_hash": content_hash(code),
         "dev.provisa.exports": "rates",
