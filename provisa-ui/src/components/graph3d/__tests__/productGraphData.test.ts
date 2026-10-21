@@ -189,6 +189,33 @@ describe("the product graph's data", () => {
     expect(kinds.get("profiled:r:9>t:1")).toBe("profiled");
   });
 
+  it("draws a checker reached through the table it scans, once (REQ-1443 clause 10)", () => {
+    const checker = {
+      id: 4,
+      domain_id: "sales",
+      table_name: "customers_dq",
+      dq_contract: "dataset: x/y/customers",
+      checks: { id: 1 },
+    };
+    const rows: ProductRow[] = [
+      {
+        ...ROWS[0],
+        member_tables: ROWS[0].member_tables!.map((t) =>
+          t.id === 1
+            ? { ...t, checked_by: [checker] }
+            : t.id === 2
+              ? { ...t, checked_by: [checker] }
+              : t,
+        ),
+      },
+    ];
+    const g = toGraphData(rows, null, null);
+    expect(g.nodes.filter((n) => n.id === "k:4").map((n) => n.type)).toEqual(["checker"]);
+    const kinds = new Map(g.edges.map((e) => [e.id, e.kind]));
+    expect(kinds.get("member:p:c360>k:4")).toBe("member");
+    expect(kinds.get("checks:k:4>t:1")).toBe("checks");
+  });
+
   it("judges nothing by sensitivity when the role cannot read the sensitive columns", () => {
     const g = toGraphData(ROWS, null, null);
     expect(g.nodes.find((n) => n.id === "t:1")?.sensitivities).toBeUndefined();

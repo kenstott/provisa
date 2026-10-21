@@ -43,6 +43,13 @@ const TABLE: Selection = {
     tags: { alias: "tags", sel: { fields: ["tag_id"] } },
     profile_results: { alias: "profileResults", sel: { fields: ["id", "table_name"] } },
     checks: { alias: "checks", sel: { fields: ["id"] } },
+    checked_by: {
+      alias: "checkedBy",
+      sel: {
+        fields: ["id", "domain_id", "table_name", "dq_contract"],
+        rels: { checks: { alias: "checks", sel: { fields: ["id"] } } },
+      },
+    },
     source_relationships: {
       alias: "sourceRelationships",
       sel: {
@@ -111,6 +118,7 @@ interface TableRow extends Tagged {
   table_columns?: ColumnRow[];
   profile_results?: { id: number; table_name: string }[];
   checks?: { id: number } | null;
+  checked_by?: TableRow[];
   source_relationships?: {
     id: number;
     target_table?: {
@@ -190,6 +198,19 @@ export function sensitiveQuery(m: MetaReader, tables: number[]): string | null {
 
 export const productNode = (id: string) => `p:${id}`;
 export const tableNode = (id: number) => `t:${id}`;
+
+/**
+ * ``members`` and the checker tables scanning them, each once. REQ-1443 clause 10: a checker
+ * belongs to the product of the table it scans, so it is reached through that member's checkedBy;
+ * one also assigned to the product directly is a member already.
+ */
+export function withCheckers<T extends { id: number; checked_by?: T[] }>(members: T[]): T[] {
+  const seen = new Set(members.map((t) => t.id));
+  const checkers = members
+    .flatMap((t) => t.checked_by ?? [])
+    .filter((k) => !seen.has(k.id) && seen.add(k.id));
+  return [...members, ...checkers];
+}
 
 /** The table ids of ``products``' member tables. */
 export function memberTableIds(products: ProductRow[]): number[] {
@@ -277,10 +298,10 @@ export function toGraphData(
       node({ id: `f:${c.name}`, type: "command", label: c.name, domains: [c.domain_id] });
       edge(pid, `f:${c.name}`, "command");
     }
-    for (const t of p.member_tables ?? []) {
+    for (const t of withCheckers(p.member_tables ?? [])) {
       const label = `${t.domain_id}.${t.table_name}`;
       if (t.dq_contract != null) {
-        // A checker is a member because the table it scans is; its rows are quality evidence.
+        // A checker belongs because the table it scans does; its rows are quality evidence.
         const kid = `k:${t.id}`;
         node({ id: kid, type: "checker", label, domains: [t.domain_id] });
         edge(pid, kid, "member");
