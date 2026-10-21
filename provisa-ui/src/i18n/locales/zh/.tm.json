@@ -7538,5 +7538,6 @@
   "zh/profileStrata.json::profileStrata.columnsNote": "Each run's median and null share. The selected run is the newest one shown.",
   "zh/profileStrata.json::profileStrata.binning_sketch": "The same bins for every run, cut from each run's quantile sketch; heights are each run's share of its non-null rows.",
   "zh/profileStrata.json::profileStrata.binning_categories": "Every run's values counted against the same categories.",
-  "zh/profileStrata.json::profileStrata.binning_none": "These runs hold no values for this column for your role."
+  "zh/profileStrata.json::profileStrata.binning_none": "These runs hold no values for this column for your role.",
+  "zh/demoOpenPage.json::demoOpenPage.starting": "Starting this demo…"
 }

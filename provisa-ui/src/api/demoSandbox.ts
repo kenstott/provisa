@@ -45,6 +45,24 @@ export async function openDemoSandbox(name: string): Promise<OpenedSandbox> {
   );
 }
 
+export interface DemoStatus {
+  demo: string;
+  ready: boolean;
+  state: string;
+  places_free: number;
+}
+
+/** Whether the published demo ``name`` can be opened now: a probe that opens nothing. */
+export async function fetchDemoStatus(name: string): Promise<DemoStatus> {
+  const res = await anonymousFetch(`${API_BASE}/public/demos/${encodeURIComponent(name)}/status`);
+  if (res.ok) return res.json();
+  const body = await res.json().catch(() => null);
+  throw new SandboxRefused(
+    serverMessage(body, requestFailed("fetchDemoStatus", res.status)),
+    body?.code ?? null,
+  );
+}
+
 export interface SandboxLimits {
   engine: string;
   memory_limit: number;
