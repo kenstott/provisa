@@ -162,8 +162,9 @@ def _body_schema(route: Any) -> dict | None:
 
 def rest_routes(app: Any, search: str | None = None) -> list[dict]:
     """The REST routes the UI's admin screens call, each with its method, path, what it does
-    (its docstring's first line) and its body, narrowed to those whose path or summary holds
-    ``search``."""
+    (its docstring's first line), its query parameters and its body, narrowed to those whose path
+    or summary holds ``search``. An upload route reads the file's bytes as its body, so it shows
+    none: its summary and its ``filename`` parameter say what it takes."""
     needle = (search or "").lower()
     found = []
     for route in app.routes:
@@ -175,9 +176,16 @@ def rest_routes(app: Any, search: str | None = None) -> list[dict]:
         summary = doc.split("\n\n", 1)[0].replace("\n", " ")
         if needle and needle not in path.lower() and needle not in summary.lower():
             continue
+        query = [p.name for p in route.dependant.query_params]
         for method in sorted(methods - {"HEAD", "OPTIONS"}):
             found.append(
-                {"method": method, "path": path, "summary": summary, "body": _body_schema(route)}
+                {
+                    "method": method,
+                    "path": path,
+                    "summary": summary,
+                    "query": query,
+                    "body": _body_schema(route),
+                }
             )
     return sorted(found, key=lambda r: (r["path"], r["method"]))
 

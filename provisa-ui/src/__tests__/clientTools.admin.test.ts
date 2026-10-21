@@ -113,8 +113,8 @@ describe("admin_request", () => {
     expect(result.message).toBe("Cancelled by the user.");
   });
 
-  it("asks the user for the file a route uploads and sends it in the form", async () => {
-    const file = new File(["data"], "code.tar.gz");
+  it("asks the user for the file a route uploads and sends its bytes, named in the path", async () => {
+    const file = new File(["data"], "my code.tar.gz");
     const ctx = context(true, file);
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -123,17 +123,33 @@ describe("admin_request", () => {
       "admin_request",
       {
         method: "POST",
-        path: "/admin/code/uploads",
-        file_field: "file",
-        body: { source_id: "py" },
+        path: "/admin/orgs/acme/code-uploads/archive?filename={filename}",
+        upload: true,
         summary: "Upload the code archive.",
       },
       ctx,
     );
     expect(ctx.chooseFile).toHaveBeenCalledWith("Upload the code archive.");
-    const form = fetchSpy.mock.calls[0][1]?.body as FormData;
-    expect(form.get("file")).toBe(file);
-    expect(form.get("source_id")).toBe("py");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/admin/orgs/acme/code-uploads/archive?filename=my%20code.tar.gz",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: file,
+      },
+    );
+  });
+
+  it("sends nothing when the user chooses no file", async () => {
+    const ctx = context(true, null);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await executeClientTool(
+      "admin_request",
+      { method: "POST", path: "/admin/x?filename={filename}", upload: true, summary: "Up." },
+      ctx,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.message).toBe("Cancelled by the user: no file was chosen.");
   });
 
   it.each(["https://elsewhere.example/x", "//elsewhere.example/x", "admin/x"])(

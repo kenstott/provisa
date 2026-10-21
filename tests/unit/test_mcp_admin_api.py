@@ -79,6 +79,10 @@ def _app() -> FastAPI:
     async def upload(file: UploadFile):
         """Upload a code archive."""
 
+    @app.post("/admin/orgs/{org_id}/code-uploads/archive")
+    async def archive(org_id: str, filename: str):
+        """Keep an archive of code; its code's content hash."""
+
     @app.get("/admin/graphql")
     async def graphql():
         """The GraphQL endpoint."""
@@ -97,16 +101,27 @@ def test_the_uis_rest_routes_are_listed_with_their_bodies():
             "method": "POST",
             "path": "/admin/code/uploads",
             "summary": "Upload a code archive.",
+            "query": [],
             "body": {"multipart": ["file"]},
         },
         {
             "method": "POST",
             "path": "/admin/discover/candidates/{candidate_id}/reject",
             "summary": "Reject a relationship candidate.",
+            "query": [],
             "body": {"json": {"reason": "str"}},
         },
+        {
+            "method": "POST",
+            "path": "/admin/orgs/{org_id}/code-uploads/archive",
+            "summary": "Keep an archive of code; its code's content hash.",
+            "query": ["filename"],
+            "body": None,
+        },
     ]
-    assert [r["path"] for r in admin_api.rest_routes(_app(), "archive")] == ["/admin/code/uploads"]
+    assert [r["path"] for r in admin_api.rest_routes(_app(), "upload a code")] == [
+        "/admin/code/uploads"
+    ]
 
 
 async def test_discovery_runs_for_the_named_table_as_the_user(monkeypatch):
