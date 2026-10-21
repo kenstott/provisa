@@ -49,11 +49,16 @@ const MARQUEZ: MetadataExportTarget = {
   entra_client_id: "",
   gcp_project: "",
   gcp_location: "",
+  aws_region: "",
+  datazone_domain_id: "",
+  datazone_project_id: "",
   timeout_seconds: 30,
   api_key_set: true,
   token_set: false,
   entra_client_secret_set: false,
   google_service_account_json_set: false,
+  aws_access_key_id_set: false,
+  aws_secret_access_key_set: false,
 };
 
 function state(
@@ -242,6 +247,43 @@ describe("MetadataExportTab", () => {
     const [sent] = mockSet.mock.calls[0][0].targets!;
     expect([sent.gcp_project, sent.gcp_location]).toEqual(["acme-data", "us"]);
     expect(sent.google_service_account_json).toBe("{}");
+  });
+
+  it("asks a DataZone target for its region, domain, project and keys, not an endpoint", async () => {
+    // REQ-2118: a DataZone data product lives in a domain, owned by a project, in a region.
+    mockFetch.mockResolvedValue(
+      state({}, [{ ...MARQUEZ, id: "datazone", provider: "datazone", endpoint: "" }]),
+    );
+    mockSet.mockResolvedValue(SAVED);
+    render(<MetadataExportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("metadata-export-aws-region-0")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("metadata-export-endpoint-0")).toBeNull();
+    expect(screen.queryByTestId("metadata-export-auth-mode-0")).toBeNull();
+    for (const [field, value] of [
+      ["aws-region", "us-east-1"],
+      ["datazone-domain-id", "dzd_1"],
+      ["datazone-project-id", "prj_1"],
+      ["aws-access-key-id", "AKIA-TYPED"],
+      ["aws-secret-access-key", "typed-secret"],
+    ]) {
+      fireEvent.change(screen.getByTestId(`metadata-export-${field}-0`), { target: { value } });
+    }
+    fireEvent.click(screen.getByTestId("metadata-export-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    const [sent] = mockSet.mock.calls[0][0].targets!;
+    expect([sent.aws_region, sent.datazone_domain_id, sent.datazone_project_id]).toEqual([
+      "us-east-1",
+      "dzd_1",
+      "prj_1",
+    ]);
+    expect([sent.aws_access_key_id, sent.aws_secret_access_key]).toEqual([
+      "AKIA-TYPED",
+      "typed-secret",
+    ]);
   });
 
   it("reports the reason each target refused the connection", async () => {

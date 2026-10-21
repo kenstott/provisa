@@ -7370,5 +7370,13 @@
   "de/metadataExportTab.json::metadataExportTab.gcpProjectHelp": "The project the data products are created in.",
   "de/metadataExportTab.json::metadataExportTab.gcpLocation": "Location",
   "de/metadataExportTab.json::metadataExportTab.gcpLocationHelp": "The Dataplex location, such as us or europe-west1.",
-  "de/metadataExportTab.json::metadataExportTab.googleServiceAccountJson": "Service account key (JSON)"
+  "de/metadataExportTab.json::metadataExportTab.googleServiceAccountJson": "Service account key (JSON)",
+  "de/metadataExportTab.json::metadataExportTab.awsRegion": "AWS region",
+  "de/metadataExportTab.json::metadataExportTab.awsRegionHelp": "The region of the DataZone domain, such as us-east-1.",
+  "de/metadataExportTab.json::metadataExportTab.datazoneDomainId": "DataZone domain ID",
+  "de/metadataExportTab.json::metadataExportTab.datazoneDomainIdHelp": "The domain the data products are published in.",
+  "de/metadataExportTab.json::metadataExportTab.datazoneProjectId": "Owning project ID",
+  "de/metadataExportTab.json::metadataExportTab.datazoneProjectIdHelp": "The project that owns the data products and approves subscriptions.",
+  "de/metadataExportTab.json::metadataExportTab.awsAccessKeyId": "AWS access key ID",
+  "de/metadataExportTab.json::metadataExportTab.awsSecretAccessKey": "AWS secret access key"
 }

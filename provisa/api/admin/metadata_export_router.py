@@ -50,7 +50,14 @@ router = APIRouter()
 CONFIG_KEY = "metadata_export"
 
 # A target's credential fields, which the read side reports as set/not-set and never returns.
-_SECRET_FIELDS = ("api_key", "token", "entra_client_secret", "google_service_account_json")
+_SECRET_FIELDS = (
+    "api_key",
+    "token",
+    "entra_client_secret",
+    "google_service_account_json",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+)
 
 # Everything else of a target the admin tab edits, returned verbatim.
 _PLAIN_FIELDS = (
@@ -63,6 +70,9 @@ _PLAIN_FIELDS = (
     "entra_client_id",
     "gcp_project",
     "gcp_location",
+    "aws_region",
+    "datazone_domain_id",
+    "datazone_project_id",
     "timeout_seconds",
 )
 

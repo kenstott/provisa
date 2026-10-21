@@ -30,11 +30,16 @@ export interface MetadataExportTarget {
   entra_client_id: string;
   gcp_project: string;
   gcp_location: string;
+  aws_region: string;
+  datazone_domain_id: string;
+  datazone_project_id: string;
   timeout_seconds: number;
   api_key_set: boolean;
   token_set: boolean;
   entra_client_secret_set: boolean;
   google_service_account_json_set: boolean;
+  aws_access_key_id_set: boolean;
+  aws_secret_access_key_set: boolean;
 }
 
 export interface MetadataExportConfig {
@@ -75,12 +80,19 @@ export interface MetadataExportState {
  *  credential omitted keeps the one stored for that target; sent empty, it is cleared. */
 export type MetadataExportTargetUpdate = Omit<
   MetadataExportTarget,
-  "api_key_set" | "token_set" | "entra_client_secret_set" | "google_service_account_json_set"
+  | "api_key_set"
+  | "token_set"
+  | "entra_client_secret_set"
+  | "google_service_account_json_set"
+  | "aws_access_key_id_set"
+  | "aws_secret_access_key_set"
 > & {
   api_key?: string;
   token?: string;
   entra_client_secret?: string;
   google_service_account_json?: string;
+  aws_access_key_id?: string;
+  aws_secret_access_key?: string;
 };
 
 /** The whole list is sent: a target left out of it is removed. */

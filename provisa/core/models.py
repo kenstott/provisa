@@ -2451,9 +2451,9 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         so two targets of one provider (two OpenMetadata servers) never share them (REQ-2118).
     provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
-        "datahub", "atlan", "collibra", "snowflake_horizon", "dataplex" or "purview" (the Data
-        Map through Atlas, then the Unified Catalog's data products). An unknown name is refused
-        at construction.
+        "datahub", "atlan", "collibra", "snowflake_horizon", "dataplex", "purview" (the Data
+        Map through Atlas, then the Unified Catalog's data products) or "datazone". An unknown
+        name is refused at construction.
     endpoint: base URL of the target catalog.
     api_key / token: adapter credentials, held as SecretStr so a config dump or a log line
         renders them redacted.
@@ -2464,6 +2464,9 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         with ``google_service_account_json``.
     username: the account name for "basic". Unused by the other modes.
     gcp_project / gcp_location: where Dataplex keeps the org's data products (REQ-2118).
+    aws_region / datazone_domain_id / datazone_project_id: the DataZone domain and the project
+        that owns the org's data products; aws_access_key_id / aws_secret_access_key sign its
+        requests (REQ-2118).
     """
 
     id: str
@@ -2479,6 +2482,11 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
     google_service_account_json: SecretStr = SecretStr("")
     gcp_project: str = ""
     gcp_location: str = ""
+    aws_region: str = ""
+    datazone_domain_id: str = ""
+    datazone_project_id: str = ""
+    aws_access_key_id: SecretStr = SecretStr("")
+    aws_secret_access_key: SecretStr = SecretStr("")
     timeout_seconds: int = 30
 
     @field_validator("id")
@@ -2494,8 +2502,17 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         # failing at publish time names a connection. REQ-1635: snowflake_horizon is
         # engine-native — it opens its own connection off configured_engine_url() rather than a
         # remote catalog's endpoint, so endpoint is not a setting this provider has.
-        if self.provider != "snowflake_horizon" and not self.endpoint:
+        # REQ-2118: datazone signs AWS requests to its region's own service address.
+        if self.provider not in ("snowflake_horizon", "datazone") and not self.endpoint:
             raise ValueError(f"metadata export target {self.id!r} has no endpoint")
+        # REQ-2118: a DataZone data product lives in a domain, owned by a project, in a region.
+        if self.provider == "datazone" and not (
+            self.aws_region and self.datazone_domain_id and self.datazone_project_id
+        ):
+            raise ValueError(
+                f"metadata export target {self.id!r} needs the AWS region, the DataZone domain "
+                "and the project that owns its data products"
+            )
         # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
         if self.provider == "purview" and self.auth_mode != "entra":
             raise ValueError(

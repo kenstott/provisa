@@ -57,6 +57,8 @@ ENGINE_NATIVE = {
     "dataplex": "tests/integration/test_metadata_export_dataplex_e2e.py",
     # Purview signs in with Entra before any call, which no local receiver can answer.
     "purview": "tests/integration/test_metadata_export_purview_e2e.py",
+    # DataZone is reached through the AWS SDK at its region's own address.
+    "datazone": "tests/integration/test_metadata_export_datazone_e2e.py",
 }
 #: What a delivered publish names: one of the data product's member tables.
 MEMBER = "orders"

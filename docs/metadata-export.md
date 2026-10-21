@@ -22,6 +22,7 @@ matches each one's ingestion API.
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
 | `purview` | Microsoft Purview: the Data Map, then Unified Catalog data products | The Atlas API at `{endpoint}`, then `https://{entra_tenant_id}-api.purview-service.microsoft.com/datagovernance/catalog` |
+| `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
 | `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
@@ -97,6 +98,17 @@ published; deprecated and retired are expired; any other is draft; a product wit
 published when the product is published). Its update frequency is the shortest freshness among
 its members. Approvers and access policies are not published yet.
 
+`datazone` publishes each data product as an Amazon DataZone data product in the target's
+DataZone domain, owned by its project, and publishes it so that consumers find it and request it
+by subscription. Each member is an asset of a Provisa table type, which the first publish creates
+in the domain: a `ProvisaTableForm` form (the member's Provisa URI, its address, its columns and
+its freshness) on a `ProvisaTable` asset type. The product's fields go in a
+`ProvisaDataProductForm` form. A member is read through Provisa, where its governance is enforced,
+so DataZone grants nothing itself: the owning project approves each subscription. An asset is
+found again by its external identifier, the member's Provisa URI, and a product by its name in the
+project; each publish adds a revision and publishes it. Members that are Glue tables are not
+published as Glue assets yet.
+
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
 Purview endpoint with `auth_mode: entra`.
@@ -144,7 +156,7 @@ metadata_export:
   reconcile_cron: "0 * * * *"
   targets:
     - id: marquez
-      provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | dataplex
+      provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | dataplex | datazone
       endpoint: http://marquez:5000
       auth_mode: api_key       # api_key | bearer | basic | entra | google_service_account
       api_key: ${MARQUEZ_API_KEY}
@@ -173,6 +185,8 @@ metadata_export:
 | `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`, and `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
 | `username` | The account name for `basic`. Unused by the other modes. |
 | `gcp_project`, `gcp_location` | Where a `dataplex` target keeps the org's data products. A `dataplex` target without both is refused when it is saved. |
+| `aws_region`, `datazone_domain_id`, `datazone_project_id` | The DataZone domain a `datazone` target publishes to and the project that owns its data products. A `datazone` target without all three is refused when it is saved; it has no `endpoint`. |
+| `aws_access_key_id`, `aws_secret_access_key` | The AWS keys a `datazone` target signs its requests with. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
 | `timeout_seconds` | Per-request timeout against the target. |
 

@@ -60,7 +60,16 @@ const AUTH_MODES = [
   { value: GOOGLE_MODE, label: "Google service account (Dataplex)" },
 ];
 
-type SecretField = "api_key" | "token" | "entra_client_secret" | "google_service_account_json";
+type SecretField =
+  | "api_key"
+  | "token"
+  | "entra_client_secret"
+  | "google_service_account_json"
+  | "aws_access_key_id"
+  | "aws_secret_access_key";
+
+/** A DataZone target signs AWS requests with its own keys: it has no endpoint or auth mode. */
+const DATAZONE = "datazone";
 
 /** A target being edited, with the credentials typed for it since the last save. */
 interface Row {
@@ -78,11 +87,16 @@ const blankTarget = (): MetadataExportTarget => ({
   entra_client_id: "",
   gcp_project: "",
   gcp_location: "",
+  aws_region: "",
+  datazone_domain_id: "",
+  datazone_project_id: "",
   timeout_seconds: 30,
   api_key_set: false,
   token_set: false,
   entra_client_secret_set: false,
   google_service_account_json_set: false,
+  aws_access_key_id_set: false,
+  aws_secret_access_key_set: false,
 });
 
 export function MetadataExportTab() {
@@ -137,6 +151,9 @@ export function MetadataExportTab() {
           entra_client_id: target.entra_client_id,
           gcp_project: target.gcp_project,
           gcp_location: target.gcp_location,
+          aws_region: target.aws_region,
+          datazone_domain_id: target.datazone_domain_id,
+          datazone_project_id: target.datazone_project_id,
           timeout_seconds: target.timeout_seconds,
           ...secrets,
         })),
@@ -260,95 +277,136 @@ export function MetadataExportTab() {
               onChange={(v) => patchRow(i, { provider: v ?? "" })}
             />
           </FormField>
-          <FormField size="long">
-            <TextInput
-              label={t("metadataExportTab.endpoint")}
-              data-testid={tid("endpoint")}
-              value={target.endpoint}
-              onChange={(e) => patchRow(i, { endpoint: e.currentTarget.value })}
-            />
-          </FormField>
-          <FormField size="medium">
-            <Select
-              label={t("metadataExportTab.authMode")}
-              data-testid={tid("auth-mode")}
-              data={AUTH_MODES}
-              value={target.auth_mode}
-              onChange={(v) => patchRow(i, { auth_mode: v ?? "api_key" })}
-            />
-          </FormField>
-          {target.provider === "dataplex" ? (
+          {target.provider === DATAZONE ? (
             <>
-              <FormField help={t("metadataExportTab.gcpProjectHelp")} size="medium">
+              <FormField help={t("metadataExportTab.awsRegionHelp")} size="short">
                 <TextInput
-                  label={t("metadataExportTab.gcpProject")}
-                  data-testid={tid("gcp-project")}
-                  value={target.gcp_project}
-                  onChange={(e) => patchRow(i, { gcp_project: e.currentTarget.value })}
+                  label={t("metadataExportTab.awsRegion")}
+                  data-testid={tid("aws-region")}
+                  value={target.aws_region}
+                  onChange={(e) => patchRow(i, { aws_region: e.currentTarget.value })}
                 />
               </FormField>
-              <FormField help={t("metadataExportTab.gcpLocationHelp")} size="short">
+              <FormField help={t("metadataExportTab.datazoneDomainIdHelp")} size="medium">
                 <TextInput
-                  label={t("metadataExportTab.gcpLocation")}
-                  data-testid={tid("gcp-location")}
-                  value={target.gcp_location}
-                  onChange={(e) => patchRow(i, { gcp_location: e.currentTarget.value })}
+                  label={t("metadataExportTab.datazoneDomainId")}
+                  data-testid={tid("datazone-domain-id")}
+                  value={target.datazone_domain_id}
+                  onChange={(e) => patchRow(i, { datazone_domain_id: e.currentTarget.value })}
                 />
               </FormField>
-            </>
-          ) : null}
-          {target.auth_mode === GOOGLE_MODE ? (
-            secretField(
-              "google_service_account_json",
-              t("metadataExportTab.googleServiceAccountJson"),
-              target.google_service_account_json_set,
-            )
-          ) : target.auth_mode === ENTRA_MODE ? (
-            <>
-              <FormField size="medium">
+              <FormField help={t("metadataExportTab.datazoneProjectIdHelp")} size="medium">
                 <TextInput
-                  label={t("metadataExportTab.entraTenantId")}
-                  data-testid={tid("entra-tenant-id")}
-                  value={target.entra_tenant_id}
-                  onChange={(e) => patchRow(i, { entra_tenant_id: e.currentTarget.value })}
-                />
-              </FormField>
-              <FormField size="medium">
-                <TextInput
-                  label={t("metadataExportTab.entraClientId")}
-                  data-testid={tid("entra-client-id")}
-                  value={target.entra_client_id}
-                  onChange={(e) => patchRow(i, { entra_client_id: e.currentTarget.value })}
+                  label={t("metadataExportTab.datazoneProjectId")}
+                  data-testid={tid("datazone-project-id")}
+                  value={target.datazone_project_id}
+                  onChange={(e) => patchRow(i, { datazone_project_id: e.currentTarget.value })}
                 />
               </FormField>
               {secretField(
-                "entra_client_secret",
-                t("metadataExportTab.entraClientSecret"),
-                target.entra_client_secret_set,
+                "aws_access_key_id",
+                t("metadataExportTab.awsAccessKeyId"),
+                target.aws_access_key_id_set,
+              )}
+              {secretField(
+                "aws_secret_access_key",
+                t("metadataExportTab.awsSecretAccessKey"),
+                target.aws_secret_access_key_set,
               )}
             </>
-          ) : target.auth_mode === BASIC_MODE ? (
+          ) : (
             <>
-              <FormField size="medium">
+              <FormField size="long">
                 <TextInput
-                  label={t("metadataExportTab.username")}
-                  data-testid={tid("username")}
-                  value={target.username}
-                  onChange={(e) => patchRow(i, { username: e.currentTarget.value })}
+                  label={t("metadataExportTab.endpoint")}
+                  data-testid={tid("endpoint")}
+                  value={target.endpoint}
+                  onChange={(e) => patchRow(i, { endpoint: e.currentTarget.value })}
                 />
               </FormField>
-              {/* The password rides in the same `token` field the bearer mode uses — one stored
-                secret per target, read by whichever mode is selected. */}
-              {secretField("token", t("metadataExportTab.password"), target.token_set)}
+              <FormField size="medium">
+                <Select
+                  label={t("metadataExportTab.authMode")}
+                  data-testid={tid("auth-mode")}
+                  data={AUTH_MODES}
+                  value={target.auth_mode}
+                  onChange={(v) => patchRow(i, { auth_mode: v ?? "api_key" })}
+                />
+              </FormField>
+              {target.provider === "dataplex" ? (
+                <>
+                  <FormField help={t("metadataExportTab.gcpProjectHelp")} size="medium">
+                    <TextInput
+                      label={t("metadataExportTab.gcpProject")}
+                      data-testid={tid("gcp-project")}
+                      value={target.gcp_project}
+                      onChange={(e) => patchRow(i, { gcp_project: e.currentTarget.value })}
+                    />
+                  </FormField>
+                  <FormField help={t("metadataExportTab.gcpLocationHelp")} size="short">
+                    <TextInput
+                      label={t("metadataExportTab.gcpLocation")}
+                      data-testid={tid("gcp-location")}
+                      value={target.gcp_location}
+                      onChange={(e) => patchRow(i, { gcp_location: e.currentTarget.value })}
+                    />
+                  </FormField>
+                </>
+              ) : null}
+              {target.auth_mode === GOOGLE_MODE ? (
+                secretField(
+                  "google_service_account_json",
+                  t("metadataExportTab.googleServiceAccountJson"),
+                  target.google_service_account_json_set,
+                )
+              ) : target.auth_mode === ENTRA_MODE ? (
+                <>
+                  <FormField size="medium">
+                    <TextInput
+                      label={t("metadataExportTab.entraTenantId")}
+                      data-testid={tid("entra-tenant-id")}
+                      value={target.entra_tenant_id}
+                      onChange={(e) => patchRow(i, { entra_tenant_id: e.currentTarget.value })}
+                    />
+                  </FormField>
+                  <FormField size="medium">
+                    <TextInput
+                      label={t("metadataExportTab.entraClientId")}
+                      data-testid={tid("entra-client-id")}
+                      value={target.entra_client_id}
+                      onChange={(e) => patchRow(i, { entra_client_id: e.currentTarget.value })}
+                    />
+                  </FormField>
+                  {secretField(
+                    "entra_client_secret",
+                    t("metadataExportTab.entraClientSecret"),
+                    target.entra_client_secret_set,
+                  )}
+                </>
+              ) : target.auth_mode === BASIC_MODE ? (
+                <>
+                  <FormField size="medium">
+                    <TextInput
+                      label={t("metadataExportTab.username")}
+                      data-testid={tid("username")}
+                      value={target.username}
+                      onChange={(e) => patchRow(i, { username: e.currentTarget.value })}
+                    />
+                  </FormField>
+                  {/* The password rides in the same `token` field the bearer mode uses — one stored
+                  secret per target, read by whichever mode is selected. */}
+                  {secretField("token", t("metadataExportTab.password"), target.token_set)}
+                </>
+              ) : (
+                secretField(
+                  target.auth_mode === "bearer" ? "token" : "api_key",
+                  target.auth_mode === "bearer"
+                    ? t("metadataExportTab.token")
+                    : t("metadataExportTab.apiKey"),
+                  target.auth_mode === "bearer" ? target.token_set : target.api_key_set,
+                )
+              )}
             </>
-          ) : (
-            secretField(
-              target.auth_mode === "bearer" ? "token" : "api_key",
-              target.auth_mode === "bearer"
-                ? t("metadataExportTab.token")
-                : t("metadataExportTab.apiKey"),
-              target.auth_mode === "bearer" ? target.token_set : target.api_key_set,
-            )
           )}
           <FormField size="short">
             <NumberInput
