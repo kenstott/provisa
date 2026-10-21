@@ -256,3 +256,19 @@ def test_a_checker_whose_password_the_deployment_has_not_set_loads_as_written(ch
     )
     assert config.sources[0].mapping == mapping
     assert config.written.sources[0].mapping == mapping
+
+
+@pytest.mark.parametrize(
+    ("secured", "password"), [(True, "${env:PROVISA_DQ_PASSWORD}"), (False, "")]
+)
+def test_a_checker_made_in_the_sources_form_names_a_password_only_under_an_auth_provider(
+    secured, password, monkeypatch
+):
+    """With no auth provider pgwire is in trust mode and ignores the password, as the shipped
+    dq-checker and dq-soda sources write it; under one, the scan resolves the reference."""
+    from provisa.api.admin import schema_mutation
+    from provisa.api.app import state
+
+    monkeypatch.setattr(state, "auth_middleware_active", secured)
+    monkeypatch.setattr(schema_mutation, "_dq_pgwire_port", lambda: "5439")
+    assert schema_mutation.checker_mapping()["password"] == password
