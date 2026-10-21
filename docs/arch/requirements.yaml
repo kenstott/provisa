@@ -85443,16 +85443,42 @@ And reaffirming it records the tag again with today's decider and evidence and r
     never ships. The tables are baked into the image, covered by its code hash and reported in its hello
     and its OCI labels; at runtime the host only looks names up, and Provisa uses the identical tables,
     including for the case-insensitive matching it configures when it attaches the host to an engine.
-    (Amended 2026-10-20, LOADER:) A function opts into batched join keys with a parameter named loader:
-    a list of JSON objects, each one key, holding the parent''s values for the function''s other parameters
-    (for example [{"customer_id": "637", "plan": "basic", "region": "EU"}, ...]). When a join reaches
-    the code table, Provisa de-duplicates the key objects and calls the function once with the whole list
-    (the DataLoader pattern), instead of once per key. The list is sparse: each key object carries only
-    the parameters that have a value for that key, and an absent or null value leaves its field out rather
-    than sending null, so the function''s own defaults apply as they do on a single call. The function
-    returns ordinary rows carrying their key columns, and Provisa joins them back on those columns, never
-    by position: a key may give zero rows or many. A function without loader keeps one call per distinct
-    argument set, the sets sent to its worker in one request. in_{column} keeps only its pushdown meaning.'
+    (Amended 2026-10-20, LOADER:) [SUPERSEDED by REQ-2100, 2026-10-20 -- loader is a hash keyed by each
+    key''s own hash (LOADER HASH below), not a list. Kept here for history; do not implement against it.]
+    A function opts into batched join keys with a parameter named loader: a list of JSON objects, each
+    one key, holding the parent''s values for the function''s other parameters (for example [{"customer_id":
+    "637", "plan": "basic", "region": "EU"}, ...]). [END SUPERSEDED BLOCK] A function opts into batched
+    join keys with a parameter named loader, holding the joining rows'' values for the function''s other
+    parameters, one key each. When a join reaches the code table, Provisa de-duplicates the key objects
+    and calls the function once with the whole list (the DataLoader pattern), instead of once per key.
+    The list is sparse: each key object carries only the parameters that have a value for that key, and
+    an absent or null value leaves its field out rather than sending null, so the function''s own defaults
+    apply as they do on a single call. [SUPERSEDED by REQ-2100, 2026-10-20 -- rows are matched back by
+    their _key id, not their key columns, since a defaulted field cannot match the joining row''s empty
+    value. Kept here for history; do not implement against it.] The function returns ordinary rows carrying
+    their key columns, and Provisa joins them back on those columns, never by position: a key may give
+    zero rows or many. [END SUPERSEDED BLOCK] A function without loader keeps one call per distinct argument
+    set, the sets sent to its worker in one request. in_{column} keeps only its pushdown meaning. [SUPERSEDED
+    by REQ-2100, 2026-10-20 -- loader is a hash keyed by each key object''s own hash, not a list carrying
+    _key ids. Kept here for history; do not implement against it.] (Amended 2026-10-20, LOADER KEYS:)
+    Each key object carries a _key id beside its fields (for example {"_key": 3, "customer_id": "637"}),
+    and each row the function returns carries the _key of the key it answers. Provisa fans each returned
+    row out to every joining row that produced that key before de-duplication; a key may give zero rows
+    or many. Rows are matched by _key alone, never by their key columns: with sparse keys a default fills
+    a field the joining row left empty (plan becomes "basic"), which matching on columns would miss. A
+    returned row that carries no _key, or one the batch did not send, is refused by name. [END SUPERSEDED
+    BLOCK] (Amended 2026-10-20, LOADER HASH:) loader is a hash, not a list: an object keyed by each key''s
+    own hash, its value the sparse key object (for example {"9f2c...": {"customer_id": "637"}, "1ab4...":
+    {"customer_id": "173", "plan": "pro"}}). A key''s hash is a stable hash of its sparse object, its
+    fields sorted, so the same values always give the same key, and de-duplication is the hash itself.
+    The function returns the same shape: a hash from each key it was given to that key''s rows, zero or
+    many. Provisa fans each key''s rows out to every joining row that produced that key. A returned key
+    the batch did not send is refused by name. (Amended 2026-10-20, LOADER CALL:) A loader function declares
+    only its row type, as any table does; a loader call answers with the hash, and each key''s rows are
+    checked against that type. In a loader call every other parameter is left absent, so the key parameters
+    declared beside loader have defaults; a required one fails at the call, by name. A key''s hash is
+    the SHA-256 hex of its sparse object''s canonical JSON: keys sorted, compact separators, each value
+    as the code-source wire carries it.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and
