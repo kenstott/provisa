@@ -85640,6 +85640,7 @@ And SELECT score FROM churn_risk is refused for its required parameters before t
   - tests/unit/test_code_worker.py
   - tests/unit/test_python_source.py
   - tests/unit/test_node_host_argument_sets.py
+  - tests/integration/test_churnprod_at_risk_timing.py
   stakeholders:
   - data-engineer
 - id: REQ-2097
