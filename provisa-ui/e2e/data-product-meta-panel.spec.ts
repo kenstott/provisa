@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { test, expect } from "./coverage";
+import { test, expect, type Page } from "./coverage";
+import type { Locator } from "@playwright/test";
 
 /**
  * REQ-2127, REQ-2128: a data product's detail panel and its graph, against the real backend and
@@ -22,6 +23,40 @@ import { test, expect } from "./coverage";
  */
 
 const PRODUCT = "pet_health";
+
+/** Every /data and /admin answer refused (status >= 400), whole: what a failure names. */
+function recordRefusals(page: Page): string[] {
+  const refused: string[] = [];
+  page.on("response", async (r) => {
+    const path = new URL(r.url()).pathname;
+    if (r.status() < 400 || !/^\/(data|admin)\//.test(path)) return;
+    const req = r.request();
+    let body: string;
+    try {
+      body = await r.text();
+    } catch (e) {
+      body = `(body unreadable: ${String(e)})`;
+    }
+    refused.push(
+      `${r.status()} ${req.method()} ${path} role=${req.headers()["x-provisa-role"] ?? "-"}` +
+        `\n  sent: ${(req.postData() ?? "").slice(0, 600)}\n  answered: ${body.slice(0, 1200)}`,
+    );
+  });
+  return refused;
+}
+
+/** ``locator`` comes into view, or the failure names every refused request on the way. */
+async function shows(locator: Locator, refused: string[], timeout: number) {
+  try {
+    await expect(locator).toBeVisible({ timeout });
+  } catch (e) {
+    throw new Error(
+      `${e instanceof Error ? e.message : String(e)}\n\nRefused requests (${refused.length}):\n` +
+        (refused.join("\n") || "(none)"),
+      { cause: e },
+    );
+  }
+}
 
 test.describe("a data product's panel and graph, read from the meta domain", () => {
   // The first navigation compiles the page's chunks and the panel's reads run after the list's.
@@ -38,9 +73,9 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
         r.url().endsWith("/data/graphql") &&
         (r.request().postData() ?? "").includes("DataProductPanel"),
     );
+    const refused = recordRefusals(page);
     await page.goto(`/data-products?product=${PRODUCT}`);
-    const panel = page.getByTestId(`data-product-detail-${PRODUCT}`);
-    await expect(panel).toBeVisible({ timeout: 90_000 });
+    await shows(page.getByTestId(`data-product-detail-${PRODUCT}`), refused, 90_000);
 
     // The product's own fields (the SQL read of its row).
     await expect(page.getByTestId(`data-product-read-${PRODUCT}`)).toContainText("Pet Health", {
@@ -79,16 +114,13 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
   test("the panel's graph loads in view, and expands to the full graph on the product", async ({
     page,
   }) => {
+    const refused = recordRefusals(page);
     await page.goto(`/data-products?product=${PRODUCT}`);
-    await expect(page.getByTestId(`data-product-detail-${PRODUCT}`)).toBeVisible({
-      timeout: 90_000,
-    });
+    await shows(page.getByTestId(`data-product-detail-${PRODUCT}`), refused, 90_000);
     const kg = page.getByTestId("kg-panel");
     await kg.scrollIntoViewIfNeeded();
     // data-ready: three.js has loaded and the scene is drawn.
-    await expect(page.locator('[data-testid="kg-panel-stage"][data-ready]')).toBeVisible({
-      timeout: 60_000,
-    });
+    await shows(page.locator('[data-testid="kg-panel-stage"][data-ready]'), refused, 60_000);
     // The panel's legend names what it draws: the product, its tables, its command.
     const legend = page.getByTestId("kg-panel-stage").locator(".p3d-legend");
     await expect(legend).toContainText("data product");
@@ -97,9 +129,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await expect(legend).not.toContainText("data quality check");
 
     await page.getByTestId("kg-panel-expand").click();
-    await expect(page.locator('[data-testid="graph3d-stage"][data-ready]')).toBeVisible({
-      timeout: 60_000,
-    });
+    await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
     // Focused on the product, on the Knowledge graph preset, with the layers it has data for.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
     await expect(page.getByRole("radio", { name: "Knowledge graph" })).toBeChecked();
@@ -109,11 +139,10 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
   });
 
   test("the Product map draws every product", async ({ page }) => {
+    const refused = recordRefusals(page);
     await page.goto("/data-products");
     await page.getByTestId("product-map-open").click({ timeout: 90_000 });
-    await expect(page.locator('[data-testid="graph3d-stage"][data-ready]')).toBeVisible({
-      timeout: 60_000,
-    });
+    await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
     await expect(page.getByRole("radio", { name: "Product map" })).toBeChecked();
     // Both of the config's products, and their domains, are in the map's counts.
     const shown = page.getByTestId("graph3d").locator(".p3d-detail");
