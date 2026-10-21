@@ -93,7 +93,8 @@ class ProvisaDriverIT {
             DatabaseMetaData meta = conn.getMetaData();
             assertEquals("Provisa", meta.getDatabaseProductName());
             assertEquals(System.getProperty("provisa.adminUser", "admin"), meta.getUserName());
-            assertEquals("catalog", conn.getSchema());
+            // The driver has no current schema: the connection's tables are the role's catalog.
+            assertNull(conn.getSchema());
         }
     }
 
