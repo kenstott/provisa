@@ -42,6 +42,7 @@ from provisa.api.metadata_export.collibra import CollibraExport  # noqa: E402
 from provisa.api.metadata_export.datahub import DataHubExport  # noqa: E402
 from provisa.api.metadata_export.openlineage import OpenLineageExport  # noqa: E402
 from provisa.api.metadata_export.openmetadata import OpenMetadataExport  # noqa: E402
+from provisa.api.metadata_export.purview import PurviewExport  # noqa: E402
 from provisa.api.metadata_export.snowflake_horizon import SnowflakeHorizonExport  # noqa: E402
 
 __all__ = [
@@ -49,6 +50,7 @@ __all__ = [
     "AtlanExport",
     "AtlasExport",
     "DataplexExport",
+    "PurviewExport",
     "CollibraExport",
     "DataHubExport",
     "OpenLineageExport",

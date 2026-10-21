@@ -100,12 +100,21 @@ async def seed_member_tables() -> None:
         await conn.close()
 
 
-def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT) -> dict[str, Any]:
+def model_config(
+    engine: str,
+    *,
+    with_view: bool = True,
+    product: str = PRODUCT,
+    domain: str = DOMAIN,
+    product_name: str = PRODUCT_FIELDS["name"],
+) -> dict[str, Any]:
     """The server's configuration: the governed model every target is published from. A target
     that shares the members' physical objects (Snowflake Horizon, Dataplex) takes the product
     without the view, which is no object of the engine's: two members, as its scenario reads.
     ``product`` is the data product's id: a test publishing into a shared cloud account names it
-    for the run (provisa_e2e_*)."""
+    for the run (provisa_e2e_*). ``domain`` is the members' domain: a catalog that files a product
+    under a domain of its own name (Purview) is given the one that exists there. ``product_name``
+    is its name: a catalog read back by name is given the run's own."""
     roles = ["analyst", "data_owner", "admin"]
     # The org's own admin reads every member as well: the tests read as org_admin, the role the
     # server's default assignment gives.
@@ -120,7 +129,7 @@ def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT)
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
         "domains": [
-            {"id": DOMAIN, "description": "Sales domain", "steward": "data_owner"},
+            {"id": domain, "description": "Sales domain", "steward": "data_owner"},
             # Unstewarded on purpose: a catalog must show the governance gap.
             {"id": "lab", "description": "Lab domain"},
         ],
@@ -140,11 +149,13 @@ def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT)
             {"id": r, "description": f"{r} role.", "capabilities": [], "domain_access": ["*"]}
             for r in roles
         ],
-        "data_products": [{**PRODUCT_FIELDS, "id": product}],
+        "data_products": [
+            {**PRODUCT_FIELDS, "id": product, "domain_id": domain, "name": product_name}
+        ],
         "tables": [
             {
                 "source_id": SOURCE,
-                "domain_id": DOMAIN,
+                "domain_id": domain,
                 "schema_name": SCHEMA,
                 "table_name": "customers",
                 "description": "Customers of the shop",
@@ -164,7 +175,7 @@ def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT)
             },
             {
                 "source_id": SOURCE,
-                "domain_id": DOMAIN,
+                "domain_id": domain,
                 "schema_name": SCHEMA,
                 "table_name": "orders",
                 "description": "Orders placed",
@@ -205,12 +216,12 @@ def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT)
             },
             {
                 "source_id": "__derived__",
-                "domain_id": DOMAIN,
+                "domain_id": domain,
                 "schema_name": "views",
                 "table_name": VIEW,
                 "description": "Each order's net total",
                 "product_id": product,
-                "view_sql": VIEW_SQL,
+                "view_sql": VIEW_SQL.replace(f'"{DOMAIN}"', f'"{domain}"'),
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},
                     {"name": "net", "data_type": "numeric", "visible_to": everyone},
@@ -218,7 +229,7 @@ def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT)
             },
         ],
         "glossary_terms": [
-            {"name": GLOSSARY_TERM, "definition": GLOSSARY_DEFINITION, "domains": [DOMAIN]}
+            {"name": GLOSSARY_TERM, "definition": GLOSSARY_DEFINITION, "domains": [domain]}
         ],
         "relationships": [
             {
@@ -259,6 +270,8 @@ async def published_server(
     env: dict[str, str] | None = None,
     with_view: bool = True,
     product: str = PRODUCT,
+    domain: str = DOMAIN,
+    product_name: str = PRODUCT_FIELDS["name"],
 ) -> AsyncGenerator[httpx.AsyncClient]:
     """A started Provisa server for ``org_id`` with the model above, as an HTTP client."""
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
@@ -268,7 +281,14 @@ async def published_server(
         config = Path(tmp) / "provisa.yaml"
         config.write_text(
             yaml.safe_dump(
-                model_config(engine, with_view=with_view, product=product), sort_keys=False
+                model_config(
+                    engine,
+                    with_view=with_view,
+                    product=product,
+                    domain=domain,
+                    product_name=product_name,
+                ),
+                sort_keys=False,
             )
         )
         server = IsolatedServer(org_id, engine=engine, config=str(config), env=env)

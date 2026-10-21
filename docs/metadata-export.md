@@ -21,6 +21,7 @@ matches each one's ingestion API.
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
+| `purview` | Microsoft Purview: the Data Map, then Unified Catalog data products | The Atlas API at `{endpoint}`, then `https://{entra_tenant_id}-api.purview-service.microsoft.com/datagovernance/catalog` |
 | `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
@@ -83,6 +84,19 @@ asset carries its member's freshness as the `provisa-freshness-seconds` label, a
 table is no longer a member is removed. Dataplex answers each change with a long-running
 operation; the publish follows each to its end, up to `timeout_seconds`.
 
+`purview` publishes in two steps. The Data Map goes first, through the Atlas adapter it
+extends: the same entities the `atlas` provider sends, at the target's `endpoint`, signed in with
+the Entra client credentials (`auth_mode: entra`). Then each data product becomes a Unified
+Catalog data product, at the tenant's Unified Catalog host, in the governance domain named
+after the product's domain. A product whose domain has no governance domain of that name is
+reported and not sent; Provisa does not create governance domains. Its owners are the members
+holding its owner role, their addresses resolved to Entra users through Microsoft Graph, which
+needs the app's `User.Read.All` permission; an address Graph does not know is reported. Its
+members' Data Map entities become its data assets. Its status follows the product's (active is
+published; deprecated and retired are expired; any other is draft; a product with no status is
+published when the product is published). Its update frequency is the shortest freshness among
+its members. Approvers and access policies are not published yet.
+
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
 Purview endpoint with `auth_mode: entra`.
@@ -130,7 +144,7 @@ metadata_export:
   reconcile_cron: "0 * * * *"
   targets:
     - id: marquez
-      provider: openlineage    # openlineage | openmetadata | atlas | atlan | datahub | collibra | snowflake_horizon | dataplex
+      provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | dataplex
       endpoint: http://marquez:5000
       auth_mode: api_key       # api_key | bearer | basic | entra | google_service_account
       api_key: ${MARQUEZ_API_KEY}

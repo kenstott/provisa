@@ -2451,8 +2451,9 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         so two targets of one provider (two OpenMetadata servers) never share them (REQ-2118).
     provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
-        "datahub", "atlan", "collibra", "snowflake_horizon" or "dataplex". An unknown name is
-        refused at construction.
+        "datahub", "atlan", "collibra", "snowflake_horizon", "dataplex" or "purview" (the Data
+        Map through Atlas, then the Unified Catalog's data products). An unknown name is refused
+        at construction.
     endpoint: base URL of the target catalog.
     api_key / token: adapter credentials, held as SecretStr so a config dump or a log line
         renders them redacted.
@@ -2495,6 +2496,11 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         # remote catalog's endpoint, so endpoint is not a setting this provider has.
         if self.provider != "snowflake_horizon" and not self.endpoint:
             raise ValueError(f"metadata export target {self.id!r} has no endpoint")
+        # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
+        if self.provider == "purview" and self.auth_mode != "entra":
+            raise ValueError(
+                f"metadata export target {self.id!r} signs in to Purview with Microsoft Entra"
+            )
         # REQ-2118: a Dataplex data product lives in a project and a location.
         if self.provider == "dataplex" and not (self.gcp_project and self.gcp_location):
             raise ValueError(
