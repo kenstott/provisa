@@ -83790,7 +83790,8 @@
     after its last sandbox closes, unless it is opened again first: the node cannot hold every demo''s stores at once. The
     tier marks the time in the demo''s requested marker when it closes the last sandbox and marks it requested again on
     an open; once the time has passed the node takes the stores down as it takes down an older version''s (its data
-    dropped from the shared stores, its own services removed), keeps the bundle, and clears its ready and requested
+    dropped from the shared stores, its own services removed) but keeps its images and bundle, so it comes back without
+    a pull, and clears its ready and requested
     markers, so the next open asks for it again and its visitor waits while it starts.'
   use_case: The maintainer changes an example query of the weblogs demo and merges it; minutes later the live demos page's
     next sandbox and a solution engineer's next start-ui-install.sh --demo weblogs both have the change, with no release cut.

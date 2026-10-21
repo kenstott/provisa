@@ -745,7 +745,7 @@ def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_p
 
     run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
     assert run.returncode == 0, run.stderr
-    assert asked == [f"drop weblogs {_VERSION}"]
+    assert asked == [f"stop weblogs {_VERSION}"]
     assert not (demo / "requested").exists()
     assert not (demo / "ready").exists()
     assert not (demo / _VERSION / "stores.env").exists()
@@ -759,7 +759,7 @@ def test_a_demo_still_lingering_keeps_its_stores_up(tmp_path):
     until = int(time.time()) + 1800
     run, demo, asked = _sync(tmp_path, lingering_until=until)
     assert run.returncode == 0, run.stderr
-    assert "drop" not in " ".join(asked)
+    assert not [call for call in asked if call.startswith(("drop", "stop"))]
     assert (demo / "requested").read_text().strip() == f"until {until}"
     assert (demo / "ready").read_text().strip() == _VERSION
     assert (demo / _VERSION / "stores.env").exists()

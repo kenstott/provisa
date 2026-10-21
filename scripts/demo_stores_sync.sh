@@ -25,8 +25,9 @@
 # up while it is used. When its last sandbox closes, the tier rewrites <bundles>/<name>/requested
 # as "until <epoch seconds>" (sandbox.demo_stores_linger after the close); an open before then
 # marks it requested again. Once that time has passed, its stores are taken down as an older
-# version's are in step 4 (its data dropped from the shared stores, its own services removed),
-# its bundle kept, and requested and ready cleared, so its next open asks for it again. Run with
+# version's are in step 4 (its data dropped from the shared stores, its own services removed) but
+# with its images and bundle kept, and requested and ready cleared, so its next open asks for it
+# again and it comes back without a pull. Run with
 # --boot (its own unit, before docker starts), it clears what the node's last run left: no demo is
 # asked for or ready, since none of its stores is running.
 # Run at boot, on a timer, and whenever the tier touches <bundles>/.wanted (systemd units in
@@ -76,7 +77,8 @@ linger_out() { # name
   fi
   rm -f "$DEMO_BUNDLES_DIR/$name/ready"
   if [ -n "$ready" ] && [ -f "$DEMO_BUNDLES_DIR/$name/$ready/stores.env" ]; then
-    python3 "$DEMO_STORES" drop "$name" "$ready"
+    # Its images are kept: the demo is brought back at its next open, not superseded.
+    python3 "$DEMO_STORES" stop "$name" "$ready"
     rm -f "$DEMO_BUNDLES_DIR/$name/$ready/stores.env"
   fi
   rm -f "$DEMO_BUNDLES_DIR/$name/requested"
