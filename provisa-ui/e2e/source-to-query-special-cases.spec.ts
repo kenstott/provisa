@@ -355,7 +355,9 @@ for (const c of [
       await page.getByTestId("dq-dry-run").click();
       await expect(page.getByTestId("dq-dry-run-result")).toBeVisible({ timeout: 30000 });
       const outcomeBadge = page.getByTestId("dq-dry-run-result").locator(".mantine-Badge-root");
-      await expect(outcomeBadge.first()).toBeVisible();
+      // A dry run that could not scan says why in the result; the failure names it.
+      const said = await page.getByTestId("dq-dry-run-result").innerText();
+      await expect(outcomeBadge.first(), `the dry run answered: ${said}`).toBeVisible();
       await expect(outcomeBadge.first()).toHaveText(/pass|fail/);
 
       // Complete the registration too — the results table lands in the tables list carrying the

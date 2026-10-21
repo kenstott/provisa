@@ -34,7 +34,7 @@ def test_the_mapping_holds_the_connection_the_steward_entered():
         username="dq_reader",
         password="${env:MY_DQ_PASSWORD}",
     )
-    assert checker_mapping(entered) == {
+    assert checker_mapping(entered, entered.password) == {
         "host": "pg.internal",
         "port": 5439,
         "database": "provisa",
@@ -43,7 +43,13 @@ def test_the_mapping_holds_the_connection_the_steward_entered():
     }
     # left empty, it is stored empty: nothing is assumed in its place
     blank = SimpleNamespace(host=None, port=None, database=None, username=None, password=None)
-    assert set(checker_mapping(blank).values()) == {None}
+    assert checker_mapping(blank, "") == {
+        "host": None,
+        "port": None,
+        "database": None,
+        "user": None,
+        "password": "",
+    }
 
 
 def test_creating_a_source_writes_no_reference_or_default_of_its_own():

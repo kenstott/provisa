@@ -123,6 +123,11 @@ _ALIASES: dict[str, str] = {
     # stores it and a landing reads it back with no platform to name (REQ-1730 swap lane).
     "nvarchar": "text",
     "char": "text",
+    # Exasol names a text column's character set after its size: VARCHAR(64) UTF8, CHAR(2) ASCII.
+    "varchar utf8": "text",
+    "varchar ascii": "text",
+    "char utf8": "text",
+    "char ascii": "text",
     "character": "text",
     "string": "text",
     "json": "json",  # REQ-980: first-class JSON (jsonb narrows to portable generic JSON)

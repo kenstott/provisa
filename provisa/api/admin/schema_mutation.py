@@ -2033,7 +2033,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 from provisa.api.admin._dq_registration import checker_mapping
 
                 # The mapping alone holds the password (#276).
-                _mapping, password_ref = checker_mapping(input), ""
+                _mapping, password_ref = checker_mapping(input, password_ref), ""
         model = SourceModel(
             id=input.id,
             type=SourceTypeEnum(input.type),

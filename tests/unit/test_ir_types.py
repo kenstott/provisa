@@ -70,6 +70,14 @@ def test_a_registered_nvarchar_column_lands_as_text_with_no_platform_named():
     assert to_ir("NVARCHAR(256)") == "text"
 
 
+def test_an_exasol_text_column_names_its_character_set_after_its_size():
+    """Exasol reports VARCHAR(64) UTF8 / CHAR(2) ASCII; with its size taken out the type name
+    keeps the character set, and a replica of an Exasol table lands it as text (swap lane)."""
+    for native in ("VARCHAR(64) UTF8", "VARCHAR(2000000) ASCII", "CHAR(2) UTF8", "CHAR(1) ASCII"):
+        assert to_ir(native, "duckdb") == "text"
+        assert to_ir(native) == "text"
+
+
 def test_strips_qualifier_and_lowercases():
     assert to_ir("VARCHAR(255)") == "text"
     assert to_ir("Numeric(10, 2)") == "numeric"
