@@ -59,6 +59,7 @@ PRODUCT_FIELDS = {
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
 RLS_FILTER = "region = 'eu'"
 ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"
+MEMBER_TTL = 3600
 GLOSSARY_TERM = "customer"
 GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.
@@ -147,6 +148,9 @@ def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT)
                 "schema_name": SCHEMA,
                 "table_name": "customers",
                 "description": "Customers of the shop",
+                # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
+                # cache_ttl; it is also the member's freshness in its contract.
+                "cache_ttl": MEMBER_TTL,
                 "product_id": product,
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},
@@ -164,6 +168,9 @@ def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT)
                 "schema_name": SCHEMA,
                 "table_name": "orders",
                 "description": "Orders placed",
+                # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
+                # cache_ttl; it is also the member's freshness in its contract.
+                "cache_ttl": MEMBER_TTL,
                 "product_id": product,
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},
