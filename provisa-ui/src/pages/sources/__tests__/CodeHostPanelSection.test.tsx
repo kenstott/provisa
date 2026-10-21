@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: b4361e39-fc53-401f-a6ff-d3b9fce3e487
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2098: a saved code source's Remote host panel is on the Connection tab, and on no other: a
 // fold carries no section of its own, so the panel sits in the Connection section.
 
