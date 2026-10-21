@@ -22,7 +22,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { driver, type Driver } from "driver.js";
+import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
 import {
@@ -422,6 +422,7 @@ const TourContext = createContext<TourContextValue | null>(null);
  * nothing but a spinner.
  */
 const ANCHOR_WAIT_MS = 45000;
+type DriverPopover = NonNullable<DriveStep["popover"]>;
 
 // How long an advance may take before the visitor is told the tour is waiting. Short enough that a
 // stall never reads as a dead click, long enough that a normal advance shows no spinner at all.
@@ -841,154 +842,165 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // landing page -- not on a Done that rolls into another tour.
         const landing = scopeRef.current === "demo" && isLast ? landingRef.current : null;
         const ends = landing !== null;
-        driverRef.current.highlight({
-          element,
-          popover: {
-            title: t(`tour.steps.${step.key}.title`),
-            description: step.image
-              ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
-              : t(`tour.steps.${step.key}.description`),
-            ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
-            showButtons: ends
-              ? isFirst
-                ? ["close"]
-                : ["previous", "close"]
-              : isFirst
-                ? ["next", "close"]
-                : ["previous", "next", "close"],
-            nextBtnText: isLast
-              ? t("tour.nav.done")
-              : t("tour.nav.next", { current: counted.indexOf(i) + 1, total: counted.length }),
-            prevBtnText: t("tour.nav.back"),
-            onNextClick: () => {
-              clickIfPresent(step.clickAfterNext);
-              const advance = () => {
-                if (isLast) endTour("completed");
-                else setActiveStep(steps[pos + 1]);
-              };
-              const choose = step.chooseOnNext;
-              if (!choose) return advance();
-              // The option is painted only once the picker is open; a picker that never offers it
-              // is the stuck step's to report, like any anchor that never arrives.
-              document.querySelector<HTMLElement>(choose.open)?.click();
-              waitForElement(choose.option, undefined, abort.signal).then(
-                (option) => {
-                  option.click();
-                  advance();
-                },
-                () => setStatus({ kind: "stuck", step: i }),
-              );
-            },
-            onPrevClick: () => {
-              clickIfPresent(step.clickAfterNext);
-              setActiveStep(steps[pos - 1]);
-            },
-            onCloseClick: () => {
-              clickIfPresent(step.clickAfterNext);
-              endTour("dismissed");
-            },
-            // Inject a "Start" button that jumps back to the opening step, so a
-            // visitor can restart the core tour from any popover. Omitted on step 0,
-            // where it would be a no-op, and on a topic, whose card carries Deep Dives
-            // instead: the way back to the core tour's start is the catalog's control.
-            onPopoverRender: (popover) => {
-              // An image step's popover is placed before its picture loads; once it has, its
-              // height is known and the popover is placed again, inside the window.
-              const image =
-                popover.description.querySelector<HTMLImageElement>("img.tour-step-image");
-              if (image && !image.complete) {
-                image.addEventListener("load", () => driverRef.current?.refresh(), { once: true });
-              }
-              // A named demo's step linking another demo: a button that leaves the tour for it.
-              if (step.demo !== undefined) {
-                const demo = step.demo;
-                const open = document.createElement("button");
-                open.type = "button";
-                open.className = "driver-popover-demo-btn";
-                open.dataset.testid = "tour-open-demo";
-                open.textContent = t("tour.nav.openDemo", {
-                  title: t(`tour.demos.${demo}.title`),
-                });
-                open.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  endTour("landed");
-                  navigate(`/demos/${demo}`);
-                });
-                popover.description.after(open);
-              }
-              if (!isFirst && scopeRef.current === "core") {
-                const startBtn = document.createElement("button");
-                startBtn.type = "button";
-                startBtn.className = "driver-popover-start-btn";
-                startBtn.textContent = t("tour.nav.start");
-                startBtn.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  setActiveStep(steps[0]);
-                });
-                popover.footerButtons.prepend(startBtn);
-              }
-              if (landing !== null) {
-                const choice = document.createElement("div");
-                choice.className = "tour-where-next";
-                choice.dataset.testid = "tour-where-next";
-                const heading = document.createElement("p");
-                heading.className = "tour-where-next-heading";
-                heading.textContent = t("tour.nav.whereNext");
-                const buttons = document.createElement("div");
-                buttons.className = "tour-where-next-buttons";
-                const deep = document.createElement("button");
-                deep.type = "button";
-                deep.dataset.testid = "tour-where-next-deep-dives";
-                deep.textContent = t("tour.nav.exploreDeepDives");
-                deep.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  endTour("completed"); // done, and the Deep Dives menu opens
-                });
-                const own = document.createElement("button");
-                own.type = "button";
-                own.dataset.testid = "tour-where-next-own";
-                own.textContent = t("tour.nav.lookAround");
-                own.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  endTour("landed");
-                  navigate(landing.route);
-                });
-                buttons.append(deep, own);
-                const note = document.createElement("p");
-                note.className = "tour-where-next-note";
-                note.textContent = t("tour.nav.anyTime");
-                choice.append(heading, buttons, note);
-                popover.footer.before(choice);
-                return; // the choice is the card's way on: no Deep Dives button beside it
-              }
-              // REQ-1945: every card, core or topic, can leave for the Deep Dives menu at once.
-              {
-                const deepBtn = document.createElement("button");
-                deepBtn.type = "button";
-                deepBtn.className = "driver-popover-deepdives-btn";
-                deepBtn.dataset.testid = "tour-deep-dives";
-                deepBtn.textContent = t("tour.nav.deepDives");
-                deepBtn.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  endTour("deepdives");
-                });
-                popover.footerButtons.prepend(deepBtn);
-              }
-              // On the closing step of the last topic, offer a shortcut straight to the Docs tab.
-              if (isLast && scopeRef.current === "operate") {
-                const docsBtn = document.createElement("button");
-                docsBtn.type = "button";
-                docsBtn.className = "driver-popover-docs-btn";
-                docsBtn.textContent = t("tour.nav.docs");
-                docsBtn.addEventListener("click", () => {
-                  endTour("completed");
-                  navigate("/docs");
-                });
-                popover.footerButtons.prepend(docsBtn);
-              }
-            },
+        const popover: DriverPopover = {
+          title: t(`tour.steps.${step.key}.title`),
+          description: step.image
+            ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
+            : t(`tour.steps.${step.key}.description`),
+          ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
+          showButtons: ends
+            ? isFirst
+              ? ["close"]
+              : ["previous", "close"]
+            : isFirst
+              ? ["next", "close"]
+              : ["previous", "next", "close"],
+          nextBtnText: isLast
+            ? t("tour.nav.done")
+            : t("tour.nav.next", { current: counted.indexOf(i) + 1, total: counted.length }),
+          prevBtnText: t("tour.nav.back"),
+          onNextClick: () => {
+            clickIfPresent(step.clickAfterNext);
+            const advance = () => {
+              if (isLast) endTour("completed");
+              else setActiveStep(steps[pos + 1]);
+            };
+            const choose = step.chooseOnNext;
+            if (!choose) return advance();
+            // The option is painted only once the picker is open; a picker that never offers it
+            // is the stuck step's to report, like any anchor that never arrives.
+            document.querySelector<HTMLElement>(choose.open)?.click();
+            waitForElement(choose.option, undefined, abort.signal).then(
+              (option) => {
+                option.click();
+                advance();
+              },
+              () => setStatus({ kind: "stuck", step: i }),
+            );
           },
+          onPrevClick: () => {
+            clickIfPresent(step.clickAfterNext);
+            setActiveStep(steps[pos - 1]);
+          },
+          onCloseClick: () => {
+            clickIfPresent(step.clickAfterNext);
+            endTour("dismissed");
+          },
+          // Inject a "Start" button that jumps back to the opening step, so a
+          // visitor can restart the core tour from any popover. Omitted on step 0,
+          // where it would be a no-op, and on a topic, whose card carries Deep Dives
+          // instead: the way back to the core tour's start is the catalog's control.
+          onPopoverRender: (popover) => {
+            // An image step's popover is placed before its picture loads; once it has, its
+            // height is known and the popover is placed again, inside the window.
+            const image =
+              popover.description.querySelector<HTMLImageElement>("img.tour-step-image");
+            if (image && !image.complete) {
+              image.addEventListener("load", () => driverRef.current?.refresh(), { once: true });
+            }
+            // A named demo's step linking another demo: a button that leaves the tour for it.
+            if (step.demo !== undefined) {
+              const demo = step.demo;
+              const open = document.createElement("button");
+              open.type = "button";
+              open.className = "driver-popover-demo-btn";
+              open.dataset.testid = "tour-open-demo";
+              open.textContent = t("tour.nav.openDemo", {
+                title: t(`tour.demos.${demo}.title`),
+              });
+              open.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("landed");
+                navigate(`/demos/${demo}`);
+              });
+              popover.description.after(open);
+            }
+            if (!isFirst && scopeRef.current === "core") {
+              const startBtn = document.createElement("button");
+              startBtn.type = "button";
+              startBtn.className = "driver-popover-start-btn";
+              startBtn.textContent = t("tour.nav.start");
+              startBtn.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                setActiveStep(steps[0]);
+              });
+              popover.footerButtons.prepend(startBtn);
+            }
+            if (landing !== null) {
+              const choice = document.createElement("div");
+              choice.className = "tour-where-next";
+              choice.dataset.testid = "tour-where-next";
+              const heading = document.createElement("p");
+              heading.className = "tour-where-next-heading";
+              heading.textContent = t("tour.nav.whereNext");
+              const buttons = document.createElement("div");
+              buttons.className = "tour-where-next-buttons";
+              const deep = document.createElement("button");
+              deep.type = "button";
+              deep.dataset.testid = "tour-where-next-deep-dives";
+              deep.textContent = t("tour.nav.exploreDeepDives");
+              deep.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("completed"); // done, and the Deep Dives menu opens
+              });
+              const own = document.createElement("button");
+              own.type = "button";
+              own.dataset.testid = "tour-where-next-own";
+              own.textContent = t("tour.nav.lookAround");
+              own.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("landed");
+                navigate(landing.route);
+              });
+              buttons.append(deep, own);
+              const note = document.createElement("p");
+              note.className = "tour-where-next-note";
+              note.textContent = t("tour.nav.anyTime");
+              choice.append(heading, buttons, note);
+              popover.footer.before(choice);
+              return; // the choice is the card's way on: no Deep Dives button beside it
+            }
+            // REQ-1945: every card, core or topic, can leave for the Deep Dives menu at once.
+            {
+              const deepBtn = document.createElement("button");
+              deepBtn.type = "button";
+              deepBtn.className = "driver-popover-deepdives-btn";
+              deepBtn.dataset.testid = "tour-deep-dives";
+              deepBtn.textContent = t("tour.nav.deepDives");
+              deepBtn.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("deepdives");
+              });
+              popover.footerButtons.prepend(deepBtn);
+            }
+            // On the closing step of the last topic, offer a shortcut straight to the Docs tab.
+            if (isLast && scopeRef.current === "operate") {
+              const docsBtn = document.createElement("button");
+              docsBtn.type = "button";
+              docsBtn.className = "driver-popover-docs-btn";
+              docsBtn.textContent = t("tour.nav.docs");
+              docsBtn.addEventListener("click", () => {
+                endTour("completed");
+                navigate("/docs");
+              });
+              popover.footerButtons.prepend(docsBtn);
+            }
+          },
+        };
+        driverRef.current.highlight({ element, popover });
+        // A page that renders its anchor again (the SQL explorer's results, once its answer is in)
+        // leaves the step lighting a node no longer on the page, its popover in a corner: the
+        // step's anchor as it is now is lit again.
+        let lit = element;
+        const relight = new MutationObserver(() => {
+          if (lit.isConnected) return;
+          const now = document.querySelector<HTMLElement>(step.element);
+          if (!now || !driverRef.current) return;
+          lit = now;
+          driverRef.current.highlight({ element: now, popover });
         });
+        relight.observe(document.body, { childList: true, subtree: true });
+        abort.signal.addEventListener("abort", () => relight.disconnect(), { once: true });
         // The popover is on screen and the visitor is reading it — the idle window in which the
         // next step's backend work can run for free. Without this the request only starts when
         // Next is clicked, which is the delay that makes an advance feel dead on a loaded machine.

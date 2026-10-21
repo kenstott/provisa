@@ -13,7 +13,7 @@ import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
-import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
 
@@ -1592,6 +1592,21 @@ function timeTravelHeaders(travel: TimeTravel | undefined): Record<string, strin
   return headers;
 }
 
+/** What a refused statement says: in the reader's language by its code and params (serverErrors),
+ * else in the server's own words; never the body it came in. */
+async function refusal(resp: Response, op: string): Promise<string> {
+  const text = await resp.text();
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // Not JSON (a proxy's page, a bare message): its text is all there is to say.
+  }
+  return body !== null && typeof body === "object"
+    ? serverMessage(body as ServerMessageShape, requestFailed(op, resp.status))
+    : text || requestFailed(op, resp.status);
+}
+
 export async function runSql(
   // A statement, or a statement with the values of its $1…$n placeholders. The values are
   // sent beside the text and bound by the server; they are never written into it.
@@ -1640,8 +1655,7 @@ export async function runSql(
       ),
     });
     if (!resp.ok) {
-      const text = await resp.text();
-      return { columns: [], column_types: null, rows: [], error: text };
+      return { columns: [], column_types: null, rows: [], error: await refusal(resp, "runSql") };
     }
     const json = await resp.json();
     // A result landed in the results store comes back as a handle to it, not rows.
@@ -1729,7 +1743,7 @@ export async function explainSql(
     },
     body: JSON.stringify({ sql: sqlText, analyze }),
   });
-  if (!resp.ok) throw new Error(await resp.text());
+  if (!resp.ok) throw new Error(await refusal(resp, "explainSql"));
   return resp.json();
 }
 
