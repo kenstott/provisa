@@ -173,7 +173,7 @@ class TestPgwireAuth:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _noop(*_, deliver):
+        async def _noop(*_, deliver, as_of=None):
             return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
@@ -826,7 +826,7 @@ class TestPgwireTLS:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _one(*_, deliver):
+        async def _one(*_, deliver, as_of=None):
             return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
@@ -911,7 +911,7 @@ class TestPgwireTLS:
             client_ssl.check_hostname = False
             client_ssl.verify_mode = ssl.CERT_NONE
 
-            async def _one(*_, deliver):
+            async def _one(*_, deliver, as_of=None):
                 return EngineResult(rows=[(1,)], column_names=["v"])
 
             with (
