@@ -61,7 +61,7 @@ means the source is unreachable on the Postgres engine, never a silent fallback 
 ## Generic PGXS build against the pinned server
 
 ```sh
-PG_CONFIG=$(python -c "import pgserver,os;print(os.path.join(pgserver.POSTGRES_BIN_PATH,'pg_config'))")
+PG_CONFIG=$(python -c "import os;from pixeltable_pgserver.utils import POSTGRES_BIN_PATH;print(os.path.join(POSTGRES_BIN_PATH,'pg_config'))")
 make USE_PGXS=1 PG_CONFIG="$PG_CONFIG"
 make USE_PGXS=1 PG_CONFIG="$PG_CONFIG" install
 ```
