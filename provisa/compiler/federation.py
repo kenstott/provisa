@@ -32,7 +32,6 @@ from graphql import (
     print_schema,
 )
 
-from provisa.compiler.introspect import ColumnMetadata
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 
@@ -59,48 +58,6 @@ _AnyScalar = GraphQLScalarType(
     parse_value=lambda v: v,
     parse_literal=lambda v, _variables=None: v,
 )
-
-
-def extract_pk_columns(  # REQ-393, REQ-394
-    tables: list[dict],
-    column_types: dict[int, list[ColumnMetadata]],
-) -> dict[int, list[str]]:
-    """Extract primary key columns for each table from the engine metadata.
-
-    Returns table_id -> list of PK column names.
-    Heuristic: columns whose column_name is 'id' or ends with '_id' at position 0,
-    or all columns marked as non-nullable in single-column tables.
-
-    In practice, the engine INFORMATION_SCHEMA does not expose PK constraints directly.
-    This uses the convention that tables declare PK columns via a 'primary_key'
-    field in the registration config. Falls back to first non-nullable column.
-    """
-    result: dict[int, list[str]] = {}
-    for table in tables:
-        table_id = table["id"]
-        # Prefer explicit primary_key from table registration
-        explicit_pk = table.get("primary_key")
-        if explicit_pk:
-            if isinstance(explicit_pk, str):
-                result[table_id] = [explicit_pk]
-            else:
-                result[table_id] = list(explicit_pk)
-            continue
-
-        # Fallback: first column named 'id', or first non-nullable column
-        cols = column_types.get(table_id, [])
-        id_cols = [c for c in cols if c.column_name == "id"]
-        if id_cols:
-            result[table_id] = ["id"]
-            continue
-
-        non_nullable = [c for c in cols if not c.is_nullable]
-        if non_nullable:
-            result[table_id] = [non_nullable[0].column_name]
-        elif cols:
-            result[table_id] = [cols[0].column_name]
-
-    return result
 
 
 def build_federation_schema(  # REQ-259
