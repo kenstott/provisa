@@ -62,7 +62,6 @@
     "dqResultsTableHint": "（由被扫描的表派生；每次扫描每项检查一行，保留每次扫描）",
     "dqResultsTablePlaceholder": "请在上方选择要扫描的表",
     "dqVisibleToLabel": "结果可见于",
-    "dqDescription": "{{table}} 的质量扫描结果——每次扫描每项检查一行，包含结果、指标值和阈值",
     "errorDqContract": "请在“数据质量”面板中选择要扫描的表。",
     "errorDqVisibleTo": "结果必须至少对一个角色可见。",
     "dqScanIntervalLabel": "扫描间隔（秒）",
@@ -135,6 +134,9 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "{{collection}} 的向量",
     "qdrantVector": "{{name}}：{{size}} 维，按 {{distance}} 评分",
-    "qdrantUnnamedVector": "（未命名）"
+    "qdrantUnnamedVector": "（未命名）",
+    "checkReasonLabel": "为什么需要这项检查",
+    "checkReasonHint": "以业务语言表述的质量承诺。它会作为该检查的标题，出现在其服务的每个数据产品中。",
+    "checkReasonPlaceholder": "订单完整且唯一，以便每日收入与财务对账一致"
   }
 }

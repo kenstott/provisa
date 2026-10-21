@@ -62,7 +62,6 @@
     "dqResultsTableHint": "(aus der geprüften Tabelle abgeleitet; eine Zeile pro Prüfung und Scan, jeder Scan bleibt erhalten)",
     "dqResultsTablePlaceholder": "Wählen Sie oben die zu prüfende Tabelle",
     "dqVisibleToLabel": "Ergebnisse sichtbar für",
-    "dqDescription": "Ergebnisse des Qualitätsscans für {{table}} – eine Zeile pro Prüfung und Scan, mit Ergebnis, Messwert und Schwellenwert",
     "errorDqContract": "Wählen Sie im Bereich Datenqualität die zu prüfende Tabelle.",
     "errorDqVisibleTo": "Die Ergebnisse müssen für mindestens eine Rolle sichtbar sein.",
     "dqScanIntervalLabel": "Scannen alle (Sekunden)",
@@ -135,6 +134,9 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vektoren von {{collection}}",
     "qdrantVector": "{{name}}: {{size}} Dimensionen, bewertet nach {{distance}}",
-    "qdrantUnnamedVector": "(ohne Namen)"
+    "qdrantUnnamedVector": "(ohne Namen)",
+    "checkReasonLabel": "Warum diese Prüfung existiert",
+    "checkReasonHint": "Die Qualitätszusage in fachlichen Begriffen. Sie steht über der Prüfung in jedem Datenprodukt, dem sie dient.",
+    "checkReasonPlaceholder": "Bestellungen sind vollständig und eindeutig, damit der Tagesumsatz mit der Finanzabteilung abgestimmt werden kann"
   }
 }

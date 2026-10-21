@@ -62,7 +62,6 @@
     "dqResultsTableHint": "(afgeleid van de gescande tabel; één rij per controle per scan, elke scan blijft bewaard)",
     "dqResultsTablePlaceholder": "Kies hierboven de te scannen tabel",
     "dqVisibleToLabel": "Resultaten zichtbaar voor",
-    "dqDescription": "Kwaliteitsscanresultaten voor {{table}} — één rij per controle per scan, met uitkomst, meetwaarde en drempel",
     "errorDqContract": "Kies de te scannen tabel in het paneel Datakwaliteit.",
     "errorDqVisibleTo": "Resultaten moeten zichtbaar zijn voor minstens één rol.",
     "dqScanIntervalLabel": "Scannen elke (seconden)",
@@ -135,6 +134,9 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vectoren van {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensies, gescoord met {{distance}}",
-    "qdrantUnnamedVector": "(naamloos)"
+    "qdrantUnnamedVector": "(naamloos)",
+    "checkReasonLabel": "Waarom deze controle bestaat",
+    "checkReasonHint": "De kwaliteitsbelofte, in zakelijke termen. Ze staat boven de controle in elk dataproduct dat ze bedient.",
+    "checkReasonPlaceholder": "Bestellingen zijn volledig en uniek zodat de dagomzet aansluit op finance"
   }
 }

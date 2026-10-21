@@ -367,9 +367,10 @@ export function RegisterTableForm({
       const [, schema, table] = dataset.split("/");
       setDqScanned({ schema, table });
       setTableName(`${table}_quality`);
-      setTableDescription(t("registerTableForm.dqDescription", { table: `${schema}.${table}` }));
+      // REQ-2132: a checker's description is its quality claim, why the check exists -- the
+      // registrant's to state, so nothing generic is put there for them.
     },
-    [t],
+    [],
   );
 
   useEffect(() => {
@@ -1004,10 +1005,20 @@ export function RegisterTableForm({
       {!short && (
         <FormField size="long">
           <TextInput
-            label={t("registerTableForm.descriptionLabel")}
+            label={
+              isChecker
+                ? t("registerTableForm.checkReasonLabel")
+                : t("registerTableForm.descriptionLabel")
+            }
+            description={isChecker ? t("registerTableForm.checkReasonHint") : undefined}
             value={tableDescription}
             onChange={(e) => setTableDescription(e.currentTarget.value)}
-            placeholder={t("registerTableForm.descriptionPlaceholder")}
+            placeholder={
+              isChecker
+                ? t("registerTableForm.checkReasonPlaceholder")
+                : t("registerTableForm.descriptionPlaceholder")
+            }
+            data-testid="register-table-description"
           />
         </FormField>
       )}

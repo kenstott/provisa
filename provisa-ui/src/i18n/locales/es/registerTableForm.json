@@ -62,7 +62,6 @@
     "dqResultsTableHint": "(derivada de la tabla analizada; una fila por comprobación y análisis, se conservan todos los análisis)",
     "dqResultsTablePlaceholder": "Elija arriba la tabla que analizar",
     "dqVisibleToLabel": "Resultados visibles para",
-    "dqDescription": "Resultados del análisis de calidad de {{table}}: una fila por comprobación y análisis, con resultado, valor de la métrica y umbral",
     "errorDqContract": "Elija la tabla que analizar en el panel de calidad de datos.",
     "errorDqVisibleTo": "Los resultados deben ser visibles para al menos un rol.",
     "dqScanIntervalLabel": "Analizar cada (segundos)",
@@ -135,6 +134,9 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vectores de {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensiones, puntuado por {{distance}}",
-    "qdrantUnnamedVector": "(sin nombre)"
+    "qdrantUnnamedVector": "(sin nombre)",
+    "checkReasonLabel": "Por qué existe esta comprobación",
+    "checkReasonHint": "La promesa de calidad, en términos de negocio. Encabeza la comprobación en cada producto de datos al que sirve.",
+    "checkReasonPlaceholder": "Los pedidos están completos y son únicos para que los ingresos diarios cuadren con finanzas"
   }
 }
