@@ -235,7 +235,13 @@ export function ListHead<T = never>({
               </Table.Th>
             );
           }
-          return <Table.Th key={i}>{c}</Table.Th>;
+          // The actions column's header is pinned with its cells (ListActions).
+          const actions = isValidElement(c) && c.type === ListActionsHead;
+          return (
+            <Table.Th key={i} className={actions ? "list-actions" : undefined}>
+              {c}
+            </Table.Th>
+          );
         })}
       </Table.Tr>
     </Table.Thead>
@@ -336,6 +342,20 @@ export interface ListRowProps extends Omit<
   /** Click toggles the row's expansion (or whatever the page binds); adds the pointer/hover style. */
   onClick?: () => void;
   selected?: boolean;
+}
+
+/**
+ * A row's actions: its last cell, pinned at the visible end of the row, so a list wider than its
+ * room scrolls under them and they are never cut (App.css .list-actions). Its column's header is
+ * `ListActionsHead`.
+ */
+export function ListActions({ children }: { children: ReactNode }) {
+  return <Table.Td className="list-actions">{children}</Table.Td>;
+}
+
+/** The header of a row's actions column (`ListActions`): pinned with it. */
+export function ListActionsHead({ children }: { children?: ReactNode }) {
+  return <>{children}</>;
 }
 
 export function ListRow({ children, testId, onClick, selected, ...aria }: ListRowProps) {

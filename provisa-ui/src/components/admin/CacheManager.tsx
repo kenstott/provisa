@@ -48,7 +48,7 @@ import { useRegionSelection } from "../../hooks/useRegionSelection";
 import { filterByRegion } from "../../hooks/regionFilter";
 import { RegionSelector } from "../RegionSelector";
 import { displayMvName } from "./mvDisplay";
-import { ListRow } from "../list/ListTable";
+import { ListActions, ListActionsHead, ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { FormFooter } from "../form/FormLayout";
 
@@ -543,8 +543,9 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
               { col: "lastRefresh" },
               { col: "interval" },
               t("cacheManager.materialized.error"),
+              <ListActionsHead key="actions" />,
             ]}
-            colSpan={8}
+            colSpan={9}
             rowKey={(mv) => mv.id}
             page={{ index: mvPage, size: PAGE_SIZE }}
             onGroupedChange={setMvGrouped}
@@ -573,7 +574,7 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
                 <Table.Td maw={200} c="red">
                   {mv.lastError || ""}
                 </Table.Td>
-                <Table.Td>
+                <ListActions>
                   <Group gap="xs" wrap="nowrap">
                     <Button
                       size="xs"
@@ -597,7 +598,7 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
                         : t("cacheManager.materialized.enable")}
                     </Button>
                   </Group>
-                </Table.Td>
+                </ListActions>
               </ListRow>
             )}
           />

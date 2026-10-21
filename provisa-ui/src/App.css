@@ -535,7 +535,9 @@ main {
   border-collapse: collapse;
   background: var(--surface);
   border-radius: 8px;
-  overflow: hidden;
+  /* clip, not hidden: the rounded corners are kept, and the table is no scroll container, so a
+   * row's actions (.list-actions) stay pinned against the page's own scroll. */
+  overflow: clip;
 }
 .data-table th,
 .data-table td {
@@ -931,6 +933,28 @@ main {
 .data-table tbody :where(tr.list-row:nth-child(even of .list-row)),
 .data-table tbody :where(tr.list-row:nth-child(even of .list-row) + tr.list-expand) {
   background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+/* A row's actions (ListActions): the list's last column, pinned at the visible end of the row, so
+ * a list wider than its room scrolls under them and they are never cut. It is opaque, in its row's
+ * stripe, hover and selection colors, with a divider on its leading edge. */
+.data-table .list-actions {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 1;
+  white-space: nowrap;
+  background-color: var(--surface);
+  box-shadow: inset 1px 0 0 var(--border);
+}
+.data-table tbody tr.list-row:nth-child(even of .list-row) > .list-actions {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--text) 4%, transparent),
+    color-mix(in srgb, var(--text) 4%, transparent)
+  );
+}
+.data-table tr.clickable:hover > .list-actions,
+.data-table tr.row-selected > .list-actions {
+  background-color: var(--border);
+  background-image: none;
 }
 /* REQ-1940: expanded-row content for lists whose detail is simple fields. */
 .list-detail {
@@ -2851,7 +2875,9 @@ main {
 /* Transitional: a child a form has not wrapped in a FormField yet keeps a row to itself. Goes when
  * the guard's not-yet-converted list is empty. */
 .form-layout
-  > :not(.form-field):not(.form-field-group):not(.form-identifiers):not(.form-footer):not(.form-layout):not(.form-checks):not(.form-section),
+  > :not(.form-field):not(.form-field-group):not(.form-identifiers):not(.form-footer):not(
+    .form-layout
+  ):not(.form-checks):not(.form-section),
 .form-identifiers > :not(.form-field):not(.form-field-group):not(.form-identifiers__heading) {
   flex: 1 1 100%;
 }
