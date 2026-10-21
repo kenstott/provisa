@@ -8116,7 +8116,7 @@ Bolt auth model establishes principal = user, database = role. A user holds a se
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-The Bolt endpoint must never subvert the connecting user's domain rights. The active role's `domain_access` is the hard ceiling for every query, catalog call (db.labels), relationship counts, and relationship imputation. The ops/business view only narrows within that ceiling. Unknown or unauthorized `db` values return DatabaseNotFound error (no silent fallback). System, meta, and ops domains are identified by domain_id in {"", "meta", "ops"}.
+The Bolt endpoint must never subvert the connecting user's domain rights. The active role's `domain_access` is the hard ceiling for every query, catalog call (db.labels), relationship counts, and relationship imputation. The ops/business view only narrows within that ceiling. [SUPERSEDED by [REQ-2076](#REQ-2076), 2026-10-21 -- a db naming a role not held, known or unknown, is refused as a role probe, not answered DatabaseNotFound. Kept here for history; do not implement against it.] Unknown or unauthorized `db` values return DatabaseNotFound error (no silent fallback). [END SUPERSEDED BLOCK] System, meta, and ops domains are identified by domain_id in {"", "meta", "ops"}. (Amended 2026-10-21, A DB NAMING A ROLE NOT HELD IS A ROLE PROBE:) A `db` value naming a role or a set of roles (provisa_<role>, provisa_ops_<role>) the session does not hold, whether or not such a role exists, is refused as [REQ-2076](#REQ-2076) refuses naming a role not held -- the client is told Neo.ClientError.Security.Forbidden, not permitted, the session ends and the event is recorded. A `db` value that names no role -- outside those forms, naming a meta-role, or a prefix with no role after it -- returns DatabaseNotFound (no silent fallback).
 
 **Use case:** Bolt's flexible query language (cypher) could bypass view/role filtering if not enforced at the session/catalog level. This requirement ensures domain visibility is the immovable constraint, not an advisory filter.
 
@@ -18310,13 +18310,13 @@ A shard is never left running by the departure of the process that would have sc
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Every row of a registered table is traceable in the graph to its table and domain. Each registered table outside the meta domain has a HAS_TABLE relationship to the node that represents it among the meta domain's registered tables, and a row's table and domain are read by following that relationship. HAS_TABLE is left out of variable-length paths unless the query names it.
+Every row of a registered table is traceable in the graph to its table and domain. Each registered table outside the meta domain has a HAS_TABLE relationship to the node that represents it among the meta domain's registered tables, and a row's table and domain are read by following that relationship. HAS_TABLE is left out of variable-length paths unless the query names it. (Amended 2026-10-21, THE LINK IS THE ROW'S DOMAIN AND THE TABLE'S NAME AS QUERIED:) Every row of a registered table carries two system fields, _domain_ (its table's domain) and _name_ (the table's name as a statement queries it -- its alias when it has one, no domain prefix). The pair is the link to the table's registration -- it matches meta.registered_tables(domain_id, table_query_name), a key, so two tables of one name in different domains have separate registrations. HAS_TABLE, SQL joins, the GraphQL _meta join and the pgwire catalog's foreign key all match on that pair.
 
 **Use case:** A graph user can go from a data row to the metadata of the table it came from (domain, description, tags, steward) in one query.
 
 **Code:** `provisa/compiler/context.py`, `provisa/cypher/label_map.py`, `provisa/cypher/path_functions.py`, `provisa/cypher/graph_rewriter.py`, `provisa/api/admin/schema_query.py`
 
-**Tests:** `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_graph_has_table_synthetic.py`, `tests/integration/test_graph_has_table_synthetic_e2e.py`
+**Tests:** `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_graph_has_table_synthetic.py`, `tests/integration/test_graph_has_table_synthetic_e2e.py`, `tests/integration/test_public_columns_every_surface_e2e.py`
 
 ## 10. UI & Admin Surfaces
 
