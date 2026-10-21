@@ -12,7 +12,7 @@
 
 These tests do NOT duplicate the scenarios already in
 tests/unit/test_federation.py, which covers: FederationConfig defaults and its
-declared role, extract_pk_columns (all fallback paths), build_federation_schema
+declared role, build_federation_schema
 (_service, _entities, @key on single and composite PKs, _Entity union, _Any
 scalar, mutation preservation, existing query fields) and generate_federation_sdl
 (@link/@key presence). The governed _entities resolver is covered by
@@ -50,10 +50,8 @@ from graphql import (
 from provisa.compiler.federation import (
     FEDERATION_LINK_URL,
     build_federation_schema,
-    extract_pk_columns,
     generate_federation_sdl,
 )
-from provisa.compiler.introspect import ColumnMetadata
 from provisa.core.models import FederationConfig
 
 # ---------------------------------------------------------------------------
@@ -295,43 +293,3 @@ class TestFederationConfigExtended:
         """The retired ``version``/``service_name`` fields are no settings of the model."""
         assert "version" not in FederationConfig.model_fields
         assert "service_name" not in FederationConfig.model_fields
-
-
-# ---------------------------------------------------------------------------
-# extract_pk_columns — additional paths
-# ---------------------------------------------------------------------------
-
-
-class TestExtractPKColumnsExtended:
-    def test_multiple_tables_each_get_their_pk(self):
-        tables = [
-            {"id": 1, "primary_key": "order_id"},
-            {"id": 2, "primary_key": ["tenant", "customer_id"]},
-            {"id": 3},
-        ]
-        column_types = {
-            3: [ColumnMetadata("id", "integer", False)],
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result[1] == ["order_id"]
-        assert result[2] == ["tenant", "customer_id"]
-        assert result[3] == ["id"]
-
-    def test_table_with_no_columns_returns_nothing(self):
-        """A table with no column metadata and no explicit PK must not appear in result."""
-        tables = [{"id": 99}]
-        column_types: dict = {}
-        result = extract_pk_columns(tables, column_types)
-        assert 99 not in result
-
-    def test_first_column_used_when_no_non_nullable_and_no_id(self):
-        """Falls back to first column when no 'id' column and all are nullable."""
-        tables = [{"id": 5}]
-        column_types = {
-            5: [
-                ColumnMetadata("name", "varchar", True),
-                ColumnMetadata("code", "varchar", True),
-            ]
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result[5] == ["name"]

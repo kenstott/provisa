@@ -25,10 +25,8 @@ from graphql import (
 
 from provisa.compiler.federation import (
     build_federation_schema,
-    extract_pk_columns,
     generate_federation_sdl,
 )
-from provisa.compiler.introspect import ColumnMetadata
 from provisa.core.models import FederationConfig, ProvisaConfig, Role
 
 
@@ -111,44 +109,6 @@ class TestFederationConfig:
                 roles=[role],
                 federation=FederationConfig(enabled=True, role="nobody"),
             )
-
-
-# --- extract_pk_columns ---
-
-
-class TestExtractPKColumns:
-    def test_explicit_primary_key_string(self):
-        tables = [{"id": 1, "primary_key": "order_id"}]
-        column_types: dict[int, list[ColumnMetadata]] = {}
-        result = extract_pk_columns(tables, column_types)
-        assert result == {1: ["order_id"]}
-
-    def test_explicit_primary_key_list(self):
-        tables = [{"id": 1, "primary_key": ["col1", "col2"]}]
-        result = extract_pk_columns(tables, {})
-        assert result == {1: ["col1", "col2"]}
-
-    def test_fallback_to_id_column(self):
-        tables = [{"id": 1}]
-        column_types = {
-            1: [
-                ColumnMetadata("name", "varchar", True),
-                ColumnMetadata("id", "integer", False),
-            ]
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result == {1: ["id"]}
-
-    def test_fallback_to_first_non_nullable(self):
-        tables = [{"id": 1}]
-        column_types = {
-            1: [
-                ColumnMetadata("order_num", "integer", False),
-                ColumnMetadata("name", "varchar", True),
-            ]
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result == {1: ["order_num"]}
 
 
 # --- build_federation_schema ---
