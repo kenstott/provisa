@@ -80,6 +80,34 @@ const PANEL: Selection = {
     },
     commands: { alias: "commands", sel: { fields: ["name", "description", "domain_id"] } },
     tags: { alias: "tags", sel: { fields: ["tag_id"] } },
+    // REQ-2132: every checker table touching the product, in its REQ-1443 state.
+    product_checks: {
+      alias: "checks",
+      sel: {
+        fields: ["id", "state", "checker_table_id", "checked_table_id", "assigned_product_id"],
+        rels: {
+          checker: {
+            alias: "checker",
+            sel: {
+              fields: [
+                "id",
+                "source_id",
+                "domain_id",
+                "table_name",
+                "description",
+                "dq_contract",
+                "latest_outcome",
+                "latest_run_at",
+              ],
+            },
+          },
+          checked_table: {
+            alias: "checkedTable",
+            sel: { fields: ["id", "domain_id", "table_name"] },
+          },
+        },
+      },
+    },
     edges: {
       alias: "edges",
       sel: {
@@ -95,6 +123,10 @@ const PANEL: Selection = {
           "aliases",
           "supporting_tables",
           "vias",
+          // REQ-2126: a nearest physical input, and the source it is read from.
+          "nearest_input",
+          "target_source_type",
+          "target_address",
         ],
         rels: {
           target_product: { alias: "targetProduct", sel: { fields: ["id", "name", "domain_id"] } },
@@ -144,6 +176,9 @@ export interface CoreEdge {
   aliases: string | null;
   supporting_tables: string | null;
   vias: string | null;
+  nearest_input?: boolean | null;
+  target_source_type?: string | null;
+  target_address?: string | null;
   target_product?: { id: string; name: string; domain_id: string } | null;
   target_table?: {
     id: number;
@@ -153,12 +188,36 @@ export interface CoreEdge {
   } | null;
 }
 
+/** REQ-1443's states for a checker table touching a product. */
+export type CheckState = "promise" | "expectation" | "partner_dq" | "orphan";
+
+export interface CoreCheck {
+  id: string;
+  state: CheckState;
+  checker_table_id: number;
+  checked_table_id: number;
+  assigned_product_id: string | null;
+  checker?: {
+    id: number;
+    source_id: string;
+    domain_id: string;
+    table_name: string;
+    description: string | null;
+    dq_contract: string | null;
+    /** Absent when the role's schema does not say; null when the check has never run. */
+    latest_outcome?: "pass" | "fail" | null;
+    latest_run_at?: string | null;
+  } | null;
+  checked_table?: { id: number; domain_id: string; table_name: string } | null;
+}
+
 interface PanelRow {
   id: string;
   member_tables?: CoreTable[];
   commands?: { name: string; description: string | null; domain_id: string }[];
   tags?: { tag_id: string }[];
   edges?: CoreEdge[];
+  product_checks?: CoreCheck[];
 }
 
 /** What the panel shows of one product; a part the role cannot read is undefined. */
@@ -169,6 +228,7 @@ export interface ProductCore {
   tags?: string[];
   terms?: CoreTerm[];
   edges?: CoreEdge[];
+  checks?: CoreCheck[];
   queries: { graphql: string; sql: string; jsonapi: string };
 }
 
@@ -295,6 +355,7 @@ export async function loadProductCore(
         ? await termClosure(m, role, [...bound.values()])
         : undefined,
     edges: row.edges,
+    checks: row.product_checks,
     queries,
   };
 }
