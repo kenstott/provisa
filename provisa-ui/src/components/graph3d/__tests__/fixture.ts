@@ -26,7 +26,7 @@ export const DATA: GraphData = {
       label: "sales.customers",
       domains: ["sales"],
       tags: ["gold"],
-      sensitivity: "pii",
+      sensitivities: ["pii"],
     },
     {
       id: "t:orders",
@@ -34,7 +34,7 @@ export const DATA: GraphData = {
       label: "sales.orders",
       domains: ["sales"],
       tags: [],
-      sensitivity: null,
+      sensitivities: [],
     },
     {
       id: "c:customers.email",
@@ -42,7 +42,7 @@ export const DATA: GraphData = {
       label: "email",
       parent: "t:customers",
       domains: ["sales"],
-      sensitivity: "pii",
+      sensitivities: ["pii"],
     },
     {
       id: "c:orders.total",

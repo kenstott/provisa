@@ -64,7 +64,8 @@ export interface GraphNode {
   /** The domains the node is in; a node with none (a tag, a checker's run) is not filtered by it. */
   domains?: string[];
   tags?: string[];
-  sensitivity?: string | null;
+  /** The sensitive tags on the node (or on any of a table's columns). */
+  sensitivities?: string[];
   /** A column's table: the column is drawn inside it until the table is expanded. */
   parent?: string;
 }
@@ -169,7 +170,7 @@ export function filterChoices(data: GraphData) {
   for (const n of data.nodes) {
     n.domains?.forEach((d) => domains.add(d));
     n.tags?.forEach((t) => tags.add(t));
-    if (n.sensitivity) sensitivities.add(n.sensitivity);
+    n.sensitivities?.forEach((x) => sensitivities.add(x));
   }
   const sorted = (s: Set<string>) => [...s].sort();
   return { domains: sorted(domains), tags: sorted(tags), sensitivities: sorted(sensitivities) };
@@ -184,8 +185,8 @@ function passes(n: GraphNode, f: GraphFilters): boolean {
     if (n.type === "tag") return f.tags.includes(n.label);
     if (n.tags !== undefined && !n.tags.some((t) => f.tags.includes(t))) return false;
   }
-  if (f.sensitivities.length > 0 && n.sensitivity !== undefined) {
-    if (n.sensitivity === null || !f.sensitivities.includes(n.sensitivity)) return false;
+  if (f.sensitivities.length > 0 && n.sensitivities !== undefined) {
+    if (!n.sensitivities.some((x) => f.sensitivities.includes(x))) return false;
   }
   return true;
 }
@@ -272,7 +273,7 @@ export function visibleGraph(
 const judged = (n: GraphNode) =>
   (n.domains !== undefined && n.domains.length > 0) ||
   n.tags !== undefined ||
-  n.sensitivity !== undefined;
+  n.sensitivities !== undefined;
 
 /** Everything reached from ``start`` without passing through another product or a domain. */
 function reach(start: string, edges: GraphEdge[], byId: Map<string, GraphNode>): Set<string> {
