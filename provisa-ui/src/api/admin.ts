@@ -1759,8 +1759,7 @@ export async function nlToSql(
       body: JSON.stringify({ question, strict }),
     });
     if (!resp.ok) {
-      const text = await resp.text();
-      return { sql: "", attempts: 0, error: text };
+      return { sql: "", attempts: 0, error: await refusal(resp, "nlToSql") };
     }
     const result = await resp.json();
     if (result.sql) {

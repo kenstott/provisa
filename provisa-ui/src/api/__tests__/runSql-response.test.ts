@@ -14,7 +14,7 @@
 
 import i18n from "i18next";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { explainSql, runSql } from "../admin";
+import { explainSql, nlToSql, runSql } from "../admin";
 import en from "../../i18n/locales/en/serverErrors.json";
 
 function answer(body: unknown) {
@@ -109,6 +109,21 @@ describe("runSql — a statement the server refused", () => {
       }),
     );
     await expect(explainSql("SELECT 1")).rejects.toThrow(
+      "The view v can be read only within its read window. It next opens at 02:00.",
+    );
+  });
+
+  it("says an NL question's refusal in the same words", async () => {
+    await i18n.init({ lng: "en", resources: { en: { translation: en } } });
+    refuse(
+      503,
+      JSON.stringify({
+        detail: "raw",
+        code: "data.view_outside_load_window",
+        params: { view: "v", opens_at: "02:00" },
+      }),
+    );
+    expect((await nlToSql("what closed?")).error).toBe(
       "The view v can be read only within its read window. It next opens at 02:00.",
     );
   });
