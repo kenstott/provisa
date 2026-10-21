@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Loader, Modal, ScrollArea, Table, Tabs, Text } from "@mantine/core";
+import { Alert, Badge, Box, Loader, Modal, Tabs, Text } from "@mantine/core";
 import {
   fetchProfileRun,
   fetchProfileRuns,
@@ -20,6 +20,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { ProfileChecksBar } from "./ProfileChecksBar";
 import { ProfileDriftPanel } from "./ProfileDriftPanel";
+import { ProfileResultTable } from "./ProfileResultTable";
 import { ProfileDriftStrata } from "./profile3d/drift/ProfileDriftStrata";
 import { ProfileJointCloud } from "./profile3d/joint/ProfileJointCloud";
 import { ProfileRelations } from "./profile3d/relations/ProfileRelations";
@@ -57,7 +58,15 @@ function cell(value: unknown): string {
   return String(value);
 }
 
-function RowsTable({ rows, testId }: { rows: Record<string, unknown>[]; testId: string }) {
+function RowsTable({
+  rows,
+  testId,
+  title,
+}: {
+  rows: Record<string, unknown>[];
+  testId: string;
+  title: string;
+}) {
   const { t } = useTranslation();
   if (rows.length === 0) {
     return (
@@ -68,31 +77,20 @@ function RowsTable({ rows, testId }: { rows: Record<string, unknown>[]; testId: 
   }
   const keys = Object.keys(rows[0]).filter((k) => !RUN_KEY.has(k));
   return (
-    <ScrollArea h={360}>
-      <Table striped withTableBorder fz="xs" data-testid={testId}>
-        <Table.Thead>
-          <Table.Tr>
-            {keys.map((k) => (
-              <Table.Th key={k}>{k}</Table.Th>
-            ))}
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {rows.map((r, i) => (
-            <Table.Tr key={i}>
-              {keys.map((k) => (
-                <Table.Td key={k}>{cell(r[k])}</Table.Td>
-              ))}
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </ScrollArea>
+    <ProfileResultTable<Record<string, unknown>>
+      rows={rows}
+      columns={keys.map((k) => ({ key: k, label: k, value: (r) => r[k], cell: (r) => cell(r[k]) }))}
+      rowKey={(_r, i) => i}
+      testId={testId}
+      title={title}
+      height={360}
+    />
   );
 }
 
 // REQ-1934: a member table's run history and one run's results, as the profiler wrote them. Opened
-// only from the table editor, so only those who may edit the table see it.
+// from the table editor and, since REQ-2123's amendment, from its read-only panel too (not for a
+// governance-only viewer, who profiles nothing).
 export function ProfileRunsModal({
   tableId,
   tableName,
@@ -150,41 +148,56 @@ export function ProfileRunsModal({
         </Text>
       )}
       {runs != null && runs.length > 0 && (
-        <ScrollArea h={200} mb="md">
-          <Table highlightOnHover withTableBorder fz="xs" data-testid="profile-runs-list">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("profileRunsModal.runTime")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.status")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.rowCount")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.profiledRows")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.method")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.duplicates")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.duration")}</Table.Th>
-                <Table.Th>{t("profileRunsModal.error")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {runs.map((run) => (
-                <Table.Tr
-                  key={run.run_id}
-                  style={{ cursor: run.status === "succeeded" ? "pointer" : undefined }}
-                  bg={run.run_id === selected ? "var(--mantine-color-blue-light)" : undefined}
-                  onClick={() => run.status === "succeeded" && setSelected(run.run_id)}
-                  data-testid={`profile-run-${run.run_id}`}
-                >
-                  <Table.Td>{new Date(run.run_time).toLocaleString()}</Table.Td>
-                  <Table.Td>
-                    <Badge size="xs" color={run.status === "succeeded" ? "green" : "red"}>
-                      {t(`profileRunsModal.status_${run.status}`)}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{cell(run.row_count)}</Table.Td>
-                  <Table.Td>
-                    {cell(run.profiled_rows)}
-                    {run.sampled ? ` (${t("profileRunsModal.sampled")})` : ""}
-                  </Table.Td>
-                  <Table.Td data-testid={`profile-run-method-${run.run_id}`}>
+        <Box mb="md">
+          <ProfileResultTable
+            rows={runs}
+            expandable={false}
+            height={200}
+            title={t("profileRunsModal.title", { table: tableName })}
+            testId="profile-runs-list"
+            rowKey={(run) => run.run_id}
+            rowTestId={(run) => `profile-run-${run.run_id}`}
+            selected={(run) => run.run_id === selected}
+            onRowClick={(run) => run.status === "succeeded" && setSelected(run.run_id)}
+            columns={[
+              {
+                key: "run_time",
+                label: t("profileRunsModal.runTime"),
+                value: (run) => run.run_time,
+                cell: (run) => new Date(run.run_time).toLocaleString(),
+              },
+              {
+                key: "status",
+                label: t("profileRunsModal.status"),
+                value: (run) => t(`profileRunsModal.status_${run.status}`),
+                cell: (run) => (
+                  <Badge size="xs" color={run.status === "succeeded" ? "green" : "red"}>
+                    {t(`profileRunsModal.status_${run.status}`)}
+                  </Badge>
+                ),
+              },
+              {
+                key: "row_count",
+                label: t("profileRunsModal.rowCount"),
+                value: (run) => run.row_count,
+                cell: (run) => cell(run.row_count),
+              },
+              {
+                key: "profiled_rows",
+                label: t("profileRunsModal.profiledRows"),
+                value: (run) => run.profiled_rows,
+                cell: (run) =>
+                  `${cell(run.profiled_rows)}${run.sampled ? ` (${t("profileRunsModal.sampled")})` : ""}`,
+              },
+              {
+                key: "method",
+                label: t("profileRunsModal.method"),
+                value: (run) =>
+                  run.sample_method == null
+                    ? ""
+                    : t(`profileRunsModal.method_${run.sample_method}`),
+                cell: (run) => (
+                  <span data-testid={`profile-run-method-${run.run_id}`}>
                     {run.sample_method == null
                       ? ""
                       : t(`profileRunsModal.method_${run.sample_method}`)}
@@ -193,26 +206,49 @@ export function ProfileRunsModal({
                           pct: (run.sample_fraction * 100).toFixed(1),
                         })}`
                       : ""}
-                  </Table.Td>
-                  <Table.Td data-testid={`profile-run-duplicates-${run.run_id}`}>
+                  </span>
+                ),
+              },
+              {
+                key: "duplicates",
+                label: t("profileRunsModal.duplicates"),
+                value: (run) => run.duplicate_rows,
+                cell: (run) => (
+                  <span data-testid={`profile-run-duplicates-${run.run_id}`}>
                     {run.duplicate_rows == null
                       ? ""
                       : t("profileRunsModal.duplicateRows", {
                           rows: run.duplicate_rows,
                           pct: ((run.duplicate_share ?? 0) * 100).toFixed(1),
                         })}
-                  </Table.Td>
-                  <Table.Td>{t("profileRunsModal.ms", { ms: run.duration_ms })}</Table.Td>
-                  <Table.Td>{run.error ?? ""}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+                  </span>
+                ),
+              },
+              {
+                key: "duration",
+                label: t("profileRunsModal.duration"),
+                value: (run) => run.duration_ms,
+                cell: (run) => t("profileRunsModal.ms", { ms: run.duration_ms }),
+              },
+              {
+                key: "error",
+                label: t("profileRunsModal.error"),
+                value: (run) => run.error ?? "",
+              },
+            ]}
+          />
+        </Box>
       )}
       {selected != null && results == null && !error && <Loader size="sm" />}
       {results != null && (
-        <Tabs defaultValue="columns" keepMounted={false}>
+        // REQ-2123 (amended): the many result tabs read down the side, each title on its own line.
+        <Tabs
+          defaultValue="columns"
+          keepMounted={false}
+          orientation="vertical"
+          // A panel beside the tabs is as wide as is left: a wide table scrolls inside it.
+          styles={{ panel: { minWidth: 0 } }}
+        >
           <Tabs.List>
             {/* REQ-2123, REQ-2124: the run drawn in 3D, ahead of its result relations. */}
             {VIEWS_3D.map((v) => (
@@ -226,16 +262,16 @@ export function ProfileRunsModal({
               </Tabs.Tab>
             ))}
           </Tabs.List>
-          <Tabs.Panel value="terrain" pt="xs">
+          <Tabs.Panel value="terrain" pl="sm">
             <ProfileTerrain results={results} tableName={tableName} />
           </Tabs.Panel>
-          <Tabs.Panel value="relationsMap" pt="xs">
+          <Tabs.Panel value="relationsMap" pl="sm">
             <ProfileRelations results={results} tableName={tableName} />
           </Tabs.Panel>
-          <Tabs.Panel value="jointCloud" pt="xs">
+          <Tabs.Panel value="jointCloud" pl="sm">
             <ProfileJointCloud results={results} tableName={tableName} />
           </Tabs.Panel>
-          <Tabs.Panel value="driftStrata" pt="xs">
+          <Tabs.Panel value="driftStrata" pl="sm">
             {selected != null && runs != null && role && (
               <ProfileDriftStrata
                 tableId={tableId}
@@ -248,7 +284,7 @@ export function ProfileRunsModal({
             )}
           </Tabs.Panel>
           {KINDS.map((k) => (
-            <Tabs.Panel key={k} value={k} pt="xs">
+            <Tabs.Panel key={k} value={k} pl="sm">
               {k === "drift" && selected != null && role ? (
                 <ProfileDriftPanel
                   tableId={tableId}
@@ -257,7 +293,11 @@ export function ProfileRunsModal({
                   rows={results.drift ?? []}
                 />
               ) : (
-                <RowsTable rows={results[k] ?? []} testId={`profile-rows-${k}`} />
+                <RowsTable
+                  rows={results[k] ?? []}
+                  testId={`profile-rows-${k}`}
+                  title={`${tableName} · ${t(`profileRunsModal.kind_${k}`)}`}
+                />
               )}
             </Tabs.Panel>
           ))}

@@ -10,7 +10,8 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Loader, ScrollArea, Table, Text } from "@mantine/core";
+import { Alert, Badge, Box, Loader, Text } from "@mantine/core";
+import { ProfileResultTable } from "./ProfileResultTable";
 import { fetchMeasureHistory, type MeasureHistory, type MeasureKey } from "../../api/profiler";
 
 type Row = Record<string, unknown>;
@@ -20,6 +21,11 @@ function num(value: unknown): string {
   if (typeof value === "number")
     return Number.isInteger(value) ? String(value) : value.toPrecision(4);
   return String(value);
+}
+
+function label(row: Row): string {
+  const k = keyOf(row);
+  return [k.scope, k.column, k.subject, k.measure].filter((p) => p != null).join(" · ");
 }
 
 function keyOf(row: Row): MeasureKey {
@@ -51,33 +57,40 @@ const SHOWN = [
 function History({ history }: { history: MeasureHistory }) {
   const { t } = useTranslation();
   return (
-    <Table withTableBorder fz="xs" mt="xs" data-testid="profile-drift-history">
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>{t("profileDriftPanel.runTime")}</Table.Th>
-          <Table.Th>{t("profileDriftPanel.value")}</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {history.points.map((p) => (
-          <Table.Tr
-            key={p.runId}
-            fw={p.current ? 700 : undefined}
-            data-testid={`profile-drift-point-${p.runId}`}
-          >
-            <Table.Td>
-              {new Date(p.runTime).toLocaleString()}
-              {p.current && history.drift.drifting === true && (
-                <Badge ml="xs" size="xs" color="red">
-                  {t("profileDriftPanel.drifting")}
-                </Badge>
-              )}
-            </Table.Td>
-            <Table.Td>{num(p.value)}</Table.Td>
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+    <Box mt="xs">
+      <ProfileResultTable
+        rows={history.points}
+        height={240}
+        title={t("profileDriftPanel.value")}
+        testId="profile-drift-history"
+        rowKey={(p) => p.runId}
+        rowTestId={(p) => `profile-drift-point-${p.runId}`}
+        rowProps={(p) => ({ fw: p.current ? 700 : undefined })}
+        columns={[
+          {
+            key: "run_time",
+            label: t("profileDriftPanel.runTime"),
+            value: (p) => p.runTime,
+            cell: (p) => (
+              <>
+                {new Date(p.runTime).toLocaleString()}
+                {p.current && history.drift.drifting === true && (
+                  <Badge ml="xs" size="xs" color="red">
+                    {t("profileDriftPanel.drifting")}
+                  </Badge>
+                )}
+              </>
+            ),
+          },
+          {
+            key: "value",
+            label: t("profileDriftPanel.value"),
+            value: (p) => p.value,
+            cell: (p) => num(p.value),
+          },
+        ]}
+      />
+    </Box>
   );
 }
 
@@ -115,54 +128,49 @@ export function ProfileDriftPanel({
   }
   return (
     <>
-      <ScrollArea h={300}>
-        <Table striped highlightOnHover withTableBorder fz="xs" data-testid="profile-rows-drift">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("profileDriftPanel.measure")}</Table.Th>
-              {SHOWN.map((k) => (
-                <Table.Th key={k}>{t(`profileDriftPanel.col_${k}`)}</Table.Th>
-              ))}
-              <Table.Th>{t("profileDriftPanel.drift")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {rows.map((r, i) => {
-              const k = keyOf(r);
-              const label = [k.scope, k.column, k.subject, k.measure]
-                .filter((p) => p != null)
-                .join(" · ");
-              return (
-                <Table.Tr
-                  key={i}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => {
-                    setHistory(null);
-                    setError(null);
-                    setPicked(k);
-                  }}
-                  data-testid={`profile-drift-row-${i}`}
-                >
-                  <Table.Td>
-                    {label}
-                    {r.detail != null && ` (${String(r.detail)})`}
-                  </Table.Td>
-                  {SHOWN.map((c) => (
-                    <Table.Td key={c}>{num(r[c])}</Table.Td>
-                  ))}
-                  <Table.Td>
-                    {r.drifting === true && (
-                      <Badge size="xs" color="red" data-testid={`profile-drift-flag-${i}`}>
-                        {String(r.drift_reason)}
-                      </Badge>
-                    )}
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
-      </ScrollArea>
+      <ProfileResultTable
+        rows={rows}
+        height={300}
+        title={t("profileRunsModal.kind_drift")}
+        testId="profile-rows-drift"
+        rowKey={(_r, i) => i}
+        rowTestId={(_r, i) => `profile-drift-row-${i}`}
+        onRowClick={(r) => {
+          setHistory(null);
+          setError(null);
+          setPicked(keyOf(r));
+        }}
+        columns={[
+          {
+            key: "measure",
+            label: t("profileDriftPanel.measure"),
+            value: (r) => label(r),
+            cell: (r) => (
+              <>
+                {label(r)}
+                {r.detail != null && ` (${String(r.detail)})`}
+              </>
+            ),
+          },
+          ...SHOWN.map((c) => ({
+            key: c,
+            label: t(`profileDriftPanel.col_${c}`),
+            value: (r: Row) => r[c],
+            cell: (r: Row) => num(r[c]),
+          })),
+          {
+            key: "drift",
+            label: t("profileDriftPanel.drift"),
+            value: (r) => (r.drifting === true ? String(r.drift_reason) : ""),
+            cell: (r) =>
+              r.drifting === true && (
+                <Badge size="xs" color="red" data-testid={`profile-drift-flag-${rows.indexOf(r)}`}>
+                  {String(r.drift_reason)}
+                </Badge>
+              ),
+          },
+        ]}
+      />
       {error && (
         <Alert color="red" mt="xs" data-testid="profile-drift-error">
           {error}
