@@ -551,17 +551,19 @@ def _scalar_drift(
     slope = _slope(points)
     span = max(x for x, _ in points) - min(x for x, _ in points)
     row.update(baseline=baseline, spread=mad, slope=slope)
-    constant = all(_same(v, baseline) for v in values)
-    if not constant:
+    # No spread to measure a distance in: the window is constant (within rounding), or most of it
+    # is its median, so the median absolute deviation is 0.
+    no_spread = mad == 0 or all(_same(v, baseline) for v in values)
+    if not no_spread:
         row["distance"] = (value - baseline) / mad
         if slope is not None:
             row["slope_spread"] = slope * span / mad
     reasons = []
     if row["distance"] is not None and abs(row["distance"]) > settings.drift_distance:
         reasons.append("distance")
-    # A measure constant across its window has no spread to measure a distance in: any change
-    # from that constant is drifting (REQ-1934 SEASONAL AND ROBUST BASELINES, MAD spread).
-    if constant and not _same(value, baseline):
+    # A measure whose window has no spread has none to measure a distance in: any change from its
+    # baseline is drifting (REQ-1934 SEASONAL AND ROBUST BASELINES, MAD spread).
+    if no_spread and not _same(value, baseline):
         reasons.append("distance")
     if row["slope_spread"] is not None and abs(row["slope_spread"]) > settings.drift_slope:
         reasons.append("slope")
