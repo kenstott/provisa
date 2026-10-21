@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "Relações em {{table}}",
+    "none": "Esta execução não encontrou correlações nem dependências entre colunas.",
+    "canvasLabel": "Mapa 3D das colunas da tabela, ligadas por suas correlações e dependências",
+    "minStrength": "Intensidade",
+    "showCorrelation": "Correlações",
+    "showDependence": "Dependências",
+    "legendPositive": "sobem juntas",
+    "legendNegative": "movem-se em sentido oposto",
+    "legendRatio": "a categoria explica o número",
+    "legendDependence": "depende de (a seta aponta para a coluna dependente)",
+    "tipLinks_one": "Relações: {{count}}",
+    "tipLinks_other": "Relações: {{count}}",
+    "columns": "Colunas",
+    "noLinks": "Nenhuma relação com esta intensidade.",
+    "note": "A espessura da barra é a intensidade: |Spearman ρ| para correlações, a parcela da variância explicada para uma razão de correlação e a parcela da incerteza da coluna que seus pais eliminam para uma dependência. Colunas cinzentas pertencem a uma tabela pai.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "Razão de correlação η²",
+    "measure_dependence": "Dependência (parcela da incerteza eliminada)",
+    "family_numeric": "numérico",
+    "family_temporal": "data/hora",
+    "family_text": "texto",
+    "family_boolean": "booleano",
+    "family_other": "outro",
+    "family_foreign": "coluna da tabela pai"
+  }
+}

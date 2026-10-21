@@ -38,6 +38,10 @@
     "kind_dependencies": "Dependencias",
     "kind_joint_counts": "Recuentos conjuntos",
     "kind_constraints": "Restricciones propuestas",
-    "kind_constraint_checks": "Comprobaciones de restricciones"
+    "kind_constraint_checks": "Comprobaciones de restricciones",
+    "kind_terrain": "Terreno",
+    "kind_relationsMap": "Relaciones",
+    "kind_jointCloud": "Nube conjunta",
+    "kind_driftStrata": "Estratos de deriva"
   }
 }

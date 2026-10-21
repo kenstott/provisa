@@ -734,6 +734,26 @@
         "title": "Les lignes écrites deux fois",
         "description": "Le modèle déclare customer_id comme clé, mais l'export n'avait aucune contrainte : 150 clients y figurent deux fois, tous les champs identiques. Le profil compte les lignes répétées et les valeurs de clé portées par plus d'une ligne."
       },
+      "profilingDrift": {
+        "title": "Ce qui a changé depuis la dernière exécution",
+        "description": "La mise en place a lancé le profileur deux fois, et entre les deux, la synchronisation suivante du CRM a écrit chaque code postal américain au format ZIP+4. La table de dérive compare chaque mesure à celle de l'exécution précédente : les mesures que le changement de postal_code a déplacées sont signalées en dérive, et les colonnes que la synchronisation n'a pas touchées ne le sont pas."
+      },
+      "profilingOriginal": {
+        "title": "Les vrais clients",
+        "description": "Dix clients tels que le CRM les conserve. Ensuite, la même instruction dans un environnement généré à partir du profil."
+      },
+      "profilingToSynthetic": {
+        "title": "Passer en synthetic",
+        "description": "Ensuite, le sélecteur passe à <strong>synthetic</strong>, un environnement Test (synthetic)."
+      },
+      "profilingSynthetic": {
+        "title": "Généré à partir du profil",
+        "description": "La même instruction dans synthetic : chaque ligne est générée à partir du profil des clients, avec les mêmes colonnes, formes de valeurs et dispersion, et aucun vrai client. Le profil suffit pour générer des données de test."
+      },
+      "profilingToProd": {
+        "title": "Retour à la production",
+        "description": "Ensuite, le sélecteur revient à prod."
+      },
       "profilingRest": {
         "title": "La même réponse en REST",
         "description": "La vue est aussi un endpoint REST. Un outil de qualité des données ou un script de migration obtient le profil sans écrire de SQL."

@@ -734,6 +734,26 @@
         "title": "写了两次的行",
         "description": "模型将 customer_id 声明为键，但导出中没有约束：150 位客户出现了两次，所有字段都相同。画像统计重复的行以及出现在多行中的键值。"
       },
+      "profilingDrift": {
+        "title": "自上次运行以来有什么变化",
+        "description": "设置运行了两次分析器，在两次运行之间，CRM 的下一次同步把每个美国邮政编码都写成了 ZIP+4。漂移表把每个度量与上一次运行的度量比较：postal_code 的变化所改变的度量被标记为漂移，同步没有触及的列则没有。"
+      },
+      "profilingOriginal": {
+        "title": "真实的客户",
+        "description": "CRM 中保存的十位客户。接下来，在从分析结果生成的环境中运行同一条语句。"
+      },
+      "profilingToSynthetic": {
+        "title": "切换到 synthetic",
+        "description": "接下来，切换器切换到 <strong>synthetic</strong>，一个 Test (synthetic) 环境。"
+      },
+      "profilingSynthetic": {
+        "title": "从分析结果生成",
+        "description": "在 synthetic 中运行同一条语句：每一行都从客户的分析结果生成，列、取值形态和分布都相同，却没有一位真实客户。有了分析结果就足以生成测试数据。"
+      },
+      "profilingToProd": {
+        "title": "回到生产",
+        "description": "接下来，切换器回到 prod。"
+      },
       "profilingRest": {
         "title": "通过 REST 获得同样的答案",
         "description": "该视图也是一个 REST 终结点。数据质量工具或迁移脚本无需编写 SQL 即可获得画像。"

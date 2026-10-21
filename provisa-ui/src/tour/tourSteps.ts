@@ -28,7 +28,7 @@
 import type { Capability } from "../types/auth";
 import type { OrgHas, TourPrerequisites } from "./tourPrerequisites";
 import type { UiAction } from "../mcp/uiActions";
-import PREREQUISITES from "./tourPrerequisites.json";
+import PREREQUISITES from "./tourPrerequisites.json" with { type: "json" };
 
 export interface TourStep {
   /** Route to navigate to before the step is shown. Omit to stay put. */

@@ -69,6 +69,7 @@
     "rrule": "^2.8.1",
     "simple-icons": "^16.34.0",
     "sql-formatter": "^15.8.0",
+    "three": "0.170.0",
     "vite-plugin-monaco-editor": "^1.1.0",
     "write-excel-file": "^2.3.10"
   },
@@ -85,6 +86,7 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "0.170.0",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.8",
     "eslint": "^10.4.1",

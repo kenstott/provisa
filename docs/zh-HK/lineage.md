@@ -39,6 +39,7 @@ orders.region ─╯
 | `source` | 綠色 | 基底表的一個欄位 |
 | `derived` | 藍色 | 由 SQL 運算式（函式、運算子、CTE）產出 |
 | `command` | 紫色 | 來自某個已註冊命令的輸出欄位 |
+| `native` | 橙色 | 資料源讀取的原始欄位，位於已註冊表的欄之下 |
 
 節點上額外的環：
 
@@ -52,6 +53,27 @@ orders.region ─╯
 每條邊都帶著產出目標欄位的原始 SQL 運算式，以及一份具名操作清單：SQL 函式（`sql_function`）、算術／邏輯運算子（`operator`）、已註冊的命令（`command`）、裸欄位引用（`identity`），以及常值（`constant`）。
 
 由命令呼叫而來的邊，在 UI 中以紫色虛線呈現。
+
+### 已註冊表之下
+
+擁有資料源註冊權限的用戶會在每個源欄之下再看到一跳：資料源讀取時的欄位，放在一個代表其讀取位置的框中。該框帶有資料源的標誌和類型標籤（與 Sources 頁面顯示的一致），以及按資料源類型給出的地址：
+
+| 資料源 | 地址 |
+| --- | --- |
+| OpenAPI | 操作（`GET /v2/customers`）、其固定參數和行的位置 |
+| Remote GraphQL | 根欄位、其必需參數和行的位置 |
+| MongoDB、Cosmos DB | 數據庫以及集合或容器 |
+| Elasticsearch、Qdrant | 索引或集合 |
+| CSV、Parquet、檔案、日誌 | 路徑，以及讀取多個檔案的表的檔案通配模式 |
+| Kafka | 主題 |
+| 程式碼資料源 | 函數 |
+| 其他任何資料源 | 原生的模式和表 |
+
+原始欄位在欄有欄位路徑時就是該路徑，否則就是欄自己的名稱。從它到已註冊欄的邊會標明重新命名方式：`path`、`alias` 或 `naming`（命名約定）。已註冊表的框說明它如何提供服務：`virtual`，在每條語句時讀取；或 `replica`，附帶其 TTL 和上次載入時間。憑據、密鑰引用以及 URL 中的用戶名、密碼和 query 從不顯示。沒有資料源註冊權限的用戶只能看到從已註冊表向上的血緣。
+
+### 連結
+
+當用戶的權限能打開相應頁面時，每個元素都會在其定義處打開。單擊欄位會打開它的表、視圖或資料源；雙擊框會打開它的關係；單擊命令的邊會打開該命令。內置 SQL 函數沒有頁面，也沒有連結。
 
 ## 聯邦級圖 {: #federation-wide-graph }
 
@@ -106,6 +128,26 @@ Content-Type: application/json
   "outputs": ["id", "embedding"]
 }
 ```
+
+對於擁有資料源註冊權限的調用方，兩個端點都會加上原生這一跳：類型為 `native` 的節點，以及一個以每個原生框的關係（`native:<domain>.<table>`）為鍵的 `natives` 物件：
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+副本的 `served` 為 `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`。對於其他調用方，`natives` 為空。
 
 SQL 無法剖析時傳回 HTTP 422。
 

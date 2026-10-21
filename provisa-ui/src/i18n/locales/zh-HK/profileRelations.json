@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "{{table}} 中的關係",
+    "none": "本次執行未發現欄位之間的相關性或依賴關係。",
+    "canvasLabel": "表中各欄位的 3D 圖，欄位之間以相關性和依賴關係相連",
+    "minStrength": "強度",
+    "showCorrelation": "相關性",
+    "showDependence": "依賴關係",
+    "legendPositive": "同向上升",
+    "legendNegative": "反向變化",
+    "legendRatio": "類別解釋數值",
+    "legendDependence": "依賴於（箭頭指向被依賴的欄位）",
+    "tipLinks_one": "關係：{{count}}",
+    "tipLinks_other": "關係：{{count}}",
+    "columns": "欄位",
+    "noLinks": "此強度下沒有關係。",
+    "note": "桿的粗細表示強度：相關性為 |Spearman ρ|，相關比為被解釋變異數的佔比，依賴關係為其父欄位消除的該欄位不確定性的佔比。灰色欄位屬於父表。",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "相關比 η²",
+    "measure_dependence": "依賴度（消除的不確定性佔比）",
+    "family_numeric": "數值",
+    "family_temporal": "日期/時間",
+    "family_text": "文字",
+    "family_boolean": "布林",
+    "family_other": "其他",
+    "family_foreign": "父表的欄位"
+  }
+}

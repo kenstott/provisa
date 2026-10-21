@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "Estratos de deriva de {{table}}",
+    "none": "Ninguna de estas ejecuciones contiene valores que los estratos puedan dibujar.",
+    "canvasLabel": "Pila 3D de la distribución de una columna en cada ejecución, la más antigua al fondo",
+    "column": "Columna",
+    "legendShare": "proporción de las filas de la ejecución",
+    "legendMedian": "mediana, de una ejecución a otra",
+    "legendDrift": "ejecución con deriva",
+    "tipShare": "{{pct}} de las filas no nulas de la ejecución",
+    "tipNullShare": "{{pct}} de las filas de la ejecución",
+    "drifted": "Con deriva ({{reason}})",
+    "steady": "Sin deriva señalada",
+    "noValues": "Sin valores en esta ejecución",
+    "runs": "Ejecuciones, las más recientes primero",
+    "columnsNote": "Mediana y proporción de nulos de cada ejecución. La ejecución seleccionada es la más reciente de las mostradas.",
+    "binning_sketch": "Los mismos intervalos para todas las ejecuciones, obtenidos del boceto de cuantiles de cada una; las alturas son la proporción de cada ejecución sobre sus filas no nulas.",
+    "binning_categories": "Los valores de cada ejecución, contados según las mismas categorías.",
+    "binning_none": "Estas ejecuciones no contienen valores para esta columna con su rol."
+  }
+}

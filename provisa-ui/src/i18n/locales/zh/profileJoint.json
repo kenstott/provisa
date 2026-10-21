@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "{{table}} 的联合云",
+    "none": "本次运行未构建依赖网络，因此没有联合计数。",
+    "canvasLabel": "某列的行相对于其父列的 3D 云",
+    "column": "列",
+    "colorBy": "着色依据",
+    "colorRows": "行",
+    "colorLift": "提升度",
+    "legendRows": "单元格中的行",
+    "legendLift": "少于独立时 · 相当 · 多于独立时",
+    "decile": "D{{n}}",
+    "nullSlot": "空值",
+    "otherSlot": "另有 {{count}} 个",
+    "tipRows": "{{rows}} 行 · {{pct}} · 提升度 ×{{lift}}",
+    "explainOne": "{{column}}（纵向）对其父列 {{parent}}（横向）。数值按秩切分为十分位数。",
+    "explainTwo": "{{column}}（纵向）对其父列 {{parent1}}（横向）和 {{parent2}}（纵深）。数值按秩切分为十分位数。",
+    "stat_rows": "行",
+    "stat_cells": "占用的单元格",
+    "stat_mi": "互信息（奈特）",
+    "stat_uncertainty": "消除的不确定性",
+    "over": "比独立时更常出现",
+    "under": "比独立时更少出现",
+    "noneListed": "没有占行数 0.5% 及以上的项。",
+    "note": "提升度是单元格的行数与各列相互独立时该单元格应有行数之比。球体大小表示行数。"
+  }
+}

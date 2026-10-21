@@ -48,6 +48,7 @@ hasta cada salida.
 | `source` | Verde | Una columna de una tabla base |
 | `derived` | Azul | Producida por una expresión SQL (función, operador, CTE) |
 | `command` | Púrpura | Una columna de salida de un comando registrado |
+| `native` | Naranja | El campo en bruto que lee una fuente, debajo de la columna de una tabla registrada |
 
 Anillos adicionales en un nodo:
 
@@ -65,6 +66,27 @@ literales (`constant`).
 
 Una arista proveniente de una llamada de comando se representa como una línea púrpura discontinua
 en la interfaz.
+
+### Debajo de la tabla registrada
+
+Un usuario con registro de fuentes ve un salto más debajo de cada columna de origen: el campo tal como lo lee la fuente, en un recuadro para el lugar del que se lee. El recuadro lleva el logotipo y la etiqueta de tipo de la fuente, como los muestra la página Sources, y la dirección según el tipo de fuente:
+
+| Fuente | Dirección |
+| --- | --- |
+| OpenAPI | La operación (`GET /v2/customers`), sus parámetros fijos y la ubicación de las filas |
+| Remote GraphQL | El campo raíz, sus argumentos obligatorios y la ubicación de las filas |
+| MongoDB, Cosmos DB | La base de datos y la colección o el contenedor |
+| Elasticsearch, Qdrant | El índice o la colección |
+| CSV, Parquet, archivos, logs | La ruta, y el patrón de archivos de una tabla que lee muchos archivos |
+| Kafka | El topic |
+| Fuente de código | La función |
+| Cualquier otra | El esquema y la tabla nativos |
+
+El campo en bruto es la ruta de campo de la columna cuando la tiene, si no su propio nombre. La arista de él a la columna registrada nombra el cambio de nombre: `path`, `alias` o `naming` (la convención de nombres). El recuadro de la tabla registrada dice cómo se sirve: `virtual`, leída en cada sentencia, o `replica`, con su TTL y cuándo se cargó por última vez. Nunca se muestran credenciales, referencias a secretos ni el usuario, la contraseña o la query de una URL. Un usuario sin registro de fuentes ve el linaje desde la tabla registrada hacia arriba.
+
+### Enlaces
+
+Cada elemento se abre donde está definido, cuando los permisos del usuario abren esa página. Un clic en un campo abre su tabla, vista o fuente; un doble clic en un recuadro abre su relación; un clic en la arista de un comando abre el comando. Una función SQL integrada no tiene página ni enlace.
 
 ## Grafo a escala de la federación {: #federation-wide-graph }
 
@@ -120,6 +142,26 @@ Forma de la respuesta:
   "outputs": ["id", "embedding"]
 }
 ```
+
+Para quien llama con registro de fuentes, ambos endpoints añaden el salto nativo: nodos de tipo `native` y un objeto `natives` con clave por la relación de cada recuadro nativo (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+El `served` de una réplica es `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Para cualquier otro llamante, `natives` está vacío.
 
 Devuelve HTTP 422 cuando el SQL no se puede analizar (parsear).
 

@@ -212,6 +212,26 @@ def test_a_measure_constant_across_its_window_that_changes_is_drifting():
     assert count["drifting"] is True
 
 
+def test_a_measure_differing_only_in_rounding_is_not_drifting():
+    """A parallel engine's sums differ in their last bits from one run of the same rows to the
+    next: neither against a constant window nor one whose spread is that rounding."""
+    mean = ("column", "amount", None, "mean")
+
+    def _run_mean(value: float) -> dict[str, list[dict]]:
+        run = _run()
+        next(c for c in run["columns"] if c["column_name"] == "amount")["mean"] = value
+        return run
+
+    for past in ([12.5, 12.5, 12.5, 12.5], [12.5, 12.5 + 4e-15, 12.5 - 2e-15, 12.5]):
+        window = [
+            (_T0 + timedelta(days=i), compare.measures_of(_run_mean(v))) for i, v in enumerate(past)
+        ]
+        row = _drift(_run_mean(12.5 + 7e-15), window)[mean]
+        assert row["drifting"] is False and row["distance"] is None, row
+    changed = _drift(_run_mean(12.6), window)[mean]
+    assert changed["drifting"] is True
+
+
 def test_a_distribution_shifted_from_the_pooled_window_is_drifting():
     window = _window([100, 100, 100, 100])
     rows = _drift(_run(amount=(50.0, 150.0), regions={"east": 90, "west": 10}), window)
