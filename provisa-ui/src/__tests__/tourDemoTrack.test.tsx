@@ -369,8 +369,8 @@ describe("a demo's steps, as the runner walks them", () => {
     );
     expect(step.navState).toEqual({ cells, autoRun: true });
     expect(step.openQuery).toBeUndefined();
-    expect(step.readySelector).toBe('[data-testid="notebook-answered"]');
-    expect(step.element).toBe('[data-testid="notebook-panel"]');
+    expect(step.readySelector).toBe('[data-testid="notebook-answer"]');
+    expect(step.element).toBe('[data-testid="notebook-answer"]');
   });
 
   it("refuses a notebook step when the demo ships no notebook", () => {

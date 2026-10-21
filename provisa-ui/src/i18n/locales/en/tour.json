@@ -916,7 +916,7 @@
       },
       "agricultureNotebook": {
         "title": "How much does the weather explain?",
-        "description": "The demo's notebook, run in your browser: every county season read into pandas as the analyst, the loss ratio correlated with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, a regression fitted on them, and the plot. The weather explains 54% of the variation in loss ratio. Each 10 days above 32 °C adds 20 points of loss ratio, 100 mm less rain adds 7, and 10 points more of the market's losses down to drought and heat add 9. Across today's book, a 2012-like season has an expected loss ratio of 1.75."
+        "description": "The demo's notebook, run in your browser: every county season read into pandas as the analyst, the loss ratio correlated with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, a regression fitted on them, and the plot."
       },
       "agricultureRest": {
         "title": "By year over REST",

@@ -916,7 +916,7 @@
       },
       "agricultureNotebook": {
         "title": "Hoeveel verklaart het weer?",
-        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek. Het weer verklaart 54% van de variatie in de schadequote. Elke 10 dagen boven 32 °C voegen 20 punten schadequote toe, 100 mm minder regen voegt er 7 toe en 10 punten meer van de marktschade door droogte en hitte voegen er 9 toe. Over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
+        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek."
       },
       "agricultureRest": {
         "title": "Per jaar via REST",

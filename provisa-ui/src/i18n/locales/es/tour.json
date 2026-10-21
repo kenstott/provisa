@@ -916,7 +916,7 @@
       },
       "agricultureNotebook": {
         "title": "¿Cuánto explica el clima?",
-        "description": "El notebook de la demo, ejecutado en su navegador: cada temporada de condado leída en pandas como analyst, la siniestralidad correlacionada con la lluvia de la temporada, sus días por encima de 32 °C y la parte de las pérdidas del mercado debida a la sequía y el calor, una regresión ajustada sobre ellas y el gráfico. El clima explica el 54 % de la variación de la siniestralidad. Cada 10 días por encima de 32 °C suman 20 puntos de siniestralidad, 100 mm menos de lluvia suman 7, y 10 puntos más de las pérdidas del mercado debidas a sequía y calor suman 9. En la cartera actual, una temporada como la de 2012 tiene una siniestralidad esperada de 1,75."
+        "description": "El notebook de la demo, ejecutado en su navegador: cada temporada de condado leída en pandas como analyst, la siniestralidad correlacionada con la lluvia de la temporada, sus días por encima de 32 °C y la parte de las pérdidas del mercado debida a la sequía y el calor, una regresión ajustada sobre ellas y el gráfico."
       },
       "agricultureRest": {
         "title": "Por año mediante REST",

@@ -916,7 +916,7 @@
       },
       "agricultureNotebook": {
         "title": "Quanto o clima explica?",
-        "description": "O notebook da demo, executado no seu navegador: cada temporada de condado lida no pandas como analyst, a sinistralidade correlacionada com a chuva da temporada, os seus dias acima de 32 °C e a parte das perdas do mercado atribuída à seca e ao calor, uma regressão ajustada sobre elas e o gráfico. O clima explica 54% da variação da sinistralidade. Cada 10 dias acima de 32 °C somam 20 pontos de sinistralidade, 100 mm a menos de chuva somam 7 e 10 pontos a mais das perdas do mercado devidas a seca e calor somam 9. Na carteira atual, uma temporada como a de 2012 tem uma sinistralidade esperada de 1,75."
+        "description": "O notebook da demo, executado no seu navegador: cada temporada de condado lida no pandas como analyst, a sinistralidade correlacionada com a chuva da temporada, os seus dias acima de 32 °C e a parte das perdas do mercado atribuída à seca e ao calor, uma regressão ajustada sobre elas e o gráfico."
       },
       "agricultureRest": {
         "title": "Por ano via REST",
