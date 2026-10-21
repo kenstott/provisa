@@ -24,7 +24,7 @@ from provisa.executor.drivers.zoned import (
     SQL_SS_TIMESTAMPOFFSET,
     _DATETIMEOFFSET,
     _oracle_ltz,
-    _oracle_tz,
+    _oracle_output_type,
     datetimeoffset,
     mssql_connection,
 )
@@ -53,10 +53,35 @@ def test_a_sql_server_connection_reads_datetimeoffset_through_the_converter():
 
 
 def test_oracle_zoned_values_are_their_instants_in_utc():
-    assert _oracle_tz("2024-01-02T03:04:05.123456+02:00") == _UTC
-    assert _oracle_tz(None) is None
     # A local time zone value is read in the session's zone, which is UTC.
     assert _oracle_ltz(datetime(2024, 1, 2, 1, 4, 5, 123456)) == _UTC
+    assert _oracle_ltz(None) is None
+
+
+def test_oracle_fetches_both_zoned_types_as_a_local_time_zone_value():
+    """python-oracledb's Thin mode ignores the session's NLS formats, so a TIMESTAMP WITH TIME
+    ZONE fetched as text lost its offset; fetched as a local time zone value, the database gives
+    the instant in the session's zone, UTC. Every other type is fetched as it is."""
+    import oracledb
+
+    class _Cursor:
+        arraysize = 100
+
+        def var(self, db_type, *, arraysize, outconverter):
+            return (db_type, arraysize, outconverter)
+
+    class _Meta:
+        def __init__(self, type_code):
+            self.type_code = type_code
+
+    for zoned in (oracledb.DB_TYPE_TIMESTAMP_TZ, oracledb.DB_TYPE_TIMESTAMP_LTZ):
+        assert _oracle_output_type(_Cursor(), _Meta(zoned)) == (
+            oracledb.DB_TYPE_TIMESTAMP_LTZ,
+            100,
+            _oracle_ltz,
+        )
+    for plain in (oracledb.DB_TYPE_TIMESTAMP, oracledb.DB_TYPE_DATE, oracledb.DB_TYPE_VARCHAR):
+        assert _oracle_output_type(_Cursor(), _Meta(plain)) is None
 
 
 def test_an_instant_lands_and_reads_as_utc_with_its_zone_marked():
