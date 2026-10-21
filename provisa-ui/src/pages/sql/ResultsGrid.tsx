@@ -60,6 +60,10 @@ interface ResultsGridProps {
   /** REQ-1937: the rows held are only part of the result (cut at a row limit). A filter then
       applies to the rows loaded, and the grid says so. */
   rowsPartial?: boolean;
+  /** REQ-2123: a row is clicked (the profile runs modal picks a run, or a measure's history). */
+  onRowClick?: (row: Record<string, unknown>) => void;
+  /** REQ-2123: the row drawn as selected. */
+  selectedRow?: (row: Record<string, unknown>) => boolean;
 }
 
 export function ResultsGrid({
@@ -70,6 +74,8 @@ export function ResultsGrid({
   exportName = "results",
   fetchAllRows,
   rowsPartial = false,
+  onRowClick,
+  selectedRow,
 }: ResultsGridProps) {
   const { t } = useTranslation();
   // Trace/span ids in any column drill down to the full span record.
@@ -569,7 +575,17 @@ export function ResultsGrid({
                   </td>
                 </tr>
               ) : (
-                <tr key={i}>
+                <tr
+                  key={i}
+                  className={
+                    [onRowClick ? "clickable" : "", selectedRow?.(item.row) ? "row-selected" : ""]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                  aria-selected={selectedRow ? selectedRow(item.row) : undefined}
+                  onClick={onRowClick ? () => onRowClick(item.row) : undefined}
+                  style={onRowClick ? { cursor: "pointer" } : undefined}
+                >
                   {displayColumns.map((c) => {
                     const v = item.row[c];
                     const isNum = typeof v === "number";

@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Box, Loader, Modal, Tabs, Text } from "@mantine/core";
+import { Alert, Box, Loader, Modal, Tabs, Text } from "@mantine/core";
 import {
   fetchProfileRun,
   fetchProfileRuns,
@@ -48,6 +48,8 @@ const KINDS = [
   "repeats",
 ] as const;
 const RUN_KEY = new Set(["run_id", "run_time"]);
+// The key a run's row keeps its run's id under; never shown.
+const RUN_ID = "\u0000run_id";
 // REQ-2123, REQ-2124: the 3D views of a run, as tabs ahead of the result relations.
 const VIEWS_3D = ["terrain", "relationsMap", "jointCloud", "driftStrata"] as const;
 
@@ -77,14 +79,7 @@ function RowsTable({
   }
   const keys = Object.keys(rows[0]).filter((k) => !RUN_KEY.has(k));
   return (
-    <ProfileResultTable<Record<string, unknown>>
-      rows={rows}
-      columns={keys.map((k) => ({ key: k, label: k, value: (r) => r[k], cell: (r) => cell(r[k]) }))}
-      rowKey={(_r, i) => i}
-      testId={testId}
-      title={title}
-      height={360}
-    />
+    <ProfileResultTable rows={rows} columns={keys} testId={testId} title={title} height={360} />
   );
 }
 
@@ -127,6 +122,43 @@ export function ProfileRunsModal({
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [tableId, selected, role]);
 
+  // The runs as the grid shows them: one plain value per column, each row keeping its run's id.
+  const runColumns = [
+    t("profileRunsModal.runTime"),
+    t("profileRunsModal.status"),
+    t("profileRunsModal.rowCount"),
+    t("profileRunsModal.profiledRows"),
+    t("profileRunsModal.method"),
+    t("profileRunsModal.duplicates"),
+    t("profileRunsModal.duration"),
+    t("profileRunsModal.error"),
+  ];
+  const runRows = (runs ?? []).map((run) => {
+    const values = [
+      new Date(run.run_time).toLocaleString(),
+      t(`profileRunsModal.status_${run.status}`),
+      run.row_count,
+      `${cell(run.profiled_rows)}${run.sampled ? ` (${t("profileRunsModal.sampled")})` : ""}`,
+      `${run.sample_method == null ? "" : t(`profileRunsModal.method_${run.sample_method}`)}${
+        run.sampled && run.sample_fraction != null
+          ? ` · ${t("profileRunsModal.share", { pct: (run.sample_fraction * 100).toFixed(1) })}`
+          : ""
+      }`,
+      run.duplicate_rows == null
+        ? null
+        : t("profileRunsModal.duplicateRows", {
+            rows: run.duplicate_rows,
+            pct: ((run.duplicate_share ?? 0) * 100).toFixed(1),
+          }),
+      t("profileRunsModal.ms", { ms: run.duration_ms }),
+      run.error,
+    ];
+    return {
+      [RUN_ID]: run.run_id,
+      ...Object.fromEntries(runColumns.map((c, i) => [c, values[i]])),
+    };
+  });
+
   return (
     <Modal
       opened
@@ -150,92 +182,17 @@ export function ProfileRunsModal({
       {runs != null && runs.length > 0 && (
         <Box mb="md">
           <ProfileResultTable
-            rows={runs}
+            rows={runRows}
+            columns={runColumns}
             expandable={false}
-            height={200}
+            height={220}
             title={t("profileRunsModal.title", { table: tableName })}
             testId="profile-runs-list"
-            rowKey={(run) => run.run_id}
-            rowTestId={(run) => `profile-run-${run.run_id}`}
-            selected={(run) => run.run_id === selected}
-            onRowClick={(run) => run.status === "succeeded" && setSelected(run.run_id)}
-            columns={[
-              {
-                key: "run_time",
-                label: t("profileRunsModal.runTime"),
-                value: (run) => run.run_time,
-                cell: (run) => new Date(run.run_time).toLocaleString(),
-              },
-              {
-                key: "status",
-                label: t("profileRunsModal.status"),
-                value: (run) => t(`profileRunsModal.status_${run.status}`),
-                cell: (run) => (
-                  <Badge size="xs" color={run.status === "succeeded" ? "green" : "red"}>
-                    {t(`profileRunsModal.status_${run.status}`)}
-                  </Badge>
-                ),
-              },
-              {
-                key: "row_count",
-                label: t("profileRunsModal.rowCount"),
-                value: (run) => run.row_count,
-                cell: (run) => cell(run.row_count),
-              },
-              {
-                key: "profiled_rows",
-                label: t("profileRunsModal.profiledRows"),
-                value: (run) => run.profiled_rows,
-                cell: (run) =>
-                  `${cell(run.profiled_rows)}${run.sampled ? ` (${t("profileRunsModal.sampled")})` : ""}`,
-              },
-              {
-                key: "method",
-                label: t("profileRunsModal.method"),
-                value: (run) =>
-                  run.sample_method == null
-                    ? ""
-                    : t(`profileRunsModal.method_${run.sample_method}`),
-                cell: (run) => (
-                  <span data-testid={`profile-run-method-${run.run_id}`}>
-                    {run.sample_method == null
-                      ? ""
-                      : t(`profileRunsModal.method_${run.sample_method}`)}
-                    {run.sampled && run.sample_fraction != null
-                      ? ` · ${t("profileRunsModal.share", {
-                          pct: (run.sample_fraction * 100).toFixed(1),
-                        })}`
-                      : ""}
-                  </span>
-                ),
-              },
-              {
-                key: "duplicates",
-                label: t("profileRunsModal.duplicates"),
-                value: (run) => run.duplicate_rows,
-                cell: (run) => (
-                  <span data-testid={`profile-run-duplicates-${run.run_id}`}>
-                    {run.duplicate_rows == null
-                      ? ""
-                      : t("profileRunsModal.duplicateRows", {
-                          rows: run.duplicate_rows,
-                          pct: ((run.duplicate_share ?? 0) * 100).toFixed(1),
-                        })}
-                  </span>
-                ),
-              },
-              {
-                key: "duration",
-                label: t("profileRunsModal.duration"),
-                value: (run) => run.duration_ms,
-                cell: (run) => t("profileRunsModal.ms", { ms: run.duration_ms }),
-              },
-              {
-                key: "error",
-                label: t("profileRunsModal.error"),
-                value: (run) => run.error ?? "",
-              },
-            ]}
+            selectedRow={(row) => row[RUN_ID] === selected}
+            onRowClick={(row) => {
+              const run = runs.find((r) => r.run_id === row[RUN_ID]);
+              if (run?.status === "succeeded") setSelected(run.run_id);
+            }}
           />
         </Box>
       )}
