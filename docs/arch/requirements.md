@@ -25870,15 +25870,15 @@ The profile runs modal has three more 3D tabs that share the Terrain tab's contr
 
 ### REQ-2125 · Data Catalog Integration {#REQ-2125}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Data products are part of the built-in meta domain. A data_products_meta view over the data_products table has one row per product and a fixed set of columns: id, domain_id, name, owner_role, team_role, purpose, limitations, usage, version, status, sla, support, support_contact, publish and custom_properties. It flattens nothing and holds no arrays or counts; everything one-to-many is reached through meta-domain relationships, so GraphQL, Cypher and SQL clients assemble a product the same way. Each section of the Data Product detail panel can be reached from a data_products_meta row by relationships alone. The domain is reached through domain_id to domains. Member tables are reached through registered_tables_meta.product_id; registered_tables_meta also exposes dq_contract, so the member tables that carry a data-quality contract (the panel's Data Quality section) are told apart from the output tables. Member commands are reached through tracked_functions_meta.product_id. Tags are reached through tag_assignments_meta.product_id. Glossary terms are reached from member columns through glossary_term_refs_meta. Profiling results are reached from each member table to the profile result tables registered for it on its profiler source. Related tables and lineage are reached through data_product_edges. Each of these views keeps its own column tiers (CORE and GOVERNANCE, view_governance), so a caller sees through a relationship only what the target view shows that caller directly.
 
 **Use case:** An analyst, a BI tool or an MCP agent finds a data product and everything that makes it up (its domain, members, commands, tags, terms, data-quality evidence and profiles) by querying the meta domain, with no admin API and no knowledge of the control-plane schema.
 
-**Code:** —
+**Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/app.py`, `provisa/dq/registration.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** —
+**Tests:** `tests/unit/test_data_products_meta.py`, `tests/unit/test_meta_glossary_views.py`
 
 ### REQ-2126 · Data Catalog Integration {#REQ-2126}
 

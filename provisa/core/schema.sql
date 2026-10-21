@@ -884,6 +884,13 @@ CREATE TABLE IF NOT EXISTS mv_delta_ledger (
 -- deprecated and no longer created. (Apollo APQ — REQ-288-291 — is separate, lives in
 -- Redis, and is unaffected.)
 
+-- REQ-2125: the governed table each checker table's contract scans, as the model build resolved
+-- it. Derived state: each build replaces every row.
+CREATE TABLE IF NOT EXISTS checker_targets (
+    table_id         INTEGER PRIMARY KEY,
+    checked_table_id INTEGER NOT NULL
+);
+
 -- Relationship Discovery Candidates (Phase R)
 CREATE TABLE IF NOT EXISTS relationship_candidates (
     id              SERIAL PRIMARY KEY,

@@ -862,6 +862,15 @@ mv_delta_ledger = Table(
     ),
 )
 
+# REQ-2125: the governed table each checker table's contract scans, as the model build resolved it
+# (provisa.dq.registration.write_checker_targets). Derived state: each build replaces every row.
+checker_targets = Table(
+    "checker_targets",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("checked_table_id", Integer, nullable=False),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,
