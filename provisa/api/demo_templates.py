@@ -872,7 +872,7 @@ async def follow_latest(name: str) -> None:
 
     import httpx
 
-    from provisa.core.demo_bundles import BundleError, pulled_version, ready_version, want
+    from provisa.core.demo_bundles import BundleError, ready_version, request
 
     if name not in bundled_demos():
         return
@@ -887,14 +887,12 @@ async def follow_latest(name: str) -> None:
         )
     else:
         if latest != ready_version(name):
-            await asyncio.to_thread(want, name, latest)
+            # The node's sync pulls the latest published and serves it once its stores are up.
+            await asyncio.to_thread(request, name)
     ready = ready_version(name)
     if ready is None:
-        # Its stores are not up since the node started: asked for, as the version it has pulled
-        # when the registry named none newer (want above asked for that one).
-        pulled = pulled_version(name)
-        if pulled is not None:
-            await asyncio.to_thread(want, name, pulled)
+        # Its stores are not up since the node started: asked for.
+        await asyncio.to_thread(request, name)
         raise ApiError(
             503,
             "sandbox.demo_not_ready",
