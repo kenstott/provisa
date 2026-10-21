@@ -93,6 +93,7 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
     graph,
     at,
     frame: 0,
+    frontal: false,
     selected: picked,
     setSelected,
     hover,

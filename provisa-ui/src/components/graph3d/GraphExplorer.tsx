@@ -126,6 +126,7 @@ export function GraphExplorer({
     graph: shown,
     at,
     frame,
+    frontal: layout !== "force",
     selected,
     setSelected,
     hover,

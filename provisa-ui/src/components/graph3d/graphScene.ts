@@ -98,6 +98,9 @@ export class GraphScene extends BaseScene<GraphHover> {
   private hover: GraphHover | null = null;
   private halo: THREE.Mesh | null = null;
   private extent = 8;
+  private extentX = 8;
+  private extentY = 8;
+  private frontal = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -129,7 +132,17 @@ export class GraphScene extends BaseScene<GraphHover> {
     this.paint();
   }
 
+  /** A flat layout (a tree, lineage lanes) is seen from the front; a force layout from above. */
+  setFrontal(on: boolean) {
+    this.frontal = on;
+  }
+
   resetView(instant = false) {
+    if (this.frontal) {
+      const span = Math.max(this.extentX / Math.max(this.aspect, 0.5), this.extentY) * 2.2 + 4;
+      this.flyTo(new THREE.Vector3(0, 0, span), new THREE.Vector3(0, 0, 0), instant);
+      return;
+    }
     const base = this.extent * 2.6 + 6;
     const dist = this.aspect < 1.1 ? (base * 1.25) / Math.max(this.aspect, 0.5) : base;
     this.flyTo(
@@ -202,8 +215,15 @@ export class GraphScene extends BaseScene<GraphHover> {
   private buildMaterials() {
     Object.values(this.mats).forEach((m) => m.dispose());
     const th = this.theme;
+    // A little light of their own, so a shape's faces turned from the sun still read on the canvas.
     const solid = (color: string) =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.05 });
+      new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 0.3,
+        roughness: 0.5,
+        metalness: 0.05,
+      });
     const rod = (color: string, opacity = 0.85) =>
       new THREE.MeshStandardMaterial({ color, roughness: 0.6, transparent: true, opacity });
     this.mats = {
@@ -307,6 +327,8 @@ export class GraphScene extends BaseScene<GraphHover> {
     const pos = new Map<string, THREE.Vector3>();
     let minY = 0;
     let extent = 1;
+    let extentX = 1;
+    let extentY = 1;
     for (const node of this.graph.nodes) {
       const xyz = this.at.get(node.id);
       if (!xyz) continue;
@@ -314,6 +336,8 @@ export class GraphScene extends BaseScene<GraphHover> {
       pos.set(node.id, p);
       minY = Math.min(minY, p.y);
       extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y), Math.abs(p.z));
+      extentX = Math.max(extentX, Math.abs(p.x));
+      extentY = Math.max(extentY, Math.abs(p.y));
       const r = SIZE[node.type];
       const mesh = new THREE.Mesh(geometry(node.type, r), this.nodeMaterial(node));
       mesh.position.copy(p);
@@ -332,6 +356,8 @@ export class GraphScene extends BaseScene<GraphHover> {
       this.nodes.push({ node, mesh, radius: r, label });
     }
     this.extent = extent;
+    this.extentX = extentX;
+    this.extentY = extentY;
     const radiusOf = new Map(this.nodes.map((n) => [n.node.id, n.radius]));
     for (const e of this.graph.edges) {
       const a = pos.get(e.a);
