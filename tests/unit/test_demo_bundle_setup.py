@@ -711,8 +711,25 @@ def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_p
         f"up weblogs {_VERSION} {demo / _VERSION}",
         "drop weblogs 202601010000-old0001",
     ]
-    assert not (demo / "202601010000-old0001" / "stores.env").exists()
+    assert not (demo / "202601010000-old0001").exists()
     assert (demo / "202601020000-old0002" / "stores.env").exists()
+
+
+def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served_ones_are_kept(
+    tmp_path,
+):
+    """A bundle directory is deleted with its version, whether or not its stores were ever up:
+    reviews held six versions on cloud-dev's sandbox VM. The pulled, ready and in-use ones stay."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-never01", "202601020000-inuse02"):
+        (bundles / old).mkdir(parents=True)
+    run, demo, asked = _sync(tmp_path, requested=True, in_use="202601020000-inuse02")
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / "202601020000-inuse02").is_dir()
+    assert (demo / _VERSION / "docker-compose.run.yml").is_file()
+    assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
 
 
 def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):

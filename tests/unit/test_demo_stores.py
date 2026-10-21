@@ -544,6 +544,38 @@ def test_dropping_a_version_drops_its_data_from_the_shared_stores_running_and_it
     assert lines[-1] == "docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans"
 
 
+def test_dropping_a_version_removes_the_images_its_services_ran_that_no_container_still_uses(
+    monkeypatch, tmp_path
+):
+    """Every version pulled leaves its images on the node's disk (cloud-dev's sandbox VM at 97%,
+    its shared Elasticsearch red): those no other container uses go, and only those."""
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
+    monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
+    monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
+    monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
+    runner = FakeRunner(
+        {
+            "{{.Image}}": "neo4j:5.19-community\nreviews-api:1\nreviews-api:1\n",
+            "ancestor=neo4j:5.19-community": "newercid\n",
+        }
+    )
+    ds.Demo(runner, "reviews", "v1", None).drop(set())
+    lines = runner.lines()
+    down = lines.index("docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans")
+    listed = next(
+        i
+        for i, x in enumerate(lines)
+        if "label=com.docker.compose.project=provisa-demo-reviews-v1" in x
+    )
+    assert listed < down
+    assert lines[down + 1 :] == [
+        "docker ps -a -q --filter ancestor=neo4j:5.19-community",
+        "docker ps -a -q --filter ancestor=reviews-api:1",
+        "docker image rm reviews-api:1",
+    ]
+    assert not any(" prune" in x for x in lines)
+
+
 _STREAMING = {
     "services": {
         "kafka": {

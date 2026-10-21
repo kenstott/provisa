@@ -799,7 +799,26 @@ class Demo:
             qdrant_drop(self.shared, self.suffix, self.shared.env["DEMO_STORES_QDRANT_KEY"])
         if "kafka" in shared_kinds:
             kafka_drop(self.shared, self.suffix)
+        images = set(
+            self.runner.run(
+                [
+                    "docker",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"label=com.docker.compose.project={self.project}",
+                    "--format",
+                    "{{.Image}}",
+                ]
+            ).split()
+        )
         self.runner.run(["docker", "compose", "-p", self.project, "down", "-v", "--remove-orphans"])
+        # The images its services ran, once no container (a newer version's) still uses them:
+        # every version pulled leaves its own on the node's disk otherwise.
+        for image in sorted(images):
+            users = self.runner.run(["docker", "ps", "-a", "-q", "--filter", f"ancestor={image}"])
+            if not users.split():
+                self.runner.run(["docker", "image", "rm", image])
 
 
 def qdrant_key(bundles: Path) -> str:
