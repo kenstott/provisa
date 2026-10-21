@@ -729,6 +729,26 @@
         "title": "De rijen die twee keer zijn geschreven",
         "description": "Het model verklaart customer_id tot sleutel, maar de export had geen beperking: 150 klanten staan er twee keer in, elk veld gelijk. Het profiel telt de herhaalde rijen en de sleutelwaarden die meer dan één rij hebben."
       },
+      "profilingDrift": {
+        "title": "Wat er sinds de vorige run veranderde",
+        "description": "De setup draaide de profiler twee keer, en tussen de runs schreef de volgende synchronisatie van het CRM elke Amerikaanse postcode als ZIP+4. De drifttabel vergelijkt elke maat met die van de vorige run: de maten die de wijziging van postal_code verschoof, zijn als driftend gemarkeerd, en de kolommen die de synchronisatie niet aanraakte niet."
+      },
+      "profilingOriginal": {
+        "title": "De echte klanten",
+        "description": "Tien klanten zoals het CRM ze bewaart. Daarna dezelfde instructie in een omgeving die uit het profiel is gegenereerd."
+      },
+      "profilingToSynthetic": {
+        "title": "Naar synthetic",
+        "description": "Daarna schakelt de schakelaar naar <strong>synthetic</strong>, een Test (synthetic)-omgeving."
+      },
+      "profilingSynthetic": {
+        "title": "Gegenereerd uit het profiel",
+        "description": "Dezelfde instructie in synthetic: elke rij is gegenereerd uit het profiel van de klanten, met dezelfde kolommen, waardevormen en spreiding, en geen enkele echte klant. Het profiel is genoeg om testdata uit te genereren."
+      },
+      "profilingToProd": {
+        "title": "Terug naar productie",
+        "description": "Hierna keert de omgevingskiezer terug naar prod."
+      },
       "profilingRest": {
         "title": "Hetzelfde antwoord via REST",
         "description": "De view is ook een REST-endpoint. Een datakwaliteitstool of een migratiescript krijgt het profiel zonder SQL te schrijven."

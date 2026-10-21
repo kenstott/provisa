@@ -729,6 +729,26 @@
         "title": "2回書かれた行",
         "description": "モデルは customer_id をキーとしていますが、エクスポートには制約がありませんでした。150 人の顧客が全項目同じまま2回入っています。プロファイルは重複行と、複数の行が持つキー値を数えます。"
       },
+      "profilingDrift": {
+        "title": "前回の実行から何が変わったか",
+        "description": "セットアップはプロファイラーを2回実行し、その間に CRM の次の同期が米国の郵便番号をすべて ZIP+4 で書き込みました。ドリフトテーブルは各指標を前回の実行と比べます。postal_code の変更で動いた指標はドリフトとしてフラグが立ち、同期が触れなかった列には立ちません。"
+      },
+      "profilingOriginal": {
+        "title": "実際の顧客",
+        "description": "CRM が保持しているままの顧客10人。次に、プロファイルから生成した環境で同じステートメントを実行します。"
+      },
+      "profilingToSynthetic": {
+        "title": "synthetic に切り替える",
+        "description": "次に、切り替えが <strong>synthetic</strong>（Test (synthetic) 環境）に移ります。"
+      },
+      "profilingSynthetic": {
+        "title": "プロファイルから生成",
+        "description": "synthetic での同じステートメント: すべての行は顧客のプロファイルから生成され、列、値の形、ばらつきは同じで、実在の顧客は一人も含まれません。プロファイルがあればテストデータを生成できます。"
+      },
+      "profilingToProd": {
+        "title": "本番に戻る",
+        "description": "次に、スイッチャーが prod に戻ります。"
+      },
       "profilingRest": {
         "title": "REST での同じ答え",
         "description": "このビューは REST エンドポイントでもあります。データ品質ツールや移行スクリプトは SQL を書かずにプロファイルを取得できます。"

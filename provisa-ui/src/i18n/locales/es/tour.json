@@ -729,6 +729,26 @@
         "title": "Las filas escritas dos veces",
         "description": "El modelo declara customer_id como clave, pero la exportación no tenía restricción: 150 clientes aparecen dos veces, con todos los campos iguales. El perfil cuenta las filas repetidas y los valores de clave que tienen más de una fila."
       },
+      "profilingDrift": {
+        "title": "Qué cambió desde la última ejecución",
+        "description": "La configuración ejecutó el perfilador dos veces, y entre ambas la siguiente sincronización del CRM escribió cada código postal de EE. UU. como ZIP+4. La tabla de deriva compara cada medida con la de la ejecución anterior: las medidas que movió el cambio de postal_code están marcadas como en deriva, y las columnas que la sincronización no tocó no lo están."
+      },
+      "profilingOriginal": {
+        "title": "Los clientes reales",
+        "description": "Diez clientes tal como los guarda el CRM. A continuación, la misma sentencia en un entorno generado a partir del perfil."
+      },
+      "profilingToSynthetic": {
+        "title": "Cambiar a synthetic",
+        "description": "A continuación, el selector cambia a <strong>synthetic</strong>, un entorno Test (synthetic)."
+      },
+      "profilingSynthetic": {
+        "title": "Generado a partir del perfil",
+        "description": "La misma sentencia en synthetic: cada fila se generó a partir del perfil de los clientes, con las mismas columnas, formas de valores y dispersión, y ninguno de los clientes reales. El perfil basta para generar datos de prueba."
+      },
+      "profilingToProd": {
+        "title": "De vuelta a producción",
+        "description": "A continuación, el selector vuelve a prod."
+      },
       "profilingRest": {
         "title": "La misma respuesta por REST",
         "description": "La vista también es un endpoint REST. Una herramienta de calidad de datos o un script de migración obtiene el perfil sin escribir SQL."

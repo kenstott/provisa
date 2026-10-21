@@ -729,6 +729,26 @@
         "title": "寫了兩次的列",
         "description": "模型將 customer_id 宣告為鍵，但匯出中沒有約束：150 位客戶出現了兩次，所有欄位都相同。剖析統計重複的列以及出現在多列中的鍵值。"
       },
+      "profilingDrift": {
+        "title": "自上次運行以來有甚麼變化",
+        "description": "設定運行了兩次分析器，在兩次運行之間，CRM 的下一次同步把每個美國郵遞區號都寫成了 ZIP+4。漂移表把每個度量與上一次運行的度量比較：postal_code 的變化所改變的度量被標記為漂移，同步沒有觸及的欄則沒有。"
+      },
+      "profilingOriginal": {
+        "title": "真實的客戶",
+        "description": "CRM 中保存的十位客戶。接下來，在從分析結果生成的環境中運行同一條語句。"
+      },
+      "profilingToSynthetic": {
+        "title": "切換到 synthetic",
+        "description": "接下來，切換器切換到 <strong>synthetic</strong>，一個 Test (synthetic) 環境。"
+      },
+      "profilingSynthetic": {
+        "title": "從分析結果生成",
+        "description": "在 synthetic 中運行同一條語句：每一行都從客戶的分析結果生成，欄、取值形態和分佈都相同，卻沒有一位真實客戶。有了分析結果就足以生成測試數據。"
+      },
+      "profilingToProd": {
+        "title": "回到生產",
+        "description": "接下來，切換器回到 prod。"
+      },
       "profilingRest": {
         "title": "透過 REST 取得同樣的答案",
         "description": "該檢視也是一個 REST 端點。資料質素工具或遷移指令碼無需編寫 SQL 即可取得剖析。"

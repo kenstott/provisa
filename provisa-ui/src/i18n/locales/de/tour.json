@@ -729,6 +729,26 @@
         "title": "Die doppelt geschriebenen Zeilen",
         "description": "Das Modell erklärt customer_id zum Schlüssel, doch der Export hatte keine Einschränkung: 150 Kunden stehen zweimal darin, jedes Feld gleich. Das Profil zählt die wiederholten Zeilen und die Schlüsselwerte, die mehr als eine Zeile hat."
       },
+      "profilingDrift": {
+        "title": "Was sich seit dem letzten Lauf geändert hat",
+        "description": "Die Einrichtung hat den Profiler zweimal laufen lassen, und zwischen den Läufen hat die nächste Synchronisierung des CRM jede US-Postleitzahl als ZIP+4 geschrieben. Die Drift-Tabelle vergleicht jedes Maß mit dem des vorherigen Laufs: Die Maße, die die Änderung an postal_code verschoben hat, sind als driftend markiert, die Spalten, die die Synchronisierung nicht berührt hat, nicht."
+      },
+      "profilingOriginal": {
+        "title": "Die echten Kunden",
+        "description": "Zehn Kunden, wie das CRM sie hält. Als Nächstes dieselbe Anweisung in einer aus dem Profil generierten Umgebung."
+      },
+      "profilingToSynthetic": {
+        "title": "Zu synthetic wechseln",
+        "description": "Als Nächstes wechselt der Umschalter zu <strong>synthetic</strong>, einer Test (synthetic)-Umgebung."
+      },
+      "profilingSynthetic": {
+        "title": "Aus dem Profil generiert",
+        "description": "Dieselbe Anweisung in synthetic: Jede Zeile wurde aus dem Profil der Kunden generiert, mit denselben Spalten, Wertformen und Streuungen und keinem echten Kunden. Das Profil genügt, um Testdaten daraus zu generieren."
+      },
+      "profilingToProd": {
+        "title": "Zurück zur Produktion",
+        "description": "Als Nächstes wechselt der Umschalter zurück zu prod."
+      },
       "profilingRest": {
         "title": "Dieselbe Antwort über REST",
         "description": "Die Sicht ist auch ein REST-Endpunkt. Ein Datenqualitätswerkzeug oder ein Migrationsskript erhält das Profil, ohne SQL zu schreiben."
