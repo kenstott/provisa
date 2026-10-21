@@ -7376,5 +7376,7 @@
   "ru/metadataExportTab.json::metadataExportTab.datazoneProjectId": "Owning project ID",
   "ru/metadataExportTab.json::metadataExportTab.datazoneProjectIdHelp": "The project that owns the data products and approves subscriptions.",
   "ru/metadataExportTab.json::metadataExportTab.awsAccessKeyId": "AWS access key ID",
-  "ru/metadataExportTab.json::metadataExportTab.awsSecretAccessKey": "AWS secret access key"
+  "ru/metadataExportTab.json::metadataExportTab.awsSecretAccessKey": "AWS secret access key",
+  "ru/metadataExportTab.json::metadataExportTab.deltaShare": "Also publish each product as a Delta Share",
+  "ru/metadataExportTab.json::metadataExportTab.deltaShareHelp": "Other data teams receive the share once a Databricks admin grants it to their recipient. Only members stored in Delta can be shared."
 }

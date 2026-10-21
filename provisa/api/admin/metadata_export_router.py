@@ -73,6 +73,7 @@ _PLAIN_FIELDS = (
     "aws_region",
     "datazone_domain_id",
     "datazone_project_id",
+    "delta_share",
     "timeout_seconds",
 )
 

@@ -28,6 +28,8 @@
     "datazoneProjectIdHelp": "拥有数据产品并审批订阅的项目。",
     "awsAccessKeyId": "AWS 访问密钥 ID",
     "awsSecretAccessKey": "AWS 秘密访问密钥",
+    "deltaShare": "同时将每个产品发布为 Delta Share",
+    "deltaShareHelp": "Databricks 管理员将共享授予其接收方后，其他数据团队即可收到。只有以 Delta 存储的成员才能共享。",
     "secretSet": "已设置——留空以保留",
     "secretUnset": "未设置",
     "secretHelp": "已存储的凭据绝不会显示。留空以保留当前凭据；清空并保存即可将其删除。",

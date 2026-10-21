@@ -45,6 +45,7 @@ from provisa.api.metadata_export.openlineage import OpenLineageExport  # noqa: E
 from provisa.api.metadata_export.openmetadata import OpenMetadataExport  # noqa: E402
 from provisa.api.metadata_export.purview import PurviewExport  # noqa: E402
 from provisa.api.metadata_export.snowflake_horizon import SnowflakeHorizonExport  # noqa: E402
+from provisa.api.metadata_export.unity_catalog import UnityCatalogExport  # noqa: E402
 
 __all__ = [
     "AssetError",
@@ -58,6 +59,7 @@ __all__ = [
     "OpenLineageExport",
     "OpenMetadataExport",
     "SnowflakeHorizonExport",
+    "UnityCatalogExport",
     "MetadataExport",
     "MetadataExportNotConfiguredError",
     "MetadataSnapshot",

@@ -28,6 +28,8 @@
     "datazoneProjectIdHelp": "Het project dat eigenaar is van de dataproducten en abonnementen goedkeurt.",
     "awsAccessKeyId": "AWS-toegangssleutel-ID",
     "awsSecretAccessKey": "Geheime AWS-toegangssleutel",
+    "deltaShare": "Elk product ook als Delta Share publiceren",
+    "deltaShareHelp": "Andere datateams ontvangen de share zodra een Databricks-beheerder die aan hun ontvanger toekent. Alleen leden die in Delta zijn opgeslagen, kunnen worden gedeeld.",
     "secretSet": "Ingesteld — laat leeg om te behouden",
     "secretUnset": "Niet ingesteld",
     "secretHelp": "Opgeslagen credentials worden nooit getoond. Laat leeg om de huidige te behouden; wis het veld en sla op om deze te verwijderen.",

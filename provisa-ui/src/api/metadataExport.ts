@@ -33,6 +33,7 @@ export interface MetadataExportTarget {
   aws_region: string;
   datazone_domain_id: string;
   datazone_project_id: string;
+  delta_share: boolean;
   timeout_seconds: number;
   api_key_set: boolean;
   token_set: boolean;

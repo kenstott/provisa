@@ -28,6 +28,8 @@
     "datazoneProjectIdHelp": "O projeto proprietário dos produtos de dados, que aprova as assinaturas.",
     "awsAccessKeyId": "ID da chave de acesso da AWS",
     "awsSecretAccessKey": "Chave de acesso secreta da AWS",
+    "deltaShare": "Publicar também cada produto como um Delta Share",
+    "deltaShareHelp": "Outras equipes de dados recebem o share quando um administrador do Databricks o concede ao destinatário delas. Somente membros armazenados em Delta podem ser compartilhados.",
     "secretSet": "Definido — deixe em branco para manter",
     "secretUnset": "Não definido",
     "secretHelp": "Credenciais armazenadas nunca são exibidas. Deixe em branco para manter a atual; limpe e salve para removê-la.",

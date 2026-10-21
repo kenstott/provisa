@@ -28,6 +28,8 @@
     "datazoneProjectIdHelp": "データプロダクトを所有し、サブスクリプションを承認するプロジェクト。",
     "awsAccessKeyId": "AWS アクセスキー ID",
     "awsSecretAccessKey": "AWS シークレットアクセスキー",
+    "deltaShare": "各プロダクトを Delta Share としても公開する",
+    "deltaShareHelp": "Databricks 管理者が受信者に付与すると、他のデータチームが共有を受け取ります。Delta に格納されたメンバーのみ共有できます。",
     "secretSet": "設定済み — 維持するには空欄のまま",
     "secretUnset": "未設定",
     "secretHelp": "保存された認証情報が表示されることはありません。現在の値を維持するには空欄のままにしてください。削除するには、クリアして保存してください。",

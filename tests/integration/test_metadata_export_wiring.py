@@ -59,6 +59,7 @@ ENGINE_NATIVE = {
     "purview": "tests/integration/test_metadata_export_purview_e2e.py",
     # DataZone is reached through the AWS SDK at its region's own address.
     "datazone": "tests/integration/test_metadata_export_datazone_e2e.py",
+    "unity_catalog": "tests/integration/test_metadata_export_unity_catalog_e2e.py",
 }
 #: What a delivered publish names: one of the data product's member tables.
 MEMBER = "orders"

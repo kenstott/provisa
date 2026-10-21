@@ -44,6 +44,7 @@ const config: MetadataExportState["config"] = {
       aws_region: "",
       datazone_domain_id: "",
       datazone_project_id: "",
+      delta_share: false,
       timeout_seconds: 30,
       api_key_set: true,
       token_set: false,

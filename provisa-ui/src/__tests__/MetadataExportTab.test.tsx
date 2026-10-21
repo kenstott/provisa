@@ -52,6 +52,7 @@ const MARQUEZ: MetadataExportTarget = {
   aws_region: "",
   datazone_domain_id: "",
   datazone_project_id: "",
+  delta_share: false,
   timeout_seconds: 30,
   api_key_set: true,
   token_set: false,
@@ -284,6 +285,26 @@ describe("MetadataExportTab", () => {
       "AKIA-TYPED",
       "typed-secret",
     ]);
+  });
+
+  it("offers a Unity Catalog target its Delta Share, with no endpoint", async () => {
+    // REQ-2117: Unity Catalog publishes through the Databricks engine itself.
+    mockFetch.mockResolvedValue(
+      state({}, [{ ...MARQUEZ, id: "uc", provider: "unity_catalog", endpoint: "" }]),
+    );
+    mockSet.mockResolvedValue(SAVED);
+    render(<MetadataExportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("metadata-export-delta-share-0")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("metadata-export-endpoint-0")).toBeNull();
+    fireEvent.click(screen.getByTestId("metadata-export-delta-share-0"));
+    fireEvent.click(screen.getByTestId("metadata-export-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    const [sent] = mockSet.mock.calls[0][0].targets!;
+    expect(sent.delta_share).toBe(true);
   });
 
   it("reports the reason each target refused the connection", async () => {

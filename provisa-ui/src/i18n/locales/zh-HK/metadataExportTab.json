@@ -28,6 +28,8 @@
     "datazoneProjectIdHelp": "擁有數據產品並審批訂閱的項目。",
     "awsAccessKeyId": "AWS 存取金鑰 ID",
     "awsSecretAccessKey": "AWS 秘密存取金鑰",
+    "deltaShare": "同時將每個產品發佈為 Delta Share",
+    "deltaShareHelp": "Databricks 管理員將共享授予其接收方後，其他數據團隊即可收到。只有以 Delta 儲存的成員才能共享。",
     "secretSet": "已設定——留空以保留",
     "secretUnset": "未設定",
     "secretHelp": "已儲存的認證絕不會顯示。留空以保留現有認證；清除並儲存即可將其移除。",

@@ -70,6 +70,8 @@ type SecretField =
 
 /** A DataZone target signs AWS requests with its own keys: it has no endpoint or auth mode. */
 const DATAZONE = "datazone";
+/** A Unity Catalog target publishes through the Databricks engine itself: no endpoint either. */
+const UNITY_CATALOG = "unity_catalog";
 
 /** A target being edited, with the credentials typed for it since the last save. */
 interface Row {
@@ -90,6 +92,7 @@ const blankTarget = (): MetadataExportTarget => ({
   aws_region: "",
   datazone_domain_id: "",
   datazone_project_id: "",
+  delta_share: false,
   timeout_seconds: 30,
   api_key_set: false,
   token_set: false,
@@ -154,6 +157,7 @@ export function MetadataExportTab() {
           aws_region: target.aws_region,
           datazone_domain_id: target.datazone_domain_id,
           datazone_project_id: target.datazone_project_id,
+          delta_share: target.delta_share,
           timeout_seconds: target.timeout_seconds,
           ...secrets,
         })),
@@ -277,7 +281,18 @@ export function MetadataExportTab() {
               onChange={(v) => patchRow(i, { provider: v ?? "" })}
             />
           </FormField>
-          {target.provider === DATAZONE ? (
+          {target.provider === UNITY_CATALOG ? (
+            <FormChecks>
+              <FormField help={t("metadataExportTab.deltaShareHelp")} size="long">
+                <Checkbox
+                  label={t("metadataExportTab.deltaShare")}
+                  data-testid={tid("delta-share")}
+                  checked={target.delta_share}
+                  onChange={(e) => patchRow(i, { delta_share: e.currentTarget.checked })}
+                />
+              </FormField>
+            </FormChecks>
+          ) : target.provider === DATAZONE ? (
             <>
               <FormField help={t("metadataExportTab.awsRegionHelp")} size="short">
                 <TextInput

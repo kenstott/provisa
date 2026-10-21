@@ -22,6 +22,7 @@ matches each one's ingestion API.
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
 | `purview` | Microsoft Purview: the Data Map, then Unified Catalog data products | The Atlas API at `{endpoint}`, then `https://{entra_tenant_id}-api.purview-service.microsoft.com/datagovernance/catalog` |
+| `unity_catalog` | Databricks Unity Catalog: a schema of views per data product, optionally a Delta Share | Engine-native: SQL on the Databricks engine's own warehouse connection |
 | `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
 | `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
 
@@ -109,6 +110,20 @@ found again by its external identifier, the member's Provisa URI, and a product 
 project; each publish adds a revision and publishes it. Members that are Glue tables are not
 published as Glue assets yet.
 
+`unity_catalog` publishes when Databricks is the configured engine, like `snowflake_horizon`
+when Snowflake is. Unity Catalog has no data-product entity, so each data product becomes one
+schema, `<catalog>.<product id>`, in the catalog the engine works in, holding a view over each
+member. Nothing is copied: a view reads its member where the engine keeps it, the member's Delta
+replica, or the external table of a lake table read in place. Each view is named for the member's
+business name and carries its descriptions; each governance fact is a
+`provisa_governance:<signal>` tag naming the rule that governs it, never the rule. The schema's
+comment holds the product's purpose, limitations, usage, service level and support; its owner,
+team, version and status are `provisa_product:<field>` tags. A view that is no longer a member is
+dropped. With `delta_share` set, the product's views are also published as the Delta Share
+`provisa_<product id>`, which a Databricks admin grants to the recipients of other data teams;
+sharing needs the member in Delta, so a member stored in another format is reported and left out.
+Publishing as a listing in a Databricks private exchange is a later phase.
+
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
 Purview endpoint with `auth_mode: entra`.
@@ -156,7 +171,7 @@ metadata_export:
   reconcile_cron: "0 * * * *"
   targets:
     - id: marquez
-      provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | dataplex | datazone
+      provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | unity_catalog | dataplex | datazone
       endpoint: http://marquez:5000
       auth_mode: api_key       # api_key | bearer | basic | entra | google_service_account
       api_key: ${MARQUEZ_API_KEY}
@@ -187,6 +202,7 @@ metadata_export:
 | `gcp_project`, `gcp_location` | Where a `dataplex` target keeps the org's data products. A `dataplex` target without both is refused when it is saved. |
 | `aws_region`, `datazone_domain_id`, `datazone_project_id` | The DataZone domain a `datazone` target publishes to and the project that owns its data products. A `datazone` target without all three is refused when it is saved; it has no `endpoint`. |
 | `aws_access_key_id`, `aws_secret_access_key` | The AWS keys a `datazone` target signs its requests with. |
+| `delta_share` | Whether a `unity_catalog` target also publishes each product as a Delta Share. A `unity_catalog` target has no `endpoint`: it publishes through the Databricks engine. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
 | `timeout_seconds` | Per-request timeout against the target. |
 
