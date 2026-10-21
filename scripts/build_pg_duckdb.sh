@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build pg_duckdb (embeds DuckDB v1.5.4 inside Postgres) against our cached PG 16.2 source build,
+# Build pg_duckdb (embeds the DuckDB its tag pins) against our cached PG 16.2 source build,
 # so the artifact drops into pgserver's embedded PG 16.2 (same major). Long build: compiles DuckDB.
 # Proven install route is the same as file_fdw/postgres_fdw (scripts/prove_embedded_fdw.sh).
 set -euo pipefail
@@ -9,9 +9,17 @@ PREFIX="$CACHE/pg162"
 PGC="$PREFIX/bin/pg_config"
 [ -x "$PGC" ] || { echo "FAIL: cached PG 16.2 not built at $PREFIX (run prove_embedded_fdw.sh first)"; exit 1; }
 
-# v1.0.0 supports PG 14-17 and avoids ExecCheckOneRelPerms (added post-v1.1.1), which pgserver's
-# fixed PG 16.2 backend does not export. HEAD requires a newer 16.x minor than pgserver ships.
-TAG="${PG_DUCKDB_TAG:-v1.0.0}"
+# pgserver's fixed PG 16.2 backend does not export ExecCheckOneRelPerms, which pg_duckdb uses after
+# v1.1.1; HEAD requires a newer 16.x minor than pgserver ships.
+TAG="${PG_DUCKDB_TAG:-v1.1.1}"
+# The extensions compiled in follow the tag's DuckDB: httpfs at the commit that pg_duckdb release
+# pins (third_party/pg_duckdb_extensions.cmake), iceberg at the commit that DuckDB release pins
+# (.github/config/extensions/iceberg.cmake), since pg_duckdb pins none.
+case "$TAG" in
+  v1.1.1) HTTPFS=9c7d34977b10346d0b4cbbde5df807d1dab0b2bf; ICEBERG=1c0c4c60818f58b603fc50d5267b1f1202fe5484 ;;  # DuckDB v1.4.3
+  v1.1.0) HTTPFS=39ebaf77e93a55b2bb839b621794eba49b2e359b; ICEBERG=db7c01e9271bda329172872a204470893ea4eae1 ;;  # DuckDB v1.4.2
+  *) echo "FAIL: no extension pins for pg_duckdb $TAG"; exit 1 ;;
+esac
 SRC="$CACHE/pg_duckdb-$TAG"
 echo "== 1. clone pg_duckdb $TAG + duckdb submodule (shallow) =="
 if [ ! -d "$SRC/.git" ]; then
@@ -20,19 +28,19 @@ if [ ! -d "$SRC/.git" ]; then
 fi
 
 # Pin the DuckDB extensions compiled into pg_duckdb (reproducible builds): file readers + object
-# storage (httpfs) + iceberg. iceberg's v1.3-ossivalis branch matches DuckDB v1.3.2 (pg_duckdb v1.0.0);
-# its aws-sdk-cpp[sso,sts,identity-management]/avro-c/roaring deps come from vcpkg (see USE_MERGED_...).
-cat > "$SRC/third_party/pg_duckdb_extensions.cmake" <<'EOF'
+# storage (httpfs) + iceberg. iceberg's aws-sdk-cpp[sso,sts,identity-management]/avro-c/roaring deps
+# come from vcpkg (see USE_MERGED_...).
+cat > "$SRC/third_party/pg_duckdb_extensions.cmake" <<EOF
 duckdb_extension_load(json)
 duckdb_extension_load(icu)
 duckdb_extension_load(httpfs
     GIT_URL https://github.com/duckdb/duckdb-httpfs
-    GIT_TAG 7ce5308ed8fe48b593538dbd54344a2fc0695bc7
-    INCLUDE_DIR extension/httpfs/include
+    GIT_TAG $HTTPFS
+    INCLUDE_DIR src/include
 )
 duckdb_extension_load(iceberg
     GIT_URL https://github.com/duckdb/duckdb-iceberg
-    GIT_TAG v1.3-ossivalis
+    GIT_TAG $ICEBERG
 )
 EOF
 

@@ -163,6 +163,12 @@ def main(bundle: Path) -> int:
             has_iceberg = "iceberg_scan" in db.psql(
                 "SELECT proname FROM pg_proc WHERE proname = 'iceberg_scan'"
             )
+            # The DuckDB pg_duckdb embeds, for the log: its tag pins it (scripts/build_pg_duckdb.sh).
+            print(
+                db.psql(
+                    "SELECT * FROM duckdb.query($$SELECT library_version FROM pragma_version()$$)"
+                )
+            )
             extra = f" (iceberg_scan: {'yes' if has_iceberg else 'NO'})"
             if not has_iceberg:
                 loaded = False

@@ -27,7 +27,7 @@
 set -euo pipefail
 
 PG_VERSION="${PG_VERSION:-16.2}"                 # must match pgserver's bundled PG major
-PGDUCKDB_TAG="${PG_DUCKDB_TAG:-v1.0.0}"
+PGDUCKDB_TAG="${PG_DUCKDB_TAG:-v1.1.1}"
 CACHE="${PROVISA_FDW_CACHE:-$HOME/.cache/provisa-fdw}"
 PREFIX="$CACHE/pg${PG_VERSION//./}"              # cached PG-from-source install (headers + pg_config)
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

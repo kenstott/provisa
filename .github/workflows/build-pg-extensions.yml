@@ -72,12 +72,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/provisa-fdw
-          key: pgext-${{ matrix.os }}-${{ matrix.arch }}-pg16.2-pgduckdb-v1.0.0
+          key: pgext-${{ matrix.os }}-${{ matrix.arch }}-pg16.2-pgduckdb-v1.1.1
 
       - name: Build the PG extension bundle
         env:
           PG_VERSION: '16.2'
-          PG_DUCKDB_TAG: 'v1.0.0'
+          PG_DUCKDB_TAG: 'v1.1.1'
           VCPKG_TARGET_TRIPLET: ${{ matrix.arch == 'arm64' && (matrix.os == 'darwin' && 'arm64-osx' || 'arm64-linux') || (matrix.os == 'darwin' && 'x64-osx' || 'x64-linux') }}
         run: bash scripts/ci/build_pg_extensions.sh
 
