@@ -12,6 +12,7 @@
 // of the tour runner pointing at the demo's own objects; the tour button runs them before the
 // product tour until they have been walked to their end, and the Deep Dives menu lists them first.
 
+import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -889,6 +890,68 @@ describe("a demo step's statement", () => {
     await act(async () => new Promise((r) => setTimeout(r, 300)));
     // Handing it over moves the router, which re-runs the step: the statement opens once, not twice.
     expect(delivered).toEqual(["SELECT 1"]);
+  });
+});
+
+describe("a demo step's anchor rendered again", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it("is lit again where the page now shows it", async () => {
+    // The SQL explorer renders its results again once its answer is in: the step lit a table no
+    // longer on the page, and its popover sat in the window's corner.
+    function Explorer() {
+      const [n, setN] = React.useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setN((v) => v + 1)}>
+            again
+          </button>
+          <table className="sql-results-table" key={n} data-render={n}>
+            <tbody>
+              <tr>
+                <td>1</td>
+              </tr>
+            </tbody>
+          </table>
+        </>
+      );
+    }
+    render(
+      <MantineProvider>
+        <MemoryRouter initialEntries={["/sql"]}>
+          <NamedDemoContext.Provider
+            value={{
+              name: "weblogs",
+              exampleQueries: [],
+              tour: [
+                { key: "s1", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+              ],
+              landing: null,
+              notebook: [],
+            }}
+          >
+            <TourProvider>
+              <Launcher />
+              <Routes>
+                <Route path="/sql" element={<Explorer />} />
+              </Routes>
+            </TourProvider>
+          </NamedDemoContext.Provider>
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    await act(async () => new Promise((r) => setTimeout(r, 300)));
+    expect(document.querySelector(".driver-active-element")?.getAttribute("data-render")).toBe("0");
+    await act(async () => fireEvent.click(screen.getByText("again")));
+    await act(async () => new Promise((r) => setTimeout(r, 100)));
+    const lit = document.querySelector(".driver-active-element");
+    expect(lit?.getAttribute("data-render")).toBe("1");
+    expect(lit?.isConnected).toBe(true);
   });
 });
 
