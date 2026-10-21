@@ -129,7 +129,12 @@ describe("the data product graph's filters", () => {
 
 describe("the detail panel's graph", () => {
   it("is the product, its member tables, its commands and the terms bound to its columns", () => {
-    const g = panelGraph(DATA, "p:c360");
+    // A checker is a member of the product as well; the panel leaves it to the quality layer.
+    const withChecker: GraphData = {
+      nodes: DATA.nodes,
+      edges: [...DATA.edges, { id: "m-dq", a: "p:c360", b: "k:orders_dq", kind: "member" }],
+    };
+    const g = panelGraph(withChecker, "p:c360");
     expect(ids(g)).toEqual(["f:refresh", "p:c360", "t:customers", "t:orders", "term:customer"]);
     expect(kinds(g)).toEqual(["command", "member", "term_binding"]);
   });

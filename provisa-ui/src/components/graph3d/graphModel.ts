@@ -388,8 +388,10 @@ export function panelGraph(data: GraphData, product: string): GraphData {
   const edges = g.edges.filter((e) => e.kind !== "term_edge");
   const kept = new Set([product]);
   for (const e of edges) kept.add(e.a).add(e.b);
+  // A checker is a member too, but it is quality evidence: the quality layer's, not the core's.
+  for (const n of g.nodes) if (n.type === "checker" || n.type === "relation") kept.delete(n.id);
   return {
-    nodes: g.nodes.filter((n) => kept.has(n.id) && n.type !== "relation"),
+    nodes: g.nodes.filter((n) => kept.has(n.id)),
     edges: edges.filter((e) => kept.has(e.a) && kept.has(e.b)),
   };
 }

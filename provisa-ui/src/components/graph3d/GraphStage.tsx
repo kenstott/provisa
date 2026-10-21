@@ -31,7 +31,19 @@ export interface StageState {
   setRotate: (on: boolean) => void;
 }
 
-const LEGEND: NodeType[] = ["product", "table", "command", "checker", "term", "tag"];
+/** The legend's order; it lists only the node types drawn. */
+const LEGEND: NodeType[] = [
+  "product",
+  "domain",
+  "table",
+  "column",
+  "command",
+  "checker",
+  "profile",
+  "term",
+  "tag",
+  "relation",
+];
 
 export function GraphStage({
   s,
@@ -127,7 +139,7 @@ export function GraphStage({
       canvasLabel={t("graph3d.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
       testId={testId}
-      legend={LEGEND.map((type) => (
+      legend={LEGEND.filter((type) => s.graph.nodes.some((n) => n.type === type)).map((type) => (
         <span key={type}>
           <i className={`p3d-sw g3d-sw-${type}`} />
           {t(`graph3d.type_${type}`)}

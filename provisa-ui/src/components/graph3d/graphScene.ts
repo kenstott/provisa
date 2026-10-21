@@ -36,6 +36,20 @@ interface EdgeMesh {
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+/** Whose label stays when two collide: the lower rank. */
+const LABEL_RANK: Record<NodeType, number> = {
+  product: 0,
+  domain: 1,
+  table: 2,
+  term: 3,
+  command: 4,
+  checker: 5,
+  relation: 6,
+  tag: 7,
+  profile: 8,
+  column: 9,
+};
+
 const SIZE: Record<NodeType, number> = {
   product: 0.75,
   domain: 0.95,
@@ -133,6 +147,33 @@ export class GraphScene extends BaseScene<GraphHover> {
   }
 
   // ---------- BaseScene ----------
+
+  /** No two labels drawn over each other: a label colliding with one ranked ahead of it is hidden
+   * (its node's full name is in the hover card). The selected and hovered nodes rank first, then
+   * the node types the graph is about, nearest the camera first. */
+  protected onLabelsPlaced() {
+    const lead = (n: NodeMesh) =>
+      n.node.id === this.selected || (this.hover?.kind === "node" && this.hover.id === n.node.id)
+        ? -1
+        : LABEL_RANK[n.node.type];
+    const ranked = this.nodes
+      .filter((n) => n.label.style.visibility !== "hidden")
+      .map((n) => ({ n, rank: lead(n), d: n.mesh.position.distanceTo(this.camera.position) }))
+      .sort((a, b) => a.rank - b.rank || a.d - b.d);
+    const kept: DOMRect[] = [];
+    for (const { n } of ranked) {
+      const r = n.label.getBoundingClientRect();
+      const hit = kept.some(
+        (k) =>
+          r.left < k.right + 2 &&
+          r.right > k.left - 2 &&
+          r.top < k.bottom + 1 &&
+          r.bottom > k.top - 1,
+      );
+      if (hit) n.label.style.visibility = "hidden";
+      else kept.push(r);
+    }
+  }
 
   protected applyTheme() {
     this.buildMaterials();

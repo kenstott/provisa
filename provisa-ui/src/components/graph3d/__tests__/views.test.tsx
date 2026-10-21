@@ -105,6 +105,33 @@ describe("the Knowledge Graph panel", () => {
     expect(screen.queryByTestId("graph3d-layers")).not.toBeInTheDocument();
   });
 
+  it("lists in its legend only what it draws", async () => {
+    panel();
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    const legend = screen.getByTestId("kg-panel-stage").querySelector(".p3d-legend") as HTMLElement;
+    expect([...legend.querySelectorAll("span")].map((e) => e.textContent)).toEqual([
+      "data product",
+      "member table",
+      "command",
+      "glossary term",
+    ]);
+  });
+
+  it("drops a layer's entry from the full graph's legend as the layer goes", async () => {
+    panel();
+    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
+    const legend = () =>
+      [
+        ...(
+          screen.getByTestId("graph3d-stage").querySelector(".p3d-legend") as HTMLElement
+        ).querySelectorAll("span"),
+      ].map((e) => e.textContent);
+    expect(legend()).toContain("tag");
+    fireEvent.click(screen.getByTestId("graph3d-layer-tags"));
+    await waitFor(() => expect(legend()).not.toContain("tag"));
+  });
+
   it("expands to the full graph on Knowledge graph, focused on the product", async () => {
     panel();
     fireEvent.click(await screen.findByTestId("kg-panel-expand"));
