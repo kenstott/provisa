@@ -13,6 +13,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../../test-utils/render";
 
+// REQ-2127: the list and the panel core are read from the meta domain; the reads are held by
+// their own tests (productCore.test.ts).
+vi.mock("../data-products/useProductCore", () => ({
+  useMetaProducts: () => ({
+    data: products,
+    unreadable: false,
+    error: null,
+    loading: false,
+    reload: vi.fn(),
+  }),
+  useProductCore: () => ({
+    data: null,
+    unreadable: false,
+    error: null,
+    loading: false,
+    reload: vi.fn(),
+  }),
+  useMetaReader: () => null,
+}));
+vi.mock("../../components/graph3d/KnowledgeGraphPanel", () => ({
+  ProductMapButton: () => null,
+  KnowledgeGraphPanel: () => null,
+}));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
 }));
@@ -75,12 +98,6 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
-  useDataProducts: () => ({
-    dataProducts: products,
-    loading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: vi.fn() }),
   useTables: () => ({ tables: none, loading: false, refetch: vi.fn() }),
   useSources: () => ({ sources: none, loading: false, refetch: vi.fn() }),

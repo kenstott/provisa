@@ -28,6 +28,11 @@ const COLUMN: Selection = {
       },
     },
     tags: { alias: "tags", sel: { fields: ["tag_id"] } },
+    // REQ-2129: the column-level edges deriving this column (view_governance only).
+    upstream: {
+      alias: "upstream",
+      sel: { fields: ["source_column_key", "source_relation", "source_column", "via"] },
+    },
   },
 };
 
@@ -88,6 +93,12 @@ interface Tagged {
 interface ColumnRow extends Tagged {
   column_name: string;
   column_key: string;
+  upstream?: {
+    source_column_key: string;
+    source_relation: string;
+    source_column: string;
+    via: string;
+  }[];
   glossary_ref?: { term_id: number; term?: { id: number; name: string } | null }[];
 }
 
@@ -301,6 +312,13 @@ export function toGraphData(
         });
         edge(tid, cid, "has_column");
         tag(c, cid);
+        for (const u of c.upstream ?? []) {
+          const sid = `c:${u.source_column_key}`;
+          // A column outside the product stands alone, named by its relation.
+          node({ id: sid, type: "column", label: `${u.source_relation}.${u.source_column}` });
+          const id = `lineage:${sid}>${cid}`;
+          if (!edges.has(id)) edges.set(id, { id, a: sid, b: cid, kind: "lineage", label: u.via });
+        }
         for (const r of c.glossary_ref ?? []) {
           if (!r.term) continue;
           term(r.term.id, r.term.name);

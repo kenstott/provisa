@@ -92,6 +92,18 @@ export class RoleSchema {
     return this.types.get(type)?.find((f) => f.name === name) ?? null;
   }
 
+  /** The type a root query field answers with; null when the role has no such field. */
+  rootType(field: string): string | null {
+    return this.exact(this.query, field)?.type ?? null;
+  }
+
+  /** The scalar fields of ``type`` the role reads (its columns), without the system fields. */
+  scalars(type: string): string[] {
+    return (this.types.get(type) ?? [])
+      .filter((f) => f.type !== null && !this.types.has(f.type) && !f.name.startsWith("_"))
+      .map((f) => f.name);
+  }
+
   /** The one field of ``type`` reaching ``target``: a relationship declared without an alias. */
   reaching(type: string, target: string): { name: string; type: string | null } | null {
     const found = this.types.get(type)?.filter((f) => f.type === target) ?? [];
