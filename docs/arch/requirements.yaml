@@ -86004,3 +86004,29 @@ Then it fails naming the target"
   - REQ-2117
   - REQ-2118
   notes: "Maintainer 2026-10-20, through the lead: all must have e2e tests. Prompted by the audit finding that bigquery_dataplex passed unit tests on a faked transport and an injected runtime while matching no Google API and never running in production. Existing e2e: Atlas, OpenLineage, OpenMetadata only."
+- id: REQ-2121
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: "A Node or Python code source can take its code from a folder on the developer's machine, and opens in VS Code from its form. On the code form's upload field, Choose folder zips the chosen folder in the browser, leaving out node_modules, .venv, __pycache__ and .git, and uploads it as the source's archive, named after the folder; in a browser that can keep the folder's handle (Chrome, Edge), Save zips and uploads it again in the background, and another browser asks for the folder again. Optionally, on a single-tenant install, a fourth code origin beside package, Git repository and upload: a directory on the server, read in place by the worker so an edit is read by the next query. It may name only a directory under the operator's allowed directories, as a file source's mount path may (REQ-2113), and is refused by name on a multi-tenant deployment. The form offers Open in VS Code: a server directory opens as a vscode://file/<path> link in the installed VS Code, a Git origin opens at its commit on vscode.dev, and a package or upload has no such link."
+  use_case: A developer points a Python source at the folder they are editing, presses Save after each change, and opens the same folder in VS Code from the source's form.
+  scenario: "Given a Python source whose code origin is an upload
+
+When the developer chooses a local folder holding the package and saves
+
+Then the folder is uploaded as the source's archive, named after the folder, without its .venv or .git
+
+Given a single-tenant install and a server directory under the allowed directories
+
+When a source's code origin is that directory
+
+Then the form offers Open in VS Code as a vscode://file link to it"
+  related_reqs:
+  - REQ-2098
+  - REQ-2112
+  - REQ-2113
+  notes: "Maintainer 2026-10-21, through the lead: point at a local directory and zip it in the background on save; a shortcut to VS Code. Queued as one requirement, the server-directory origin as an option."

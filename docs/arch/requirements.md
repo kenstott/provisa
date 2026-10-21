@@ -25811,3 +25811,17 @@ Every metadata export target has an end-to-end test against the real service, an
 **Code:** —
 
 **Tests:** `tests/integration/test_metadata_export_wiring.py`, `tests/integration/test_metadata_export_datahub_e2e.py`, `tests/integration/test_metadata_export_snowflake_horizon_e2e.py`, `tests/integration/test_metadata_export_atlas_e2e.py`, `tests/integration/test_metadata_export_openlineage_e2e.py`, `tests/integration/test_metadata_export_openmetadata_e2e.py`
+
+## 4. Source Connectors
+
+### REQ-2121 · Source Connectors {#REQ-2121}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A Node or Python code source can take its code from a folder on the developer's machine, and opens in VS Code from its form. On the code form's upload field, Choose folder zips the chosen folder in the browser, leaving out node_modules, .venv, __pycache__ and .git, and uploads it as the source's archive, named after the folder; in a browser that can keep the folder's handle (Chrome, Edge), Save zips and uploads it again in the background, and another browser asks for the folder again. Optionally, on a single-tenant install, a fourth code origin beside package, Git repository and upload: a directory on the server, read in place by the worker so an edit is read by the next query. It may name only a directory under the operator's allowed directories, as a file source's mount path may ([REQ-2113](#REQ-2113)), and is refused by name on a multi-tenant deployment. The form offers Open in VS Code: a server directory opens as a vscode://file/<path> link in the installed VS Code, a Git origin opens at its commit on vscode.dev, and a package or upload has no such link.
+
+**Use case:** A developer points a Python source at the folder they are editing, presses Save after each change, and opens the same folder in VS Code from the source's form.
+
+**Code:** —
+
+**Tests:** —
