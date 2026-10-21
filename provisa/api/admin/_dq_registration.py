@@ -62,15 +62,16 @@ async def apply_dq_registration(conn: "Connection", model) -> None:
     await ensure_relation(conn, model.table_name)
 
 
-def checker_mapping(source: Any) -> dict:  # REQ-1742
+def checker_mapping(source: Any, password: str) -> dict:  # REQ-1742
     """The connection a data-quality checker source's scans dial back through: the pgwire endpoint
-    its steward entered in the Sources form (``source`` is its SourceInput), kept as entered -- a
-    value, or a reference they typed -- and resolved where a scan uses it
+    its steward entered in the Sources form (``source`` is its SourceInput; ``password`` the
+    password as create_source keeps every source's, empty when none was entered), kept as entered
+    -- a value, or a reference they typed -- and resolved where a scan uses it
     (``dq.scan.checker_connection``), never when the model is read (#276)."""
     return {
         "host": source.host,
         "port": source.port,
         "database": source.database,
         "user": source.username,
-        "password": source.password,
+        "password": password,
     }
