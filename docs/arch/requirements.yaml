@@ -86403,3 +86403,41 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1591
   - REQ-1592
   target: "2026-Q4"
+- id: REQ-2131
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A code-source function (Node, REQ-1984, or Python, REQ-1993) tagged @columns is a batch column
+    transform, the batched form of REQ-1924's column transform. It takes a batch of rows, each row
+    holding the input columns named by its parameters, and returns one result per input row, in order,
+    holding the output columns declared by its return type. It is applied to a table's or view's
+    columns like any column transform, and its outputs are named steps in that projection's lineage.
+    It is stateless: a batch's result depends only on that batch's rows, so batches are independent
+    and run in parallel across the source's workers, and adding workers raises throughput. It may call
+    Provisa's services, including the LLM service (REQ-2105), so one model call can cleanse, classify
+    or enrich a whole batch, metered and capped as any code-source LLM call. In a materialized view,
+    @columns outputs are recomputed when the view is refreshed, as the view's freshness declares; they
+    have no schedule of their own. A function that returns a different number of results than rows it
+    was given is refused naming the function.
+  use_case: >-
+    A data team cleanses free-text supplier addresses with one @columns function that sends each batch
+    of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
+    materialized view refreshed by its freshness, and the work scales by adding workers.
+  scenario: |
+    Given a Python source with clean_address tagged @columns, taking raw_address and returning street, city and country, applied to a materialized view over 10,000 supplier rows
+    When the view is refreshed as its freshness declares
+    Then clean_address is called in batches, the batches run in parallel across the source's workers, and each row's street, city and country are the values returned for it
+    And each LLM call it makes is metered and audited against the source
+    When clean_address returns fewer results than rows in a batch
+    Then the refresh is refused naming clean_address
+  relates_to:
+  - REQ-1924
+  - REQ-1984
+  - REQ-1993
+  - REQ-2105
+  target: "2027-Q1"
