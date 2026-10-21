@@ -544,6 +544,38 @@ def test_dropping_a_version_drops_its_data_from_the_shared_stores_running_and_it
     assert lines[-1] == "docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans"
 
 
+def test_dropping_a_version_removes_the_images_its_services_ran_that_no_container_still_uses(
+    monkeypatch, tmp_path
+):
+    """Every version pulled leaves its images on the node's disk (cloud-dev's sandbox VM at 97%,
+    its shared Elasticsearch red): those no other container uses go, and only those."""
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
+    monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
+    monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
+    monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
+    runner = FakeRunner(
+        {
+            "{{.Image}}": "neo4j:5.19-community\nreviews-api:1\nreviews-api:1\n",
+            "ancestor=neo4j:5.19-community": "newercid\n",
+        }
+    )
+    ds.Demo(runner, "reviews", "v1", None).drop(set())
+    lines = runner.lines()
+    down = lines.index("docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans")
+    listed = next(
+        i
+        for i, x in enumerate(lines)
+        if "label=com.docker.compose.project=provisa-demo-reviews-v1" in x
+    )
+    assert listed < down
+    assert lines[down + 1 :] == [
+        "docker ps -a -q --filter ancestor=neo4j:5.19-community",
+        "docker ps -a -q --filter ancestor=reviews-api:1",
+        "docker image rm reviews-api:1",
+    ]
+    assert not any(" prune" in x for x in lines)
+
+
 _STREAMING = {
     "services": {
         "kafka": {
@@ -759,6 +791,31 @@ def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
         _shared(runner).start("kafka")
     assert "--- docker logs kcid ---" in str(failed.value)
     assert "the cluster id is not a valid UUID" in str(failed.value)
+
+
+def test_a_superseded_versions_own_kafka_on_the_shared_port_is_taken_down_before_it_starts():
+    """A version an earlier release ran with a Kafka of its own keeps the shared Kafka's port
+    after a newer version took over: the shared Kafka could not bind it, and no demo naming Kafka
+    was ready again (cloud-dev's streaming 202610182058)."""
+    old = "provisa-demo-streaming-202610182058-a481c50b2"
+    runner = FakeRunner(
+        {
+            "publish=29092": f"{old} {old}-kafka-1\nprovisa-demo-stores-t provisa-demo-stores-t-kafka-1"
+        }
+    )
+    _shared(runner).start("kafka")
+    lines = runner.lines()
+    down = f"docker compose -p {old} down -v --remove-orphans"
+    assert down in lines
+    assert lines.index(down) < next(i for i, x in enumerate(lines) if "up -d --wait kafka" in x)
+    assert not any("-p provisa-demo-stores-t down" in x for x in lines)
+
+
+def test_the_shared_kafkas_port_held_by_no_demo_version_is_refused_by_name():
+    runner = FakeRunner({"publish=29092": " some-broker"})
+    with pytest.raises(ds.StoreError, match="held by some-broker"):
+        _shared(runner).start("kafka")
+    assert not any("down" in x or "up -d" in x for x in runner.lines())
 
 
 @pytest.mark.parametrize("kind", ["postgres", "mongo"])

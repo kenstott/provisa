@@ -18,8 +18,9 @@
 #      store, a Qdrant store, a Kafka broker, a producer -- as its version's own compose project;
 #      then write the bundle's stores.env, where each store is and the names of its data;
 #   3. mark the version ready (<bundles>/<name>/ready), which the tier then serves;
-#   4. take down every other version nothing reads (<bundles>/<name>/in-use): its data dropped
-#      from the shared stores, its own services removed.
+#   4. take down every older version nothing reads (<bundles>/<name>/in-use): its data dropped
+#      from the shared stores, its own services removed with the images no other container uses,
+#      its bundle directory deleted.
 # Nothing is started at boot: a demo's stores come up the first time it is asked for, and stay
 # up, the shared instances with them, until the node stops. Run with --boot (its own unit, before
 # docker starts), it clears what the node's last run left: no demo is asked for or ready, since
@@ -84,17 +85,23 @@ sync_demo() { # name
   if [ -f "$DEMO_BUNDLES_DIR/$name/in-use" ]; then
     keep="$keep$(tr '\n' ' ' < "$DEMO_BUNDLES_DIR/$name/in-use") "
   fi
-  # Every other version whose stores this node brought up (its stores.env) and nothing reads: its
-  # data is dropped from the shared stores and its own services taken down.
-  for old in "$DEMO_BUNDLES_DIR/$name"/*/stores.env; do
-    [ -f "$old" ] || continue
-    old="$(basename "$(dirname "$old")")"
+  # Every older version nothing reads: where this node brought its stores up (its stores.env), its
+  # data is dropped from the shared stores and its own services taken down with the images no
+  # other container uses; then its bundle directory is deleted, whether or not it was ever up.
+  for old in "$DEMO_BUNDLES_DIR/$name"/*/; do
+    [ -d "$old" ] || continue
+    old="$(basename "$old")"
     case "$keep" in
-      *" $old "*) ;;
-      *) python3 "$DEMO_STORES" drop "$name" "$old"
-         rm -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env"
-         echo "demo $name: $old taken down" ;;
+      *" $old "*) continue ;;
     esac
+    [[ "$old" < "$version" ]] || continue
+    if [ -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env" ]; then
+      python3 "$DEMO_STORES" drop "$name" "$old"
+      rm -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env"
+      echo "demo $name: $old taken down"
+    fi
+    rm -rf "${DEMO_BUNDLES_DIR:?}/$name/$old"
+    echo "demo $name: $old deleted"
   done
 }
 

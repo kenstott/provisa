@@ -83757,7 +83757,7 @@
     (scripts/demo_stores_sync.sh, run at boot, on a timer and whenever the tier asks) pulls each offered demo''s version (PROVISA_DEMO_BUNDLES),
     brings up the bundle''s run-time stores as a compose project of that version, shared read-only by its sandboxes, writes
     where they are into the bundle''s stores.env, and marks the version ready; it takes down the stores of versions nothing
-    reads any more. The tier serves the ready version; when a sandbox is opened it looks for a newer published version and
+    reads any more, with the images no other container uses and their bundle directories (an older version never brought up loses its directory too), and before a shared store starts at a fixed port, the own services of any demo version holding it. The tier serves the ready version; when a sandbox is opened it looks for a newer published version and
     asks the node for it, serving the ready one meanwhile, so a newly published version reaches the next sandbox opened after
     it is ready, with no release and no redeploy; the demo''s template is replaced from it, and a sandbox already open keeps
     reading its own version. A sandbox''s visitor sees what the demo shows its admin and holds the demo''s own roles, never
@@ -83811,7 +83811,13 @@
     code is cut. A demo with a setup.yaml is not bundled until the setup runner (scripts/run_demo_setup.py) is on the build''s
     branch. 2026-10-14, the maintainer: only SaaS sources use replicas; a demo''s own sources are read live, and the sandbox
     tier''s node runs them (approved hosting design: host-side sync, stores.env, no forced replication, logs read from the
-    demo''s own bundle).'
+    demo''s own bundle). 2026-10-21, the lead: on cloud-dev a streaming version an earlier release ran with its own Kafka
+    held 127.0.0.1:29092 after a newer version took over, so the shared Kafka could not bind and no demo naming Kafka was
+    ready again; the shared Kafka now takes down the holding version''s own services first (scripts/demo_stores.py,
+    tests/unit/test_demo_stores.py). 2026-10-21, the maintainer via the lead: the sandbox VM''s disk reached 97% (old bundle
+    directories, unused images) and turned the shared Elasticsearch red; a version taken down loses its bundle directory and
+    the images no container still uses, an older one never brought up its directory, and nothing else is pruned
+    (scripts/demo_stores_sync.sh, tests/unit/test_demo_bundle_setup.py).'
 - id: REQ-2051
   status: in-progress
   since: 2026-10
