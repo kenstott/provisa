@@ -137,7 +137,7 @@ _DQ_STANDARD_PGWIRE_PORT = 5439
 
 def _secured() -> bool:
     """Whether an auth provider secures this deployment: pgwire then checks a password; with
-    none it is in trust mode and ignores one (pgwire/server.py)."""
+    none it is in trust mode and asks for none (pgwire/server.py)."""
     from provisa.api.app import state
 
     return state.auth_middleware_active
@@ -168,7 +168,7 @@ def checker_mapping() -> dict[str, str]:
         "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
         # Under an auth provider, a reference resolved at each scan (dq.scan): unset, the scan
         # fails naming it. No account's password is assumed. With none, pgwire is in trust mode
-        # and ignores the password, as the shipped dq-checker and dq-soda sources write it.
+        # and asks for no password, as the shipped dq-checker and dq-soda sources write it.
         # reference-convention: REQ-1443 -- docs/configuration.md's checker source
         "password": "${env:PROVISA_DQ_PASSWORD}" if _secured() else "",
     }
