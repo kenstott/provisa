@@ -14,7 +14,7 @@
 
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { MantineProvider } from "@mantine/core";
@@ -591,6 +591,63 @@ describe("the tour button in a named demo", () => {
     fireEvent.click(next());
     expect(await screen.findByText("tour.steps.weblogsDbLogAgain.title")).toBeInTheDocument();
     expect(next().textContent).toBe("tour.nav.next 3/4");
+  });
+
+  it("goes on past a step whose role pick gives back the right the steps after it need", async () => {
+    // As the churn tour: the analyst may open none of the pages after "back to every role", yet that
+    // step is not the end; its Next picks All, which opens them again.
+    const tour = [
+      WEBLOGS.tour[0],
+      {
+        key: "weblogsAsAnalyst",
+        route: "/query",
+        capability: "query_development" as const,
+        role: "analyst",
+      },
+      { key: "weblogsEveryRole", role: "all" },
+      {
+        key: "weblogsLast",
+        route: "/sources",
+        capability: "source_registration" as const,
+        source: "shop_access",
+      },
+    ];
+    const demo = { ...WEBLOGS, tour };
+    // The header's role picker: a pick sets the rights every gate (and the itinerary) reads.
+    function Picking() {
+      const [, repaint] = React.useState(0);
+      const pick = (to: string[]) => () => {
+        rights.current = to;
+        repaint((n) => n + 1);
+      };
+      return (
+        <>
+          {tourTree(demo)}
+          <button type="button" data-testid="role-selector-trigger" />
+          <button type="button" data-role-option="analyst" onClick={pick(["query_development"])} />
+          <button type="button" data-role-option="all" onClick={pick(ALL_RIGHTS)} />
+        </>
+      );
+    }
+    render(<Picking />);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    const next = () => document.querySelector<HTMLElement>(".driver-popover-next-btn")!;
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsAsAnalyst.title")).toBeInTheDocument();
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsEveryRole.title")).toBeInTheDocument();
+    expect(rights.current).toEqual(["query_development"]);
+    expect(next().textContent).toBe("tour.nav.next 3/4");
+    fireEvent.click(next());
+    // The All pick repaints the step's popover as it lands: read the title the popover shows now.
+    await waitFor(() =>
+      expect(document.querySelector(".driver-popover-title")?.textContent).toBe(
+        "tour.steps.weblogsLast.title",
+      ),
+    );
+    expect(rights.current).toEqual(ALL_RIGHTS);
   });
 
   it("offers a revised track again, though the one before it was walked", async () => {

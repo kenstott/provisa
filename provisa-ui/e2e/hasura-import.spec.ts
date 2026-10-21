@@ -29,6 +29,7 @@ test.describe.configure({ timeout: 240_000 });
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SAMPLE = path.join(ROOT, "tests/fixtures/hasura_v2_t1_metadata.json");
 const COUNTRIES_URL = "https://countries.trevorblades.com/graphql";
+const ACTION_BASE_URL = "http://localhost:3000";
 const DATA_GQL = `${BACKEND_URL}/data/graphql`;
 const USER = {
   "Content-Type": "application/json",
@@ -91,13 +92,19 @@ test("import Hasura's sample through the tab, then query it as the sample's user
   expect(yaml).toContain("${env:RS_ENV}");
   // REQ-1907: the remote schema lands, so its source needs a landing clock — set beside its
   // endpoint, at the same indentation, before applying.
+  // The action's handler URL reads ACTION_BASE_URL, which the report names to set before applying
+  // (REQ-417); the administrator gives the handler's address in its place. Nothing calls it here.
+  expect(yaml).toContain("${env:ACTION_BASE_URL}");
   await config.fill(
-    yaml.replace(
-      /^(\s*)(\S+:\s*)\$\{env:RS_ENV\}\s*$/m,
-      (_m, indent: string, key: string) => `${indent}${key}${COUNTRIES_URL}\n${indent}cache_ttl: 300`,
-    ),
+    yaml
+      .replace(
+        /^(\s*)(\S+:\s*)\$\{env:RS_ENV\}\s*$/m,
+        (_m, indent: string, key: string) => `${indent}${key}${COUNTRIES_URL}\n${indent}cache_ttl: 300`,
+      )
+      .replaceAll("${env:ACTION_BASE_URL}", ACTION_BASE_URL),
   );
   expect(await config.inputValue()).toContain(COUNTRIES_URL);
+  expect(await config.inputValue()).not.toContain("${env:ACTION_BASE_URL}");
   expect(await config.inputValue()).toContain("cache_ttl: 300");
 
   await page.getByRole("button", { name: "Apply to this organization" }).click();

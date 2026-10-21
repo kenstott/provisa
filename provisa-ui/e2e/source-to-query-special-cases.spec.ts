@@ -350,7 +350,18 @@ for (const c of [
       // Run the dry run for real BEFORE submitting — this is the checker's "query my data"
       // analog, and it works standalone (dryRunContract scans through sourceId + contractText
       // directly, independent of whether the results table has been registered yet).
+      const dryRunResponse = page.waitForResponse(
+        (r) =>
+          r.url().includes("/admin/graphql") &&
+          (r.request().postData() ?? "").includes("DryRunDqContract"),
+        { timeout: 30000 },
+      );
       await page.getByTestId("dq-dry-run").click();
+      // The server's own answer, asserted whole: the panel renders only its message and checks,
+      // so a GraphQL error or a refusal shows here with its text rather than as an empty alert.
+      const dryRunBody = await (await dryRunResponse).json();
+      expect(dryRunBody.errors, JSON.stringify(dryRunBody)).toBeUndefined();
+      expect(dryRunBody.data.dryRunDqContract.success, JSON.stringify(dryRunBody)).toBe(true);
       await expect(page.getByTestId("dq-dry-run-result")).toBeVisible({ timeout: 30000 });
       const outcomeBadge = page.getByTestId("dq-dry-run-result").locator(".mantine-Badge-root");
       await expect(outcomeBadge.first()).toBeVisible();

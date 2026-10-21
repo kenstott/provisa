@@ -940,10 +940,10 @@ def test_fully_unlabeled_match_produces_all_rels_union():
 
 
 def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
-    """MATCH ()-[r]-() WHERE r.since IS NOT NULL — r's JSON nests attrs under "properties" (per
-    the all-rels union's edge_json in translator_union.py), so property access on an unlabeled
-    rel var must extract "$.properties.since", not the wrong top-level "$.since" (which would
-    make every row's r.since resolve to NULL, filtering out all rows)."""
+    """MATCH ()-[r]-() WHERE r.since IS NOT NULL — r.since is the edge's own attribute: read from
+    the column of its properties the all-rels union carries beside its JSON (translator_union.py),
+    never from the edge's JSON, whose id is built from both endpoints' keys (a condition on it
+    would match the two tables by their keys, which the join guard refuses, REQ-603)."""
     lm = _make_label_map()
     lm.relationships["LITTERMATE"] = RelationshipMapping(
         rel_type="LITTERMATE",
@@ -968,8 +968,8 @@ def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
     ast = parse_cypher("MATCH ()-[r]-() WHERE r.since IS NOT NULL RETURN r.since LIMIT 25")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "$.properties.since" in sql
-    assert "$.since" not in sql.replace("$.properties.since", "")
+    assert "JSON_EXTRACT_SCALAR(r__properties, '$.since')" in sql
+    assert "JSON_EXTRACT_SCALAR(r," not in sql
 
 
 def test_domain_labeled_target_filters_rels_union():
@@ -2538,3 +2538,25 @@ def test_undirected_anonymous_path_includes_all_nodes_and_edges():
 
     node_labels = set(re.findall(r"'label',\s*'([^']+)'", sql))
     assert node_labels == {"Pets", "AnimalBreeds", "Inquiries"}, node_labels
+
+
+def test_an_untyped_relationship_from_a_labeled_node_reads_only_that_node_types_relationships():
+    """MATCH (n:Company)-[r]->(m): only the relationships whose source is a Company. The label was
+    dropped, and the union read every relationship of the model -- any source's edge answered
+    `RETURN r LIMIT 1`, and the whole model's union outran the request deadline (ui-core
+    cypher-api REQ-750 edge spec, 504)."""
+    lm = _make_label_map()
+    lm.relationships["EMPLOYS"] = RelationshipMapping(
+        rel_type="EMPLOYS",
+        source_label="Company",
+        target_label="Person",
+        join_source_column="id",
+        join_target_column="company_id",
+        field_name="employs",
+    )
+    sql_ast, _, _ = cypher_to_sql(
+        parse_cypher("MATCH (n:Company)-[r]->(m) RETURN r LIMIT 1"), lm, {}
+    )
+    sql = sql_ast.sql(dialect="trino")
+    assert "'EMPLOYS'" in sql
+    assert "'WORKS_AT'" not in sql and "'KNOWS'" not in sql

@@ -188,6 +188,26 @@ async def test_none_provider_trust_mode(pgwire_server):
     assert row is not None
 
 
+def test_trust_mode_asks_no_password(pgwire_server):
+    """provider=none answers the startup with AuthenticationOk, as PostgreSQL trust does: libpq
+    with no password -- a data-quality checker scanning through pgwire -- connects, where a
+    password request would fail it client-side ("fe_sendauth: no password supplied")."""
+    import psycopg
+
+    trust_state = MagicMock()
+    trust_state.contexts = {}
+    trust_state.auth_config = {"provider": "none"}
+    trust_state.auth_middleware_active = False
+    with patch("provisa.api.app.state", trust_state):
+        conn = psycopg.connect(
+            host="127.0.0.1", port=pgwire_server, user="analyst", dbname="provisa", password=""
+        )
+        try:
+            assert conn.info.status == psycopg.pq.ConnStatus.OK
+        finally:
+            conn.close()
+
+
 @pytest.mark.asyncio
 async def test_show_server_version(pgwire_server, mock_state):
     port = pgwire_server

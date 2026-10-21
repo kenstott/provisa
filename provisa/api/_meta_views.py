@@ -185,6 +185,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
+    # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
         SELECT id, tag_id, base_tag_id, object_type, source_id, table_id, column_name,
@@ -193,7 +194,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- table_columns and glossary_term_refs. NULL for a non-column assignment,
                -- which is what makes the join select only the column-level tags.
                CAST(table_id AS TEXT) || ':' || column_name AS column_key,
-               tenant_id
+               tenant_id,
+               product_id
         FROM tag_assignments
     """,
     # REQ-1375: the management report — every assignment with a planned end date, with its
@@ -288,15 +290,37 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM glossary_term_experts x
         JOIN glossary_terms t ON t.id = x.term_id
     """,
+    # REQ-2125: dq_contract tells a product's checker members from its output tables, and
+    # profiled_table_id names, for a profile result table, the member table it profiles: the
+    # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
+    # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
+    # replaced in place.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
-        SELECT id, source_id, domain_id, schema_name, table_name,
-               alias, description, cache_ttl, gql_naming_convention, watermark_column,
-               view_sql, product_id, materialize, mv_refresh_interval,
-               l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
-               tenant_id
-        FROM registered_tables
-        WHERE NOT draft  -- a draft table is in no catalog
+        SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
+               rt.alias, rt.description, rt.cache_ttl, rt.gql_naming_convention,
+               rt.watermark_column,
+               rt.view_sql, rt.product_id, rt.materialize, rt.mv_refresh_interval,
+               rt.l1_cluster, rt.l2_cluster, rt.l3_cluster, rt.clusters_computed_at,
+               rt.tenant_id,
+               rt.dq_contract,
+               (SELECT m.id FROM registered_tables m
+                WHERE m.profiler_source_id = rt.source_id
+                  AND SUBSTR(rt.table_name, 1,
+                             LENGTH(m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_'))
+                      = m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_')
+                   AS profiled_table_id
+        FROM registered_tables rt
+        WHERE NOT rt.draft  -- a draft table is in no catalog
+    """,
+    # REQ-2125: one row per data product, its own fields only. Everything one-to-many about a
+    # product -- members, commands, tags, terms, profiles -- is reached through meta-domain
+    # relationships (provisa.api._meta_seed), never flattened or counted here.
+    "data_products": """
+        CREATE OR REPLACE VIEW data_products_meta AS
+        SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
+               version, status, sla, support, support_contact, publish, custom_properties
+        FROM data_products
     """,
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
@@ -343,13 +367,15 @@ _META_TABLE_VIEWS: dict[str, str] = {
                domain_id, description, created_at, updated_at
         FROM tracked_webhooks
     """,
+    # REQ-2125: product_id is the data product the command is a member of.
     "tracked_functions": """
         CREATE OR REPLACE VIEW tracked_functions_meta AS
         SELECT id, name, source_id, schema_name, function_name, returns, kind,
                arguments,
                return_schema,
                visible_to,
-               domain_id, description, created_at, updated_at
+               domain_id, description, created_at, updated_at,
+               product_id
         FROM tracked_functions
     """,
 }
