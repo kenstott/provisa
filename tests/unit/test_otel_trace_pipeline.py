@@ -784,7 +784,7 @@ class TestNonEngineTerminalsAreReported:
                 return iter([1])
 
         class _Conn:
-            async def fetch_with_columns(self, sql):
+            async def fetch_with_columns(self, sql, *args, bind_as_given=False):
                 return ["n"], [_Row()]
 
         class _TenantDB:
