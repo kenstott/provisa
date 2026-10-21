@@ -77,10 +77,10 @@ steps:
     LIMIT 10
 - key: profilingDrift
   sql: >-
-    SELECT d.column_name, d.measure, d.previous, d.current, d.drift_reason
+    SELECT d.scope, d.column_name, d.subject, d.measure, d.previous, d.current, d.drift_reason
     FROM "harbor"."customer_drift" AS d
     WHERE d.drifting AND d.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_drift" AS p)
-    ORDER BY d.column_name, d.measure
+    ORDER BY d.scope, d.column_name, d.subject, d.measure
     LIMIT 20
 - key: profilingOriginal
   sql: >-

@@ -24,6 +24,7 @@ environment the tour's switcher last picked: synthetic's rows are generated from
 
 from __future__ import annotations
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -43,6 +44,14 @@ _REPO = Path(__file__).resolve().parents[2]
 _NAME = "profiling"
 _ORG = "profilingtiere2e"
 _STEPS = yaml.safe_load((_REPO / "demo" / "named" / _NAME / "tour.yaml").read_text())["steps"]
+# Every measure the latest run flags drifting, with the columns it describes: the tour's step shows
+# the first rows only.
+_ALL_DRIFTING = "allDrifting"
+_ALL_DRIFTING_SQL = (
+    'SELECT d.scope, d.column_name, d.subject, d.measure, d.involved_columns FROM "harbor"."customer_drift" '
+    "AS d WHERE d.drifting AND d.run_time = "
+    '(SELECT MAX(p.run_time) FROM "harbor"."customer_drift" AS p)'
+)
 
 
 @pytest.fixture(scope="module")
@@ -159,6 +168,8 @@ def answers(tmp_path_factory, registry) -> dict[str, list[dict[str, Any]]]:
                     travel["as_recorded"] = str(out[taken["step"]][taken["row"]][taken["column"]])
                 if "sql" in step:
                     out[step["key"]] = _sql(tier, sandbox, step["sql"], dict(travel))
+                if step["key"] == "profilingDrift":
+                    out[_ALL_DRIFTING] = _sql(tier, sandbox, _ALL_DRIFTING_SQL, dict(travel))
             return out
         finally:
             _close(sandbox["org_id"])
@@ -176,9 +187,15 @@ def test_the_second_run_finds_the_column_setup_changed_drifting(answers):
     """REQ-2052: the build's two runs, carried in the bundle: between them its setup wrote every US
     postal code as ZIP+4. A template that profiled its sources itself compared two runs of the same
     data and flagged nothing."""
-    drifting = answers["profilingDrift"]
-    assert drifting, "the latest run flags nothing drifting"
-    assert {r["column_name"] for r in drifting} - {None, ""} == {"postal_code"}, drifting
+    assert answers["profilingDrift"], "the latest run flags nothing drifting"
+    drifting = answers[_ALL_DRIFTING]
+    # A measure relating postal_code to another column (a correlation, a dependency) moves with it;
+    # one describing columns without postal_code is of data the sync left alone. A table's measures
+    # (its duplicate rows) describe no column.
+    described = [json.loads(r["involved_columns"]) for r in drifting]
+    assert all("postal_code" in cols for cols in described if cols), drifting
+    columns = {r["column_name"] for r in drifting if r["scope"] in ("column", "category")}
+    assert columns == {"postal_code"}, drifting
 
 
 def test_the_synthetic_environment_answers_with_generated_customers_only(answers):
