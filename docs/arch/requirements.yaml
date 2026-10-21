@@ -60800,8 +60800,9 @@
     the governed table to scan, not for a schema and table of the source. A checker has no remote schema
     — nothing exists upstream until a scan runs — so the schema/table pickers, column discovery, the column
     grid and the watermark picker are not shown. The contract panel's dataset picker names the table to
-    scan; the results table name (<table>_scan), alias (<table>_quality) and description are derived from
-    it and stay editable; the results envelope's visibility is one role list; the rules are authored in
+    scan; the results table name (<table>_scan), alias (<table>_quality) [SUPERSEDED by REQ-2132, 2026-10-21 -- the description is the registrant's
+    quality claim, not derived. Kept here for history; do not implement against it.] and description [END
+    SUPERSEDED BLOCK] are derived from it and stay editable; the results envelope's visibility is one role list; the rules are authored in
     the same form. The registration carries the contract plus the one placeholder column the server replaces
     (REQ-1443), and the source is never introspected.
   use_case: The add-table form offered "Select schema..." and a table picker stuck on "Loading..." for
