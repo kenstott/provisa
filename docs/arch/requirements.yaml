@@ -85521,8 +85521,9 @@ And reaffirming it records the tag again with today's decider and evidence and r
     engine tree it mounts (a GKE shard from a Secret of its own mounted there), a Postgres engine from
     a directory it shares with Provisa (none shared, as with a managed Postgres, and the table is landed
     on it), DuckDB from a private directory of Provisa''s process. The directory is 0755. The identity''s
-    files are mode 0600, readable by the engine''s process alone. A host''s pinned certificate is public:
-    it is written mode 0644, so the engine reads it whatever user wrote it, with no ownership given.'
+    keys are mode 0600, readable by the engine''s process alone. A certificate is public, the identity''s
+    own and each host''s pinned one: it is written mode 0644, so the engine reads it whatever user wrote
+    it, with no ownership given.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and

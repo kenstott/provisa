@@ -161,7 +161,7 @@ async def test_trinos_secret_files_are_its_alone_its_roots_public_and_named_by_t
     assert files.root("scores-src") == "/etc/trino/codehost-client/acme.scores-src.root.crt"
     assert (written / "acme.scores-src.root.crt").read_text() == "HOST PEM"
     assert {p.name: _mode(str(p)) for p in written.iterdir()} == {
-        "acme.crt": 0o600,
+        "acme.crt": 0o644,  # public
         "acme.key": 0o600,
         "acme.pk8": 0o600,
         "acme.scores-src.root.crt": 0o644,  # public: Trino reads it whoever wrote it
