@@ -75,8 +75,7 @@
       "logInterval": "Capture interval (seconds)",
       "logIntervalHelp": "How often the table is read for rows recorded since the last capture.",
       "logLateness": "Allowed lateness (seconds)",
-      "logLatenessHelp": "How far before the last recorded time each capture reads again, so a row committed late is still kept.",
-      "logSave": "Save"
+      "logLatenessHelp": "How far before the last recorded time each capture reads again, so a row committed late is still kept."
     },
     "pagination": {
       "first": "First page",

@@ -75,8 +75,7 @@
       "logInterval": "Erfassungsintervall (Sekunden)",
       "logIntervalHelp": "Wie oft die Tabelle nach Zeilen gelesen wird, die seit der letzten Erfassung erfasst wurden.",
       "logLateness": "Zulässige Verspätung (Sekunden)",
-      "logLatenessHelp": "Wie weit vor der letzten Erfassungszeit jede Erfassung erneut liest, damit eine verspätet übernommene Zeile trotzdem erhalten bleibt.",
-      "logSave": "Speichern"
+      "logLatenessHelp": "Wie weit vor der letzten Erfassungszeit jede Erfassung erneut liest, damit eine verspätet übernommene Zeile trotzdem erhalten bleibt."
     },
     "pagination": {
       "first": "Erste Seite",

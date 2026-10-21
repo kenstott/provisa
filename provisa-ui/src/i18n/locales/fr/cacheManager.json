@@ -75,8 +75,7 @@
       "logInterval": "Intervalle de capture (secondes)",
       "logIntervalHelp": "À quelle fréquence la table est lue pour les lignes enregistrées depuis la dernière capture.",
       "logLateness": "Retard admis (secondes)",
-      "logLatenessHelp": "Jusqu'où avant la dernière heure d'enregistrement chaque capture relit, pour qu'une ligne validée en retard soit conservée.",
-      "logSave": "Enregistrer"
+      "logLatenessHelp": "Jusqu'où avant la dernière heure d'enregistrement chaque capture relit, pour qu'une ligne validée en retard soit conservée."
     },
     "pagination": {
       "first": "Première page",

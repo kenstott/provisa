@@ -7522,7 +7522,6 @@
   "hi/cacheManager.json::cacheManager.materialized.logIntervalHelp": "How often the table is read for rows recorded since the last capture.",
   "hi/cacheManager.json::cacheManager.materialized.logLateness": "Allowed lateness (seconds)",
   "hi/cacheManager.json::cacheManager.materialized.logLatenessHelp": "How far before the last recorded time each capture reads again, so a row committed late is still kept.",
-  "hi/cacheManager.json::cacheManager.materialized.logSave": "Save",
   "hi/cacheManager.json::cacheManager.materialized.logSettings": "Settings",
   "hi/cacheManager.json::cacheManager.materialized.versionLog": "Version log of {{table}}",
   "hi/registerTableForm.json::registerTableForm.continue": "Continue",

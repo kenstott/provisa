@@ -14,10 +14,12 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, NumberInput, Popover, Stack } from "@mantine/core";
+import { Button, NumberInput, Popover, Stack } from "@mantine/core";
 import type { MVInfo } from "../../api/admin";
 import { useUpdateVersionLog } from "../../hooks/useAdminOpsQueries";
 import { serverMessage } from "../../i18n/serverMessage";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { Tip } from "../Tip";
 
 export function VersionLogSettings({
   log,
@@ -75,44 +77,46 @@ export function VersionLogSettings({
       </Popover.Target>
       <Popover.Dropdown>
         <Stack gap="xs" w={260}>
-          <NumberInput
-            label={t("cacheManager.materialized.logInterval")}
-            description={t("cacheManager.materialized.logIntervalHelp")}
-            min={1}
-            allowDecimal={false}
-            value={interval}
-            onChange={(v) => setInterval(Number(v))}
-            data-testid={`mv-log-interval-${log.id}`}
-          />
-          <NumberInput
-            label={t("cacheManager.materialized.logLateness")}
-            description={t("cacheManager.materialized.logLatenessHelp")}
-            min={0}
-            value={lateness}
-            onChange={(v) => setLateness(Number(v))}
-            data-testid={`mv-log-lateness-${log.id}`}
-          />
-          {problem && <Alert color="red">{problem}</Alert>}
-          <Group justify="space-between">
-            <Button
-              size="xs"
-              variant="light"
-              onClick={onFullCapture}
-              disabled={capturing}
-              title={t("cacheManager.materialized.fullCaptureHelp")}
-              data-testid={`mv-full-capture-btn-${log.id}`}
+          <FormLayout>
+            <FormField size="short" hint={t("cacheManager.materialized.logIntervalHelp")}>
+              <NumberInput
+                label={t("cacheManager.materialized.logInterval")}
+                min={1}
+                allowDecimal={false}
+                value={interval}
+                onChange={(v) => setInterval(Number(v))}
+                data-testid={`mv-log-interval-${log.id}`}
+              />
+            </FormField>
+            <FormField size="short" help={t("cacheManager.materialized.logLatenessHelp")}>
+              <NumberInput
+                label={t("cacheManager.materialized.logLateness")}
+                min={0}
+                value={lateness}
+                onChange={(v) => setLateness(Number(v))}
+                data-testid={`mv-log-lateness-${log.id}`}
+              />
+            </FormField>
+            <FormFooter
+              onSave={save}
+              onCancel={() => setOpened(false)}
+              saving={saving}
+              saveProps={{ "data-testid": `mv-log-save-${log.id}` }}
+              problem={problem}
             >
-              {t("cacheManager.materialized.fullCapture")}
-            </Button>
-            <Button
-              size="xs"
-              onClick={save}
-              loading={saving}
-              data-testid={`mv-log-save-${log.id}`}
-            >
-              {t("cacheManager.materialized.logSave")}
-            </Button>
-          </Group>
+              <Tip text={t("cacheManager.materialized.fullCaptureHelp")}>
+                <Button
+                  size="xs"
+                  variant="light"
+                  onClick={onFullCapture}
+                  disabled={capturing}
+                  data-testid={`mv-full-capture-btn-${log.id}`}
+                >
+                  {t("cacheManager.materialized.fullCapture")}
+                </Button>
+              </Tip>
+            </FormFooter>
+          </FormLayout>
         </Stack>
       </Popover.Dropdown>
     </Popover>

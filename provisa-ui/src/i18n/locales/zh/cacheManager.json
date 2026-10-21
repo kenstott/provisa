@@ -75,8 +75,7 @@
       "logInterval": "捕获间隔（秒）",
       "logIntervalHelp": "多久读取一次该表，查找自上次捕获以来记录的行。",
       "logLateness": "允许延迟（秒）",
-      "logLatenessHelp": "每次捕获从最新记录时间往前多久重新读取，以便延迟提交的行也能保留。",
-      "logSave": "保存"
+      "logLatenessHelp": "每次捕获从最新记录时间往前多久重新读取，以便延迟提交的行也能保留。"
     },
     "pagination": {
       "first": "第一页",

@@ -75,8 +75,7 @@
       "logInterval": "擷取間隔（秒）",
       "logIntervalHelp": "多久讀取一次該表，查找自上次擷取以來記錄的列。",
       "logLateness": "容許延遲（秒）",
-      "logLatenessHelp": "每次擷取從最新記錄時間往前多久重新讀取，以便延遲提交的列也能保留。",
-      "logSave": "儲存"
+      "logLatenessHelp": "每次擷取從最新記錄時間往前多久重新讀取，以便延遲提交的列也能保留。"
     },
     "pagination": {
       "first": "第一頁",

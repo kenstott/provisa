@@ -75,8 +75,7 @@
       "logInterval": "Vastleginterval (seconden)",
       "logIntervalHelp": "Hoe vaak de tabel wordt gelezen op rijen die sinds de laatste vastlegging zijn vastgelegd.",
       "logLateness": "Toegestane vertraging (seconden)",
-      "logLatenessHelp": "Hoe ver vóór de laatste vastlegtijd elke vastlegging opnieuw leest, zodat een te laat vastgelegde rij toch wordt bewaard.",
-      "logSave": "Opslaan"
+      "logLatenessHelp": "Hoe ver vóór de laatste vastlegtijd elke vastlegging opnieuw leest, zodat een te laat vastgelegde rij toch wordt bewaard."
     },
     "pagination": {
       "first": "Eerste pagina",

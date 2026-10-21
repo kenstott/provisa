@@ -75,8 +75,7 @@
       "logInterval": "Intervalo de captura (segundos)",
       "logIntervalHelp": "Con qué frecuencia se lee la tabla en busca de filas registradas desde la última captura.",
       "logLateness": "Retraso permitido (segundos)",
-      "logLatenessHelp": "Cuánto antes de la última hora de registro vuelve a leer cada captura, para que una fila confirmada tarde se conserve.",
-      "logSave": "Guardar"
+      "logLatenessHelp": "Cuánto antes de la última hora de registro vuelve a leer cada captura, para que una fila confirmada tarde se conserve."
     },
     "pagination": {
       "first": "Primera página",
