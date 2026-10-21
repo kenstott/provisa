@@ -564,7 +564,18 @@ _STREAMING = {
 
 
 def test_a_demos_producer_writes_its_versions_topics_to_the_shared_kafka(monkeypatch, tmp_path):
-    runner = FakeRunner({"ps -q kafka": "kcid", "ps -q producer": "pcid", " ps -q": "pcid"})
+    """Created, joined to the shared stores' network, then started: a producer started before it
+    joined could not resolve "kafka", exited and was restarted, and connecting a container
+    between restarts failed ("network sandbox ... not found", the streaming and provisioning
+    walks)."""
+    runner = FakeRunner(
+        {
+            "ps -q kafka": "kcid",
+            "ps -a -q producer": "pcid",
+            "ps -q producer": "pcid",
+            " ps -q": "pcid",
+        }
+    )
     demo = _demo(monkeypatch, tmp_path, runner, _STREAMING)
     found = demo.up()
     suffix = ds.namespace("reviews", "v1")
@@ -574,7 +585,8 @@ def test_a_demos_producer_writes_its_versions_topics_to_the_shared_kafka(monkeyp
         "STREAMING_KAFKA_NS": suffix,
     }
     lines = runner.lines()
-    started = next(i for i, line in enumerate(lines) if "up -d --no-deps producer" in line)
+    assert not any("up -d --no-deps producer" in line for line in lines)  # never started unjoined
+    started = next(i for i, line in enumerate(lines) if "up --no-start --no-deps producer" in line)
     joined = next(
         i
         for i, line in enumerate(lines)

@@ -686,9 +686,12 @@ class Demo:
         if own:
             # The demo's own services alone: a shared store it names is not started for it.
             if any(s.kind == "kafka" for s in stores):
-                # Its producers reach the shared Kafka as "kafka", on the shared stores' network.
-                self.runner.run(self._compose("up", "-d", "--no-deps", *own))
-                for cid in self.runner.run(self._compose("ps", "-q", *own)).split():
+                # Its producers reach the shared Kafka as "kafka", on the shared stores' network,
+                # joined before they first start: started on their own network alone they cannot
+                # resolve it, exit and are restarted, and a container between restarts has no
+                # network sandbox to connect (the streaming and provisioning walks).
+                self.runner.run(self._compose("up", "--no-start", "--no-deps", *own))
+                for cid in self.runner.run(self._compose("ps", "-a", "-q", *own)).split():
                     self._connect(cid, self.shared.network())
             up = self._compose("up", "-d", "--wait", "--no-deps", *own)
             try:
