@@ -86325,8 +86325,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   description: >-
     The meta domain has a view-only column_lineage_edges view with one row per column-level lineage
     edge: the source relation and column, the target relation and column, and the view that derives
-    the target. It holds the same edges as the federation column lineage graph (GET
-    /admin/lineage/federation) across all domains, so a cross-domain ancestry chain is never cut. It is
+    the target. It holds the same lineage between registered relations as the federation column
+    lineage graph (GET /admin/lineage/federation) across all domains, so a cross-domain ancestry
+    chain is never cut. A view's internal steps (CTEs, subqueries) are folded: each row joins one of
+    the view's input columns to one of its output columns, through any internal steps, and names that
+    view; a command's write is a row from its input to the written column, naming the command. It is
     derived from compiled views: each model build writes its edges to a lineage edge table in the
     control plane, replacing all of them, with the same function that builds
     /admin/lineage/federation, so the two never differ. The table is derived state and is never
