@@ -109,7 +109,7 @@ class _UnionMixin:  # mixin for _Translator
                 continue
             # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
             # These are not real FK traversals and would pull in unrelated domain nodes.
-            if rm.source_constant is not None:
+            if rm.constant_source:
                 continue
 
             sa = f"_s_{rm.rel_type.lower()[:20]}"
