@@ -152,6 +152,7 @@ export function ResultsPanel({
             <ResultRedirectNotice redirect={resultRedirect} />
           ) : resultError ? (
             <pre
+              data-testid="sql-results-error"
               style={{
                 margin: "0.75rem",
                 fontSize: "0.8rem",

@@ -10,18 +10,14 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Box, Loader, Text } from "@mantine/core";
+import { Alert, Box, Loader, Text } from "@mantine/core";
 import { ProfileResultTable } from "./ProfileResultTable";
 import { fetchMeasureHistory, type MeasureHistory, type MeasureKey } from "../../api/profiler";
 
 type Row = Record<string, unknown>;
+// The key a shown row keeps its drift row's index under; never shown.
+const ROW = "\u0000row";
 
-function num(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "number")
-    return Number.isInteger(value) ? String(value) : value.toPrecision(4);
-  return String(value);
-}
 
 function label(row: Row): string {
   const k = keyOf(row);
@@ -56,39 +52,22 @@ const SHOWN = [
 
 function History({ history }: { history: MeasureHistory }) {
   const { t } = useTranslation();
+  const runTime = t("profileDriftPanel.runTime");
+  const value = t("profileDriftPanel.value");
+  const rows = history.points.map((p) => ({
+    [runTime]: `${new Date(p.runTime).toLocaleString()}${
+      p.current && history.drift.drifting === true ? ` · ${t("profileDriftPanel.drifting")}` : ""
+    }`,
+    [value]: p.value,
+  }));
   return (
     <Box mt="xs">
       <ProfileResultTable
-        rows={history.points}
+        rows={rows}
+        columns={[runTime, value]}
         height={240}
-        title={t("profileDriftPanel.value")}
+        title={value}
         testId="profile-drift-history"
-        rowKey={(p) => p.runId}
-        rowTestId={(p) => `profile-drift-point-${p.runId}`}
-        rowProps={(p) => ({ fw: p.current ? 700 : undefined })}
-        columns={[
-          {
-            key: "run_time",
-            label: t("profileDriftPanel.runTime"),
-            value: (p) => p.runTime,
-            cell: (p) => (
-              <>
-                {new Date(p.runTime).toLocaleString()}
-                {p.current && history.drift.drifting === true && (
-                  <Badge ml="xs" size="xs" color="red">
-                    {t("profileDriftPanel.drifting")}
-                  </Badge>
-                )}
-              </>
-            ),
-          },
-          {
-            key: "value",
-            label: t("profileDriftPanel.value"),
-            value: (p) => p.value,
-            cell: (p) => num(p.value),
-          },
-        ]}
       />
     </Box>
   );
@@ -126,50 +105,29 @@ export function ProfileDriftPanel({
       </Text>
     );
   }
+  // The drift rows as the grid shows them: one plain value per column, each keeping its row.
+  const measure = t("profileDriftPanel.measure");
+  const drift = t("profileDriftPanel.drift");
+  const columns = [measure, ...SHOWN.map((c) => t(`profileDriftPanel.col_${c}`)), drift];
+  const shown = rows.map((r, i) => ({
+    [ROW]: i,
+    [measure]: `${label(r)}${r.detail != null ? ` (${String(r.detail)})` : ""}`,
+    ...Object.fromEntries(SHOWN.map((c) => [t(`profileDriftPanel.col_${c}`), r[c]])),
+    [drift]: r.drifting === true ? String(r.drift_reason) : null,
+  }));
   return (
     <>
       <ProfileResultTable
-        rows={rows}
+        rows={shown}
+        columns={columns}
         height={300}
         title={t("profileRunsModal.kind_drift")}
         testId="profile-rows-drift"
-        rowKey={(_r, i) => i}
-        rowTestId={(_r, i) => `profile-drift-row-${i}`}
-        onRowClick={(r) => {
+        onRowClick={(row) => {
           setHistory(null);
           setError(null);
-          setPicked(keyOf(r));
+          setPicked(keyOf(rows[row[ROW] as number]));
         }}
-        columns={[
-          {
-            key: "measure",
-            label: t("profileDriftPanel.measure"),
-            value: (r) => label(r),
-            cell: (r) => (
-              <>
-                {label(r)}
-                {r.detail != null && ` (${String(r.detail)})`}
-              </>
-            ),
-          },
-          ...SHOWN.map((c) => ({
-            key: c,
-            label: t(`profileDriftPanel.col_${c}`),
-            value: (r: Row) => r[c],
-            cell: (r: Row) => num(r[c]),
-          })),
-          {
-            key: "drift",
-            label: t("profileDriftPanel.drift"),
-            value: (r) => (r.drifting === true ? String(r.drift_reason) : ""),
-            cell: (r) =>
-              r.drifting === true && (
-                <Badge size="xs" color="red" data-testid={`profile-drift-flag-${rows.indexOf(r)}`}>
-                  {String(r.drift_reason)}
-                </Badge>
-              ),
-          },
-        ]}
       />
       {error && (
         <Alert color="red" mt="xs" data-testid="profile-drift-error">

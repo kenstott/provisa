@@ -24,9 +24,9 @@ from pathlib import Path
 
 
 def _server(datadir: str):
-    import pgserver  # lazy — optional dep; ImportError signals "not available"
+    import pixeltable_pgserver  # lazy — optional dep; ImportError signals "not available"
 
-    return pgserver.get_server(Path(datadir), cleanup_mode=None)
+    return pixeltable_pgserver.get_server(Path(datadir), cleanup_mode=None)
 
 
 def start(datadir: str) -> str:

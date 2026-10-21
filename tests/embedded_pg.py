@@ -68,7 +68,7 @@ _SETTINGS = {
 _REPO = Path(__file__).resolve().parent.parent
 _CACHE = Path(os.environ.get("PROVISA_FDW_CACHE", Path.home() / ".cache" / "provisa-fdw"))
 #: The PostgreSQL mongo_fdw is built against: pgserver's major, its minor ABI-compatible within 16.
-_PG_VERSION = "16.2"
+_PG_VERSION = "16.11"
 
 
 def _build_pg_source() -> Path:
@@ -137,7 +137,7 @@ def private_pginstall(*, mongo_fdw: bool = False) -> Path:
     )
 
     key = (
-        f"pgserver-{metadata.version('pgserver')}_pgext-{metadata.version('provisa-pg-ext')}"
+        f"pgserver-{metadata.version('pixeltable-pgserver')}_pgext-{metadata.version('provisa-pg-ext')}"
         f"_{bundle_platform()}"
     )
     if mongo_fdw:
@@ -146,7 +146,7 @@ def private_pginstall(*, mongo_fdw: bool = False) -> Path:
     home = Path.home() / ".cache" / "provisa-test-pg" / key
     home.mkdir(parents=True, exist_ok=True)
     site = home / "site"
-    pginstall = site / "pgserver" / "pginstall"
+    pginstall = site / "pixeltable_pgserver" / "pginstall"
     with open(home / ".lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if not (home / ".complete").exists():
@@ -154,10 +154,10 @@ def private_pginstall(*, mongo_fdw: bool = False) -> Path:
                 if stale.exists():
                     shutil.rmtree(stale)
             # The wheel's own layout: its binaries load their bundled libraries relative to
-            # themselves (pgserver/.dylibs on macOS, pgserver.libs on Linux).
-            dist = metadata.distribution("pgserver")
+            # themselves (pixeltable_pgserver/.dylibs on macOS, pixeltable_pgserver.libs on Linux).
+            dist = metadata.distribution("pixeltable-pgserver")
             for f in dist.files or []:
-                if Path(f).parts[0].startswith("pgserver"):
+                if Path(f).parts[0].startswith("pixeltable_pgserver"):
                     out = site / f
                     out.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(dist.locate_file(f), out)
@@ -173,7 +173,7 @@ def _bin(name: str, pginstall: Path | None = None) -> str:
     """``name`` from ``pginstall`` (the private FDW install), else from pgserver's own."""
     if pginstall is not None:
         return str(pginstall / "bin" / name)
-    from pgserver.postgres_server import POSTGRES_BIN_PATH
+    from pixeltable_pgserver.utils import POSTGRES_BIN_PATH
 
     return str(POSTGRES_BIN_PATH / name)
 

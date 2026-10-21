@@ -28731,20 +28731,36 @@
   feature: installation-python-package
   priority: MUST
   type: infrastructure
-  description: pg_duckdb v1.0.0 (bundles DuckDB v1.3.2) is the compatible build for embedded PostgreSQL
-    16.2; later pg_duckdb versions require backend symbols absent from PG16.2. Extension built from pg
-    source against matching major version and layered into pgserver install via build script.
-  use_case: Pinned PostgreSQL 16.2 in pgserver 0.1.4 runtime requires pg_duckdb v1.0.0 to avoid symbol
-    resolution failures at extension load. Build process (scripts/build_pg_duckdb.sh) compiles against
-    PG16 source, and the resulting .dylib/.so is dropped alongside other core FDWs (file_fdw, postgres_fdw).
-  notes: 'Build constraint: pg_duckdb v1.0.0 only; later HEAD versions introduce ExecCheckOneRelPerms
-    backend symbol not present in PG16.2. pg_duckdb requires shared_preload_libraries=''pg_duckdb'' in
-    PostgreSQL config and rejects NUMERIC columns with unset precision.'
+  description: '[SUPERSEDED by REQ-901, 2026-10-21 -- the embedded PostgreSQL is 16.11 and pg_duckdb
+    v1.1.1; kept here for history; do not implement against it.] pg_duckdb v1.0.0 (bundles DuckDB v1.3.2)
+    is the compatible build for embedded PostgreSQL 16.2; later pg_duckdb versions require backend symbols
+    absent from PG16.2. [END SUPERSEDED BLOCK] Extension built from pg source against matching major
+    version and layered into pgserver install via build script. (Amended 2026-10-21, EMBEDDED PG 16.11 AND
+    PG_DUCKDB V1.1.1:) The embedded PostgreSQL is pixeltable-pgserver 0.5.1 (PostgreSQL 16.11), the
+    maintained fork of pgserver, in place of pgserver 0.1.4 (PostgreSQL 16.2, last released 2024).
+    pg_duckdb is v1.1.1, which embeds DuckDB v1.4.3, built against PostgreSQL 16.11 with httpfs at the
+    commit pg_duckdb v1.1.1 pins and iceberg at the commit DuckDB v1.4.3 pins. pg_duckdb calls
+    ExecCheckOneRelPerms from v1.1.0 on, and PostgreSQL declares it from 16.10 on, so v1.1.x does not
+    compile against 16.2. Every member of the provisa-pg-ext bundle is built against 16.11. The
+    embedded data directory needs no conversion: 16.2 to 16.11 is a minor release within one major.'
+  use_case: '[SUPERSEDED by REQ-901, 2026-10-21 -- pixeltable-pgserver 0.5.1 runs PostgreSQL 16.11, so
+    pg_duckdb v1.1.1 builds; kept here for history; do not implement against it.] Pinned PostgreSQL 16.2 in
+    pgserver 0.1.4 runtime requires pg_duckdb v1.0.0 to avoid symbol resolution failures at extension
+    load. [END SUPERSEDED BLOCK] Build process (scripts/build_pg_duckdb.sh) compiles against PG16 source,
+    and the resulting .dylib/.so is dropped alongside other core FDWs (file_fdw, postgres_fdw).'
+  notes: '[SUPERSEDED by REQ-901, 2026-10-21 -- the symbol arrived in pg_duckdb v1.1.0, and PostgreSQL
+    16.10 declares it; kept here for history; do not implement against it.] Build constraint: pg_duckdb
+    v1.0.0 only; later HEAD versions introduce ExecCheckOneRelPerms backend symbol not present in PG16.2.
+    [END SUPERSEDED BLOCK] pg_duckdb requires shared_preload_libraries=''pg_duckdb'' in PostgreSQL config
+    and rejects NUMERIC columns with unset precision.'
   code:
   - scripts/build_pg_duckdb.sh
   - provisa/federation/engine.py
+  - scripts/ci/build_pg_extensions.sh
+  - provisa/core/control_plane_pg.py
   tests:
   - tests/integration/test_embedded_pg_duckdb_engine_e2e.py
+  - scripts/ci/smoke_pg_extensions.py
   related_reqs:
   - REQ-900
   - REQ-898
@@ -84412,7 +84428,7 @@ And the views own refresh at 05:00 runs, and a read at 02:30 answers'
   - provisa-ui/src/components/admin/OffPeakWindowFields.tsx
   tests:
   - tests/unit/test_mv_load_window.py
-  notes: 'Maintainer 2026-10-16: reuse the exact load management window; for an MV it means do not pull from this MV outside the window; Provisa-scheduled work is told apart from user workloads.'
+  notes: 'Maintainer 2026-10-16: reuse the exact load management window; for an MV it means do not pull from this MV outside the window; Provisa-scheduled work is told apart from user workloads. 2026-10-21, the lead: a demo tour''s sql step is ready on its statement''s refusal as on its rows and highlights the refusal, so the provisioning close read outside its window shows the refusal the step describes instead of ending the tour (provisa-ui/src/tour/demoTour.ts, provisa-ui/src/__tests__/tourDemoTrack.test.tsx).'
 - id: REQ-2067
   status: proposed
   since: 2026-10
@@ -86297,7 +86313,7 @@ Then it updates the linked asset rather than creating another"
   feature: semantic-model-tables-and-columns
   priority: SHOULD
   type: ui
-  description: "The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view of the selected run's column profiles, with one ridge per column arranged front to back from low to high values (categories from most to least common), each ridge's height equal to the rows per range, p5, median and p95 quantile marks, and a null-share block per column. Values beyond 3 times the IQR are excluded from the ridge and counted. Hovering shows the exact range and row count; selecting a column shows a linked 2D histogram and its stats. Columns whose values are restricted for the viewer's role show no ridge. The view has an expand button that opens it in a modal at 95% of the viewport. three.js is loaded lazily, only when the tab opens. (Amended 2026-10-21, TABLES, EXPAND, VERTICAL TABS, READ PANEL; maintainer:) Every table in the profile runs modal (its list of runs, each result relation's table, and the drift table and a measure's history) sorts and groups as the app's other lists do (SortGroupTable): every column sorts, and a column with any value that is not a number groups. Every graph and table of a run's results has an expand button that draws it again in a modal at 95% of the viewport, as the 3D views do. The result tabs are listed down the side of the modal, one title per line, rather than across it. The table detail panel's read-only view offers View Profile Runs too, beside the profiler the table belongs to, opening the same modal (not for a governance-only viewer, who profiles nothing)."
+  description: "The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view of the selected run's column profiles, with one ridge per column arranged front to back from low to high values (categories from most to least common), each ridge's height equal to the rows per range, p5, median and p95 quantile marks, and a null-share block per column. Values beyond 3 times the IQR are excluded from the ridge and counted. Hovering shows the exact range and row count; selecting a column shows a linked 2D histogram and its stats. Columns whose values are restricted for the viewer's role show no ridge. The view has an expand button that opens it in a modal at 95% of the viewport. three.js is loaded lazily, only when the tab opens. (Amended 2026-10-21, TABLES, EXPAND, VERTICAL TABS, READ PANEL; maintainer:) [SUPERSEDED by REQ-2123, 2026-10-21 -- the modal's tables are now the explorer's results grid, which also filters by column and downloads as xlsx. Kept here for history; do not implement against it.] Every table in the profile runs modal (its list of runs, each result relation's table, and the drift table and a measure's history) sorts and groups as the app's other lists do (SortGroupTable): every column sorts, and a column with any value that is not a number groups. [END SUPERSEDED BLOCK] Every graph and table of a run's results has an expand button that draws it again in a modal at 95% of the viewport, as the 3D views do. The result tabs are listed down the side of the modal, one title per line, rather than across it. The table detail panel's read-only view offers View Profile Runs too, beside the profiler the table belongs to, opening the same modal (not for a governance-only viewer, who profiles nothing). (Amended 2026-10-21, XLSX AND COLUMN FILTERS; maintainer:) Every table in the profile runs modal (its list of runs, each result relation's table, the drift table and a measure's history) is the explorer's results grid (ResultsGrid): it sorts and groups by column as the explorer does, filters by column, and downloads as an xlsx workbook named after the table and the result, with the grid's provenance sheet. A click on a run's row still picks the run, and on a drift row still shows that measure's history; the grid draws the picked row as selected."
   use_case: A steward scanning a profiled table sees the shape, skew, outliers and null pattern of every column at once, and drills into one column without leaving the run.
   scenario: "Given a completed profile run with numeric and category columns open in the profile runs modal
 

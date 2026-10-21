@@ -29,7 +29,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
-pgserver = pytest.importorskip("pgserver")
+pgserver = pytest.importorskip("pixeltable_pgserver")
 psycopg2 = pytest.importorskip("psycopg2")
 
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime  # noqa: E402

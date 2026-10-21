@@ -176,7 +176,9 @@ dependencies = [
     # (x86_64 + arm64) and win_amd64 — no linux aarch64. The container tier's arm64 image is built
     # there and does not use the embedded plane (it runs a real PostgreSQL), so it must resolve;
     # `provisa run` on linux/aarch64 aborts with the explanation instead (cli._require_embedded_pg).
-    "pgserver; sys_platform != 'linux' or platform_machine != 'aarch64'",
+    # pixeltable-pgserver: the maintained pgserver fork, PostgreSQL 16.11 (pgserver 0.1.4, last
+    # released 2024, ships 16.2, whose backend lacks a symbol pg_duckdb v1.1 needs; REQ-901).
+    "pixeltable-pgserver==0.5.1; sys_platform != 'linux' or platform_machine != 'aarch64'",
     "anyio>=4.14.2",
     # REQ-2071: the Data Science area's in-browser Python (Pyodide, its packages, the
     # provisa-client wheel), served by ui_server at /pyodide. A package of its own only because
@@ -250,7 +252,7 @@ kms-all = ["hvac", "azure-keyvault-keys", "google-cloud-kms"]
 dev = [
     # REQ-1873: the bundled extension binaries the pg-ext install command stages; its tests
     # install them into real Postgres containers.
-    "provisa-pg-ext==0.1.4",
+    "provisa-pg-ext==0.2.0",
     "pytest",
     "pytest-asyncio",
     "pytest-timeout",  # scripts/ci/run_lane.py bounds every test, so a hang fails by name

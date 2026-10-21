@@ -312,7 +312,7 @@
       },
       "weblogsLogFiles": {
         "title": "Drie bronnen",
-        "description": "De winkel heeft drie bronnen: <strong>shop-db</strong>, zijn PostgreSQL-database, en twee logbronnen, <strong>shop_access</strong> en <strong>shop_db_log</strong>. Provisa leest elk logbestand waar het staat, één regel per rij, en elke 30 seconden opnieuw; niets wordt eerst geladen of gekopieerd."
+        "description": "De winkel heeft drie bronnen: <strong>shop-db</strong>, zijn PostgreSQL-database, en twee logbronnen, <strong>shop_access</strong> en <strong>shop_db_log</strong>. Provisa leest elk logbestand waar het staat, één regel per rij."
       },
       "weblogsTables": {
         "title": "Bronnen worden tabellen",
@@ -416,7 +416,7 @@
       },
       "reviewsSearchStore": {
         "title": "De reviews, in Elasticsearch",
-        "description": "<strong>reviews</strong> is Elasticsearch: de 5.000 reviews die klanten schreven, elk met zijn product, zijn sterren en zijn tekst. Provisa leest het live; er wordt niets eerst gekopieerd."
+        "description": "<strong>reviews</strong> is Elasticsearch: de 5.000 reviews die klanten schreven, elk met zijn product, zijn sterren en zijn tekst."
       },
       "reviewsGraphStore": {
         "title": "Wie wat kocht, in Neo4j",
@@ -476,15 +476,15 @@
       },
       "insuranceRecap": {
         "title": "Wat u hebt gezien",
-        "description": "U zag de eigen data van de verzekeraar, live gelezen en per county gekoppeld aan openbare risicodata die één keer is geland, allemaal in één beheerd model. Eén view beantwoordt waar de blootstelling het risico raakt, in SQL, GraphQL en REST, en elke rol ziet alleen wat ze mag zien."
+        "description": "U zag de eigen data van de verzekeraar per county gekoppeld aan openbare risicodata, allemaal in één beheerd model. Eén view beantwoordt waar de blootstelling het risico raakt, in SQL, GraphQL en REST, en elke rol ziet alleen wat ze mag zien."
       },
       "insuranceGovdata": {
         "title": "De openbare risicogegevens",
-        "description": "De overheidsgegevens komen van AskAmerica, een echt account. De drie countytabellen worden één keer geladen, wanneer de demo wordt gebouwd, en daarna voorgoed uit die kopie gelezen: ze verlopen nooit en deze demo roept het account nooit aan."
+        "description": "De overheidsgegevens komen van AskAmerica."
       },
       "insuranceBook": {
         "title": "De portefeuille van de verzekeraar",
-        "description": "Elke lopende polis, live gelezen uit de eigen database van de verzekeraar: de county, de branche, de totale verzekerde waarde, de premie en het eigen risico."
+        "description": "Elke lopende polis: de county, de branche, de totale verzekerde waarde, de premie en het eigen risico."
       },
       "insuranceRisk": {
         "title": "De National Risk Index van FEMA",
@@ -508,7 +508,7 @@
       },
       "qualityBronze": {
         "title": "Brons: getypeerd waar het schoon is",
-        "description": "<strong>bronze</strong> bevat elke batch zoals die geland is, nooit gewijzigd. Schone data wordt bij het landen getypeerd: het verkoop-id, wanneer verkocht, het aantal. De rommelige velden, winkelcode, product en prijs, blijven ruw tot zilver. Een probe houdt het in de gaten, dus een nieuwe batch ververst elke view erna."
+        "description": "<strong>bronze</strong> bevat elke batch zoals die geland is, nooit gewijzigd. Schone data wordt bij het landen getypeerd: het verkoop-id, wanneer verkocht, het aantal. De rommelige velden, winkelcode, product en prijs, blijven ruw tot zilver."
       },
       "qualityRaw": {
         "title": "Ruw, zoals de feed het schreef",
@@ -612,11 +612,11 @@
       },
       "vulnerabilitiesGovdata": {
         "title": "De openbare kwetsbaarheidsgegevens",
-        "description": "De overheidsgegevens komen van AskAmerica, een echt account: de CVE-records van de NVD, MITRE's catalogus van softwarezwakheden en CISA's Known Exploited Vulnerabilities. De tabellen worden één keer geladen, bij het bouwen van de demo, en daarna altijd uit die kopie gelezen: deze demo roept het account nooit aan."
+        "description": "De overheidsgegevens komen van AskAmerica: de CVE-records van de NVD, MITRE's catalogus van softwarezwakheden en CISA's Known Exploited Vulnerabilities."
       },
       "vulnerabilitiesAlerts": {
         "title": "De Dependabot-meldingen",
-        "description": "Eén melding per vastgezette pakketversie met een gepubliceerd advies: de repository, het pakket, de CVE, de versie die het oplost en of de melding open, opgelost of afgewezen is. Ze wordt live uit de database van het bedrijf gelezen."
+        "description": "Eén melding per vastgezette pakketversie met een gepubliceerd advies: de repository, het pakket, de CVE, de versie die het oplost en of de melding open, opgelost of afgewezen is."
       },
       "vulnerabilitiesNvd": {
         "title": "De CVE-records, via een filter geladen",
@@ -624,7 +624,7 @@
       },
       "vulnerabilitiesKev": {
         "title": "CISA's bekend misbruikte kwetsbaarheden",
-        "description": "Elke CVE waarvan bekend is dat aanvallers haar misbruiken, met de datum waarop federale instanties haar moeten verhelpen en of ransomwarecampagnes haar gebruiken. Volledig geladen: de catalogus is klein."
+        "description": "Elke CVE waarvan bekend is dat aanvallers haar misbruiken, met de datum waarop federale instanties haar moeten verhelpen en of ransomwarecampagnes haar gebruiken."
       },
       "vulnerabilitiesJoin": {
         "title": "Misbruikt, via de CVE",
@@ -652,7 +652,7 @@
       },
       "vulnerabilitiesRecap": {
         "title": "Wat u zag",
-        "description": "U zag de eigen codedata van het bedrijf, live gelezen en per CVE gekoppeld aan openbare kwetsbaarheidsdata die één keer is geland, en alleen wat de meldingen nodig hebben. Eén view in één beheerd model beantwoordt welke misbruikte kwetsbaarheden in de code zitten en hoe ver elk over de deadline is, in SQL, GraphQL, Cypher en REST."
+        "description": "U zag de eigen codedata van het bedrijf per CVE gekoppeld aan openbare kwetsbaarheidsdata, alleen wat de meldingen nodig hebben. Eén view in één beheerd model beantwoordt welke misbruikte kwetsbaarheden in de code zitten en hoe ver elk over de deadline is, in SQL, GraphQL, Cypher en REST."
       },
       "streamingScenario": {
         "title": "Bestellingen, live",
@@ -668,19 +668,19 @@
       },
       "streamingRecap": {
         "title": "Wat u zag",
-        "description": "Een Kafka-topic landde als tabel en werd gekoppeld aan een live catalogus. Een view bleef actueel met elke batch die landde. Hetzelfde antwoord kwam in SQL, GraphQL en REST, op verzoek gecachet, en een abonnement volgde de feed. Kijk zelf verder rond vanaf de querypagina."
+        "description": "Een Kafka-topic landde als tabel en werd gekoppeld aan de catalogus. Een view bleef actueel met elke batch die landde. Hetzelfde antwoord kwam in SQL, GraphQL en REST, op verzoek gecachet, en een abonnement volgde de feed. Kijk zelf verder rond vanaf de querypagina."
       },
       "streamingCatalog": {
         "title": "De catalogus",
-        "description": "<strong>catalog</strong> is de Postgres van de koffiezaak, live gelezen: wat elk product is en kost, en de regio's waarin de zaak verkoopt."
+        "description": "<strong>catalog</strong> is de Postgres van de koffiezaak: wat elk product is en kost, en de regio's waarin de zaak verkoopt."
       },
       "streamingOrders": {
         "title": "Een topic wordt een tabel",
-        "description": "<strong>orders</strong> is het topic, dat in een eigen tabel landt terwijl de bestellingen binnenkomen, in een batch hooguit om de twee seconden en met het bestel-id als sleutel. Elke batch die landt ververst de views die hem lezen en waarschuwt hun abonnees."
+        "description": "<strong>orders</strong> is het topic, dat in een eigen tabel landt terwijl de bestellingen binnenkomen. Elke batch die landt ververst de views die hem lezen en waarschuwt hun abonnees."
       },
       "streamingFresh": {
         "title": "De bestellingen zoals ze binnenkomen",
-        "description": "De nieuwste bestellingen in de tabel, een paar seconden achter het topic. Elke sandbox laadt het hele topic in een eigen tabel, onder een eigen consumer group."
+        "description": "De nieuwste bestellingen in de tabel, een paar seconden achter het topic."
       },
       "streamingCached": {
         "title": "Het antwoord in GraphQL, uit de cache",
@@ -760,7 +760,7 @@
       },
       "profilingRecap": {
         "title": "Wat u zag",
-        "description": "U zag de tabellen van het overgenomen bedrijf, live gelezen, en een profiel ervan dat de ingebouwde profiler maakte en als beheerde tabellen bewaart. Nulls, bereiken, formaten, plausibele types en duplicaten beantwoorden elk wat er echt in deze data zit, in SQL, GraphQL en REST, en elke rol ziet alleen wat ze mag zien."
+        "description": "U zag de tabellen van het overgenomen bedrijf en een profiel ervan dat de ingebouwde profiler maakte en als beheerde tabellen bewaart. Nulls, bereiken, formaten, plausibele types en duplicaten beantwoorden elk wat er echt in deze data zit, in SQL, GraphQL en REST, en elke rol ziet alleen wat ze mag zien."
       },
       "opioidsScenario": {
         "title": "Waar deze demo over gaat",
@@ -776,15 +776,15 @@
       },
       "opioidsRecap": {
         "title": "Wat u zag",
-        "description": "De eigen gegevens van het fonds, live gelezen, en gegevens over volksgezondheid en de volkstelling, eenmaal binnengehaald, per county gekoppeld in één beheerd model. Twee opgeslagen views beantwoorden de vraag: die van de medewerkers, die de uitgaven van het fonds leest, en het openbare dashboard, dat daar niets van leest. Elk wordt in SQL, GraphQL en REST geleverd aan de rollen die het mogen lezen."
+        "description": "De eigen gegevens van het fonds en gegevens over volksgezondheid en de volkstelling, per county gekoppeld in één beheerd model. Twee opgeslagen views beantwoorden de vraag: die van de medewerkers, die de uitgaven van het fonds leest, en het openbare dashboard, dat daar niets van leest. Elk wordt in SQL, GraphQL en REST geleverd aan de rollen die het mogen lezen."
       },
       "opioidsGovdata": {
         "title": "De openbare gegevens",
-        "description": "De overheidsgegevens komen van AskAmerica, een echt account: de overdosisdoden en sterftecijfers van de CDC, de bevolking van het Census Bureau en de federale uitgaven van USAspending, elk per county. Alleen de county's van Ohio en 2023 worden geladen, één keer, bij het bouwen van de demo, en daarna voorgoed uit die kopie gelezen. 2023 is het jaar dat ze allemaal dekken."
+        "description": "De overheidsgegevens komen van AskAmerica: de overdosisdoden en sterftecijfers van de CDC, de bevolking van het Census Bureau en de federale uitgaven van USAspending, elk per county."
       },
       "opioidsAllocations": {
         "title": "De toewijzingen van het fonds",
-        "description": "Elke toewijzing van het fonds, live gelezen uit zijn eigen database: de county, het boekjaar, het programmagebied, de betaalde aanbieder, wat is toegekend en wat ervan is uitgegeven. Medewerkers zien elke rij; de rol public ziet er geen."
+        "description": "Elke toewijzing van het fonds: de county, het boekjaar, het programmagebied, de betaalde aanbieder, wat is toegekend en wat ervan is uitgegeven. Medewerkers zien elke rij; de rol public ziet er geen."
       },
       "opioidsDeaths": {
         "title": "De overdosissterftecijfers van de CDC",
@@ -820,7 +820,7 @@
       },
       "datavaultInsertOnly": {
         "title": "Elke rij bewaard",
-        "description": "De klantentabel is insert-only, zoals de staging van een vault haar ontvangt: een wijziging komt binnen als een nieuwe rij met haar laaddatum en niets wordt overschreven. De tabel bewaakt haar meest recente laaddatum, zodat nieuwe rijen elke view erboven verversen via de view-cascade."
+        "description": "De klantentabel is insert-only, zoals de staging van een vault haar ontvangt: een wijziging komt binnen als een nieuwe rij met haar laaddatum en niets wordt overschreven."
       },
       "datavaultArrived": {
         "title": "Wat er binnenkwam",
@@ -880,11 +880,11 @@
       },
       "agricultureGovdata": {
         "title": "De openbare gegevens",
-        "description": "De overheidsgegevens komen van AskAmerica, een live account. De drie tabellen worden één keer geladen, bij het bouwen van de demo, en alleen het deel dat de portefeuille nodig heeft: de 40 county's, maïs en sojabonen, de gewasjaren 2010 tot en met 2017. Ze worden voorgoed uit die kopie gelezen: ze verlopen nooit en deze demo roept het account nooit aan."
+        "description": "De overheidsgegevens komen van AskAmerica."
       },
       "agricultureClaims": {
         "title": "De claims van de verzekeraar",
-        "description": "Elke uitkering die de verzekeraar heeft betaald, live gelezen uit de eigen database: de boerderij, het gewasjaar, de schadeoorzaak, de maand en het bedrag."
+        "description": "Elke uitkering die de verzekeraar heeft betaald: de boerderij, het gewasjaar, de schadeoorzaak, de maand en het bedrag."
       },
       "agricultureMarket": {
         "title": "De verliezen van de hele markt",
@@ -892,7 +892,7 @@
       },
       "agricultureWeather": {
         "title": "Dagelijks weer per county",
-        "description": "De dagelijkse maximumtemperatuur en neerslag van NOAA voor elk county, het gemiddelde van de meetstations. Alleen het groeiseizoen, mei tot en met augustus, wordt geladen: wanneer regen en hitte de opbrengst bepalen."
+        "description": "De dagelijkse maximumtemperatuur en neerslag van NOAA voor elk county, het gemiddelde van de meetstations, over het groeiseizoen, mei tot en met augustus: wanneer regen en hitte de opbrengst bepalen."
       },
       "agricultureJoin": {
         "title": "Gekoppeld op county",
@@ -924,7 +924,7 @@
       },
       "agricultureRecap": {
         "title": "Wat u zag",
-        "description": "U zag de eigen data van de verzekeraar, live gelezen en per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata die één keer is geland, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: het weer verklaart 54% van de variatie in de schadequote, en over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
+        "description": "U zag de eigen data van de verzekeraar, per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: het weer verklaart 54% van de variatie in de schadequote, en over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
       },
       "retailScenario": {
         "title": "Eén concern, twee regio's",
@@ -1024,7 +1024,7 @@
       },
       "provisioningWarehouse": {
         "title": "De eigen database van het warehouse",
-        "description": "Zijn producten en wat elk kost, de meldingen die het stuurt als een dataset klaar is, en de downloads die de consumers van de teams vastleggen. Live gelezen."
+        "description": "Zijn producten en wat elk kost, de meldingen die het stuurt als een dataset klaar is, en de downloads die de consumers van de teams vastleggen."
       },
       "provisioningFeeds": {
         "title": "De feeds, geladen bij aankomst",
@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "De downloads",
-        "description": "De consumer van elk team leest de melding en downloadt de hele dataset via Arrow Flight op het versietijdstip, zodat een verversing halverwege geen twee versies kan mengen. Hij legt de rijen, de seconden en de rijen per seconde vast. Zijn ticket is een JSON-object: de query, de rol en het as-of-tijdstip (consumer.py). Een lokale start draait de consumers live; de gehoste sandbox toont de downloads die bij het bouwen van de demo zijn vastgelegd."
+        "description": "De consumer van elk team leest de melding en downloadt de hele dataset via Arrow Flight op het versietijdstip, zodat een verversing halverwege geen twee versies kan mengen. Hij legt de rijen, de seconden en de rijen per seconde vast."
       },
       "provisioningAsFinance": {
         "title": "Uitvoeren als finance",
@@ -1064,7 +1064,7 @@
       },
       "provisioningClose": {
         "title": "Een leesactie buiten het venster",
-        "description": "close_by_category, de afsluiting van finance, mag alleen van 02:00 tot 02:15 UTC worden gelezen. Daarbuiten wordt deze leesactie geweigerd, met de naam van de view en wanneer het venster weer opent; de eigen verversingen van het warehouse lopen op elk moment."
+        "description": "close_by_category, de afsluiting van finance, mag alleen van 02:00 tot 02:15 UTC worden gelezen. Daarbuiten wordt deze leesactie geweigerd, met de naam van de view en wanneer het venster weer opent."
       },
       "provisioningRest": {
         "title": "De downloads via REST",
@@ -1076,11 +1076,11 @@
       },
       "pharmaGovdata": {
         "title": "De openbare geneesmiddelendata",
-        "description": "De overheidsdata komt van AskAmerica, een echt account. De drie tabellen worden eenmaal geladen, wanneer de demo wordt gebouwd, en alleen het deel dat de demo leest; daarna worden ze altijd uit die kopie gelezen, en deze demo roept het account nooit aan."
+        "description": "De overheidsgegevens komen van AskAmerica."
       },
       "pharmaFormulary": {
         "title": "Het formularium van de apotheek",
-        "description": "Elk product dat de apotheek voert, live gelezen uit haar eigen database: de NDC, de generieke naam, de fabrikant, de therapeutische klasse en of het kritiek is. De voorraad op elke locatie staat ernaast."
+        "description": "Elk product dat de apotheek voert: de NDC, de generieke naam, de fabrikant, de therapeutische klasse en of het kritiek is. De voorraad op elke locatie staat ernaast."
       },
       "pharmaShortages": {
         "title": "De tekorten van de FDA",
@@ -1108,15 +1108,15 @@
       },
       "pharmaRecap": {
         "title": "Wat u hebt gezien",
-        "description": "U zag de eigen data van de apotheek, live gelezen en per NDC en per bedrijf gekoppeld aan openbare geneesmiddelendata die één keer is geland, allemaal in één beheerd model. Eén view beantwoordt welke producten risico lopen, in SQL, GraphQL en REST, en elke rol ziet alleen wat ze mag zien."
+        "description": "U zag de eigen data van de apotheek per NDC en per bedrijf gekoppeld aan openbare geneesmiddelendata, allemaal in één beheerd model. Eén view beantwoordt welke producten risico lopen, in SQL, GraphQL en REST, en elke rol ziet alleen wat ze mag zien."
       },
       "storefrontScenario": {
         "title": "Eén model, een app en BI",
-        "description": "Een koffiewinkel bedient twee afnemers vanuit één model. Het bestelgeschiedenisscherm van zijn app toont een aangemelde klant diens bestellingen, en zijn BI-tool toont analisten de omzet en te late zendingen. De bestellingen staan in <strong>PostgreSQL</strong> en worden live gelezen: klanten, bestellingen en de regels van elke bestelling."
+        "description": "Een koffiewinkel bedient twee afnemers vanuit één model. Het bestelgeschiedenisscherm van zijn app toont een aangemelde klant diens bestellingen, en zijn BI-tool toont analisten de omzet en te late zendingen. De bestellingen staan in <strong>PostgreSQL</strong>: klanten, bestellingen en de regels van elke bestelling."
       },
       "storefrontCatalog": {
         "title": "De catalogus, in MongoDB",
-        "description": "Elk product is een <strong>MongoDB</strong>-document, met naam, categorie, prijs en afbeelding. Provisa leest het live, als tabel."
+        "description": "Elk product is een <strong>MongoDB</strong>-document, met naam, categorie, prijs en afbeelding. Provisa leest het als tabel."
       },
       "storefrontShipping": {
         "title": "Verzending, via REST",
@@ -1188,7 +1188,7 @@
       },
       "hasuramigrationSalesforce": {
         "title": "Wat Hasura niet kon: Salesforce",
-        "description": "Het verkoopteam bewaart zijn accounts in Salesforce. Provisa registreert de organisatie als bron en het object <strong>Account</strong> als tabel, eenmalig gekopieerd toen de demo werd gebouwd. Elke zakelijke klant in de winkel noemt het account waarvoor hij koopt."
+        "description": "Het verkoopteam bewaart zijn accounts in Salesforce. Provisa registreert de organisatie als bron en het object <strong>Account</strong> als tabel. Elke zakelijke klant in de winkel noemt het account waarvoor hij koopt."
       },
       "hasuramigrationAccount": {
         "title": "Nog één relatie",
@@ -1264,7 +1264,7 @@
       },
       "churnScenario": {
         "title": "Waar deze demo over gaat",
-        "description": "Een abonnementsbedrijf wil weten welke klanten op het punt staan op te zeggen. Zijn klanten en een jaar van hun maandelijkse gebruik worden live uit zijn eigen database gelezen, en een data scientist traint er in de browser een model op."
+        "description": "Een abonnementsbedrijf wil weten welke klanten op het punt staan op te zeggen. Zijn klanten en een jaar van hun maandelijkse gebruik staan in zijn eigen database, en een data scientist traint er in de browser een model op."
       },
       "churnCustomers": {
         "title": "De klanten",
@@ -1376,7 +1376,7 @@
       },
       "testdataScenario": {
         "title": "Drie omgevingen op één productiedatabase",
-        "description": "<strong>shop-db</strong> is de productiedatabase van een webshop: klanten, producten en bestellingen. Teams hebben data nodig om op te bouwen en te testen. Bedrijven met persoonsgegevens betalen veel voor pre-productiedata, omdat ze geen goede nepwaarden hebben of die inkopen. Hier bedient één model drie omgevingen. <strong>prod</strong> zijn de echte rijen, de bron van waarheid, en niemand bouwt erop. <strong>preprod</strong> is de eigen data van productie met elke gevoelige kolom nagemaakt, voor de eindtest. <strong>dev</strong> wordt gegenereerd uit het profiel van productie en bevat niets echts, voor het dagelijkse bouwwerk. Provisa levert het gereedschap; welke opzet een bedrijf nodig heeft, beslist het bedrijf."
+        "description": "<strong>shop-db</strong> is de productiedatabase van een webshop: klanten, producten en bestellingen. Teams hebben data nodig om op te bouwen en te testen. Hier bedient één model drie omgevingen. <strong>prod</strong> zijn de echte rijen, de bron van waarheid, en niemand bouwt erop. <strong>preprod</strong> is de eigen data van productie met elke gevoelige kolom nagemaakt, voor de eindtest. <strong>dev</strong> wordt gegenereerd uit het profiel van productie en bevat niets echts, voor het dagelijkse bouwwerk."
       },
       "testdataTables": {
         "title": "Het model bepaalt welke kolommen nep zijn",
@@ -1452,7 +1452,7 @@
       },
       "churnprodPackage": {
         "title": "Het model als bron",
-        "description": "Het pakket van het model is een bron, bewaard op de content-hash van de code. Het bevat het getrainde model en een lockfile die scikit-learn vastlegt. De afhankelijkheden worden eenmaal geïnstalleerd, uit wheels, en de code draait in een sandbox."
+        "description": "Het pakket van het model is een bron. Het bevat het getrainde model en een lockfile die scikit-learn vastlegt."
       },
       "churnprodColumns": {
         "title": "Kolommen uit de typen van de functie",
@@ -1488,7 +1488,7 @@
       },
       "churnprodRecap": {
         "title": "Wat u hebt gezien",
-        "description": "Het model van een data scientist ging in productie zonder een eigen dienst om te draaien. Het pakket is vastgelegd en wordt eenmaal geïnstalleerd. Een join voedt de functie, die zich als een tabel laat lezen, en de maskering en rijregels die elke tabel heeft bepalen wat ze teruggeeft. SQL, GraphQL en elke andere toegang lezen haar op dezelfde manier."
+        "description": "Het model van een data scientist ging in productie zonder een eigen dienst om te draaien. Het pakket is vastgelegd. Een join voedt de functie, die zich als een tabel laat lezen, en de maskering en rijregels die elke tabel heeft bepalen wat ze teruggeeft. SQL, GraphQL en elke andere toegang lezen haar op dezelfde manier."
       },
       "worldcupIntro": {
         "title": "Vier openbare bronnen, één WK",
@@ -1564,7 +1564,7 @@
       },
       "cloudpolicySearch": {
         "title": "Het beleid, doorzocht op betekenis",
-        "description": "Elke bepaling is één keer ingebed, toen de demo werd ingericht. Een zoekopdracht op betekenis vindt de maatregel over schijfversleuteling, ook als uw woorden afwijken van die van de bepaling."
+        "description": "Een zoekopdracht op betekenis vindt de maatregel over schijfversleuteling, ook als uw woorden afwijken van die van de bepaling."
       },
       "cloudpolicyModel": {
         "title": "Eén model over drie clouds",

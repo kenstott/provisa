@@ -8,112 +8,72 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2123 (amended 2026-10-21): every table of the profile runs modal sorts and groups as the
-// app's other lists do (SortGroupTable), and a table of a run's results has an expand button that
-// draws it again in the 95% modal, as the 3D views do (Expandable3D).
+// REQ-2123 (amended 2026-10-21): every table of the profile runs modal is the explorer's results
+// grid (ResultsGrid): it sorts, groups and filters by column, and downloads as xlsx; a table of a
+// run's results has an expand button that draws it again in the 95% modal, as the 3D views do
+// (Expandable3D).
 
-import type { ReactNode } from "react";
-import { Group, ScrollArea, Table } from "@mantine/core";
-import { ListRow } from "../../components/list/ListTable";
-import { SortGroupTable } from "../../components/list/SortGroupTable";
-import type { ListColumn } from "../../components/list/useListSortGroup";
+import { Group } from "@mantine/core";
+import { ResultsGrid } from "../sql/ResultsGrid";
+import { useResultsGrid } from "../sql/useResultsGrid";
 import { ExpandButton, Expandable3D } from "./profile3d/Expandable3D";
 import "./profile3d/profile3d.css";
 
-export interface ResultColumn<T> {
-  key: string;
-  label: string;
-  /** What the column sorts by, and groups by when any of its values is not a number. */
-  value: (row: T) => unknown;
-  /** Its cell, when it is not the value as text. */
-  cell?: (row: T) => ReactNode;
-}
+type Row = Record<string, unknown>;
 
-const sortable = (v: unknown): string | number =>
-  typeof v === "number" ? v : v == null ? "" : String(v);
-
-function listColumns<T>(rows: T[], columns: ResultColumn<T>[]): ListColumn<T>[] {
-  return columns.map((c) => {
-    const categorical = rows.some((r) => {
-      const v = c.value(r);
-      return v != null && typeof v !== "number";
-    });
-    return {
-      key: c.key,
-      label: c.label,
-      sortValue: (r) => sortable(c.value(r)),
-      ...(categorical ? { groupValue: (r: T) => String(c.value(r) ?? "") } : {}),
-    };
-  });
-}
-
-export function ProfileResultTable<T>({
-  rows,
-  columns,
-  rowKey,
-  testId,
-  title,
-  height,
-  expandable = true,
-  onRowClick,
-  selected,
-  rowTestId,
-  rowProps,
-}: {
-  rows: T[];
-  columns: ResultColumn<T>[];
-  rowKey: (row: T, index: number) => string | number;
+interface Props {
+  /** The rows as shown: one plain value per column. */
+  rows: Row[];
+  columns: string[];
   testId: string;
-  /** The expanded copy's title. */
+  /** The expanded copy's title, and the downloaded workbook's name. */
   title: string;
   /** The in-place copy's height; the expanded one fills its modal. */
   height: number;
   expandable?: boolean;
-  onRowClick?: (row: T) => void;
-  selected?: (row: T) => boolean;
-  rowTestId?: (row: T, index: number) => string;
-  rowProps?: (row: T) => { fw?: number };
-}) {
-  const index = new Map(rows.map((r, i) => [r, i]));
-  const table = (expanded: boolean) => (
-    <SortGroupTable
-      rows={rows}
-      columns={listColumns(rows, columns)}
-      headers={columns.map((c) => ({ col: c.key }))}
-      colSpan={columns.length}
-      rowKey={(r) => rowKey(r, index.get(r) ?? 0)}
-      testPrefix={expanded ? `${testId}-expanded` : testId}
-      testId={expanded ? `${testId}-expanded` : testId}
-      render={(r) => (
-        <ListRow
-          key={rowKey(r, index.get(r) ?? 0)}
-          onClick={onRowClick ? () => onRowClick(r) : undefined}
-          selected={selected?.(r)}
-          testId={rowTestId?.(r, index.get(r) ?? 0)}
-        >
-          {columns.map((c) => (
-            <Table.Td key={c.key} fw={rowProps?.(r).fw}>
-              {c.cell ? c.cell(r) : String(c.value(r) ?? "")}
-            </Table.Td>
-          ))}
-        </ListRow>
-      )}
+  onRowClick?: (row: Row) => void;
+  selectedRow?: (row: Row) => boolean;
+}
+
+function Grid({ rows, columns, title, onRowClick, selectedRow }: Props) {
+  const grid = useResultsGrid(rows, columns);
+  return (
+    <ResultsGrid
+      grid={grid}
+      totalRowCount={rows.length}
+      exportName={title}
+      onRowClick={onRowClick}
+      selectedRow={selectedRow}
     />
   );
-  if (!expandable) return <ScrollArea h={height}>{table(false)}</ScrollArea>;
+}
+
+export function ProfileResultTable(props: Props) {
+  const { testId, height, expandable = true, title } = props;
+  if (!expandable) {
+    return (
+      <div style={{ height }} data-testid={testId}>
+        <Grid {...props} />
+      </div>
+    );
+  }
   return (
     <Expandable3D
       title={title}
       testId={testId}
       render={(expanded, onExpand) =>
         expanded ? (
-          <ScrollArea h="100%">{table(true)}</ScrollArea>
+          <div style={{ height: "100%" }} data-testid={`${testId}-expanded`}>
+            <Grid {...props} />
+          </div>
         ) : (
           <>
             <Group justify="flex-end" mb={4}>
               {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
             </Group>
-            <ScrollArea h={height}>{table(false)}</ScrollArea>
+            <div style={{ height }} data-testid={testId}>
+              <Grid {...props} />
+            </div>
           </>
         )
       }
