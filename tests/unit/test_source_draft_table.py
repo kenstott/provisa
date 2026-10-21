@@ -20,7 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.api.admin import schema_query
-from provisa.api.admin.schema_mutation import Mutation
+from provisa.api.admin.schema_mutation import Mutation, _register_draft_table
 from provisa.api.admin.types import AvailableColumnType, MutationResult, SourceInput
 
 
@@ -52,7 +52,7 @@ async def test_the_draft_table_is_named_and_typed_from_the_file(registered):
     made = SourceInput(
         id="supplies", type="parquet", register_table_draft=True, table_domain_id="shelter"
     )
-    assert await Mutation()._register_draft_table(SimpleNamespace(context={}), made) is None
+    assert await _register_draft_table(SimpleNamespace(context={}), made) is None
     (table,) = registered
     assert (table.source_id, table.domain_id, table.schema_name, table.table_name) == (
         "supplies",
@@ -74,10 +74,32 @@ async def test_the_draft_table_is_named_and_typed_from_the_file(registered):
 async def test_without_a_domain_or_for_another_type_the_source_stands_and_says_why(registered):
     info = SimpleNamespace(context={})
     no_domain = SourceInput(id="s", type="csv", register_table_draft=True)
-    said = await Mutation()._register_draft_table(info, no_domain)
+    said = await _register_draft_table(info, no_domain)
     assert said is not None and said.success and said.code == "schema.source_created_without_table"
     assert "no domain" in said.params["reason"]
     sqlite = SourceInput(id="db", type="sqlite", register_table_draft=True, table_domain_id="d")
-    said = await Mutation()._register_draft_table(info, sqlite)
+    said = await _register_draft_table(info, sqlite)
     assert said is not None and said.success and "single table" in said.params["reason"]
     assert registered == []
+
+
+def test_no_mutation_resolver_reaches_through_self():
+    """Strawberry runs a Mutation resolver with `self` as the schema's root value, which the admin
+    schema never sets: `self._register_draft_table` raised "'NoneType' object has no attribute
+    '_register_draft_table'" on every createSource with registerTableDraft."""
+    import ast
+    import inspect
+
+    from provisa.api.admin import schema_mutation
+
+    tree = ast.parse(inspect.getsource(schema_mutation.Mutation))
+    through_self = sorted(
+        {
+            n.attr
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Attribute)
+            and isinstance(n.value, ast.Name)
+            and n.value.id == "self"
+        }
+    )
+    assert through_self == []
