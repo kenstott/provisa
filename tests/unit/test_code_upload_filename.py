@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 530bf3dc-c387-4b11-a2b7-60820a54c266
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """An uploaded code archive keeps the name of the file it came from (REQ-2101): its source's
 mapping carries it beside the content hash, so the source's form can say what the code is."""
 
