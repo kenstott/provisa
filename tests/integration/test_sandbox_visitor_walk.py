@@ -338,7 +338,10 @@ def _build_live_source(tier, token: dict[str, str]) -> list[str]:
     """The core tour's live-built source (REQ-2115), as its Save sends it from the visitor's
     sandbox: supplies.parquet from the org's own copy its demo ships ({files}/supplies.parquet,
     REQ-2101 amended), its table set up as a draft. The copy Provisa publishes is refused here --
-    a sandbox may reach no address its demo does not declare -- which is why the demo ships one."""
+    a sandbox may reach no address its demo does not declare -- which is why the demo ships one.
+    Sent as the page sends it, as "Role: All": the sandbox role among them is what may register a
+    source."""
+    acting = {**token, "X-Provisa-Role": _all_roles(tier, token)}
     status = httpx.get(f"{tier.base_url}/setup/status", headers=token, timeout=60)
     assert status.status_code == 200, status.text
     if "supplies.parquet" not in status.json()["demo_org_files"]:
@@ -346,7 +349,7 @@ def _build_live_source(tier, token: dict[str, str]) -> list[str]:
     domains = httpx.post(
         f"{tier.base_url}/admin/graphql",
         json={"query": "{ domains { id } }"},
-        headers=token,
+        headers=acting,
         timeout=60,
     )
     assert domains.status_code == 200 and not domains.json().get("errors"), domains.text
@@ -367,7 +370,7 @@ def _build_live_source(tier, token: dict[str, str]) -> list[str]:
                     }
                 },
             },
-            headers=token,
+            headers=acting,
             timeout=300,
         )
         assert resp.status_code == 200 and not resp.json().get("errors"), resp.text
