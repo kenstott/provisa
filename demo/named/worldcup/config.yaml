@@ -148,7 +148,6 @@ sources:
       kind: upload
       upload: bbca888c502cb34a0c1b9ab5ac9ed50e6797c12bb9125b6559721de650ec3578
       filename: country_alias.tar.gz
-    content_hash: bbca888c502cb34a0c1b9ab5ac9ed50e6797c12bb9125b6559721de650ec3578
   description: 'country_alias(name): matches a team''s name to the FIFA member it stands for with an LLM (code/country_alias.tar.gz,
     its source in country_alias/)'
 tables:

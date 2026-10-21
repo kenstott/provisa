@@ -31,6 +31,7 @@ import { uploadCodeArchive, uploadLockfile } from "../../api/codeUploads";
 import { fetchSecrets } from "../../api/secrets";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { useFormRead } from "../../components/form/formRead";
+import { CodeExports } from "./CodeExports";
 import { CodeHostPanel } from "./CodeHostPanel";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -236,6 +237,12 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 data-testid="code-archive"
               />
             </FormField>
+          </FieldGroup>
+        )}
+
+        {sourceId && activeOrgId && (
+          <FieldGroup row>
+            <CodeExports orgId={activeOrgId} sourceId={sourceId} />
           </FieldGroup>
         )}
 

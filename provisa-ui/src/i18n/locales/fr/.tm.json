@@ -7382,5 +7382,11 @@
   "fr/chatPanel.json::chatPanel.confirmed": "Confirmed — go ahead.",
   "fr/chatPanel.json::chatPanel.cancelled": "Cancelled.",
   "fr/chatPanel.json::chatPanel.chooseFile": "File to send",
-  "fr/codeSourceFields.json::codeSourceFields.keptWithHash": "Kept: {{name}} ({{hash}})"
+  "fr/codeSourceFields.json::codeSourceFields.keptWithHash": "Kept: {{name}} ({{hash}})",
+  "fr/codeSourceFields.json::codeSourceFields.exports": "Exports",
+  "fr/codeSourceFields.json::codeSourceFields.exportsLoading": "Reading the code…",
+  "fr/codeSourceFields.json::codeSourceFields.exportsNone": "The code exports no functions",
+  "fr/codeSourceFields.json::codeSourceFields.exportKind_table": "table",
+  "fr/codeSourceFields.json::codeSourceFields.exportKind_command": "command",
+  "fr/codeSourceFields.json::codeSourceFields.exportKind_stream": "stream"
 }

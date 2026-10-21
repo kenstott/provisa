@@ -18,6 +18,8 @@ Under ``/admin/orgs/{org_id}/code-sources/{source_id}``:
   /builds/{id}/archive`` downloads a kept one.
 - ``POST /connect`` ``{host, port, pairing_code}``: pair with the remote host running it, check
   it serves the source's code, and switch the source to built mode. ``POST /dev`` switches it back.
+- ``GET /exports``: the functions its code exports, each its name and kind (table, command,
+  stream), which its form lists.
 - ``GET /host``: the source's mode and whether its remote host answers. ``POST /repin``
   ``{code_hash}``: pin the source to the code its host now runs, once reviewed.
 
@@ -151,3 +153,18 @@ async def repin(request: Request, org_id: str, source_id: str, body: RepinBody) 
     except BundleRefused as refused:
         raise _refusal(refused) from None
     return {"mode": mapping["mode"], "content_hash": mapping["content_hash"]}
+
+
+@router.get("/exports")
+async def exports(request: Request, org_id: str, source_id: str) -> dict:
+    from provisa.codesource import discovery
+
+    await _guard(request, org_id)
+    try:
+        found = await discovery.exports(_state(), source_id)
+    except BundleRefused as refused:
+        raise _refusal(refused) from None
+    if found is None:
+        missing = BundleRefused("not_found", f"There is no source {source_id!r}", source=source_id)
+        raise _refusal(missing)
+    return {"exports": [{"name": name, "kind": kind} for name, kind in found]}
