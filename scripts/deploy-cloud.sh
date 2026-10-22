@@ -964,6 +964,9 @@ reset_sandbox_state() {
   containers="$(sandbox_containers)"
   [ -n "$containers" ] || { echo "sandbox VM: no sandbox tier container on $NODE" >&2; exit 1; }
   echo "== sandbox VM: resetting the sandbox tier's orgs (stopping $containers)"
+  # A step that fails below ends the script (set -e); the tier is started again on the way out,
+  # so a failed reset never leaves it down. Replaced by the stage cleanup alone once it is done.
+  trap "echo 'sandbox reset failed: starting $containers again' >&2; ssh_node 'sudo docker start $containers >/dev/null'; rm -rf \"\$STAGE\"" EXIT
   ssh_node "sudo docker stop $containers >/dev/null"
   # One schema per statement, each its own transaction (psql autocommit + \gexec): every
   # template's schema holds hundreds of views, and dropping them all in one transaction runs
@@ -994,6 +997,7 @@ SQL
   # tiers' data dirs from these). Only orgs/sbx*: demo-bundles/ beside it is the demo stores sync's.
   # Expanded as root: the login user cannot list /root, where its own shell would expand nothing.
   ssh_node "sudo sh -c 'rm -rf /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx*'"
+  trap 'rm -rf "$STAGE"' EXIT
   CONTAINERS="$containers"
 }
 
@@ -1037,11 +1041,18 @@ deploy_sandbox_vm() {
   NODE="$SANDBOX_NODE" API_CONTAINER=compose-provisa-sandbox-1 CONTAINERS=compose-provisa-sandbox-1
   SANDBOX_PUBLISH="$(gcloud compute instances describe "$SANDBOX_NODE" --zone "$ZONE" \
     --project "$PROJECT" --format='value(networkInterfaces[0].networkIP)'):8000"
-  local i
+  local i state
   for i in $(seq 1 120); do
-    ssh_node "sudo docker inspect -f '{{.State.Running}}' $API_CONTAINER 2>/dev/null" 2>/dev/null \
-      | grep -q true && break
-    [ "$i" = 120 ] && { echo "sandbox VM: $API_CONTAINER never came up" >&2; exit 1; }
+    # Empty while the VM boots and docker has not yet listed it.
+    state="$(ssh_node "sudo docker inspect -f '{{.State.Status}}' $API_CONTAINER 2>/dev/null" 2>/dev/null \
+      | tr -d '\r')" || state=""
+    [ "$state" = running ] && break
+    # Stopped (a reset that failed before this guard, or a hand stop): nothing else starts it.
+    if [ "$state" = exited ] || [ "$state" = created ]; then
+      echo "== sandbox VM: $API_CONTAINER is $state; starting it"
+      ssh_node "sudo docker start $API_CONTAINER >/dev/null"
+    fi
+    [ "$i" = 120 ] && { echo "sandbox VM: $API_CONTAINER never came up (last: ${state:-not listed})" >&2; exit 1; }
     sleep 15
   done
   echo "== sandbox VM: $SANDBOX_NODE"
