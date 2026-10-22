@@ -116,9 +116,9 @@ tables:
   - {name: notice_id, data_type: integer, is_primary_key: true, description: The notice's number, visible_to: [org_admin, finance, data_science]}
   - {name: dataset, data_type: varchar, description: The dataset that is ready, visible_to: [org_admin, finance, data_science]}
   - {name: consumer, data_type: varchar, description: The team it is for, visible_to: [org_admin, finance, data_science]}
-  - {name: version_time, data_type: timestamptz, description: 'When it was sent: the version of the dataset a pull reads, as of this time', visible_to: [org_admin, finance, data_science]}
+  - {name: version_time, data_type: timestamptz, description: 'The version of the dataset a pull reads: the newest recorded time it held when the notice was sent', visible_to: [org_admin, finance, data_science]}
   write_grants:
-  - {role: org_admin, operation: insert, columns: [dataset, consumer]}
+  - {role: org_admin, operation: insert, columns: [dataset, consumer, version_time]}
   - {role: org_admin, operation: update, columns: [dataset, consumer]}
 - source_id: warehouse
   domain_id: provisioning
@@ -261,17 +261,23 @@ relationships:
 - {id: pull-to-notice, alias: ANSWERS, cardinality: many-to-one, source_table_id: pulls, source_column: notice_id, target_table_id: notices, target_column: notice_id}
 # The notices, inside the dataset's window (01:00-23:59 UTC): finance every five minutes, data
 # science two minutes after it. A customization built from scheduled triggers and the notices
-# table's Kafka output, not a feature of its own.
+# table's Kafka output, not a feature of its own. A notice's version time is the newest recorded
+# time the dataset holds, not the clock: a row still landing has a later one, so every pull as
+# recorded at the notice reads the same rows.
 scheduled_triggers:
 - id: notify-finance
   name: Tell finance order_margins is ready
   cron: '*/5 1-23 * * *'
-  sql: INSERT INTO "provisioning"."notices" (dataset, consumer) VALUES ('order_margins', 'finance')
+  sql: >-
+    INSERT INTO "provisioning"."notices" (dataset, consumer, version_time)
+    SELECT 'order_margins', 'finance', MAX(m.landed_at) AT TIME ZONE 'UTC' FROM "provisioning"."view_order_margins" AS m
   role: org_admin
 - id: notify-data-science
   name: Tell data science order_margins is ready
   cron: '2-59/5 1-23 * * *'
-  sql: INSERT INTO "provisioning"."notices" (dataset, consumer) VALUES ('order_margins', 'data_science')
+  sql: >-
+    INSERT INTO "provisioning"."notices" (dataset, consumer, version_time)
+    SELECT 'order_margins', 'data_science', MAX(m.landed_at) AT TIME ZONE 'UTC' FROM "provisioning"."view_order_margins" AS m
   role: org_admin
 glossary_terms:
 - name: provisioning

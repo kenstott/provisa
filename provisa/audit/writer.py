@@ -186,8 +186,6 @@ def _time_travel_columns(time_travel: str | None) -> dict[str, str | None]:
     """``query_audit_log.as_of`` and ``.as_recorded`` (REQ-1163): the times the statement read
     bitemporal views as of and as recorded at, ISO 8601 (an as-of range as ``start/end``); None
     where it gave none."""
-    # TEMP REQ2107-DEBUG: remove once the as-recorded drop is root-caused.
-    log.warning("REQ2107-DEBUG audit row time_travel=%r", time_travel)
     if time_travel is None:
         return {"as_of": None, "as_recorded": None}
     from provisa.mv.bitemporal import AsOf

@@ -1315,8 +1315,6 @@ async def _govern_and_route(
 
     ``serve_cached`` / ``wire_formats`` / ``route_hint``: see :func:`route_governed`.
     ``product_statement``: see :func:`govern_statement`."""
-    # TEMP REQ2107-DEBUG: remove once the as-recorded drop is root-caused.
-    log.warning("REQ2107-DEBUG _govern_and_route as_of=%r", as_of)
     from provisa.api.app import state
 
     from provisa.core.statement_warnings import collecting
@@ -1993,8 +1991,6 @@ async def route_governed(
     ``wire_formats`` — pgwire's result format codes for this execution — also looks for the
     passthrough entry written for those codes. EXPLAIN, a sink delivery and a write are never
     answered from the cache."""
-    # TEMP REQ2107-DEBUG: remove once the as-recorded drop is root-caused.
-    log.warning("REQ2107-DEBUG route_governed as_of=%r", as_of)
     import sqlglot.expressions as exp
 
     from provisa.api.app import state
@@ -3021,13 +3017,11 @@ async def finalize_audit(
 
     # Provenance (provisa/audit/provenance.py): why the plan took its route, what it read, and
     # how old the rows it was answered with are — decided by now, recorded here.
-    # TEMP REQ2107-DEBUG: remove once the as-recorded drop is root-caused.
-    log.warning("REQ2107-DEBUG audit plan.cache_as_of=%r route=%r", plan.cache_as_of, plan.route)
     _outcome = {
         "route_reason": plan.route_reason,
         "sources": plan.sources,
         "answered_in": plan.answered_in,
-        "time_travel": plan.cache_as_of,  # TEMP REQ2107-DEBUG (logged below)
+        "time_travel": plan.cache_as_of,
         "data_age": (
             data_age(plan, cache_entry if cache_hit else None)
             if status_code == 200  # noqa: PLR2004 - HTTP OK
@@ -4090,8 +4084,6 @@ async def execute_sql_batch(
     every non-pgwire surface). A single statement behaves exactly like _govern_and_route + _execute_plan.
     Per statement, a standalone registered-command call is invoked through the shared function hook,
     matching the single-statement surface behaviour."""
-    # TEMP REQ2107-DEBUG: remove once the as-recorded drop is root-caused.
-    log.warning("REQ2107-DEBUG execute_sql_batch as_of=%r", as_of)
     from provisa.compiler.sql_rewrite import split_sql_statements
     from provisa.pgwire.function_call import maybe_invoke_registered_function
 
