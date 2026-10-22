@@ -20,11 +20,20 @@ configure({ asyncUtilTimeout: 10000 });
 import "fake-indexeddb/auto";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { warmupSettled } from "./pageChunks";
 import { bindStorageScope } from "./lib/browserStorage";
 
 // @testing-library/react auto-cleanup doesn't reliably fire between tests in
 // vitest's vmThreads pool.  Register it explicitly so DOM state never leaks.
 afterEach(cleanup);
+
+// App warms every page chunk once a route's page has arrived (pageChunks.ts). Unmounting the app
+// stops it; the chunk it was loading is awaited here, so no import outlives the test file's
+// environment.
+afterEach(async () => {
+  cleanup();
+  await warmupSettled();
+});
 
 // REQ-2008: in the app every page mounts inside the scope gate, which binds the control plane and
 // org the page saves its state under (lib/browserStorage). A component test renders a page without

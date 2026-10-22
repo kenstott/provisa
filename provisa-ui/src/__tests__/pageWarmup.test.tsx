@@ -83,6 +83,30 @@ describe("the page chunk warm-up", () => {
     expect(cancel).toHaveBeenCalledWith(7);
   });
 
+  it("stopped while it loads, starts no further chunk and settles", async () => {
+    // The idle callback runs at once, so the warm-up is under way when it is stopped.
+    Object.assign(window, {
+      requestIdleCallback: (cb: () => void) => {
+        cb();
+        return 1;
+      },
+      cancelIdleCallback: vi.fn(),
+    });
+    const loads = vi.spyOn(console, "error");
+    const chunks: Chunks = await import("../pageChunks");
+
+    const idle = chunks.warmupSettled();
+    const stop = chunks.prefetchPageChunksOnIdle();
+    await openRoute(chunks, []);
+    // Under way: the warm-up's loading is no longer the idle one.
+    await waitFor(() => expect(chunks.warmupSettled()).not.toBe(idle));
+    stop();
+    // Settles once the chunk in flight arrives: nothing is left loading into a torn-down page.
+    await chunks.warmupSettled();
+    expect(loads).not.toHaveBeenCalled();
+    loads.mockRestore();
+  });
+
   it("falls back to a timeout where requestIdleCallback is missing", async () => {
     Object.assign(window, { requestIdleCallback: undefined, cancelIdleCallback: undefined });
     const timeout = vi.spyOn(window, "setTimeout");
