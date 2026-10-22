@@ -43,7 +43,12 @@ from tests.embedded_pg import start_local_postgres  # noqa: E402
 from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _SQLITE = Path(__file__).parent.parent.parent / "demo" / "files" / "orders.sqlite"
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 
 
 @pytest.fixture(scope="session")

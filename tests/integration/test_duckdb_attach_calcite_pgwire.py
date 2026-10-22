@@ -38,7 +38,12 @@ from provisa.federation.connector_duckdb import _DuckDBPgwireConnector
 from provisa.transpiler.transpile import transpile
 from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_write_returns_rows
 
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 
 pytestmark = [pytest.mark.integration]
 

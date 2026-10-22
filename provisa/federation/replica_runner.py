@@ -45,6 +45,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from provisa.core import process_mode, request_deadline
+from provisa.core.runtime_gone import RuntimeNotBuilt, left_to_the_next_runtime
 from provisa.federation import replica_state as build_state
 from provisa.federation.data_replicator import (
     INDEXES_NOT_PLANNED,
@@ -238,6 +239,11 @@ class ReplicaRunner:
             # once their wait is over. A failure there must not stop the builds.
             try:
                 await self._housekeeping(self._locks, self._org_id)
+            except RuntimeNotBuilt as gone:
+                # Detached from the build that kicked it, the pass can outlive that build's
+                # runtime (an environment's data changed under it): it has no runtime to build for.
+                left_to_the_next_runtime(gone, "replica housekeeping")
+                return 0
             except Exception as exc:  # allow-ble: logged with its cause; the next pass tries again, and builds must not wait on a drop
                 log.error("replica housekeeping failed: %s", exc, exc_info=exc)
         started = 0

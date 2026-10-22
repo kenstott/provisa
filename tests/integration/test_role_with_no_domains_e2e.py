@@ -189,7 +189,12 @@ def test_a_role_listing_all_domains_or_one_is_saved(server):
     with _client(server) as c:
         resp = c.post(
             "/admin/roles/",
-            json={"id": "onedomain", "capabilities": ["usage"], "domain_access": [_ITS_DOMAIN]},
+            json={
+                "description": "Test role.",
+                "id": "onedomain",
+                "capabilities": ["usage"],
+                "domain_access": [_ITS_DOMAIN],
+            },
         )
     assert resp.status_code == 200, resp.text
     assert _saved_roles(server)["onedomain"]["domain_access"] == [_ITS_DOMAIN]

@@ -72,3 +72,54 @@ def test_one_call_runs_the_function_per_argument_set_in_order(tmp_path):
         {"op": "rows", "id": 7, "rows": [{"n": 4, "square": 16}]},
     ]
     assert out["running"] == 0
+
+
+_KEYED = textwrap.dedent(
+    """
+    import { Connection } from %(core)s;
+    const bundle = {
+      // REQ-2100: a loader call, answered with a hash of each key's rows.
+      score: (id, loader) =>
+        Object.fromEntries(Object.entries(loader).map(([k, key]) => [k, [{ id: key.id, n: 1 }, { id: key.id, n: 2 }]])),
+    };
+    const sent = [];
+    const connection = new Connection({ bundle, services: {}, otel: null }, () => {}, () => {});
+    connection.send = (message) => sent.push(message);
+    connection.sendRows = (id, rows) => sent.push({ op: "rows", id, rows });
+    await connection.serve({
+      id: 9, export: "score", kind: "table", schema: "c2NoZW1h", keyed: true,
+      calls: [{ args: [{ $absent: true }, { h1: { id: "a" }, h2: { id: "b" } }], names: ["id", "loader"] }],
+    });
+    process.stdout.write(JSON.stringify({ sent }));
+    """
+)
+
+
+def test_a_loader_call_sends_each_keys_rows_with_its_key(tmp_path):
+    """REQ-2100: a keyed call's answer, a hash of each key's rows, goes as rows carrying $key."""
+    node = shutil.which("node")
+    assert node is not None, "this test runs the host on the machine's node"
+    (tmp_path / "lib" / "package").mkdir(parents=True)
+    (tmp_path / "lib" / "package" / "Arrow.es2015.min.js").write_text(_ARROW)
+    script = tmp_path / "keyed.mjs"
+    script.write_text(_KEYED % {"core": json.dumps(CORE.as_uri())})
+    done = subprocess.run(  # noqa: S603 -- the machine's node and Provisa's host
+        [node, str(script)],
+        env={"PATH": "/usr/bin:/bin", "PROVISA_HOST_LIB": str(tmp_path / "lib")},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout)["sent"] == [
+        {
+            "op": "rows",
+            "id": 9,
+            "rows": [{"id": "a", "n": 1, "$key": "h1"}, {"id": "a", "n": 2, "$key": "h1"}],
+        },
+        {
+            "op": "rows",
+            "id": 9,
+            "rows": [{"id": "b", "n": 1, "$key": "h2"}, {"id": "b", "n": 2, "$key": "h2"}],
+        },
+    ]

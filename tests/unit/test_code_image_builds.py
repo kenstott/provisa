@@ -26,6 +26,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.codesource import builds, image_build, oci, remote_sources
+from provisa.codesource.manifest import Anonymous, Export, Field, Manifest, Scalar
 
 pytestmark = pytest.mark.unit
 
@@ -73,7 +74,10 @@ def run_parts(tmp_path, monkeypatch):
     from provisa.codesource import source as source_module
 
     async def prepare(*a):
-        return SimpleNamespace(manifest=SimpleNamespace(exports=[SimpleNamespace(name="rates")]))
+        rates = Export(
+            "rates", "table", "", (), Anonymous((Field("rate", Scalar("double"), False),))
+        )
+        return SimpleNamespace(manifest=Manifest((rates,), {}))
 
     async def nothing(*a):
         return None

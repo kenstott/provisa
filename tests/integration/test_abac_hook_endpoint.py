@@ -87,7 +87,12 @@ def _build_schema():
             ColumnMetadata(column_name="amount", data_type="numeric", is_nullable=False),
         ]
     }
-    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ALL_DATA_CAPABILITIES,
+        "domain_access": ["*"],
+    }
     si = SchemaInput(
         tables=tables,
         relationships=[],

@@ -161,7 +161,9 @@ def _prepare_sync():
         conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
         conn.execute(insert(domains).values(id="meta"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+            conn.execute(
+                insert(roles).values(id=role_id, capabilities=caps, description="Test role.")
+            )
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="pat", role_id="platform_admin", domain_id="*"
@@ -175,7 +177,9 @@ def _prepare_sync():
         org_metadata.create_all(conn)
         conn.execute(insert(domains).values(id="acmeonlydomain"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+            conn.execute(
+                insert(roles).values(id=role_id, capabilities=caps, description="Test role.")
+            )
         conn.execute(
             insert(user_role_assignments).values(
                 user_id="alice", role_id="org_admin", domain_id="*"
@@ -188,7 +192,9 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['sandbox']}"))
         org_metadata.create_all(conn, tables=_TENANT_TABLES)
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
-            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+            conn.execute(
+                insert(roles).values(id=role_id, capabilities=caps, description="Test role.")
+            )
         conn.execute(
             insert(user_role_assignments).values(user_id="viv", role_id="analyst", domain_id="*")
         )

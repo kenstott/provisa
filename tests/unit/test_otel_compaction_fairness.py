@@ -116,6 +116,9 @@ async def test_a_failing_signal_does_not_suppress_the_others(compaction_state, m
 @pytest.mark.asyncio
 async def test_a_chunk_fetches_its_objects_concurrently(monkeypatch):
     """Serial per-file round trips capped a run far below its budget, so ingest outran it."""
+    # The table is readable: this test is of how a chunk is fetched, not of the probes.
+    monkeypatch.setattr("provisa.observability.ops_trino.metadata_missing", lambda *_: False)
+    monkeypatch.setattr("provisa.observability.ops_trino.metadata_files_gone", lambda *_: False)
     import pyarrow as pa
 
     in_flight = 0

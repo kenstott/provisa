@@ -97,7 +97,15 @@ def test_an_rls_predicate_is_applied_identically_with_a_bound_value(pgwire_pg_ba
     state = b["state"]
     state.rls_contexts = {
         "admin": build_rls_context(
-            [{"table_id": 1, "role_id": "admin", "filter_expr": "region = 'us-west'"}], "admin"
+            [
+                {
+                    "description": "Test rule.",
+                    "table_id": 1,
+                    "role_id": "admin",
+                    "filter_expr": "region = 'us-west'",
+                }
+            ],
+            "admin",
         )
     }
     try:

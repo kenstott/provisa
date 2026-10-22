@@ -461,12 +461,17 @@ def _compact_signal(
     # A table registered with its metadata unreadable is said (an ERROR naming it) and left as it
     # is: this signal is not compacted this run, and its files stay where they are for a run after
     # the table is recovered. The other signals carry on (ops_trino.metadata_missing).
-    from provisa.observability.ops_trino import metadata_missing
+    from provisa.observability.ops_trino import metadata_files_gone, metadata_missing
 
-    if metadata_missing(
-        lambda sql: engine.execute_engine_sync(sql, authorization=system_auth("scheduled job")),
-        signal,
-    ):
+    def _rows(sql: str):
+        return engine.execute_engine_sync(sql, authorization=system_auth("scheduled job")).rows
+
+    def _keys_under(bucket: str, prefix: str):
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                yield obj["Key"]
+
+    if metadata_missing(_rows, signal) or metadata_files_gone(_rows, _keys_under, signal):
         return
 
     try:
@@ -809,14 +814,25 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
         return
 
     threshold = f"{retention_hours}h"
-    from provisa.observability.ops_trino import metadata_missing
+    from provisa.observability.ops_trino import (
+        metadata_files_gone,
+        metadata_missing,
+        otel_bucket_keys,
+    )
 
+    def _rows(sql: str):
+        return engine.execute_engine_sync(sql).rows
+
+    def _unreadable(signal: str, keys_under) -> bool:
+        # As compaction asks: the engine's probe, then the bucket, which the catalog's metadata
+        # cache cannot answer for (ops_trino.metadata_files_gone).
+        return metadata_missing(_rows, signal) or metadata_files_gone(_rows, keys_under, signal)
+
+    keys_under = await asyncio.to_thread(otel_bucket_keys)
     for signal in ("logs", "metrics", "traces"):
-        # A table whose metadata cannot be read is left as it is (said by metadata_missing): its
-        # files may be the history its recovery restores, and orphan removal would delete them.
-        if await asyncio.to_thread(
-            metadata_missing, lambda sql: engine.execute_engine_sync(sql), signal
-        ):
+        # A table whose metadata cannot be read is left as it is (said by the probes): its files
+        # may be the history its recovery restores, and orphan removal would delete them.
+        if await asyncio.to_thread(_unreadable, signal, keys_under):
             continue
         for proc, hint in (
             ("expire_snapshots", "expire_snapshots_min_retention"),

@@ -141,6 +141,7 @@ def _make_app_state(schema=None):
     state.rls_contexts = {"admin": RLSContext.empty()}
     state.roles = {
         "admin": {
+            "description": "Test role.",
             "id": "admin",
             "capabilities": ["full_results"],
             "domain_access": ["*"],

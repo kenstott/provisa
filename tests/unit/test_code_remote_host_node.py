@@ -8,11 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A Node source on a remote host (REQ-2098): Node's remote host program, its identity a
-self-signed certificate it writes itself, paired with and dialled by Provisa over mutual TLS, and
-serving the same calls a local worker serves. Runs on the ``node`` the machine has."""
+"""A Node source on a remote host (REQ-2098, REQ-2100): the front end every built image runs, with
+Node's host program as its worker; its identity a self-signed certificate it writes itself,
+paired with and dialled by Provisa over mutual TLS, serving the same calls a local worker serves.
+Runs on the ``node`` the machine has."""
 
-# Requirements: REQ-2098
+# Requirements: REQ-2098, REQ-2100
 
 from __future__ import annotations
 
@@ -21,17 +22,18 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import time
 
 import pytest
 
+from provisa.codehost import front
 from provisa.codesource import remote
 from provisa.codesource.worker import WorkerFailed
 from provisa.node.worker import HOST
 
 pytestmark = pytest.mark.unit
 
-REMOTE_HOST = HOST.with_name("remote_host.mjs")
 _CODE = """
 export function add(a, b) { return a + b; }
 export async function greet(name) { return { greeting: `hi ${name}` }; }
@@ -44,25 +46,16 @@ def _node() -> str:
     return found
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture
 def started(tmp_path):
     """A Node remote host on a free port, its state in a directory of its own; its pairing code."""
     (tmp_path / "index.mjs").write_text(_CODE)
-    port = _free_port()
-    process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's host
-        [
-            _node(),
-            str(REMOTE_HOST),
-            str(port),
-            str(tmp_path / "state"),
-            str(tmp_path / "index.mjs"),
-        ],
+    port = 0
+    names = tmp_path / "names.json"
+    names.write_text("{}")
+    worker = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
+    process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's front end
+        [sys.executable, front.__file__, str(port), str(tmp_path / "state"), str(names), *worker],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -74,7 +67,9 @@ def started(tmp_path):
         line = process.stderr.readline()
         if line.startswith("pairing code: "):
             pairing = line.removeprefix("pairing code: ").strip()
-        if line.startswith("remote host listening"):
+        if line.startswith("remote host listening on "):
+            # Bound by the host itself (port 0): no other test can take it first.
+            port = int(line.rsplit(" ", 1)[1])
             break
     assert pairing is not None, "the host printed no pairing code"
     yield port, pairing, tmp_path / "state"

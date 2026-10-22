@@ -21,7 +21,14 @@ import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { GraphExplorer } from "./GraphExplorer";
 import { GraphStage, type StageState } from "./GraphStage";
-import { layoutGraph, panelGraph, type GraphData, type PresetId } from "./graphModel";
+import {
+  PRODUCT_SCOPE,
+  layoutGraph,
+  panelGraph,
+  type GraphData,
+  type GraphScope,
+  type PresetId,
+} from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { useInView } from "./useInView";
 import { productNode } from "./productGraphData";
@@ -29,11 +36,12 @@ import { useProductGraph } from "./useProductGraph";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
-function GraphModal({
+export function GraphModal({
   opened,
   onClose,
   title,
   data,
+  scope,
   preset,
   focus,
   zero,
@@ -42,6 +50,7 @@ function GraphModal({
   onClose: () => void;
   title: string;
   data: GraphData;
+  scope: GraphScope;
   preset: PresetId;
   focus: string | null;
   zero: string[];
@@ -60,7 +69,14 @@ function GraphModal({
       data-testid="graph3d-modal"
     >
       {opened && (
-        <GraphExplorer data={data} preset={preset} focus={focus} zero={zero} testId="graph3d" />
+        <GraphExplorer
+          data={data}
+          scope={scope}
+          preset={preset}
+          focus={focus}
+          zero={zero}
+          testId="graph3d"
+        />
       )}
     </Modal>
   );
@@ -77,6 +93,7 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
     graph,
     at,
     frame: 0,
+    frontal: false,
     selected: picked,
     setSelected,
     hover,
@@ -158,6 +175,7 @@ export function KnowledgeGraphPanel({
           onClose={() => setOpen(false)}
           title={t("graph3d.expandTitle", { product: productName })}
           data={data}
+          scope={PRODUCT_SCOPE}
           preset="knowledge"
           focus={product}
           zero={membersOf(data, product)}
@@ -195,6 +213,7 @@ export function ProductMapButton() {
           onClose={() => setOpen(false)}
           title={t("graph3d.productMap")}
           data={data}
+          scope={PRODUCT_SCOPE}
           preset="productMap"
           focus={null}
           zero={[]}

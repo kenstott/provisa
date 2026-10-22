@@ -27,7 +27,7 @@ from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.cursor_stream import PooledCursorStream, fetch_chunked
-from provisa.executor.drivers.zoned import oracle_connection
+from provisa.executor.drivers.zoned import execute_instants, oracle_connection
 from provisa.executor.result import QueryResult
 
 
@@ -83,15 +83,11 @@ class OracleDriver(DirectDriver):  # REQ-052, REQ-229, REQ-550
                 with conn.cursor() as cur:
                     with request_deadline.cancel_on_deadline(conn.cancel):
                         # A CLOB/NCLOB is read as its text and a BLOB as its bytes: a LOB locator
-                        # is a handle on the connection, no value a result can carry.
-                        cur.execute(exec_sql, bound, fetch_lobs=False)
-                        rows = fetch_chunked(cur) if cur.description else []
-                    # ``desc.name``, not ``desc[0]``: a FetchInfo indexes as the DB-API 7-tuple
-                    # whose members span str, int, bool and None, so only the named attribute is
-                    # the column name.
-                    columns = (
-                        [desc.name.lower() for desc in cur.description] if cur.description else []
-                    )
+                        # is a handle on the connection, no value a result can carry. REQ-2050: a
+                        # zoned timestamp is read as its instant (execute_instants).
+                        named = execute_instants(cur, exec_sql, bound, fetch_lobs=False)
+                        rows = fetch_chunked(cur) if named is not None else []
+                    columns = named or []
                 # Statement-level commit, matching the other direct drivers (autocommit semantics).
                 conn.commit()
             except BaseException as exc:
@@ -114,12 +110,17 @@ class OracleDriver(DirectDriver):  # REQ-052, REQ-229, REQ-550
         from provisa.compiler.params import bind_positionally
 
         exec_sql, bound = bind_positionally(sql, params, lambda k: f":{k}")
+        # The result's column names as the statement gives them: a zoned timestamp's statement
+        # is run again cast (execute_instants), whose own columns are named for the cast.
+        named: list[list[str] | None] = []
         return PooledCursorStream(
             self._require_pool(),
             open_cursor=lambda conn: conn.cursor(),
             per_fetch=lambda cur, size: setattr(cur, "arraysize", size),
-            execute=lambda cur: cur.execute(exec_sql, bound, fetch_lobs=False),
-            columns=lambda cur: [desc.name.lower() for desc in cur.description],
+            execute=lambda cur: named.append(
+                execute_instants(cur, exec_sql, bound, fetch_lobs=False)
+            ),
+            columns=lambda _cur: named[-1] or [],
             cancel=lambda conn, _cur: conn.cancel(),
             # Statement-level commit, as execute() does (autocommit semantics).
             finish=lambda conn: conn.commit(),
