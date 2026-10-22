@@ -1,8 +1,8 @@
-# Code Resolvers
+# Resolvers de code
 
-La logique métier en Python ou en Node.
+Logique métier en Python ou Node.
 
-Si vous avez déjà écrit un serveur GraphQL, vous connaissez ce modèle. Un code resolver est une fonction qui répond pour un type d'objet : en GraphQL, une fonction marquée `@table` *est* le resolver du type de sa table. Provisa l'appelle avec les arguments de la requête et gouverne ce qu'elle renvoie.
+Si vous avez déjà écrit un serveur GraphQL, vous connaissez ce modèle. Un resolver de code est une fonction qui répond pour un type d'objet : en GraphQL, une fonction marquée `@table` *est* le resolver du type de sa table. Provisa l'appelle avec les arguments de la requête et gouverne ce qu'elle renvoie.
 
 Ce qui change par rapport à un resolver écrit à la main :
 

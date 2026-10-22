@@ -1,8 +1,8 @@
-# Code Resolvers
+# 代码解析器
 
 用 Python 或 Node 编写的业务逻辑。
 
-如果你写过 GraphQL 服务器，就熟悉这种模式。Code resolver 是为一种对象类型作答的函数：在 GraphQL 中，标记了 `@table` 的函数*就是*其表类型的 resolver。Provisa 用查询的参数调用它，并对返回内容进行治理。
+如果你写过 GraphQL 服务器，就熟悉这种模式。代码解析器是为一种对象类型作答的函数：在 GraphQL 中，标记了 `@table` 的函数*就是*其表类型的 resolver。Provisa 用查询的参数调用它，并对返回内容进行治理。
 
 与手写 resolver 的不同之处：
 

@@ -1,8 +1,8 @@
-# Code Resolvers
+# Resolvers de código
 
 Lógica de negócio em Python ou Node.
 
-Se você já escreveu um servidor GraphQL, conhece este padrão. Um code resolver é uma função que responde por um tipo de objeto: no GraphQL, uma função marcada com `@table` *é* o resolver do tipo da sua tabela. O Provisa a chama com os argumentos da consulta e governa o que ela devolve.
+Se você já escreveu um servidor GraphQL, conhece este padrão. Um resolver de código é uma função que responde por um tipo de objeto: no GraphQL, uma função marcada com `@table` *é* o resolver do tipo da sua tabela. O Provisa a chama com os argumentos da consulta e governa o que ela devolve.
 
 O que muda em relação a um resolver escrito à mão:
 
