@@ -728,6 +728,7 @@ L'entrée principale d'enregistrement de table. Champs clés au-delà des bases 
 | `mvRefreshInterval` | Secondes entre les rafraîchissements |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Maintenance incrémentale |
+| `mvHoldOnFailingChecks` | Suspendre si des contrôles échouent : une actualisation est annulée, et la vue garde sa copie précédente, tant qu'une table de contrôle qui analyse l'une de ses entrées a échoué à sa dernière exécution |
 | `mvBitemporalMode` | `snapshot` \| `delta` pour les tables bitemporelles |
 | `mvCalendar` | Nom du calendrier d'instantané |
 | `mvGrain` | Granularité d'instantané : `daily`, `weekly`, `monthly`, `annual`, ou personnalisée `3WE` / `LFR` |

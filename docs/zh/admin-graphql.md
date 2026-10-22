@@ -728,6 +728,7 @@ mutation {
 | `mvRefreshInterval` | 刷新间隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量维护 |
+| `mvHoldOnFailingChecks` | 检查失败时暂停：只要扫描其某个输入的检查表最近一次运行失败，刷新就会中止，视图保留上一份副本 |
 | `mvBitemporalMode` | 双时态表的 `snapshot` \| `delta` |
 | `mvCalendar` | 快照日历名称 |
 | `mvGrain` | 快照粒度：`daily`、`weekly`、`monthly`、`annual`，或自定义的 `3WE` / `LFR` |

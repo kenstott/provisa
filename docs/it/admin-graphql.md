@@ -728,6 +728,7 @@ L'input principale di registrazione tabella. Campi chiave oltre alle basi:
 | `mvRefreshInterval` | Secondi tra i refresh |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Manutenzione incrementale |
+| `mvHoldOnFailingChecks` | Sospendi se i controlli falliscono: un aggiornamento viene annullato, e la vista mantiene la copia precedente, finché una tabella di controllo che analizza uno dei suoi input è fallita all'ultima esecuzione |
 | `mvBitemporalMode` | `snapshot` \| `delta` per tabelle bitemporali |
 | `mvCalendar` | Nome del calendario snapshot |
 | `mvGrain` | Grana dello snapshot: `daily`, `weekly`, `monthly`, `annual`, o custom `3WE` / `LFR` |

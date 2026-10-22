@@ -145,6 +145,7 @@ await cache.set("rates", rates, 3600);
 | `vectors.upsert(items, model)`、`vectors.search(query, k, model)`、`vectors.embed(texts, model)`、`vectors.delete(ids)` | 数据源自己的向量集合，用于它自己的参考数据。每个条目有一个 `id`，以及一个 `text` 或 `vector`；文本由您组织的某个向量模型生成嵌入。它不能搜索您的受治理表：这些表的数据只以参数形式到达代码。 |
 | `http.get(url)`、`http.post(url, ...)` | Provisa 代表代码发出的请求，经过部署的出站代理和证书颁发机构。主机必须在出站允许列表中，每次请求都会记录到审计日志。 |
 | `llm.chat(model, messages)`、`llm.embeddings(model, input)`、`llm.base_url()`（JavaScript 中为 `llm.baseUrl()`） | Provisa 的 LLM 服务。参见[调用模型](#calling-a-model)。 |
+| `dq.dataset(name)`, `dq.product(id)` | 数据集（`domain.table` 或其表 id）或数据产品的数据质量，按元域向你的代码所服务请求的角色所展示的那样返回。对数据集：扫描它的检查表，每个附带描述、契约、所分配的数据产品和最近一次运行（结果、时间和失败的检查），以及它的画像及每个画像的最近一次运行。对数据产品：它的承诺、期望、合作方检查和孤立检查。 |
 | `log(message, level, fields)`、`metric(name, value, kind, attributes)` | 一行日志，以及一个名为 `code_source.<name>` 的指标点，附加到代码正在处理的请求上。 |
 
 服务拒绝的调用会抛出 `ServiceError`，其中指出服务名称和原因。

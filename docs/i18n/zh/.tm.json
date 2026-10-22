@@ -17,7 +17,7 @@
   "migration/hasura-v2.md": "34f9b7024b33ca49ddddb99d6952bbc3e8415f3e63bfca35b5d1fed24eff9c2f",
   "configuration.md": "f7fa7d407745ffb8ccd873f5bfb4746cf24166a007f51cbc6e89db3e5f77cd6c",
   "api-reference.md": "5713969669b099bba3ac6cf311f467b8f7c041d0910f23da6792b8225011091e",
-  "sources.md": "9ee84df8de5c7b93807a1de8d171385909fefc8c98fe1b047d8935b265088a75",
+  "sources.md": "fcd396234cb2049cca9d8d4b49e48b63c120f9a4f66e859866ede900f85910c8",
   "python-client.md": "72587a15c990d156e03ee427c950f92fde4eec3d59bd4bab690ef294f7955588",
   "deployment.md": "79b2d1eb7dd8e87fc4693e0d2d730599928f4c591be486f653ddcbe914967b5b",
   "commands.md": "e330a2f97802065c10c840ef56d855b63a366a752abb8b2452b0a2502a7d3108",
@@ -27,10 +27,10 @@
   "environments.md": "08696872f9334942c82dc8fbc5e1354bc7a19428a98ce9e6d683c18f64c13eb2",
   "data-products.md": "c3556ba40ca271c2565bdfcf318efc469a1134b4ab6f37137a42d70bb617e8ed",
   "cli.md": "b1fd69b10cf41fbf249cb9b24e6974aff57693e57eec5b7fdb09408fcac0d8de",
-  "admin-graphql.md": "69a14d7566acd575452dae8dabfb0af5ea9d7cd567aedfc3958e898570031cb0",
+  "admin-graphql.md": "0ac8c9e95c07e65ddefdbe5c3769341b7417d10f226073da3c638276510a9b7e",
   "replicas.md": "0b3e05180bd7b8805f1ef79bafadadb442b0dddf7e7b6647cd5729064b9c6188",
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
   "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
-  "code-sources.md": "cc7e437ab9897625b4bdac4ead372ada0022e87a2bf3e1f94010ba10e0b4113c"
+  "code-sources.md": "cc852bb7a20407e8a76735a66e241ac5e30712d0881f9fc56aaa04c53a3f343a"
 }
