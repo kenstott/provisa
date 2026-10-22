@@ -204,6 +204,10 @@
     "apiToken": "Токен API",
     "apiTokenHint": "Создаётся на id.atlassian.com, Security, API tokens. Хранится в хранилище секретов.",
     "siteAddressInvalid": "Введите полный адрес сайта, начинающийся с https://",
-    "namingInherit": "Наследовать (глобально)"
+    "namingInherit": "Наследовать (глобально)",
+    "reasoner": "Механизм логического вывода",
+    "reasonerNone": "Нет",
+    "axioms": "Аксиомы OWL",
+    "axiomsHint": "Синтаксис Turtle, RDF/XML, функциональный или Manchester. Таблица, запрос которой — один IRI, например <http://example.org/kyc#controls>, читает то, что из них выводится."
   }
 }

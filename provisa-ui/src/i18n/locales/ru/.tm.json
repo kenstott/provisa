@@ -7754,5 +7754,9 @@
   "ru/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "ru/writeGrants.json::writeGrants.source_now": "The time of the write",
   "ru/writeGrants.json::writeGrants.source_session": "A session variable",
-  "ru/profile3d.json::profile3d.grid": "Grid"
+  "ru/profile3d.json::profile3d.grid": "Grid",
+  "ru/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasoner": "Reasoner",
+  "ru/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasonerNone": "None",
+  "ru/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axioms": "OWL axioms",
+  "ru/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer."
 }

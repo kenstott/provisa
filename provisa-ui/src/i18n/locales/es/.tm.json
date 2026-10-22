@@ -7755,5 +7755,9 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
-  "es/profile3d.json::profile3d.grid": "Grid"
+  "es/profile3d.json::profile3d.grid": "Grid",
+  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasoner": "Reasoner",
+  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasonerNone": "None",
+  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axioms": "OWL axioms",
+  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer."
 }

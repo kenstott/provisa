@@ -89,6 +89,7 @@ import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources
 import { profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceMappingJson } from "./sources/salesforce";
 import { cloudopsMappingJson } from "./sources/cloudops";
+import { sparqlMappingJson } from "./sources/sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
 import { MICROSOFT_365, m365Mapping } from "./sources/microsoft365";
 import { LOGS, logsMapping } from "./sources/logs";
@@ -756,6 +757,8 @@ export function SourcesPage() {
             ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
             : form.type === "cloudops"
               ? cloudopsMappingJson(authFields) // REQ-1947
+              : form.type === "sparql"
+              ? sparqlMappingJson(authFields) // REQ-2138
               : form.type === GOOGLE_WORKSPACE
                 ? JSON.stringify(gwMapping(authFields)) // REQ-1923
                 : form.type === MICROSOFT_365
