@@ -432,6 +432,8 @@ def test_the_driver_dry_run_runs_nothing_and_says_what_it_would() -> None:
     ).stdout
     assert "[provisa-perf-backends]" in out and "[provisa-perf-server]" in out
     assert "orchestrate.sh serve --telemetry off --engine pg" in out
+    # Started in the background, the serve gets SIGINT back at its default, so it stops on it.
+    assert "nohup setsid env --default-signal=INT" in out
     assert out.index("--telemetry off") < out.index("--telemetry on")
     assert "--setup setups/three-device.yaml" in out
     assert "PROVISA_BENCH_SERVER_HOST=10.90.0.2" in out
@@ -1351,3 +1353,36 @@ def test_the_dry_run_says_how_each_run_is_checkpointed() -> None:
     # the run never seeds: the seeder is scaled to nothing, an unseeded device refused
     assert "--scale seeder=0" in out and "docker compose up seeder" not in out
     assert "test -f data/.seeded" in out
+
+
+def test_a_serve_started_in_the_background_stops_on_sigint(tmp_path: Path) -> None:
+    """A job a non-interactive shell starts in the background begins with SIGINT ignored, and a
+    bash script cannot trap a signal ignored on entry: started as the run once started it, the
+    serve ran on through its stop. Started with SIGINT at its default, as the run starts it now, it
+    stops on SIGINT."""
+    import shutil
+    import subprocess
+    import time
+
+    script = tmp_path / "serve.sh"
+    script.write_text(
+        "#!/bin/bash\ntrap 'echo stopped >> \"$1\"; exit 0' INT TERM\nsleep 30 & wait $!\n"
+    )
+    script.chmod(0o755)
+    env_bin = shutil.which("env")
+    assert env_bin is not None
+
+    def started(prefix: str, marker: Path) -> bool:
+        """Start the script as ``prefix`` starts it, send it SIGINT; whether it stopped on it."""
+        subprocess.run(
+            ["bash", "-c", f"{prefix}{script} {marker} >/dev/null 2>&1 </dev/null &"], check=True
+        )
+        time.sleep(0.5)
+        subprocess.run(["pkill", "-INT", "-f", f"serve.sh {marker}"], check=False)
+        time.sleep(1.5)
+        stopped = marker.exists() and "stopped" in marker.read_text()
+        subprocess.run(["pkill", "-TERM", "-f", f"serve.sh {marker}"], check=False)
+        return stopped
+
+    assert not started("", tmp_path / "plain")
+    assert started(f"{env_bin} --default-signal=INT ", tmp_path / "reset")

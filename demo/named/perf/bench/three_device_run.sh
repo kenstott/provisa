@@ -145,8 +145,8 @@ run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
   echo "=== run $name (engine $ENGINE) ==="
   on "$SERVER" "export PROVISA_BENCH_BACKENDS_HOST=$PERF_BACKENDS_IP \
     PROVISA_BENCH_AGENT_LISTEN=$PERF_SERVER_IP:$AGENT_PORT; \
-    nohup setsid $BENCH/orchestrate.sh serve --telemetry $2 --engine $ENGINE \
-      > ~/serve-$name.log 2>&1 < /dev/null &"
+    nohup setsid env --default-signal=INT \
+      $BENCH/orchestrate.sh serve --telemetry $2 --engine $ENGINE > ~/serve-$name.log 2>&1 < /dev/null &"
   # serving once the server's agent answers: serve_three_device.sh starts it after every worker
   # is ready
   on "$CLIENT" "for i in \$(seq 1 210); do curl -sf http://$PERF_SERVER_IP:$AGENT_PORT/host >/dev/null && exit 0; sleep 2; done; exit 1"
@@ -164,7 +164,14 @@ run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
     --output-dir $OUT/$name"
   # '[s]erve...': the pattern does not match the remote shell running this command, whose own
   # command line names the script.
-  on "$SERVER" "pkill -INT -f '[s]erve_three_device.sh'; for i in \$(seq 1 60); do pgrep -f '[s]erve_three_device.sh' >/dev/null || exit 0; sleep 1; done; exit 1"
+  # A job a non-interactive shell starts in the background begins with SIGINT ignored, and bash
+  # can neither trap nor reset a signal ignored on entry: the serve is started with SIGINT at its
+  # default (env --default-signal=INT above), so it stops on SIGINT as a server does. A stop that
+  # does not end in 60 s says what is still running and what the serve last wrote.
+  on "$SERVER" "pkill -INT -f '[s]erve_three_device.sh'; for i in \$(seq 1 60); do pgrep -f '[s]erve_three_device.sh' >/dev/null || exit 0; sleep 1; done; \
+    echo 'the serve did not stop within 60 s of SIGINT; still running:'; \
+    ps -o pid,ppid,etime,stat,cmd -p \$(pgrep -d, -f '[s]erve_three_device.sh|[u]vicorn main:app|[h]ost_agent.py') | cut -c1-200; \
+    echo '--- ~/serve-$name.log (tail)'; tail -40 ~/serve-$name.log; exit 1"
   checkpoint "$name"
 }
 
