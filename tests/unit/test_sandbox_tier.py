@@ -281,6 +281,15 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
     monkeypatch.delenv("PROVISA_DEMO_BUNDLES", raising=False)
     monkeypatch.delenv("PROVISA_NAMED_DEMO_DIR", raising=False)
     monkeypatch.setenv("PROVISA_RUNTIME_DEPS_CACHE", str(tmp_path))
+    # A regions demo's model names the regions tier's stores and addresses (REQ-2068), as every
+    # node of that tier is given them (first-launch.sh).
+    for region in ("EU", "US"):
+        monkeypatch.setenv(
+            f"PROVISA_DEMO_{region}_ADDRESS", f"https://{region.lower()}.invalid:8100"
+        )
+        monkeypatch.setenv(
+            f"PROVISA_DEMO_{region}_PG_URL", f"postgresql://{region.lower()}/provisa"
+        )
     fetched: list[tuple[str, float | None]] = []
 
     def _download(spec, dest):
