@@ -489,12 +489,14 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
 
     async def _served_binding(
         self, request: Request, org_id: str, identity: AuthIdentity | None
-    ) -> tuple[str, str] | JSONResponse:
+    ) -> tuple[str, str] | JSONResponse | None:
         """The runtime a request in ``org_id`` is served from, made ready: the environment the
         request names (X-Provisa-Env), resolved as _OrgRoutingMiddleware resolves it and binds the
         request to it. A role set's meta-role is built there, so it is known where the request
-        runs. A name the org has no environment by is refused as the routing middleware refuses
-        it; the right to be served by it is judged there."""
+        runs. None for the default org's prod: the runtime the process serves unbound, where a
+        meta-role built with no binding already is. A name the org has no environment by is
+        refused as the routing middleware refuses it; the right to be served by it is judged
+        there."""
         from provisa.api.app import ensure_org_runtime
         from provisa.api.env_routing import (
             EnvironmentRightError,
@@ -502,6 +504,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             env_header_value,
             resolve_selected_env,
         )
+        from provisa.core.environments import PROD
 
         requested = env_header_value(request.scope.get("headers") or [])
         try:
@@ -514,6 +517,8 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             return JSONResponse(
                 {"error": {"code": "env.switch_forbidden", "message": str(exc)}}, status_code=403
             )
+        if org_id == self._default_org_id and env == PROD:
+            return None
         await ensure_org_runtime(org_id, env)
         return org_id, env
 
