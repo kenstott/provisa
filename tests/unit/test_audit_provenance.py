@@ -100,6 +100,60 @@ def test_a_graphql_request_records_the_governance_its_role_had_when_it_ran():
     assert recorded["row_cap"] is None  # full_results
 
 
+def test_a_roles_repeated_graphql_rows_build_its_governance_once(monkeypatch):
+    """Every row of a role's requests between two builds has the same governance inputs: the
+    audit writer builds that governance once, not once per row (a whole-model build per record
+    held the GIL in a burst every batch). New inputs -- a rebuild -- are built afresh."""
+    from provisa.audit import provenance
+    from provisa.compiler import stage2
+    from tests.unit.test_mutation_sql import _build
+
+    builds: list[str] = []
+    real = stage2.build_governance_context
+
+    def counted(role_id, *args, **kwargs):
+        builds.append(role_id)
+        return real(role_id, *args, **kwargs)
+
+    monkeypatch.setattr(stage2, "build_governance_context", counted)
+    monkeypatch.setattr(provenance, "_kept", {})
+    monkeypatch.setattr(provenance, "_kept_model", ())
+    _schema, ctx = _build()
+    tables = [
+        {
+            "id": 1,
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "columns": [{"column_name": c, "visible_to": ["admin"]} for c in ("id", "region")],
+        }
+    ]
+    state = RoleState(
+        rls_contexts={"admin": RLSContext(rules={1: "region = 'us'"})},
+        masking_rules={},
+        tables=tables,
+        relationships=[],
+        roles={"admin": {"id": "admin", "capabilities": ["full_results"], "domain_access": ["*"]}},
+    )
+    rows = [enforced_for_request(state, "admin", ctx)((1,)) for _ in range(20)]
+    assert builds == ["admin"]
+    assert all(r == rows[0] for r in rows)
+
+    state.rls_contexts = {"admin": RLSContext(rules={1: "region = 'eu'"})}
+    rebuilt = enforced_for_request(state, "admin", ctx)((1,))
+    assert builds == ["admin", "admin"]
+    assert rebuilt["row_filters"] == {"1": {"filter": "region = 'eu'", "session_variables": []}}
+    # Only the current inputs are kept: the replaced row filters' summaries are gone ...
+    ((own, kept),) = provenance._kept.values()
+    assert own[0] is state.rls_contexts["admin"] and list(kept) == [(1,)]
+
+    # ... and a rebuilt model drops every role's kept summaries.
+    state.tables = [dict(t) for t in tables]
+    enforced_for_request(state, "admin", ctx)((1,))
+    assert builds == ["admin"] * 3
+    assert provenance._kept_model[1] is state.tables and len(provenance._kept) == 1
+
+
 def test_data_age_is_the_cache_entry_age_or_the_as_of_time_or_nothing_for_a_live_read():
     assert data_age(SimpleNamespace(cache_as_of=None), SimpleNamespace(age_seconds=42)) == {
         "cache_age_seconds": 42

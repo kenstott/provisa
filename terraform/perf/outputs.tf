@@ -16,3 +16,8 @@ output "instance_name" {
   description = "Each device's instance name, for gcloud compute ssh."
   value       = { for name, d in google_compute_instance.device : name => d.name }
 }
+
+output "results_bucket" {
+  description = "The bucket the run's checkpoints are copied to; null for the seed job."
+  value       = one(google_storage_bucket.results[*].name)
+}

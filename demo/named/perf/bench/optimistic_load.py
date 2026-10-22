@@ -32,6 +32,7 @@ the same figure from ``server_cpu_agent.py`` running on the server's host.
 from __future__ import annotations
 
 import argparse
+import bisect
 import dataclasses
 import json
 import math
@@ -389,7 +390,7 @@ class BoltClient:
 
 
 _grpc_lock = threading.Lock()
-_grpc_shared: Any = None  # one compiled descriptor pool + channel per client PROCESS
+_grpc_shared: Any = None  # one compiled descriptor pool per client PROCESS
 
 
 class GrpcClient:
@@ -411,6 +412,8 @@ class GrpcClient:
                 _grpc_shared = transport
         transport = _grpc_shared
         self._transport = transport
+        # A connection per simulated caller, as each HTTP client has its own (GrpcTransport.channel).
+        self._channel = transport.channel()
         self._cred = ep.credential
         self._types: dict[str, tuple[Any, Any]] = {}
         # a built request per distinct spec: the message is immutable once sent
@@ -423,7 +426,7 @@ class GrpcClient:
             transport = self._transport
             request_cls = transport._resolve_message_class(f"provisa.v1.{type_name}Request")  # noqa: SLF001
             response_cls = transport._resolve_message_class(f"provisa.v1.{type_name}")  # noqa: SLF001
-            stream = transport._channel.unary_stream(  # noqa: SLF001
+            stream = self._channel.unary_stream(
                 f"/provisa.v1.ProvisaService/Query{type_name}",
                 request_serializer=request_cls.SerializeToString,
                 response_deserializer=response_cls.FromString,
@@ -468,7 +471,7 @@ class GrpcClient:
         return len(rows), len(rows[0].ListFields()) if rows else 0, None
 
     def close(self) -> None:
-        pass  # the channel is the process's, closed when the process exits
+        self._channel.close()
 
 
 CLIENTS: dict[str, Any] = {
@@ -584,6 +587,9 @@ def summarize_requests(records: list[Record], window_s: float) -> dict[str, Any]
     known = [r for r in records if r[2] is not None]
     return {
         **stats(records),
+        # The whole latency distribution, so a tail (a fixed stall on some requests) is seen as
+        # its own mode rather than read off one percentile.
+        "latency_histogram_ms": latency_histogram(records),
         # None: this transport's response does not say whether it was served from the cache.
         "hit_ratio": round(sum(1 for r in known if r[2]) / len(known), 4) if known else None,
         "cache_opt_in_ratio": (
@@ -875,6 +881,31 @@ def _paging_text(by_host: Mapping[str, Mapping[str, Any]]) -> str:
             + f" avail={p['mem_available_mb_start']}->{p['mem_available_mb_end']}MB"
         )
     return "paging[" + "; ".join(parts) + "]"
+
+
+# Upper bounds (ms) of the latency histogram's buckets; the last bucket is everything above.
+HISTOGRAM_BOUNDS_MS = (0.5, 1, 2, 3, 5, 10, 20, 30, 40, 50, 75, 100, 200, 500, 1000)
+
+
+def latency_histogram(records: list[Record]) -> dict[str, Any]:
+    """The answered requests' latencies: the count in each bucket (keyed "<=bound", then ">last"),
+    with p90, p95, p99.9 and the slowest."""
+    latencies = sorted(r[0] * 1000 for r in records)
+    keys = [f"<={b:g}" for b in HISTOGRAM_BOUNDS_MS] + [f">{HISTOGRAM_BOUNDS_MS[-1]:g}"]
+    counts = dict.fromkeys(keys, 0)
+    for ms in latencies:
+        counts[keys[bisect.bisect_left(HISTOGRAM_BOUNDS_MS, ms)]] += 1
+
+    def pct(q: float) -> float | None:
+        return round(_percentile(latencies, q), 3) if latencies else None
+
+    return {
+        "counts": counts,
+        "p90_ms": pct(0.90),
+        "p95_ms": pct(0.95),
+        "p999_ms": pct(0.999),
+        "max_ms": round(latencies[-1], 3) if latencies else None,
+    }
 
 
 def _percentile(sorted_values: list[float], q: float) -> float:
