@@ -4,7 +4,7 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Unit tests for provisa.gql.comprehension (REQ-345, REQ-347).
+"""Unit tests for provisa.cypher.comprehension (REQ-345, REQ-347).
 
 Pure string-in/string-out rewrites — no AST construction needed. Table-driven tests exercise every
 branch of the hand-rolled recursive-descent parser: list comprehensions (map-only, filter-only,
@@ -14,7 +14,7 @@ handling, nested brackets, and non-comprehension passthrough text.
 
 import pytest
 
-from provisa.gql.comprehension import (
+from provisa.cypher.comprehension import (
     _ComprehensionParser,
     rewrite_list_comprehensions,
     rewrite_reduce,

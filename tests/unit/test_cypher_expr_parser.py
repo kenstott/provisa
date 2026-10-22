@@ -192,14 +192,17 @@ class TestStructures:
     def test_pattern_comprehension(self):
         node = P("[(a)-[:KNOWS]->(b) WHERE b.age > 20 | b.name]")
         assert isinstance(node, PatternComprehension)
-        assert "(a)-[:KNOWS]->(b)" in node.pattern
+        assert [n.variable for n in node.pattern.nodes] == ["a", "b"]
+        assert node.pattern.rels[0].types == ["KNOWS"]
         assert node.projection == Property(Variable("b"), "name")
         assert node.path_var is None
 
     def test_pattern_comprehension_path_binding(self):
         node = P("[p = (a)-[:KNOWS]->(b) | b.name]")
         assert isinstance(node, PatternComprehension) and node.path_var == "p"
-        assert "(a)-[:KNOWS]->(b)" in node.pattern
+        # REQ-2135: the pattern is the IR's path pattern.
+        assert [n.variable for n in node.pattern.nodes] == ["a", "b"]
+        assert node.pattern.rels[0].types == ["KNOWS"]
 
     def test_map_projection(self):
         node = P("n{.name, .age, label: n.type, .*}")
@@ -210,7 +213,10 @@ class TestStructures:
     def test_subquery_expr(self):
         node = P("EXISTS { MATCH (n)-[:R]->(m) }")
         assert isinstance(node, SubqueryExpr) and node.kind == "EXISTS"
-        assert "MATCH (n)-[:R]->(m)" in node.body
+        # REQ-2135: the body is the statement it is, parsed into the IR.
+        [match] = node.body.match_clauses
+        assert [n.variable for n in match.pattern.nodes] == ["n", "m"]
+        assert match.pattern.rels[0].types == ["R"]
 
     def test_subquery_keywords_are_not_reserved(self):
         # Cypher does not reserve EXISTS/COUNT/COLLECT; only a following "{" makes them a subquery

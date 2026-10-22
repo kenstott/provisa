@@ -12,8 +12,8 @@
 the back end in this package lowers to semantic SQL.
 
 Today Cypher's front end (provisa.cypher.parser) is the one that produces it. A clause's
-expressions (WHERE, RETURN, WITH, UNWIND, ORDER BY) are still held as Cypher expression text, which
-the back end lowers through Cypher's expression grammar; they become expression trees next.
+expressions (WHERE, RETURN, WITH, UNWIND, ORDER BY) are expression trees (expr_ast), parsed by the
+front end; the back end walks the trees and reads no language's syntax.
 """
 
 # Requirements: REQ-2135, REQ-347, REQ-348, REQ-571
@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from provisa.gql.expr_ast import CypherExpr
 
 
 @dataclass
@@ -69,13 +71,15 @@ class MatchClause:
 
 @dataclass
 class WhereClause:
-    expression: str  # raw expression text
+    expression: CypherExpr
 
 
 @dataclass
 class ReturnItem:
-    expression: str
+    expression: CypherExpr
     alias: str | None = None
+    #: The item as the statement writes it, which names an unaliased item.
+    name: str = ""
 
 
 @dataclass
@@ -96,7 +100,7 @@ class WithClause:
 
 @dataclass
 class UnwindClause:
-    expression: str  # raw expression text (list literal, param, or property)
+    expression: CypherExpr  # a list literal, a parameter, or a property
     variable: str  # AS variable name
 
 
@@ -116,7 +120,7 @@ class CallSubquery:
 
 @dataclass
 class OrderItem:
-    expression: str
+    expression: CypherExpr
     direction: str = "ASC"
 
 

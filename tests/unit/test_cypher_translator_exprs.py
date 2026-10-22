@@ -554,7 +554,7 @@ def test_reduce_basic():
 
 def test_reduce_string_concat():
     """reduce emits Trino lambda form: reduce(list, init, (acc, x) -> expr, acc -> acc)."""
-    from provisa.gql.comprehension import rewrite_reduce
+    from provisa.cypher.comprehension import rewrite_reduce
 
     result = rewrite_reduce("reduce(acc = '', x IN names | acc || x)")
     assert result == "reduce(names, '', (acc, x) -> acc || x, acc -> acc)"

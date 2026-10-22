@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
@@ -31,20 +32,27 @@ if TYPE_CHECKING:
     from provisa.gql.translator_types import GraphVarKind
 
 
-def _is_bare_variable(text: str) -> bool:
-    import re
+def _variable_property(expr: CypherExpr) -> tuple[str, str] | None:
+    """``(var, prop)`` when ``expr`` is a variable's property, ``var.prop``."""
+    if isinstance(expr, Property) and isinstance(expr.obj, Variable):
+        return expr.obj.name, expr.name
+    return None
 
-    return bool(re.match(r"^[A-Za-z_]\w*$", text))
 
-
-_PROPERTY = r"^([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)$"
+#: A graph function whose aliased value the assembler reads back as edges or nodes.
+_GRAPH_FUNCTIONS = {
+    "relationship": "EDGE",
+    "relationships": "EDGE",
+    "nodes": "NODE",
+    "startnode": "NODE",
+    "endnode": "NODE",
+}
 
 
 def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
     """The property names two items of ``return_clause`` would both be named by: an unaliased
     ``var.prop`` is named ``prop``, which another such item or another item's own name may also
     be (#259)."""
-    import re
     from collections import Counter
 
     names: Counter[str] = Counter()
@@ -52,8 +60,8 @@ def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
         if item.alias:
             names[item.alias] += 1
             continue
-        found = re.match(_PROPERTY, item.expression.strip())
-        names[found.group(2) if found else item.expression.strip()] += 1
+        found = _variable_property(item.expression)
+        names[found[1] if found else item.name.strip()] += 1
     return frozenset(name for name, count in names.items() if count > 1)
 
 
@@ -82,8 +90,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _domain_nodes: dict[str, str]
     _varlen_rel_vars: dict  # varlen rel variable → outer path variable
 
-    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        raise NotImplementedError(text)
+    def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise NotImplementedError(expr)
 
     def _build_edge_object(
         self,
@@ -545,20 +553,18 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         return None
 
     def _select_prop_expr(
-        self, expr_text: str, alias: str | None, shared: frozenset[str] = frozenset()
+        self, expr: CypherExpr, alias: str | None, shared: frozenset[str] = frozenset()
     ) -> exp.Expr:
         """Emit SELECT expression for a property access or arbitrary expression. An unaliased
         property is named by the property, or, where another item of the RETURN would take the
         same name (``shared``), as Cypher clients name it: ``var.prop`` (#259)."""
-        import re as _re
-
         from provisa.gql.translator_types import GraphVarKind
 
-        parsed = self._parse_expr(expr_text)
-        _prop_m = _re.match(r"^([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)$", expr_text.strip())
+        parsed = self._parse_expr(expr)
+        _prop_m = _variable_property(expr)
         _cypher_alias: str | None = None
         if _prop_m:
-            _var, _prop = _prop_m.group(1), _prop_m.group(2)
+            _var, _prop = _prop_m
             _info = self._var_table.get(_var)
             if _info and _info[1] and _prop in _info[1].properties:
                 _cypher_alias = f"{_var}.{_prop}" if _prop in shared else _prop
@@ -634,9 +640,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         shared = _shared_property_names(return_clause)
 
         for item in return_clause.items:
-            expr_text = item.expression.strip()
+            expr = item.expression
             alias = item.alias
-            is_bare = _is_bare_variable(expr_text)
+            is_bare = isinstance(expr, Variable)
+            expr_text = expr.name if isinstance(expr, Variable) else ""
 
             # Passthrough variable: pre-built JSON from all-rels union subquery
             if is_bare and expr_text in passthrough_vars:
@@ -671,19 +678,12 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     continue
 
             # Graph function expression: register alias kind for assembler deserialization
-            import re as _re
-
-            for _pat, _kind in (
-                (r"^relationship(?:s)?\s*\(", GraphVarKind.EDGE),
-                (r"^nodes\s*\(", GraphVarKind.NODE),
-                (r"^startNode\s*\(", GraphVarKind.NODE),
-                (r"^endNode\s*\(", GraphVarKind.NODE),
-            ):
-                if _re.match(_pat, expr_text, _re.IGNORECASE) and alias:
-                    self._graph_vars[alias.lower()] = _kind
-                    break
+            if isinstance(expr, FunctionCall) and alias:
+                kind = _GRAPH_FUNCTIONS.get(expr.name.lower())
+                if kind is not None:
+                    self._graph_vars[alias.lower()] = GraphVarKind[kind]
 
             # Property access or expression
-            exprs.append(self._select_prop_expr(expr_text, alias, shared))
+            exprs.append(self._select_prop_expr(expr, alias, shared))
 
         return exprs
