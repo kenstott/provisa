@@ -905,6 +905,9 @@ def client_using_positional_params(shared_data):
 @when("the query executes")
 def parameterized_query_executes(shared_data, monkeypatch):
     """Run the statement through the pgwire session, capturing what reaches governance."""
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+
     from provisa.core.connection_loop import connection_loop
     from provisa.executor.result import QueryResult
     from provisa.pgwire.server import ProvisaSession
@@ -917,11 +920,16 @@ def parameterized_query_executes(shared_data, monkeypatch):
         return QueryResult(rows=[(1,)], column_names=["user_id"])
 
     monkeypatch.setattr("provisa.pgwire._pipeline.govern_pgwire_plan", _governed)
-    # The connection thread's loop, bound as ProvisaHandler.handle binds it (REQ-1882).
-    with connection_loop():
-        session = ProvisaSession()
-        session.role_id = session.user_id = "analyst"
-        session.execute_sql(shared_data["sql_template"], shared_data["params"])
+
+    def _connection() -> None:
+        # A connection's own thread and loop, as ProvisaHandler.handle binds them (REQ-1882).
+        with connection_loop():
+            session = ProvisaSession()
+            session.role_id = session.user_id = "analyst"
+            session.execute_sql(shared_data["sql_template"], shared_data["params"])
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(contextvars.copy_context().run, _connection).result()
     shared_data["governed"] = captured
 
 
