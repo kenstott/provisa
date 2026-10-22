@@ -181,8 +181,11 @@ async def test_the_checker_reaches_the_table_its_contract_scans_in_the_meta_doma
         resp = await client.post(
             "/data/sql",
             json={
-                "sql": "SELECT table_name, id, checked_table_id FROM meta.registered_tables "
-                "WHERE table_name IN ('orders', 'orders_quality')",
+                # A checker table is registered under its result relation's name, the name it
+                # was given being its alias (provisa.dq.registration): it is found by that.
+                "sql": "SELECT table_name, alias, id, checked_table_id FROM meta.registered_tables "
+                f"WHERE table_name = 'orders' OR (table_name = '{_RELATION}' "
+                "AND alias = 'orders_quality')",
                 "role": "org_admin",
             },
         )
@@ -191,6 +194,6 @@ async def test_the_checker_reaches_the_table_its_contract_scans_in_the_meta_doma
     rows = body.get("data") or body.get("rows") or []
     if isinstance(rows, dict):
         rows = next(iter(rows.values()))
-    by_name = {r["table_name"]: r for r in rows}
+    by_name = {r["alias"] or r["table_name"]: r for r in rows}
     assert by_name["orders_quality"]["checked_table_id"] == by_name["orders"]["id"], rows
     assert by_name["orders"]["checked_table_id"] is None, rows
