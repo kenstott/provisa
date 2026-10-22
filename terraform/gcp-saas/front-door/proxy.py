@@ -86,6 +86,8 @@ _last_start_call = 0.0
 _last_woke = float("-inf")
 _status_cache = ("", 0.0)
 _health_cache: dict[int, tuple[bool, float]] = {}
+#: What each port's last /health probe got, and how long it took: the reason a 503 is logged with.
+_health_why: dict[int, tuple[str, float]] = {}
 
 _metadata_token = ("", 0.0)
 
@@ -199,7 +201,13 @@ def _backend_ready(port: int, fresh: bool = False) -> bool:
     if not fresh and time.monotonic() - at < HEALTH_CACHE_TTL:
         return ready
     ready = False
-    sock = _backend_connect(port, timeout=HEALTH_TIMEOUT)
+    started = time.monotonic()
+    try:
+        sock = socket.create_connection((BACKEND_HOST, port), timeout=HEALTH_TIMEOUT)
+    except TimeoutError:
+        sock, why = None, "connect timed out"
+    except OSError as exc:
+        sock, why = None, f"connect failed: {exc}"
     if sock is not None:
         # The backend's certificate is issued for the public hostname and this dials the VM's
         # internal address, so a verifying context would fail on the name for a perfectly healthy
@@ -216,9 +224,13 @@ def _backend_ready(port: int, fresh: bool = False) -> bool:
                 )
                 status_line = tls.recv(SPLICE_BUF).split(b"\r\n", 1)[0].split()
                 ready = len(status_line) > 1 and status_line[1] == b"200"
-        except (OSError, ssl.SSLError):
-            ready = False
+                why = f"answered {b' '.join(status_line[1:]).decode('latin-1') or 'nothing'}"
+        except TimeoutError:
+            why = f"no answer in {HEALTH_TIMEOUT}s"
+        except (OSError, ssl.SSLError) as exc:
+            why = f"failed: {exc}"
     _health_cache[port] = (ready, time.monotonic())
+    _health_why[port] = (why, time.monotonic() - started)
     return ready
 
 
@@ -602,6 +614,18 @@ def _handle(client: socket.socket, port: int, peer: str) -> None:
             client.close()
             return
         trigger_wake()
+        # The 503 this proxy answers itself, never the app's: why, for the next one to be read
+        # from the journal (a slow /health on a RUNNING box once gave a walk one with no trace).
+        why, took = _health_why.get(port, ("not probed", 0.0))
+        log.warning(
+            "503 on :%s to %s: /health %s (%.1fs); coordinator %s, %s",
+            port,
+            peer,
+            why,
+            took,
+            _status_cache[0] or "unknown",
+            "waking from idle" if waking_from_idle() else "not woken by this proxy",
+        )
         _serve_wake_response(client, port)
         return
     backend = _backend_connect(port)
@@ -658,9 +682,13 @@ def idle_stop_due() -> float | None:
     # kept running across the stop, so a start from anywhere but this proxy — an operator
     # deploying with `gcloud compute instances start` or `reset` — was already past the idle
     # threshold at boot and got stopped on the next tick, mid startup script.
-    if coordinator_uptime_seconds() < IDLE_STOP_SECONDS:
+    uptime = coordinator_uptime_seconds()
+    if uptime < IDLE_STOP_SECONDS:
         return None
-    return idle_for
+    # Idle since its last counted traffic or its start, whichever is later: a box started from
+    # elsewhere had no traffic through here before it, and the log said "idle 19097s" of one up
+    # for half an hour.
+    return min(idle_for, uptime)
 
 
 def _idle_reaper() -> None:

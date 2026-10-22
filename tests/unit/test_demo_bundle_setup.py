@@ -616,6 +616,7 @@ def _sync(
     wanted: str | None = None,
     lingering_until: int | None = None,
     stores_fail: str | None = None,
+    check_fail: str | None = None,
     failed_before: str | None = None,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
@@ -658,6 +659,12 @@ def _sync(
     (fake / "pull").chmod(0o755)
     # stores_fail: the stores cannot be brought up, and demo_stores.py says why on stderr.
     failing = f"sys.stderr.write({stores_fail!r} + '\\n')\nsys.exit(1)\n" if stores_fail else ""
+    # check_fail: the stores came up, and the check finds data missing from them.
+    if check_fail:
+        failing = (
+            f"if sys.argv[1] == 'check':\n    sys.stderr.write({check_fail!r} + '\\n')\n"
+            "    sys.exit(1)\n"
+        )
     (fake / "demo_stores.py").write_text(
         f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n{failing}"
     )
@@ -697,7 +704,10 @@ def test_a_demo_not_asked_for_is_pulled_and_offered_and_none_of_its_stores_start
 def test_a_demo_asked_for_has_its_stores_brought_up_and_its_version_marked_ready(tmp_path):
     run, demo, asked = _sync(tmp_path, requested=True)
     assert run.returncode == 0, run.stderr
-    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
     assert (demo / "ready").read_text().strip() == _VERSION
 
 
@@ -728,13 +738,30 @@ def test_the_nodes_start_clears_a_failure_its_last_run_left(tmp_path):
     assert not (demo / "failed").exists()
 
 
+def test_a_demo_whose_stores_miss_its_data_is_not_marked_ready(tmp_path):
+    """Its stores up but missing data its version reads (an index dropped since its mark was
+    written), the version is not marked ready and <name>/failed says what is missing."""
+    said = "demo weblogs v: Elasticsearch holds no reviews_weblogs_1a2b3c4d"
+    run, demo, asked = _sync(tmp_path, requested=True, check_fail=said)
+    assert run.returncode != 0
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
+    assert not (demo / "ready").exists()
+    assert said in (demo / "failed").read_text()
+
+
 def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp_path):
     """An open during a sync touches <bundles>/.wanted while the service runs, which systemd's
     path unit drops: the run goes again, so the stores come up now rather than at the timer's
     next tick (a first open on the sandbox tier waited up to 15 minutes)."""
     run, demo, asked = _sync(tmp_path, ask_on_pull=True)
     assert run.returncode == 0, run.stderr
-    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
     assert (demo / "ready").read_text().strip() == _VERSION
     assert not (demo.parent / ".wanted").exists()
 
@@ -748,6 +775,7 @@ def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_p
     assert run.returncode == 0, run.stderr
     assert asked == [
         f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
         "drop weblogs 202601010000-old0001",
     ]
     assert not (demo / "202601010000-old0001").exists()
@@ -764,7 +792,10 @@ def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served
         (bundles / old).mkdir(parents=True)
     run, demo, asked = _sync(tmp_path, requested=True, in_use="202601020000-inuse02")
     assert run.returncode == 0, run.stderr
-    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+    ]
     assert not (demo / "202601010000-never01").exists()
     assert (demo / "202601020000-inuse02").is_dir()
     assert (demo / _VERSION / "docker-compose.run.yml").is_file()

@@ -279,6 +279,20 @@ def test_a_box_up_longer_than_the_idle_window_is_still_stopped(proxy, monkeypatc
     assert proxy.idle_stop_due() is not None
 
 
+def test_a_box_started_elsewhere_is_idle_from_its_start_not_from_traffic_before_it(
+    proxy, monkeypatch
+):
+    """Its last counted traffic was hours before it was started (a deploy's start): the idle time
+    the stop is logged with is the time it has been up."""
+    _clock(monkeypatch, proxy, 100_000.0)
+    proxy._last_activity = 0.0
+    proxy._active_conns = 0
+    proxy._last_start_call = 0.0
+    proxy.set_uptime(proxy.IDLE_STOP_SECONDS + 60)
+
+    assert proxy.idle_stop_due() == pytest.approx(proxy.IDLE_STOP_SECONDS + 60, abs=5)
+
+
 def test_a_coordinator_that_is_already_stopped_is_not_stopped_again(proxy, monkeypatch):
     _clock(monkeypatch, proxy, 100_000.0)
     proxy._last_activity = 0.0
@@ -602,6 +616,48 @@ def test_a_raw_protocol_port_is_still_judged_by_the_accept(proxy, monkeypatch):
 # backlog answers NO for a site that is serving, and the NO is then cached — so every connection
 # in that window gets the waking page and the SPA's calls fail against a live instance. That is
 # what put "Error: Service Unavailable" on an admin page while the coordinator was RUNNING.
+
+
+def test_a_probe_answered_otherwise_says_what_it_got(local_backend, tmp_path):
+    port, _ = _tls_backend(tmp_path, lambda _r: _http("503 Service Unavailable"))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+
+    assert local_backend._backend_ready(port) is False
+    assert local_backend._health_why[port][0] == "answered 503 Service Unavailable"
+
+
+def test_a_probe_nothing_accepts_says_the_connect_failed(local_backend):
+    port = 9  # discard; nothing accepts
+    assert local_backend._backend_ready(port) is False
+    assert local_backend._health_why[port][0].startswith("connect failed: ")
+
+
+def test_a_probe_with_no_answer_in_time_says_so(local_backend, tmp_path, monkeypatch):
+    import threading as _threading
+
+    port, _ = _tls_backend(tmp_path, lambda _r: (_threading.Event().wait(2), b"")[1])
+    monkeypatch.setattr(local_backend, "HEALTH_TIMEOUT", 0.3)
+
+    assert local_backend._backend_ready(port) is False
+    assert local_backend._health_why[port][0] == "no answer in 0.3s"
+
+
+def test_the_503_the_front_door_answers_itself_is_logged_with_its_reason(
+    proxy, monkeypatch, caplog
+):
+    proxy._health_why[443] = ("no answer in 2.5s", 5.1)
+    proxy._status_cache = ("RUNNING", 0.0)
+    monkeypatch.setattr(proxy, "_https_ready", lambda _port: False)
+    monkeypatch.setattr(proxy, "_serve_wake_response", lambda *_a: None)
+    monkeypatch.setattr(proxy, "trigger_wake", lambda: None)
+
+    with caplog.at_level("WARNING", logger="front-door"):
+        proxy._handle(object(), 443, "10.9.0.4")
+
+    assert caplog.messages == [
+        "503 on :443 to 10.9.0.4: /health no answer in 2.5s (5.1s); coordinator RUNNING, "
+        "not woken by this proxy"
+    ]
 
 
 def test_a_running_box_whose_probe_missed_once_is_asked_again(local_backend, tmp_path):
