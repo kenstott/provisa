@@ -6,7 +6,7 @@ Jede Organisation hat Standards für Geschäftslogik, und die meisten Teams halt
 
 Für Teile davon gibt es Antworten aus der Branche. Ein Metrics Layer, oft als Semantic Layer verkauft, definiert „Nettoumsatz“ einmal für jedes Werkzeug. Der [Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) (ODPS) beschreibt Datenprodukte und der [Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) (ODCS) beschreibt Datenverträge. Provisa [exportiert beide](metadata-export.md#data-products-as-odps-and-odcs). Alle sind gute Ideen und alle gewinnen an Verbreitung, aber jede deckt nur einen Teil ab. Die größere Frage ist, wie sie sich als ein stimmiges, zusammensetzbares Modell in kontrollierte, gesteuerte Daten einfügen. Logik, die Daten ableitet oder ändert, braucht dieselbe Governance wie die Daten selbst: wer sie nutzen darf, was sie liest und schreibt und wohin ihre Ergebnisse gehen.
 
-Auslieferungskanäle verschärfen das. In jeden wird Logik eingebaut: ein berechnetes Feld im BI-Werkzeug, eine Regel im API-Handler, ein Filter im Resolver der App. Jeder Kanal hat am Ende seine eigene Version der Wahrheit, sodass dieselbe Frage über zwei von ihnen selten dieselbe Antwort bekommt.
+Auslieferungskanäle verschärfen das. In jeden wird Logik eingebaut: ein berechnetes Feld im BI-Werkzeug, eine Regel im API-Handler, ein Filter im Resolver der App. Jeder Kanal hat am Ende seine eigene Version der Wahrheit, sodass dieselbe Frage über zwei von ihnen selten dieselbe Antwort bekommt. Am Ende geben die Leute auf: Sie akzeptieren das Durcheinander als Preis der Spezialisierung und dafür, viele verschiedene Beteiligte zu bedienen.
 
 ## Was Geschäftslogik ist {: #definition }
 
