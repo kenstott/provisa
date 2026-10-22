@@ -820,6 +820,20 @@ class TestCallApi:
         assert call_kwargs["data"] == {"query": "SELECT * WHERE { ?s ?p ?o }", "limit": 5}
 
     @pytest.mark.asyncio
+    async def test_a_narrowed_sparql_query_is_sent_in_place_of_the_registered_one(self):
+        """REQ-2138: a statement's pushed conditions come as the argument ``query``."""
+        endpoint = _endpoint(body_encoding="form", query_template="SELECT * WHERE { ?s ?p ?o }")
+        mock_client = MagicMock()
+        mock_client.request = AsyncMock(return_value=_resp(200, {}))
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        narrowed = "SELECT * WHERE { { SELECT * WHERE { ?s ?p ?o } } } LIMIT 1"
+        with patch("provisa.api_source.caller.httpx.AsyncClient", return_value=mock_ctx):
+            await call_api(endpoint, {"query": narrowed}, base_url="http://api.test")
+        assert mock_client.request.await_args.kwargs["data"] == {"query": narrowed}
+
+    @pytest.mark.asyncio
     async def test_default_body_encoding_uses_json_body(self):
         endpoint = _endpoint(
             method="POST",

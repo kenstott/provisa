@@ -337,6 +337,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
+# REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
+"provisa.sparql" = ["reasoner/Reasoner.java"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]

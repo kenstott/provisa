@@ -7755,5 +7755,9 @@
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
   "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
-  "zh-HK/profile3d.json::profile3d.grid": "Grid"
+  "zh-HK/profile3d.json::profile3d.grid": "Grid",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasoner": "Reasoner",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasonerNone": "None",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axioms": "OWL axioms",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer."
 }

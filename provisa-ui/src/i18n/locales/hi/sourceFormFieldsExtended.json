@@ -204,6 +204,10 @@
     "apiToken": "API टोकन",
     "apiTokenHint": "id.atlassian.com पर बनाएँ, Security, API tokens। सीक्रेट वॉल्ट में रखा जाता है।",
     "siteAddressInvalid": "साइट का पूरा पता दर्ज करें, जो https:// से शुरू हो",
-    "namingInherit": "इनहेरिट (वैश्विक)"
+    "namingInherit": "इनहेरिट (वैश्विक)",
+    "reasoner": "रीज़नर",
+    "reasonerNone": "कोई नहीं",
+    "axioms": "OWL एक्सियम",
+    "axiomsHint": "Turtle, RDF/XML, फ़ंक्शनल या Manchester सिंटैक्स। जिस तालिका की क्वेरी एक ही IRI है, जैसे <http://example.org/kyc#controls>, वह इनसे निकाले गए निष्कर्ष पढ़ती है।"
   }
 }

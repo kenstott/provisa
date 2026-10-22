@@ -247,24 +247,49 @@ class TestBuildEndpoint:
 
 
 class TestInferColumns:
-    def test_empty_returns_empty(self):
-        assert infer_columns([]) == []
+    XSD = "http://www.w3.org/2001/XMLSchema#"
 
-    def test_all_columns_are_strings(self):
-        """SPARQL variable bindings are strings (typed by the application layer)."""
-        rows = [{"name": "Alice", "city": "NY"}, {"name": "Bob", "city": "LA"}]
-        cols = infer_columns(rows)
+    def _results(self, names, rows):
+        return {"head": {"vars": names}, "results": {"bindings": rows}}
+
+    def test_empty_returns_empty(self):
+        assert infer_columns(self._results([], [])) == []
+
+    def test_plain_literals_and_iris_are_strings(self):
+        rows = [
+            {"name": {"type": "literal", "value": "Alice"}, "s": {"type": "uri", "value": "urn:a"}}
+        ]
+        cols = infer_columns(self._results(["name", "s"], rows))
         assert all(c.type == ApiColumnType.string for c in cols)
 
-    def test_column_names_from_first_row(self):
-        rows = [{"s": "x", "p": "y", "o": "z"}]
-        cols = infer_columns(rows)
+    def test_column_names_from_the_head_in_order(self):
+        cols = infer_columns(self._results(["s", "p", "o"], []))
         assert [c.name for c in cols] == ["s", "p", "o"]
 
-    def test_single_row_single_var(self):
-        cols = infer_columns([{"subject": "http://example.com/1"}])
-        assert len(cols) == 1
-        assert cols[0].name == "subject"
+    def test_typed_literals_type_their_column(self):
+        def lit(v, t):
+            return {"type": "literal", "value": v, "datatype": self.XSD + t}
+
+        rows = [
+            {"n": lit("3", "integer"), "x": lit("1.5", "decimal"), "b": lit("false", "boolean"),
+             "d": lit("2020-01-02", "date"), "t": lit("2020-01-02T00:00:00Z", "dateTime")},
+        ]  # fmt: skip
+        cols = infer_columns(self._results(["n", "x", "b", "d", "t"], rows))
+        assert [c.type for c in cols] == [
+            ApiColumnType.integer,
+            ApiColumnType.number,
+            ApiColumnType.boolean,
+            ApiColumnType.date,
+            ApiColumnType.timestamp,
+        ]
+
+    def test_mixed_or_unbound_variables_are_strings(self):
+        rows = [
+            {"v": {"type": "literal", "value": "1", "datatype": self.XSD + "integer"}},
+            {"v": {"type": "literal", "value": "one"}},
+        ]
+        cols = infer_columns(self._results(["v", "never"], rows))
+        assert [c.type for c in cols] == [ApiColumnType.string, ApiColumnType.string]
 
 
 # ---------------------------------------------------------------------------
@@ -305,9 +330,10 @@ class TestLiveSparqlExecution:
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         SELECT ?n WHERE { VALUES ?n { "Alice"^^xsd:string "Bob"^^xsd:string "Carol"^^xsd:string } }
         """
-        rows = await probe_endpoint(cfg, q, timeout=self._LIVE_TIMEOUT)
-        assert len(rows) <= 5
-        assert all("n" in row for row in rows)
+        results = await probe_endpoint(cfg, q, timeout=self._LIVE_TIMEOUT)
+        bindings = results["results"]["bindings"]
+        assert len(bindings) <= 5
+        assert all("n" in b for b in bindings)
 
     async def test_sparql_bindings_normalizer_shape(self, cfg):
         """sparql_bindings produces flat row dicts from a SPARQL JSON result."""
@@ -332,13 +358,13 @@ class TestLiveSparqlExecution:
         assert "x" in rows[0]
 
     async def test_inferred_columns_from_probe(self, cfg):
-        """infer_columns produces one string column per SELECT variable."""
+        """infer_columns produces one column per SELECT variable, typed by its bindings."""
         from provisa.sparql.source import probe_endpoint
 
-        q = "SELECT ?subject ?predicate WHERE { ?subject ?predicate [] } LIMIT 3"
-        rows = await probe_endpoint(cfg, q, timeout=self._LIVE_TIMEOUT)
-        if rows:
-            cols = infer_columns(rows)
-            names = [c.name for c in cols]
-            assert "subject" in names
-            assert "predicate" in names
+        q = "SELECT ?subject ?n WHERE { VALUES (?subject ?n) { (<urn:a> 1) (<urn:b> 2) } }"
+        results = await probe_endpoint(cfg, q, timeout=self._LIVE_TIMEOUT)
+        cols = infer_columns(results)
+        assert [(c.name, c.type) for c in cols] == [
+            ("subject", ApiColumnType.string),
+            ("n", ApiColumnType.integer),
+        ]

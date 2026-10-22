@@ -530,8 +530,11 @@ def prepare_call(
         # Generic query-API POST with the query as a JSON body
         json_body = {"statement": endpoint.query_template} if endpoint.query_template else body
     elif endpoint.body_encoding == "form":
-        # SPARQL 1.1: POST with form-encoded query parameter
-        form_body = {"query": endpoint.query_template} if endpoint.query_template else {}
+        # SPARQL 1.1: POST with form-encoded query parameter. A statement's conditions pushed into
+        # the table's SELECT (REQ-2138, sparql.pushdown) come as the argument of the field's own
+        # name, the query the call sends in place of the registered one.
+        query = resolved_params["query"] if "query" in resolved_params else endpoint.query_template
+        form_body = {"query": query} if query else {}
         if body:
             form_body.update(body)
     else:
@@ -623,6 +626,13 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
 
         return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
+    if endpoint.response_normalizer == "owl_inferred":
+        # REQ-2138: an inferred table of a sparql source's reasoner. Its rows are the source's
+        # classification (provisa/sparql/reasoning), reasoned in the reasoner's own process
+        # from the slice its endpoint answers; they are one page, flattened as declared.
+        from provisa.sparql.reasoning import inferred_rows
+
+        return ApiAnswer([await inferred_rows(endpoint, resolved_params, call.url, call.headers)])
 
     async def _run() -> ApiAnswer:
         paging = Paging()

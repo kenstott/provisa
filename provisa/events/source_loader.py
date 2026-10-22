@@ -542,6 +542,7 @@ def make_openapi_loader(state: Any) -> AdapterLoader:
             dict(endpoint.default_params),
             base_url=api_source.base_url,
             auth=api_source.auth,
+            source_headers=api_source.headers,
         )
         return _whole(source, table, *answer_rows(endpoint, answer))
 
@@ -596,6 +597,7 @@ def make_neo4j_keyed_loader(state: Any) -> AdapterKeyedLoader:
             {**endpoint.default_params, "keys": [k[0] for k in keys]},
             base_url=api_source.base_url,
             auth=api_source.auth,
+            source_headers=api_source.headers,
         )
         return _whole(source, table, *answer_rows(wrapped_endpoint, answer))
 

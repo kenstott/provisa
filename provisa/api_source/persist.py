@@ -127,7 +127,8 @@ async def persist_api_endpoint(conn: "Connection", endpoint: ApiEndpoint) -> Non
             "table_name": endpoint.table_name,
             "columns": [c.model_dump(mode="json") for c in endpoint.columns],
             "ttl": endpoint.ttl,
-            "default_params": None,
+            # REQ-2138: an inferred table's reasoner and axioms; None for every other one.
+            "default_params": endpoint.default_params or None,
             "promotions": [],
             "body_encoding": endpoint.body_encoding,
             "query_template": endpoint.query_template,
@@ -139,6 +140,7 @@ async def persist_api_endpoint(conn: "Connection", endpoint: ApiEndpoint) -> Non
             "method",
             "columns",
             "ttl",
+            "default_params",
             "body_encoding",
             "query_template",
             "response_normalizer",
