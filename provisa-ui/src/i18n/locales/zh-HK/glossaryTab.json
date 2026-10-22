@@ -1,6 +1,6 @@
 {
   "glossaryTab": {
-    "title": "詞彙表",
+    "title": "本體",
     "searchPlaceholder": "搜尋詞彙…",
     "empty": "沒有詞彙。",
     "abstract": "抽象",
@@ -83,12 +83,12 @@
     "proposed": "待定",
     "proposedUndefined": "建議：由欄名和表名推導而來。請為它加上定義——代理和目錄讀取的正是定義。名稱來自下方的欄，正規化結果相同的欄會歸入同一個術語：如需改變某欄歸入哪個術語，請在「表」頁面為該欄設定別名。在此重新命名只會改變該術語的措辭。",
     "proposedUngrounded": "待定：此術語未連接任何實體欄位。請把它關聯到擁有實體欄位的術語，使其指向真實資料。",
-    "purposeTitle": "術語表的用途",
+    "purposeTitle": "本體的用途",
     "purposeBody": "它讓人與代理程式找到正確的資料並正確使用。每個術語命名一個業務概念，列出承載它的所有實體欄位，並說明它實際的意思——這樣以業務語言提出的問題就會落在正確的欄位，而不是看似合理卻錯誤的欄位。",
     "purposeAdd": "對應真實欄位的術語會自動衍生。只有當某個概念沒有任何單一欄位承載時，才手動新增：這類上位術語要再關聯到擁有欄位的術語，使它仍能觸及真實資料。",
-    "purposeAria": "關於術語表",
+    "purposeAria": "關於本體",
     "readOnly": "唯讀",
-    "readOnlyHint": "您可以閱讀詞彙表，但無法維護。維護術語、定義及關係需要 glossary_rw 能力。",
+    "readOnlyHint": "您可以閱讀本體，但無法維護。維護術語、定義及關係需要 glossary_rw 能力。",
     "expertUserPlaceholder": "搜尋人員…",
     "enterpriseDomainLabel": "所有領域（全機構）"
   }

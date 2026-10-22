@@ -1,6 +1,6 @@
 {
   "glossaryTab": {
-    "title": "术语表",
+    "title": "本体",
     "searchPlaceholder": "搜索术语…",
     "empty": "暂无术语。",
     "abstract": "抽象",
@@ -83,12 +83,12 @@
     "proposed": "待定",
     "proposedUndefined": "建议：由列名和表名推导而来。请为它添加定义——代理和目录读取的正是定义。名称来自下方的列，规范化结果相同的列会归入同一个术语：如需改变某列归入哪个术语，请在“表”页面为该列设置别名。在此重命名只会改变该术语的措辞。",
     "proposedUngrounded": "待定：该术语没有连接到任何物理列。请将它关联到拥有物理列的术语，使其指向真实数据。",
-    "purposeTitle": "术语表的用途",
+    "purposeTitle": "本体的用途",
     "purposeBody": "它让人和智能体找到正确的数据并正确使用。每个术语命名一个业务概念，列出承载它的全部物理列，并说明它实际的含义——这样用业务语言提出的问题就会落到正确的列上，而不是看似合理却错误的列上。",
     "purposeAdd": "对应真实列的术语会自动派生。只有当某个概念没有任何单独的列承载时，才手动添加：这类上位术语要再关联到有列的术语，使它仍能触及真实数据。",
-    "purposeAria": "关于术语表",
+    "purposeAria": "关于本体",
     "readOnly": "只读",
-    "readOnlyHint": "您可以阅读词汇表，但无法维护它。维护术语、定义和关系需要 glossary_rw 能力。",
+    "readOnlyHint": "您可以阅读本体，但无法维护它。维护术语、定义和关系需要 glossary_rw 能力。",
     "expertUserPlaceholder": "搜索人员…",
     "enterpriseDomainLabel": "所有域（全组织）"
   }

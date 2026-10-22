@@ -66,7 +66,7 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
     page,
   }) => {
     const refused = recordRefusals(page);
-    await page.goto("/admin/glossary");
+    await page.goto("/admin/ontology");
     await shows(page.getByTestId("glossary-search"), refused, 90_000);
     // Nothing of the view is read or drawn before it is opened.
     await expect(page.getByTestId("ontology-view")).toHaveCount(0);
@@ -90,7 +90,7 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
 
   test("Taxonomy keeps the is-a and part-of edges, and the view expands", async ({ page }) => {
     const refused = recordRefusals(page);
-    await page.goto("/admin/glossary");
+    await page.goto("/admin/ontology");
     await shows(page.getByTestId("glossary-search"), refused, 90_000);
     await page.getByTestId("glossary-ontology-toggle").click();
     await shows(page.locator('[data-testid="ontology-stage"][data-ready]'), refused, 60_000);
@@ -104,6 +104,8 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
 
     await page.getByTestId("ontology-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    await expect(page.getByTestId("graph3d-modal").getByText("Glossary ontology")).toBeVisible();
+    await expect(
+      page.getByTestId("graph3d-modal").getByText("Ontology", { exact: true }),
+    ).toBeVisible();
   });
 });

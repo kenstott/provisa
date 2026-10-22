@@ -50,7 +50,7 @@ steps:
   open: quality
   graph: terrain
 - key: profilingTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: plausible type
 # What is actually in the data: the answer, in SQL, GraphQL and REST.

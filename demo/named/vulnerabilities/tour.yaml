@@ -46,7 +46,7 @@ steps:
   capability: create_relationship
   relationship: EXPLOITED_AS
 - key: vulnerabilitiesTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: known exploited vulnerability
 # The answer, in SQL, GraphQL, Cypher and REST.

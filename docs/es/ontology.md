@@ -1,8 +1,8 @@
-# Glosario de negocio {: #business-glossary }
+# Ontología {: #ontology }
 
-El glosario de negocio es un vocabulario vivo sobre su modelo de datos. Cada columna física del modelo se resuelve en un término, y las columnas que llevan el mismo concepto comparten un término, por distinto que lo escriban. Cada término puede tener una definición, un conjunto de relaciones tipadas con otros términos y una lista de expertos en la materia responsables de su significado.
+La ontología es un vocabulario vivo sobre su modelo de datos. Cada columna física del modelo se resuelve en un término, y las columnas que llevan el mismo concepto comparten un término, por distinto que lo escriban. Cada término puede tener una definición, un conjunto de relaciones tipadas con otros términos y una lista de expertos en la materia responsables de su significado.
 
-El glosario es una ontología: un grafo de conceptos, sus definiciones y las relaciones entre ellos. Provisa lo asigna a las estructuras de base de datos que contienen los valores, lo que le permite responder preguntas sobre sus datos. Un concepto es un borrador hasta que llega a los datos, directamente o a través de otros conceptos. El glosario es independiente de las métricas: un término dice qué es un concepto, una métrica dice cómo se calcula una cifra.
+Es un grafo de conceptos, sus definiciones y las relaciones entre ellos. Provisa lo asigna a las estructuras de base de datos que contienen los valores, lo que le permite responder preguntas sobre sus datos. Un concepto es un borrador hasta que llega a los datos, directamente o a través de otros conceptos. La ontología es independiente de las métricas: un término dice qué es un concepto, una métrica dice cómo se calcula una cifra.
 
 Ese vocabulario compartido une el lenguaje de negocio con los datos físicos. Un agente de IA que sabe que "customer" nombra cada columna que lleva un identificador de cliente no tiene que adivinar cuál de `cust_id`, `customerId` y `CUSTOMER_KEY` es la buena. Todas se resuelven en el mismo término, y el término lleva la definición.
 
@@ -43,7 +43,7 @@ Un término derivado sigue el **nombre de negocio** de la columna: su alias si e
 
 Poner un alias a la columna es la corrección más fuerte. Un alias llega a todas las superficies que leen la columna (SQL, GraphQL, agentes de IA, el catálogo), así que el modelo se describe bien en todas partes. Renombrar el término arregla una entrada del catálogo y deja la columna como `usr_nm` para el siguiente lector. El aviso de término propuesto en la UI lo dice así: primero ponga un alias a la columna, y renombre el término solo cuando el nombre de la columna sea correcto y el vocabulario no.
 
-Cambiar el alias de una columna vuelve a derivar su término propuesto, así que el glosario sigue al modelo y nunca pide dos veces la misma corrección. Cuando un curador ya ha añadido a un término una definición, una relación o un experto, una edición del alias deja la referencia donde está, porque ese trabajo es del curador y se mantiene.
+Cambiar el alias de una columna vuelve a derivar su término propuesto, así que la ontología sigue al modelo y nunca pide dos veces la misma corrección. Cuando un curador ya ha añadido a un término una definición, una relación o un experto, una edición del alias deja la referencia donde está, porque ese trabajo es del curador y se mantiene.
 
 ### Nombres de tabla que describen una ruta de acceso {: #access-path-table-names }
 
@@ -97,7 +97,7 @@ Las relaciones son direccionales. La interfaz muestra tanto las aristas saliente
 otro) como las entrantes (otro término → este término), y etiqueta cada dirección con su propia
 frase en lenguaje llano.
 
-Las aristas viven en `glossary_term_edges`, una tabla asociativa declarada como relación de unión (junction): su columna `rel_type` es el discriminador, de modo que cada uno de los tipos anteriores es un tipo de relación Cypher distinto entre dos nodos `GlossaryTerm`, y no una propiedad de un nodo reificado. La tabla se aprovisiona con el resto del esquema de metadatos y no se muestra como nodo en los clientes de grafo: es la arista. Nada en ella es específico del glosario: se declara igual que declararías una unión sobre tus propias tablas, y la lee el mismo código.
+Las aristas viven en `glossary_term_edges`, una tabla asociativa declarada como relación de unión (junction): su columna `rel_type` es el discriminador, de modo que cada uno de los tipos anteriores es un tipo de relación Cypher distinto entre dos nodos `GlossaryTerm`, y no una propiedad de un nodo reificado. La tabla se aprovisiona con el resto del esquema de metadatos y no se muestra como nodo en los clientes de grafo: es la arista. Nada en ella es específico de la ontología: se declara igual que declararías una unión sobre tus propias tablas, y la lee el mismo código.
 
 ## Términos abstractos {: #abstract-terms }
 
@@ -118,14 +118,14 @@ Un término que una superficie de consumo puede ofrecer debe cumplir tres condic
    significado. Sin definición es una propuesta a la espera de un curador, nunca vocabulario sobre el
    que un agente pueda fundamentar una pregunta.
 3. **Anclado**: conectado, a través de términos en servicio, con al menos un término que tenga una
-   referencia a una columna física. El glosario es un punto de entrada a los datos, así que toda
+   referencia a una columna física. La ontología es un punto de entrada a los datos, así que toda
    cadena debe terminar en una columna.
 
 La conectividad se propaga por el grafo: un término abstracto llega a los datos a través de cualquier vecino en servicio que llegue. Los términos fuera de servicio no transmiten, así que un término retirado no mantiene vivos a sus dependientes.
 
 ## Exportación de metadatos {: #metadata-export }
 
-El glosario se publica en catálogos de datos externos como parte de la exportación de metadatos. Se aplica la misma regla de admisión, con un matiz más estricto: si un término está enraizado se juzga solo con las columnas que de verdad se publican. Un término cuyas columnas se retienen todas de la exportación, porque sus tablas no están marcadas como productos de datos o porque los filtros técnicos las excluyen, no está enraizado a efectos de exportación, aunque tenga referencias en el plano de control.
+La ontología se publica en catálogos de datos externos como parte de la exportación de metadatos. Se aplica la misma regla de admisión, con un matiz más estricto: si un término está enraizado se juzga solo con las columnas que de verdad se publican. Un término cuyas columnas se retienen todas de la exportación, porque sus tablas no están marcadas como productos de datos o porque los filtros técnicos las excluyen, no está enraizado a efectos de exportación, aunque tenga referencias en el plano de control.
 
 Las aristas de relación se publican solo cuando se publican los términos de ambos extremos.
 
@@ -141,11 +141,11 @@ control **Excluir de la exportación de metadatos** retiene el término, y cualq
 relación que termine en él, frente a los catálogos en los que publica Provisa, mientras que las
 columnas en sí siguen exportándose como activos.
 
-Lo que cuenta es si el negocio usa la palabra; lo buena que sea la definición no lo decide. Un identificador de lote de ETL tiene un significado claro que pertenece al glosario para los ingenieros, pero no a un catálogo de negocio junto a `customer` y `revenue`.
+Lo que cuenta es si el negocio usa la palabra; lo buena que sea la definición no lo decide. Un identificador de lote de ETL tiene un significado claro que pertenece a la ontología para los ingenieros, pero no a un catálogo de negocio junto a `customer` y `revenue`.
 
-## Trabajar con el glosario {: #working-with-the-glossary }
+## Trabajar con la ontología {: #working-with-the-ontology }
 
-Abra **Administración → Glosario** en la interfaz. El panel izquierdo lista todos los términos; haga
+Abra **Ontología** en la barra de navegación de la interfaz. El panel izquierdo lista todos los términos; haga
 clic en uno para abrir su vista de detalle. Desde ahí:
 
 - **Renombre** el término para cambiar su redacción sin mover sus columnas.
@@ -161,9 +161,9 @@ clic en uno para abrir su vista de detalle. Desde ahí:
 - **Retire** un término para sacarlo de servicio. Conserva sus columnas y sigue siendo editable aquí,
   pero tanto la búsqueda de términos de los agentes como la exportación de metadatos lo omiten.
   Restáurelo más adelante si el concepto vuelve.
-- **Genere definiciones de forma masiva** para rellenar todas las definiciones en blanco en una sola
+- **Genere definiciones de forma masiva** (**Definiciones** en el menú ✨) para rellenar todas las definiciones en blanco en una sola
   pasada. Solo se escriben las definiciones vacías; el texto humano nunca se sobrescribe.
-- **Genere relaciones de forma masiva** para proponer aristas tipadas en toda la lista de términos.
+- **Genere relaciones de forma masiva** (**Relaciones** en el menú ✨) para proponer aristas tipadas en toda la lista de términos.
   Las propuestas mal formadas —nombres de término desconocidos, auto-aristas, tipos no
   reconocidos— se descartan automáticamente.
 
@@ -176,4 +176,4 @@ columnas). Cuando lo vea, el término todavía no es alcanzable por los agentes 
 - [Exportación de metadatos](metadata-export.md) — cómo se publican los términos y las relaciones en
   catálogos de datos externos, incluido qué términos admite la regla de admisión de la exportación.
 - [Linaje a nivel de columna](lineage.md) — el explorador de linaje y cómo `columnDependents`
-  informa de los vínculos del glosario como dependientes de una columna física.
+  informa de los vínculos de la ontología como dependientes de una columna física.

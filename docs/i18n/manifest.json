@@ -30,7 +30,7 @@
     "migration/hasura-ddn.md",
     "migration/hasura-v2.md",
     "secrets.md",
-    "glossary.md",
+    "ontology.md",
     "environments.md",
     "cli.md",
     "admin-graphql.md",

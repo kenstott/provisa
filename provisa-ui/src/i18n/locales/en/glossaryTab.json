@@ -1,6 +1,6 @@
 {
   "glossaryTab": {
-    "title": "Glossary",
+    "title": "Ontology",
     "searchPlaceholder": "Search terms…",
     "empty": "No terms.",
     "abstract": "Abstract",
@@ -83,12 +83,12 @@
     "proposed": "Proposed",
     "proposedUndefined": "Proposed: derived from the column and table names. Give it a definition — that is what agents and catalogs read. The name comes from the columns below, and columns that normalize alike land on one term: alias a column on the Tables page to change which term it feeds. Rename here to change only this term's wording.",
     "proposedUngrounded": "Proposed: this term reaches no physical column. Relate it to a term that has one so it names real data.",
-    "purposeTitle": "What the glossary is for",
+    "purposeTitle": "What the ontology is for",
     "purposeBody": "It is how people and agents find the right data and use it correctly. Each term names one business concept, lists every physical column that carries it, and says what it actually means — so a question asked in business language lands on the right column instead of a plausible-looking wrong one.",
     "purposeAdd": "Terms for real columns are derived for you. Add one by hand only for a concept no single column carries — an umbrella term you then relate to the terms that do, so it still reaches real data.",
-    "purposeAria": "About the glossary",
+    "purposeAria": "About the ontology",
     "readOnly": "Read-only",
-    "readOnlyHint": "You can read the glossary but not curate it. Curating terms, definitions and relationships needs the glossary_rw capability.",
+    "readOnlyHint": "You can read the ontology but not curate it. Curating terms, definitions and relationships needs the glossary_rw capability.",
     "expertUserPlaceholder": "Search people…",
     "enterpriseDomainLabel": "All domains (enterprise)"
   }

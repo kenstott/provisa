@@ -315,7 +315,7 @@ async def create_abstract_term(request: Request) -> dict:
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
-    await _notify(org_id, "glossary term created")
+    await _notify(org_id, "ontology term created")
     return {"id": term_id}
 
 
@@ -366,7 +366,7 @@ async def update_term(request: Request, term_id: int) -> dict:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not found:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
-    await _notify(org_id, "glossary term updated")
+    await _notify(org_id, "ontology term updated")
     return {"ok": True}
 
 
@@ -390,7 +390,7 @@ async def delete_term(request: Request, term_id: int) -> dict:
             ) from refused
     if not deleted:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
-    await _notify(org_id, "glossary term deleted")
+    await _notify(org_id, "ontology term deleted")
     return {"ok": True}
 
 
@@ -464,7 +464,7 @@ async def generate_definition(request: Request, term_id: int) -> dict:
     kind = "an abstract business concept" if term["is_abstract"] else "a business term"
     prompt = (
         f"You are a data catalog assistant. Write a concise one-to-two sentence business "
-        f"definition for {kind} named '{term['name']}' in an enterprise data glossary. "
+        f"definition for {kind} named '{term['name']}' in an enterprise data ontology. "
         f"Define the business concept itself, in plain business language a non-technical "
         f"reader would use — never describe it as 'this field', 'this column', or any other "
         f"database-schema wording, even when physical columns are listed below for context. "
@@ -527,7 +527,7 @@ async def generate_all_definitions(request: Request) -> dict:
                 await glossary_repo.set_definition(_conn, term["id"], definition.strip())
                 generated += 1
     if generated:
-        await _notify(org_id, "glossary definitions generated")
+        await _notify(org_id, "ontology definitions generated")
     return {"generated": generated}
 
 
@@ -559,7 +559,7 @@ async def generate_relationships(request: Request) -> dict:
             f"- {t['name']}" + (f": {t['definition']}" if t["definition"] else "") for t in terms
         )
         prompt = (
-            "You are a data catalog assistant. Given this business-glossary term list, "
+            "You are a data catalog assistant. Given this ontology term list, "
             "propose semantic relationships between terms. Allowed relationship types: "
             "KIND_OF (from is a kind of to), PART_OF (from is a part of to), "
             "SYNONYM_OF (interchangeable terms), RELATED_TO (loosely associated), "
@@ -614,7 +614,7 @@ async def generate_relationships(request: Request) -> dict:
             await glossary_repo.add_edge(_conn, from_id, to_id, rel_type)
             added += 1
     if added:
-        await _notify(org_id, "glossary relationships generated")
+        await _notify(org_id, "ontology relationships generated")
     return {"added": added}
 
 
@@ -652,7 +652,7 @@ async def move_ref(request: Request) -> dict:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if moved is None:
         raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
-    await _notify(org_id, "glossary ref moved")
+    await _notify(org_id, "ontology ref moved")
     # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
     # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
     return {"ok": True, **moved}
@@ -677,7 +677,7 @@ async def add_edge(request: Request, term_id: int) -> dict:
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
-    await _notify(org_id, "glossary edge added")
+    await _notify(org_id, "ontology edge added")
     return {"ok": True}
 
 
@@ -709,7 +709,7 @@ async def retype_edge(request: Request, term_id: int) -> dict:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not changed:
         raise ApiError(404, "glossary.edge_not_found", "edge not found")
-    await _notify(org_id, "glossary edge retyped")
+    await _notify(org_id, "ontology edge retyped")
     return {"ok": True}
 
 
@@ -724,7 +724,7 @@ async def remove_edge(request: Request, term_id: int, to_term_id: int, rel_type:
         removed = await glossary_repo.remove_edge(_conn, term_id, to_term_id, rel_type)
     if not removed:
         raise ApiError(404, "glossary.edge_not_found", "edge not found")
-    await _notify(org_id, "glossary edge removed")
+    await _notify(org_id, "ontology edge removed")
     return {"ok": True}
 
 
@@ -746,7 +746,7 @@ async def add_expert(request: Request, term_id: int) -> dict:
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
-    await _notify(org_id, "glossary expert added")
+    await _notify(org_id, "ontology expert added")
     return {"ok": True}
 
 
@@ -761,5 +761,5 @@ async def remove_expert(request: Request, term_id: int, user_id: str) -> dict:
         removed = await glossary_repo.remove_expert(_conn, term_id, user_id)
     if not removed:
         raise ApiError(404, "glossary.expert_not_found", "expert not found")
-    await _notify(org_id, "glossary expert removed")
+    await _notify(org_id, "ontology expert removed")
     return {"ok": True}

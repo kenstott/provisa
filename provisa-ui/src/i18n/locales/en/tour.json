@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "Domains and their stewards",
-        "description": "🗂️ A domain groups tables, and its data steward governs that part of the model: who sees what, masks and row rules, sensitive data, and its glossary and data products."
+        "description": "🗂️ A domain groups tables, and its data steward governs that part of the model: who sees what, masks and row rules, sensitive data, and its ontology and data products."
       },
       "stepTags": {
         "title": "Tags carry meaning",
@@ -287,12 +287,12 @@
         "description": "📦 Name the owner and team, the purpose, usage, SLA and support, then pick the tables and commands it contains. These are the fields that get published. A table joins a product only when both share the same domain."
       },
       "stepGlossary": {
-        "title": "A living business glossary",
-        "description": "📖 Every term links to the columns that carry it and to other terms. Curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps from the <strong>✨</strong> menu: <strong>Definitions</strong> drafts only the terms still missing one, and <strong>Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
+        "title": "A living ontology",
+        "description": "📖 Every term links to the columns that carry it and to other terms. Curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps from the <strong>✨</strong> menu: <strong>Definitions</strong> drafts only the terms still missing one, and <strong>Relationships</strong> proposes links across the whole ontology. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
       },
       "stepDataProducts": {
         "title": "Data products, published where consumers already look",
-        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard): owner, team, purpose, limitations, usage, SLA, support and custom properties. Provisa publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> (tables, lineage, tags, glossary terms) every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p><p>✅ Publishing also sends an <strong>ontology extract</strong>: the part of your glossary that bears on what is published: the terms that define its columns, the broader and related terms they connect to, and the typed relationships between them. The data-quality results of the checkers that scan it go with it. A product's <strong>Related Terms</strong> panel lists its terms.</p>"
+        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard): owner, team, purpose, limitations, usage, SLA, support and custom properties. Provisa publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> (tables, lineage, tags, ontology terms) every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p><p>✅ Publishing also sends an <strong>ontology extract</strong>: the part of your ontology that bears on what is published: the terms that define its columns, the broader and related terms they connect to, and the typed relationships between them. The data-quality results of the checkers that scan it go with it. A product's <strong>Related Terms</strong> panel lists its terms.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Add a term",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "What an open complaint is",
-        "description": "The glossary says what an open complaint is: one the city has not yet closed. Terms like this say what the catalog's data means."
+        "description": "The ontology says what an open complaint is: one the city has not yet closed. Terms like this say what the catalog's data means."
       },
       "filesAnswer": {
         "title": "The answer",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "A folder became a catalog",
-        "description": "A folder of files became a governed catalog: tables, relationships, a glossary term and a stored view, with nothing loaded. A new month's complaints file needs no new table: the glob already names it."
+        "description": "A folder of files became a governed catalog: tables, relationships, an ontology term and a stored view, with nothing loaded. A new month's complaints file needs no new table: the glob already names it."
       },
       "reviewsCatalog": {
         "title": "What this demo is",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "In the insurer's terms",
-        "description": "The glossary names what an underwriter asks about: total insured value, accumulation, probable maximum loss and expected annual loss. Here, accumulation means exposure concentrated where one event can reach many policies."
+        "description": "The ontology names what an underwriter asks about: total insured value, accumulation, probable maximum loss and expected annual loss. Here, accumulation means exposure concentrated where one event can reach many policies."
       },
       "insuranceByRating": {
         "title": "By risk rating, in GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "The vocabulary",
-        "description": "The company's glossary defines known exploited vulnerability, CVE, CWE and CVSS, and ties each term to the columns it describes. A CVSS score says how severe a vulnerability is. Only the catalog says whether anyone is exploiting it."
+        "description": "The company's ontology defines known exploited vulnerability, CVE, CWE and CVSS, and ties each term to the columns it describes. A CVSS score says how severe a vulnerability is. Only the catalog says whether anyone is exploiting it."
       },
       "vulnerabilitiesAnswer": {
         "title": "The answer in SQL",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "The vocabulary",
-        "description": "The glossary defines data profile, plausible type, value shape, duplicate row and placeholder value, and ties each term to the measures it describes."
+        "description": "The ontology defines data profile, plausible type, value shape, duplicate row and placeholder value, and ties each term to the measures it describes."
       },
       "profilingAnswer": {
         "title": "What each column holds",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "In plain words",
-        "description": "The glossary explains the terms a council member or a resident will meet: settlement fund, abatement, allocation, expenditure, suppressed count and rate per 100,000. Here, abatement means what the settlements require the money to be spent on."
+        "description": "The ontology explains the terms a council member or a resident will meet: settlement fund, abatement, allocation, expenditure, suppressed count and rate per 100,000. Here, abatement means what the settlements require the money to be spent on."
       },
       "opioidsAsPublic": {
         "title": "Run as the public",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "In the insurer's terms",
-        "description": "The glossary names what a crop underwriter asks about: loss ratio, cause of loss, actual production history, coverage level, liability and the growing season. Here, the loss ratio is indemnities divided by premium. Above 1, the year lost money."
+        "description": "The ontology names what a crop underwriter asks about: loss ratio, cause of loss, actual production history, coverage level, liability and the growing season. Here, the loss ratio is indemnities divided by premium. Above 1, the year lost money."
       },
       "agricultureAnswer": {
         "title": "The answer in SQL",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "In the pharmacy's terms",
-        "description": "The glossary names what a pharmacy buyer asks about: NDC, formulary, drug shortage, recall class and days of supply. Here, supply risk means a shortage, a recall by the product's maker, or too few days of stock on hand."
+        "description": "The ontology names what a pharmacy buyer asks about: NDC, formulary, drug shortage, recall class and days of supply. Here, supply risk means a shortage, a recall by the product's maker, or too few days of stock on hand."
       },
       "pharmaAnswer": {
         "title": "The answer in SQL",

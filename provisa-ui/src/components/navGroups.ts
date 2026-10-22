@@ -236,8 +236,8 @@ export const NAV_GROUPS: NavGroup[] = [
       // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
       { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
-      // REQ-1387: the glossary route stays /admin/glossary (org_settings) but its nav entry is
-      // the top-level Glossary link in NavBar.tsx, not an item of this group.
+      // REQ-1387: the ontology route is /admin/ontology (glossary_read), and its nav entry is
+      // the top-level Ontology link in NavBar.tsx, not an item of this group.
       {
         to: "/admin/observability",
         labelKey: "navBar.itemObservability",

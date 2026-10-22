@@ -40,7 +40,7 @@ steps:
   capability: create_relationship
   relationship: DEATH_RATE_OF
 - key: opioidsTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: abatement
 - key: opioidsAnswer
