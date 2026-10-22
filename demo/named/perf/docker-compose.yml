@@ -259,13 +259,12 @@ services:
   # unless the profile is asked for.
 
   # The pg federation engine, apart from the source's Postgres: same image (the engine needs the
-  # extensions), its own database and its own CPU.
+  # extensions), its own database and its own CPU. The postgresql service builds the image; two
+  # services building one tag at once fail with "image already exists".
   engine-postgresql:
     profiles: [three-device]
     image: provisa-perf-postgres:16
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
+    pull_policy: never
     restart: unless-stopped
     labels:
       <<: *demo-labels

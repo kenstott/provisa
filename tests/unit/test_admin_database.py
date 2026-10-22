@@ -158,3 +158,18 @@ def test_capabilities_by_dialect():
     assert sqlite.returning and not sqlite.arrays and not sqlite.listen_notify
     mysql = Capabilities.for_dialect("mysql")
     assert not mysql.returning and not mysql.arrays and mysql.advisory_lock
+
+
+def test_a_governed_reads_list_value_binds_as_an_array_not_jsonb():
+    """The control plane's own writes take a list as jsonb; a governed read's values (a client's
+    ANY($2)) are bound as given, so the list stays an array."""
+    from psycopg.types.json import Jsonb
+
+    from provisa.core.database import _translate
+
+    sql = "SELECT 1 FROM t WHERE id > $1 AND d = ANY($2)"
+    _, written = _translate(sql, (5, ["a", "b"]), "postgresql")
+    assert isinstance(written["p2"], Jsonb)
+    stmt, read = _translate(sql, (5, ["a", "b"]), "postgresql", bind_as_given=True)
+    assert stmt == "SELECT 1 FROM t WHERE id > :p1 AND d = ANY(:p2)"
+    assert read == {"p1": 5, "p2": ["a", "b"]}
