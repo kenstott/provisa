@@ -25022,9 +25022,9 @@ A capability demo, insider review at an investment bank: Is anyone sending deal-
 
 **Use case:** A compliance buyer opens the insider review demo and sees watch-list deals matched against outbound mail, ranked for review, with the watch list itself never exposed to the reviewer.
 
-**Code:** `demo/named/insider/config.yaml`, `demo/named/insider/matching.py`, `demo/named/insider/generate.py`, `demo/named/insider/db/init.sql`, `demo/named/insider/tour.yaml`
+**Code:** `demo/named/insider/config.yaml`, `demo/named/insider/insider_signals/insider_signals.py`, `demo/named/insider/generate.py`, `demo/named/insider/db/init.sql`, `demo/named/insider/tour.yaml`
 
-**Tests:** `tests/integration/test_insider_demo.py`, `tests/unit/test_named_demo_tour.py`, `tests/unit/test_polly_bakeoff_questions.py`
+**Tests:** `tests/integration/test_insider_demo.py`, `tests/unit/test_insider_demo_signals.py`, `tests/unit/test_named_demo_tour.py`, `tests/unit/test_polly_bakeoff_questions.py`
 
 ## 1. Access Governance & Security
 

@@ -84220,12 +84220,13 @@
     emails for a match score. One demo, framed as investment-bank compliance. Built 2026-10-15: the matching of mail to the watch list (names fuzzily, aliases, ticker, code name, and meaning through the local model) runs in the match_deals command and writes deal_match with the flagged entity, because a text or similarity match is no join along a relationship and the SQL guard refuses it; the review queue reads deal_match, the mail and the staff along declared relationships and weights the match by context in SQL. A read of a view is governed against the tables it reads, so the queue reads no row of the watch list: a first-level reviewer is granted no column of it, row rules keep the mail and its matches to the desks they review, and the queue masks the deal id.'
   code:
   - demo/named/insider/config.yaml
-  - demo/named/insider/matching.py
+  - demo/named/insider/insider_signals/insider_signals.py
   - demo/named/insider/generate.py
   - demo/named/insider/db/init.sql
   - demo/named/insider/tour.yaml
   tests:
   - tests/integration/test_insider_demo.py
+  - tests/unit/test_insider_demo_signals.py
   - tests/unit/test_named_demo_tour.py
   - tests/unit/test_polly_bakeoff_questions.py
 - id: REQ-2060
