@@ -110,7 +110,8 @@ COPY static/ ./static/
 # SQLite paths via ${env:PROVISA_DEMO_DIR}; stage that sample data under /app/config/demo/files
 # — NOT /app/demo, which docker-compose.app.yml bind-mounts (./demo) and would shadow.
 COPY config/capabilities.yaml config/pg_extension_catalog.yaml config/custom_connectors.yaml \
-     config/provisa-install.yaml config/provisa-install-base.yaml ./config/
+     config/provisa-install.yaml config/provisa-install-base.yaml \
+     config/provisa-sandbox-regions.yaml ./config/
 COPY config/pgbouncer/ ./config/pgbouncer/
 COPY demo/files/pet_store.sqlite demo/files/inquiries.sqlite ./config/demo/files/
 # Every demo source in provisa-install.yaml must resolve on a demo deploy, and two of them are
