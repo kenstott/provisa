@@ -113,6 +113,15 @@ async function stubDeployment(
 
 const stored = (page: Page, key: string) => page.evaluate((k) => localStorage.getItem(k), key);
 
+/**
+ * What the first assertion after a cold navigation may wait. Once the app mounts it warms every page
+ * chunk on idle (REQ-1362); against the e2e lane's dev server that is several hundred module
+ * fetches, and the page under test loads its own imports in the same queue. Run 39822399296's
+ * traces: the identity and slot answers were back within 0.3 s of the mount, and the sign-in and
+ * onboarding pages were still loading behind the warm-up when the 5 s default ran out.
+ */
+const FIRST_PAINT = { timeout: 60_000 };
+
 /** The sign-in screen, whichever provider the deployment renders it with. */
 const signIn = (page: Page) => page.getByRole("heading", { name: "Login" });
 
@@ -135,7 +144,7 @@ test("a credential the deployment rejects returns the visitor to sign-in", async
 
   await page.goto("/");
 
-  await expect(signIn(page)).toBeVisible();
+  await expect(signIn(page)).toBeVisible(FIRST_PAINT);
   expect(await stored(page, "provisa_token")).toBeNull();
 });
 
@@ -145,7 +154,7 @@ test("a rejected credential clears the whole session, not just the token", async
   await stubDeployment(page, { identityStatus: 403 });
 
   await page.goto("/");
-  await expect(signIn(page)).toBeVisible();
+  await expect(signIn(page)).toBeVisible(FIRST_PAINT);
 
   expect(await stored(page, "provisa_token")).toBeNull();
   expect(await stored(page, "provisa_org")).toBeNull();
@@ -160,7 +169,7 @@ test("a failing backend is not reported as an access decision", async ({ page })
 
   await page.goto("/");
 
-  await expect(page.getByTestId("identity-unavailable")).toBeVisible();
+  await expect(page.getByTestId("identity-unavailable")).toBeVisible(FIRST_PAINT);
   await expect(page.getByTestId("identity-unavailable-retry")).toBeVisible();
   // The credential is intact: it was never rejected.
   expect(await stored(page, "provisa_token")).toBe("tok-carol");
@@ -175,7 +184,7 @@ test("an unclaimed platform-admin slot outranks a valid session", async ({ page 
 
   // The sign-in page renders in its claim state — REQ-1288's disclosure, which is the whole
   // reason the credential is dropped rather than followed into the app.
-  await expect(page.getByTestId("first-login-notice")).toBeVisible();
+  await expect(page.getByTestId("first-login-notice")).toBeVisible(FIRST_PAINT);
   await expect(page.getByRole("heading", { name: "Set up this deployment" })).toBeVisible();
   expect(await stored(page, "provisa_token")).toBeNull();
   expect(await stored(page, "provisa_org")).toBeNull();
@@ -201,5 +210,5 @@ test("a member-less user is offered onboarding rather than an empty app", async 
 
   await page.goto("/");
 
-  await expect(page.getByTestId("onboard-org-id")).toBeVisible();
+  await expect(page.getByTestId("onboard-org-id")).toBeVisible(FIRST_PAINT);
 });
