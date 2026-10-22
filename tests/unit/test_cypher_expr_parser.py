@@ -12,7 +12,7 @@ evolve with a safety net before the visitor and integration land.
 
 import pytest
 
-from provisa.cypher.expr_ast import (
+from provisa.gql.expr_ast import (
     Binary,
     Case,
     FunctionCall,

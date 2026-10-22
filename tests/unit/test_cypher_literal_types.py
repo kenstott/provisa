@@ -23,9 +23,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from provisa.cypher.label_map import CypherLabelMap
+from provisa.gql.label_map import CypherLabelMap
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 
 _COLUMNS = [
     ("id", "integer"),

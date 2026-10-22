@@ -23,7 +23,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from provisa.api.rest.cypher_drawing import graph_columns
-from provisa.cypher.translator_types import GraphVarKind
+from provisa.gql.translator_types import GraphVarKind
 from tests.unit.test_cache_before_route import pipe  # noqa: F401  (the shared pipeline fixture)
 
 _QUERY = "MATCH (o:Orders) RETURN o.id AS id"

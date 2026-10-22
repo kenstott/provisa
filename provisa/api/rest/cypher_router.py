@@ -37,7 +37,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from provisa.cypher.label_map import CypherLabelMap  # noqa: F401
+    from provisa.gql.label_map import CypherLabelMap  # noqa: F401
     from provisa.api.app import AppState  # noqa: F401
     from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
     from provisa.core.database import Connection  # noqa: F401
@@ -231,7 +231,7 @@ def _build_sql_from_ast(
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
-        from provisa.cypher.translator_types import (
+        from provisa.gql.translator_types import (
             CypherCrossSourceError,
             CypherTranslateError,
             UnregisteredRelationshipType,
@@ -463,10 +463,10 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
-        from provisa.cypher.translator import cypher_to_sql
-        from provisa.cypher.graph_rewriter import apply_graph_rewrites
+        from provisa.gql.translator import cypher_to_sql
+        from provisa.gql.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
-        from provisa.cypher.assembler import assemble_rows, to_serializable
+        from provisa.gql.assembler import assemble_rows, to_serializable
         from provisa.compiler.sql_rewrite import make_semantic_sql
         from provisa.compiler.stage2 import build_governance_context
         from provisa.compiler.sql_validator import validate_sql as _validate_sql
@@ -661,7 +661,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     columns, serializable_rows = _ser_result
 
     # Register nodes and relationships, replacing composite string IDs with stable integers
-    from provisa.cypher.assembler import register_node_ids, register_rel_ids
+    from provisa.gql.assembler import register_node_ids, register_rel_ids
 
     await register_node_ids(serializable_rows, state.model_db)
     await register_rel_ids(serializable_rows, state.model_db)
@@ -690,7 +690,7 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     label_map = _build_label_map(ctx, role_id, state)
     all_tables: list[dict] = getattr(state, "schema_build_cache", {}).get("tables", [])
     col_types: dict = getattr(state, "schema_build_cache", {}).get("column_types", {})
-    from provisa.cypher.label_map import _table_label_from_table_name
+    from provisa.gql.label_map import _table_label_from_table_name
 
     cluster_by_name: dict[str, dict] = {
         _table_label_from_table_name(t["table_name"], t.get("domain_id")): {
@@ -816,8 +816,8 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     """Count nodes and relationships via the normal Cypher pipeline, filtered by domain."""
     from provisa.api.app import state
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 

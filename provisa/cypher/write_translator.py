@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from provisa.compiler.sql_literals import sql_literal
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
 
 # ---------------------------------------------------------------------------

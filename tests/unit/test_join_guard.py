@@ -422,7 +422,7 @@ def _computed_model():
     """orders, customers and regions. Two registered relationships with computed edges:
     LOWER(orders.customer_code) = customers.code, and every customer -> the region whose id is
     the constant 1."""
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
     columns = {
         1: ["id", "customer_code"],
@@ -539,7 +539,7 @@ def test_a_pattern_over_a_computed_registered_relationship_passes(cypher):
     """A relationship registered with a computed edge -- an expression, a constant -- is a
     registered relationship: the join a pattern over it lowers to IS its own condition."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
@@ -573,7 +573,7 @@ def test_a_pattern_whose_type_does_not_connect_its_labels_is_refused_saying_so()
     """A registered relationship type named between two labels it does not connect lowers to a
     join that is never true; the refusal says no relationship of that type connects them."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     cypher = "MATCH (o:Orders)-[:HOME]->(r:Regions) RETURN o.id, r.name"
@@ -588,7 +588,7 @@ def test_a_lowering_that_is_not_the_relationships_own_condition_is_refused():
     is lowered on the two plain columns (#148), which is not the registered condition: the guard
     holds the statement to the relationship as registered, whoever wrote the SQL."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     cypher = "MATCH (c:Customers)<-[:PLACED_BY]-(o:Orders) RETURN o.id, c.name"

@@ -8,18 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/translator.py."""
+"""Unit tests for provisa/gql/translator.py."""
 
 import pytest
 
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.label_map import (
+from provisa.gql.label_map import (
     CypherLabelMap,
     JunctionMapping,
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.translator import cypher_to_sql, cypher_calls_to_sql_list
+from provisa.gql.translator import cypher_to_sql, cypher_calls_to_sql_list
 
 
 def _make_label_map_multi_path() -> CypherLabelMap:
@@ -197,7 +197,7 @@ def test_graph_vars_populated_for_node_return():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN n")
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator_types import GraphVarKind
 
     assert "n" in graph_vars
     assert graph_vars["n"] == GraphVarKind.NODE
@@ -694,7 +694,7 @@ def test_domain_union_excludes_nodes_with_native_filter_columns():
     """Domain MATCH must exclude nodes that require a WHERE clause (native_filter_columns set)."""
     lm = _make_label_map(with_domains=True)
     # Inject a node that requires args into the Sales domain
-    from provisa.cypher.label_map import NodeMapping
+    from provisa.gql.label_map import NodeMapping
 
     lm.nodes["Schedule"] = NodeMapping(
         label="Sales:Schedule",
@@ -867,7 +867,7 @@ def test_allshortestpaths_same_result_as_shortestpath():
 
 def test_shortestpath_no_path_raises():
     lm = _make_label_map()
-    from provisa.cypher.translator_types import CypherTranslateError
+    from provisa.gql.translator_types import CypherTranslateError
 
     ast = parse_cypher("MATCH p = shortestPath((a:Company)-[*..5]->(b:Company)) RETURN a.name")
     with pytest.raises(CypherTranslateError, match="No schema path"):
@@ -927,7 +927,7 @@ def test_fully_unlabeled_match_produces_all_rels_union():
     ast = parse_cypher("MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 50")
     sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator_types import GraphVarKind
 
     assert graph_vars.get("n") == GraphVarKind.PASSTHROUGH
     assert graph_vars.get("r") == GraphVarKind.PASSTHROUGH
@@ -1019,7 +1019,7 @@ def test_domain_labeled_target_filters_rels_union():
         table_name="widgets",
         properties={},
     )
-    from provisa.cypher.label_map import RelationshipMapping as RM
+    from provisa.gql.label_map import RelationshipMapping as RM
 
     knows_rel = RM(
         rel_type="KNOWS",
@@ -1061,7 +1061,7 @@ def test_anonymous_nodes_relationship_return_r():
     ast = parse_cypher("MATCH ()-[r:WORKS_AT]->() RETURN r LIMIT 25")
     sql_ast, cols, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator_types import GraphVarKind
 
     assert graph_vars.get("r") == GraphVarKind.EDGE
     assert "persons" in sql.lower()
@@ -1289,7 +1289,7 @@ def test_an_unregistered_rel_type_is_refused():
     """REQ-603: a relationship type the model does not register is refused by the translation
     every Cypher surface performs -- never lowered to a join that is silently never true -- and a
     registered one translates."""
-    from provisa.cypher.translator_types import UnregisteredRelationshipType
+    from provisa.gql.translator_types import UnregisteredRelationshipType
 
     lm = _make_label_map_with_alias()
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
@@ -1459,7 +1459,7 @@ def test_from_schema_table_label_from_field_name():
     table (via physical_table_map) still get distinct, correct labels.
     """
     from provisa.compiler.sql_gen import CompilationContext, TableMeta
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     ctx = CompilationContext()
     ctx.aggregate_columns[1] = [("ticket_id", "integer"), ("subject", "varchar")]
@@ -1506,7 +1506,7 @@ def test_from_schema_table_label_physical_table_map():
     not the shared physical table_name.
     """
     from provisa.compiler.sql_gen import CompilationContext, TableMeta
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     ctx = CompilationContext()
     ctx.aggregate_columns[1] = [("ticket_id", "integer"), ("status", "varchar")]
@@ -1606,7 +1606,7 @@ def _make_cross_domain_label_map() -> CypherLabelMap:
 
 def test_traversal_only_node_as_start_raises():
     """Starting a MATCH on a traversal_only (cross-domain) node must raise CypherTranslateError."""
-    from provisa.cypher.translator_types import CypherTranslateError
+    from provisa.gql.translator_types import CypherTranslateError
 
     lm = _make_cross_domain_label_map()
     ast = parse_cypher("MATCH (s:Logistics:Shipments) RETURN s.status")

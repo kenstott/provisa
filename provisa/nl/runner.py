@@ -43,7 +43,7 @@ from provisa.nl.loop import (
 if TYPE_CHECKING:
     from provisa.executor.redirect import Delivery
     from provisa.api.app import AppState
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
 JobStore = InMemoryJobStore | RedisJobStore
 
@@ -624,7 +624,7 @@ def _build_cypher_label_map(
     role: str,
     app_state: AppState,
 ) -> "CypherLabelMap":
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     from provisa.security.rights import require_role
 

@@ -27,7 +27,7 @@ from provisa.api.admin.types import (
     SourceType,
 )
 from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
-from provisa.cypher.label_map import _to_rel_type as _to_cypher_rel_type
+from provisa.gql.label_map import _to_rel_type as _to_cypher_rel_type
 
 
 def _parse_mapping_json(mapping_json: str | None) -> dict:

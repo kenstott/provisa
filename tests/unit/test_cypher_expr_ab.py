@@ -15,13 +15,13 @@ fn-rewrite pipeline against a representative corpus, so any change in emitted IR
 import pytest
 import sqlglot
 
-from provisa.cypher.expr_context import TranslatorExprContext
+from provisa.gql.expr_context import TranslatorExprContext
 from provisa.cypher.expr_parser import parse_expression
-from provisa.cypher.expr_visitor import ExprLowering
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.expr_visitor import ExprLowering
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import _Translator
-from provisa.cypher.translator_helpers import _rewrite_cypher_fn_node
+from provisa.gql.translator import _Translator
+from provisa.gql.translator_helpers import _rewrite_cypher_fn_node
 
 _IR = "postgres"
 

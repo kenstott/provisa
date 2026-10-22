@@ -780,7 +780,7 @@ class TestCypherQueryFrontend:
     """
 
     def _make_label_map(self, multi_source: bool = False):
-        from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+        from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
         person = NodeMapping(
             label="Person",
@@ -841,7 +841,7 @@ class TestCypherQueryFrontend:
     def test_match_return_translates_to_select(self):
         # REQ-571: basic MATCH translates to SQL SELECT
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import cypher_to_sql
+        from provisa.gql.translator import cypher_to_sql
 
         lm = self._make_label_map()
         ast = parse_cypher("MATCH (n:Person) RETURN n.name")
@@ -853,7 +853,7 @@ class TestCypherQueryFrontend:
     def test_cross_source_cypher_allowed(self):
         # REQ-353: cross-source Cypher is permitted (not blocked by translator)
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import cypher_to_sql
+        from provisa.gql.translator import cypher_to_sql
 
         lm = self._make_label_map(multi_source=True)
         ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
@@ -866,7 +866,7 @@ class TestCypherQueryFrontend:
     def test_relationship_join_metadata_only(self):
         # REQ-574: relationships translate to JOIN conditions; no separate edges table
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import cypher_to_sql
+        from provisa.gql.translator import cypher_to_sql
 
         lm = self._make_label_map()
         ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
@@ -879,7 +879,7 @@ class TestCypherQueryFrontend:
     def test_bidirectional_traversal_produces_union(self):
         # REQ-575: (a)-[:KNOWS]-(b) without direction → UNION ALL of both directions
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import cypher_to_sql
+        from provisa.gql.translator import cypher_to_sql
 
         lm = self._make_label_map()
         ast = parse_cypher("MATCH (a:Person)-[:KNOWS]-(b:Person) RETURN a.name, b.name")
@@ -890,7 +890,7 @@ class TestCypherQueryFrontend:
     def test_with_clause_ctes_named_positionally(self):
         # REQ-578: WITH clause CTEs named _w0, _w1, ...
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import cypher_to_sql
+        from provisa.gql.translator import cypher_to_sql
 
         lm = self._make_label_map()
         ast = parse_cypher(
@@ -904,7 +904,7 @@ class TestCypherQueryFrontend:
     def test_datetime_literal_wrapped_as_timestamp(self):
         # REQ-409: ISO 8601 datetime string in WHERE wrapped as TIMESTAMP '...'
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import cypher_to_sql
+        from provisa.gql.translator import cypher_to_sql
 
         lm = self._make_label_map()
         ast = parse_cypher(
@@ -918,7 +918,7 @@ class TestCypherQueryFrontend:
     def test_multiple_equal_hop_paths_produce_union_all_branches(self):
         # REQ-577: when multiple schema paths of equal hops connect same start/end types,
         # all paths are emitted as UNION ALL branches
-        from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+        from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
         # Build a label map with two distinct paths from Person to Company
         person = NodeMapping(
@@ -977,7 +977,7 @@ class TestCypherQueryFrontend:
         )
 
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import cypher_to_sql
+        from provisa.gql.translator import cypher_to_sql
 
         # Query without specifying rel type — should match all paths
         ast = parse_cypher("MATCH (p:Person)-[]->(c:Company) RETURN p.name, c.name")

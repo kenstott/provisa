@@ -1083,7 +1083,7 @@ def v002_bypassed_for_same_source(shared_data: dict) -> None:
 
 
 def _r748_nodes():
-    from provisa.cypher.label_map import NodeMapping
+    from provisa.gql.label_map import NodeMapping
 
     pets_node = NodeMapping(
         label="Pets",
@@ -1117,7 +1117,7 @@ def _r748_nodes():
 
 
 def _r748_ctx_and_label_map():
-    from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
+    from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 
     pets_meta = TableMeta(
         table_id=1,

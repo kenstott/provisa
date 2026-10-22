@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
 from provisa.cypher.write_translator import (
     CypherWriteParseError,
     WriteTranslator,

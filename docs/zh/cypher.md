@@ -230,7 +230,7 @@ Cypher 通过两种传输方式访问同一个受治理的流水线：
 
 ### 表达式与模式覆盖范围 {: #expression-and-pattern-coverage }
 
-Cypher 表达式被解析为 AST，并逐节点下推为 SQL（`provisa/cypher/expr_parser.py`、`provisa/cypher/expr_visitor.py`）。该语法遵循 openCypher 的 `oC_Expression` 优先级体系。已支持：字面量、参数、属性访问、`n.prop`、索引与切片、算术运算（`+ - * / % ^`）、比较、`IN`、`STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`、`IS [NOT] NULL`、布尔 `AND` / `OR` / `XOR` / `NOT`、`CASE`、列表与映射字面量、列表与模式推导式（包括 `p = (…)` 路径绑定）、映射投影、`reduce`、`all` / `any` / `none` / `single` 量词、存在性子查询，以及函数调用。
+Cypher 表达式被解析为 AST，并逐节点下推为 SQL（`provisa/cypher/expr_parser.py`、`provisa/gql/expr_visitor.py`）。该语法遵循 openCypher 的 `oC_Expression` 优先级体系。已支持：字面量、参数、属性访问、`n.prop`、索引与切片、算术运算（`+ - * / % ^`）、比较、`IN`、`STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`、`IS [NOT] NULL`、布尔 `AND` / `OR` / `XOR` / `NOT`、`CASE`、列表与映射字面量、列表与模式推导式（包括 `p = (…)` 路径绑定）、映射投影、`reduce`、`all` / `any` / `none` / `single` 量词、存在性子查询，以及函数调用。
 
 9. **标签是固定的；您无法通过 Cypher 创建对象类型。** 标签会解析为已知领域、已知对象类型或限定形式的 `domain:object_type`，也就是已注册模式定义的封闭集合。Cypher 从不引入新的标签或类型。您只能为可写数据源中已定义的类型创建实例：`CREATE` 会向这类表写入行（见 §Writes），但不能定义新的标签或类型。两种标签形式都可接受，表示同一个判断：后缀形式 `n:Label` 和完整形式 `n IS :Label`（及其否定 `n IS NOT :Label`）。限定标签写作 `n:domain:object_type`。
 
