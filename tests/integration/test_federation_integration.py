@@ -233,11 +233,16 @@ def provisa_sdl(provisa) -> str:
 
 @pytest.fixture(scope="module")
 def order_type(provisa_sdl) -> tuple[str, str]:
-    """The orders entity's type name and its key field's type, as the subgraph's SDL has them."""
-    match = re.search(r'type (\w+) @key\(fields: "id"\) \{\n(.*?)\n\}', provisa_sdl, re.S)
-    assert match, provisa_sdl
-    (id_type,) = re.findall(r"^\s+id: (\S+)$", match.group(2), re.M)
-    return match.group(1), id_type
+    """The orders entity's type name and its key field's type, as the subgraph's SDL has them: the
+    type the ``orders`` root field answers (the role reads other keyed tables too, the meta
+    domain's among them)."""
+    root = re.search(r"^  orders(?:\(.*?\))?: \[(\w+)!\]", provisa_sdl, re.M | re.S)
+    assert root, provisa_sdl[-4000:]
+    type_name = root.group(1)
+    match = re.search(rf'type {type_name} @key\(fields: "id"\) \{{\n(.*?)\n\}}', provisa_sdl, re.S)
+    assert match, f'{type_name} has no @key(fields: "id")'
+    (id_type,) = re.findall(r"^\s+id: (\S+)$", match.group(1), re.M)
+    return type_name, id_type
 
 
 # -- the reviews subgraph: reviews that point at an order by key ------------------------------
@@ -319,9 +324,19 @@ const fs = require("fs");
 const { parse } = require("graphql");
 const { composeServices } = require("@apollo/composition");
 const subgraphs = JSON.parse(fs.readFileSync("subgraphs.json", "utf8"));
-const result = composeServices(
-  subgraphs.map((s) => ({ name: s.name, url: s.url, typeDefs: parse(s.sdl) }))
-);
+const parsed = subgraphs.map((s) => {
+  try {
+    return { name: s.name, url: s.url, typeDefs: parse(s.sdl) };
+  } catch (e) {
+    // Which subgraph's SDL graphql-js refused, where, and the lines around it.
+    const lines = s.sdl.split("\\n");
+    const at = (e.locations || [{ line: 1 }])[0].line;
+    const near = lines.slice(Math.max(0, at - 8), at + 2).map((l, i) => `${Math.max(1, at - 7) + i}: ${l}`);
+    console.error(`${s.name}: ${e.message} at ${JSON.stringify(e.locations)}\\n${near.join("\\n")}`);
+    process.exit(1);
+  }
+});
+const result = composeServices(parsed);
 if (result.errors) {
   console.error(result.errors.map((e) => e.message).join("\\n"));
   process.exit(1);
