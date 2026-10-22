@@ -47,10 +47,9 @@ steps:
   route: /sql
   capability: query_development
   sql: >-
-    SELECT b.county_name, b.region, b.population, b.deaths, b.death_rate, b.rate_modelled,
-           b.treatment_spent, b.deaths_per_million_spent
+    SELECT b.county_name, b.region, b.deaths, b.treatment_spent, b.deaths_per_million_spent
     FROM "opioids"."view_treatment_against_burden" AS b
-    ORDER BY b.deaths_per_million_spent DESC
+    ORDER BY b.deaths_per_million_spent DESC NULLS LAST
     LIMIT 15
 - key: opioidsAsPublic
   role: public
@@ -58,7 +57,7 @@ steps:
   sql: >-
     SELECT b.county_name, b.population, b.deaths, b.death_rate, b.federal_per_resident
     FROM "opioids"."view_overdose_burden_by_county" AS b
-    ORDER BY b.death_rate DESC
+    ORDER BY b.death_rate DESC NULLS LAST
     LIMIT 15
 - key: opioidsByRegion
   route: /query
