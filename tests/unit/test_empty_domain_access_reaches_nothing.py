@@ -121,6 +121,8 @@ def _ctx() -> CompilationContext:
             table_name=NAME_OF[tid],
             domain_id=domain,
         )
+        # Each table's one column, as the tables above have it: a graph node is identified by it.
+        ctx.aggregate_columns[tid] = [("id", "integer")]
     return ctx
 
 
