@@ -1,0 +1,40 @@
+# The certificate's renewal (provisa-tls-renew): daily, once fewer than ${renew_days} days remain on
+# the stored one. lego is a pinned release, checked against its published checksum.
+curl -fsSL -o /tmp/lego.tar.gz '${lego_url}'
+echo '${lego_sha256}  /tmp/lego.tar.gz' | sha256sum -c -
+tar -xzf /tmp/lego.tar.gz -C /usr/local/bin lego
+rm -f /tmp/lego.tar.gz
+printf '%s' '${script}' | base64 -d > /usr/local/bin/provisa-tls-renew
+chmod 755 /usr/local/bin/provisa-tls-renew
+cat > /etc/provisa-tls/renew.env <<'TLSENV'
+PROJECT='${project}'
+CERT_SECRET='${cert_secret}'
+KEY_SECRET='${key_secret}'
+TOKEN_SECRET='${token_secret}'
+ACME_EMAIL='${acme_email}'
+DOMAIN='${domain}'
+RENEW_DAYS='${renew_days}'
+LEGO_PATH=/var/lib/provisa-tls/lego
+TLSENV
+cat > /etc/systemd/system/provisa-tls-renew.service <<'UNIT'
+[Unit]
+Description=Provisa TLS certificate renewal (Let's Encrypt, DNS-01 on Cloudflare)
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/provisa-tls-renew
+UNIT
+cat > /etc/systemd/system/provisa-tls-renew.timer <<'UNIT'
+[Unit]
+Description=Provisa TLS certificate renewal, daily
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable provisa-tls-renew.timer
+systemctl start provisa-tls-renew.timer
