@@ -86888,7 +86888,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     ONTOLOGY:) The page is named Ontology in the UI: its navigation item, its title, its route,
     /admin/ontology, and the docs. The view described here is that page's graph. The API path
     /admin/glossary and the identifiers in code (glossary_read, glossary_rw, the glossary tables and
-    meta tables) keep their names for now.
+    meta tables) keep their names for now. (Amended 2026-10-22, OWL ROLES:) Each term's node carries
+    a badge naming its OWL role, as REQ-2140 derives it from what the term grounds: Class (grounded
+    in a table or view), Property (grounded in a column; datatype or object property), or Concept
+    (grounded in nothing, the abstract terms). A class term grounded in several tables with no
+    declared same-entity identity between them is flagged on the page as a curation gap. The page
+    keeps the curation words (term, concrete, abstract, grounds) beside the badge; the words class,
+    property, instance and mapping belong to the docs, the export and SPARQL.
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -87306,4 +87312,57 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2135
   - REQ-2138
   - REQ-2056
+  target: "2027-Q1"
+- id: REQ-2140
+  status: proposed
+  since: 2026-10
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A term stays the curated word, a SKOS concept, and its OWL role is derived from what it grounds.
+    A term grounded in a table or view is a Class, whose instances are that table's rows. A term
+    grounded in a column is a Property: a datatype property for a column of values, an object
+    property for a reference column. A term grounded in nothing (an abstract term) is a Concept and
+    may be a superclass. TABLE-LEVEL GROUNDING is new: a term reference with no column grounds the
+    term in the table itself, so glossary_term_refs no longer requires column_name. A class term may
+    ground many tables or views, and a table is grounded by at most one class term. A table without a
+    primary key cannot be grounded as a class, and the grounding is refused, naming the table.
+    Grounding is additive and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C
+    Direct Mapping: each row is an instance with the IRI {public URL}/id/{domain}/{table}/{primary
+    key}, typed by its table, and a class term additionally types the instances of every table it
+    grounds. Column-grounded property terms work exactly as today, across many tables, with no class
+    term required. IDENTITY ACROSS VARIANTS: instances from different tables are distinct by default.
+    A relationship between two class-grounded tables can be marked "same entity" on its keys; SPARQL
+    and the export then emit owl:sameAs between the instances it joins, the graph may draw them as one
+    node with several sources, and counts at the class's level resolve once per real entity. A class
+    grounded in several tables with no declared identity between them is a curation gap, flagged on
+    the Ontology page (REQ-2130). THE MAPPING: column lineage (logical columns through views) and
+    native references are the mapping from data to the ontology, provenance in the manner of R2RML,
+    and are not class assertions. Docs, the export and SPARQL use the words class, property, instance
+    and mapping; the curation UI keeps term, concrete, abstract and grounds, with the role badge.
+  use_case: >-
+    A curator grounds the word Customer in the tables that hold customers, and RDF tools, SPARQL and
+    the graph see one class with its instances, its properties and the identity between its sources,
+    without the curator having to model anything they do not want to.
+  scenario: |
+    Given a term Customer with a reference to the table crm.customers and none to a column, an
+    abstract term Party linked to it by KIND_OF, and a term Email grounded in two tables' email columns
+    When the curator opens the Ontology page
+    Then Customer shows the Class badge, Email the Property badge and Party the Concept badge
+    When Customer also grounds billing.accounts and no relationship between the two is marked same entity
+    Then the page flags Customer as a curation gap
+    When the relationship from billing.accounts to crm.customers is marked same entity on its keys
+    Then a SPARQL CONSTRUCT over Customer returns owl:sameAs between the joined instances, and a
+    count of Customer instances counts each real customer once
+    When the curator grounds a class term in a table without a primary key
+    Then the grounding is refused, naming the table
+  relates_to:
+  - REQ-2130
+  - REQ-2135
+  - REQ-1387
+  - REQ-1584
+  - REQ-1591
   target: "2027-Q1"
