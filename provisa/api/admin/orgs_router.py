@@ -1030,17 +1030,21 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
     from provisa.api.app import state as _app_state
     from provisa.scheduler.jobs import unschedule_org
 
-    # REQ-2006: its scheduled jobs first (its replica build pass fires every 2 s), so none fires
-    # against a store or schema this removes below.
-    unschedule_org(getattr(_app_state, "_scheduler", None), org_id)
-
     async with _admin_pool().acquire() as conn:
         # REQ-1921/REQ-1922: every environment of the org, in every region store its models
         # declare, goes first — all of it or nothing: an unreachable store refuses the delete,
         # naming its region, before anything here is removed.
         envs = [e["name"] for e in await list_envs(_admin_pool(), org_id)]
         try:
-            await purge_org_regions(_pool(), org_id, envs)
+            # REQ-2006: its scheduled jobs (its replica build pass fires every 2 s) stop once the
+            # purge can go ahead and before anything is dropped: none fires against a store or
+            # schema this removes, and a refused delete leaves the org running, whole.
+            await purge_org_regions(
+                _pool(),
+                org_id,
+                envs,
+                before_drop=lambda: unschedule_org(getattr(_app_state, "_scheduler", None), org_id),
+            )
         except RegionStoreUnreachable as refused:
             raise ApiError(
                 409,
