@@ -23,7 +23,8 @@ export type Shape =
   | "cone"
   | "tetrahedron"
   | "cylinder"
-  | "dodecahedron";
+  | "dodecahedron"
+  | "torus";
 
 /** A colour, as the --p3d-* token (profile3d.css) the scene's theme reads it from. */
 export type Colour =
@@ -39,15 +40,8 @@ export type Colour =
   | "cool"
   | "hl";
 
-/** A node kind's variant: a term concrete or abstract, a column in a data product or not, a table
- * as stored (the Ontology View's). */
-export type Variant =
-  | "plain"
-  | "concrete"
-  | "abstract"
-  | "in_product"
-  | "out_of_product"
-  | "stored";
+/** A node kind's variant: a term concrete or abstract, a column in a data product or not. */
+export type Variant = "plain" | "concrete" | "abstract" | "in_product" | "out_of_product";
 
 export interface Look {
   shape: Shape;
@@ -58,11 +52,12 @@ export interface Look {
 const BY_TYPE: Record<Exclude<NodeType, "term" | "column">, { shape: Shape; colour: Colour }> = {
   product: { shape: "icosahedron", colour: "accent" },
   domain: { shape: "sphere", colour: "fam-temporal" },
-  table: { shape: "box", colour: "fam-numeric" },
-  relation: { shape: "box", colour: "fam-foreign" },
+  // A table is a cylinder in every graph, a product's member or not.
+  table: { shape: "cylinder", colour: "fam-numeric" },
+  relation: { shape: "cylinder", colour: "fam-foreign" },
   command: { shape: "cone", colour: "warm" },
   checker: { shape: "tetrahedron", colour: "q-tail" },
-  profile: { shape: "cylinder", colour: "q-mid" },
+  profile: { shape: "torus", colour: "q-mid" },
   tag: { shape: "dodecahedron", colour: "fam-boolean" },
 };
 
@@ -77,9 +72,6 @@ export function nodeLook(n: GraphNode): Look {
       ? { shape: "cube", colour: "fam-numeric", variant: "in_product" }
       : { shape: "cube", colour: "fam-other", variant: "out_of_product" };
   }
-  // The Ontology View's tables, the fourth shape beside its terms, columns and domains.
-  if (n.type === "table" && n.stored)
-    return { shape: "cylinder", colour: "fam-numeric", variant: "stored" };
   return { ...BY_TYPE[n.type], variant: "plain" };
 }
 

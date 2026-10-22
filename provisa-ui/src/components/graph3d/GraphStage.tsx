@@ -162,12 +162,14 @@ export function GraphStage({
  * carry a status, the four styles a term's name takes. */
 function GraphLegend({ graph }: { graph: GraphData }) {
   const { t } = useTranslation();
-  const looks = new Map<string, { type: NodeType } & Look>();
+  const looks = new Map<string, { type: NodeType; name: string } & Look>();
   for (const type of LEGEND)
     for (const n of graph.nodes)
       if (n.type === type) {
         const look = nodeLook(n);
-        looks.set(`${type}:${look.variant}`, { type, ...look });
+        // A plain look is named as its node is (kindKey: the Ontology View's tables are tables).
+        const name = look.variant === "plain" ? kindKey(n) : `graph3d.look_${look.variant}`;
+        looks.set(`${type}:${look.variant}`, { type, name, ...look });
       }
   const statuses = graph.nodes.some((n) => n.status !== undefined);
   return (
@@ -178,7 +180,7 @@ function GraphLegend({ graph }: { graph: GraphData }) {
             className={`g3d-shape g3d-shape-${l.shape}`}
             style={{ background: `var(--p3d-${l.colour})` }}
           />
-          {l.variant === "plain" ? t(`graph3d.type_${l.type}`) : t(`graph3d.look_${l.variant}`)}
+          {t(l.name)}
         </span>
       ))}
       {statuses &&

@@ -55,6 +55,38 @@ describe("a node's look", () => {
     });
   });
 
+  it("draws a table as a cylinder in every graph, a product's member or a table a column is in", () => {
+    expect(nodeLook(n({ type: "table" }))).toEqual({
+      shape: "cylinder",
+      colour: "fam-numeric",
+      variant: "plain",
+    });
+    expect(nodeLook(n({ type: "table", stored: true }))).toEqual(nodeLook(n({ type: "table" })));
+    expect(nodeLook(n({ type: "relation" }))).toMatchObject({
+      shape: "cylinder",
+      colour: "fam-foreign",
+    });
+  });
+
+  it("gives a profile result a shape no other kind has", () => {
+    const profile = nodeLook(n({ type: "profile" })).shape;
+    expect(profile).toBe("torus");
+    const others = (
+      [
+        "product",
+        "domain",
+        "table",
+        "relation",
+        "command",
+        "checker",
+        "tag",
+        "term",
+        "column",
+      ] as const
+    ).map((type) => nodeLook(n({ type })).shape);
+    expect(others).not.toContain(profile);
+  });
+
   it("gives every kind one look whatever its status, so no node is see-through or resized", () => {
     for (const status of ["live", "proposed", "deprecated", "retired"] as const)
       expect(nodeLook(n({ type: "term", status }))).toEqual(nodeLook(n({ type: "term" })));

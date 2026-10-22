@@ -87,7 +87,14 @@ beforeEach(() => {
 describe("the Ontology View's Tables checkbox", () => {
   it("goes with Columns, and draws the owning tables while it is ticked", async () => {
     render(
-      <GraphExplorer data={data} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={data}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "ontology", subject: null }}
+        testId="x"
+      />,
     );
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const tables = screen.getByTestId("x-tables");
@@ -108,10 +115,37 @@ describe("the Ontology View's Tables checkbox", () => {
 
   it("lists the relationships by name among the edge types", async () => {
     render(
-      <GraphExplorer data={data} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={data}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "ontology", subject: null }}
+        testId="x"
+      />,
     );
     fireEvent.click(screen.getByTestId("x-filter-edge-type"));
     expect(await screen.findByTestId("x-filter-edge-type-option-PLACED_BY")).toBeInTheDocument();
     expect(screen.getByTestId("x-filter-edge-type-option-PART_OF")).toBeInTheDocument();
+  });
+
+  it("is remembered with the graph's other settings", async () => {
+    const view = () => (
+      <GraphExplorer
+        data={data}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "ontology", subject: null }}
+        testId="x"
+      />
+    );
+    const first = render(view());
+    fireEvent.click(screen.getByTestId("x-tables"));
+    await waitFor(() => expect(screen.getByTestId("x-tables")).toBeChecked());
+    first.unmount();
+
+    render(view());
+    expect(screen.getByTestId("x-tables")).toBeChecked();
   });
 });

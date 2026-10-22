@@ -108,6 +108,8 @@ function geometry(shape: Shape, r: number): THREE.BufferGeometry {
       return new THREE.DodecahedronGeometry(r, 0);
     case "diamond":
       return new THREE.OctahedronGeometry(r * 1.2, 0);
+    case "torus":
+      return new THREE.TorusGeometry(r * 0.75, r * 0.3, 10, 24);
   }
 }
 

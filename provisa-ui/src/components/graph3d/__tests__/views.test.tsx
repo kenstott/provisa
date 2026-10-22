@@ -118,6 +118,10 @@ describe("the Knowledge Graph panel", () => {
       // A term's entry names its variant (nodeLook).
       "concrete term",
     ]);
+    // Each entry keys its shape: a table is a cylinder here as in every graph.
+    expect(legend.querySelector('[data-testid="legend-table:plain"] i')).toHaveClass(
+      "g3d-shape-cylinder",
+    );
   });
 
   it("drops a layer's entry from the full graph's legend as the layer goes", async () => {

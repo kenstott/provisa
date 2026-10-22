@@ -81,6 +81,17 @@
 .g3d-shape-sphere {
   border-radius: 50%;
 }
+/* A cylinder seen from the side: rounded top and bottom. */
+.g3d-shape-cylinder {
+  width: 8px;
+  height: 10px;
+  border-radius: 50% / 25%;
+}
+/* A torus: a ring. */
+.g3d-shape-torus {
+  border-radius: 50%;
+  mask: radial-gradient(circle, transparent 2px, #000 2.5px);
+}
 .g3d-legend-status {
   font-family: var(--mantine-font-family-monospace);
 }
