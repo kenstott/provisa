@@ -225,7 +225,7 @@ class TestKnownDbProceedsToExecution:
 
 
 def _make_label_map_from_spec(nodes_spec: list[_NodeSpec]):
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
     nodes: dict[str, NodeMapping] = {}
     for type_name, domain_id in nodes_spec:
@@ -298,7 +298,7 @@ class TestBoltLabelMapIntegration:
         mock_ctx, mock_state, _ = self._make_mock_app_state(["sales"], nodes_spec)
 
         with patch(
-            "provisa.cypher.label_map.CypherLabelMap.from_schema",
+            "provisa.gql.label_map.CypherLabelMap.from_schema",
             return_value=_make_label_map_from_spec(nodes_spec),
         ):
             label_map = _bolt_label_map(
@@ -327,7 +327,7 @@ class TestBoltLabelMapIntegration:
         mock_ctx, mock_state, _ = self._make_mock_app_state(["sales", "ops", "meta"], nodes_spec)
 
         with patch(
-            "provisa.cypher.label_map.CypherLabelMap.from_schema",
+            "provisa.gql.label_map.CypherLabelMap.from_schema",
             return_value=_make_label_map_from_spec(nodes_spec),
         ):
             label_map = _bolt_label_map(mock_ctx, "analyst", include_ops=True, app_state=mock_state)

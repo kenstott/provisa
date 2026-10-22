@@ -230,7 +230,7 @@ Cypher 經由兩種傳輸方式抵達相同的受治理管線：
 
 ### 運算式與模式涵蓋範圍 {: #expression-and-pattern-coverage }
 
-Cypher 運算式會被剖析為一個 AST，並逐節點降階為 SQL（`provisa/cypher/expr_parser.py`、`provisa/cypher/expr_visitor.py`）。該文法遵循 openCypher 的 `oC_Expression` 優先權層級。支援項目：常值、參數、屬性存取、`n.prop`、索引與切片、算術運算（`+ - * / % ^`）、比較、`IN`、`STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`、`IS [NOT] NULL`、布林 `AND` / `OR` / `XOR` / `NOT`、`CASE`、清單及 map 常值、清單及模式推導式（包含 `p = (…)` 路徑繫結）、map 投影、`reduce`、`all` / `any` / `none` / `single` 量詞、存在性子查詢，以及函式呼叫。
+Cypher 運算式會被剖析為一個 AST，並逐節點降階為 SQL（`provisa/cypher/expr_parser.py`、`provisa/gql/expr_visitor.py`）。該文法遵循 openCypher 的 `oC_Expression` 優先權層級。支援項目：常值、參數、屬性存取、`n.prop`、索引與切片、算術運算（`+ - * / % ^`）、比較、`IN`、`STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`、`IS [NOT] NULL`、布林 `AND` / `OR` / `XOR` / `NOT`、`CASE`、清單及 map 常值、清單及模式推導式（包含 `p = (…)` 路徑繫結）、map 投影、`reduce`、`all` / `any` / `none` / `single` 量詞、存在性子查詢，以及函式呼叫。
 
 9. **標籤為固定值；您無法透過 Cypher 建立物件型別。** 標籤會解析為已知領域、已知物件型別或限定形式的 `domain:object_type`，也就是已登錄結構描述定義的封閉集合。Cypher 從不引入新的標籤或型別。您只能為可寫入資料來源中已定義的型別建立實例：`CREATE` 會向這類資料表寫入列（見 §Writes），但不能定義新的標籤或型別。兩種標籤形式都可接受，表示同一個判斷：後綴形式 `n:Label` 及完整形式 `n IS :Label`（及其否定 `n IS NOT :Label`）。限定標籤寫作 `n:domain:object_type`。
 

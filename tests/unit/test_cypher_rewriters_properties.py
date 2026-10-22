@@ -27,7 +27,7 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from provisa.cypher.map_projection import rewrite_bare_map_literals
+from provisa.gql.map_projection import rewrite_bare_map_literals
 from provisa.cypher.params import rewrite_params
 
 _NAMES = ["a", "b", "c", "x", "y"]

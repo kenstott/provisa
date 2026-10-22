@@ -25,16 +25,16 @@ from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
-from provisa.cypher.translator_helpers import (  # REQ-1586
+from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
+from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
     via_alias_for,
 )
-from provisa.cypher.translator_helpers import via_column as _via_column  # REQ-1586
+from provisa.gql.translator_helpers import via_column as _via_column  # REQ-1586
 
 if TYPE_CHECKING:
-    from provisa.cypher.translator import _Translator
+    from provisa.gql.translator import _Translator
 
 
 # The single-hop pattern a pattern comprehension supports: (src)-[:REL]->(tgt[:Label]). Whitespace is
@@ -374,7 +374,7 @@ class TranslatorExprContext:
     def resolve_map_projection(self, node: MapProjection) -> exp.Expression:
         # n{.a, x: e, .*} → MAP(ARRAY['a','x',...], ARRAY[n."a", (e), ...]) — dotted selectors use the
         # raw property name; literal entries lower their value expression (matching the text path).
-        from provisa.cypher.expr_visitor import ExprLowering
+        from provisa.gql.expr_visitor import ExprLowering
 
         info = self._t._var_table.get(node.var)
         nm = info[1] if info else None
@@ -395,7 +395,7 @@ class TranslatorExprContext:
     def resolve_pattern_comprehension(self, node: PatternComprehension) -> exp.Expression:
         # [ (src)-[:REL]->(tgt) WHERE p | proj ] → a correlated ARRAY subquery over the target table,
         # joined back to src — the same "embedded query addressed out as a subquery" shape.
-        from provisa.cypher.expr_visitor import ExprLowering
+        from provisa.gql.expr_visitor import ExprLowering
 
         m = _PC_RE.search(node.pattern)
         if m is None:
@@ -406,7 +406,7 @@ class TranslatorExprContext:
         if rel is None and rel_type and rel_type not in t._lm.aliases:
             # REQ-603: a type that is not registered is refused, never read as some other
             # relationship of the source.
-            from provisa.cypher.translator_types import UnregisteredRelationshipType
+            from provisa.gql.translator_types import UnregisteredRelationshipType
 
             raise UnregisteredRelationshipType([rel_type])
         if rel is None:
@@ -481,7 +481,7 @@ class TranslatorExprContext:
         text path used): parse, run a fresh ``_Translator`` seeded with the outer ``_var_table``,
         merge parameters back, and return the inner SELECT as an AST."""
         from provisa.cypher.parser import parse_cypher
-        from provisa.cypher.translator import _Translator
+        from provisa.gql.translator import _Translator
 
         b = body.strip()
         if kind in ("EXISTS", "COUNT") and "RETURN" not in b.upper():

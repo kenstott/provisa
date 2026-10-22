@@ -30,7 +30,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.params import ParametersDoNotFit
@@ -510,7 +510,7 @@ def _collect_nl_user_tables(
 ) -> tuple[list, dict, dict, "CypherLabelMap"]:
     """Return (all_tables, user_nodes, table_name_to_type) from a schema context."""
     from provisa.compiler.sql_gen import TableMeta as _TableMeta
-    from provisa.cypher.label_map import CypherLabelMap as _CLM
+    from provisa.gql.label_map import CypherLabelMap as _CLM
 
     seen_type_names: set[str] = set()
     all_tables: list[_TableMeta] = []

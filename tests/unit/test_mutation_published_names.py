@@ -207,7 +207,7 @@ def test_a_cypher_create_names_the_columns_published_name_and_writes_the_physica
     """Cypher names a column by its property -- the same key its MATCH reads -- and the write it
     translates to names the published column, admitted and lowered to the physical one."""
     from provisa.compiler.sql_rewrite import lower_to_catalog_physical
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
     from provisa.cypher.write_translator import WriteTranslator, parse_cypher_write
     from tests.write_governance import admitted
 
@@ -228,9 +228,9 @@ def test_a_cypher_create_names_the_columns_published_name_and_writes_the_physica
 
 
 def test_a_cypher_match_returns_a_column_under_its_published_name(built):
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     _, ctx = built
     label_map = CypherLabelMap.from_schema(ctx, ["*"])

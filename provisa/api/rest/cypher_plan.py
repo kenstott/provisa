@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.pgwire.governed_plan import PlanSlot
 
 if TYPE_CHECKING:
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
 
 def _registry_anchors(state: Any) -> tuple[Any, ...]:

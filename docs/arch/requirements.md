@@ -1044,7 +1044,7 @@ Schema endpoint returns node_labels with a `pk: string | null` field (first PK c
 
 **Use case:** Explicit PK designation in schema enables semantic graph operations and node-centric navigation without node ID heuristics.
 
-**Code:** `provisa/api/rest/cypher_router.py`, `provisa/cypher/label_map.py`
+**Code:** `provisa/api/rest/cypher_router.py`, `provisa/gql/label_map.py`
 
 **Tests:** `tests/unit/test_core_registration.py`, `tests/unit/test_graph_schema.py`, `tests/unit/test_graph_schema_pk.py`, `tests/unit/test_relationship_alias.py`, `tests/unit/test_schema_pk_requirements.py`
 
@@ -3112,7 +3112,7 @@ Cypher translator detects ISO 8601 datetime string literals in WHERE clauses and
 
 **Use case:** Automatic timestamp coercion eliminates manual casting for timestamp PK comparisons in Cypher queries.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_schema_service.py`
 
@@ -3260,7 +3260,7 @@ Correlated CALL subqueries of the form CALL { WITH x MATCH (x)-[:R]->(n) RETURN 
 
 **Use case:** CROSS JOIN LATERAL translation of correlated CALL subqueries lets graph clients use subquery-pattern idioms that are common in openCypher workloads.
 
-**Code:** `provisa/cypher/correlated_call.py`, `provisa/cypher/translator.py`
+**Code:** `provisa/gql/correlated_call.py`, `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3274,7 +3274,7 @@ Relationships in Provisa exist solely as join metadata in the semantic layer (Jo
 
 **Use case:** Restricting relationships to join metadata avoids the complexity of relationship property storage while covering the vast majority of graph traversal use cases.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3288,7 +3288,7 @@ Bidirectional traversal syntax (a)-[]-(b) is rewritten at compile time to a UNIO
 
 **Use case:** Bidirectional sugar covers common graph traversal patterns without requiring stewards to register both directions of every relationship.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3302,7 +3302,7 @@ When shortestPath endpoints have different node types and no self-referential re
 
 **Use case:** Flat JOIN for heterogeneous shortestPath avoids unnecessary recursive CTE overhead when the schema topology determines the path uniquely.
 
-**Code:** `provisa/cypher/path_translator.py`
+**Code:** `provisa/gql/path_translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_path_translator.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3316,7 +3316,7 @@ When multiple schema paths of equal hop count connect the same start and end nod
 
 **Use case:** Emitting all schema paths as UNION ALL branches ensures no valid traversal is silently omitted when multiple relationship types connect the same pair of node types.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3330,7 +3330,7 @@ WITH clause CTEs are named _w0, _w1, ... using a positional index assigned withi
 
 **Use case:** Positional CTE naming is deterministic within one translation call; the collision risk on batch composition is a known limitation that callers must handle.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3496,7 +3496,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** Relationship immutability prevents accidental FK manipulation and keeps relationship metadata consistent with the declared join paths.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/label_map.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/label_map.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3510,7 +3510,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** Property-to-column mapping with type coercion enables straightforward graph-idiomatic CREATE statements without explicit SQL casting.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/select_builder.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/select_builder.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`
 
@@ -3524,7 +3524,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** WHERE clause reuse avoids duplicating filter translation logic between read and write paths.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/select_builder.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/select_builder.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`
 
@@ -3538,7 +3538,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** Property-to-column mapping with multi-assignment composition lets graph clients issue idiomatic UPDATE patterns.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/select_builder.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/select_builder.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`
 
@@ -7406,7 +7406,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Use case:** Consistent JSON serialization of graph objects enables client libraries to deserialize typed node/edge/path representations.
 
-**Code:** `provisa/cypher/assembler.py`, `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/assembler.py`, `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `provisa-ui/e2e/cypher-api.spec.ts`
 
@@ -7420,7 +7420,7 @@ Variable-length relationship patterns `[*1..n]` are compiled to recursive CTEs i
 
 **Use case:** Variable-length traversals enable clients to explore multi-hop relationships without writing nested joins.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7432,7 +7432,7 @@ Intermediate node property access in multi-hop MATCH patterns (e.g., `(p:Person)
 
 **Use case:** Complex traversals require filtering and returning properties from intermediate nodes without manual projection.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7444,7 +7444,7 @@ Path object RETURN (e.g., `RETURN p`) emits a JSON_OBJECT with `nodes` (array of
 
 **Use case:** Returning entire paths as objects enables clients to navigate graph traversals without unpacking individual nodes/edges.
 
-**Code:** `provisa/cypher/translator.py`, `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/translator.py`, `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7456,7 +7456,7 @@ Correlated CALL subqueries (e.g., `CALL { WITH x MATCH (x)-[:REL]->(y) RETURN y 
 
 **Use case:** Correlated subqueries enable filtering inner results based on outer row context without materializing cartesian joins.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7468,7 +7468,7 @@ Node label alternation (e.g., `(n:Label1|Label2)`) translates to UNION ALL branc
 
 **Use case:** Label alternation enables flexible node matching without explicit OR conditions.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7480,7 +7480,7 @@ Subquery predicates — EXISTS { ... }, COUNT { ... }, COLLECT { ... } — trans
 
 **Use case:** Subquery predicates enable complex filtering based on related-node aggregations without intermediate MATCH clauses.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7492,7 +7492,7 @@ Map projections — `n { .prop1, .prop2 }`, `n { .* }`, `n { key: expr }` — tr
 
 **Use case:** Map projections enable client-friendly reshaping of returned objects without manual column aliasing.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7504,7 +7504,7 @@ Bidirectional edge traversal (e.g., `(a)-[]-(b)` without direction marker) expan
 
 **Use case:** Bidirectional traversal enables undirected graph exploration without explicit forward/backward branches.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7516,7 +7516,7 @@ Backward relationship traversal (e.g., `(c:Company)<-[:WORKS_AT]-(p:Person)`) in
 
 **Use case:** Backward traversal enables reverse-direction path queries without schema bidirectionality.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7528,7 +7528,7 @@ String, list, and numeric functions (LEFT, RIGHT, TRIM, SIZE, COUNT DISTINCT, RE
 
 **Use case:** Function support enables rich query expressions without learning Trino-specific syntax.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7540,7 +7540,7 @@ Implicit GROUP BY is inferred in the RETURN clause when non-aggregated columns a
 
 **Use case:** Implicit GROUP BY matches Neo4j Cypher semantics and reduces query verbosity.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7552,7 +7552,7 @@ CASE expressions (both searched `CASE WHEN ... THEN ... ELSE ... END` and simple
 
 **Use case:** CASE expressions enable conditional logic in projections and filters without external control flow.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7564,7 +7564,7 @@ UNWIND clauses (e.g., `UNWIND [1,2,3] AS x`) translate to Trino UNNEST with CROS
 
 **Use case:** UNWIND enables iteration over lists without explicit array expansion in the application.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7576,7 +7576,7 @@ IN list predicates (e.g., `n.age IN [25, 30, 35]`) translate directly to SQL IN 
 
 **Use case:** IN predicates enable efficient filtering on multi-value sets without repeated OR conditions.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7588,7 +7588,7 @@ Pattern comprehensions (e.g., `[(p)-[:WORKS_AT]->(c:Company) | c.name]`) transla
 
 **Use case:** Pattern comprehensions enable inline aggregation of related rows without explicit GROUP BY.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7600,7 +7600,7 @@ length(p) function on a path variable returns the hop count (number of edges). F
 
 **Use case:** length(p) enables path-based filtering and ordering without explicit edge counting.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7612,7 +7612,7 @@ Recursive CTE shortestPath and allShortestPaths functions enforce max-hop bounds
 
 **Use case:** Shortest-path functions enable efficient shortest-path queries without client-side traversal algorithms.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7624,7 +7624,7 @@ Node graph variable deserialization from SQL result rows. JSON columns marked as
 
 **Use case:** Node deserialization enables type-safe access to node objects in the assembler stage before HTTP response serialization.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7636,7 +7636,7 @@ Edge graph variable deserialization from SQL result rows. JSON columns marked as
 
 **Use case:** Edge deserialization enables type-safe access to relationship objects with start/end node tracking.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7648,7 +7648,7 @@ Path graph variable deserialization from SQL result rows. Rows with _path_id and
 
 **Use case:** Path deserialization enables client-friendly navigation of multi-hop graph results without manual array unpacking.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7660,7 +7660,7 @@ Variable-length relationship edge columns (e.g., `[c*..5]` variable) are deseria
 
 **Use case:** Variable-length edge deserialization enables structured access to multi-hop relationship sequences.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7672,7 +7672,7 @@ Graph rewriter applies JSON object wrapping to all graph variables in the SELECT
 
 **Use case:** The graph rewriter preserves data integrity by making every graph variable JSON-compatible before HTTP serialization.
 
-**Code:** `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7684,7 +7684,7 @@ Domain-scoped node projections (e.g., `MATCH (n:PetStore) RETURN n`) include all
 
 **Use case:** Domain-scoped queries enable exploration of all entities within a business domain without explicit type specification.
 
-**Code:** `provisa/cypher/graph_rewriter.py`, `provisa/cypher/translator.py`
+**Code:** `provisa/gql/graph_rewriter.py`, `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7696,7 +7696,7 @@ Duplicate JSON key prevention. When a table's id_column differs from 'id' but th
 
 **Use case:** Duplicate key prevention ensures well-formed JSON output from federated tables with unconventional id column naming.
 
-**Code:** `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_graph_rewriter.py`
 
@@ -7708,7 +7708,7 @@ Anonymous all-rels path pattern `MATCH p=()-->()` (no node/edge labels or variab
 
 **Use case:** Anonymous paths enable exploratory graph queries without schema knowledge.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7720,7 +7720,7 @@ OPTIONAL MATCH chains (e.g., `OPTIONAL MATCH (a)-[r1]->(b) OPTIONAL MATCH (b)-[r
 
 **Use case:** OPTIONAL MATCH chains enable exploratory traversals where intermediate results may be absent without failing the entire query.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7732,7 +7732,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Use case:** UNION ALL queries enable multi-entity result merging and cross-entity property filtering in a single query.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7820,7 +7820,7 @@ Auto-impute endpoint generates relationship edges for visible graph nodes based 
 
 **Use case:** Graph Explorer users need to automatically discover edges between visible nodes without manually querying each relationship type.
 
-**Code:** `provisa/api/rest/cypher_router.py`, `provisa/cypher/assembler.py`
+**Code:** `provisa/api/rest/cypher_router.py`, `provisa/gql/assembler.py`
 
 **Tests:** `provisa-ui/e2e/cypher-impute-edges.spec.ts`, `tests/unit/test_cypher_analytics.py`
 
@@ -7832,7 +7832,7 @@ Imputed edge startNode/endNode ids must be stable integers (registered via node_
 
 **Use case:** Graph Explorer relies on stable node ids (as registered in node_ids.id) to correlate imputed edges with visible nodes; raw PKs cause canvas lookup failures.
 
-**Code:** `provisa/api/rest/cypher_router.py`, `provisa/cypher/assembler.py`
+**Code:** `provisa/api/rest/cypher_router.py`, `provisa/gql/assembler.py`
 
 **Tests:** `provisa-ui/e2e/cypher-impute-edges.spec.ts`, `tests/unit/test_cypher_analytics.py`
 
@@ -8120,7 +8120,7 @@ The Bolt endpoint must never subvert the connecting user's domain rights. The ac
 
 **Use case:** Bolt's flexible query language (cypher) could bypass view/role filtering if not enforced at the session/catalog level. This requirement ensures domain visibility is the immovable constraint, not an advisory filter.
 
-**Code:** `provisa/bolt/session.py`, `provisa/cypher/assembler.py`, `provisa/api/rest/cypher_router.py`
+**Code:** `provisa/bolt/session.py`, `provisa/gql/assembler.py`, `provisa/api/rest/cypher_router.py`
 
 **Tests:** `tests/unit/test_bolt_domain_ceiling.py`, `tests/integration/test_bolt_domain_ceiling.py`
 
@@ -9508,7 +9508,7 @@ Every query transform — governance (RLS, masking, visibility, row-cap), correl
 
 **Use case:** String/regex transforms silently mis-apply governance: a scalar subquery in the projection moves the masking boundary (PII leak), a non-t0 alias convention skips RLS qualification (scope-ambiguous predicate), and a parameterized LIMIT bypasses the row-cap ceiling. AST transforms make "governance applied" a structural property of the tree rather than a textual coincidence each frontend must keep satisfying.
 
-**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/rls.py`, `provisa/transpiler/transpile.py`, `provisa/cypher/translator.py`, `provisa/cypher/expr_parser.py`
+**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/rls.py`, `provisa/transpiler/transpile.py`, `provisa/gql/translator.py`, `provisa/cypher/expr_parser.py`
 
 **Tests:** `tests/unit/test_ast_transform_invariants.py`, `tests/unit/test_ast_transforms.py`, `tests/integration/test_ast_transform_e2e.py`, `tests/unit/test_cypher_expr_parser.py`
 
@@ -14392,7 +14392,7 @@ The entity/fact modeling roles ([REQ-1164](#REQ-1164)) are retained after loweri
 
 **Use case:** [REQ-1164](#REQ-1164) captures star/vault semantics at authoring time and evaporates them before any consumer can use them - downstream surfaces see undifferentiated tables. Retaining the role turns guesswork into derivation everywhere it matters. "Which groupings are valid for this measure" becomes computable, agents get the schema-shape context that makes generated queries correct, BI tools that infer star roles read them from the catalog instead of guessing, and the Ossie export preserves the fact/dimension distinction the standard itself is built around. This is the entity-taxonomy layer BusinessObjects universes carried and Ossie lacks - held internally, projected outward where expressible.
 
-**Code:** `provisa/mv/modeling.py`, `provisa/api/admin/modeling_register.py`, `provisa/cypher/label_map.py`, `provisa/compiler/schema_gen.py`
+**Code:** `provisa/mv/modeling.py`, `provisa/api/admin/modeling_register.py`, `provisa/gql/label_map.py`, `provisa/compiler/schema_gen.py`
 
 **Tests:** `tests/unit/test_modeling.py`, `tests/unit/test_cypher_label_map.py`
 
@@ -15464,7 +15464,7 @@ ExprContext.resolve_property() must resolve post-WITH property references using 
 
 **Use case:** Cypher queries that carry a node variable through a WITH clause with an aggregate and then access that node's properties in RETURN fail with "Column cannot be resolved" errors without correct SQL table qualification.
 
-**Code:** `provisa/cypher/expr_context.py`
+**Code:** `provisa/gql/expr_context.py`
 
 **Tests:** `tests/unit/test_cypher_translator.py`
 
@@ -17802,7 +17802,7 @@ A junction table is declarable as a first-class Cypher relationship, and its own
 
 **Use case:** A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops make variable-length depth meaningless.
 
-**Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/cypher/parser.py`, `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`, `provisa/cypher/translator_helpers.py`, `provisa/cypher/select_builder.py`, `provisa/cypher/translator.py`, `provisa/cypher/translator_union.py`, `provisa/cypher/expr_context.py`, `provisa/api/_meta_seed.py`, `provisa/mv/models.py`, `provisa/mv/refresh.py`, `provisa/mv/view_reinject.py`, `provisa/api/app_loaders.py`, `provisa-ui/src/naming.ts`, `provisa-ui/src/components/relationships/JunctionPanel.tsx`, `provisa-ui/src/pages/GraphPage.tsx`, `provisa-ui/src/pages/graph-drop.ts`, `provisa-ui/src/components/graph/frame/use-overlay-navigation.ts`, `config/provisa.yaml`, `config/provisa-install.yaml`, `demo/files/create_demo_files.py`, `db/init.sql`, `start-ui-install.sh`
+**Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/cypher/parser.py`, `provisa/gql/label_map.py`, `provisa/gql/translator_rel.py`, `provisa/gql/translator_helpers.py`, `provisa/gql/select_builder.py`, `provisa/gql/translator.py`, `provisa/gql/translator_union.py`, `provisa/gql/expr_context.py`, `provisa/api/_meta_seed.py`, `provisa/mv/models.py`, `provisa/mv/refresh.py`, `provisa/mv/view_reinject.py`, `provisa/api/app_loaders.py`, `provisa-ui/src/naming.ts`, `provisa-ui/src/components/relationships/JunctionPanel.tsx`, `provisa-ui/src/pages/GraphPage.tsx`, `provisa-ui/src/pages/graph-drop.ts`, `provisa-ui/src/components/graph/frame/use-overlay-navigation.ts`, `config/provisa.yaml`, `config/provisa-install.yaml`, `demo/files/create_demo_files.py`, `db/init.sql`, `start-ui-install.sh`
 
 **Tests:** `tests/unit/test_cypher_junction_relationships.py`, `tests/unit/test_mv_junction_pattern.py`, `tests/integration/test_glossary_meta_domain.py`, `provisa-ui/src/__tests__/GraphDropExpansion.test.ts`, `provisa-ui/src/__tests__/JunctionPanel.test.tsx`
 
@@ -18314,7 +18314,7 @@ Every row of a registered table is traceable in the graph to its table and domai
 
 **Use case:** A graph user can go from a data row to the metadata of the table it came from (domain, description, tags, steward) in one query.
 
-**Code:** `provisa/compiler/context.py`, `provisa/cypher/label_map.py`, `provisa/cypher/path_functions.py`, `provisa/cypher/graph_rewriter.py`, `provisa/api/admin/schema_query.py`
+**Code:** `provisa/compiler/context.py`, `provisa/gql/label_map.py`, `provisa/gql/path_functions.py`, `provisa/gql/graph_rewriter.py`, `provisa/api/admin/schema_query.py`
 
 **Tests:** `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_graph_has_table_synthetic.py`, `tests/integration/test_graph_has_table_synthetic_e2e.py`, `tests/integration/test_public_columns_every_surface_e2e.py`
 
@@ -22046,7 +22046,7 @@ GraphQL enforces cross-domain access control by not exposing cross-domain tables
 
 Cypher enforces cross-domain access control at translator/parse time: starting node labels must map to a domain in the role's domain_access; cross-domain hops must follow a registered relationship. Direct MATCH on a node label outside the role's domain_access is rejected.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator.py`, `provisa/cypher/translator_union.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator.py`, `provisa/gql/translator_union.py`
 
 **Tests:** `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_label_map.py`
 
@@ -22066,7 +22066,7 @@ SQL enforces cross-domain access control at query-validation/parse time using th
 
 The registered relationships table is the single authority for what cross-domain connections are permitted across all three interfaces (GraphQL, Cypher, SQL). The enforcement logic is designed for reuse across interfaces.
 
-**Code:** `provisa/compiler/sql_validator.py`, `provisa/cypher/label_map.py`, `provisa/compiler/schema_gen.py`
+**Code:** `provisa/compiler/sql_validator.py`, `provisa/gql/label_map.py`, `provisa/compiler/schema_gen.py`
 
 **Tests:** `tests/unit/test_sql_endpoint_governance.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_visibility.py`
 
@@ -22350,7 +22350,7 @@ Transpilation is a compiler responsibility, never a transport responsibility. Re
 
 Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema) are each the responsibility of a single dedicated module. No transport implements catalog logic directly; transports consume the output of the centralized catalog module for their language.
 
-**Code:** `provisa/pgwire/catalog.py`, `provisa/cypher/label_map.py`, `provisa/bolt/session.py`
+**Code:** `provisa/pgwire/catalog.py`, `provisa/gql/label_map.py`, `provisa/bolt/session.py`
 
 **Tests:** —
 
@@ -23220,7 +23220,7 @@ publish query results to Kafka topics: new output format (Accept: application/x-
 
 The Relationship model accepts an optional alias field, a relationship type name (for example WORKS_FOR) that defaults to None. The alias is persisted with the relationship row and exposed to the Cypher label map.
 
-**Code:** `provisa/core/models.py`, `provisa/core/repositories/relationship.py`, `provisa/cypher/label_map.py`
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/relationship.py`, `provisa/gql/label_map.py`
 
 **Tests:** `tests/unit/test_relationship_alias.py`
 
@@ -23242,7 +23242,7 @@ A relationship alias is unique per source table. Saving a second relationship wi
 
 CypherLabelMap indexes relationships by alias so a Cypher relationship type written as the alias resolves to the mapped source and target tables. RelationshipMapping carries the alias, defaulting to None, and a wrong arrow direction or unknown type yields an empty result.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator_rel.py`
 
 **Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
 
@@ -23252,7 +23252,7 @@ CypherLabelMap indexes relationships by alias so a Cypher relationship type writ
 
 When several source/target pairs share one relationship alias, the aliases index stores every mapping under that alias and the Cypher translator emits a UNION ALL across them.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator_rel.py`
 
 **Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
 
@@ -24196,7 +24196,7 @@ Every query surface strives to match the capabilities of the other surfaces. A c
 
 **Use case:** A remote GraphQL table of orders has an embedded address object (its type is not registered) and a list of line items (a registered table). GraphQL returns address as a nested object and lineItems through the relationship; a Cypher client reads the same order node with address as a map property and reaches the line items over the edge.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_types.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator_types.py`
 
 **Tests:** `tests/unit/test_cypher_label_map.py`
 

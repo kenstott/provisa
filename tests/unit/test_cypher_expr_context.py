@@ -11,13 +11,13 @@ resolves the scoped leaves (property/param/function) exactly as the old regex pa
 quoted column name, unquoted table alias).
 """
 
-from provisa.cypher.expr_context import TranslatorExprContext
+from provisa.gql.expr_context import TranslatorExprContext
 from provisa.cypher.expr_parser import parse_expression as P
-from provisa.cypher.expr_visitor import ExprLowering
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.expr_visitor import ExprLowering
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import _Translator
-from provisa.cypher.translator_helpers import _rewrite_cypher_fn_node
+from provisa.gql.translator import _Translator
+from provisa.gql.translator_helpers import _rewrite_cypher_fn_node
 
 
 def _label_map() -> CypherLabelMap:

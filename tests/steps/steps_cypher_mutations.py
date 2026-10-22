@@ -38,7 +38,7 @@ from tests.write_governance import run_after_write
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
-from provisa.cypher.label_map import (
+from provisa.gql.label_map import (
     CypherLabelMap,
     NodeMapping,
     RelationshipMapping,

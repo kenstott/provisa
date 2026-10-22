@@ -30,7 +30,7 @@ from hypothesis import strategies as st
 from sqlglot import exp
 
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 from tests.unit.test_cypher_translator import _make_label_map
 
 _LM = _make_label_map()  # Person -> persons(name, age, scores), Company -> companies

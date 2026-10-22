@@ -83,7 +83,7 @@ class TestRegisterRelIds:
                 }
             }
         ]
-        from provisa.cypher.assembler import register_rel_ids
+        from provisa.gql.assembler import register_rel_ids
 
         await register_rel_ids(rows, tenant_db)
 
@@ -112,7 +112,7 @@ class TestRegisterRelIds:
                 "properties": {},
             }
         }
-        from provisa.cypher.assembler import register_rel_ids
+        from provisa.gql.assembler import register_rel_ids
 
         rows1 = [dict(edge_row)]
         await register_rel_ids(rows1, tenant_db)
@@ -144,7 +144,7 @@ class TestRegisterRelIds:
                 }
             }
         ]
-        from provisa.cypher.assembler import register_rel_ids
+        from provisa.gql.assembler import register_rel_ids
 
         await register_rel_ids(rows, tenant_db)
         identity = rows[0]["r"]["identity"]
@@ -153,7 +153,7 @@ class TestRegisterRelIds:
     async def test_noop_when_no_edges(self, tenant_db):
         """register_rel_ids is a no-op when rows contain no edge dicts."""
         rows: list[dict] = [{"scalar": 42}]
-        from provisa.cypher.assembler import register_rel_ids
+        from provisa.gql.assembler import register_rel_ids
 
         await register_rel_ids(rows, tenant_db)
         assert rows == [{"scalar": 42}]
@@ -171,7 +171,7 @@ class TestRegisterRelIds:
                 }
             }
         ]
-        from provisa.cypher.assembler import register_rel_ids
+        from provisa.gql.assembler import register_rel_ids
 
         await register_rel_ids(rows, None)
         assert rows[0]["r"]["identity"] == "TEST_REL:null-pool-1"
@@ -193,7 +193,7 @@ class TestRegisterRelIds:
                 }
             }
         ]
-        from provisa.cypher.assembler import register_rel_ids
+        from provisa.gql.assembler import register_rel_ids
 
         await register_rel_ids(rows, tenant_db)
 

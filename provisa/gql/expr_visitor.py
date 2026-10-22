@@ -27,7 +27,7 @@ from typing import Protocol, cast
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.expr_ast import (
+from provisa.gql.expr_ast import (
     Binary,
     Case,
     CypherExpr,

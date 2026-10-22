@@ -21,11 +21,8 @@ import re
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
-from provisa.cypher.parser import (
-    MatchClause,
-    PathPattern,
-)
-from provisa.cypher.label_map import JunctionMapping, NodeMapping, RelationshipMapping
+from provisa.gql.ir import MatchClause, PathPattern
+from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapping
 
 
 def _safe_alias(expr: str) -> str:

@@ -27,7 +27,8 @@ from __future__ import annotations
 
 import re
 
-from provisa.cypher.parser import MatchStep, WithClause, parse_cypher
+from provisa.cypher.parser import parse_cypher
+from provisa.gql.ir import MatchStep, WithClause
 
 
 class ProjectionFilterError(ValueError):

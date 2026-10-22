@@ -21,7 +21,7 @@ import re
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import RelationshipMapping
+from provisa.gql.label_map import RelationshipMapping
 
 
 def _resolve_label(

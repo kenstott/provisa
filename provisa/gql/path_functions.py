@@ -22,14 +22,14 @@ from typing import Any, cast
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import (
+from provisa.gql.label_map import (
     CypherLabelMap,
     JunctionMapping,
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.parser import MatchClause, NodePattern, PathFunction, RelPattern
-from provisa.cypher.translator_helpers import _make_junction_joins  # REQ-1586
+from provisa.gql.ir import MatchClause, NodePattern, PathFunction, RelPattern
+from provisa.gql.translator_helpers import _make_junction_joins  # REQ-1586
 
 # Requirements: REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351
 
@@ -229,7 +229,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
 
     def _translate_path_function(self, clause: MatchClause) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Entry point: route to flat-JOIN or recursive-CTE path."""
-        from provisa.cypher.translator_types import (
+        from provisa.gql.translator_types import (
             CypherTranslateError,
         )  # avoid circular at module level
 

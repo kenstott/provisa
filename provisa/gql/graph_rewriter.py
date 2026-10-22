@@ -24,8 +24,8 @@ from typing import cast
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.translator_types import GraphVarKind
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.translator_types import GraphVarKind
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
 
 def apply_graph_rewrites(  # REQ-349, REQ-350

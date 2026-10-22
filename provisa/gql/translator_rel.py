@@ -21,15 +21,9 @@ from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.parser import (
-    MatchClause,
-    NodePattern,
-    PathPattern,
-    PathFunction,
-    RelPattern,
-)
-from provisa.cypher.label_map import NodeMapping, RelationshipMapping
-from provisa.cypher.translator_helpers import (
+from provisa.gql.ir import MatchClause, NodePattern, PathPattern, PathFunction, RelPattern
+from provisa.gql.label_map import NodeMapping, RelationshipMapping
+from provisa.gql.translator_helpers import (
     _is_bwd_for_candidate,
     _join_alias,
     _make_rel_joins,
@@ -39,7 +33,7 @@ from provisa.cypher.translator_helpers import (
     _tgt_col_expr_for_rm,
 )
 
-from provisa.cypher.translator_types import CypherTranslateError
+from provisa.gql.translator_types import CypherTranslateError
 
 
 class _RelJoinMixin:  # mixin for _Translator
@@ -49,9 +43,9 @@ class _RelJoinMixin:  # mixin for _Translator
         # ever mixed into; declaring them here tells the checker what the composed object provides.
         # Guarded, because a stub method defined unconditionally would sit ahead of the real one in
         # the MRO -- ``_RelJoinMixin`` precedes ``_UnionMixin`` -- and shadow it at runtime.
-        from provisa.cypher.label_map import CypherLabelMap, JunctionMapping
-        from provisa.cypher.parser import MatchClause as _MatchClause
-        from provisa.cypher.parser import NodePattern as _NodePattern
+        from provisa.gql.label_map import CypherLabelMap, JunctionMapping
+        from provisa.gql.ir import MatchClause as _MatchClause
+        from provisa.gql.ir import NodePattern as _NodePattern
 
         _lm: CypherLabelMap
         _var_table: dict[str, tuple[str, NodeMapping | None]]

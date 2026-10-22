@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.parser import ReturnClause, ReturnItem
-from provisa.cypher.translator_helpers import _is_bare_variable
+from provisa.gql.ir import ReturnClause, ReturnItem
+from provisa.gql.translator_helpers import _is_bare_variable
 
 # Requirements: REQ-347
 

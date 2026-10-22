@@ -21,14 +21,14 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap, JunctionMapping, NodeMapping
-from provisa.cypher.parser import ReturnClause
-from provisa.cypher.translator_helpers import junction_edge_fields  # REQ-1586
+from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.ir import ReturnClause
+from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
 
 # Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
 
 if TYPE_CHECKING:
-    from provisa.cypher.translator_types import GraphVarKind
+    from provisa.gql.translator_types import GraphVarKind
 
 
 def _is_bare_variable(text: str) -> bool:
@@ -537,7 +537,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         same name (``shared``), as Cypher clients name it: ``var.prop`` (#259)."""
         import re as _re
 
-        from provisa.cypher.translator_types import GraphVarKind
+        from provisa.gql.translator_types import GraphVarKind
 
         parsed = self._parse_expr(expr_text)
         _prop_m = _re.match(r"^([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)$", expr_text.strip())
@@ -612,7 +612,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         )
 
     def _build_select(self, return_clause: ReturnClause) -> list[exp.Expr]:
-        from provisa.cypher.translator_types import GraphVarKind  # avoid circular at module level
+        from provisa.gql.translator_types import GraphVarKind  # avoid circular at module level
 
         exprs: list[exp.Expr] = []
         passthrough_vars = getattr(self, "_passthrough_vars", set())

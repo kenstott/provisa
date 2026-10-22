@@ -92,15 +92,15 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     """Execute a Cypher query and return Neo4j Query API v2 format."""
     from provisa.api.app import state
     from provisa.cypher.parser import parse_cypher, CypherParseError
-    from provisa.cypher.label_map import CypherLabelMap
-    from provisa.cypher.translator import (
+    from provisa.gql.label_map import CypherLabelMap
+    from provisa.gql.translator import (
         cypher_to_sql,
         CypherCrossSourceError,
         CypherTranslateError,
     )
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
-    from provisa.cypher.assembler import assemble_rows, to_serializable
+    from provisa.gql.assembler import assemble_rows, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import cache_hint_for, request_cache_hint
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan

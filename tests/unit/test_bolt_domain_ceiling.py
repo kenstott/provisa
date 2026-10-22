@@ -211,7 +211,7 @@ _NodeSpec = tuple[str, str | None]
 
 
 def _make_node_mapping(type_name: str, domain_id: str | None, table_label: str):
-    from provisa.cypher.label_map import NodeMapping
+    from provisa.gql.label_map import NodeMapping
 
     label = table_label if not domain_id else f"{table_label.capitalize()}:{table_label}"
     return NodeMapping(
@@ -234,7 +234,7 @@ def _make_node_mapping(type_name: str, domain_id: str | None, table_label: str):
 class TestBoltLabelMapCeiling:
     def _make_label_map_with_nodes(self, nodes_spec: list[_NodeSpec]):
         """Build a CypherLabelMap from (type_name, domain_id) pairs."""
-        from provisa.cypher.label_map import CypherLabelMap
+        from provisa.gql.label_map import CypherLabelMap
 
         nodes = {}
         for type_name, domain_id in nodes_spec:

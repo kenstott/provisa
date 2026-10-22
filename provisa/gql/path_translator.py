@@ -22,8 +22,9 @@ Rejects unbounded [*] (enforced at parse time, also checked here).
 from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
-from provisa.cypher.parser import CypherParseError, PathFunction
-from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
+from provisa.cypher.parser import CypherParseError
+from provisa.gql.ir import PathFunction
+from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 
 # Requirements: REQ-345, REQ-346, REQ-348, REQ-351
 

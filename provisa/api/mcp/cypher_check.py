@@ -36,7 +36,7 @@ class GraphRead:
 def _unreturned_relationships(ast: Any, columns: dict[str, str]) -> str | None:
     """A read that matches a path but returns only its nodes: the Graph page draws no edge
     between them, so it can neither connect nor group them."""
-    from provisa.cypher.parser import PathFunction
+    from provisa.gql.ir import PathFunction
 
     hops = [
         t or "untyped"
@@ -64,10 +64,10 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.sql_validator import validate_sql
     from provisa.compiler.stage2 import build_governance_context
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.parser import CypherParseError, parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
-    from provisa.cypher.translator_types import (
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.translator_types import (
         CypherCrossSourceError,
         CypherTranslateError,
         UnregisteredRelationshipType,

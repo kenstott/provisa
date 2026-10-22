@@ -12,13 +12,8 @@
 
 import pytest
 
-from provisa.cypher.parser import (
-    CallSubquery,
-    CypherParseError,
-    PathFunction,
-    extract_parameters,
-    parse_cypher,
-)
+from provisa.cypher.parser import CypherParseError, extract_parameters, parse_cypher
+from provisa.gql.ir import CallSubquery, PathFunction
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +245,7 @@ def test_union_sub_ast_has_match():
 
 def test_with_creates_pipeline_stages():
     ast = parse_cypher("MATCH (n:Person) WITH n.name AS nm RETURN nm")
-    from provisa.cypher.parser import MatchStep, WithClause
+    from provisa.gql.ir import MatchStep, WithClause
 
     assert len(ast.pipeline) == 2
     assert isinstance(ast.pipeline[0], MatchStep)
@@ -260,7 +255,7 @@ def test_with_creates_pipeline_stages():
 
 def test_with_preserves_match_group_where():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 WITH n RETURN n")
-    from provisa.cypher.parser import MatchStep
+    from provisa.gql.ir import MatchStep
 
     step = ast.pipeline[0]
     assert isinstance(step, MatchStep)
@@ -277,7 +272,7 @@ def test_multi_with_pipeline():
         "RETURN nm, cn"
     )
     ast = parse_cypher(q)
-    from provisa.cypher.parser import MatchStep, WithClause
+    from provisa.gql.ir import MatchStep, WithClause
 
     assert len(ast.pipeline) == 4  # MatchStep, WithClause, MatchStep, WithClause
     assert isinstance(ast.pipeline[0], MatchStep)

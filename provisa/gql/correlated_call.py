@@ -33,8 +33,8 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap
-from provisa.cypher.parser import CallSubquery
+from provisa.gql.label_map import CypherLabelMap
+from provisa.gql.ir import CallSubquery
 
 
 class CorrelatedCallMixin:  # REQ-573
@@ -80,8 +80,8 @@ class CorrelatedCallMixin:  # REQ-573
         alias: str,
     ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Translate one correlated CALL body to a LATERAL subquery."""
-        from provisa.cypher.translator import _Translator
-        from provisa.cypher.translator_types import (
+        from provisa.gql.translator import _Translator
+        from provisa.gql.translator_types import (
             CypherTranslateError,
             UnregisteredRelationshipType,
         )

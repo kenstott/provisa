@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.translator_helpers import (
+from provisa.gql.translator_helpers import (
     _const_literal,
     _make_junction_joins,
     edge_properties_column,
@@ -28,7 +28,7 @@ from provisa.cypher.translator_helpers import (
     via_column,
 )
 
-from provisa.cypher.translator_types import CypherTranslateError
+from provisa.gql.translator_types import CypherTranslateError
 
 
 class _UnionMixin:  # mixin for _Translator
@@ -36,7 +36,7 @@ class _UnionMixin:  # mixin for _Translator
         # State and collaborating methods this mixin reads off ``self``; they belong to
         # ``_Translator``, the only class it is mixed into. Guarded, because an unconditional stub
         # would sit ahead of the real definition in the MRO and shadow it at runtime.
-        from provisa.cypher.label_map import CypherLabelMap
+        from provisa.gql.label_map import CypherLabelMap
 
         _lm: CypherLabelMap
 

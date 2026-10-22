@@ -11,7 +11,7 @@
 """Unit tests for relationship alias support (REQ-388, REQ-389, REQ-390, REQ-391, REQ-392)."""
 
 from provisa.core.models import Relationship, Cardinality
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
 
 # ---------------------------------------------------------------------------

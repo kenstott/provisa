@@ -13,7 +13,7 @@
 import pytest
 
 from provisa.core.models import Relationship
-from provisa.cypher.label_map import (
+from provisa.gql.label_map import (
     CypherLabelMap,
     JunctionMapping,
     NodeMapping,
@@ -22,8 +22,8 @@ from provisa.cypher.label_map import (
     junction_rel_type,
 )
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
-from provisa.cypher.translator_types import CypherTranslateError
+from provisa.gql.translator import cypher_to_sql
+from provisa.gql.translator_types import CypherTranslateError
 
 
 def _term_node() -> NodeMapping:
@@ -263,7 +263,7 @@ def test_a_declared_junction_is_not_a_node_label_in_the_graph_schema():
     registered table and is still queryable in SQL and GraphQL; only the graph schema drops it.
     """
 
-    from provisa.cypher.label_map import _drop_junction_nodes
+    from provisa.gql.label_map import _drop_junction_nodes
 
     edge_node = NodeMapping(
         label="Meta:GlossaryTermEdge",
@@ -301,7 +301,7 @@ def test_dropping_a_junction_node_leaves_no_empty_domain_or_table_bucket():
     """REQ-1586: a domain or table bucket that held only the junction goes with it, so no surface
     renders an empty group where the junction used to be."""
 
-    from provisa.cypher.label_map import _drop_junction_nodes
+    from provisa.gql.label_map import _drop_junction_nodes
 
     edge_node = NodeMapping(
         label="Meta:GlossaryTermEdge",
@@ -336,7 +336,7 @@ def test_the_junctions_own_fk_edges_go_with_the_node_they_terminate_on():
     replaces. Left behind, they name an endpoint label that no longer exists — and every consumer
     that resolves an endpoint (the graph-schema endpoint list, a label count) reads that key
     directly, so the stale edge is a KeyError, not a cosmetic duplicate."""
-    from provisa.cypher.label_map import _drop_junction_nodes
+    from provisa.gql.label_map import _drop_junction_nodes
 
     kind_of = _junction_edge()
     into = _fk_edge("GLOSSARY_TERM_EDGES", "GlossaryTerm", "GlossaryTermEdge")
@@ -422,8 +422,8 @@ def test_a_composite_junction_pairs_every_column_in_a_variable_length_path() -> 
 
 def test_the_recursive_path_builder_refuses_a_composite_junction() -> None:
     """path_to_recursive_sql carries one scalar end id per step, so composite has no pairing."""
-    from provisa.cypher.parser import PathFunction
-    from provisa.cypher.path_translator import PathTranslateError, path_to_recursive_sql
+    from provisa.gql.ir import PathFunction
+    from provisa.gql.path_translator import PathTranslateError, path_to_recursive_sql
 
     lm = _composite_label_map()
     ast = parse_cypher(

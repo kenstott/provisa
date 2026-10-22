@@ -56,7 +56,7 @@ async def impute_relationships(
     merged nodes+edges in the standard cypher response format.
     """
     from provisa.api.app import state
-    from provisa.cypher.assembler import assemble_rows, to_serializable
+    from provisa.gql.assembler import assemble_rows, to_serializable
     from provisa.cypher.parser import parse_cypher
 
     role_id = _resolve_role_id(request, state)
@@ -150,7 +150,7 @@ async def impute_relationships(
                         key = f"{ser['label']}:{ser['id']}"
                         all_nodes[key] = ser
 
-    from provisa.cypher.assembler import register_node_ids, register_rel_ids
+    from provisa.gql.assembler import register_node_ids, register_rel_ids
 
     serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
     await register_node_ids(serializable_merged, state.model_db)

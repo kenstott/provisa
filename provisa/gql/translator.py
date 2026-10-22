@@ -33,7 +33,7 @@ from typing import Any
 import sqlglot.expressions as exp
 import sqlglot
 
-from provisa.cypher.parser import (
+from provisa.gql.ir import (
     CypherAST,
     MatchClause,
     MatchStep,
@@ -44,13 +44,13 @@ from provisa.cypher.parser import (
     WithClause,
     OrderItem,
 )
-from provisa.cypher.label_map import CypherLabelMap, JunctionMapping, NodeMapping
-from provisa.cypher.path_functions import PathFunctionsMixin
-from provisa.cypher.select_builder import SelectBuilderMixin
-from provisa.cypher.correlated_call import CorrelatedCallMixin
-from provisa.cypher.map_projection import rewrite_bare_map_literals
-from provisa.cypher.group_by import GroupByMixin
-from provisa.cypher.translator_helpers import (
+from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.path_functions import PathFunctionsMixin
+from provisa.gql.select_builder import SelectBuilderMixin
+from provisa.gql.correlated_call import CorrelatedCallMixin
+from provisa.gql.map_projection import rewrite_bare_map_literals
+from provisa.gql.group_by import GroupByMixin
+from provisa.gql.translator_helpers import (
     _fold_where_into_optional_joins,
     _is_bare_variable,
     _node_table_expr,
@@ -60,13 +60,13 @@ from provisa.cypher.translator_helpers import (
     _safe_alias,
     edge_properties_column,
 )
-from provisa.cypher.translator_types import (
+from provisa.gql.translator_types import (
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
     GraphVarKind,
 )
-from provisa.cypher.translator_rel import _RelJoinMixin
-from provisa.cypher.translator_union import _UnionMixin
+from provisa.gql.translator_rel import _RelJoinMixin
+from provisa.gql.translator_union import _UnionMixin
 
 
 def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
@@ -92,8 +92,8 @@ def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabe
     inside a statement goes through too (EXISTS { }, COUNT { }, COLLECT { }, CALL { }) -- so none
     checks it for itself and none goes without. A pattern comprehension has no statement of its
     own and is checked where it is lowered (``expr_context.resolve_pattern_comprehension``)."""
-    from provisa.cypher.parser import PathFunction, PathPattern
-    from provisa.cypher.translator_types import UnregisteredRelationshipType
+    from provisa.gql.ir import PathFunction, PathPattern
+    from provisa.gql.translator_types import UnregisteredRelationshipType
 
     # A registered type: one the label map holds a relationship of, by its type or by an alias.
     registered = set(label_map.aliases) | {r.rel_type for r in label_map.relationships.values()}
@@ -668,7 +668,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if node.label_alternation and len(node.labels) > 1:
             ad_hoc = f"__alt_{node.variable}__"
             if ad_hoc not in self._lm.domains:
-                from provisa.cypher.label_map import CypherLabelMap
+                from provisa.gql.label_map import CypherLabelMap
 
                 self._lm = CypherLabelMap(
                     nodes=self._lm.nodes,
@@ -779,9 +779,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         """Lower a Cypher expression to sqlglot via the AST path (REQ-913): parse to a CypherExpr and
         lower it node-to-node against the translator's traversal state — no text rewriting. Raises on a
         construct the grammar/context cannot handle, so a gap surfaces loudly instead of degrading."""
-        from provisa.cypher.expr_context import TranslatorExprContext
+        from provisa.gql.expr_context import TranslatorExprContext
         from provisa.cypher.expr_parser import parse_expression
-        from provisa.cypher.expr_visitor import ExprLowering
+        from provisa.gql.expr_visitor import ExprLowering
 
         node = ExprLowering(TranslatorExprContext(self)).lower(parse_expression(text))
         return node.transform(_rewrite_cypher_fn_node)
@@ -907,7 +907,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             # Ambiguous table label across domains — treat as ad-hoc domain union
             ad_hoc = f"__tbl_{table_hits[0]}__"
             if ad_hoc not in self._lm.domains:
-                from provisa.cypher.label_map import CypherLabelMap
+                from provisa.gql.label_map import CypherLabelMap
 
                 self._lm = CypherLabelMap(
                     nodes=self._lm.nodes,

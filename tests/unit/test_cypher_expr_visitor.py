@@ -12,9 +12,9 @@ to plain columns so the context-free lowering can be asserted as concrete SQL.
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
+from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
 from provisa.cypher.expr_parser import parse_expression as P
-from provisa.cypher.expr_visitor import ExprLowering
+from provisa.gql.expr_visitor import ExprLowering
 
 
 class _FakeCtx:

@@ -928,7 +928,7 @@ def _bolt_label_map(ctx: Any, role_id: str, include_ops: bool, app_state: Any) -
     domain_access is always applied first, so no db name can exceed the role's rights.
     """
     from provisa.api.rest.cypher_plan import kept_label_map
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     domain_access = _bolt_domain_access(app_state, role_id)
     cache = app_state.schema_build_cache
@@ -978,7 +978,7 @@ def _business_view(base: Any) -> Any:
     from_schema's domain_access only gates cross-domain node addition — it does not filter the
     base node set — so the exclusion happens here, post-build."""
     from provisa.core import domain_policy
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
 
     sys_ids = set(domain_policy.system_domain_ids())
     biz_nodes = {tn: nm for tn, nm in base.nodes.items() if (nm.domain_id or "") not in sys_ids}
@@ -1471,7 +1471,7 @@ async def _execute_cypher(
     the read path honours it — catalog/system, command, and write branches never redirect (REQ-1194).
     """
     from provisa.api.app import state as app_state
-    from provisa.cypher.assembler import (
+    from provisa.gql.assembler import (
         assemble_rows,
         register_node_ids,
         register_rel_ids,
@@ -1479,12 +1479,12 @@ async def _execute_cypher(
     )
     from provisa.cypher.params import CypherParamError, bind_params, collect_param_names
     from provisa.cypher.parser import CypherParseError, parse_cypher
-    from provisa.cypher.translator import (
+    from provisa.gql.translator import (
         CypherCrossSourceError,
         CypherTranslateError,
         cypher_to_sql,
     )
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
