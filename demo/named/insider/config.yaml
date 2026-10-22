@@ -376,7 +376,7 @@ functions:
         CASE WHEN t.employee_id IS NULL THEN 0 ELSE 1 END,
         CASE WHEN c.deal_id IS NULL THEN 0 ELSE 1 END,
         CASE WHEN s.announced_on IS NULL OR CAST(s.sent_at AS DATE) < s.announced_on THEN 1 ELSE 0 END
-      FROM "bank"."message_deal_signals" AS s
+      FROM "bank"."view_message_deal_signals" AS s
       LEFT JOIN "bank"."deal_team" AS t ON t.deal_id = s.deal_id AND t.employee_id = s.sender_id
       LEFT JOIN (SELECT DISTINCT r.message_id, k.deal_id FROM "bank"."recipient" AS r
         JOIN "bank"."deal_counterparty" AS k ON k.domain = r.domain) AS c

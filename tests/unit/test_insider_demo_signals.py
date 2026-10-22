@@ -115,7 +115,7 @@ def test_the_view_applies_it_and_is_stored_before_match_deals_reads_it():
     assert relationships["screening-deal"]["target_table_id"] == "deal"
     assert view["materialize"] is True
     assert _FUNCTIONS["match_deals"]["impl_kind"] == "statement"
-    assert '"bank"."message_deal_signals"' in _FUNCTIONS["match_deals"]["binding"]["sql"]
+    assert '"bank"."view_message_deal_signals"' in _FUNCTIONS["match_deals"]["binding"]["sql"]
     steps = yaml.safe_load((_DEMO / "setup.yaml").read_text())["steps"]
     assert steps.index({"refresh": "message_deal_signals"}) < steps.index(
         {"command": "match_deals"}
@@ -179,3 +179,32 @@ def test_a_paraphrase_that_avoids_every_name_scores_by_meaning_alone():
 def test_a_meaning_below_its_floor_is_no_signal():
     found = _one("lunch", "see you at noon", [0.39, 0.92], [1.0, 0.0])
     assert (found.signals, found.meaning_match) == ("", 0.0)
+
+
+def test_match_deals_resolves_against_the_demos_own_tables_and_views():
+    """The statement names the stored view as it is registered, view_<id> (config_loader)."""
+    import copy
+
+    from provisa.compiler.statement_contract import derive
+    from provisa.core.config_loader import views_as_tables
+
+    raw = views_as_tables(copy.deepcopy(_CONFIG))
+    tables = [
+        {
+            "id": i,
+            "domain_id": t.get("domain_id"),
+            "schema_name": t.get("schema"),
+            "table_name": t["table"],
+            "alias": t.get("alias"),
+            "view_sql": t.get("view_sql"),
+            "columns": [
+                {"column_name": c["name"], "data_type": c["data_type"]}
+                for c in t.get("columns", [])
+            ],
+        }
+        for i, t in enumerate(raw["tables"])
+    ]
+    command = _FUNCTIONS["match_deals"]
+    contract = derive(command["name"], command["binding"], [], tables)
+    assert contract.broken is None
+    assert (contract.kind, contract.writes) == ("mutation", "bank.deal_match")
