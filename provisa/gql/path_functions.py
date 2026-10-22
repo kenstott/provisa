@@ -80,8 +80,9 @@ def _register_path_vars(
 
 def _extract_rel_attrs(
     rel: RelPattern | None,
-) -> tuple[list[str] | None, bool, bool, int]:
-    """Extract rel_types, variable_length, is_undirected, max_hops from an optional RelPattern."""
+) -> tuple[list[str] | None, bool, bool, int, int]:
+    """Extract rel_types, variable_length, is_undirected, max_hops and min_hops from an optional
+    RelPattern. A variable-length pattern with no lower bound starts at one hop, as Cypher's does."""
     rel_types = [rt.upper() for rt in rel.types] if rel and rel.types else None
     variable_length = bool(rel and rel.variable_length)
     is_undirected = bool(rel and getattr(rel, "direction", "right") == "none")
@@ -89,7 +90,10 @@ def _extract_rel_attrs(
         max_hops = rel.max_hops if rel is not None and rel.max_hops is not None else 10
     else:
         max_hops = 1
-    return rel_types, variable_length, is_undirected, max_hops
+    min_hops = (
+        rel.min_hops if variable_length and rel is not None and rel.min_hops is not None else 1
+    )
+    return rel_types, variable_length, is_undirected, max_hops, min_hops
 
 
 def _filter_allowed_rels(
@@ -242,7 +246,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         tgt_var = tgt_node.variable
         _register_path_vars(self._var_table, src_var, tgt_var, src_nm, tgt_nm)
 
-        rel_types, variable_length, is_undirected, max_hops = _extract_rel_attrs(rel)
+        rel_types, variable_length, is_undirected, max_hops, min_hops = _extract_rel_attrs(rel)
         allowed_rels = _filter_allowed_rels(self._lm, rel_types)
         if not is_undirected:
             allowed_rels = _rels_between(allowed_rels, src_type, tgt_type)
@@ -267,6 +271,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 tgt_type,
                 allowed_rels,
                 max_hops,
+                min_hops,
                 is_all_paths,
                 CypherTranslateError,
             )
@@ -281,6 +286,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             tgt_type,
             rel_types,
             max_hops,
+            min_hops,
             is_undirected,
             is_all_paths,
             CypherTranslateError,
@@ -298,6 +304,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         tgt_type: str,
         allowed_rels: list[RelationshipMapping],
         max_hops: int,
+        min_hops: int,
         is_all_paths: bool,
         CypherTranslateError: type,
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -317,6 +324,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             tgt_type,
             allowed_rels,
             max_hops,
+            min_hops,
             is_all=pf.func_name.lower() in ("allshortestpaths", "allpaths"),
             suppress_hops_order=is_all_paths,
         )
@@ -332,14 +340,28 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         tgt_type: str,
         rel_types: list[str] | None,
         max_hops: int,
+        min_hops: int,
         is_undirected: bool,
         is_all_paths: bool,
         CypherTranslateError: type,
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build flat JOIN path for non-self-referential variable-length or fixed-length."""
-        all_paths = self._lm.find_paths(
-            src_type, tgt_type, rel_types, max_hops, bidirectional=is_undirected
-        )
+        """Build flat JOIN path for non-self-referential variable-length or fixed-length.
+
+        Each schema path has a fixed length, so the lower bound keeps the paths at least that long
+        (#283). A zero-length path pairs a node with itself, which only a same-typed pattern can do.
+        """
+        if min_hops == 0 and src_type == tgt_type:
+            raise CypherTranslateError(
+                "A zero-length undirected path (e.g. [*0..3]) between nodes of one type is not "
+                "supported; give the path a direction or a lower bound of 1"
+            )
+        all_paths = [
+            p
+            for p in self._lm.find_paths(
+                src_type, tgt_type, rel_types, max_hops, bidirectional=is_undirected
+            )
+            if len(p) >= min_hops
+        ]
         if not all_paths:
             direction_hint = " (undirected — both directions searched)" if is_undirected else ""
             raise CypherTranslateError(
@@ -539,12 +561,19 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         tgt_type: str,
         allowed_rels: list[RelationshipMapping],
         max_hops: int,
+        min_hops: int,
         is_all: bool,
         suppress_hops_order: bool = False,
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Emit WITH RECURSIVE CTE for paths that may repeat edge traversals in data."""
+        """Emit WITH RECURSIVE CTE for paths that may repeat edge traversals in data.
+
+        The CTE walks from one hop up to the bound; a lower bound above one keeps only the rows
+        that far out (#283), and a lower bound of zero adds each start node as its own target.
+        """
         cte_name = f"_traverse_{src_var or src_type.lower()}"
-        cte_expr = self._build_recursive_cte(cte_name, src_nm, allowed_rels, max_hops)
+        cte_expr = self._build_recursive_cte(
+            cte_name, src_nm, allowed_rels, max_hops, zero_length=min_hops == 0
+        )
         self._recursive_ctes.append((cte_name, cte_expr))
 
         src_alias = src_var or src_nm.table_name
@@ -580,6 +609,16 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 expression=exp.Literal.string(tgt_type),
             ),
         )
+        if min_hops > 1:
+            traverse_join_on = exp.And(
+                this=traverse_join_on,
+                expression=exp.GTE(
+                    this=exp.Column(
+                        this=exp.Identifier(this="hops"), table=exp.Identifier(this="_t")
+                    ),
+                    expression=exp.Literal.number(min_hops),
+                ),
+            )
 
         # JOIN tgt_table AS tgt_alias ON tgt_alias.id = _t.cur_id
         tgt_join_on = exp.EQ(
@@ -682,11 +721,14 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         src_nm: NodeMapping,
         allowed_rels: list[RelationshipMapping],
         max_hops: int,
+        zero_length: bool = False,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build the UNION ALL body of the recursive CTE.
 
         Base case: one branch per allowed rel whose source_label == src_nm.label.
         Recursive step: one branch per allowed rel expanding from any current node type.
+        A zero-length path seeds with each source row as its own frontier at hops 0 instead, and
+        the recursive step walks every hop from there (#283).
 
         CTE schema: (src_id, cur_type, cur_id, hops)
           src_id  — source row id (anchored to the start of the path)
@@ -712,7 +754,22 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         # Base case: seed with 1-hop expansions from the source type
         # ------------------------------------------------------------------
         base_branches: list[exp.Select] = []
+        if zero_length:
+            seed_id = exp.Column(
+                this=exp.Identifier(this=src_nm.id_column, quoted=True),
+                table=exp.Identifier(this="_seed"),
+            )
+            base_branches.append(
+                exp.select(
+                    exp.alias_(seed_id, alias="src_id"),
+                    exp.alias_(exp.Literal.string(src_nm.type_name), alias="cur_type"),
+                    exp.alias_(seed_id.copy(), alias="cur_id"),
+                    exp.alias_(exp.Literal.number(0), alias="hops"),
+                ).from_(_tbl(src_nm, "_seed"))
+            )
         for rel in allowed_rels:
+            if zero_length:
+                break
             if rel.source_label != src_nm.type_name:
                 continue
             src_node_m = self._lm.nodes.get(rel.source_label)
