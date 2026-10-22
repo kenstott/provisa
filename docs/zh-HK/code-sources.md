@@ -18,6 +18,78 @@ from dataclasses import dataclass
 
 
 @dataclass
+class Region:
+    code: str
+    name: str
+
+
+def regions() -> list[Region]:
+    """Sales regions.
+
+    @table
+    """
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
+```
+
+提供服務的步驟：
+
+1. 新增一個 `python` 數據來源並指向程式碼：PyPI 套件、Git 提交、上載檔案或資料夾（見[程式碼從哪裡來](#where-the-code-comes-from)）。
+2. 儲存。Provisa 安裝並讀取程式碼，把 `regions` 作為一張表提供出來，包含 `code` 和 `name` 兩欄。
+3. 數據管家在一個網域（這裡是 `sales`）中註冊該表，並像其他表一樣授予存取權限。
+
+然後在 GraphQL 中讀取它：
+
+```graphql
+{
+  regions {
+    code
+    name
+  }
+}
+```
+
+或者在 SQL 中：
+
+```sql
+SELECT code, name
+FROM sales.regions
+```
+
+Node 的用法相同，使用 JSDoc 標籤和 TypeScript 類型：見 [Node](#node)。
+
+## 構建 {: #build }
+
+### 函數會變成甚麼 {: #what-a-function-becomes }
+
+Provisa 讀取程式碼本身的宣告：Python 中的 docstring 和類型提示，Node 中的 JSDoc 標籤和 TypeScript 類型。
+
+| 標籤 | 變成 |
+|---|---|
+| `@table` | 一張表。函數返回清單或可迭代物件，每個元素是一行。 |
+| `@command` | 一個指令，按請求執行。 |
+| `@stream` | 一張即時表。函數是產生器，每產出一行就傳送一行。 |
+
+- 沒有標籤的函數會被忽略。
+- Provisa 不認識的標籤會被拒絕，無法對應的類型也會被拒絕。拒絕訊息會一次列出所有問題，方便你一次改完。
+
+行類型決定欄：
+
+- 文字、數字、布林值、日期和時間戳記對應到相應的欄類型。清單保持為清單，巢狀物件變為具名類型。
+- 在 Python 中，行類型可以是 dataclass、`TypedDict`、`NamedTuple`、Pydantic 模型或任何帶註解欄位的類別。Pydantic 模型的行按 `model_dump(by_alias=True)` 的結果傳送，因此帶別名的欄位會成為以別名命名的欄。
+- 在 TypeScript 中，行類型可以是介面、類型別名或類別。
+- 註冊表時，欄位本身的文件會成為其欄的描述：Pydantic 的 `Field(description=...)`，或 TypeScript 屬性上的文件註解。
+- 寬鬆的行類型（Python 中的 `Any` 或 `dict`，TypeScript 中的 `any`、`unknown` 或 `Record`）沒有可讀取的欄。Provisa 會不帶參數呼叫函數一次，並根據返回的行建議欄。如果函數有必填參數，就無法這樣呼叫，你需要在註冊表時自行填寫欄類型。
+
+### 參數 {: #parameters }
+
+函數的參數成為其表的參數。下面這個函數為一個帳戶評分：
+
+```python
+@dataclass
 class Risk:
     score: float
     reasons: list[str]
@@ -31,13 +103,7 @@ def churn_risk(account_id: str) -> list[Risk]:
     return [Risk(score=0.82, reasons=["no logins in 30 days"])]
 ```
 
-提供服務的步驟：
-
-1. 新增一個 `python` 數據來源並指向程式碼：PyPI 套件、Git 提交、上載檔案或資料夾（見[程式碼從哪裡來](#where-the-code-comes-from)）。
-2. 儲存。Provisa 安裝並讀取程式碼，把 `churn_risk` 作為一張表提供出來，包含 `score` 和 `reasons` 兩欄和一個必填參數 `account_id`。
-3. 數據管家在一個網域（這裡是 `accounts`）中註冊該表，並像其他表一樣授予存取權限。
-
-然後讀取它。在 GraphQL 中，參數是欄位參數：
+在 GraphQL 中，參數是欄位參數：
 
 ```graphql
 {
@@ -56,36 +122,15 @@ FROM accounts.churn_risk
 WHERE _nf_account_id = 'A-1042'
 ```
 
-Node 的用法相同，使用 JSDoc 標籤和 TypeScript 類型：見 [Node](#node)。
-
-## 構建 {: #build }
-
-### 函數會變成甚麼 {: #what-a-function-becomes }
-
-Provisa 讀取程式碼本身的宣告：Python 中的 docstring 和類型提示，Node 中的 JSDoc 標籤和 TypeScript 類型。
-
-| 標籤 | 變成 |
-|---|---|
-| `@table` | 一張表。函數返回清單或可迭代物件，每個元素是一行。 |
-| `@command` | 一個指令，按請求執行。 |
-| `@stream` | 一張即時表。函數是產生器，每產出一行就傳送一行。 |
-
-- 沒有標籤的函數會被忽略。
-- Provisa 不認識的標籤會被拒絕，無法對應的類型也會被拒絕。拒絕訊息會指明函數並一次列出所有問題，方便你一次改完。
-
-行類型決定欄：
-
-- 文字、數字、布林值、日期和時間戳記對應到相應的欄類型。清單保持為清單，巢狀物件變為具名類型。
-- 在 Python 中，行類型可以是 dataclass、`TypedDict`、`NamedTuple`、Pydantic 模型或任何帶註解欄位的類別。Pydantic 模型的行按 `model_dump(by_alias=True)` 的結果傳送，因此帶別名的欄位會成為以別名命名的欄。
-- 在 TypeScript 中，行類型可以是介面、類型別名或類別。
-- 註冊表時，欄位本身的文件會成為其欄的描述：Pydantic 的 `Field(description=...)`，或 TypeScript 屬性上的文件註解。
-- 寬鬆的行類型（Python 中的 `Any` 或 `dict`，TypeScript 中的 `any`、`unknown` 或 `Record`）沒有可讀取的欄。Provisa 會不帶參數呼叫函數一次，並根據返回的行建議欄。如果函數有必填參數，就無法這樣呼叫，你需要在註冊表時自行填寫欄類型。
-
-函數的參數成為表的參數：
-
 - 沒有預設值的參數是必填的。省略它的讀取會在程式碼執行前被拒絕。
 - 有預設值的參數是選填的。省略時使用你的預設值。
 - 數據管家仍可把選填參數設為必填。
+
+### 函數能收到甚麼 {: #what-reaches-your-function }
+
+一次呼叫只收到讀取的參數，請求中的其他內容一概收不到。每個參數的值來自欄位參數、`_nf_` 條件、下推給它的篩選條件或 join 的鍵。你的函數永遠看不到是誰在提問：呼叫者的身份和角色留在 Provisa，由它管治函數傳回的列。
+
+下推正是建立在這一點之上。查詢中的篩選條件成為某個參數的值，因此函數可以只取所請求的列。
 
 ### 篩選下推 {: #pushdown }
 
@@ -105,7 +150,7 @@ Provisa 讀取程式碼本身的宣告：Python 中的 docstring 和類型提示
 
 - 欄上的範圍會填滿它的兩個參數：`score BETWEEN 0.5 AND 0.9` 得到 `gte_score` 和 `lte_score`。
 - 欄名完全按你在行類型中宣告的樣子比對。只有在 Provisa 為讀者重新命名欄之後才相符的名稱不算相符。
-- 函數類型無法接受的宣告會被指名拒絕。
+- 函數類型無法接受的宣告會被拒絕。
 - 篩選條件仍會作用於函數返回的行，因此忽略或放寬所給值的函數不會返回錯誤的行。
 
 ### 批次鍵：`loader` 參數 {: #batched-keys }
@@ -122,7 +167,7 @@ join 可以連到程式碼表，由另一張表的行提供其參數：例如把
 - **類型照常。** 函數仍只宣告其行類型，即行的清單。
 - **需要預設值。** `loader` 以外的參數需要預設值，因為 loader 呼叫只傳 `loader`。
 - **批次大小。** 像 DataLoader 的 `maxBatchSize` 一樣設上限，在以下三處之一寫 `loader N`：在 `@table` 旁寫一行 `@loader 100`，在 TypeScript 的 `loader` 參數前寫註解 `/* @loader 100 */`，或在 Python 中用 `Annotated` 字串，`loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`。Provisa 隨後把鍵按該大小分批，並按雜湊合併結果。不設大小時，一批包含所有鍵。
-- **指名拒絕。** 在沒有 `loader` 參數的函數上設大小、大小不是正整數、一個函數上有兩個大小。
+- **拒絕。** 在沒有 `loader` 參數的函數上設大小、大小不是正整數、一個函數上有兩個大小。
 
 當一次處理多個鍵的呼叫比多次處理一個鍵的呼叫更好時，使用 `loader`：
 
@@ -172,7 +217,7 @@ def churn_score(
 - **一個 Git 儲存庫。** 完整的 40 字元提交，如果程式碼不在頂層則指定子目錄。
 - **一次上載。** 程式碼的 `.zip`、`.tgz` 或 `.tar.gz`。
 - **你電腦上的資料夾。** **選擇資料夾**會在瀏覽器中把資料夾壓縮成 zip（排除 `node_modules`、`.venv`、`__pycache__` 和 `.git`），並作為數據來源的封存檔上載。在能保留資料夾的瀏覽器（Chrome、Edge）中，**儲存**會重新壓縮並再次傳送；其他瀏覽器會再次要求你選擇資料夾。
-- **伺服器上的目錄。** 在單一組織的安裝中，可以是營運人員允許的目錄之下的某個目錄。它在原處被讀取，因此修改會被下一次查詢讀到。多組織的伺服器會指名拒絕它。
+- **伺服器上的目錄。** 在單一組織的安裝中，可以是營運人員允許的目錄之下的某個目錄。它在原處被讀取，因此修改會被下一次查詢讀到。多組織的伺服器會拒絕它。
 
 除伺服器目錄外，每種來源都是固定的，因此數據來源執行的正是儲存時的程式碼。
 
@@ -308,7 +353,7 @@ volumes:
 
 **如果程式碼變了。**
 
-- 回來時運行的是其他程式碼的容器會被拒絕，並指明數據來源固定的雜湊和主機報告的雜湊，直到數據管家審核程式碼並在表單中重新固定。
+- 回來時運行的是其他程式碼的容器會被拒絕，直到數據管家審核程式碼並在表單中重新固定。
 - 要修改程式碼本身，把數據來源切回 dev，儲存新程式碼，再重新構建。
 
 ### Provisa 的服務 {: #provisas-services }
@@ -403,7 +448,7 @@ const reply = await client.chat.completions.create({
 
 - **按角色。** 把模型寫成 `provisa:<role>`，你會得到組織在 **Admin → AI Models** 下為該角色指定的模型；管理員更改選擇後它會隨之改變。當某個模型被指定了角色時，你也可以直接寫出該模型。
 - **嵌入。** `$PROVISA_SERVICES/llm/v1/embeddings` 接受你所在組織的任何向量模型。
-- 其他任何模型都會被指名拒絕。
+- 其他任何模型都會被拒絕。
 - 呼叫透過你所在組織自己的供應商、端點和密鑰發出，傳送的內容會先經過 Provisa 的遮蔽規則。
 - 不提供串流輸出。請傳送 `stream: false`，這也是預設值。
 
@@ -416,9 +461,9 @@ const reply = await client.chat.completions.create({
 - 無法提供沙盒的主機會拒絕啟動 worker 並指明缺少甚麼；程式碼絕不會在無約束狀態下運行。在 Windows 上，程式碼數據來源會被拒絕。
 - 在遠端主機上，容器的網絡政策就是程式碼的出站邊界。伺服器的出站允許清單適用於 dev 模式。
 
-### 指名拒絕 {: #refusals }
+### 拒絕 {: #refusals }
 
-每次拒絕都會指明拒絕了甚麼以及原因，能在程式碼執行前拒絕的都會在執行前拒絕：
+以下每種情況都會被拒絕，能在程式碼執行前拒絕的都會在執行前拒絕：
 
 - 未知標籤或 Provisa 無法對應的類型，一次列出一個函數的所有問題。
 - 省略必填參數的讀取。

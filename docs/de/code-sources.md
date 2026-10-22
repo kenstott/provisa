@@ -11,12 +11,85 @@ Was sich von einem Resolver unterscheidet, den Sie selbst schreiben:
 - **Heruntergereicht.** Ein Filter auf eine Spalte erreicht Ihre Funktion als Parameter, wenn Sie danach fragen.
 - **Überall bedient.** Dieselbe Funktion beantwortet GraphQL, SQL (über HTTP, pgwire und Arrow Flight), Cypher (über HTTP und Bolt), gRPC, REST, JSON:API und MCP.
 
+
 ## Ein erster Resolver {: #an-example }
 
 ```python
 from dataclasses import dataclass
 
 
+@dataclass
+class Region:
+    code: str
+    name: str
+
+
+def regions() -> list[Region]:
+    """Sales regions.
+
+    @table
+    """
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
+```
+
+So stellen Sie ihn bereit:
+
+1. Legen Sie eine `python`-Quelle an und verweisen Sie auf den Code: ein PyPI-Paket, einen Git-Commit, einen Upload oder einen Ordner (siehe [Woher der Code kommt](#where-the-code-comes-from)).
+2. Speichern Sie sie. Provisa installiert den Code, liest ihn und bietet `regions` als Tabelle mit den Spalten `code` und `name` an.
+3. Ein Steward registriert die Tabelle in einer Domäne, hier `sales`, und gewährt sie wie jede andere.
+
+Dann lesen Sie sie in GraphQL:
+
+```graphql
+{
+  regions {
+    code
+    name
+  }
+}
+```
+
+Oder in SQL:
+
+```sql
+SELECT code, name
+FROM sales.regions
+```
+
+Node funktioniert genauso, mit JSDoc-Tags und TypeScript-Typen: siehe [Node](#node).
+
+## Erstellen {: #build }
+
+### Was aus einer Funktion wird {: #what-a-function-becomes }
+
+Provisa liest die eigenen Deklarationen Ihres Codes: Docstrings und Type Hints in Python, JSDoc-Tags und TypeScript-Typen in Node.
+
+| Tag | Wird zu |
+|---|---|
+| `@table` | Einer Tabelle. Die Funktion gibt eine Liste oder ein Iterable zurück, und jedes Element ist eine Zeile. |
+| `@command` | Einem Befehl, der auf Anfrage ausgeführt wird. |
+| `@stream` | Einer Live-Tabelle. Die Funktion ist ein Generator, und jede Zeile wird gesendet, sobald sie geliefert wird. |
+
+- Eine Funktion ohne Tag wird ignoriert.
+- Ein Tag, das Provisa nicht kennt, wird abgelehnt, ebenso ein Typ, den es nicht abbilden kann. Die Ablehnung listet alle Probleme auf einmal, sodass Sie sie in einem Durchgang beheben.
+
+Der Zeilentyp liefert die Spalten:
+
+- Text, Zahlen, Booleans, Datumswerte und Zeitstempel werden ihren Spaltentypen zugeordnet. Listen bleiben Listen, und verschachtelte Objekte werden zu benannten Typen.
+- In Python ist ein Zeilentyp eine Dataclass, ein `TypedDict`, ein `NamedTuple`, ein Pydantic-Modell oder jede Klasse mit annotierten Feldern. Die Zeilen eines Pydantic-Modells werden so gesendet, wie `model_dump(by_alias=True)` sie liefert, sodass ein Feld mit Alias zu einer Spalte mit dem Namen des Alias wird.
+- In TypeScript ist ein Zeilentyp ein Interface, ein Typalias oder eine Klasse.
+- Die eigene Dokumentation eines Felds wird zur Beschreibung seiner Spalte, wenn Sie die Tabelle registrieren: ein Pydantic-`Field(description=...)` oder ein Doc-Kommentar an einer TypeScript-Eigenschaft.
+- Ein loser Zeilentyp (`Any` oder ein `dict` in Python, `any`, `unknown` oder ein `Record` in TypeScript) hat keine Spalten zum Lesen. Provisa ruft die Funktion einmal ohne Argumente auf und schlägt Spalten aus den zurückgegebenen Zeilen vor. Hat die Funktion einen Pflichtparameter, lässt sie sich so nicht aufrufen, und Sie geben die Spaltentypen beim Registrieren der Tabelle selbst an.
+
+### Parameter {: #parameters }
+
+Die Parameter einer Funktion werden zu den Parametern ihrer Tabelle. Diese bewertet ein Konto:
+
+```python
 @dataclass
 class Risk:
     score: float
@@ -31,13 +104,7 @@ def churn_risk(account_id: str) -> list[Risk]:
     return [Risk(score=0.82, reasons=["no logins in 30 days"])]
 ```
 
-So stellen Sie ihn bereit:
-
-1. Legen Sie eine `python`-Quelle an und verweisen Sie auf den Code: ein PyPI-Paket, einen Git-Commit, einen Upload oder einen Ordner (siehe [Woher der Code kommt](#where-the-code-comes-from)).
-2. Speichern Sie sie. Provisa installiert den Code, liest ihn und bietet `churn_risk` als Tabelle mit den Spalten `score` und `reasons` und einem Pflichtparameter `account_id` an.
-3. Ein Steward registriert die Tabelle in einer Domäne, hier `accounts`, und gewährt sie wie jede andere.
-
-Dann lesen Sie sie. In GraphQL ist der Parameter ein Feldargument:
+In GraphQL ist der Parameter ein Feldargument:
 
 ```graphql
 {
@@ -56,36 +123,15 @@ FROM accounts.churn_risk
 WHERE _nf_account_id = 'A-1042'
 ```
 
-Node funktioniert genauso, mit JSDoc-Tags und TypeScript-Typen: siehe [Node](#node).
-
-## Erstellen {: #build }
-
-### Was aus einer Funktion wird {: #what-a-function-becomes }
-
-Provisa liest die eigenen Deklarationen Ihres Codes: Docstrings und Type Hints in Python, JSDoc-Tags und TypeScript-Typen in Node.
-
-| Tag | Wird zu |
-|---|---|
-| `@table` | Einer Tabelle. Die Funktion gibt eine Liste oder ein Iterable zurück, und jedes Element ist eine Zeile. |
-| `@command` | Einem Befehl, der auf Anfrage ausgeführt wird. |
-| `@stream` | Einer Live-Tabelle. Die Funktion ist ein Generator, und jede Zeile wird gesendet, sobald sie geliefert wird. |
-
-- Eine Funktion ohne Tag wird ignoriert.
-- Ein Tag, das Provisa nicht kennt, wird abgelehnt, ebenso ein Typ, den es nicht abbilden kann. Die Ablehnung nennt die Funktion und listet alle Probleme auf einmal, sodass Sie sie in einem Durchgang beheben.
-
-Der Zeilentyp liefert die Spalten:
-
-- Text, Zahlen, Booleans, Datumswerte und Zeitstempel werden ihren Spaltentypen zugeordnet. Listen bleiben Listen, und verschachtelte Objekte werden zu benannten Typen.
-- In Python ist ein Zeilentyp eine Dataclass, ein `TypedDict`, ein `NamedTuple`, ein Pydantic-Modell oder jede Klasse mit annotierten Feldern. Die Zeilen eines Pydantic-Modells werden so gesendet, wie `model_dump(by_alias=True)` sie liefert, sodass ein Feld mit Alias zu einer Spalte mit dem Namen des Alias wird.
-- In TypeScript ist ein Zeilentyp ein Interface, ein Typalias oder eine Klasse.
-- Die eigene Dokumentation eines Felds wird zur Beschreibung seiner Spalte, wenn Sie die Tabelle registrieren: ein Pydantic-`Field(description=...)` oder ein Doc-Kommentar an einer TypeScript-Eigenschaft.
-- Ein loser Zeilentyp (`Any` oder ein `dict` in Python, `any`, `unknown` oder ein `Record` in TypeScript) hat keine Spalten zum Lesen. Provisa ruft die Funktion einmal ohne Argumente auf und schlägt Spalten aus den zurückgegebenen Zeilen vor. Hat die Funktion einen Pflichtparameter, lässt sie sich so nicht aufrufen, und Sie geben die Spaltentypen beim Registrieren der Tabelle selbst an.
-
-Die Parameter der Funktion werden zu den Parametern der Tabelle:
-
 - Ein Parameter ohne Standardwert ist Pflicht. Ein Lesen, das ihn weglässt, wird abgelehnt, bevor Ihr Code läuft.
 - Ein Parameter mit Standardwert ist optional. Lassen Sie ihn weg, gilt Ihr Standardwert.
 - Ein Steward kann einen optionalen trotzdem zur Pflicht machen.
+
+### Was bei Ihrer Funktion ankommt {: #what-reaches-your-function }
+
+Ein Aufruf bekommt die Argumente des Lesens und sonst nichts von der Anfrage. Der Wert jedes Parameters kommt aus einem Feldargument, einer `_nf_`-Bedingung, einem dorthin weitergereichten Filter oder den Schlüsseln eines Joins. Ihre Funktion sieht nie, wer fragt: Identität und Rollen des Aufrufers bleiben bei Provisa, das die Zeilen steuert, die Ihre Funktion zurückgibt.
+
+Darauf baut Pushdown auf. Ein Filter in der Abfrage wird zum Wert eines Parameters, sodass Ihre Funktion nur die angefragten Zeilen holen kann.
 
 ### Pushdown {: #pushdown }
 
@@ -105,7 +151,7 @@ Die Operatoren:
 
 - Ein Bereich auf einer Spalte füllt beide ihrer Parameter: `score BETWEEN 0.5 AND 0.9` ergibt `gte_score` und `lte_score`.
 - Spaltennamen werden genau so abgeglichen, wie Sie sie im Zeilentyp deklariert haben. Ein Name, der erst passt, wenn Provisa die Spalte für einen Leser umbenennt, ist kein Treffer.
-- Eine Deklaration, die die Typen Ihrer Funktion nicht annehmen können, wird namentlich abgelehnt.
+- Eine Deklaration, die die Typen Ihrer Funktion nicht annehmen können, wird abgelehnt.
 - Der Filter wird trotzdem auf die Zeilen angewendet, die Ihre Funktion zurückgibt, sodass eine Funktion, die einen übergebenen Wert ignoriert oder lockert, keine falschen Zeilen liefern kann.
 
 ### Gebündelte Schlüssel: der Parameter `loader` {: #batched-keys }
@@ -122,7 +168,7 @@ Eine Funktion mit einem Parameter namens `loader` wird stattdessen einmal pro Ba
 - **Wie gewohnt typisiert.** Die Funktion deklariert weiterhin nur ihren Zeilentyp, eine Liste von Zeilen.
 - **Standardwerte nötig.** Ihre Parameter neben `loader` brauchen Standardwerte, weil ein Loader-Aufruf nur `loader` übergibt.
 - **Batchgröße.** Begrenzen Sie sie, wie DataLoaders `maxBatchSize`, mit `loader N` an einer von drei Stellen: eine Zeile `@loader 100` neben `@table`, ein Kommentar `/* @loader 100 */` vor dem Parameter `loader` in TypeScript, oder ein `Annotated`-String in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa teilt die Schlüssel dann in Batches dieser Größe und führt die Antworten per Hash zusammen. Ohne Größe enthält ein Batch alle Schlüssel.
-- **Namentlich abgelehnt.** Eine Größe an einer Funktion ohne Parameter `loader`, eine Größe, die keine positive ganze Zahl ist, und zwei Größen an einer Funktion.
+- **Abgelehnt.** Eine Größe an einer Funktion ohne Parameter `loader`, eine Größe, die keine positive ganze Zahl ist, und zwei Größen an einer Funktion.
 
 Verwenden Sie `loader`, wenn ein Aufruf über viele Schlüssel besser ist als viele Aufrufe über einen:
 
@@ -172,7 +218,7 @@ Mit einer Kundentabelle verknüpft, wird sie mit einem `loader` wie `{"9f2c...":
 - **Ein Git-Repository.** Ein vollständiger 40-stelliger Commit, mit einem Unterverzeichnis, falls der Code nicht oben liegt.
 - **Ein Upload.** Ein `.zip`, `.tgz` oder `.tar.gz` des Codes.
 - **Ein Ordner auf Ihrem Rechner.** **Ordner wählen** zippt den Ordner in Ihrem Browser, ohne `node_modules`, `.venv`, `__pycache__` und `.git`, und lädt ihn als Archiv der Quelle hoch. In einem Browser, der den Ordner behalten kann (Chrome, Edge), zippt und sendet **Speichern** ihn erneut; ein anderer Browser fragt Sie erneut nach dem Ordner.
-- **Ein Verzeichnis auf dem Server.** Bei einer Installation mit einer Organisation ein Verzeichnis unter denen, die der Betreiber erlaubt. Es wird an Ort und Stelle gelesen, sodass eine Änderung von der nächsten Abfrage gelesen wird. Ein Server mit vielen Organisationen lehnt es namentlich ab.
+- **Ein Verzeichnis auf dem Server.** Bei einer Installation mit einer Organisation ein Verzeichnis unter denen, die der Betreiber erlaubt. Es wird an Ort und Stelle gelesen, sodass eine Änderung von der nächsten Abfrage gelesen wird. Ein Server mit vielen Organisationen lehnt es ab.
 
 Jede Herkunft außer dem Serververzeichnis ist fixiert, sodass die Quelle genau das ausführt, was gespeichert wurde.
 
@@ -308,7 +354,7 @@ Bei seinem ersten Start gibt der Container in seinem Log eine Zeile aus, die mit
 
 **Wenn sich der Code ändert.**
 
-- Ein Container, der mit anderem Code zurückkommt, wird abgelehnt, mit dem Hash, an den die Quelle fixiert ist, und dem, den der Host meldet, bis ein Steward den Code prüft und ihn im Formular neu fixiert.
+- Ein Container, der mit anderem Code zurückkommt, wird abgelehnt, bis ein Steward den Code prüft und ihn im Formular neu fixiert.
 - Um den Code selbst zu ändern, schalten Sie die Quelle zurück in den Dev-Modus, speichern den neuen Code und bauen erneut.
 
 ### Die Dienste von Provisa {: #provisas-services }
@@ -403,7 +449,7 @@ const reply = await client.chat.completions.create({
 
 - **Per Rolle.** Benennen Sie ein Modell als `provisa:<role>`, und Sie erhalten das Modell, das Ihre Organisation dieser Rolle unter **Admin → AI Models** zuweist; es folgt dieser Wahl, wenn ein Administrator sie ändert. Sie können ein Modell auch direkt benennen, wenn ihm eine Rolle zugewiesen ist.
 - **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` nimmt jedes der Vektormodelle Ihrer Organisation.
-- Jedes andere Modell wird namentlich abgelehnt.
+- Jedes andere Modell wird abgelehnt.
 - Der Aufruf geht über die eigenen Hersteller, Endpunkte und Schlüssel Ihrer Organisation hinaus, und was er sendet, durchläuft zuerst die Schwärzungsregeln von Provisa.
 - Streaming wird nicht angeboten. Senden Sie `stream: false`, den Standardwert.
 
@@ -416,9 +462,9 @@ const reply = await client.chat.completions.create({
 - Ein Host, der die Sandbox nicht bereitstellen kann, startet den Worker nicht und nennt, was fehlt; Code läuft nie unbeschränkt. Unter Windows werden Code-Quellen abgelehnt.
 - Auf einem Remote-Host ist die Netzwerkrichtlinie des Containers die Egress-Grenze des Codes. Die Egress-Allowlist des Servers gilt für den Dev-Modus.
 
-### Ablehnungen mit Namen {: #refusals }
+### Ablehnungen {: #refusals }
 
-Jede Ablehnung nennt, was sie abgelehnt hat und warum, wo möglich bevor Ihr Code läuft:
+Jeder dieser Fälle wird abgelehnt, wo möglich bevor Ihr Code läuft:
 
 - Ein unbekanntes Tag oder ein Typ, den Provisa nicht abbilden kann, alle Probleme einer Funktion auf einmal.
 - Ein Lesen, das einen Pflichtparameter weglässt.
