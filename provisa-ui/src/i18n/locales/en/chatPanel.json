@@ -34,6 +34,7 @@
     "chooseFile": "File to send",
     "graphCaption": "Nodes: {{nodes}} · Relationships: {{relationships}}",
     "downloadPng": "Download PNG",
-    "openOnGraphPage": "Open on Graph page"
+    "openOnGraphPage": "Open on Graph page",
+    "choiceClosed": "(closed without choosing)"
   }
 }

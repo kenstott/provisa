@@ -1029,3 +1029,78 @@ describe("ChatPanel — a tour step's stored exchange (REQ-2012)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("ChatPanel — a choice closed without picking", () => {
+  it("answers the choice as closed, and the next message's history has no empty message", async () => {
+    // The maintainer's 400 (messages.2: user messages must have non-empty content): Polly asks
+    // which table, the user clicks off the choice, Polly says so, and the next typed message
+    // carried the closed choice as an empty user message.
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const choice = {
+      id: "c1",
+      name: "present_choice",
+      input: {
+        question: "There's no table named 'orders'. Which did you mean to profile?",
+        mode: "single",
+        options: ["pet_store.pets", "shelter.animal_breeds"],
+      },
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "awaiting_client_tools",
+            assistant_content: [{ type: "tool_use", ...choice }],
+            server_tool_results: [],
+            pending: [choice],
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          { type: "text", text: "It looks like no option was picked." },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(sseResponse([{ type: "text", text: "Profiling." }, { type: "done" }]));
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
+    fireEvent.change(textarea, { target: { value: "Profile the orders table" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    // Clicked off the choice: the overlay itself, not the widget on it.
+    const overlay = await screen.findByTestId("chat-panel-choice-modal");
+    fireEvent.click(overlay);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const resumed = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+    const result = JSON.parse(resumed.messages.at(-1).content[0].content);
+    expect(result).toEqual({
+      success: true,
+      message: "The user closed the choice without picking an option.",
+      selected: null,
+    });
+    await waitFor(() => screen.getByText("It looks like no option was picked."));
+    expect(screen.getByText("(closed without choosing)")).toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: "profile shelter.animal_breeds" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const next = JSON.parse((fetchMock.mock.calls[2][1] as RequestInit).body as string);
+    const empty = (next.messages as { role: string; content: unknown }[]).filter(
+      (m) =>
+        m.role === "user" &&
+        (m.content === "" || (Array.isArray(m.content) && m.content.length === 0)),
+    );
+    expect(empty).toEqual([]);
+    expect(next.messages.at(-1)).toEqual({
+      role: "user",
+      content: "profile shelter.animal_breeds",
+    });
+    fetchMock.mockRestore();
+  });
+});

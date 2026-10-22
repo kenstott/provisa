@@ -34,6 +34,7 @@
     "chooseFile": "Te verzenden bestand",
     "graphCaption": "Knopen: {{nodes}} · Relaties: {{relationships}}",
     "downloadPng": "PNG downloaden",
-    "openOnGraphPage": "Openen op de Graaf-pagina"
+    "openOnGraphPage": "Openen op de Graaf-pagina",
+    "choiceClosed": "(gesloten zonder te kiezen)"
   }
 }

@@ -34,6 +34,7 @@
     "chooseFile": "Файл для отправки",
     "graphCaption": "Узлы: {{nodes}} · Связи: {{relationships}}",
     "downloadPng": "Скачать PNG",
-    "openOnGraphPage": "Открыть на странице «Граф»"
+    "openOnGraphPage": "Открыть на странице «Граф»",
+    "choiceClosed": "(закрыто без выбора)"
   }
 }

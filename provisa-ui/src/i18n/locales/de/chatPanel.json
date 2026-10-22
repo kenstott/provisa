@@ -34,6 +34,7 @@
     "chooseFile": "Zu sendende Datei",
     "graphCaption": "Knoten: {{nodes}} · Beziehungen: {{relationships}}",
     "downloadPng": "PNG herunterladen",
-    "openOnGraphPage": "Auf der Graph-Seite öffnen"
+    "openOnGraphPage": "Auf der Graph-Seite öffnen",
+    "choiceClosed": "(ohne Auswahl geschlossen)"
   }
 }
