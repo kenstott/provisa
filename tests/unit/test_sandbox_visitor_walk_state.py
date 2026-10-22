@@ -96,8 +96,9 @@ def test_time_travel_reaches_only_statements():
 def test_every_published_demo_is_a_parameter():
     names = walk_module.published_demos()
     assert "testdata" in names and "weblogs" in names
-    assert "retail" in names  # a regions-tier demo is walked like any other published one
-    assert "banking" not in names and "perf" not in names  # published: false
+    # A regions-tier demo is walked like any other published one, whichever node serves it.
+    assert "retail" in names and "banking" in names
+    assert "perf" not in names  # published: false
     assert "groupexposure" in names  # published once its card was taken from its real answer
 
 

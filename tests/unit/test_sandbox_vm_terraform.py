@@ -52,8 +52,9 @@ def test_the_coordinator_hands_the_tier_over_only_when_asked():
     for line in (
         "export COMPOSE_PROFILES=control",
         'export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"',
-        # REQ-2068: the regions sandbox tier, on the same VM.
-        'export PROVISA_SANDBOX_REGIONS_API_URL="https://${var.sandbox_internal_ip}:8100"',
+        # REQ-2068: the regions sandbox tier's nodes, on the same VM.
+        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,'
+        'warehouse=https://${var.sandbox_internal_ip}:8101"',
     ):
         assert line in sandbox, line
     variables = (_TF / "variables.tf").read_text()
@@ -70,19 +71,24 @@ def test_the_vm_may_be_started_and_stopped_by_the_node_account_and_on_it_alone()
     assert "instance_name = google_compute_instance.sandbox[0].name" in sandbox
 
 
-def test_the_vm_runs_the_retail_demos_stores():
-    """REQ-2068: the regions tier's demo is the VM's to run beside the sandbox tier's; its stores
-    are synced once it has a bundle."""
+def test_the_vm_runs_the_regions_demos_stores():
+    """REQ-2068: the regions tier's demos are the VM's to run beside the sandbox tier's; their
+    stores are synced once each has a bundle."""
     sandbox = (_TF / "sandbox.tf").read_text()
     lists = _TF.parents[1] / "packaging" / "linux" / "demo-stores"
-    assert "retail" in (lists / "regions-tier-bundles").read_text().strip().split(",")
+    listed = (lists / "regions-tier-bundles").read_text().strip().split(",")
+    assert "retail" in listed and "banking" in listed
     # The sync takes both tiers' demos, through the one composition deploy-cloud.sh shares.
     assert (
         'for d in split(",", "${local.sandbox_tier_bundles},${local.regions_tier_bundles}") : d'
         in sandbox
     )
-    # Published on the VM's VPC address, where the coordinator reaches it.
+    # Each node published on the VM's VPC address, where the coordinator reaches it.
     assert 'export PROVISA_SANDBOX_REGIONS_PUBLISH="${var.sandbox_internal_ip}:8100"' in sandbox
+    assert (
+        'export PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH="${var.sandbox_internal_ip}:8101"'
+        in sandbox
+    )
 
 
 # --- the sync's settings, at boot and at a patch ---------------------------------------------------

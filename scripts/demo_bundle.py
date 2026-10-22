@@ -487,13 +487,31 @@ def _demo_regions(demo: Path) -> list[str]:
     return [*regions["headless"], regions["visitor"]]
 
 
-def _config(work: Path, *, regions: bool = False) -> Path:
+def _tier_for(regions: list[str]) -> dict:
+    """The regions tier's platform regions, stores and regions, those of ``regions`` alone: a
+    demo's seeding node runs in the demo's regions and is given their stores and addresses only."""
+    tier = yaml.safe_load(_REGIONS_TIER_CONFIG.read_text())
+    selected = [r for r in tier["regions"] if r["id"] in regions]
+    used = {
+        r[k] for r in selected for k in ("engine", "replicas", "views", "cache", "state", "record")
+    }
+    return {
+        "platform": {
+            **tier["platform"],
+            "regions": [r for r in tier["platform"]["regions"] if r["id"] in regions],
+        },
+        "stores": [s for s in tier["stores"] if s["id"] in used],
+        "regions": selected,
+    }
+
+
+def _config(work: Path, *, regions: list[str] | None = None) -> Path:
     path = work / "config.yaml"
-    tier = yaml.safe_load(_REGIONS_TIER_CONFIG.read_text()) if regions else {}
+    tier = _tier_for(regions) if regions else {}
     path.write_text(
         yaml.safe_dump(
             {
-                **{key: tier[key] for key in ("platform", "stores", "regions") if key in tier},
+                **tier,
                 "federation_engine": "duckdb",
                 "multitenancy": True,
                 "auth": {
@@ -884,7 +902,9 @@ def _seed_node(
         **_protocol_ports(),
         **_duckdb_env(work),
         "ORG_ID": "demobundle",
-        "PROVISA_CONFIG": str(_config(work, regions="PROVISA_REGION" in env)),
+        "PROVISA_CONFIG": str(
+            _config(work, regions=_demo_regions(demo) if "PROVISA_REGION" in env else None)
+        ),
         "PROVISA_ENGINE": "duckdb",
         "PROVISA_SANDBOX_TIER": "true",
         "PROVISA_DEMO_SEED_EXPORT": "true",

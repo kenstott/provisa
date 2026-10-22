@@ -22,7 +22,7 @@ locals {
   coordinator_sandbox_vm_exports = <<-SHELL
     export COMPOSE_PROFILES=control
     export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"
-    export PROVISA_SANDBOX_REGIONS_API_URL="https://${var.sandbox_internal_ip}:8100"
+    export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,warehouse=https://${var.sandbox_internal_ip}:8101"
     export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"
   SHELL
 
@@ -135,6 +135,7 @@ resource "google_compute_instance" "sandbox" {
       export PROVISA_SANDBOX_PUBLISH="${var.sandbox_internal_ip}:8000"
       # REQ-2068: the regions sandbox tier's, likewise.
       export PROVISA_SANDBOX_REGIONS_PUBLISH="${var.sandbox_internal_ip}:8100"
+      export PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH="${var.sandbox_internal_ip}:8101"
       export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"
       export PROVISA_SANDBOX_IDLE_STOP_SECONDS="${var.sandbox_idle_stop_minutes * 60}"
       ${local.sandbox_demo_stores}

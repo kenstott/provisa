@@ -4,13 +4,15 @@
 # found in the LICENSE file in the root directory of this source tree.
 #
 # REQ-2068: the regions sandbox tier's own deployment config -- the tier that serves the demos whose
-# models select regions (the retail demo), and the bundle build's seeding node of each region.
+# models select regions (retail: eu and us; banking: ledger and warehouse), and the bundle build's
+# seeding node of each region.
 #
-# The platform declares eu and us; the node runs as one of them (PROVISA_REGION). Its boot org
-# (ORG_ID, never the deployment's own org, whose model selects no region) selects both, each keeping
-# its replicas, views, state and record in that region's own PostgreSQL (a captive one per region,
-# PROVISA_DEMO_<REGION>_PG_URL); it holds no sources or tables of its own. Each demo's template and
-# sandboxes are orgs of their own, modelled by the demo's config.yaml.
+# The platform declares every region a regions demo selects; each node runs as one of them
+# (PROVISA_REGION), the visitor region of the demos it serves. Its boot org (ORG_ID, never the
+# deployment's own org, whose model selects no region) selects them all, each keeping its replicas,
+# views, state and record in that region's own PostgreSQL (PROVISA_DEMO_<REGION>_PG_URL); it holds
+# no sources or tables of its own. Each demo's template and sandboxes are orgs of their own,
+# modelled by the demo's config.yaml.
 
 federation_engine: duckdb
 multitenancy: true
@@ -19,17 +21,25 @@ platform:
   regions:
     - { id: eu, address: "${env:PROVISA_DEMO_EU_ADDRESS}" }
     - { id: us, address: "${env:PROVISA_DEMO_US_ADDRESS}" }
+    - { id: ledger, address: "${env:PROVISA_DEMO_LEDGER_ADDRESS}" }
+    - { id: warehouse, address: "${env:PROVISA_DEMO_WAREHOUSE_ADDRESS}" }
 
 stores:
   - { id: eu_engine, url: "duckdb:///${env:PROVISA_DATA_DIR}/regions-tier-eu-engine.duckdb", kind: duckdb }
   - { id: us_engine, url: "duckdb:///${env:PROVISA_DATA_DIR}/regions-tier-us-engine.duckdb", kind: duckdb }
+  - { id: ledger_engine, url: "duckdb:///${env:PROVISA_DATA_DIR}/regions-tier-ledger-engine.duckdb", kind: duckdb }
+  - { id: warehouse_engine, url: "duckdb:///${env:PROVISA_DATA_DIR}/regions-tier-warehouse-engine.duckdb", kind: duckdb }
   - { id: eu_data, url: "${env:PROVISA_DEMO_EU_PG_URL}" }
   - { id: us_data, url: "${env:PROVISA_DEMO_US_PG_URL}" }
+  - { id: ledger_data, url: "${env:PROVISA_DEMO_LEDGER_PG_URL}" }
+  - { id: warehouse_data, url: "${env:PROVISA_DEMO_WAREHOUSE_PG_URL}" }
   - { id: cache, url: "${env:REDIS_URL}" }
 
 regions:
   - { id: eu, engine: eu_engine, replicas: eu_data, views: eu_data, cache: cache, state: eu_data, record: eu_data }
   - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: cache, state: us_data, record: us_data }
+  - { id: ledger, engine: ledger_engine, replicas: ledger_data, views: ledger_data, cache: cache, state: ledger_data, record: ledger_data }
+  - { id: warehouse, engine: warehouse_engine, replicas: warehouse_data, views: warehouse_data, cache: cache, state: warehouse_data, record: warehouse_data }
 
 auth:
   # As the sandbox tier's (config/provisa-install.yaml): its provider is the one the deployment's

@@ -63,11 +63,20 @@ def test_a_node_of_a_region_keeps_its_regions_tables_and_those_naming_none(monke
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("regional", "reaped"), [(True, ["sbxr00000000000a"]), (False, ["sbx0a"])])
-async def test_each_tier_reaps_its_own_sandboxes(monkeypatch, regional, reaped):
+@pytest.mark.parametrize(
+    ("regional", "here", "reaped"),
+    [
+        (True, "us", ["sbxrus00000000000a"]),
+        (True, "warehouse", ["sbxrwarehouse00000000000b"]),
+        (False, "us", ["sbx0a"]),
+    ],
+)
+async def test_each_node_reaps_its_own_sandboxes(monkeypatch, regional, here, reaped):
+    """The sandbox tier reaps its own; each node of the regions tier (REQ-2068), the sandboxes its
+    region minted, never another node's."""
     from provisa.api import demo_sandbox
 
-    rows = [("sbx0a",), ("sbxr00000000000a",)]
+    rows = [("sbx0a",), ("sbxrus00000000000a",), ("sbxrwarehouse00000000000b",)]
 
     class _Conn:
         async def execute_core(self, _stmt):
@@ -85,5 +94,6 @@ async def test_each_tier_reaps_its_own_sandboxes(monkeypatch, regional, reaped):
         lambda: SimpleNamespace(acquire=lambda: _Acquire()),
     )
     monkeypatch.setattr(demo_region_seed, "regional", lambda: regional)
+    monkeypatch.setattr(demo_region_seed, "here", lambda: here)
     monkeypatch.setattr(demo_sandbox.settings_registry, "value", lambda _k: 60)
     assert await demo_sandbox.expired(datetime.now(UTC) + timedelta(hours=1)) == reaped
