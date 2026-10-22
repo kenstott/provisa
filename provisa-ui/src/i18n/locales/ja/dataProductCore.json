@@ -1,0 +1,28 @@
+{
+  "dataProductCore": {
+    "error": "データプロダクトを読み込めませんでした: {{error}}",
+    "tags": "タグ",
+    "tagsEmpty": "タグはありません。",
+    "profiles": "プロファイル",
+    "profilesHint": "各メンバーテーブルに登録されたプロファイル結果テーブルです。開くと結果を読めます。",
+    "profilesEmpty": "プロファイルされたメンバーテーブルはありません。",
+    "scans": "{{table}} をチェック",
+    "aProduct": "データプロダクト",
+    "direct": "直接",
+    "hops_one": "ホップ: {{count}}",
+    "hops_other": "ホップ: {{count}}",
+    "paths_one": "パス: {{count}}",
+    "paths_other": "パス: {{count}}",
+    "through": "経由: {{tables}}",
+    "upstream": "アップストリーム",
+    "downstream": "ダウンストリーム",
+    "via": "経由: {{vias}}",
+    "metaQueries": "クエリ",
+    "metaQueriesHint": "このパネルがあなたとして meta ドメインに対して実行する読み取りです。コピーするか、エクスプローラーで開いてください。結果は同じです。",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "copyQuery": "{{surface}} クエリをコピー",
+    "openQuery": "{{surface}} クエリをエクスプローラーで開く",
+    "unreadable": "あなたのロールは meta ドメインのデータプロダクトを読み取れません。"
+  }
+}

@@ -268,3 +268,36 @@ def test_a_nodes_region_claim_is_its_regions_and_with_no_regions_the_deployments
         if state._region_holder is not state._scheduler_holder:
             state._region_holder.close()
         state._scheduler_holder.close()
+
+
+# -- REQ-2049: a template's work waits while its demo's stores are down -------------------------
+
+
+@pytest.fixture
+def bundles(tmp_path, monkeypatch):
+    from provisa.core import demo_bundles
+
+    monkeypatch.setenv("PROVISA_DEMO_BUNDLES", "agriculture")
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: tmp_path)
+    (tmp_path / "agriculture").mkdir()
+    return tmp_path / "agriculture"
+
+
+def test_a_templates_jobs_wait_while_its_demos_stores_are_taken_down(bundles):
+    """After its last sandbox closed and the linger passed, the node took the demo's stores down
+    and cleared its ready marker: its template's view builds would read databases that are gone
+    (cloud-dev: database agriculture_agriculture_e7cbf2cc does not exist). They are skipped, the
+    job's slot released, until the next open brings the stores back."""
+    for job_id in (
+        "poll:analytics.mv_view_yield:org_sbxtplagriculture",
+        "events:tick:org_sbxtplagriculture",
+    ):
+        assert _submit(None, job_id) == ([], [("success", job_id, [])])
+    (bundles / "ready").write_text("v1\n")
+    job_id = "events:tick:org_sbxtplagriculture"
+    assert _submit(None, job_id) == ([job_id], [("success", job_id, ["event"])])
+
+
+def test_another_orgs_jobs_run_whatever_a_demos_stores_are(bundles):
+    for job_id in ("events:tick:org_default", "events:tick:org_sbx1a2b3c", "otel_compact"):
+        assert _submit(None, job_id)[0] == [job_id]

@@ -52,6 +52,8 @@ async def test_graph_schema_includes_singular_pk(monkeypatch):
     monkeypatch.setattr(cr, "_resolve_role_id", lambda *_: "admin")
     monkeypatch.setattr(cr, "_build_label_map", lambda *_: label_map)
     monkeypatch.setattr(appmod.state, "contexts", {"admin": object()})
+    # A built surface has its root fields too (REQ-2128's graphql_field); none are named here.
+    monkeypatch.setattr(appmod.state, "table_path_maps", {"admin": {}})
     monkeypatch.setattr(appmod.state, "schema_build_cache", {"tables": []})
 
     resp = await cr.graph_schema(cast(Any, types.SimpleNamespace()))

@@ -521,6 +521,18 @@ def record_in_use(name: str, versions: set[str]) -> None:
     _write(bundles_root() / name / "in-use", "\n".join(sorted(versions)))
 
 
+def stores_taken_down(org_id: str) -> bool:
+    """Whether ``org_id`` is the template of a bundled demo whose stores the node has not up: none
+    started since the node started, or taken down after the linger (REQ-2049), its ready marker
+    cleared. Its work reads them, so it waits for the next open to bring them back."""
+    from provisa.core.org_ids import TEMPLATE_PREFIX, is_template_org
+
+    if not is_template_org(org_id):
+        return False
+    name = org_id[len(TEMPLATE_PREFIX) :]
+    return name in bundled_demos() and ready_version(name) is None
+
+
 def own_demo_directory(org_id: str | None) -> Path | None:
     """The directory of the demo a sandbox-tier org is: a template's, its demo's (every version,
     when bundled); a sandbox's, the version it was opened from. None for any other org."""

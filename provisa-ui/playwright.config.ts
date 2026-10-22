@@ -477,6 +477,9 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${E2E_UI_PORT}`,
     headless: true,
+    // The 3D views (three.js) need a WebGL context. CI runners have no GPU, and Chromium no longer
+    // falls back to its software renderer unasked, so SwiftShader is requested by name.
+    launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
   },
   webServer: ONLY_REGIONS_DEMO
     ? []

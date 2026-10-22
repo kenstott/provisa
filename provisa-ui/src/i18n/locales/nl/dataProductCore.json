@@ -1,0 +1,28 @@
+{
+  "dataProductCore": {
+    "error": "Het dataproduct kon niet worden gelezen: {{error}}",
+    "tags": "Tags",
+    "tagsEmpty": "Geen tags.",
+    "profiles": "Profielen",
+    "profilesHint": "De profielresultaattabellen die voor elke lidtabel zijn geregistreerd; open er een om de resultaten te lezen.",
+    "profilesEmpty": "Geen enkele lidtabel is geprofileerd.",
+    "scans": "controleert {{table}}",
+    "aProduct": "dataproduct",
+    "direct": "direct",
+    "hops_one": "{{count}} stap",
+    "hops_other": "{{count}} stappen",
+    "paths_one": "{{count}} pad",
+    "paths_other": "{{count}} paden",
+    "through": "via {{tables}}",
+    "upstream": "Upstream",
+    "downstream": "Downstream",
+    "via": "via {{vias}}",
+    "metaQueries": "Query's",
+    "metaQueriesHint": "De leesacties die dit paneel namens u op het meta-domein uitvoert. Kopieer er een of open hem in zijn explorer: het antwoord is hetzelfde.",
+    "copy": "Kopiëren",
+    "copied": "Gekopieerd",
+    "copyQuery": "De {{surface}}-query kopiëren",
+    "openQuery": "De {{surface}}-query in zijn explorer openen",
+    "unreadable": "Uw rol kan de dataproducten in het meta-domein niet lezen."
+  }
+}

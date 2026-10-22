@@ -14,7 +14,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within, fireEvent, waitFor } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
-import type { DataProduct, RegisteredTable, Source } from "../../../types/admin";
+import type { DataProduct, Source } from "../../../types/admin";
+import type { CoreTable } from "../productCore";
 import i18n from "../../../i18n";
 
 const parseContract = vi.fn().mockResolvedValue({
@@ -22,7 +23,12 @@ const parseContract = vi.fn().mockResolvedValue({
   checker: "soda",
   checks: [
     { columnName: "", checkType: "row_count", definition: "row_count > 0", extra: "" },
-    { columnName: "email", checkType: "missing_count", definition: "missing_count(email) = 0", extra: "" },
+    {
+      columnName: "email",
+      checkType: "missing_count",
+      definition: "missing_count(email) = 0",
+      extra: "",
+    },
   ],
   error: null,
 });
@@ -32,6 +38,11 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
   useDqContract: () => ({ parseContract }),
 }));
 
+// The panel's 3D graph is its own component, held by its own tests.
+vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
+  KnowledgeGraphPanel: () => null,
+}));
+
 const t = i18n.getFixedT("en");
 
 const SOURCES = [
@@ -39,50 +50,52 @@ const SOURCES = [
   { id: "dq-soda", type: "soda" },
 ] as unknown as Source[];
 
-const PRODUCT = { id: "pet_health", domainId: "pet-store", name: "Pet Health" } as unknown as DataProduct;
+const PRODUCT = {
+  id: "pet_health",
+  domainId: "pet-store",
+  name: "Pet Health",
+} as unknown as DataProduct;
 
-function makeTable(overrides: Partial<RegisteredTable>): RegisteredTable {
+// Member tables as data_products_meta's memberTables answers them.
+function makeTable(overrides: Partial<CoreTable>): CoreTable {
   return {
     id: 1,
-    sourceId: "wh",
-    domainId: "pet-store",
-    schemaName: "pet_store",
-    tableName: "vets",
-    alias: null,
+    source_id: "wh",
+    domain_id: "pet-store",
+    schema_name: "pet_store",
+    table_name: "vets",
     description: null,
-    columns: [],
-    dqContract: null,
-    graphqlFieldName: "vets",
+    dq_contract: null,
     ...overrides,
-  } as RegisteredTable;
+  };
 }
 
 const VETS = makeTable({});
 const VETS_SCAN = makeTable({
   id: 2,
-  sourceId: "dq-soda",
-  schemaName: "quality",
-  tableName: "vets_scan",
-  dqContract: "dataset: provisa/pet_store/vets\nchecks: []\n",
+  source_id: "dq-soda",
+  schema_name: "quality",
+  table_name: "vets_scan",
+  dq_contract: "dataset: provisa/pet_store/vets\nchecks: []\n",
   description: "Soda contract over vets",
+  checks: { id: 1, domain_id: "pet-store", table_name: "vets" },
 });
 
-function renderPanel(tables: RegisteredTable[], sources: Source[] = SOURCES) {
+function renderPanel(tables: CoreTable[], sources: Source[] = SOURCES) {
   render(
     <DataProductDetailPanel
       p={PRODUCT}
-      tables={tables}
+      core={{
+        product: { ...PRODUCT, customProperties: {} },
+        tables,
+        queries: { graphql: "", sql: "", jsonapi: "" },
+      }}
+      coreError={null}
+      reader={null}
       sources={sources}
-      functions={[]}
-      relatedTerms={[]}
-      relatedTermsLoading={false}
-      relatedTables={[]}
       internalRelationships={[]}
       canEdit={false}
       canSeeLineage={false}
-      lineageLoading={false}
-      lineageError=""
-      lineageGraph={null}
       inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
@@ -139,7 +152,7 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     await waitFor(() =>
       expect(parseContract).toHaveBeenCalledWith({
         checker: "soda",
-        contractText: VETS_SCAN.dqContract,
+        contractText: VETS_SCAN.dq_contract,
       }),
     );
     const rows = await within(dialog).findByTestId("dq-rules-rows");
@@ -148,6 +161,13 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     expect(within(rows).getByText(t("dataQualityPanel.datasetScope"))).toBeTruthy();
     expect(within(dialog).getByTestId("dq-rules-dataset").textContent).toContain(
       "provisa/pet_store/vets",
+    );
+  });
+
+  it("names the table each checker scans (REQ-2125's checks)", () => {
+    renderPanel([VETS, VETS_SCAN]);
+    expect(screen.getByTestId("data-product-detail-dq-checks-2").textContent).toBe(
+      "scans pet-store.vets",
     );
   });
 
