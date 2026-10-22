@@ -164,7 +164,6 @@ describe("list pages leave a cell's width, wrapping and truncation to the shared
   /** Cells that still set their own, by page: each is to be moved to the shared rule, then leaves. */
   const STILL_OWN: Record<string, number> = {
     "pages/RequestsPage.tsx": 3,
-    "components/admin/CacheManager.tsx": 1,
   };
 
   it.each(LIST_PAGES)("%s", (page) => {

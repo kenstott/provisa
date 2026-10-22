@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
@@ -105,6 +106,7 @@ async def _warm(
     import httpx
 
     WARMING.set(True)
+    started = time.monotonic()
     sent = {**headers, "x-org-provisa": org_id}
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://warmup") as client:
@@ -127,7 +129,7 @@ async def _warm(
                 )
     # At WARNING: the hosted demo tier logs at WARNING, and this one line per sandbox is how its
     # operator sees that a sandbox's tour was warmed.
-    log.warning("sandbox %s tour warmed", org_id)
+    log.warning("sandbox %s tour warmed in %.1fs", org_id, time.monotonic() - started)
 
 
 def warm_tour(app: Any, org_id: str, demo: str, headers: dict[str, str]) -> None:

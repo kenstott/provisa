@@ -355,18 +355,30 @@ function assignLanes(
   graph: LineageGraphData,
   around: ReadonlySet<string>,
 ): void {
-  const feeders = new Map<string, Set<string>>();
-  const consumers = new Map<string, Set<string>>();
+  const links: [string, string][] = [];
   for (const e of graph.edges) {
     const sb = nodeBox.get(e.source);
     const tb = nodeBox.get(e.target);
-    if (!sb || !tb || sb === tb) continue;
-    (feeders.get(tb) ?? feeders.set(tb, new Set()).get(tb)!).add(sb);
-    (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
+    if (sb && tb) links.push([sb, tb]);
   }
   const zero = [...boxes.values()]
     .filter((b) => b.relation !== null && around.has(b.relation))
     .map((b) => b.id);
+  const lane = lanesFrom(links, zero);
+  for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
+}
+
+/** REQ-1667, REQ-2128: the lane of each node of a directed graph (``[from, to]`` links) by its
+ * distance from ``zero`` (lane 0): upstream nodes by their longest path down to lane 0, negated;
+ * a node a lane-0 node feeds directly, not upstream, +1. A node not so connected has no lane. */
+export function lanesFrom(links: [string, string][], zero: string[]): Map<string, number> {
+  const feeders = new Map<string, Set<string>>();
+  const consumers = new Map<string, Set<string>>();
+  for (const [sb, tb] of links) {
+    if (sb === tb) continue;
+    (feeders.get(tb) ?? feeders.set(tb, new Set()).get(tb)!).add(sb);
+    (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
+  }
   const zeroSet = new Set(zero);
   // Longest path DOWN to lane 0 from each upstream box, memoized; a cycle contributes nothing.
   const depth = new Map<string, number>();
@@ -405,7 +417,7 @@ function assignLanes(
   for (const id of zero) {
     for (const c of consumers.get(id) ?? []) if (!lane.has(c)) lane.set(c, 1);
   }
-  for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
+  return lane;
 }
 
 /** REQ-2116: the height of a native box's head -- one line per address part, the logo beside. */

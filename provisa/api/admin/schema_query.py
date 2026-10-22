@@ -2354,7 +2354,7 @@ async def _code_columns(source_id: str, function: str) -> list[AvailableColumnTy
         AvailableColumnType(
             name=c["name"],
             data_type=c["data_type"],
-            comment=None,
+            comment=c["comment"],
             path=c["path"],
             native_filter_type=c["native_filter_type"],
             native_filter_required=c["native_filter_required"],

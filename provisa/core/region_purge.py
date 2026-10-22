@@ -30,6 +30,8 @@ delete, naming its region, before anything is removed.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -76,16 +78,27 @@ class _Purge:
     reach: dict[str, tuple[str, str]] = field(default_factory=dict)  # url -> (region, role)
 
 
-async def purge_org_regions(control_plane: "Database", org_id: str, envs: list[str]) -> list[str]:
+async def purge_org_regions(
+    control_plane: "Database",
+    org_id: str,
+    envs: list[str],
+    *,
+    before_drop: Callable[[], object] | None = None,
+) -> list[str]:
     """Remove what ``org_id``'s environments ``envs`` keep in every region store their models
     declare; returns the schemas dropped. Raises :class:`RegionStoreUnreachable` — having removed
-    nothing — when a store cannot be reached."""
+    nothing — when a store cannot be reached. ``before_drop`` runs once every store is known to be
+    reachable and before anything is dropped: what must stop first, and only when the purge goes
+    ahead (REQ-2006, an org's jobs)."""
     import asyncio
 
     plan = await _plan(control_plane, org_id, envs)
+    if plan.reach:
+        await asyncio.to_thread(_require_reachable, plan, org_id)
+    if before_drop is not None:
+        before_drop()
     if not plan.reach:
         return []
-    await asyncio.to_thread(_require_reachable, plan, org_id)
     dropped = await asyncio.to_thread(_drop_schemas, plan)
     dropped += await asyncio.to_thread(_drop_attached, plan)
     dropped += await asyncio.to_thread(_drop_clickhouse, plan)

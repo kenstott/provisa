@@ -79,6 +79,7 @@ describe("LiveDeliveryFieldset — landing time (REQ-813)", () => {
       ...table,
       live: { ...table.live!, kafka: { topic: "orders", landingTimeColumn: "landed_at" } },
     } as RegisteredTable;
-    expect(buildTableUpdateInput(chosen).live?.kafka?.landingTimeColumn).toBe("landed_at");
+    const live = buildTableUpdateInput(chosen).live as { kafka?: { landingTimeColumn?: string } };
+    expect(live.kafka?.landingTimeColumn).toBe("landed_at");
   });
 });

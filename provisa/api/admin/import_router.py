@@ -314,6 +314,10 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
         config = parse_config_dict(raw)
     except ValueError as exc:
         raise ApiError(400, "import.invalid_config", f"config is not valid: {exc}") from exc
+    except KeyError as exc:
+        # A reference the deployment cannot resolve, such as a handler URL's environment variable
+        # the report named to set before applying (REQ-417): the administrator's to supply.
+        raise ApiError(400, "import.invalid_config", f"config is not valid: {exc.args[0]}") from exc
 
     if state.model_db is None:
         raise ApiError(

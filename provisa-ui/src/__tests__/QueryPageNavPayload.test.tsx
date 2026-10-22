@@ -32,7 +32,12 @@ vi.mock("graphiql", () => {
 vi.mock("@graphiql/react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@graphiql/react")>()),
   useGraphiQL: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ queryEditor: editor, schema: null, tabs: [], activeTabIndex: 0 }),
+    selector({
+      queryEditor: editor,
+      schema: null,
+      tabs: [{ title: "Query", query: "" }],
+      activeTabIndex: 0,
+    }),
   useGraphiQLActions: () => actions,
 }));
 vi.mock("../context/AuthContext", () => ({

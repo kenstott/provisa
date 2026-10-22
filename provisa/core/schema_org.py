@@ -863,6 +863,36 @@ mv_delta_ledger = Table(
     ),
 )
 
+# REQ-2129: the model's column lineage edges, folded from its compiled views and statement
+# commands (provisa.lineage.edges). Derived state: each model build replaces every row with the
+# edges the federation lineage graph holds, and nothing else writes it. An end that is a
+# registered column carries that column's table and stored name, so the meta views join it.
+lineage_edges = Table(
+    "lineage_edges",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("source_relation", Text, nullable=False),
+    Column("source_column", Text, nullable=False),
+    Column("target_relation", Text, nullable=False),
+    Column("target_column", Text, nullable=False),
+    Column("via", Text, nullable=False),
+    Column("via_kind", Text, nullable=False),
+    Column("source_table_id", Integer),
+    Column("source_column_name", Text),
+    Column("target_table_id", Integer),
+    Column("target_column_name", Text),
+    CheckConstraint("via_kind IN ('view', 'command')", name="lineage_edges_via_kind_check"),
+)
+
+# REQ-2125: the governed table each checker table's contract scans, as the model build resolved it
+# (provisa.dq.registration.write_checker_targets). Derived state: each build replaces every row.
+checker_targets = Table(
+    "checker_targets",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("checked_table_id", Integer, nullable=False),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,

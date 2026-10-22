@@ -68,6 +68,15 @@ def runs_in_each_region(job_id: str) -> bool:
     return job_id.startswith(REGION_JOB_PREFIXES)
 
 
+def _waits_for_its_stores(job_id: str) -> bool:
+    """REQ-2049: a demo template's job, while the node has its demo's stores down: it would read
+    databases that are gone, so it fires again once the next open has brought them back."""
+    from provisa.core.demo_bundles import stores_taken_down
+
+    _name, sep, org = job_id.partition(":org_")
+    return bool(sep) and stores_taken_down(org.partition(":env_")[0])
+
+
 class BackgroundJobExecutor(BaseExecutor):
     """Run each APScheduler job on a background worker's connection loop.
 
@@ -102,6 +111,9 @@ class BackgroundJobExecutor(BaseExecutor):
             if holder is not None and not holder.holds():
                 # Another worker holds the lock and runs this firing. Reported as a run with no
                 # events so the scheduler releases the job's instance slot.
+                self._run_job_success(job.id, [])
+                return
+            if _waits_for_its_stores(job.id):
                 self._run_job_success(job.id, [])
                 return
             try:

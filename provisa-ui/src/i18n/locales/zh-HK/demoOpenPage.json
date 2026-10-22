@@ -2,6 +2,7 @@
   "demoOpenPage": {
     "title": "正在開啟您的示範沙盒",
     "opening": "正在為您準備示範的副本，需要幾秒鐘。",
+    "starting": "正在啟動此示範…",
     "retry": "重試"
   }
 }

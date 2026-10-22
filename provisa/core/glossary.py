@@ -280,7 +280,7 @@ def within_domains(allowed: "AbstractSet[str] | None", term_domains: "AbstractSe
     return allowed is None or not term_domains or bool(term_domains & allowed)
 
 
-# REQ-1592: the ENTERPRISE scope — a term that belongs to the whole org rather than to any domain.
+# REQ-1593: the ENTERPRISE scope — a term that belongs to the whole org rather than to any domain.
 # The same character means the OPPOSITE THING on a role's ``domain_access`` (``provisa/security/
 # rights.py``, read by ``env_authority.domains_within``): there it is unlimited AUTHORITY, "this
 # role reaches every domain". Here it is unlimited MEMBERSHIP, "this term is in every domain".
@@ -291,7 +291,7 @@ ENTERPRISE_DOMAIN = "*"
 
 
 def readable_term(allowed: "AbstractSet[str] | None", term_domains: "AbstractSet[str]") -> bool:
-    """May a caller whose domains are ``allowed`` READ a term scoped to ``term_domains``? (REQ-1592)
+    """May a caller whose domains are ``allowed`` READ a term scoped to ``term_domains``? (REQ-1593)
 
     Reading and curating stopped asking the same question once ``*`` existed. An enterprise-wide
     term is the org's shared vocabulary — the phrase every domain uses and none owns — so it is

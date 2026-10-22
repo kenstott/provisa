@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
+  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -49,9 +50,11 @@ import { useRegionSelection } from "../../hooks/useRegionSelection";
 import { filterByRegion } from "../../hooks/regionFilter";
 import { RegionSelector } from "../RegionSelector";
 import { displayMvName } from "./mvDisplay";
-import { ListRow } from "../list/ListTable";
+import { ListActions, ListActionsHead, ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { FormFooter } from "../form/FormLayout";
+import { Tip } from "../Tip";
+import { Power, PowerOff, RefreshCw } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -544,8 +547,9 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
               { col: "lastRefresh" },
               { col: "interval" },
               t("cacheManager.materialized.error"),
+              <ListActionsHead key="actions" />,
             ]}
-            colSpan={8}
+            colSpan={9}
             rowKey={(mv) => mv.id}
             page={{ index: mvPage, size: PAGE_SIZE }}
             onGroupedChange={setMvGrouped}
@@ -576,22 +580,29 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
                     : t("cacheManager.materialized.never")}
                 </Table.Td>
                 <Table.Td>{mv.refreshInterval}s</Table.Td>
-                <Table.Td maw={200} c="red">
+                {/* One line, cut: the whole error is in the cell's tip. */}
+                <Table.Td c="red" data-list-one-line="">
                   {mv.lastError || ""}
                 </Table.Td>
-                <Table.Td>
-                  <Group gap="xs" wrap="nowrap">
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => handleRefresh(mv.id)}
-                      disabled={refreshing === mv.id}
-                      data-testid={`mv-refresh-btn-${mv.id}`}
+                <ListActions>
+                  <Group gap={4} wrap="nowrap">
+                    <Tip
+                      text={
+                        refreshing === mv.id
+                          ? t("cacheManager.materialized.refreshing")
+                          : t("cacheManager.materialized.refresh")
+                      }
+                      named
                     >
-                      {refreshing === mv.id
-                        ? t("cacheManager.materialized.refreshing")
-                        : t("cacheManager.materialized.refresh")}
-                    </Button>
+                      <ActionIcon
+                        variant="subtle"
+                        onClick={() => handleRefresh(mv.id)}
+                        disabled={refreshing === mv.id}
+                        data-testid={`mv-refresh-btn-${mv.id}`}
+                      >
+                        <RefreshCw size={16} />
+                      </ActionIcon>
+                    </Tip>
                     {mv.versionLogOf ? (
                       // A version log is kept as its table declares: here only its capture
                       // settings, and a full capture, which records what the table deleted.
@@ -601,19 +612,25 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
                         onFullCapture={() => handleRefresh(mv.id, true)}
                       />
                     ) : (
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        onClick={() => toggleMV(mv.id, !mv.enabled)}
-                        data-testid={`mv-toggle-btn-${mv.id}`}
+                      <Tip
+                        text={
+                          mv.enabled
+                            ? t("cacheManager.materialized.disable")
+                            : t("cacheManager.materialized.enable")
+                        }
+                        named
                       >
-                        {mv.enabled
-                          ? t("cacheManager.materialized.disable")
-                          : t("cacheManager.materialized.enable")}
-                      </Button>
+                        <ActionIcon
+                          variant="subtle"
+                          onClick={() => toggleMV(mv.id, !mv.enabled)}
+                          data-testid={`mv-toggle-btn-${mv.id}`}
+                        >
+                          {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
+                        </ActionIcon>
+                      </Tip>
                     )}
                   </Group>
-                </Table.Td>
+                </ListActions>
               </ListRow>
             )}
           />

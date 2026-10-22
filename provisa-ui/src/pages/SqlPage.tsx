@@ -38,6 +38,7 @@ import { DERIVED_SOURCE_ID } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
+import { useScreenEditor } from "../mcp/screenState";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
 import {
@@ -108,6 +109,12 @@ export function SqlPage() {
   const [activeTabId, setActiveTabId] = useState<string>(initialTabs.activeId);
 
   const [sqlText, setSqlText] = useState(active0.sqlText);
+  // REQ-2115: Polly's read_screen reads the statement and the open tab from here.
+  useScreenEditor("/sql", {
+    language: "sql",
+    text: sqlText,
+    tab: tabs.find((t) => t.id === activeTabId)!.title,
+  });
   const [role, setRole] = useState("org_admin");
   // REQ-1163: the time travel statements run with over bitemporal views -- as of a time on each
   // view's clock, as recorded at a time -- each an ISO 8601 time, or none.

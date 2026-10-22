@@ -324,26 +324,33 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
 
 
 def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
-    """``resolve(data)``, but a code source's declared secrets kept as the references written
-    (REQ-2104): each is resolved only when the code reads it, through Provisa's services
-    (provisa/codesource/services.py), so a config naming a secret not yet in the vault loads."""
+    """``resolve(data)``, but the mapping values resolved at use kept as the references written:
+    a code source's declared secrets (REQ-2104), each resolved only when the code reads it,
+    through Provisa's services (provisa/codesource/services.py), so a config naming a secret not
+    yet in the vault loads; and a data-quality checker's whole connection (REQ-1443), resolved at
+    each scan from the stored mapping (dq.scan.checker_connection), so a password the deployment
+    has not set fails that scan by its name rather than every load of the org's model."""
     from provisa.codesource.source import CODE_SOURCE_TYPES
+    from provisa.dq.contract import CHECKERS
 
-    held: dict[int, Any] = {}
+    held: dict[int, dict[str, Any]] = {}
     sources = data.get("sources")
     if isinstance(sources, list):
         for i, source in enumerate(sources):
             mapping = source.get("mapping") if isinstance(source, dict) else None
-            if source.get("type") in CODE_SOURCE_TYPES and isinstance(mapping, dict):
-                if "secrets" in mapping:
-                    held[i] = mapping["secrets"]
+            if not isinstance(mapping, dict):
+                continue
+            if source.get("type") in CHECKERS:
+                held[i] = dict(mapping)
+            elif source.get("type") in CODE_SOURCE_TYPES and "secrets" in mapping:
+                held[i] = {"secrets": mapping["secrets"]}
     if not held:
         return resolve(data)
     resolved = resolve(
         {
             **data,
             "sources": [
-                {**s, "mapping": {k: v for k, v in s["mapping"].items() if k != "secrets"}}
+                {**s, "mapping": {k: v for k, v in s["mapping"].items() if k not in held[i]}}
                 if i in held
                 else s
                 for i, s in enumerate(sources)  # type: ignore[arg-type]
@@ -351,7 +358,7 @@ def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
         }
     )
     for i, written in held.items():
-        resolved["sources"][i]["mapping"]["secrets"] = written
+        resolved["sources"][i]["mapping"].update(written)
     return resolved
 
 

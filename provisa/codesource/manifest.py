@@ -124,6 +124,9 @@ class Field:
     name: str
     shape: Shape
     nullable: bool
+    #: The field's own documentation (a Pydantic Field's description, a property's doc comment):
+    #: its column's description. Empty when the code gives none.
+    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -187,7 +190,12 @@ def _shape_json(shape: Shape | None) -> Any:
 
 
 def _field_json(field: Field) -> dict:
-    return {"name": field.name, "shape": _shape_json(field.shape), "nullable": field.nullable}
+    return {
+        "name": field.name,
+        "shape": _shape_json(field.shape),
+        "nullable": field.nullable,
+        "description": field.description,
+    }
 
 
 def _shape(raw: Any) -> Shape | None:
@@ -212,7 +220,7 @@ def _shape(raw: Any) -> Shape | None:
 def _field(raw: dict) -> Field:
     shape = _shape(raw["shape"])
     assert shape is not None
-    return Field(raw["name"], shape, raw["nullable"])
+    return Field(raw["name"], shape, raw["nullable"], raw["description"])
 
 
 def manifest_json(manifest: Manifest) -> dict:
@@ -359,7 +367,7 @@ class _Mapper:
         out = []
         for f in fields:
             shape, nullable = self.shape(f["type"], f"{owner}.{f['name']}")
-            out.append(Field(f["name"], shape, nullable or f["optional"]))
+            out.append(Field(f["name"], shape, nullable or f["optional"], f["description"]))
         return tuple(out)
 
     def _named(self, name: str) -> None:

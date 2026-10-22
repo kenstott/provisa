@@ -488,7 +488,10 @@ def _register_ops_synthetic_joins(
     for ops_t in tables:
         if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
             continue
-        if not any(c["column_name"] == "table_name" for c in ops_t.visible_columns):
+        # The link matches the registration's (domain_id, table_name) on the ops row's own pair;
+        # a row naming its table otherwise (replica_build_log: source, schema, physical name)
+        # has no such pair to match.
+        if not {"domain_id", "table_name"} <= {c["column_name"] for c in ops_t.visible_columns}:
             continue
         ops_tgt = TableMeta(
             table_id=ops_t.table_id,

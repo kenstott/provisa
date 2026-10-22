@@ -158,17 +158,22 @@ jobs:
         uses: ./.github/actions/demo-bundle
         with:
           demo: weblogs
-      - name: the bundle holds the demo, its seed, its logs and its database
+      - name: the bundle holds the demo, its logs and its database, and no seed
         env:
           BUNDLE: ${{ steps.build.outputs.bundle }}
         run: |
           set -euo pipefail
           listed="$(tar -tzf "$BUNDLE")"
           for member in bundle.json config.yaml demo.yaml tour.yaml docker-compose.run.yml \
-                        seeded/replicas.duckdb seeded/replicas.json dump/postgres/shop.sql \
-                        dump/load-postgres.sh; do
+                        dump/postgres/shop.sql dump/load-postgres.sh; do
             grep -qx "$member" <<<"$listed" || { echo "::error::$BUNDLE has no $member"; exit 1; }
           done
+          # weblogs reads its own sources live and replicates none, so its build lands no seed
+          # (REQ-2049; scripts/demo_bundle.py _replicates).
+          if grep -q '^seeded/replicas' <<<"$listed"; then
+            echo "::error::$BUNDLE carries a replica seed, which a demo replicating nothing never lands"
+            exit 1
+          fi
           grep -q '^logs/nginx/access.json' <<<"$listed"
           test -z "$(docker ps -aq --filter label=com.provisa.demo=weblogs)"
 
@@ -507,9 +512,12 @@ jobs:
       # The manual half of the orchestrator's expression (a tag push is its other half): false here.
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
+  # Its own condition, on the leg it reads: with none, GitHub's implicit success() skips it,
+  # because the publication its leg needs is skipped on every branch.
   release-results:
     name: release / what the stand-in showed
     needs: [release-dry-run]
+    if: ${{ !cancelled() && needs.release-dry-run.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -536,6 +544,8 @@ jobs:
   level-1:
     name: level 1 / the reusable workflows
     needs: [lane-results, release-results]
+    # As release-results: the skipped publication upstream would skip it under success().
+    if: ${{ !cancelled() && needs.lane-results.result == 'success' && needs.release-results.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -579,9 +589,12 @@ jobs:
 
           needs = json.loads(os.environ["NEEDS"])
           results = {job: need["result"] for job, need in needs.items()}
-          # Every job must succeed. The lane that fails on purpose contains its failure (it does
-          # not fail the run); lane-results asserts that it happened.
+          # Every job must succeed but one whose own condition excludes this ref: the publication
+          # runs only on a tag, and this check runs only on a ci/** branch, so it is skipped. The
+          # lane that fails on purpose contains its failure (it does not fail the run);
+          # lane-results asserts that it happened.
           expected = {job: "success" for job in results}
+          expected["release-publication"] = "skipped"
           wrong = {job: (got, expected[job]) for job, got in results.items() if got != expected[job]}
           for job in sorted(results):
               print(f"{job:32} {results[job]:10} expected {expected[job]}")

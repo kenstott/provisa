@@ -14,7 +14,7 @@
 
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { MantineProvider } from "@mantine/core";
@@ -237,6 +237,31 @@ describe("a demo's steps, as the runner walks them", () => {
     document.body.innerHTML = "";
   });
 
+  it("opens a profiled table's runs and picks a graph itself, then explains it once drawn", () => {
+    const [step] = demoTourSteps(
+      [
+        {
+          key: "g",
+          route: "/tables",
+          capability: "table_registration",
+          table: "crm.customers",
+          open: "quality",
+          graph: "driftStrata",
+        },
+      ],
+      EXAMPLES,
+    );
+    expect(step.route).toBe("/tables?open=crm.customers&section=quality");
+    expect(step.actions).toEqual([
+      { do: "press", target: { testId: "table-read-view-profile-runs" } },
+      { do: "press", target: { testId: "profile-tab-driftStrata" } },
+    ]);
+    // The drawn scene, never the loader: three.js loads on first use.
+    expect(step.element).toBe('[data-testid="strata-stage"][data-ready]');
+    expect(step.readySelector).toBe(step.element);
+    expect(step.clickAfterNext).toBe('[data-testid="profile-runs-modal"] .mantine-Modal-close');
+  });
+
   it("hands a set of roles, a derived role among them, to the SQL explorer", () => {
     // REQ-2057: reviewer,region__eu is no single option of the picker; the explorer offers it.
     const [set] = demoTourSteps([{ key: "s", role: "reviewer,region__eu" }], EXAMPLES);
@@ -369,8 +394,8 @@ describe("a demo's steps, as the runner walks them", () => {
     );
     expect(step.navState).toEqual({ cells, autoRun: true });
     expect(step.openQuery).toBeUndefined();
-    expect(step.readySelector).toBe('[data-testid="notebook-answered"]');
-    expect(step.element).toBe('[data-testid="notebook-panel"]');
+    expect(step.readySelector).toBe('[data-testid="notebook-answer"]');
+    expect(step.element).toBe('[data-testid="notebook-answer"]');
   });
 
   it("refuses a notebook step when the demo ships no notebook", () => {
@@ -420,6 +445,7 @@ const WEBLOGS: NamedDemo = {
   ],
   landing: null,
   notebook: [],
+  orgFiles: [],
 };
 
 function Launcher() {
@@ -567,6 +593,63 @@ describe("the tour button in a named demo", () => {
     expect(next().textContent).toBe("tour.nav.next 3/4");
   });
 
+  it("goes on past a step whose role pick gives back the right the steps after it need", async () => {
+    // As the churn tour: the analyst may open none of the pages after "back to every role", yet that
+    // step is not the end; its Next picks All, which opens them again.
+    const tour = [
+      WEBLOGS.tour[0],
+      {
+        key: "weblogsAsAnalyst",
+        route: "/query",
+        capability: "query_development" as const,
+        role: "analyst",
+      },
+      { key: "weblogsEveryRole", role: "all" },
+      {
+        key: "weblogsLast",
+        route: "/sources",
+        capability: "source_registration" as const,
+        source: "shop_access",
+      },
+    ];
+    const demo = { ...WEBLOGS, tour };
+    // The header's role picker: a pick sets the rights every gate (and the itinerary) reads.
+    function Picking() {
+      const [, repaint] = React.useState(0);
+      const pick = (to: string[]) => () => {
+        rights.current = to;
+        repaint((n) => n + 1);
+      };
+      return (
+        <>
+          {tourTree(demo)}
+          <button type="button" data-testid="role-selector-trigger" />
+          <button type="button" data-role-option="analyst" onClick={pick(["query_development"])} />
+          <button type="button" data-role-option="all" onClick={pick(ALL_RIGHTS)} />
+        </>
+      );
+    }
+    render(<Picking />);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    const next = () => document.querySelector<HTMLElement>(".driver-popover-next-btn")!;
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsAsAnalyst.title")).toBeInTheDocument();
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsEveryRole.title")).toBeInTheDocument();
+    expect(rights.current).toEqual(["query_development"]);
+    expect(next().textContent).toBe("tour.nav.next 3/4");
+    fireEvent.click(next());
+    // The All pick repaints the step's popover as it lands: read the title the popover shows now.
+    await waitFor(() =>
+      expect(document.querySelector(".driver-popover-title")?.textContent).toBe(
+        "tour.steps.weblogsLast.title",
+      ),
+    );
+    expect(rights.current).toEqual(ALL_RIGHTS);
+  });
+
   it("offers a revised track again, though the one before it was walked", async () => {
     // Walked on this control plane before the track gained a step.
     const before = WEBLOGS.tour.slice(0, 1);
@@ -684,7 +767,14 @@ describe("the tour button in a named demo", () => {
   it("runs the product tour where no named demo has a tour", async () => {
     const { STANDARD_DEMO_ORG } = await import("../test-utils/tourOrg");
     org.current = STANDARD_DEMO_ORG;
-    renderTour({ name: null, exampleQueries: [], tour: [], landing: null, notebook: [] });
+    renderTour({
+      name: null,
+      exampleQueries: [],
+      tour: [],
+      landing: null,
+      notebook: [],
+      orgFiles: [],
+    });
     fireEvent.click(screen.getByText("launch"));
     await act(async () => chunksResolve());
     await act(async () => vi.advanceTimersByTime(2000));
@@ -791,6 +881,8 @@ describe("a freshly onboarded org, started as no named demo", () => {
     demo_tour: [],
     demo_landing: null,
     demo_notebook: [],
+    demo_org_files: [],
+    orgFiles: [],
   };
 
   beforeEach(() => {
@@ -873,6 +965,7 @@ describe("a demo step's statement", () => {
               ],
               landing: null,
               notebook: [],
+              orgFiles: [],
             }}
           >
             <TourProvider>
@@ -931,6 +1024,7 @@ describe("a demo step's anchor rendered again", () => {
               ],
               landing: null,
               notebook: [],
+              orgFiles: [],
             }}
           >
             <TourProvider>

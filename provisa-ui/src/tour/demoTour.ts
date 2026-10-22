@@ -56,6 +56,15 @@ export interface DemoLanding {
   capability: Capability;
 }
 
+/** A graph of View Profile Runs (ProfileRunsModal's 3D views), and its stage's test id. */
+export const PROFILE_GRAPH_STAGES = {
+  terrain: "terrain-stage",
+  relationsMap: "relations-stage",
+  jointCloud: "joint-stage",
+  driftStrata: "strata-stage",
+} as const;
+export type ProfileGraph = keyof typeof PROFILE_GRAPH_STAGES;
+
 /** One step of tour.yaml, as the server sends it: its page, and exactly one target. */
 export interface DemoTourStepDef {
   key: string;
@@ -68,6 +77,10 @@ export interface DemoTourStepDef {
   /** With `table`: its detail panel opened on a section, and in Columns on a tab, as
    *  `<section>[.<tab>]` (`columns.testing`: each column's fake). */
   open?: string;
+  /** With `table` and `open: quality`: one graph of the table's latest profile run, drawn in its
+   *  View Profile Runs window (`terrain`, `relationsMap`, `jointCloud`, `driftStrata`). The tour
+   *  opens the window and picks the graph itself, then explains the graph once it is drawn. */
+  graph?: ProfileGraph;
   /** A relationship, by alias: its row on the Relationships page. */
   relationship?: string;
   /** A scheduled trigger, by id: its row on the Triggers page. */
@@ -125,6 +138,9 @@ export interface DemoTourStepDef {
    *  going to `/demos/<name>` (a demo that builds on another links back to it, and on to it). */
   demo?: string;
 }
+
+/** View Profile Runs' close button: a graph step leaves the window as it found it. */
+const PROFILE_RUNS_CLOSE = '[data-testid="profile-runs-modal"] .mantine-Modal-close';
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
 const RESULT_WAIT_MS = 60000;
@@ -193,6 +209,24 @@ function demoTourStep(
     // describes is shown only there.
     const [section, tab] = def.open.split(".");
     const query = new URLSearchParams({ open: def.table, section, ...(tab ? { tab } : {}) });
+    if (def.graph !== undefined) {
+      // Act, then explain (REQ-2115): the tour opens the table's View Profile Runs, which selects
+      // the latest run, and picks the graph's tab; the popover then explains the graph, once its
+      // scene is drawn (three.js loads on first use). Leaving the step closes the window.
+      const stage = `[data-testid="${PROFILE_GRAPH_STAGES[def.graph]}"][data-ready]`;
+      return {
+        ...page,
+        route: `${def.route ?? "/tables"}?${query.toString()}`,
+        actions: [
+          { do: "press", target: { testId: "table-read-view-profile-runs" } },
+          { do: "press", target: { testId: `profile-tab-${def.graph}` } },
+        ],
+        readySelector: stage,
+        element: stage,
+        waitMs: RESULT_WAIT_MS,
+        clickAfterNext: PROFILE_RUNS_CLOSE,
+      };
+    }
     return {
       ...page,
       route: `${def.route ?? "/tables"}?${query.toString()}`,
@@ -278,15 +312,16 @@ function demoTourStep(
   }
   if (def.notebook === true) {
     // REQ-2084: the demo's notebook, its cells added to the Notebook tab's open notebook and run;
-    // the step is shown once the last has answered.
+    // the step is shown once the last has answered, on the last cell's outputs (its figure), which
+    // the notebook has scrolled into view.
     if (notebook.length === 0) {
       throw new Error(`Tour: step ${def.key} opens the demo's notebook, and it ships none`);
     }
     return {
       ...page,
       navState: { cells: [...notebook], autoRun: true },
-      readySelector: '[data-testid="notebook-answered"]',
-      element: '[data-testid="notebook-panel"]',
+      readySelector: '[data-testid="notebook-answer"]',
+      element: '[data-testid="notebook-answer"]',
       waitMs: NOTEBOOK_WAIT_MS,
     };
   }

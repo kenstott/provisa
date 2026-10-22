@@ -4021,7 +4021,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             _span.set_attribute("db.statement", plan.sql[:1000])
             async with tenant_db.acquire() as _conn:
                 # Column names come from the result itself, so an empty result still has them.
-                col_names, _rows = await _conn.fetch_with_columns(plan.sql)
+                # The statement's $N placeholders are bound from the plan, as on every route.
+                col_names, _rows = await _conn.fetch_with_columns(
+                    plan.sql, *(plan.exec_params or ())
+                )
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
         result = QueryResult(rows=rows, column_names=col_names)
