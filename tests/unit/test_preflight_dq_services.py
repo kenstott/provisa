@@ -180,8 +180,16 @@ def meta(monkeypatch):
         return []
 
     monkeypatch.setattr(dq, "_read", read)
-    monkeypatch.setattr(dq, "_meta", lambda row: model[int(row["id"])])
-    return SimpleNamespace(reads=reads, tables=tables, model=model)
+    # The tables each role's surface does NOT serve (a domain it has no access to).
+    beyond: dict[str, set[int]] = {}
+    monkeypatch.setattr(
+        dq,
+        "_meta",
+        lambda row, role: (
+            None if int(row["id"]) in beyond.get(role, set()) else model[int(row["id"])]
+        ),
+    )
+    return SimpleNamespace(reads=reads, tables=tables, model=model, beyond=beyond)
 
 
 def _checker(id_, name, *, ran=True, product=None):
@@ -233,6 +241,23 @@ async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles
     assert profile["profile_table"] == "p.orders_7_profile_columns"
     assert profile["latest_run"][0]["run_id"] == "r9"
     assert {role for _sql, role in meta.reads} == {"analyst"}
+
+
+@pytest.mark.asyncio
+async def test_a_checker_the_role_does_not_reach_is_left_out_and_never_read(meta):
+    # The meta domain lists a checker in a domain the role has no access to; reading its results
+    # was refused (V006/V000) and failed the whole call. The role gets no rows of it, as of any
+    # table it cannot read.
+    meta.beyond["outsider"] = {11}
+    meta.tables += [
+        ("WHERE domain_id = 'sales'", [
+            {"id": 7, "domain_id": "sales", "schema_name": _PHYSICAL, "table_name": "orders", "alias": None}
+        ]),
+        ("checked_table_id = 7", [_checker(11, "orders_soda"), _checker(12, "orders_gx", ran=False)]),
+    ]  # fmt: skip
+    found = await dq.dataset("sales.orders", "outsider")
+    assert [c["checker_table"] for c in found["checker_tables"]] == ["dq.orders_gx"]
+    assert not [sql for sql, _role in meta.reads if "orders_soda" in sql]
 
 
 @pytest.mark.asyncio
