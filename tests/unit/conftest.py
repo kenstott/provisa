@@ -28,6 +28,20 @@ from __future__ import annotations
 # The request-deadline clock a test moves itself (tests/deadline_clock.py).
 from tests.deadline_clock import deadline_clock  # noqa: F401
 
+# DIAGNOSTIC (flight-relay-diag branch only): record every descriptor close, per test.
+import pytest  # noqa: E402
+
+from tests.unit import _fd_close_recorder  # noqa: E402
+
+_fd_close_recorder.install()
+
+
+@pytest.fixture(autouse=True)
+def _name_the_test_closing_descriptors(request):
+    _fd_close_recorder.current_test[0] = request.node.nodeid
+    yield
+    _fd_close_recorder.current_test[0] = f"(after {request.node.nodeid})"
+
 
 import sys  # noqa: E402
 

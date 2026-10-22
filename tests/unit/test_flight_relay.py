@@ -83,9 +83,25 @@ def test_a_large_stream_arrives_whole_through_the_relay(started):
         def do_get(self, context, ticket):  # noqa: ARG002 - Flight override signature
             return fl.RecordBatchStream(pa.table({"n": pa.array(range(3_000_000), pa.int64())}))
 
+    import time
+
+    from tests.unit import _fd_close_recorder
+
+    since = time.monotonic()
     server = started(_Big("grpc://127.0.0.1:0"))
+    listener = _fd_close_recorder.listener_fd(server.port)
     port = lease_port()
     started(FlightRelay("127.0.0.1", port, server.port))
+    # The relay relays to this server: under -n 4 its listener once refused a connection moments
+    # after it was bound, and the client saw only the relay's reset. Asked directly first.
+    try:
+        socket.create_connection(("127.0.0.1", server.port), timeout=5).close()
+    except OSError as exc:
+        raise AssertionError(
+            f"the Flight server's own listener (127.0.0.1:{server.port}, fd {listener}) refused "
+            f"a direct connection ({exc}); closes of fd {listener} since it started:\n"
+            + (_fd_close_recorder.closes_of(listener, since) if listener is not None else "?")
+        ) from exc
     client = fl.connect(f"grpc://127.0.0.1:{port}")
     try:
         table = client.do_get(fl.Ticket(b"x"), fl.FlightCallOptions(timeout=60)).read_all()
