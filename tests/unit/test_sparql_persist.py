@@ -97,7 +97,7 @@ class _Conn:
         self.upserts.append((table.name, values))
 
 
-_SRC = {"id": "graph", "type": "sparql", "host": _EP, "port": 0, "database": ""}
+_SRC = {"id": "graph", "type": "sparql", "host": _EP, "port": 0, "database": "", "mapping": {}}
 
 
 def _bindings(names: list[str], rows: list[list[str]]) -> dict:

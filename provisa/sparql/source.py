@@ -75,15 +75,44 @@ def build_endpoint(
     sparql_query: str,
     columns: list[ApiColumn],
     ttl: int = 300,
-) -> ApiEndpoint:  # REQ-297, REQ-298, REQ-299
+    reasoner: tuple[str, str] | None = None,
+) -> ApiEndpoint:  # REQ-297, REQ-298, REQ-299, REQ-2138
     """Build an ApiEndpoint for a single SPARQL table.
 
     The endpoint POSTs the SPARQL query as form-encoded data following
     the SPARQL 1.1 Protocol and uses the sparql_bindings normalizer.
+
+    A table whose query is one IRI is an inferred class or property of the source's
+    ``reasoner`` (its name and axioms, provisa/sparql/reasoning): its rows are the reasoner's,
+    and the reasoner and axioms travel in its default parameters.
     """
     from urllib.parse import urlparse
 
+    from provisa.sparql import reasoning
+
     path = "" if _REFERENCE in cfg.endpoint_url else (urlparse(cfg.endpoint_url).path or "/")
+
+    if reasoning.inferred_iri(sparql_query) is not None:
+        if reasoner is None:
+            raise ValueError(
+                f"table {table_name!r}: a query that names one IRI reads an inferred class or "
+                f"property, and source {cfg.source_id!r} names no reasoner"
+            )
+        return ApiEndpoint(
+            source_id=cfg.source_id,
+            path=path,
+            method="POST",
+            table_name=table_name,
+            columns=columns,
+            ttl=ttl,
+            body_encoding="form",
+            query_template=sparql_query,
+            response_normalizer=reasoning.NORMALIZER,
+            default_params={
+                reasoning.REASONER_PARAM: reasoner[0],
+                reasoning.AXIOMS_PARAM: reasoner[1],
+            },
+        )
 
     return ApiEndpoint(
         source_id=cfg.source_id,

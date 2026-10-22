@@ -53,6 +53,7 @@ async def persist_sparql_table(  # REQ-1683
     columns: list,
     ttl: int,
     default_graph_uri: str | None = None,  # REQ-1740
+    reasoner: tuple[str, str] | None = None,  # REQ-2138
 ) -> "tuple[ApiSource, ApiEndpoint]":
     """Persist one SPARQL-backed table: its source's api_sources row and its api_endpoints row.
     Returns the records so the caller can mirror them into live state."""
@@ -62,7 +63,7 @@ async def persist_sparql_table(  # REQ-1683
         source_id=source_id, endpoint_url=endpoint_url, default_graph_uri=default_graph_uri
     )
     endpoint = build_endpoint(
-        cfg, table_name, query_template, api_columns_from_config(columns), ttl
+        cfg, table_name, query_template, api_columns_from_config(columns), ttl, reasoner
     )
     await persist_api_source(conn, api_source)
     await persist_api_endpoint(conn, endpoint)

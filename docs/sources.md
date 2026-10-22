@@ -1668,6 +1668,57 @@ Register Table works the same way as for Neo4j: pick the source, type a table na
 - The statement's `LIMIT` is pushed only when every condition was pushed and the statement does not group, aggregate, use `DISTINCT`, `ORDER BY` or `OFFSET`.
 - A narrowed answer is cached under its own query, apart from the whole table's.
 
+#### Reasoner
+
+A `sparql` source can name a reasoner and an OWL axioms document. A table whose query is one IRI in angle brackets then serves that class or property as the axioms infer it:
+- a class: one column, its members;
+- an object or data property: two columns, each subject and its value.
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+The axioms may be written in any syntax the OWL API reads: Turtle, RDF/XML, OWL functional syntax or Manchester syntax. HermiT is the one reasoner.
+
+When an inferred table is read, the reasoner:
+1. reads the classes and properties the axioms name;
+2. sends the endpoint a `CONSTRUCT` for every triple of those properties and every membership of those classes, asking for N-Triples;
+3. classifies that slice under the axioms;
+4. returns the facts that follow.
+
+All of a source's inferred tables share one classification, and it is reused for the table's cache TTL. The source's freshness declaration is therefore how often it reasons: `cache_ttl` for a live table, the replica's refresh for a replica, and once for a TTL of `-1`. What an inferred table serves is governed for every reader like any other table.
+
+HermiT runs as a separate program, never inside the server. It runs on a pinned Eclipse Temurin JDK 21 with HermiT, the OWL API and their libraries on its class path. Each piece is fetched on first use, checked against the SHA-256 Provisa pins, and cached under the runtime-deps cache root (`$PROVISA_RUNTIME_DEPS_CACHE`, default `~/.cache/provisa/runtime_deps`). A download that fails, or a file whose sum differs from the pin, fails the read by name.
+
 ## Connection Examples
 
 ### PostgreSQL

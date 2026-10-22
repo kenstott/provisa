@@ -626,6 +626,13 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
 
         return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
+    if endpoint.response_normalizer == "owl_inferred":
+        # REQ-2138: an inferred table of a sparql source's reasoner. Its rows are the source's
+        # classification (provisa/sparql/reasoning), reasoned in the reasoner's own process
+        # from the slice its endpoint answers; they are one page, flattened as declared.
+        from provisa.sparql.reasoning import inferred_rows
+
+        return ApiAnswer([await inferred_rows(endpoint, resolved_params, call.url, call.headers)])
 
     async def _run() -> ApiAnswer:
         paging = Paging()
