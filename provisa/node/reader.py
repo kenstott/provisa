@@ -31,7 +31,7 @@ from pathlib import Path
 from provisa.core.package_registries import Resolved
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.install import Http, http_get
-from provisa.node.install import NpmCode, fetch_npm
+from provisa.node.install import NpmCode, code_command, fetch_npm
 from provisa.codesource.manifest import Manifest, read_manifest
 
 #: The TypeScript compiler the reader runs, and the npm integrity it must have.
@@ -100,7 +100,7 @@ def reader_command(runtime: str, executable: Path, compiler: Path, entry: Path) 
     the bundle, and the environment (the compiler reads its own settings there; the reader's
     environment is only PATH, :func:`run_reader`), and nothing else."""
     if runtime in ("node", "bun"):
-        return [str(executable), str(READER), str(compiler), str(entry)]
+        return [*code_command(runtime, executable), str(READER), str(compiler), str(entry)]
     if runtime == "deno":
         readable = ",".join(str(p) for p in (READER.parent, compiler.parent.parent, entry.parent))
         return [
