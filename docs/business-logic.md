@@ -4,6 +4,8 @@
 
 Every organization has standards for business logic, and most teams follow them. Yet over years, as systems are built and replaced and teams change, the logic spreads across ETL jobs, dashboards, APIs and stored procedures. Each piece makes sense on its own. Often nobody planned the whole, and more often nobody planned the whole across time. The result is familiar: "net revenue" is computed three ways in three places, and no one can say which is right.
 
+A good example of an industry solution is the metrics layer, often sold as a semantic layer: define "net revenue" once and have every tool read it. That fixes metrics, but not everything. Metrics are one kind of business logic among many, and the bigger question is how all of it fits into controlled, governed data. Logic that derives or changes data needs the same governance as the data itself: who may use it, what it reads and writes, and where its results go.
+
 ## What business logic is {: #definition }
 
 Business logic is the rules that create, update, delete or transform data.

@@ -4,6 +4,8 @@
 
 Toute organisation a des standards pour la logique métier, et la plupart des équipes les suivent. Pourtant, au fil des années, à mesure que des systèmes sont construits et remplacés et que les équipes changent, la logique se disperse entre tâches ETL, tableaux de bord, API et procédures stockées. Chaque pièce a du sens en soi. Souvent personne n'a planifié l'ensemble, et plus souvent encore personne n'a planifié l'ensemble dans la durée. Le résultat est connu : le « chiffre d'affaires net » est calculé de trois façons à trois endroits, et personne ne peut dire laquelle est juste.
 
+Un bon exemple de solution du secteur est la couche de métriques, souvent vendue comme couche sémantique : définir le « chiffre d'affaires net » une fois et le faire lire par tous les outils. Cela règle les métriques, mais pas tout. Les métriques sont une sorte de logique métier parmi d'autres, et la vraie question est de savoir comment toute cette logique s'insère dans des données contrôlées et gouvernées. Une logique qui dérive ou modifie des données a besoin de la même gouvernance que les données elles-mêmes : qui peut l'utiliser, ce qu'elle lit et écrit, et où vont ses résultats.
+
 ## Ce qu'est la logique métier {: #definition }
 
 La logique métier, ce sont les règles qui créent, modifient, suppriment ou transforment des données.

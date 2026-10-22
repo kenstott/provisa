@@ -4,6 +4,8 @@
 
 Toda organização tem padrões para a lógica de negócio, e a maioria das equipes os segue. Mas, com os anos, à medida que sistemas são construídos e substituídos e as equipes mudam, a lógica se espalha por jobs de ETL, dashboards, APIs e procedimentos armazenados. Cada peça faz sentido sozinha. Muitas vezes ninguém planejou o todo, e mais vezes ainda ninguém planejou o todo ao longo do tempo. O resultado é conhecido: a “receita líquida” é calculada de três jeitos em três lugares, e ninguém sabe dizer qual está certo.
 
+Um bom exemplo de solução do setor é a camada de métricas, muitas vezes vendida como camada semântica: definir a “receita líquida” uma vez e fazer toda ferramenta lê-la. Isso resolve as métricas, mas não tudo. Métricas são um tipo de lógica de negócio entre muitos, e a pergunta maior é como toda ela se encaixa em dados controlados e governados. A lógica que deriva ou altera dados precisa da mesma governança que os próprios dados: quem pode usá-la, o que ela lê e escreve, e para onde vão seus resultados.
+
 ## O que é lógica de negócio {: #definition }
 
 Lógica de negócio são as regras que criam, atualizam, excluem ou transformam dados.

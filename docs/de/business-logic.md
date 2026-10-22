@@ -4,6 +4,8 @@
 
 Jede Organisation hat Standards für Geschäftslogik, und die meisten Teams halten sich daran. Doch über die Jahre, während Systeme gebaut und ersetzt werden und Teams wechseln, verteilt sich die Logik auf ETL-Jobs, Dashboards, APIs und gespeicherte Prozeduren. Jedes Stück ergibt für sich Sinn. Oft hat niemand das Ganze geplant, und noch öfter hat niemand das Ganze über die Zeit geplant. Das Ergebnis ist bekannt: „Nettoumsatz“ wird an drei Stellen auf drei Arten berechnet, und niemand kann sagen, welche stimmt.
 
+Ein gutes Beispiel für eine Branchenlösung ist der Metrics Layer, oft als Semantic Layer verkauft: „Nettoumsatz“ einmal definieren und jedes Werkzeug liest ihn. Das löst Metriken, aber nicht alles. Metriken sind eine Art von Geschäftslogik unter vielen, und die größere Frage ist, wie sich all das in kontrollierte, gesteuerte Daten einfügt. Logik, die Daten ableitet oder ändert, braucht dieselbe Governance wie die Daten selbst: wer sie nutzen darf, was sie liest und schreibt und wohin ihre Ergebnisse gehen.
+
 ## Was Geschäftslogik ist {: #definition }
 
 Geschäftslogik sind die Regeln, die Daten erzeugen, ändern, löschen oder umformen.

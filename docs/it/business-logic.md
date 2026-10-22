@@ -4,6 +4,8 @@
 
 Ogni organizzazione ha degli standard per la logica di business, e la maggior parte dei team li segue. Eppure, negli anni, mentre i sistemi vengono costruiti e sostituiti e i team cambiano, la logica si sparpaglia tra job ETL, dashboard, API e stored procedure. Ogni pezzo ha senso da solo. Spesso nessuno ha pianificato l'insieme, e più spesso ancora nessuno ha pianificato l'insieme nel tempo. Il risultato è noto: il «ricavo netto» viene calcolato in tre modi in tre posti, e nessuno sa dire quale sia giusto.
 
+Un buon esempio di soluzione del settore è il metrics layer, spesso venduto come semantic layer: definire il «ricavo netto» una volta e farlo leggere a ogni strumento. Questo risolve le metriche, ma non tutto. Le metriche sono un tipo di logica di business tra tanti, e la domanda più grande è come tutta questa logica si inserisce in dati controllati e governati. La logica che deriva o modifica i dati ha bisogno della stessa governance dei dati stessi: chi può usarla, cosa legge e scrive, e dove vanno i suoi risultati.
+
 ## Cos'è la logica di business {: #definition }
 
 La logica di business sono le regole che creano, aggiornano, eliminano o trasformano i dati.

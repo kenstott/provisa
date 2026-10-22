@@ -4,6 +4,8 @@
 
 Toda organización tiene estándares para la lógica de negocio, y la mayoría de los equipos los siguen. Pero con los años, a medida que se construyen y reemplazan sistemas y cambian los equipos, la lógica se reparte entre trabajos ETL, paneles, APIs y procedimientos almacenados. Cada pieza tiene sentido por sí sola. A menudo nadie planificó el conjunto, y más a menudo nadie planificó el conjunto a lo largo del tiempo. El resultado es conocido: los «ingresos netos» se calculan de tres maneras en tres lugares, y nadie puede decir cuál es la correcta.
 
+Un buen ejemplo de solución de la industria es la capa de métricas, a menudo vendida como capa semántica: definir los «ingresos netos» una vez y que todas las herramientas los lean. Eso resuelve las métricas, pero no todo. Las métricas son un tipo de lógica de negocio entre muchos, y la pregunta mayor es cómo encaja toda ella en datos controlados y gobernados. La lógica que deriva o cambia datos necesita la misma gobernanza que los propios datos: quién puede usarla, qué lee y escribe, y adónde van sus resultados.
+
 ## Qué es la lógica de negocio {: #definition }
 
 La lógica de negocio son las reglas que crean, actualizan, eliminan o transforman datos.
