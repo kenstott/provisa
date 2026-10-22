@@ -965,34 +965,24 @@ reset_sandbox_state() {
   [ -n "$containers" ] || { echo "sandbox VM: no sandbox tier container on $NODE" >&2; exit 1; }
   echo "== sandbox VM: resetting the sandbox tier's orgs (stopping $containers)"
   ssh_node "sudo docker stop $containers >/dev/null"
+  # One schema per statement, each its own transaction (psql autocommit + \gexec): every
+  # template's schema holds hundreds of views, and dropping them all in one transaction runs
+  # out of locks (max_locks_per_transaction). Schemas first, then the orgs rows, so a failure
+  # part way leaves orgs whose schemas a rerun drops.
   cat > "$STAGE/reset_sandbox.sql" <<'SQL'
 \pset pager off
-BEGIN;
+SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
 -- Every admin row of an org cascades from its orgs row (provisa/core/schema_admin.py).
 DELETE FROM public.orgs WHERE id LIKE 'sbx%';
-DO $$
-DECLARE
-  s text;
-BEGIN
-  FOR s IN SELECT nspname::text FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' LOOP
-    EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', s);
-  END LOOP;
-END $$;
-COMMIT;
 SELECT count(*) AS sandbox_orgs_left FROM public.orgs WHERE id LIKE 'sbx%';
 SQL
   run_sql "$STAGE/reset_sandbox.sql" reset-sandbox
   # The regions tier's stores (first-launch.sh: region-pg-eu, region-pg-us) hold each region's
   # schemas of its orgs.
   cat > "$STAGE/reset_sandbox_store.sql" <<'SQL'
-DO $$
-DECLARE
-  s text;
-BEGIN
-  FOR s IN SELECT nspname::text FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' LOOP
-    EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', s);
-  END LOOP;
-END $$;
+SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
 SQL
   local b64 store
   b64="$(base64 < "$STAGE/reset_sandbox_store.sql" | tr -d '\n')"
