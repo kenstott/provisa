@@ -236,11 +236,7 @@ export class RelationsScene extends BaseScene<RelHover> {
       }
       this.edgeMeshes.push({ edge: e, meshes });
     }
-    const grid = new THREE.GridHelper(18, 18, this.theme.grid, this.theme.grid);
-    (grid.material as THREE.Material).dispose();
-    grid.material = this.mats.grid as THREE.LineBasicMaterial;
-    grid.position.y = minY - 1.5;
-    world.add(grid);
+    this.layFloor(world, 18, minY - 1.5, this.mats.grid as THREE.LineBasicMaterial);
     this.fitShadow(10);
     this.paint();
   }

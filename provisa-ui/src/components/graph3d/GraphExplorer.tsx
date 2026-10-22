@@ -18,6 +18,8 @@ import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
 import { useAttraction } from "../../pages/tables/profile3d/attractionState";
+import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
+import { useGrid } from "../../pages/tables/profile3d/gridState";
 import { matchesSearch, searchItems } from "../../lib/searchItems";
 import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
@@ -148,6 +150,7 @@ export function GraphExplorer({
   }, [data, layers, offered, filters, expanded, scope, choices, edgeTypes, orphans, search]);
   const layout = presetOf(preset).layout;
   const [attraction, setAttraction] = useAttraction(testId);
+  const [grid, setGrid] = useGrid(testId);
   const at = useMemo(
     () => layoutGraph(shown, layout, zero, attraction),
     [shown, layout, zero, attraction],
@@ -187,6 +190,7 @@ export function GraphExplorer({
     setHover,
     rotate,
     setRotate,
+    grid,
   };
 
   return (
@@ -203,6 +207,7 @@ export function GraphExplorer({
         <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
           {t("profile3d.rotate")}
         </Chip>
+        <GridToggle value={grid} onChange={setGrid} testId={testId} />
         <Button
           size="xs"
           variant="default"

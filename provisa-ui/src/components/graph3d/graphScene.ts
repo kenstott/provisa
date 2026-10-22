@@ -454,11 +454,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       this.edgeMeshes.push({ edge: e, meshes });
     }
     const size = Math.ceil(extent * 2.4);
-    const grid = new THREE.GridHelper(size, size, this.theme.grid, this.theme.grid);
-    (grid.material as THREE.Material).dispose();
-    grid.material = this.mats.grid as THREE.LineBasicMaterial;
-    grid.position.y = minY - 1.5;
-    world.add(grid);
+    this.layFloor(world, size, minY - 1.5, this.mats.grid as THREE.LineBasicMaterial);
     this.fitShadow(extent + 4);
     this.paint();
   }

@@ -18,6 +18,8 @@ import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import { AttractionSlider } from "../Attraction";
 import { useAttraction } from "../attractionState";
+import { GridToggle } from "../GridToggle";
+import { useGrid } from "../gridState";
 import { Stage3D, type CameraCommand } from "../Stage3D";
 import { useLazyScene } from "../useLazyScene";
 import {
@@ -44,6 +46,8 @@ interface Shared {
   toggleKind: (k: "correlation" | "dependence", on: boolean) => void;
   rotate: boolean;
   setRotate: (on: boolean) => void;
+  grid: boolean;
+  setGrid: (shown: boolean) => void;
   selected: string | null;
   setSelected: (id: string) => void;
   hover: RelHover | null;
@@ -77,6 +81,7 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
           },
           theme,
         );
+        sc.setGrid(latest.current.grid);
         sc.setData(latest.current.model, latest.current.edges, true);
         return sc;
       }),
@@ -103,6 +108,7 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
+  useEffect(() => scene?.setGrid(s.grid), [scene, s.grid]);
   useEffect(() => {
     if (!scene || command == null) return;
     if (command.kind === "reset") scene.resetView();
@@ -312,6 +318,7 @@ function RelationsView({
         <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="relations-rotate">
           {t("profile3d.rotate")}
         </Chip>
+        <GridToggle value={s.grid} onChange={s.setGrid} testId="relations" />
         <Button
           size="xs"
           variant="default"
@@ -351,6 +358,7 @@ export function ProfileRelations({
     new Set(["spearman", "correlation_ratio", "dependence"]),
   );
   const [rotate, setRotate] = useState(true);
+  const [grid, setGrid] = useGrid("relations");
   const [picked, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<RelHover | null>(null);
   const edges = useMemo(() => visibleEdges(model, Number(min), kinds), [model, min, kinds]);
@@ -388,6 +396,8 @@ export function ProfileRelations({
       }),
     rotate,
     setRotate,
+    grid,
+    setGrid,
     selected,
     setSelected,
     hover,

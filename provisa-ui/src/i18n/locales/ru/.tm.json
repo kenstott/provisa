@@ -7753,5 +7753,6 @@
   "ru/writeGrants.json::writeGrants.saved": "Grants saved.",
   "ru/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "ru/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "ru/writeGrants.json::writeGrants.source_session": "A session variable"
+  "ru/writeGrants.json::writeGrants.source_session": "A session variable",
+  "ru/profile3d.json::profile3d.grid": "Grid"
 }

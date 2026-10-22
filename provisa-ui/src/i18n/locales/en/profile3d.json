@@ -8,6 +8,7 @@
     "zoomTo": "Zoom to this column",
     "attraction": "Attraction",
     "attractionLoose": "Loose",
-    "attractionTight": "Tight"
+    "attractionTight": "Tight",
+    "grid": "Grid"
   }
 }

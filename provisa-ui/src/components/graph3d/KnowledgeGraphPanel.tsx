@@ -20,6 +20,8 @@ import { Network } from "lucide-react";
 import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3D";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { GraphExplorer } from "./GraphExplorer";
+import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
+import { useGrid } from "../../pages/tables/profile3d/gridState";
 import { GraphStage, type StageState } from "./GraphStage";
 import {
   PRODUCT_SCOPE,
@@ -80,6 +82,7 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
   const [rotate, setRotate] = useState(true);
+  const [grid, setGrid] = useGrid("kg-panel");
   const [command, setCommand] = useState<CameraCommand | null>(null);
   const { t } = useTranslation();
   const s: StageState = {
@@ -93,6 +96,7 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
     setHover,
     rotate,
     setRotate,
+    grid,
   };
   return (
     <>
@@ -100,6 +104,7 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
         <Chip size="xs" checked={rotate} onChange={setRotate} data-testid="kg-panel-rotate">
           {t("profile3d.rotate")}
         </Chip>
+        <GridToggle value={grid} onChange={setGrid} testId="kg-panel" />
         <Button
           size="xs"
           variant="default"

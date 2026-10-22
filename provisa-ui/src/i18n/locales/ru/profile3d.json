@@ -8,6 +8,7 @@
     "zoomTo": "Приблизить к этому столбцу",
     "attraction": "Притяжение",
     "attractionLoose": "Свободно",
-    "attractionTight": "Плотно"
+    "attractionTight": "Плотно",
+    "grid": "Сетка"
   }
 }

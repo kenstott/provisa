@@ -8,6 +8,7 @@
     "zoomTo": "この列にズーム",
     "attraction": "引力",
     "attractionLoose": "疎",
-    "attractionTight": "密"
+    "attractionTight": "密",
+    "grid": "グリッド"
   }
 }

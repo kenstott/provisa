@@ -32,6 +32,8 @@ export interface StageState {
   setHover: (h: GraphHover | null) => void;
   rotate: boolean;
   setRotate: (on: boolean) => void;
+  /** Whether the floor grid is drawn. */
+  grid: boolean;
 }
 
 /** The legend's order; it lists only the node types drawn. */
@@ -82,6 +84,7 @@ export function GraphStage({
           theme,
         );
         sc.setFrontal(latest.current.frontal);
+        sc.setGrid(latest.current.grid);
         sc.setData(latest.current.graph, latest.current.at, true);
         return sc;
       }),
@@ -103,6 +106,7 @@ export function GraphStage({
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
+  useEffect(() => scene?.setGrid(s.grid), [scene, s.grid]);
   useEffect(() => {
     if (!scene || command == null) return;
     if (command.kind === "reset") scene.resetView();

@@ -29,6 +29,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
       for (const m of [
         "setTheme",
         "setRotate",
+        "setGrid",
         "dispose",
         "resetView",
         "setHover",
