@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "As extrações",
-        "description": "O consumidor de cada equipe lê o aviso e extrai o dataset inteiro pelo Arrow Flight na hora de versão, para que uma atualização no meio da extração não misture duas versões. Ele registra as linhas, os segundos e as linhas por segundo. Seu ticket é um objeto JSON: a consulta, o papel e a hora as-of (consumer.py). Uma inicialização local executa os consumidores ao vivo; o sandbox hospedado mostra as extrações registradas quando a demo foi construída."
+        "description": "O consumidor de cada equipe lê o aviso e baixa todo o conjunto de dados pelo Arrow Flight como estava registrado no seu horário de versão: os pedidos que tinham chegado até então, de modo que nem uma atualização chegando no meio da extração nem um pedido chegado depois podem mudar o que ele lê. Registra as linhas, os segundos e as linhas por segundo. Seu ticket é um objeto JSON: a consulta, o papel e o horário de registro (consumer.py). Uma inicialização local executa os consumidores ao vivo; o sandbox hospedado mostra as extrações registradas quando a demo foi construída."
       },
       "provisioningAsFinance": {
         "title": "Executar como finanças",

@@ -1242,6 +1242,10 @@ class LiveKafkaParams(BaseModel):  # REQ-813
     format: str = "json"  # "json" | "avro"
     key_column: str | None = None  # column used as the Kafka message key
     field_mapping: dict[str, str] = Field(default_factory=dict)  # kafka field → table column
+    # REQ-813 (amended 2026-10-21): a column Provisa fills with the time it lands each message,
+    # stamped as mail landing stamps its rows (federation.mail_landing.Stamps): one stamp per
+    # landed batch, each later than the last. None: the table carries no landing time.
+    landing_time_column: str | None = None
 
 
 class DeltaConfig(BaseModel):  # REQ-874
@@ -1621,6 +1625,30 @@ class Table(
             raise ValueError(
                 f"view {self.table_name!r}: a view declaring business_key, valid_time and "
                 "recorded_time is materialized (materialize: true)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _landing_time_names_a_column(self) -> "Table":
+        """REQ-813 (amended 2026-10-21): a live Kafka table's landing-time column is one of its
+        columns (where its columns are known), a timestamp."""
+        kafka = self.live.kafka if self.live is not None else None
+        column = kafka.landing_time_column if kafka is not None else None
+        if column is None:
+            return self
+        declared = {c.name: c for c in self.columns}
+        if not declared or "*" in declared:
+            return self
+        if column not in declared:
+            raise ValueError(
+                f"table {self.table_name!r}: its landing-time column {column!r} is not one of "
+                "its columns"
+            )
+        data_type = declared[column].data_type
+        if data_type is None or not data_type.lower().startswith("timestamp"):
+            raise ValueError(
+                f"table {self.table_name!r}: its landing-time column {column!r} is "
+                f"{data_type or 'untyped'}, not a timestamp"
             )
         return self
 

@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "I prelievi",
-        "description": "Il consumer di ogni team legge l'avviso e preleva l'intero dataset tramite Arrow Flight all'ora di versione, così un aggiornamento a metà prelievo non può mescolare due versioni. Registra le righe, i secondi e le righe al secondo. Il suo ticket è un oggetto JSON: la query, il ruolo e l'ora as-of (consumer.py). Un avvio locale esegue i consumer in tempo reale; la sandbox ospitata mostra i prelievi registrati quando la demo è stata creata."
+        "description": "Il consumer di ogni team legge l'avviso e preleva l'intero dataset via Arrow Flight così come era registrato alla sua ora di versione: gli ordini arrivati fino ad allora, così né un aggiornamento che arriva a metà prelievo né un ordine arrivato dopo possono cambiare ciò che legge. Registra le righe, i secondi e le righe al secondo. Il suo ticket è un oggetto JSON: la query, il ruolo e l'ora di registrazione (consumer.py). Un avvio locale esegue i consumer dal vivo; la sandbox ospitata mostra i prelievi registrati quando la demo è stata costruita."
       },
       "provisioningAsFinance": {
         "title": "Esegui come finanza",

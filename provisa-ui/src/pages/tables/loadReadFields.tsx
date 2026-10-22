@@ -79,6 +79,10 @@ export function liveFields(t: TFunction, table: RegisteredTable): DetailField[] 
             label: t("liveDeliveryFieldset.kafkaConsumeKeyColumnLabel"),
             value: code(live.kafka?.keyColumn),
           },
+          {
+            label: t("liveDeliveryFieldset.kafkaLandingTimeLabel"),
+            value: code(live.kafka?.landingTimeColumn),
+          },
         ]
       : []),
     // Every live table fans out over SSE; Kafka is the one output that is chosen.

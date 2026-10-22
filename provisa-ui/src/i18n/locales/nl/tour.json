@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "De downloads",
-        "description": "De consumer van elk team leest de melding en downloadt de hele dataset via Arrow Flight op het versietijdstip, zodat een verversing halverwege geen twee versies kan mengen. Hij legt de rijen, de seconden en de rijen per seconde vast. Zijn ticket is een JSON-object: de query, de rol en het as-of-tijdstip (consumer.py). Een lokale start draait de consumers live; de gehoste sandbox toont de downloads die bij het bouwen van de demo zijn vastgelegd."
+        "description": "De consumer van elk team leest de melding en haalt de hele dataset via Arrow Flight op zoals die op zijn versietijd was vastgelegd: de bestellingen die tot dan waren binnengekomen, zodat noch een verversing die halverwege binnenkomt noch een later binnengekomen bestelling kan veranderen wat hij leest. Hij legt de rijen, de seconden en de rijen per seconde vast. Zijn ticket is een JSON-object: de query, de rol en de vastleggingstijd (consumer.py). Een lokale start draait de consumers live; de gehoste sandbox toont de ophalingen die zijn vastgelegd toen de demo werd gebouwd."
       },
       "provisioningAsFinance": {
         "title": "Uitvoeren als finance",

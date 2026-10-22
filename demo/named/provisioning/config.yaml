@@ -148,6 +148,8 @@ tables:
     strategy: kafka
     kafka:
       topic: orders${env:PROVISIONING_KAFKA_NS}
+      # Provisa fills it with the time it lands each order: when the order was recorded here.
+      landing_time_column: landed_at
   push_debounce_quiet: 1
   push_debounce_max_delay: 10
   enable_aggregates: true
@@ -158,6 +160,7 @@ tables:
   - {name: quantity, data_type: integer, description: How many were ordered, visible_to: [org_admin, finance, data_science]}
   - {name: unit_price, data_type: decimal, description: The price each sold at in USD, visible_to: [org_admin, finance, data_science]}
   - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [org_admin, finance, data_science]}
+  - {name: landed_at, data_type: timestamp, description: When Provisa landed it (UTC), visible_to: [org_admin, finance, data_science]}
 - source_id: feeds
   domain_id: provisioning
   schema: default
@@ -186,16 +189,16 @@ tables:
   - {name: counted_at, data_type: timestamp, description: When they were counted (UTC), visible_to: [org_admin, finance, data_science]}
 views:
 # The dataset provisioned: every order with its revenue, cost and margin. Each version of each row
-# is kept, keyed on the order, so a pull reads it as of a notice's version time. An order is
-# entered on the feed when it is placed and is not changed after, so its placing time is both its
-# valid time and its recorded time. Readable by users and clients
+# is kept, keyed on the order: its valid time is when it was placed, its recorded time when Provisa
+# landed it, so a pull as recorded at a notice's version time reads what had landed by then -- the
+# feed lands orders placed earlier, a week back for the month's history. Readable by users and clients
 # all day but 00:00-00:30 UTC; a real warehouse would usually open a narrower, overnight window.
 - id: order_margins
   domain_id: provisioning
   materialize: true
   business_key: [order_id]
   valid_time: ordered_at
-  recorded_time: ordered_at
+  recorded_time: landed_at
   off_peak_window: '00:30-00:00'
   off_peak_tz: UTC
   enable_aggregates: true
@@ -205,7 +208,7 @@ views:
   sql: >-
     SELECT o.order_id, o.sku, p.name AS product, p.category, o.quantity,
       o.quantity * o.unit_price AS revenue, o.quantity * p.unit_cost AS cost,
-      o.quantity * (o.unit_price - p.unit_cost) AS margin, o.ordered_at
+      o.quantity * (o.unit_price - p.unit_cost) AS margin, o.ordered_at, o.landed_at
     FROM "provisioning"."orders" AS o
     JOIN "provisioning"."products" AS p ON p.sku = o.sku
   columns:
@@ -218,6 +221,7 @@ views:
   - {name: cost, data_type: decimal, description: What the goods cost the roaster in USD, visible_to: [org_admin, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
   - {name: margin, data_type: decimal, description: Revenue less cost in USD, visible_to: [org_admin, finance, data_science], masks: [{to: [data_science], mask: {type: constant, value: '0'}}]}
   - {name: ordered_at, data_type: timestamp, description: When it was placed (UTC), visible_to: [org_admin, finance, data_science]}
+  - {name: landed_at, data_type: timestamp, description: When Provisa landed it (UTC), visible_to: [org_admin, finance, data_science]}
 # Finance's close: each category's revenue and margin with the value of its stock, built over the
 # dataset and the price and stock feeds as they land -- each product's stock (STOCK_OF), price
 # (PRICE_OF) and orders (ORDERED, summed by product first so stock is counted once) joined on the

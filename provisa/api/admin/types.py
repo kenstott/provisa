@@ -280,6 +280,7 @@ class LiveKafkaParamsType:  # REQ-813
     topic: str
     format: str = "json"
     key_column: str | None = None
+    landing_time_column: str | None = None  # REQ-813 (amended 2026-10-21)
 
 
 @strawberry.type
@@ -1110,6 +1111,7 @@ class LiveKafkaParamsInput:  # REQ-813
     topic: str
     format: str = "json"
     key_column: str | None = None
+    landing_time_column: str | None = None  # REQ-813 (amended 2026-10-21)
 
 
 @strawberry.input

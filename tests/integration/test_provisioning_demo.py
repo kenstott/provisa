@@ -282,8 +282,8 @@ def test_each_notice_is_published_and_each_team_pulls_as_of_it(landed, pulled):
 
 
 def test_a_pull_as_of_a_notice_reads_that_version(landed, pulled):
-    """Pulling again as of an earlier notice reads the rows that were current then, though the
-    feed has landed more orders since."""
+    """Pulling again as recorded at an earlier notice reads the rows that had landed by then,
+    though the feed has landed more since -- orders placed before the notice among them."""
     if pulled is None:
         assert not _notices_due(_utc())
         return
@@ -297,7 +297,7 @@ def test_a_pull_as_of_a_notice_reads_that_version(landed, pulled):
     ticket = {
         "query": f"SELECT * FROM {_DATASET}",
         "role": "finance",
-        "as_of": first["version_time"],
+        "as_recorded": first["version_time"],
     }
     reader = flight.connect(f"grpc://127.0.0.1:{landed.flight_port}").do_get(
         flight.Ticket(json.dumps(ticket).encode())

@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "The pulls",
-        "description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as of its version time, so a refresh landing mid-pull cannot mix two versions. It records the rows, the seconds and the rows a second. Its ticket is a JSON object: the query, the role and the as-of time (consumer.py). A local start runs the consumers live; the hosted sandbox shows the pulls recorded when the demo was built."
+        "description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as recorded at its version time: the orders that had landed by then, so neither a refresh landing mid-pull nor an order landed later can change what it reads. It records the rows, the seconds and the rows a second. Its ticket is a JSON object: the query, the role and the as-recorded time (consumer.py). A local start runs the consumers live; the hosted sandbox shows the pulls recorded when the demo was built."
       },
       "provisioningAsFinance": {
         "title": "Run as finance",

@@ -6782,7 +6782,7 @@
   "zh/tour.json::tour.steps.provisioningJoin.title": "How the feeds join",
   "zh/tour.json::tour.steps.provisioningNotices.description": "Inside the window a scheduled trigger writes a notice for each team: finance every five minutes, data science two minutes later. The notices table's live Kafka output publishes each to the topic dataset-ready. The notice's time is the dataset's version time.",
   "zh/tour.json::tour.steps.provisioningNotices.title": "Told when it is ready",
-  "zh/tour.json::tour.steps.provisioningPulls.description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as of its version time, so a refresh landing mid-pull cannot mix two versions. It records the rows, the seconds and the rows a second. Its ticket is a JSON object: the query, the role and the as-of time (consumer.py). A local start runs the consumers live; the hosted sandbox shows the pulls recorded when the demo was built.",
+  "zh/tour.json::tour.steps.provisioningPulls.description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as recorded at its version time: the orders that had landed by then, so neither a refresh landing mid-pull nor an order landed later can change what it reads. It records the rows, the seconds and the rows a second. Its ticket is a JSON object: the query, the role and the as-recorded time (consumer.py). A local start runs the consumers live; the hosted sandbox shows the pulls recorded when the demo was built.",
   "zh/tour.json::tour.steps.provisioningPulls.title": "The pulls",
   "zh/tour.json::tour.steps.provisioningRecap.description": "Feeds landed as they arrived, and datasets were built and refreshed from them. Each team was told on Kafka when a dataset was ready, and pulled it over Arrow Flight as of that moment, seeing only what its role allows and only inside the dataset's window. No copies, and no extraction jobs.",
   "zh/tour.json::tour.steps.provisioningRecap.title": "What you saw",
@@ -7590,5 +7590,8 @@
   "zh/tour.json::tour.steps.bankingVersions.title": "A correction is a new row",
   "zh/writeGrants.json::writeGrants.kept": "Kept: saved with the table.",
   "zh/serverErrors.json::serverErrors.schema.mv_window_held": "MV '{{mv}}' was not sealed at {{day}}'s close: another build of it holds its claim",
-  "zh/serverErrors.json::serverErrors.schema.mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build"
+  "zh/serverErrors.json::serverErrors.schema.mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build",
+  "zh/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaLandingTimeLabel": "Landing time column",
+  "zh/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaLandingTimeHint": "Provisa fills it with the time it lands each message.",
+  "zh/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaLandingTimeNone": "None"
 }

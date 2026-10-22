@@ -315,6 +315,7 @@ query TablesQuery {
         topic
         format
         keyColumn
+        landingTimeColumn
       }
       outputs {
         type

@@ -272,6 +272,8 @@ export interface LiveKafkaConfig {
   topic: string;
   format?: string;
   keyColumn?: string | null;
+  // REQ-813: the column Provisa fills with the time it lands each message.
+  landingTimeColumn?: string | null;
 }
 
 export interface LiveDeliveryConfig {

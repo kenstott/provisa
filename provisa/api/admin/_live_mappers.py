@@ -126,6 +126,7 @@ def live_model_from_input(inp):  # REQ-565, REQ-813
                 topic=inp.kafka.topic,
                 format=inp.kafka.format,
                 key_column=inp.kafka.key_column,
+                landing_time_column=inp.kafka.landing_time_column,
             )
             if inp.kafka is not None
             else None

@@ -8186,13 +8186,13 @@ The `X-Provisa-Sink` request header on a subscription request redirects the subs
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-The `live` block (LiveDeliveryConfig on Table) is a unified change-feed / CDC abstraction. The binary `delivery: poll|cdc` field is replaced by a multi-strategy model: `strategy: poll|native|debezium|kafka`. Per-table params: poll → watermark_column/poll_interval; native → none; kafka → LiveKafkaParams (topic/format/key_column/field_mapping). Reconciled with [REQ-824](#REQ-824): Debezium/Kafka delta-transport (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id) is inherited from Source.cdc, entered once per source and NOT repeated in per-table debezium params. query_id and outputs are optional so `live` covers both raw table change-feeds and live persisted-query output fan-out. Debezium topic names are derived from the source transport: {topic_prefix}.{schema}.{table}.
+The `live` block (LiveDeliveryConfig on Table) is a unified change-feed / CDC abstraction. The binary `delivery: poll|cdc` field is replaced by a multi-strategy model: `strategy: poll|native|debezium|kafka`. Per-table params: poll → watermark_column/poll_interval; native → none; kafka → LiveKafkaParams (topic/format/key_column/field_mapping). Reconciled with [REQ-824](#REQ-824): Debezium/Kafka delta-transport (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id) is inherited from Source.cdc, entered once per source and NOT repeated in per-table debezium params. query_id and outputs are optional so `live` covers both raw table change-feeds and live persisted-query output fan-out. Debezium topic names are derived from the source transport: {topic_prefix}.{schema}.{table}. (Amended 2026-10-21, LANDING TIME:) A live Kafka table may declare a landing-time column (kafka.landing_time_column), one of its timestamp columns. Provisa fills it with the time it lands each message, stamped as mail landing stamps its rows: one stamp per landed batch, each later than the last. It is when the row was recorded in Provisa, whatever time the message carries, so a view over the table can declare it as its recorded_time ([REQ-2109](#REQ-2109)). The table form offers it among the topic's settings.
 
 **Use case:** A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY, MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll vs CDC" where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution. Optional query_id and outputs enable both low-level table subscriptions and high-level live persisted-query delivery.
 
-**Code:** `provisa/core/models.py`
+**Code:** `provisa/core/models.py`, `provisa/events/push_wiring.py`, `provisa/api/admin/types.py`, `provisa/api/admin/_live_mappers.py`, `provisa/api/admin/_row_mappers.py`, `provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx`, `provisa-ui/src/pages/tables/loadReadFields.tsx`
 
-**Tests:** `tests/unit/test_live_delivery_config.py`
+**Tests:** `tests/unit/test_live_delivery_config.py`, `tests/unit/test_kafka_landing_time.py`, `tests/integration/test_provisioning_demo.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [subscriptions.md](../subscriptions.md)
 

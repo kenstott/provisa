@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "Las descargas",
-        "description": "El consumidor de cada equipo lee el aviso y descarga todo el dataset por Arrow Flight a la hora de versión, de modo que una actualización a mitad de la descarga no puede mezclar dos versiones. Registra las filas, los segundos y las filas por segundo. Su ticket es un objeto JSON: la consulta, el rol y la hora as-of (consumer.py). Un arranque local ejecuta los consumidores en vivo; el sandbox alojado muestra las descargas registradas al construir la demo."
+        "description": "El consumidor de cada equipo lee el aviso y extrae todo el conjunto de datos por Arrow Flight tal como estaba registrado en su hora de versión: los pedidos que habían llegado hasta entonces, de modo que ni una actualización que llegue a mitad de la extracción ni un pedido que llegue después pueden cambiar lo que lee. Registra las filas, los segundos y las filas por segundo. Su ticket es un objeto JSON: la consulta, el rol y la hora de registro (consumer.py). Un arranque local ejecuta los consumidores en vivo; el sandbox alojado muestra las extracciones registradas al construir la demo."
       },
       "provisioningAsFinance": {
         "title": "Ejecutar como finanzas",

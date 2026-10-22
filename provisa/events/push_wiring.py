@@ -407,6 +407,9 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
                 node=node,
                 row_materialize=row_materialize,
                 key=(src.id, tbl["schema_name"], tbl["table_name"]),
+                landing_time_column=((tbl.get("live") or {}).get("kafka") or {}).get(
+                    "landing_time_column"
+                ),
                 log=log,
                 write_lock=(
                     None
@@ -1033,6 +1036,7 @@ async def _run_listener(
     row_materialize: bool = False,
     write_lock: Any = None,
     key: tuple[str, str, str],
+    landing_time_column: str | None = None,
 ) -> None:
     """One push table's whole lifetime: drain the provider into the landed table through the
     engine's own write face (``EngineRuntime.apply_cdc_events``, REQ-989/REQ-1733 — never a raw
@@ -1048,6 +1052,11 @@ async def _run_listener(
     from provisa.federation.commit_time import SOURCE_COMMITTED_AT
 
     carries_commit_time = any(name == SOURCE_COMMITTED_AT for name, _type in columns)
+    # REQ-813 (amended 2026-10-21): the time Provisa lands each message, stamped as mail landing
+    # stamps its rows -- one stamp per batch, each later than the last, taken while it is written.
+    from provisa.federation.mail_landing import Stamps
+
+    stamps = Stamps()
 
     async def _land(batch: list) -> dict[str, int]:
         # A change without its key has no row to upsert or delete: landed, it would be a row of
@@ -1077,7 +1086,10 @@ async def _run_listener(
         # never written into a table a build is about to replace. A batch that finds a build
         # running waits for it and lands in the new table; applied by key, a change the build
         # already copied is applied again harmlessly.
-        async with _held(write_lock):
+        async with _held(write_lock), stamps.turn() as landed_at:
+            if landing_time_column is not None:
+                for event in events:
+                    event.row = {**event.row, landing_time_column: landed_at}
             counts = await engine.apply_cdc_events(
                 schema=land_schema,
                 table=land_table,

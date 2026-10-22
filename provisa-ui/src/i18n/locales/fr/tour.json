@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "Les extractions",
-        "description": "Le consommateur de chaque équipe lit l'avis et extrait tout le dataset par Arrow Flight à l'heure de version, afin qu'une actualisation en cours d'extraction ne mélange pas deux versions. Il consigne les lignes, les secondes et les lignes par seconde. Son ticket est un objet JSON : la requête, le rôle et l'heure as-of (consumer.py). Un démarrage local exécute les consommateurs en direct ; le sandbox hébergé montre les extractions consignées lors de la construction de la démo."
+        "description": "Le consommateur de chaque équipe lit l'avis et récupère tout le jeu de données par Arrow Flight tel qu'il était enregistré à son heure de version : les commandes arrivées jusque-là, si bien que ni une actualisation arrivant en cours de récupération ni une commande arrivée plus tard ne peuvent changer ce qu'il lit. Il enregistre les lignes, les secondes et les lignes par seconde. Son ticket est un objet JSON : la requête, le rôle et l'heure d'enregistrement (consumer.py). Un démarrage local exécute les consommateurs en direct ; le sandbox hébergé montre les récupérations enregistrées lors de la construction de la démo."
       },
       "provisioningAsFinance": {
         "title": "Exécuter en tant que finance",

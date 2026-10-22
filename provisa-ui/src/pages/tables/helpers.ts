@@ -86,6 +86,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
                   topic: t.live.kafka.topic,
                   format: t.live.kafka.format ?? undefined,
                   keyColumn: t.live.kafka.keyColumn ?? undefined,
+                  landingTimeColumn: t.live.kafka.landingTimeColumn ?? undefined, // REQ-813
                 }
               : undefined,
           outputs: t.live.outputs.map((o) => ({

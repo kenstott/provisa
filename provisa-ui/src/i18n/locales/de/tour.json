@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "Die Abrufe",
-        "description": "Der Consumer jedes Teams liest die Benachrichtigung und ruft das ganze Dataset über Arrow Flight zum Versionszeitpunkt ab, sodass eine Aktualisierung mitten im Abruf keine zwei Versionen mischen kann. Er zeichnet Zeilen, Sekunden und Zeilen pro Sekunde auf. Sein Ticket ist ein JSON-Objekt: die Abfrage, die Rolle und der As-of-Zeitpunkt (consumer.py). Ein lokaler Start führt die Consumer live aus; die gehostete Sandbox zeigt die Abrufe, die beim Erstellen der Demo aufgezeichnet wurden."
+        "description": "Der Consumer jedes Teams liest die Benachrichtigung und zieht den gesamten Datensatz über Arrow Flight so, wie er zu seiner Versionszeit erfasst war: die bis dahin angekommenen Bestellungen, sodass weder eine mitten im Abruf eintreffende Aktualisierung noch eine später angekommene Bestellung ändern kann, was er liest. Er protokolliert die Zeilen, die Sekunden und die Zeilen pro Sekunde. Sein Ticket ist ein JSON-Objekt: die Abfrage, die Rolle und die Erfassungszeit (consumer.py). Ein lokaler Start führt die Consumer live aus; die gehostete Sandbox zeigt die beim Erstellen der Demo aufgezeichneten Abrufe."
       },
       "provisioningAsFinance": {
         "title": "Als Finance ausführen",
