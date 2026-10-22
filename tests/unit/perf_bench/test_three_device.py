@@ -735,6 +735,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 S = ROOT / "cloud" / "gcs"
 args = [a for a in sys.argv[1:] if a != "-m"]
+if args[0] == "-o":  # a boto option, then the command
+    args = args[2:]
 with (ROOT / "calls.log").open("a") as f:
     f.write("gsutil " + " ".join(sys.argv[1:]) + "\n")
 
@@ -1285,7 +1287,11 @@ def test_a_preempted_device_is_restarted_and_only_the_runs_not_done_are_repeated
         # copied into the run directory before destroy
         assert (run / "checkpoints" / name / "optimistic" / "graphql.json").exists()
     assert (run / "results-report" / "published.json").exists()
-    rsync = next(i for i, c in enumerate(calls) if c.startswith("gsutil rsync -r "))
+    rsync = next(
+        i
+        for i, c in enumerate(calls)
+        if c.startswith("gsutil -o GSUtil:parallel_process_count=1 rsync -r ")
+    )
     destroy = next(
         i for i, c in enumerate(calls) if c.startswith("terraform ") and " destroy " in c
     )
