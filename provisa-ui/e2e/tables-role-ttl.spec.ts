@@ -14,9 +14,16 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
 });
 
+// The Tables page shows only "Loading tables..." until its tables query lands, and Save waits for
+// that query's refetch. Run 39809397086 measured it unanswered after 26 s on this lane (every
+// registered table with its columns), so both waits are given 90 s.
+const TABLES_QUERY_BUDGET = 90_000;
+
+test.describe.configure({ timeout: 600_000 });
+
 async function openPetsEditor(page: Page) {
   await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
+  await page.waitForSelector(".page-header", { timeout: TABLES_QUERY_BUDGET });
   const petsRow = page
     .locator("tr")
     .filter({ hasText: "pet-store-sqlite" })
@@ -36,7 +43,7 @@ async function openPetsEditor(page: Page) {
 
 async function save(page: Page) {
   await page.getByTestId("table-edit-save").click();
-  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: TABLES_QUERY_BUDGET });
 }
 
 test("a table's role TTL list persists after reload", async ({ page }) => {

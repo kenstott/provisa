@@ -30,6 +30,10 @@ import { test, expect } from "./coverage";
  */
 
 test.describe("ChatPanel streaming does not freeze mid-reply", () => {
+  // A worker's first page pays the dev server's cold compile (run 39809397086: 33 s to load
+  // /sources, 43 s more before the chat toggle could be clicked), and a live turn is then given 120 s
+  // to finish: the 90 s default could not hold the waits written here.
+  test.describe.configure({ timeout: 300_000 });
   // A live model is the point of these tests, so a missing key fails them by name rather than
   // skipping them: a skip here hid that the CI lane never passed the key, and the spec never ran.
   test.beforeEach(() => {
