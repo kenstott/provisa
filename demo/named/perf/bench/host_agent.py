@@ -43,9 +43,11 @@ from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import measurements
 import paging
+import stall_probe
 from server_cpu_agent import cpu_seconds, parse_listen
 
 _METADATA = "http://metadata.google.internal/computeMetadata/v1/instance/"
@@ -136,6 +138,7 @@ def handler(
     facts: Mapping[str, str],
     rtt_targets: Mapping[str, tuple[str, int]],
     docker_stats: Callable[[], str] = measurements.docker_stats_text,
+    stall_dir: Path | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     def answer(path: str) -> tuple[int, Any]:
         if path == "/host":
@@ -148,6 +151,13 @@ def handler(
             return 200, docker_stats()
         if path == "/paging":
             return 200, paging.snapshot({} if pid is None else {"provisa": pid})
+        if path.startswith("/stalls"):
+            if stall_dir is None:
+                return 404, {"error": "this agent was started without --stall-dir"}
+            query = parse_qs(urlparse(path).query)
+            return 200, stall_probe.read_dir(
+                stall_dir, float(query["since"][0]), float(query["until"][0])
+            )
         if path.startswith("/rtt/"):
             name = path.removeprefix("/rtt/")
             if name not in rtt_targets:
@@ -202,10 +212,13 @@ def serve(
     pid: int | None,
     facts: Mapping[str, str],
     rtt_targets: Mapping[str, tuple[str, int]],
+    stall_dir: Path | None = None,
 ) -> ThreadingHTTPServer:
     if pid is not None:
         cpu_seconds(pid)  # refuse a pid that is not there before listening
-    return _Server(listen, handler(pid=pid, facts=facts, rtt_targets=rtt_targets))
+    return _Server(
+        listen, handler(pid=pid, facts=facts, rtt_targets=rtt_targets, stall_dir=stall_dir)
+    )
 
 
 def main() -> int:
@@ -214,9 +227,14 @@ def main() -> int:
     parser.add_argument("--pid", type=int, help="the Provisa server's process id (device 1)")
     parser.add_argument("--fact", type=parse_fact, action="append", default=[])
     parser.add_argument("--rtt-target", type=parse_rtt_target, action="append", default=[])
+    parser.add_argument("--stall-dir", type=Path, help="where the server's stall probe writes")
     args = parser.parse_args()
     server = serve(
-        args.listen, pid=args.pid, facts=dict(args.fact), rtt_targets=dict(args.rtt_target)
+        args.listen,
+        pid=args.pid,
+        facts=dict(args.fact),
+        rtt_targets=dict(args.rtt_target),
+        stall_dir=args.stall_dir,
     )
     host, port = server.server_address[:2]
     print(f"host agent at http://{host}:{port}/ (pid {os.getpid()})", flush=True)
