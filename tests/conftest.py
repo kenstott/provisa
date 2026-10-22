@@ -755,12 +755,17 @@ class _DockerServiceManager:
         # `up --wait` per batch, so each set is healthy before the next one starts booting
         # (see _marker_batches).
         for batch in batches:
-            subprocess.run(
+            up = subprocess.run(
                 ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *batch],
                 cwd=_REPO_ROOT,
                 env=_itest_compose_env(),
-                check=True,
+                check=False,
             )
+            if up.returncode != 0:
+                # "dependency failed to start: ... is unhealthy" names the container, never why:
+                # its state and its own log say it, and the teardown removes both.
+                _dump_service_diagnostics(list(batch))
+                up.check_returncode()
 
         # A SIGTERM (``timeout``, a supervisor) ends the process without pytest_sessionfinish,
         # leaving this session's stack up until a later run reaps it. Tear it down on SIGTERM and

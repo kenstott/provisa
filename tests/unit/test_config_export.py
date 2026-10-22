@@ -114,6 +114,9 @@ async def _run(
             patch("provisa.core.repositories.tag.list_all", AsyncMock(return_value=[]))
         )
         stack.enter_context(
+            patch("provisa.core.repositories.calendar.list_all", AsyncMock(return_value=[]))
+        )
+        stack.enter_context(
             patch("provisa.core.repositories.tag.list_assignments", AsyncMock(return_value=[]))
         )
         stack.enter_context(

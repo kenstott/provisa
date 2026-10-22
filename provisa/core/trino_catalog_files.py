@@ -293,30 +293,95 @@ def kafka_catalog_props(kafka_source: dict, catalog: str) -> dict[str, str]:  # 
 
 # The user the Trino image runs as (trinodb/trino), the one reader of a Kafka client file.
 TRINO_UID = 1000
+#: REQ-2073: the deployment setting naming the group Trino's process reads its secret files as,
+#: where Provisa runs as neither root nor Trino's user; Trino's image runs as gid 1000, its default.
+TRINO_FILES_GID_ENV = "PROVISA_ENGINE_FILES_GID"
+TRINO_GID = 1000
+
+
+class EngineFilesGroupRefused(PermissionError):
+    """REQ-2073: Provisa's user cannot give an engine's secret file to the engine's group, being
+    no member of it; the file is not written."""
+
+    def __init__(self, path: Path, gid: int, setting: str) -> None:
+        super().__init__(
+            f"{path}: the engine reads this file as group {gid} ({setting}), and Provisa's user "
+            f"(uid {os.geteuid()}) is not a member of that group. Add the user to group {gid}, or "
+            f"set {setting} to the engine's group the user is a member of."
+        )
+        self.path, self.gid, self.setting = path, gid, setting
+
+
+def engine_files_gid(setting: str, default: int) -> int:
+    """The group an engine reads its secret files as (REQ-2073): the deployment's ``setting``, else
+    the engine image's own group (``default``) -- a deployment setting with a documented default,
+    not a guess: the image fixes the group its process runs as."""
+    raw = os.environ.get(setting, "")
+    return int(raw) if raw else default
 
 
 def write_kafka_client_file(path: Path, text: str) -> None:  # REQ-147, REQ-2073
     """Write a Kafka catalog's client properties, which can hold a SASL password, for Trino alone.
 
     Trino's Kafka connector reads its client settings only from a file (``kafka.config.resources``),
-    so this one file of a catalog is written. It is mode 0600 in a 0700 directory. Where the app runs
-    as root (the app image) the file and directory are given to Trino's user; otherwise the app
-    runs as that user itself (the development image, uid 1000) or beside a Trino of its own user,
-    and they are already its. In the containerized stack the directory is a tmpfs shared with the
-    engine (docker-compose.app.yml), so the file never reaches a disk.
+    so this one file of a catalog is written (:func:`write_engine_secret_file`). In the
+    containerized stack the directory is a tmpfs shared with the engine (docker-compose.app.yml),
+    so the file never reaches a disk.
     """
+    write_engine_secret_file(
+        path,
+        text.encode("utf-8"),
+        TRINO_UID,
+        engine_files_gid(TRINO_FILES_GID_ENV, TRINO_GID),
+        setting=TRINO_FILES_GID_ENV,
+    )
+
+
+def write_engine_secret_file(
+    path: Path, data: bytes, engine_uid: int, engine_gid: int, *, setting: str
+) -> None:  # REQ-2073, REQ-2100
+    """Write a file that holds a secret for an engine process alone.
+
+    - Where the app runs as root (the app image), mode 0600 in a 0700 directory, both given to the
+      engine's user (``engine_uid``).
+    - Where the app runs as the engine's user itself (the development image, uid 1000, or an
+      engine in this process), mode 0600 in a 0700 directory, already its.
+    - Otherwise the app runs beside an engine of another user (a native app beside the engine's
+      container): mode 0640 in a 0750 directory, both given to the engine's group (``engine_gid``,
+      the deployment's ``setting``), of which Provisa's user must be a member: refused by name,
+      before anything is written, when it is not (:class:`EngineFilesGroupRefused`)."""
+    root = os.name == "posix" and os.geteuid() == 0
+    # os.geteuid exists on POSIX alone; a native Windows process runs no engine container.
+    shared = os.name == "posix" and not root and os.geteuid() != engine_uid
+    if shared and engine_gid != os.getegid() and engine_gid not in os.getgroups():
+        raise EngineFilesGroupRefused(path, engine_gid, setting)
+    file_mode, directory_mode = (0o640, 0o750) if shared else (0o600, 0o700)
     path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.chmod(path.parent, directory_mode)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, file_mode)
     try:
-        # O_CREAT's mode applies to a new file only; one left by an earlier write is narrowed too.
-        os.fchmod(fd, 0o600)
-        # Only root can give a file away; os.geteuid exists on POSIX alone (a native Windows
-        # process runs no Trino container to give it to).
-        if os.name == "posix" and os.geteuid() == 0:
-            os.fchown(fd, TRINO_UID, TRINO_UID)
-            os.chown(path.parent, TRINO_UID, TRINO_UID)
-        os.write(fd, text.encode("utf-8"))
+        # O_CREAT's mode applies to a new file only; one left by an earlier write is set too.
+        os.fchmod(fd, file_mode)
+        if root:
+            os.fchown(fd, engine_uid, engine_uid)
+            os.chown(path.parent, engine_uid, engine_uid)
+        elif shared:
+            os.fchown(fd, -1, engine_gid)
+            os.chown(path.parent, -1, engine_gid)
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+
+
+def write_engine_public_file(path: Path, data: bytes) -> None:  # REQ-2100
+    """Write a file an engine reads that holds nothing secret (a certificate): mode 0644, readable
+    by the engine's process whoever owns it. Its directory's mode and owner are the secret files'
+    beside it (:func:`write_engine_secret_file`)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.fchmod(fd, 0o644)
+        os.write(fd, data)
     finally:
         os.close(fd)
 

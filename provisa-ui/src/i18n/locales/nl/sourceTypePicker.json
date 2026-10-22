@@ -9,6 +9,25 @@
     "reachLive": "Live (ter plaatse gelezen)",
     "reachReplica": "Replica (een ververste kopie)",
     "reachLiveOn": "Alleen live op {{engines}}",
-    "reachNone": "Niet bereikbaar vanaf deze engine"
+    "reachNone": "Niet bereikbaar vanaf deze engine",
+    "categories": {
+      "Subscriptions": "Abonnementen",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "Cloud-datawarehouse",
+      "Analytics": "Analytics",
+      "Data Lake": "Data lake",
+      "NoSQL": "NoSQL",
+      "Code": "Code-resolvers",
+      "Graph": "Grafen",
+      "File": "Bestanden",
+      "API": "API",
+      "Streaming": "Streaming",
+      "Enterprise": "Enterprise",
+      "Data Quality": "Datakwaliteit",
+      "Other": "Overig"
+    },
+    "categorySubtitles": {
+      "Code": "Bedrijfslogica in Python of Node"
+    }
   }
 }

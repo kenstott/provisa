@@ -87,6 +87,9 @@ class StoreError(RuntimeError):
 #: How much of a failed store's log its error carries.
 LOG_TAIL = "60"
 
+#: What docker says starting a container whose network was removed and created again since.
+NETWORK_GONE = re.compile(r"network \S+ not found")
+
 
 def container_logs(runner: "Runner", cids: list[str]) -> str:
     """The end of each container's log, by container, for an error raised over it."""
@@ -176,8 +179,17 @@ class Shared:
     def start(self, kind: str) -> None:
         if kind == "kafka":
             self._free_kafka_port()
+        up = ["env", *self._env(), *self.base, "up", "-d", "--wait", kind]
         try:
-            self.runner.run(["env", *self._env(), *self.base, "up", "-d", "--wait", kind])
+            try:
+                self.runner.run(up)
+            except StoreError as failed:
+                if not NETWORK_GONE.search(str(failed)):
+                    raise
+                # The stopped container names a network that was recreated since (the tier's,
+                # when the node's stack restarted): it cannot be started, only recreated. Its
+                # data is in its named volume, which a recreated container keeps.
+                self.runner.run([*up[:-1], "--force-recreate", kind])
         except StoreError as failed:
             # A store that exits before it is healthy says why only in its own log.
             cids = self.runner.run(["env", *self._env(), *self.base, "ps", "-a", "-q", kind])

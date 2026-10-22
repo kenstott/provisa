@@ -212,10 +212,11 @@ function formSelects(): HTMLElement[] {
   return arr;
 }
 
-// The description the source's comment gave is not asked in the short step: it is sent with the
-// registration, and edited afterwards on the table's Identity tab.
+// The description the source's comment gave is not asked in the short step: it is carried to the
+// table's Identity section that follows (REQ-2109), and sent with the registration its Save makes.
 async function registeredDescription(): Promise<unknown> {
   await userEvent.click(screen.getByTestId("register-table-submit"));
+  await userEvent.click(await screen.findByTestId("table-edit-save"));
   await waitFor(() => expect(registerTable).toHaveBeenCalled());
   return registerTable.mock.calls.at(-1)![0].description;
 }

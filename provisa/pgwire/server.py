@@ -117,8 +117,38 @@ _REDIRECT_SET_RE = re.compile(
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.redirect(?:_format)?))\s*;?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
+# REQ-2110: a session's time travel, read on every statement it runs as a request's
+# X-Provisa-As-Of / X-Provisa-As-Recorded are on the HTTP transports: SET provisa.as_of /
+# provisa.as_recorded, RESET either, or SET either TO DEFAULT.
+_TIME_TRAVEL_SET_RE = re.compile(
+    r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.as_(?:of|recorded))\s*(?:=|\s+TO\s+)\s*"
+    r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.as_(?:of|recorded)))\s*;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
 _TRUE_WORDS = frozenset({"on", "true", "yes", "1"})
 _FALSE_WORDS = frozenset({"off", "false", "no", "0"})
+
+
+class TimeTravelSettingInvalid(ValueError):
+    """A ``provisa.as_of`` / ``provisa.as_recorded`` value that cannot be read; refused by name."""
+
+
+def _time_travel_setting(key: str, value: str | None) -> str | None:
+    """The value ``key`` holds once set to ``value`` (None: reset; ``DEFAULT`` resets it too),
+    validated as the matching request header is (REQ-2110)."""
+    from provisa.mv.bitemporal import parse_as_of, parse_as_recorded
+
+    if value is None:
+        return None
+    word = value.strip().strip("'\"").strip()
+    if word.lower() == "default":
+        return None
+    parse = parse_as_of if key == "provisa.as_of" else parse_as_recorded
+    try:
+        parse(word)
+    except ValueError as exc:
+        raise TimeTravelSettingInvalid(f"invalid {key}: {exc}") from exc
+    return word
 
 
 def _redirect_row(handle: dict | None, delivery: Any):
@@ -911,6 +941,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # (startup parameter, ``options`` or SET); never automatic on this streaming transport.
         self.redirect: bool = False
         self.redirect_format: str | None = None
+        # REQ-2110: the session's time travel (SET provisa.as_of / provisa.as_recorded).
+        self.as_of_setting: str | None = None
+        self.as_recorded_setting: str | None = None
 
     def apply_redirect_settings(self, settings: dict[str, bool | str | None]) -> None:
         """Hold the ``provisa.redirect*`` settings read from the startup packet or a SET."""
@@ -930,6 +963,26 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             threshold=None,
             role=self.role_id,
         )
+
+    def time_travel(self) -> str | None:
+        """The time travel every statement this session runs is governed under (REQ-2110)."""
+        from provisa.mv.bitemporal import request_as_of
+
+        return request_as_of(self.as_of_setting, self.as_recorded_setting)
+
+    def _set_time_travel(self, sql: str) -> bool:
+        """Apply ``SET provisa.as_of|as_recorded ...`` / ``RESET`` either; False when ``sql`` is
+        not one of those (REQ-2110)."""
+        m = _TIME_TRAVEL_SET_RE.match(sql)
+        if m is None:
+            return False
+        key = (m.group("key") or m.group("reset")).lower()
+        value = _time_travel_setting(key, m.group("value"))
+        if key == "provisa.as_of":
+            self.as_of_setting = value
+        else:
+            self.as_recorded_setting = value
+        return True
 
     def _set_redirect(self, sql: str) -> bool:
         """Apply ``SET provisa.redirect* ...`` / ``RESET provisa.redirect*``; False when ``sql`` is
@@ -1027,7 +1080,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 _run_with_org(
                     self.org_id,
                     with_audit_identity(
-                        self.user_id, "pgwire", describe_pgwire_statement(stripped, self.role_id)
+                        self.user_id,
+                        "pgwire",
+                        describe_pgwire_statement(stripped, self.role_id, as_of=self.time_travel()),
                     ),
                 ),
                 timeout=request_timeout_for("pgwire"),
@@ -1117,7 +1172,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # query) reads the values inline.
         stripped = sql.strip()
         bound = list(params) if params else None
-        if self._set_redirect(stripped):  # REQ-1194: SET / RESET provisa.redirect*
+        # REQ-1194: SET / RESET provisa.redirect*; REQ-2110: provisa.as_of / provisa.as_recorded
+        if self._set_redirect(stripped) or self._set_time_travel(stripped):
             from provisa.executor.result import QueryResult
 
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
@@ -1167,10 +1223,15 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1194/REQ-1224 (amended 2026-10-04): a forced redirect is the session's setting; this
         # streaming transport is never delivered automatically.
         delivery = self.forced_delivery()
-        if prepared is not None and governed_statement_is_current(prepared, state):
+        # REQ-2110: a statement held from its Describe is routed under the time travel it was
+        # governed under; one the session's SET has since changed is governed again.
+        as_of = self.time_travel()
+        if prepared is not None and governed_statement_is_current(prepared, state, as_of=as_of):
             to_plan = plan_pgwire_statement(prepared, bound, _formats, deliver=delivery)
         else:
-            to_plan = govern_pgwire_plan(stripped, self.role_id, bound, _formats, deliver=delivery)
+            to_plan = govern_pgwire_plan(
+                stripped, self.role_id, bound, _formats, deliver=delivery, as_of=as_of
+            )
 
         # Govern on this connection's loop, then — for the ENGINE route — drain the engine's SYNC
         # streaming terminal on this same thread (REQ-028). Mirrors Flight SQL's govern-then-stream

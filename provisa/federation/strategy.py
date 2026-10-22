@@ -179,7 +179,7 @@ def federate(
     source_type = source.type.value
     # REQ-1867: a source that asks to be read in place gets the engine's opt-in reach for its type
     # (refused by name when there is none); any other source gets its type's reach.
-    if (getattr(source, "federation_hints", None) or {}).get("reach") == "scan":
+    if engine.asks_in_place(source):
         connector = engine.connector_for_source(source)
     else:
         connector = engine.connectors.get(source_type)

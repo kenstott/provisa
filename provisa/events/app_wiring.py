@@ -46,7 +46,7 @@ async def _load_calendar_registry(db: Any) -> Any:
     a versioned :class:`Calendar` (the immutable holiday/business-day set). An empty table yields an
     empty registry; an MV that then declares an unknown calendar fails loud at wiring (never a silent
     default calendar)."""
-    from datetime import date
+    from datetime import date, time
 
     from sqlalchemy import select
 
@@ -70,6 +70,7 @@ async def _load_calendar_registry(db: Any) -> Any:
                 week_start=m["week_start"],
                 holidays=frozenset(date.fromisoformat(d) for d in (m["holidays"] or [])),
                 weekend=frozenset(m["weekend"] or [5, 6]),
+                day_close=time.fromisoformat(m["day_close"]) if m["day_close"] else None,
             )
         )
     return registry
@@ -730,10 +731,10 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 # The statement its build reads (REQ-1922, #257): its definition through the one
                 # pipeline, so a table it reads is read as a direct statement reads it -- a search
                 # table under its arguments among them -- never its physical SQL as written.
-                from provisa.mv.governed_build import view_build_sql
+                from provisa.mv.governed_build import view_shape_sql
 
                 _probe = await engine.execute_engine(
-                    f"SELECT * FROM ({await view_build_sql(_m, engine)}) AS _mv_probe LIMIT 0",
+                    f"SELECT * FROM ({await view_shape_sql(_m)}) AS _mv_probe LIMIT 0",
                     authorization=system_auth("event signal"),
                 )
             except Exception:

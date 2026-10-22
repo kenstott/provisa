@@ -75,9 +75,9 @@ def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
         push_debounce_max_delay=inp.push_debounce_max_delay,  # REQ-1733
         mv_consistency=inp.mv_consistency,  # REQ-879
         mv_preprocess=inp.mv_preprocess,  # REQ-957
-        mv_bitemporal_mode=inp.mv_bitemporal_mode,  # REQ-1162
-        mv_bitemporal_key=list(inp.mv_bitemporal_key),  # REQ-1162
-        mv_bitemporal_source_time=inp.mv_bitemporal_source_time,  # REQ-1163
+        business_key=list(inp.business_key),  # REQ-2109
+        valid_time=inp.valid_time,  # REQ-2109
+        recorded_time=inp.recorded_time,  # REQ-2109
         mv_persist=inp.mv_persist,  # REQ-965
         mv_primary_key=list(inp.mv_primary_key),  # REQ-970
         mv_incremental=inp.mv_incremental,  # REQ-969
@@ -126,6 +126,7 @@ def live_model_from_input(inp):  # REQ-565, REQ-813
                 topic=inp.kafka.topic,
                 format=inp.kafka.format,
                 key_column=inp.kafka.key_column,
+                landing_time_column=inp.kafka.landing_time_column,
             )
             if inp.kafka is not None
             else None

@@ -912,32 +912,45 @@ views:
 
 ### 帶歷史的檢視（時間旅行） {: #views-with-history-time-travel }
 
-具體化檢視可以保存其資料列的每一個版本，並按過去某個時刻讀取。 它宣告如何保存這些版本，以及版本屬於哪個鍵：
+資料表或具體化檢視可以保留其行的每個版本，並按過去某個時間讀取。為此你映射來源的三欄，三欄要麼全部宣告，要麼全部不宣告：
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| 欄位 | 必填 | 說明 |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | 是 | `snapshot` 在每次重新整理時附加整個結果；`delta` 只附加有變化的部分 |
-| `bitemporal_key` | 是 | 版本所屬的欄位 |
-| `bitemporal_source_time` | 否 | 保存每個資料列在數據來源中發生變化的時刻的欄位：時間旅行據以讀取的時鐘 |
+| 欄位 | 說明 |
+| ------- | ------------- |
+| `business_key` | 喺各個版本之間標識同一事物嘅欄，例如 `transaction_id`。一條記錄嘅每個版本都共用呢個鍵。 |
+| `valid_time` | 儲存業務賦予該記錄嘅日期嘅欄：佢幾時議定、入帳或生效。 |
+| `recorded_time` | 儲存該記錄呢個版本幾時輸入或修改嘅欄，例如 `updated_at`。 |
 
-**選擇時鐘。** 設定 `bitemporal_source_time` 時，版本按數據來源自身的時間排序及讀取：「截至上週二」指的是數據來源中的上週二。不設定時，版本按 Provisa 落地每次變更的時間排序及讀取，這跟隨重新整理節奏，而不是資料列在數據來源中發生變化的時刻。兩種選擇都成立。載入時間適合重新整理頻繁的情況、數據來源時間無關重要的數據，以及本來就關心載入時間的讀取，例如稽核 Provisa 在甚麼時候持有甚麼數據。
+每一項都指向資料表或檢視已有嘅欄。宣告佢哋嘅檢視須設定 `materialize: true`，由 Provisa 決定點樣儲存各個版本。`tables:` 下嘅項目接受同樣嘅三個鍵。
 
-一個版本由其本身的時刻起生效，直至下一個版本的時刻。刪除沒有數據來源的變更時間，在 Provisa 記錄它時生效。
+呢兩種時間喺其他地方另有名稱：記錄時間（recorded time），喺時態資料庫文獻中稱為交易時間，喺 SQL:2011 中稱為系統時間；有效時間（valid time），喺 SQL:2011 中稱為應用時間，亦叫生效日期。
+
+同一個版本嘅兩種時間可以唔同：
+
+| 示例 | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| 一筆 10月3日 嘅 100 元付款喺 10月5日 更正為 120。 | 更正保留 10月3日。 | 更正得到 10月5日。 |
+| 10月3日 14:10 採集嘅現場量度值喺 10月6日 輸入。其中一處筆誤喺 10月7日 修正。 | 10月3日 14:10，修正後保留。 | 10月6日。修正得到 10月7日。 |
+| 一筆交易喺執行時入帳，交易日期為 10月3日。10月4日 發現數量有誤並作修改。 | 交易日期 10月3日，修改後保留。 | 10月3日 10:02。修改得到 10月4日。 |
+
+按 10月3日 記錄嘅狀態讀取，呢筆交易顯示錯誤嘅數量；按而家所知讀取，顯示更正後嘅數量。
+
+一個版本由佢嘅時間起生效，直到下一個版本嘅時間。刪除喺 Provisa 記錄佢時生效。
 
 **讀取。** 一般讀取傳回每個鍵目前生效的版本。標頭 `X-Provisa-As-Of` 按某一時刻或某一範圍讀取，範圍以 ISO 8601 區間 `start/end` 表示：
 
@@ -973,6 +986,72 @@ X-Provisa-As-Recorded: 2026-10-01T00:00:00
 - 變更訊號為 `native` 的 PostgreSQL：PostgreSQL 為每個資料列保存的提交時間（`pg_xact_commit_timestamp(xmin)`），由數據來源本身的驅動程式在建構副本時讀取。PostgreSQL 只在 `track_commit_timestamp = on` 時保存它。啟用它便可在原生訊號下取得數據來源時間；沒有它時 `source_committed_at` 為空。開啟或關閉該設定會重建副本。
 
 沒有 Debezium 封裝的 Kafka 主題不攜帶提交時間。
+
+### 按行事曆建置嘅檢視 {: #views-on-a-calendar }
+
+具體化檢視可以由行事曆攞到佢嘅排程：佢喺行事曆畀佢嘅每個窗口（一個營業日、一星期、一個月、一季或一年）結束時建置，保留歷史嘅檢視會用嗰個結束時間為每個版本加上時間戳記。設定檔喺 `calendars:` 下宣告佢嘅行事曆：
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| 欄位 | 必填 | 描述 |
+| ------- | ---------- | ------------- |
+| `name` | 是 | 檢視作為佢嘅 `calendar` 指定嘅名稱 |
+| `version` | 是 | 版本標籤。一個名稱可以有多個版本，每個版本有自己嘅假期。 |
+| `base_system` | 否 | `gregorian`（預設）、`fiscal` 或 `retail_445` |
+| `tz` | 否 | 行事曆入面各日所在嘅 IANA 時區（預設 `UTC`） |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | 否 | 財政年度開始嘅月份同日子（預設 1 同 1） |
+| `retail_anchor` | 否 | 參考 4-4-5 年嘅第一日；`retail_445` 需要佢 |
+| `week_start` | 否 | 一星期開始嘅日子，0 = 星期一至 6 = 星期日（預設 0） |
+| `holidays` | 否 | 唔係營業日嘅日期 |
+| `weekend` | 否 | 唔係營業日嘅星期幾，0 = 星期一（預設 `[5, 6]`） |
+| `day_close` | 否 | 營業日結束嘅本地時間，`"HH:MM"`。第 D 日於是由前一日結束時持續到 D 結束時。冇設定嘅話，一日喺午夜結束。請加引號：YAML 會將冇引號嘅 `18:00` 讀成數字。 |
+
+行事曆會喺資料表之前儲存，所以指定佢嘅檢視搵得到佢。`createCalendar` 變更會拒絕嘅項目，會以同一個 `invalid calendar: ...` 訊息被拒絕，設定檔唔會載入。模型匯出會將每個行事曆寫喺 `calendars:` 下。
+
+檢視用以下鍵指定佢嘅行事曆。`tables:` 下嘅項目以 `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` 同 `mv_expected_events` 接受佢哋。
+
+| 欄位 | 描述 |
+| ------- | ------------- |
+| `calendar` | 行事曆嘅 `name` |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` 或 `annual`；第 n 個星期幾，例如 `3WE`（第三個星期三）或 `LFR`（最後一個星期五）；或者 RFC 5545 規則，例如 `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`：每日窗口只喺營業日存在，所以週末或假期唔會執行建置 |
+| `allowed_lateness` | 窗口結束後建置等候延遲提交嘅輸入嘅秒數（預設 0） |
+| `expected_events` | 必須喺窗口結束前保持新鮮嘅輸入。省略時係檢視讀取嘅每個輸入；`[]` 即係冇。 |
+
+指定咗一個任何設定檔或 `createCalendar` 都冇宣告嘅行事曆嘅檢視，會喺事件迴圈啟動時按名稱被拒絕：`unknown calendar 'ledger'; registered: [...]`。
+
+**建置一個營業日。** `refreshMv` 變更嘅 `window` 引數（一個日期）會建置喺嗰個營業日結束時封存嘅檢視：
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+建置追加嘅內容會以嗰個日期嘅行事曆窗口結束時間加上時間戳記，同喺結束時執行嘅建置本身所加嘅一樣，所以按嗰個結束時間嘅記錄狀態讀取會返回佢。咁樣建置嘅帶歷史檢視，會重建自上次建置以來輸入有變嘅日期，所以喺下一日建置之前記錄嘅更正會按佢自己嘅日期被採納。冇指定行事曆嘅檢視會被拒絕（`schema.mv_window_needs_calendar`），佢嘅行事曆喺某個日期冇窗口時（例如營業日粒度下嘅假期）亦會被拒絕。
 
 ### 僅供查詢的檢視 {: #query-only-views }
 
@@ -1652,6 +1731,8 @@ sources:
 | `PROVISA_DATA_DIR` | `~/.provisa` | 內嵌 DuckDB 儲存區的數據目錄 |
 | `TRINO_HOST` | `localhost` | Trino 協調器主機 |
 | `TRINO_PORT` | `8080` | Trino 協調器 HTTP 連接埠 |
+| `PROVISA_ENGINE_FILES_GID` | `1000` | 當 Provisa 既不以 root 也不以 Trino 的使用者執行時（例如在 Trino 容器旁執行的原生應用程式），Trino 讀取其機密檔案（Kafka 數據來源的 SASL 設定、程式碼主機的用戶端金鑰）所用的使用者群組。Provisa 的使用者必須屬於該群組，否則檔案會被按名稱拒絕。 |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | 同上，用於讀取程式碼主機用戶端金鑰的 Postgres 引擎伺服器 |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | GCP 服務帳戶金鑰 JSON 的路徑（BigQuery 引擎／數據來源） |
 | `GOOGLE_CLOUD_PROJECT` | — | 預設 GCP 專案（BigQuery；由 URL 覆寫） |
 | `FABRIC_SQL_SERVER` | — | Fabric Warehouse SQL 端點（`PROVISA_ENGINE_URL` 的替代方式） |

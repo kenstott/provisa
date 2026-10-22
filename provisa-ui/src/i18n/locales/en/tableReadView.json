@@ -50,6 +50,8 @@
     "draftLabel": "Draft",
     "draftTooltip": "Draft: out of service — in no schema and read by nobody. Untick to release the table; tick to take it out of service.",
     "draftNoRightTooltip": "Releasing a table, or returning it to draft, needs the Table registration right in the table's domain.",
-    "draftPreviewNote": "Draft preview: readers cannot see this table yet."
+    "draftPreviewNote": "Draft preview: readers cannot see this table yet.",
+    "keepsHistory": "Keeps history: every version, with when it happened and when it was recorded.",
+    "keepsHistoryQuery": "Query it as of or as recorded"
   }
 }

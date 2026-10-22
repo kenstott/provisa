@@ -58,9 +58,9 @@ def _input(**over):
         push_debounce_max_delay=5.0,
         mv_consistency="shared",
         mv_preprocess=None,  # REQ-957
-        mv_bitemporal_mode=None,  # REQ-1162
-        mv_bitemporal_key=[],  # REQ-1162
-        mv_bitemporal_source_time=None,  # REQ-1163
+        business_key=[],  # REQ-2109
+        valid_time=None,  # REQ-2109
+        recorded_time=None,  # REQ-2109
         mv_persist="replace",  # REQ-965
         mv_primary_key=[],  # REQ-970
         mv_incremental=False,  # REQ-969

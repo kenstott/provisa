@@ -168,7 +168,9 @@ async def _scored(
             rows=sorted(cursor.fetchall()), column_names=[d[0] for d in cursor.description]
         )
 
-    async def read_each(state, table, argument_sets):
+    async def read_each(state, table, argument_sets, *, joined):
+        # REQ-2100: a join's read, so a function with a loader is given the sets as keys.
+        assert joined is True
         called.extend(argument_sets)
         return PipelineRead(rows=[], columns=[("customer_id", "bigint"), ("score", "double")])
 

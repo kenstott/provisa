@@ -1,0 +1,25 @@
+# The end-of-day dashboard for 1 October: each of London's totals that day, with the postings
+# behind it, the drill-down read live from the ledger. Run as ops_analyst: the postings are those
+# the ledger's rules let operations see, counterparties withheld.
+query EodDashboard {
+  b__viewEodTotals(
+    where: { businessDate: { eq: "2026-10-01" }, branch: { eq: "London" } }
+    order_by: [{ netMovement: asc }]
+    limit: 10
+  ) {
+    businessDate
+    branch
+    product
+    currency
+    postingCount
+    netMovement
+    postings(order_by: [{ amount: asc }], limit: 5) {
+      transactionId
+      kind
+      amount
+      counterparty
+      status
+      updatedAt
+    }
+  }
+}

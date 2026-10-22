@@ -125,7 +125,7 @@ def bitemporal_view_tables(config: Any) -> list[str]:
     return sorted(
         f"mv_{table.table_name}"
         for table in config.tables
-        if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.mv_bitemporal_mode
+        if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.is_bitemporal
     )
 
 

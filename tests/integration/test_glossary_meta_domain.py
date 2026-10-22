@@ -39,6 +39,8 @@ SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema
 _VIEWS = (
     "table_columns",
     "tag_assignments",
+    # First of the glossary views: the others read each term's domains from it (REQ-1593).
+    "glossary_term_domains",
     "glossary_terms",
     "glossary_term_refs",
     "glossary_term_edges",

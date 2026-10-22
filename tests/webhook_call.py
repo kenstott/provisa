@@ -87,7 +87,12 @@ def call_webhook(
         # As the loader registers it: the stored row, a plain dict.
         tracked_webhooks={webhook.name: webhook.model_dump()},
         roles={
-            ROLE: {"id": ROLE, "capabilities": ["write"], "domain_access": ["*"]},
+            ROLE: {
+                "description": "Test role.",
+                "id": ROLE,
+                "capabilities": ["write"],
+                "domain_access": ["*"],
+            },
         },
         approval_hook=hook,
         model_stamp=1,

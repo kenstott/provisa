@@ -90,6 +90,7 @@ describe("CalendarCreateModal — base-system anchors (REQ-962)", () => {
           weekStart: 0,
           holidays: ["2026-07-03"],
           weekend: [5, 6],
+          dayClose: "18:00",
         }}
       />,
     );
@@ -99,5 +100,13 @@ describe("CalendarCreateModal — base-system anchors (REQ-962)", () => {
     expect(screen.getByTestId("calendar-delete")).toBeInTheDocument();
     // the fiscal anchor was pre-selected from the edited calendar
     expect(screen.getByTestId("calendar-fiscal-month")).toBeInTheDocument();
+  });
+
+  it("sets the local time a day closes at (REQ-2111)", async () => {
+    renderModal("gregorian");
+    const close = (await screen.findByTestId("calendar-day-close")) as HTMLInputElement;
+    expect(close.value).toBe(""); // empty = local midnight
+    fireEvent.change(close, { target: { value: "18:00" } });
+    expect(close.value).toBe("18:00");
   });
 });

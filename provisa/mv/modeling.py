@@ -15,8 +15,9 @@ Star schemas and Data Vaults are compositions of a tiny primitive set. Rather th
 lowers them to the existing materialized-view / bitemporal / relationship machinery:
 
 - ``Entity`` — a keyed, deduplicated, optionally-historized projection of a source. Lowers to a
-  materialized view; when history is requested it is a bitemporal MV (REQ-1162): history="scd2" →
-  delta mode, history="snapshot" → snapshot mode, keyed on the entity key. Serves a star DIMENSION
+  materialized view; when history is requested (history="scd2" or "snapshot") it declares the
+  entity key as its business key with its valid-time and recorded-time columns (REQ-2109), and so
+  keeps every version (REQ-1162). Serves a star DIMENSION
   (SCD1/SCD2) and a Data Vault HUB + SATELLITE.
 - ``Fact`` — a join to entity keys, reduced to a declared grain, with aggregated measures. Lowers to
   a materialized view (grain + dimension FK columns + aggregated measures, GROUP BY grain+FKs) plus
@@ -37,8 +38,6 @@ HISTORY_NONE = "none"
 HISTORY_SCD2 = "scd2"
 HISTORY_SNAPSHOT = "snapshot"
 _HISTORY = frozenset({HISTORY_NONE, HISTORY_SCD2, HISTORY_SNAPSHOT})
-# history → bitemporal mode (None = ordinary materialization, no history)
-_HISTORY_MODE = {HISTORY_SCD2: "delta", HISTORY_SNAPSHOT: "snapshot"}
 _AGGS = frozenset({"sum", "avg", "min", "max", "count"})
 
 
@@ -66,9 +65,9 @@ class Entity:
     key: tuple[str, ...]
     attributes: tuple[str, ...] = ()
     history: str = HISTORY_NONE
-    # REQ-1163: a historized entity's column holding the source's change time; None reads its
-    # history on Provisa's recorded time.
-    source_time: str | None = None
+    # REQ-2109: a historized entity's valid-time and recorded-time columns, declared with its key.
+    valid_time: str | None = None
+    recorded_time: str | None = None
 
     def __post_init__(self) -> None:
         if not self.key:
@@ -78,6 +77,20 @@ class Entity:
             raise ValueError(
                 f"entity {self.name!r} history {self.history!r} must be one of {sorted(_HISTORY)}"
             )
+        if self.history != HISTORY_NONE:
+            missing = [
+                name
+                for name, col in (
+                    ("valid_time", self.valid_time),
+                    ("recorded_time", self.recorded_time),
+                )
+                if not col
+            ]
+            if missing:
+                raise ValueError(
+                    f"entity {self.name!r}: a historized entity declares valid_time and "
+                    f"recorded_time; missing {', '.join(missing)}"
+                )
 
 
 @dataclass(frozen=True)
@@ -117,7 +130,8 @@ class Fact:
 
 def entity_registration(e: Entity) -> dict:
     """Lower an entity to a table-registration dict (the same shape a hand-written view would use)."""
-    cols = _dedup([*e.key, *e.attributes, *([e.source_time] if e.source_time else [])])
+    times = [c for c in (e.valid_time, e.recorded_time) if c]
+    cols = _dedup([*e.key, *e.attributes, *times])
     view_sql = f"SELECT {', '.join(_q(c) for c in cols)} FROM {_qualify(e.source)}"
     reg: dict = {
         "table_name": e.name,
@@ -128,12 +142,11 @@ def entity_registration(e: Entity) -> dict:
         # changes the generated view_sql/columns.
         "modeling_role": "dimension",
     }
-    mode = _HISTORY_MODE.get(e.history)
-    if mode is not None:
-        # Historized entity → a bitemporal MV keyed on the entity key (REQ-1162).
-        reg["mv_bitemporal_mode"] = mode
-        reg["mv_bitemporal_key"] = list(e.key)
-        reg["mv_bitemporal_source_time"] = e.source_time  # REQ-1163
+    if e.history != HISTORY_NONE:
+        # Historized entity → a bitemporal MV keyed on the entity key (REQ-1162, REQ-2109).
+        reg["business_key"] = list(e.key)
+        reg["valid_time"] = e.valid_time
+        reg["recorded_time"] = e.recorded_time
         reg["modeling_history"] = e.history  # REQ-1320: scd2 | snapshot
     return reg
 

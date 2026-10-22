@@ -64,6 +64,18 @@ class UploadCode:
     data: bytes
 
 
+#: What a code directory's copy leaves out (REQ-2121): what the developer's tools make, not code.
+DIRECTORY_SKIPPED = frozenset({"node_modules", ".venv", "__pycache__", ".git"})
+
+
+@dataclass(frozen=True)
+class DirectoryCode:
+    """A directory on this server, read where it is (REQ-2121): copied afresh each time the source
+    is prepared, so an edit there is read by the next query."""
+
+    path: str
+
+
 @dataclass(frozen=True)
 class Lockfile:
     """A lockfile given beside the code on the source's form, kept with the source: Git or uploaded
@@ -297,10 +309,22 @@ def fetch_git(code: GitCode, registries: Sequence[Resolved], dest: Path) -> Path
     return root
 
 
-def fetch_kept(code: GitCode | UploadCode, registries: Sequence[Resolved], dest: Path) -> Path:
-    """The code of a Git or uploaded reference, the two every language shares."""
+def fetch_directory(code: DirectoryCode, dest: Path) -> Path:
+    """A copy of the code directory under ``dest``, without :data:`DIRECTORY_SKIPPED`."""
+    shutil.copytree(
+        code.path, dest, symlinks=True, ignore=shutil.ignore_patterns(*DIRECTORY_SKIPPED)
+    )
+    return dest.resolve()
+
+
+def fetch_kept(
+    code: GitCode | UploadCode | DirectoryCode, registries: Sequence[Resolved], dest: Path
+) -> Path:
+    """The code of a Git, uploaded or server directory reference, those every language shares."""
     if isinstance(code, GitCode):
         return fetch_git(code, registries, dest)
+    if isinstance(code, DirectoryCode):
+        return fetch_directory(code, dest)
     return unpack(code.filename, code.data, dest)
 
 

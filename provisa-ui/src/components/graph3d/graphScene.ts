@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2128: the data product graph's scene — a shape per node type, a rod per edge coloured by its
-// kind, an arrowhead on lineage pointing downstream. Imported only through a dynamic import(), so
+// kind, an arrowhead on each directed edge (DIRECTED). Imported only through a dynamic import(), so
 // three.js loads when the graph is first shown.
 
 import * as THREE from "three";
@@ -35,6 +35,17 @@ interface EdgeMesh {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+
+/** The edges that run one way, drawn with an arrowhead at the end they point to: lineage
+ * downstream, a term edge from its subject (Customer KIND_OF Party), a check and a profile to the
+ * table they read. Membership and containment have no direction worth drawing. */
+const DIRECTED: ReadonlySet<EdgeKind> = new Set([
+  "lineage",
+  "column_lineage",
+  "term_edge",
+  "checks",
+  "profiled",
+]);
 
 /** Whose label stays when two collide: the lower rank. */
 const LABEL_RANK: Record<NodeType, number> = {
@@ -98,6 +109,9 @@ export class GraphScene extends BaseScene<GraphHover> {
   private hover: GraphHover | null = null;
   private halo: THREE.Mesh | null = null;
   private extent = 8;
+  private extentX = 8;
+  private extentY = 8;
+  private frontal = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -129,7 +143,19 @@ export class GraphScene extends BaseScene<GraphHover> {
     this.paint();
   }
 
+  /** A flat layout (a tree, lineage lanes) is seen from the front; a force layout from above. */
+  setFrontal(on: boolean) {
+    this.frontal = on;
+  }
+
   resetView(instant = false) {
+    if (this.frontal) {
+      // Back far enough that the whole layout, and a margin round it, fits the field of view.
+      const half = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const fit = Math.max(this.extentY + 2, (this.extentX + 2) / Math.max(this.aspect, 0.5));
+      this.flyTo(new THREE.Vector3(0, 0, fit / half), new THREE.Vector3(0, 0, 0), instant);
+      return;
+    }
     const base = this.extent * 2.6 + 6;
     const dist = this.aspect < 1.1 ? (base * 1.25) / Math.max(this.aspect, 0.5) : base;
     this.flyTo(
@@ -202,10 +228,25 @@ export class GraphScene extends BaseScene<GraphHover> {
   private buildMaterials() {
     Object.values(this.mats).forEach((m) => m.dispose());
     const th = this.theme;
+    // A little light of their own, so a shape's faces turned from the sun still read on the canvas.
     const solid = (color: string) =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.05 });
-    const rod = (color: string, opacity = 0.85) =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.6, transparent: true, opacity });
+      new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: th.dark ? 0.5 : 0.3,
+        roughness: 0.5,
+        metalness: 0.05,
+      });
+    // Lit by their own colour too: an edge is a thin rod, and the sun alone leaves most of it dark.
+    const rod = (color: string, opacity = 0.95) =>
+      new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: th.dark ? 0.55 : 0.25,
+        roughness: 0.6,
+        transparent: true,
+        opacity,
+      });
     this.mats = {
       product: solid(th.accent),
       domain: solid(th.family.temporal),
@@ -217,13 +258,13 @@ export class GraphScene extends BaseScene<GraphHover> {
       profile: solid(th.qMid),
       tag: solid(th.family.boolean),
       term: solid(th.cool),
-      structure: rod(th.family.other, 0.55),
+      structure: rod(th.family.other, 0.8),
       link: rod(th.accent),
       quality: rod(th.qTail),
-      tagged: rod(th.family.boolean, 0.6),
+      tagged: rod(th.family.boolean, 0.8),
       meaning: rod(th.cool),
       relationship: rod(th.family.text),
-      outside: rod(th.family.foreign, 0.6),
+      outside: rod(th.family.foreign, 0.8),
       lineage: rod(th.hl),
       dim: new THREE.MeshStandardMaterial({
         color: th.grid,
@@ -237,8 +278,27 @@ export class GraphScene extends BaseScene<GraphHover> {
         opacity: 0.16,
         depthWrite: false,
       }),
-      grid: new THREE.LineBasicMaterial({ color: th.grid, transparent: true, opacity: 0.6 }),
+      grid: new THREE.LineBasicMaterial({ color: th.grid, transparent: true, opacity: 0.9 }),
     };
+  }
+
+  /** REQ-2130: an abstract term drawn hollow (its outline alone), a deprecated one faded. */
+  private nodeMaterial(node: GraphNode): THREE.Material {
+    if (!node.hollow && node.status !== "deprecated") return this.mats[node.type];
+    const key = `${node.type}:${node.hollow ? "hollow" : "solid"}:${node.status === "deprecated" ? "dim" : "lit"}`;
+    let m = this.mats[key];
+    if (!m) {
+      const base = this.mats[node.type] as THREE.MeshStandardMaterial;
+      const made = base.clone();
+      made.wireframe = node.hollow === true;
+      if (node.status === "deprecated") {
+        made.transparent = true;
+        made.opacity = 0.3;
+      }
+      this.mats[key] = made;
+      m = made;
+    }
+    return m;
   }
 
   private edgeMaterial(kind: EdgeKind): THREE.Material {
@@ -288,6 +348,8 @@ export class GraphScene extends BaseScene<GraphHover> {
     const pos = new Map<string, THREE.Vector3>();
     let minY = 0;
     let extent = 1;
+    let extentX = 1;
+    let extentY = 1;
     for (const node of this.graph.nodes) {
       const xyz = this.at.get(node.id);
       if (!xyz) continue;
@@ -295,19 +357,28 @@ export class GraphScene extends BaseScene<GraphHover> {
       pos.set(node.id, p);
       minY = Math.min(minY, p.y);
       extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y), Math.abs(p.z));
+      extentX = Math.max(extentX, Math.abs(p.x));
+      extentY = Math.max(extentY, Math.abs(p.y));
       const r = SIZE[node.type];
-      const mesh = new THREE.Mesh(geometry(node.type, r), this.mats[node.type]);
+      const mesh = new THREE.Mesh(geometry(node.type, r), this.nodeMaterial(node));
       mesh.position.copy(p);
       if (node.type === "domain") mesh.rotation.x = Math.PI / 2;
       mesh.castShadow = true;
       mesh.userData.node = node.id;
       world.add(mesh);
-      const label = this.pin(node.label, `p3d-label p3d-node-label g3d-label-${node.type}`, () =>
-        mesh.position.clone().add(new THREE.Vector3(0, r + 0.3, 0)),
+      // REQ-2130: a proposal says why beside its name; a deprecated term's name is dimmed too.
+      const label = this.pin(
+        node.note ? `${node.label} · ${node.note}` : node.label,
+        `p3d-label p3d-node-label g3d-label-${node.type}` +
+          (node.status === "proposed" ? " g3d-label-proposed" : "") +
+          (node.status === "deprecated" ? " g3d-label-dim" : ""),
+        () => mesh.position.clone().add(new THREE.Vector3(0, r + 0.3, 0)),
       );
       this.nodes.push({ node, mesh, radius: r, label });
     }
     this.extent = extent;
+    this.extentX = extentX;
+    this.extentY = extentY;
     const radiusOf = new Map(this.nodes.map((n) => [n.node.id, n.radius]));
     for (const e of this.graph.edges) {
       const a = pos.get(e.a);
@@ -315,7 +386,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       if (!a || !b) continue;
       const dir = b.clone().sub(a);
       const len = dir.length();
-      const thick = 0.025 + 0.02 * Math.min(4, (e.paths ?? 1) - 1);
+      const thick = 0.045 + 0.02 * Math.min(4, (e.paths ?? 1) - 1);
       const mat = this.edgeMaterial(e.kind);
       const rodMesh = new THREE.Mesh(
         new THREE.CylinderGeometry(thick, thick, len, 6, 1, true),
@@ -326,7 +397,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       rodMesh.userData.edge = e.id;
       world.add(rodMesh);
       const meshes = [rodMesh];
-      if (e.kind === "lineage" || e.kind === "column_lineage") {
+      if (DIRECTED.has(e.kind)) {
         const rb = radiusOf.get(e.b) ?? 0.3;
         const cone = new THREE.Mesh(new THREE.ConeGeometry(thick * 3 + 0.06, 0.4, 10), mat);
         cone.position.copy(

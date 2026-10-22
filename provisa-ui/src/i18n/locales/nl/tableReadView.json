@@ -50,6 +50,8 @@
     "draftLabel": "Concept",
     "draftTooltip": "Concept: buiten gebruik — in geen enkel schema en door niemand gelezen. Vink uit om de tabel vrij te geven; vink aan om haar buiten gebruik te stellen.",
     "draftNoRightTooltip": "Een tabel vrijgeven of terugzetten naar concept vereist het recht Tabelregistratie in het domein van de tabel.",
-    "draftPreviewNote": "Conceptvoorbeeld: lezers kunnen deze tabel nog niet zien."
+    "draftPreviewNote": "Conceptvoorbeeld: lezers kunnen deze tabel nog niet zien.",
+    "keepsHistory": "Bewaart historie: elke versie, met wanneer het gebeurde en wanneer het werd vastgelegd.",
+    "keepsHistoryQuery": "Bevraag het per een datum of zoals vastgelegd"
   }
 }

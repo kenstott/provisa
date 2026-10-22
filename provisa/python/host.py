@@ -55,6 +55,8 @@ _HEAD = struct.Struct(">I")
 _ID = struct.Struct(">Q")
 _IR_KEY = b"provisa.ir"
 _WHOLE_ROW = "$row"
+#: REQ-2100: the field a loader call's row carries its key in.
+_KEY = "$key"
 _DONE = object()
 #: An argument the read does not give: left out of the call, so the function's default applies.
 _ABSENT = object()
@@ -252,10 +254,12 @@ class Host:
         calls: list[tuple[list, list[str]]],
         schema: str | None,
         traceparent: str | None = None,
+        keyed: bool = False,
     ) -> None:
         """Run the call: the function once for each of ``calls`` (its arguments and their names),
         in order, every set's rows sent under ``call_id`` and one end after the last (REQ-2099:
-        one round trip for every argument set a join feeds the table)."""
+        one round trip for every argument set a join feeds the table). ``keyed`` (REQ-2100): a
+        call with a loader, answered with each key's rows, each row sent with its ``$key``."""
         started = time.process_time()
         _bind_call(call_id, traceparent)
         try:
@@ -270,7 +274,10 @@ class Host:
                 rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
             for args, names in calls:
                 positional, keywords = _call_arguments(from_wire(args), names)
-                await self._run(call_id, fn, kind, positional, keywords, rows_schema)
+                if keyed:
+                    await self._run_keyed(call_id, fn, positional, keywords, rows_schema)
+                else:
+                    await self._run(call_id, fn, kind, positional, keywords, rows_schema)
             # REQ-2106: the CPU the call took in this process (every thread of it).
             cpu_ms = round((time.process_time() - started) * 1000, 3)
             await self.send({"op": "end", "id": call_id, "cpu_ms": cpu_ms})
@@ -317,6 +324,29 @@ class Host:
             await self._rows(call_id, kind, self._sync_rows(iter(result)), schema)
         else:
             raise TypeError(f"a {type(result).__name__} is not a collection of rows")
+
+    async def _run_keyed(
+        self, call_id: int, fn: typing.Callable, args: list, keywords: dict, schema: typing.Any
+    ) -> None:
+        """REQ-2100: a loader call. The function answers with a hash of the keys it was given to
+        each key's rows; every row is sent with its key as ``$key``."""
+        if inspect.iscoroutinefunction(fn):
+            result = await fn(*args, **keywords)
+        else:
+            result = await asyncio.to_thread(fn, *args, **keywords)
+        if not isinstance(result, dict):
+            raise TypeError(
+                f"a loader call is answered with a hash of each key's rows, not a "
+                f"{type(result).__name__}"
+            )
+        for key, rows in result.items():
+            if isinstance(rows, dict) or not hasattr(rows, "__iter__"):
+                raise TypeError(
+                    f"key {key}: its rows are a collection, not a {type(rows).__name__}"
+                )
+            tagged = [{**_plain(row), _KEY: key} for row in rows]
+            for at in range(0, len(tagged), BATCH):
+                await self.send_rows(call_id, tagged[at : at + BATCH], schema)
 
     @staticmethod
     async def _async_rows(rows: typing.AsyncIterator) -> typing.AsyncIterator:
@@ -379,8 +409,8 @@ def load(code: str, entry: str) -> typing.Any:  # the code's entry module
 async def serve(
     module: typing.Any, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 ) -> None:
-    """Say hello on one connection to Provisa and serve its calls until it closes. A remote host
-    serves one connection per Provisa process (remote_host.py), each with its own calls."""
+    """Say hello on the connection and serve its calls until it closes: Provisa's, or in a built
+    image its front end's (provisa/codehost/front.py, REQ-2100)."""
     host = Host(module, writer)
     await host.send(
         {
@@ -422,6 +452,7 @@ async def serve(
                     calls,
                     message["schema"],
                     message.get("traceparent"),
+                    bool(message.get("keyed")),
                 )
             )
 

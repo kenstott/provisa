@@ -8,9 +8,8 @@
 // permission from the copyright holder.
 
 // REQ-1984, REQ-2098: the protocol a Node source's host speaks (provisa/codesource/worker.py), over
-// any connection -- the local worker's socket (host.mjs) or a remote host's TLS connections
-// (remote_host.mjs), each served by its own Connection with its own calls. See host.mjs for the
-// frames.
+// the socket it is given (host.mjs): the local worker's, or a built image's front end's
+// (provisa/codehost/front.py, REQ-2100). See host.mjs for the frames.
 //
 // REQ-2106: "@provisa/services" resolves to services.mjs beside this host on every runtime --
 // Node by a resolve hook, Bun by a runtime plugin, Deno by the import map its command names
@@ -27,6 +26,8 @@ const BATCH = 1000;
 export const PROTOCOL = 3;
 const IR_KEY = "provisa.ir";
 const WHOLE_ROW = "$row";
+// REQ-2100: the field a loader call's row carries its key in.
+const KEY = "$key";
 let Arrow = null;
 function arrow() {
   Arrow ??= createRequire(import.meta.url)(`${process.env.PROVISA_HOST_LIB}/package/Arrow.es2015.min.js`);
@@ -165,8 +166,9 @@ export class Connection {
   }
 
   /** The call: the function once per argument set -- the one `args`, or a table's several
-   * (`calls`, REQ-2099) in order -- every set's rows sent under the call's id. */
-  async serve({ id, export: name, kind, args, calls, schema: schemaText }) {
+   * (`calls`, REQ-2099) in order -- every set's rows sent under the call's id. A `keyed` call
+   * (REQ-2100) passes a loader and is answered with each key's rows (`serveKeyed`). */
+  async serve({ id, export: name, kind, args, calls, schema: schemaText, keyed }) {
     const fn = this.bundle[name];
     if (typeof fn !== "function") throw new Error(`the bundle exports no function ${name}`);
     const state = { cancelled: false, iterator: null };
@@ -175,10 +177,28 @@ export class Connection {
       const sets = calls ? calls.map((c) => c.args) : [args];
       for (const set of sets) {
         if (state.cancelled) break;
-        await this.serveOne(id, state, fn, kind, set, schemaText);
+        if (keyed) await this.serveKeyed(id, state, fn, set, schemaText);
+        else await this.serveOne(id, state, fn, kind, set, schemaText);
       }
     } finally {
       this.running.delete(id);
+    }
+  }
+
+  /** REQ-2100: a loader call, answered with a hash of the keys it was given to each key's rows;
+   * every row is sent with its key as `$key`. */
+  async serveKeyed(id, state, fn, args, schemaText) {
+    const result = await fn(...revive(args));
+    if (result === null || typeof result !== "object" || Array.isArray(result)) {
+      throw new Error(`a loader call is answered with a hash of each key's rows, not a ${Array.isArray(result) ? "list" : typeof result}`);
+    }
+    const schema = arrow().tableFromIPC(Buffer.from(schemaText, "base64")).schema;
+    for (const [key, rows] of Object.entries(result)) {
+      if (!Array.isArray(rows)) throw new Error(`key ${key}: its rows are an array, not a ${typeof rows}`);
+      const tagged = rows.map((row) => ({ ...row, [KEY]: key }));
+      for (let i = 0; i < tagged.length && !state.cancelled; i += BATCH) {
+        this.sendRows(id, tagged.slice(i, i + BATCH), schema);
+      }
     }
   }
 

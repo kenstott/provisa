@@ -71,6 +71,7 @@ def make_role(
     domain_access: list[str] | None = None,
 ) -> dict:
     return {
+        "description": "Test role.",
         "id": id,
         "capabilities": capabilities or ["query_development"],
         "domain_access": domain_access or ["sales-analytics"],

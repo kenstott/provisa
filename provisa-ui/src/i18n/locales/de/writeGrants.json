@@ -29,6 +29,7 @@
     "addGrant": "Recht hinzufügen",
     "removeGrant": "Dieses Recht entfernen",
     "save": "Rechte speichern",
-    "saved": "Rechte gespeichert."
+    "saved": "Rechte gespeichert.",
+    "kept": "Vorgemerkt: wird mit der Tabelle gespeichert."
   }
 }
