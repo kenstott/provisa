@@ -150,15 +150,19 @@ _JOINED = (
 )
 
 
-async def _searched(sql: str, table_ids: list[int], *, nf_args=None, target_column="_nf_query"):
-    """Run the materialize stage on ``sql`` as the reader, the feed's read answered from the
-    lines above and each search from the points below. Returns the argument sets each search
-    was given, what the stage put in for the engine, and the governed feed statements."""
+async def _searched(
+    sql: str, table_ids: list[int], *, nf_args=None, target_column="_nf_query", lines=_LINES
+):
+    """Run the materialize stage on ``sql`` as the reader, the feed's read answered from
+    ``lines`` and each search from the points below. Returns the argument sets each search was
+    given, what the stage put in for the engine, the governed feed statements, and the embedding
+    and Qdrant requests the searches made."""
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
 
     ctx = _ctx()
     governed: list[str] = []
     searched: list = []
+    asked = SimpleNamespace(embedded=[], batches=[])
 
     async def govern(statement, role_id, *, session_vars=None):
         governed.append(governed_for_role(statement, ctx, role_id))
@@ -167,25 +171,46 @@ async def _searched(sql: str, table_ids: list[int], *, nf_args=None, target_colu
     async def execute(plan):
         db = duckdb.connect()
         db.execute("CREATE TABLE line (id INTEGER, sonnet_number INTEGER, text VARCHAR)")
-        db.executemany("INSERT INTO line VALUES (?, ?, ?)", _LINES)
+        db.executemany("INSERT INTO line VALUES (?, ?, ?)", lines)
         cursor = db.execute(plan.replace('"public".', ""))
         return QueryResult(
             rows=sorted(cursor.fetchall()), column_names=[d[0] for d in cursor.description]
         )
 
-    async def read(state, table, given):
+    async def read(state, table, given):  # a read under the statement's own arguments
         searched.append(dict(given))
-        # The nearest point of another sonnet, its score by the query's length.
         other = 201 if given.get("sonnet") == 1 else 101
         return PipelineRead(
             rows=[{"id": other, "score": len(given["query"]) / 100, "sonnet_number": 2}],
             columns=[("id", "bigint"), ("score", "double"), ("sonnet_number", "integer")],
         )
 
+    async def query_vectors(state, table, queries):  # one embedding call for every text
+        asked.embedded.append(list(queries))
+        return [[float(len(q))] for q in queries]
+
+    def search_each(conn, requests, *, vectors):  # one Qdrant batch request
+        asked.batches.append(len(requests))
+        out = []
+        for r in requests:
+            [kept_out] = r["filter"]["must_not"]
+            sonnet = kept_out["match"]["value"]
+            searched.append({"query": r["query"], "sonnet": sonnet, "limit": r["limit"]})
+            other = 201 if sonnet == 1 else 101
+            out.append([{"@id": other, "@score": r["query"][0] / 100, "sonnet_number": 2}])
+        return out
+
+    async def sources(_state):
+        return [SimpleNamespace(id="vectors")]
+
     with (
         patch("provisa.pgwire._pipeline._govern_and_route", side_effect=govern),
         patch("provisa.pgwire._pipeline._execute_plan", side_effect=execute),
         patch("provisa.qdrant.table.read", side_effect=read),
+        patch("provisa.qdrant.table._query_vectors", side_effect=query_vectors),
+        patch("provisa.qdrant.fetch.search_each", side_effect=search_each),
+        patch("provisa.federation.registry_view.registered_sources", side_effect=sources),
+        patch("provisa.qdrant.fetch.QdrantConnection.from_source"),
         patch("provisa.api_source.engine_cache.cache_location"),
     ):
         rewrites, inlined, _ = await _materialize_api_to_engine_cache(
@@ -196,15 +221,16 @@ async def _searched(sql: str, table_ids: list[int], *, nf_args=None, target_colu
             ctx=ctx,
             role_id="reader",
         )
+    _searched.asked = asked  # pyright: ignore[reportFunctionMemberAccess]
     return searched, {**rewrites, **inlined}, governed
 
 
 async def test_each_line_is_searched_with_its_own_words_and_sonnet():
     searched, put_in, governed = await _searched(_JOINED, [LINES, NEAR])
-    assert sorted(searched, key=lambda s: s["query"]) == sorted(
-        [{"query": text, "sonnet": sonnet} for _id, sonnet, text in _LINES],
-        key=lambda s: s["query"],
+    assert sorted((s["query"], s["sonnet"]) for s in searched) == sorted(
+        ([float(len(text))], sonnet) for _id, sonnet, text in _LINES
     )
+    assert sorted(_searched.asked.embedded[0]) == sorted(t for _i, _s, t in _LINES)  # pyright: ignore[reportFunctionMemberAccess]
     assert governed == [
         'SELECT DISTINCT "text" AS "query", "sonnet_number" AS "sonnet" FROM "public"."line"'
     ]
@@ -220,7 +246,7 @@ async def test_each_point_carries_the_words_it_was_found_for():
 
 async def test_the_statements_own_arguments_reach_every_search():
     searched, _, _ = await _searched(_JOINED, [LINES, NEAR], nf_args={"k": 3})
-    assert [s["k"] for s in searched] == [3, 3, 3]
+    assert [s["limit"] for s in searched] == [3, 3, 3]
 
 
 async def test_a_search_read_without_the_source_is_refused_before_qdrant_is_asked():
@@ -244,3 +270,16 @@ async def test_a_statement_that_gives_its_own_query_is_not_fed():
     assert searched == [{"query": "the ravages of time", "k": 20}]
     assert governed == []
     assert put_in["lines_like"].column_names == ["id", "score", "sonnet_number"]
+
+
+async def test_a_thousand_lines_are_one_embedding_call_and_a_few_batch_requests(monkeypatch):
+    """link_echoes's 2155 lines: every text embedded in one call, the searches sent in batches of
+    256 -- nine requests to Qdrant, not 2155 (its setup step's request timeout, REQ-2099)."""
+    lines = [(n, n // 14 + 1, f"line {n}") for n in range(2155)]
+    # Inlined into the statement, as a TTL-0 read within the large-result threshold is.
+    monkeypatch.setenv("PROVISA_REDIRECT_THRESHOLD", "10000")
+    searched, put_in, _ = await _searched(_JOINED, [LINES, NEAR], nf_args={"k": 3}, lines=lines)
+    asked = _searched.asked  # pyright: ignore[reportFunctionMemberAccess]
+    assert len(asked.embedded) == 1 and len(asked.embedded[0]) == 2155
+    assert asked.batches == [256] * 8 + [2155 - 8 * 256]
+    assert len(searched) == 2155 and len(put_in["lines_like"].rows) == 2155
