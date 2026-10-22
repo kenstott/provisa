@@ -70,7 +70,23 @@
     "glossaryUnreadable": "Su rol no puede leer el glosario en el dominio meta.",
     "ontologyTitle": "Ontología del glosario",
     "ontologyView": "Vista de ontología",
-    "selected_one": "{{count}} seleccionado",
-    "selected_other": "{{count}} seleccionados"
+    "orphans": "Huérfanos",
+    "columnsToggle": "Columnas",
+    "allEdgeTypes": "Todos los tipos de arista",
+    "someEdgeTypes": "{{count}} de {{total}} tipos de arista",
+    "allDomains": "Todos los dominios",
+    "someDomains": "{{count}} de {{total}} dominios",
+    "allTags": "Todas las etiquetas",
+    "someTags": "{{count}} de {{total}} etiquetas",
+    "allSensitivities": "Todas las sensibilidades",
+    "someSensitivities": "{{count}} de {{total}} sensibilidades",
+    "allFocus": "Todos los productos y términos",
+    "someFocus": "{{count}} de {{total}} productos y términos",
+    "search": "Buscar…",
+    "look_concrete": "término concreto",
+    "look_abstract": "término abstracto",
+    "look_in_product": "columna en un producto de datos",
+    "look_out_of_product": "columna fuera de los productos de datos",
+    "status_live": "Vigente"
   }
 }

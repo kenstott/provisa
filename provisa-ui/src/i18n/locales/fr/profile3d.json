@@ -5,6 +5,9 @@
     "hint": "Glisser pour orbiter · défiler pour zoomer · glisser avec le clic droit pour déplacer",
     "rotate": "Pivoter",
     "resetView": "Réinitialiser la vue",
-    "zoomTo": "Zoomer sur cette colonne"
+    "zoomTo": "Zoomer sur cette colonne",
+    "attraction": "Attraction",
+    "attractionLoose": "Lâche",
+    "attractionTight": "Serré"
   }
 }

@@ -5,6 +5,9 @@
     "hint": "Arrastre para orbitar · desplácese para ampliar · arrastre con el botón derecho para mover",
     "rotate": "Rotar",
     "resetView": "Restablecer vista",
-    "zoomTo": "Ampliar a esta columna"
+    "zoomTo": "Ampliar a esta columna",
+    "attraction": "Atracción",
+    "attractionLoose": "Suelto",
+    "attractionTight": "Compacto"
   }
 }

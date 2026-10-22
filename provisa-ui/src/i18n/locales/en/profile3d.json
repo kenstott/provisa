@@ -5,6 +5,9 @@
     "hint": "Drag to orbit · scroll to zoom · right-drag to pan",
     "rotate": "Rotate",
     "resetView": "Reset view",
-    "zoomTo": "Zoom to this column"
+    "zoomTo": "Zoom to this column",
+    "attraction": "Attraction",
+    "attractionLoose": "Loose",
+    "attractionTight": "Tight"
   }
 }

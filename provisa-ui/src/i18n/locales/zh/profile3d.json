@@ -5,6 +5,9 @@
     "hint": "拖动以旋转 · 滚动以缩放 · 右键拖动以平移",
     "rotate": "旋转",
     "resetView": "重置视图",
-    "zoomTo": "缩放到此列"
+    "zoomTo": "缩放到此列",
+    "attraction": "吸引力",
+    "attractionLoose": "松散",
+    "attractionTight": "紧密"
   }
 }

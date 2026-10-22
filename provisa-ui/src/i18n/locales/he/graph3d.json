@@ -70,7 +70,23 @@
     "glossaryUnreadable": "התפקיד שלכם לא יכול לקרוא את מילון המונחים בדומיין ה-meta.",
     "ontologyTitle": "אונטולוגיית מילון המונחים",
     "ontologyView": "תצוגת אונטולוגיה",
-    "selected_one": "נבחרו: {{count}}",
-    "selected_other": "נבחרו: {{count}}"
+    "orphans": "יתומים",
+    "columnsToggle": "עמודות",
+    "allEdgeTypes": "כל סוגי הקשתות",
+    "someEdgeTypes": "{{count}} מתוך {{total}} סוגי קשתות",
+    "allDomains": "כל התחומים",
+    "someDomains": "{{count}} מתוך {{total}} תחומים",
+    "allTags": "כל התגיות",
+    "someTags": "{{count}} מתוך {{total}} תגיות",
+    "allSensitivities": "כל רמות הרגישות",
+    "someSensitivities": "{{count}} מתוך {{total}} רמות רגישות",
+    "allFocus": "כל המוצרים והמונחים",
+    "someFocus": "{{count}} מתוך {{total}} מוצרים ומונחים",
+    "search": "חיפוש…",
+    "look_concrete": "מונח קונקרטי",
+    "look_abstract": "מונח מופשט",
+    "look_in_product": "עמודה במוצר נתונים",
+    "look_out_of_product": "עמודה מחוץ למוצרי נתונים",
+    "status_live": "פעיל"
   }
 }

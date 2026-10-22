@@ -70,7 +70,23 @@
     "glossaryUnreadable": "Ваша роль не может читать глоссарий в домене meta.",
     "ontologyTitle": "Онтология глоссария",
     "ontologyView": "Вид онтологии",
-    "selected_one": "Выбрано: {{count}}",
-    "selected_other": "Выбрано: {{count}}"
+    "orphans": "Сироты",
+    "columnsToggle": "Столбцы",
+    "allEdgeTypes": "Все типы рёбер",
+    "someEdgeTypes": "{{count}} из {{total}} типов рёбер",
+    "allDomains": "Все домены",
+    "someDomains": "{{count}} из {{total}} доменов",
+    "allTags": "Все теги",
+    "someTags": "{{count}} из {{total}} тегов",
+    "allSensitivities": "Все уровни чувствительности",
+    "someSensitivities": "{{count}} из {{total}} уровней чувствительности",
+    "allFocus": "Все продукты и термины",
+    "someFocus": "{{count}} из {{total}} продуктов и терминов",
+    "search": "Поиск…",
+    "look_concrete": "конкретный термин",
+    "look_abstract": "абстрактный термин",
+    "look_in_product": "столбец в продукте данных",
+    "look_out_of_product": "столбец вне продуктов данных",
+    "status_live": "Действующий"
   }
 }

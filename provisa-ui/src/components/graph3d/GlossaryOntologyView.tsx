@@ -69,7 +69,8 @@ export function OntologyToggle({
   );
 }
 
-export function GlossaryOntologyView() {
+/** ``search``: the Glossary page's search, which focuses the graph (searchItems' rule). */
+export function GlossaryOntologyView({ search }: { search: string }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
   const [read, setRead] = useState<{ data: GraphData | null; error: string | null; done: boolean }>(
@@ -116,6 +117,7 @@ export function GlossaryOntologyView() {
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         zero={[]}
+        search={search}
         onExpand={() => setOpen(true)}
         testId="ontology"
       />
@@ -128,6 +130,7 @@ export function GlossaryOntologyView() {
         preset="ontology"
         focus={null}
         zero={[]}
+        search={search}
       />
     </div>
   );

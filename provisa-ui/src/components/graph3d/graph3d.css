@@ -56,13 +56,33 @@
 .g3d-sw-term {
   background: var(--p3d-cool);
 }
-/* REQ-2130: a proposed term's name, with why; a deprecated one's, dimmed. */
+/* REQ-2130: a term's status is on its name alone (nodeLook's labelClass): live as is, proposed
+   italic, deprecated dimmed, retired dimmed and struck through. */
 .g3d-label-proposed {
   font-style: italic;
-  color: var(--p3d-warn-fg);
 }
-.g3d-label-dim {
+.g3d-label-deprecated {
   opacity: 0.45;
+}
+.g3d-label-retired {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+/* The legend's key to a node's look: its shape, in its colour. */
+.g3d-shape {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  vertical-align: middle;
+}
+.g3d-shape-diamond {
+  transform: rotate(45deg) scale(0.8);
+}
+.g3d-shape-sphere {
+  border-radius: 50%;
+}
+.g3d-legend-status {
+  font-family: var(--mantine-font-family-monospace);
 }
 /* In place on a page (the Ontology View): toolbars at their height, the stage taking the rest. */
 .g3d-inline {

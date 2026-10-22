@@ -17,6 +17,7 @@ import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import { edgesOf, type GraphData, type NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
+import { labelClass, nodeLook, type Look } from "./nodeLook";
 
 export interface StageState {
   graph: GraphData;
@@ -85,12 +86,17 @@ export function GraphStage({
         return sc;
       }),
   );
-  const drawn = useRef<{ graph: GraphData; frame: number } | null>(null);
+  const drawn = useRef<{
+    graph: GraphData;
+    at: Map<string, [number, number, number]>;
+    frame: number;
+  } | null>(null);
   useEffect(() => {
     if (!scene) return;
     const was = drawn.current;
-    drawn.current = { graph: s.graph, frame: s.frame };
-    if (was === null || was.graph === s.graph) return;
+    drawn.current = { graph: s.graph, at: s.at, frame: s.frame };
+    // A new graph, or the same graph laid out anew (the attraction moved), is drawn again.
+    if (was === null || (was.graph === s.graph && was.at === s.at)) return;
     scene.setFrontal(s.frontal);
     scene.setData(s.graph, s.at, was.frame !== s.frame);
   }, [scene, s.graph, s.at, s.frame, s.frontal]);
@@ -143,12 +149,44 @@ export function GraphStage({
       canvasLabel={t("graph3d.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
       testId={testId}
-      legend={LEGEND.filter((type) => s.graph.nodes.some((n) => n.type === type)).map((type) => (
-        <span key={type}>
-          <i className={`p3d-sw g3d-sw-${type}`} />
-          {t(`graph3d.type_${type}`)}
+      legend={<GraphLegend graph={s.graph} />}
+    />
+  );
+}
+
+/** Each look the graph draws -- a shape for the kind, a colour for the variant -- and, where terms
+ * carry a status, the four styles a term's name takes. */
+function GraphLegend({ graph }: { graph: GraphData }) {
+  const { t } = useTranslation();
+  const looks = new Map<string, { type: NodeType } & Look>();
+  for (const type of LEGEND)
+    for (const n of graph.nodes)
+      if (n.type === type) {
+        const look = nodeLook(n);
+        looks.set(`${type}:${look.variant}`, { type, ...look });
+      }
+  const statuses = graph.nodes.some((n) => n.status !== undefined);
+  return (
+    <>
+      {[...looks.entries()].map(([key, l]) => (
+        <span key={key} data-testid={`legend-${key}`}>
+          <i
+            className={`g3d-shape g3d-shape-${l.shape}`}
+            style={{ background: `var(--p3d-${l.colour})` }}
+          />
+          {l.variant === "plain" ? t(`graph3d.type_${l.type}`) : t(`graph3d.look_${l.variant}`)}
         </span>
       ))}
-    />
+      {statuses &&
+        (["live", "proposed", "deprecated", "retired"] as const).map((st) => (
+          <span
+            key={st}
+            className={`g3d-legend-status ${labelClass(st)}`.trim()}
+            data-testid={`legend-status-${st}`}
+          >
+            {t(`graph3d.status_${st}`)}
+          </span>
+        ))}
+    </>
   );
 }

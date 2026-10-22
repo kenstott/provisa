@@ -20,7 +20,7 @@ import type { GraphData, GraphEdge, GraphNode, TermStatus } from "./graphModel";
 export const ENTERPRISE_DOMAIN = "*";
 
 const TERMS: Selection = {
-  fields: ["id", "name", "is_abstract", "deprecated", "retired", "live"],
+  fields: ["id", "name", "definition", "is_abstract", "deprecated", "retired", "live"],
   rels: {
     domains: { alias: "domains", sel: { fields: ["domain_id"] } },
     refs: {
@@ -46,6 +46,7 @@ const TERMS: Selection = {
 export interface TermRow {
   id: number;
   name: string;
+  definition: string | null;
   is_abstract: boolean;
   deprecated: boolean;
   retired: boolean;
@@ -118,7 +119,9 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
       type: "term",
       label: t.name,
       status,
-      hollow: t.is_abstract,
+      abstract: t.is_abstract,
+      // For the side panel only; a proposal with none has nothing said there.
+      ...(t.definition ? { definition: t.definition } : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),
     });
@@ -140,9 +143,12 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
         label: `${r.table_name}.${r.column_name}`,
         parent: tid,
         domains: [r.domain_id],
+        // A column whose table a data product holds.
+        inProduct: r.table?.product != null,
       });
       edge(tid, cid, "has_column");
-      edge(id, cid, "term_binding");
+      // glossary.py's physical refs: the term IS this column.
+      edge(id, cid, "term_binding", "IS");
       const p = r.table?.product;
       if (p) {
         node({ id: `p:${p.id}`, type: "product", label: p.name, domains: [p.domain_id] });

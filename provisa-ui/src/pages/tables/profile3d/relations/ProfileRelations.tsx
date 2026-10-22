@@ -16,6 +16,8 @@ import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
+import { AttractionSlider } from "../Attraction";
+import { useAttraction } from "../attractionState";
 import { Stage3D, type CameraCommand } from "../Stage3D";
 import { useLazyScene } from "../useLazyScene";
 import {
@@ -34,6 +36,8 @@ const STRENGTHS = ["0.1", "0.3", "0.5", "0.7"];
 interface Shared {
   model: RelationsModel;
   edges: RelEdge[];
+  attraction: number;
+  setAttraction: (v: number) => void;
   min: string;
   setMin: (v: string) => void;
   kinds: Set<EdgeKind>;
@@ -77,6 +81,16 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
         return sc;
       }),
   );
+  // A new layout (the attraction moved) is drawn where the camera already is.
+  const laid = useRef<RelationsModel | null>(null);
+  useEffect(() => {
+    if (!scene) return;
+    if (laid.current === null) laid.current = latest.current.model;
+    else if (laid.current !== s.model) {
+      laid.current = s.model;
+      scene.setData(s.model, latest.current.edges, false);
+    }
+  }, [scene, s.model]);
   const shown = useRef<RelEdge[] | null>(null);
   useEffect(() => {
     if (!scene) return;
@@ -294,6 +308,7 @@ function RelationsView({
         >
           {t("profileRelations.showDependence")}
         </Chip>
+        <AttractionSlider value={s.attraction} onChange={s.setAttraction} testId="relations" />
         <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="relations-rotate">
           {t("profile3d.rotate")}
         </Chip>
@@ -329,7 +344,8 @@ export function ProfileRelations({
   tableName: string;
 }) {
   const { t } = useTranslation();
-  const model = useMemo(() => buildRelations(results), [results]);
+  const [attraction, setAttraction] = useAttraction("relations");
+  const model = useMemo(() => buildRelations(results, attraction), [results, attraction]);
   const [min, setMin] = useState("0.3");
   const [kinds, setKinds] = useState<Set<EdgeKind>>(
     new Set(["spearman", "correlation_ratio", "dependence"]),
@@ -354,6 +370,8 @@ export function ProfileRelations({
   const s: Shared = {
     model,
     edges,
+    attraction,
+    setAttraction,
     min,
     setMin,
     kinds,

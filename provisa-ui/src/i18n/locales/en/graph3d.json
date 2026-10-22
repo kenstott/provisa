@@ -70,7 +70,23 @@
     "glossaryUnreadable": "Your role cannot read the glossary in the meta domain.",
     "ontologyTitle": "Glossary ontology",
     "ontologyView": "Ontology view",
-    "selected_one": "{{count}} selected",
-    "selected_other": "{{count}} selected"
+    "orphans": "Orphans",
+    "columnsToggle": "Columns",
+    "allEdgeTypes": "All edge types",
+    "someEdgeTypes": "{{count}} of {{total}} edge types",
+    "allDomains": "All domains",
+    "someDomains": "{{count}} of {{total}} domains",
+    "allTags": "All tags",
+    "someTags": "{{count}} of {{total}} tags",
+    "allSensitivities": "All sensitivities",
+    "someSensitivities": "{{count}} of {{total}} sensitivities",
+    "allFocus": "Every product and term",
+    "someFocus": "{{count}} of {{total}} products and terms",
+    "search": "Search…",
+    "look_concrete": "concrete term",
+    "look_abstract": "abstract term",
+    "look_in_product": "column in a data product",
+    "look_out_of_product": "column outside data products",
+    "status_live": "Live"
   }
 }

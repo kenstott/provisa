@@ -5,6 +5,9 @@
     "hint": "גררו לסיבוב · גללו להגדלה · גרירה בלחצן ימני להזזה",
     "rotate": "סיבוב",
     "resetView": "איפוס תצוגה",
-    "zoomTo": "התמקדות בעמודה זו"
+    "zoomTo": "התמקדות בעמודה זו",
+    "attraction": "משיכה",
+    "attractionLoose": "רופף",
+    "attractionTight": "צפוף"
   }
 }

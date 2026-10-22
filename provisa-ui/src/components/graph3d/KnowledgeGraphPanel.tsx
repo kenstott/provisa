@@ -45,6 +45,7 @@ export function GraphModal({
   preset,
   focus,
   zero,
+  search,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -54,6 +55,8 @@ export function GraphModal({
   preset: PresetId;
   focus: string | null;
   zero: string[];
+  /** The page's search driving the focus (the Ontology View's), as GraphExplorer takes it. */
+  search?: string;
 }) {
   return (
     <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
@@ -64,6 +67,7 @@ export function GraphModal({
           preset={preset}
           focus={focus}
           zero={zero}
+          search={search}
           testId="graph3d"
         />
       )}
