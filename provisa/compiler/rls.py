@@ -44,6 +44,19 @@ class MemberReads:  # REQ-1620
     def uniform(self, column: str) -> bool:
         return len({rank for rank, _, _ in self.columns[column]}) == 1
 
+    def resolved(self, column: str) -> tuple[int, Any, str] | None:
+        """The one treatment every row reads ``column`` through, or None when it depends on the
+        row. A row reads a column through the least restrictive treatment of the members that
+        admit it, so a column every member treats alike, or whose least restrictive treatment is
+        held by a member that admits every row (its flag is TRUE), reads that treatment on every
+        row: nothing about the row needs evaluating."""
+        treatments = self.columns[column]
+        least = min(rank for rank, _, _ in treatments)
+        group = [i for i, t in enumerate(treatments) if t[0] == least]
+        if self.uniform(column) or any(self.flags[i] == "TRUE" for i in group):
+            return treatments[group[0]]
+        return None
+
 
 @dataclass
 class RLSContext:

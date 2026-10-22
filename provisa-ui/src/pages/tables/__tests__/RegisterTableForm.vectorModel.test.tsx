@@ -32,7 +32,7 @@ vi.mock("../useVectorModels", async (importOriginal) => ({
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   render(
     <RegisterTableForm
       sources={[{ id: "vec", type: "qdrant", database: "", allowedDomains: [] } as never]}
@@ -49,19 +49,18 @@ function renderForm() {
         { name: "image", dataType: "vector(512)", path: "@vector.image" },
       ])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={vi.fn()}
     />,
   );
-  return registerTable;
+  return onContinue;
 }
 
 describe("RegisterTableForm on a Qdrant collection: a vector's model (REQ-2000)", () => {
   it("offers each vector the models of its size and registers the one named", async () => {
     useVectorModels.mockReturnValue({ "": ["minilm"], image: [] });
-    const registerTable = renderForm();
+    const onContinue = renderForm();
     const user = userEvent.setup();
     await user.selectOptions(screen.getByTestId("register-table-source-select"), "vec");
     await user.selectOptions(await screen.findByTestId("register-table-table-select"), "docs");
@@ -77,8 +76,8 @@ describe("RegisterTableForm on a Qdrant collection: a vector's model (REQ-2000)"
     const listbox = document.getElementById(input.getAttribute("aria-controls") as string);
     fireEvent.click(within(listbox as HTMLElement).getByRole("option", { hidden: true }));
     fireEvent.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalledTimes(1));
-    const columns = registerTable.mock.calls[0][0].columns as { name: string }[];
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    const columns = onContinue.mock.calls[0][0].input.columns as { name: string }[];
     expect(columns.find((c) => c.name === "embedding")).toMatchObject({
       embedding: true,
       embeddingModel: "minilm",

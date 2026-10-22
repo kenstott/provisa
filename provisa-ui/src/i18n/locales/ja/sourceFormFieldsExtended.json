@@ -203,6 +203,7 @@
     "accountEmailHint": "Atlassian へのサインインに使うメールアドレス。API トークンはこのアカウントのものです。",
     "apiToken": "API トークン",
     "apiTokenHint": "id.atlassian.com で作成（Security, API tokens）。シークレットボールトに保存されます。",
-    "siteAddressInvalid": "https:// で始まるサイトの完全なアドレスを入力してください"
+    "siteAddressInvalid": "https:// で始まるサイトの完全なアドレスを入力してください",
+    "namingInherit": "継承（グローバル）"
   }
 }

@@ -30,9 +30,11 @@ default.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrule, rrulestr, rruleset
@@ -103,6 +105,9 @@ class Calendar:
     week_start: int = 0  # 0 = Monday (date.weekday convention)
     holidays: frozenset[date] = field(default_factory=frozenset)
     weekend: frozenset[int] = frozenset({5, 6})  # Sat, Sun (date.weekday convention)
+    # REQ-2111: the local wall-clock time a day closes at (a bank's 18:00 close of business).
+    # None = local midnight. A day ends at its close, so day D runs from D-1's close to D's.
+    day_close: time | None = None
 
     @property
     def zone(self) -> ZoneInfo:
@@ -110,6 +115,41 @@ class Calendar:
 
     def is_business_day(self, d: date) -> bool:
         return d.weekday() not in self.weekend and d not in self.holidays
+
+
+class InvalidCalendar(ValueError):
+    """A calendar definition that does not define a calendar (REQ-962, REQ-2120): ``reason`` is
+    what is wrong with it. Every surface declaring a calendar refuses with it."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"invalid calendar: {reason}")
+
+
+def calendar_of(fields: Mapping[str, Any]) -> Calendar:  # REQ-962, REQ-2120
+    """The :class:`Calendar` a calendar's declared fields define: the validation every surface
+    that declares one applies (the ``createCalendar`` mutation, a config's ``calendars:``).
+    ``fields`` carry the ``calendars`` table's columns: holidays and the close as ISO text, the
+    retail anchor as ISO text or the date its column holds. Raises :class:`InvalidCalendar` on a
+    bad base system, anchor, holiday or close."""
+    try:
+        anchor = fields["retail_anchor"]
+        if isinstance(anchor, str):
+            anchor = date.fromisoformat(anchor) if anchor else None
+        return Calendar(
+            name=fields["name"],
+            version=fields["version"],
+            base_system=BaseSystem(fields["base_system"]),
+            tz=fields["tz"],
+            fiscal_anchor=(fields["fiscal_anchor_month"], fields["fiscal_anchor_day"]),
+            retail_anchor=anchor,
+            week_start=fields["week_start"],
+            holidays=frozenset(date.fromisoformat(d) for d in fields["holidays"]),
+            weekend=frozenset(fields["weekend"]),
+            day_close=time.fromisoformat(fields["day_close"]) if fields["day_close"] else None,
+        )
+    except (ValueError, KeyError) as e:
+        raise InvalidCalendar(str(e)) from e
 
 
 # -- month arithmetic (calendar-correct, never day-count) ----------------------
@@ -125,18 +165,27 @@ def _utc(local_naive: datetime, cal: Calendar) -> datetime:
     return local_naive.replace(tzinfo=cal.zone).astimezone(timezone.utc)
 
 
+def _day_start(cal: Calendar, d: date) -> datetime:
+    """The UTC instant local day ``d`` starts: its civil midnight, or the previous day's close
+    when the calendar declares one (REQ-2111)."""
+    if cal.day_close is None:
+        return _utc(datetime(d.year, d.month, d.day), cal)
+    return _utc(datetime.combine(d - timedelta(days=1), cal.day_close), cal)
+
+
 def _window(cal: Calendar, start_d: date, end_d: date, window_id: str) -> Window:
-    return Window(
-        start=_utc(datetime(start_d.year, start_d.month, start_d.day), cal),
-        end=_utc(datetime(end_d.year, end_d.month, end_d.day), cal),
-        window_id=window_id,
-    )
+    return Window(start=_day_start(cal, start_d), end=_day_start(cal, end_d), window_id=window_id)
 
 
 def _local_date(cal: Calendar, instant: datetime) -> date:
+    """The local day ``instant`` falls in; at or after the calendar's close it is the next day's
+    (REQ-2111)."""
     if instant.tzinfo is None:
         instant = instant.replace(tzinfo=timezone.utc)
-    return instant.astimezone(cal.zone).date()
+    local = instant.astimezone(cal.zone)
+    if cal.day_close is not None and local.time() >= cal.day_close:
+        return local.date() + timedelta(days=1)
+    return local.date()
 
 
 # -- fiscal year ---------------------------------------------------------------
@@ -450,7 +499,20 @@ def window_for(
     grain (no window on a non-business day); False = calendar-day grain (always a window). ``instant``
     is resolved to the calendar's LOCAL date before boundary derivation, so DST and zone offset are
     honored."""
-    d = _local_date(cal, instant)
+    return window_for_date(cal, grain, _local_date(cal, instant), business_day=business_day)
+
+
+def window_for_date(
+    cal: Calendar,
+    grain: str | Grain | NthWeekday | RRuleRecurrence,
+    d: date,
+    *,
+    business_day: bool = False,
+) -> Window | None:
+    """The ``[start, end)`` window (+ ``window_id``) covering the calendar's LOCAL date ``d`` for
+    ``(cal, grain)`` -- :func:`window_for` once its instant is resolved to a local date. A daily
+    window of ``d`` ends at ``d``'s close (REQ-2111), the seal a build for that business day
+    stamps (REQ-2120). ``None`` when the calendar gates the window out of existence."""
     spec = parse_grain_spec(grain)  # a nesting grain, an nth-weekday shorthand, or a full RRULE
     if isinstance(spec, NthWeekday):
         return _recurrence_window(cal, spec, d)  # an occurrence is a specific day; no grain gating

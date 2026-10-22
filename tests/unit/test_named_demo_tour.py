@@ -255,6 +255,10 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert gates.get(step["route"]) == step["capability"], step
         else:
             assert "capability" not in step, step
+        # A table's section is opened at a route the tour builds from the step (demoTour.ts), and
+        # a built route takes the step's capability: without both the tour does not start.
+        if "open" in step:
+            assert "route" in step, f"{step['key']}: opens a table section, so names its route"
         if "source" in step:
             assert step["source"] in sources, step
         surface = next((k for k in _SURFACE_PAGES if k in step), None)

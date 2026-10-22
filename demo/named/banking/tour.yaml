@@ -1,0 +1,130 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The banking demo's own tour (REQ-2010, REQ-2107): end-of-day reporting without copying the
+# ledger. The step kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name
+# here is checked against the demo by tests/unit/test_named_demo_tour.py, and the words of each
+# step are tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and its four focuses (compute cost; data footprint and so governance
+# surface; the same answer everywhere; the cost of change); how the pieces fit -- the ledger homed
+# in its region and never copied, its three time mappings, the compute it needs, the end-of-day
+# totals built in the warehouse at each close, the drill-down relationship; the solution as
+# predesigned queries -- the GraphQL dashboard with its postings, BI's SQL as reported at a close
+# and as restated since, the postings under the ledger's rules, the agent's answer; the two-line
+# placement change; a recap; and "Where next?", the landing page below.
+#
+# The as-recorded times are closes, in UTC: 18:00 London is 17:00 UTC in October before the clocks
+# change. 1 October's close is the version reported that evening; 12 October's, the last of the
+# thirty, is the version as restated by then.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+# The scenario, its question and the four focuses.
+- key: bankingScenario
+  route: /sources
+  capability: source_registration
+  source: ledger-db
+# How it fits: the ledger homed in its region, never replicated.
+- key: bankingLedger
+  route: /tables
+  capability: table_registration
+  table: ledger-db.transactions
+  open: identity
+# Its versions: a correction is a new row; the three mappings.
+- key: bankingVersions
+  route: /tables
+  capability: table_registration
+  table: ledger-db.transactions
+  open: load
+# What the ledger's side needs: compute for the end-of-day GROUP BY.
+- key: bankingCompute
+  route: /sources
+  capability: source_registration
+  source: ledger-db
+# The end-of-day totals, built in the warehouse at each close.
+- key: bankingCloses
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT e.business_date, COUNT(*) AS totals, MIN(e.recorded_at) AS first_recorded,
+      MAX(e.recorded_at) AS last_recorded
+    FROM "banking"."view_eod_totals" AS e
+    GROUP BY e.business_date
+    ORDER BY e.business_date
+# The drill-down: a total to the postings behind it.
+- key: bankingJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: MADE_UP_OF
+# The dashboard, over GraphQL: totals with their postings nested, as operations reads them.
+- key: bankingAsOps
+  route: /query
+  capability: query_development
+  role: ops_analyst
+- key: bankingDashboard
+  example: 1-eod-dashboard
+# Back as the administrator, for every page after the dashboard.
+- key: bankingAsAdmin
+  route: /query
+  capability: query_development
+  role: all
+# BI, over SQL: the day's totals, as reported at the close and as restated since.
+- key: bankingAsAnalyst
+  route: /sql
+  capability: query_development
+  role: analyst
+- key: bankingDay
+  sql: >-
+    SELECT e.business_date, e.branch, e.product, e.currency, e.posting_count, e.credits, e.debits,
+      e.net_movement
+    FROM "banking"."view_eod_totals" AS e
+    WHERE e.business_date = DATE '2026-10-01'
+    ORDER BY e.net_movement
+    LIMIT 20
+- key: bankingAsReported
+  as_recorded: "2026-10-01T17:00:00"
+- key: bankingReported
+  sql: >-
+    SELECT e.business_date, e.branch, e.product, e.currency, e.net_movement, e.recorded_at
+    FROM "banking"."view_eod_totals" AS e
+    WHERE e.business_date IN (DATE '2026-10-01', DATE '2026-10-02') AND e.product = 'corporate'
+    ORDER BY e.business_date, e.branch, e.currency
+- key: bankingAsRestated
+  as_recorded: "2026-10-12T17:00:00"
+- key: bankingRestated
+  sql: >-
+    SELECT e.business_date, e.branch, e.product, e.currency, e.net_movement, e.recorded_at
+    FROM "banking"."view_eod_totals" AS e
+    WHERE e.business_date IN (DATE '2026-10-01', DATE '2026-10-02') AND e.product = 'corporate'
+    ORDER BY e.business_date, e.branch, e.currency
+# The postings behind one total, under the ledger's rules and masks.
+- key: bankingAsOpsSql
+  role: ops_analyst
+- key: bankingPostings
+  sql: >-
+    SELECT p.transaction_id, p.kind, p.amount, p.counterparty, p.status, p.updated_at
+    FROM "banking"."view_ledger_postings" AS p
+    WHERE p.group_key = '2026-10-01|London|corporate|GBP'
+    ORDER BY p.amount
+# The agent: the same question, the same numbers.
+- key: bankingAgent
+  polly: Which branch had the largest net outflow on 1 October 2026?
+# The cost of change: the ledger moved to a warehouse replica in two lines.
+- key: bankingChange
+  route: /tables
+  capability: table_registration
+  table: ledger-db.transactions
+  open: load
+# The recap: the four focuses.
+- key: bankingRecap
+  route: /relationships
+  capability: create_relationship
+  relationship: MADE_UP_OF

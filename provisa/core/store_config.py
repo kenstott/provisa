@@ -34,6 +34,7 @@ from sqlalchemy import select
 
 from provisa.core import domain_policy
 from provisa.core.models import (
+    CalendarConfig,
     DataProduct,
     Domain,
     Function,
@@ -70,6 +71,7 @@ MODEL_SECTIONS: tuple[str, ...] = (
     "roles",
     "data_products",
     "glossary_terms",
+    "calendars",
     "tables",
     "relationships",
     "metrics",
@@ -236,6 +238,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     (``naming_rules``). Sections are complete lists; an empty one is an empty list."""
     from provisa.core.db import SEEDED_SOURCE_IDS
     from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
+    from provisa.core.repositories import calendar as calendar_repo
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import function as function_repo
     from provisa.core.repositories import kafka_source as kafka_repo
@@ -310,6 +313,12 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             _written(Metric.model_validate(_fields(Metric, row)))
             for row in await metric_repo.list_all(conn)
             if row.get("from_fact") is None
+        ],
+        "calendars": [  # REQ-2120: every version, each under its name
+            _written(CalendarConfig.model_validate(_fields(CalendarConfig, row)))
+            for row in sorted(
+                await calendar_repo.list_all(conn), key=lambda r: (r["name"], r["version"])
+            )
         ],
         "tags": [
             # The system and derived tags are code-defined, in every store.

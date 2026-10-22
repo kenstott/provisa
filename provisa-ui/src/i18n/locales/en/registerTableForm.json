@@ -135,6 +135,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "Vectors of {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensions, scored by {{distance}}",
-    "qdrantUnnamedVector": "(unnamed)"
+    "qdrantUnnamedVector": "(unnamed)",
+    "continue": "Continue"
   }
 }

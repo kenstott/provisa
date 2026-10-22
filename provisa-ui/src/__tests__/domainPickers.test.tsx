@@ -73,8 +73,8 @@ describe("the pickers of the domain something is put into", () => {
         tables={[]}
         relationships={[]}
         domainHints={IDS}
-        registerTable={vi.fn()}
         updateTable={vi.fn()}
+        onContinue={vi.fn()}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />,

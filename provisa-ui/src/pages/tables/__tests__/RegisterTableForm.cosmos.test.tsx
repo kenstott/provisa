@@ -50,7 +50,7 @@ beforeEach(() => {
 
 describe("RegisterTableForm on a Cosmos DB query (REQ-1982)", () => {
   it("previews the query with its arguments and registers them as query_arg parameters", async () => {
-    const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+    const onContinue = vi.fn();
     render(
       <RegisterTableForm
         sources={[
@@ -64,8 +64,7 @@ describe("RegisterTableForm on a Cosmos DB query (REQ-1982)", () => {
         roles={[{ id: "analyst" } as never]}
         getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
-        registerTable={registerTable}
-        onSuccess={vi.fn()}
+        onContinue={onContinue}
         onCancel={() => {}}
         setError={vi.fn()}
       />,
@@ -96,8 +95,8 @@ describe("RegisterTableForm on a Cosmos DB query (REQ-1982)", () => {
       expect(screen.getByTestId("register-table-col-selected-total")).toBeChecked(),
     );
     fireEvent.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalledTimes(1));
-    const input = registerTable.mock.calls[0][0];
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    const input = onContinue.mock.calls[0][0].input;
     expect(input).toMatchObject({
       schemaName: "shop",
       tableName: "orders_by_status",

@@ -66,8 +66,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -100,6 +101,7 @@ function renderForm(table: RegisteredTable, sources: Source[], updateEditCol = v
       onSectionChange={vi.fn()}
       savedProfilerId={null}
       editingTable={table}
+      savedTable={table}
       setEditingTable={vi.fn()}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
@@ -109,10 +111,6 @@ function renderForm(table: RegisteredTable, sources: Source[], updateEditCol = v
       dataProducts={[]}
       settings={null}
       saving={false}
-      generatingDesc={false}
-      setGeneratingDesc={vi.fn()}
-      generatingColDesc={null}
-      setGeneratingColDesc={vi.fn()}
       generateTableDescription={vi.fn()}
       generateColumnDescription={vi.fn()}
       cancelEditing={vi.fn()}

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2128: the data product graph's scene — a shape per node type, a rod per edge coloured by its
-// kind, an arrowhead on lineage pointing downstream. Imported only through a dynamic import(), so
+// kind, an arrowhead on each directed edge (DIRECTED). Imported only through a dynamic import(), so
 // three.js loads when the graph is first shown.
 
 import * as THREE from "three";
@@ -35,6 +35,17 @@ interface EdgeMesh {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+
+/** The edges that run one way, drawn with an arrowhead at the end they point to: lineage
+ * downstream, a term edge from its subject (Customer KIND_OF Party), a check and a profile to the
+ * table they read. Membership and containment have no direction worth drawing. */
+const DIRECTED: ReadonlySet<EdgeKind> = new Set([
+  "lineage",
+  "column_lineage",
+  "term_edge",
+  "checks",
+  "profiled",
+]);
 
 /** Whose label stays when two collide: the lower rank. */
 const LABEL_RANK: Record<NodeType, number> = {
@@ -222,12 +233,20 @@ export class GraphScene extends BaseScene<GraphHover> {
       new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 0.3,
+        emissiveIntensity: th.dark ? 0.5 : 0.3,
         roughness: 0.5,
         metalness: 0.05,
       });
-    const rod = (color: string, opacity = 0.85) =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.6, transparent: true, opacity });
+    // Lit by their own colour too: an edge is a thin rod, and the sun alone leaves most of it dark.
+    const rod = (color: string, opacity = 0.95) =>
+      new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: th.dark ? 0.55 : 0.25,
+        roughness: 0.6,
+        transparent: true,
+        opacity,
+      });
     this.mats = {
       product: solid(th.accent),
       domain: solid(th.family.temporal),
@@ -239,13 +258,13 @@ export class GraphScene extends BaseScene<GraphHover> {
       profile: solid(th.qMid),
       tag: solid(th.family.boolean),
       term: solid(th.cool),
-      structure: rod(th.family.other, 0.55),
+      structure: rod(th.family.other, 0.8),
       link: rod(th.accent),
       quality: rod(th.qTail),
-      tagged: rod(th.family.boolean, 0.6),
+      tagged: rod(th.family.boolean, 0.8),
       meaning: rod(th.cool),
       relationship: rod(th.family.text),
-      outside: rod(th.family.foreign, 0.6),
+      outside: rod(th.family.foreign, 0.8),
       lineage: rod(th.hl),
       dim: new THREE.MeshStandardMaterial({
         color: th.grid,
@@ -259,7 +278,7 @@ export class GraphScene extends BaseScene<GraphHover> {
         opacity: 0.16,
         depthWrite: false,
       }),
-      grid: new THREE.LineBasicMaterial({ color: th.grid, transparent: true, opacity: 0.6 }),
+      grid: new THREE.LineBasicMaterial({ color: th.grid, transparent: true, opacity: 0.9 }),
     };
   }
 
@@ -367,7 +386,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       if (!a || !b) continue;
       const dir = b.clone().sub(a);
       const len = dir.length();
-      const thick = 0.025 + 0.02 * Math.min(4, (e.paths ?? 1) - 1);
+      const thick = 0.045 + 0.02 * Math.min(4, (e.paths ?? 1) - 1);
       const mat = this.edgeMaterial(e.kind);
       const rodMesh = new THREE.Mesh(
         new THREE.CylinderGeometry(thick, thick, len, 6, 1, true),
@@ -378,7 +397,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       rodMesh.userData.edge = e.id;
       world.add(rodMesh);
       const meshes = [rodMesh];
-      if (e.kind === "lineage" || e.kind === "column_lineage") {
+      if (DIRECTED.has(e.kind)) {
         const rb = radiusOf.get(e.b) ?? 0.3;
         const cone = new THREE.Mesh(new THREE.ConeGeometry(thick * 3 + 0.06, 0.4, 10), mat);
         cone.position.copy(

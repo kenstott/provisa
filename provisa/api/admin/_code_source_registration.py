@@ -53,6 +53,8 @@ async def record_code(source_id: str, source_type: str, mapping: dict) -> "Mutat
             code="codesource.runtime_unavailable",
             params={"reason": str(missing)},
         )
+    if (mapping.get("code") or {}).get("kind") == "directory":
+        return None  # REQ-2121: read where it is, never pinned
     mapping["content_hash"] = ready.content_hash
     return None
 
@@ -70,7 +72,9 @@ def unpinned(sources: dict[str, dict]) -> list[tuple[str, str, dict]]:
     return [
         (source_id, row["type"], dict(row.get("mapping") or {}))
         for source_id, row in sources.items()
-        if row.get("type") in _code_types() and not (row.get("mapping") or {}).get("content_hash")
+        if row.get("type") in _code_types()
+        and not (row.get("mapping") or {}).get("content_hash")
+        and ((row.get("mapping") or {}).get("code") or {}).get("kind") != "directory"
     ]
 
 

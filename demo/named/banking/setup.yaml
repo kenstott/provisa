@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# What the banking demo runs once after the server is up (REQ-2016, REQ-2107;
+# scripts/run_demo_setup.py):
+#
+#   client   a script of the demo's own, run against the server until it exits
+#
+# Thirty business days of end-of-day reporting, one day at a time: load_days.py moves each day's
+# postings into the ledger and builds that day's totals sealed at its 18:00 London close
+# (refreshMv with the day as its window), so each day's figures are recorded at its own close and
+# the two restatements at the close of the day each arrived on. The first step that fails stops
+# the run, naming the step.
+steps:
+- client: load_days.py

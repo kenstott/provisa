@@ -4,7 +4,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { Alert, Checkbox, NumberInput, Select, Text, Textarea, TextInput } from "@mantine/core";
+import { Alert, Checkbox, NumberInput, Select, Text, Textarea } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { RegisteredTable } from "../../types/admin";
 import { useMaterializeStoreInfo } from "../../hooks/useAdminOpsQueries";
@@ -12,30 +12,32 @@ import { CollapsibleSection } from "./CollapsibleSection";
 import { SnapshotSchedulePanel } from "./SnapshotSchedulePanel";
 import { FieldGroup, FormChecks, FormField, FormLayout } from "../../components/form/FormLayout";
 import { OffPeakWindowFields } from "../../components/admin/OffPeakWindowFields";
+import { TimeTravelEditor } from "./TimeTravelSection";
+import { useHistoryChoice } from "./timeTravel";
 
 // REQ-961/962/965/969/970/1168/1169: the materialized-view configuration cluster — refresh cadence &
-// NRT debounce, fleet consistency, time-travel (bitemporal) mode, the calendar snapshot schedule, and
+// NRT debounce, fleet consistency, keeping history (REQ-2109), the calendar snapshot schedule, and
 // the persistence outcome (replace/append/upsert, incremental, preprocess). All panels read and write
 // the staged RegisteredTable; extracting them keeps the parent form under its size budget.
 export function MaterializedViewPanels({
   editingTable,
   setEditingTable,
+  saved,
 }: {
   editingTable: RegisteredTable;
   setEditingTable: (t: RegisteredTable) => void;
+  /** The view as last saved, whether its versions exist is judged on it; null while created. */
+  saved: RegisteredTable | null;
 }) {
   const { t } = useTranslation();
   const { materializeStoreInfo: storeInfo } = useMaterializeStoreInfo();
-  // Store As… is ONE decision spanning two engine axes: keep history (Time Travel / bitemporal) or
-  // not. When history is kept the write mode is snapshot (append all) vs delta (append revisions);
-  // when it is not, it is replace vs upsert (current state). Bitemporal mode supersedes the persist
-  // axis in the engine, so they are surfaced as a single control here rather than two panels.
-  const timeTravel = Boolean(editingTable.mvBitemporalMode);
-  const storeAsValue = timeTravel
-    ? (editingTable.mvBitemporalMode as string)
-    : editingTable.mvPersist === "upsert"
-      ? "upsert"
-      : "replace";
+  // REQ-2109: a view keeps history by declaring its business key, valid time and recorded time;
+  // Provisa picks how the versions are stored. Without history the store is replace or upsert.
+  const choice = useHistoryChoice(editingTable, (next) =>
+    setEditingTable({ ...editingTable, ...next }),
+  );
+  const timeTravel = choice.on;
+  const storeAsValue = editingTable.mvPersist === "upsert" ? "upsert" : "replace";
   return (
     <>
       {editingTable.materialize && (
@@ -133,62 +135,35 @@ export function MaterializedViewPanels({
       {editingTable.materialize && (
         <SnapshotSchedulePanel editingTable={editingTable} setEditingTable={setEditingTable} />
       )}
-      {/* Store As… — ONE control. Options depend on the Time Travel (keep-history) toggle: current
-          state (replace / upsert) when off, history (snapshot = append all / delta = append revisions)
-          when on. In the engine a bitemporal mode SUPERSEDES the persist axis, so this is one decision,
-          not two overlapping panels (REQ-965/1162). Incremental is the separate compute optimization. */}
       {editingTable.materialize && (
+        <TimeTravelEditor
+          editingTable={editingTable}
+          setEditingTable={setEditingTable}
+          saved={saved}
+          choice={choice}
+        />
+      )}
+      {/* Store As… — current state (replace / upsert), offered when the view keeps no history: a view
+          keeping history appends its versions (REQ-965/1162/2109). Incremental is the separate
+          compute optimization. */}
+      {editingTable.materialize && !timeTravel && (
         <FormField help={t("tableEditForm.persistHelp")} size="medium">
           <Select
             label={t("tableEditForm.persistLabel")}
             aria-label={t("tableEditForm.persistAria")}
             data-testid="mv-persist"
-            data={
-              timeTravel
-                ? [
-                    { value: "snapshot", label: t("tableEditForm.storeSnapshot") },
-                    { value: "delta", label: t("tableEditForm.storeDelta") },
-                  ]
-                : [
-                    { value: "replace", label: t("tableEditForm.storeReplace") },
-                    { value: "upsert", label: t("tableEditForm.storeUpsert") },
-                  ]
-            }
+            data={[
+              { value: "replace", label: t("tableEditForm.storeReplace") },
+              { value: "upsert", label: t("tableEditForm.storeUpsert") },
+            ]}
             value={storeAsValue}
-            onChange={(v) => {
-              const nv = v || (timeTravel ? "delta" : "replace");
-              if (timeTravel) {
-                setEditingTable({ ...editingTable, mvBitemporalMode: nv });
-              } else {
-                setEditingTable({ ...editingTable, mvPersist: nv });
-              }
-            }}
+            onChange={(v) => setEditingTable({ ...editingTable, mvPersist: v || "replace" })}
             comboboxProps={{ withinPortal: true }}
             allowDeselect={false}
           />
         </FormField>
       )}
       <FormChecks>
-        {editingTable.materialize && (
-          <FormField help={t("tableEditForm.bitemporalHelp")} size="short">
-            <Checkbox
-              mt="1.75rem"
-              data-testid="mv-timetravel"
-              checked={timeTravel}
-              label={t("tableEditForm.timeTravelToggleLabel")}
-              onChange={(e) =>
-                setEditingTable({
-                  ...editingTable,
-                  // ON → default to delta (compact history); OFF → clear the mode so the engine uses the
-                  // current-state persist axis (replace/upsert).
-                  mvBitemporalMode: e.currentTarget.checked
-                    ? editingTable.mvBitemporalMode || "delta"
-                    : null,
-                })
-              }
-            />
-          </FormField>
-        )}
         {editingTable.materialize && !timeTravel && (
           <FormField help={t("tableEditForm.incrementalHelp")} size="short">
             <Checkbox
@@ -203,47 +178,11 @@ export function MaterializedViewPanels({
           </FormField>
         )}
       </FormChecks>
-      {editingTable.materialize && timeTravel && (
-        <FormField help={t("tableEditForm.bitemporalKeyHelp")} size="medium">
-          <TextInput
-            label={t("tableEditForm.bitemporalKeyLabel")}
-            aria-label={t("tableEditForm.bitemporalKeyAria")}
-            data-testid="mv-bitemporal-key"
-            placeholder={t("tableEditForm.bitemporalKeyPlaceholder")}
-            value={editingTable.mvBitemporalKey.join(", ")}
-            onChange={(e) =>
-              setEditingTable({
-                ...editingTable,
-                mvBitemporalKey: e.currentTarget.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              })
-            }
-          />
-        </FormField>
-      )}
-      {editingTable.materialize && timeTravel && (
-        // REQ-1163: the clock its time travel reads on -- the source's change time, else
-        // Provisa's recorded time; the help says what leaving it empty means.
-        <FormField help={t("tableEditForm.bitemporalSourceTimeHelp")} size="medium">
-          <Select
-            label={t("tableEditForm.bitemporalSourceTimeLabel")}
-            data-testid="mv-bitemporal-source-time"
-            placeholder={t("tableEditForm.bitemporalSourceTimePlaceholder")}
-            data={editingTable.columns.map((c) => c.columnName)}
-            value={editingTable.mvBitemporalSourceTime ?? null}
-            onChange={(v) => setEditingTable({ ...editingTable, mvBitemporalSourceTime: v })}
-            clearable
-            comboboxProps={{ withinPortal: true }}
-          />
-        </FormField>
-      )}
       {/* REQ-970: upsert / incremental need a row-identity key. That key IS the table's Primary Key,
           set via the per-column checkboxes in the columns list below — no second definition here.
           Surface what's derived (or prompt to set it) so the requirement is visible where it's used. */}
       {editingTable.materialize &&
-        !editingTable.mvBitemporalMode &&
+        !timeTravel &&
         (editingTable.mvPersist === "upsert" || editingTable.mvIncremental) &&
         (() => {
           const pkCols = editingTable.columns
@@ -264,7 +203,7 @@ export function MaterializedViewPanels({
           );
         })()}
       {/* Plain-English summary of the chosen update strategy: current-state (replace/upsert, with
-          optional incremental compute) vs history (snapshot = append all / delta = append revisions). */}
+          optional incremental compute) vs history (every version appended). */}
       {editingTable.materialize && (
         <FormField size="full">
           <Alert
@@ -275,11 +214,7 @@ export function MaterializedViewPanels({
           >
             <Text size="sm">
               {timeTravel
-                ? t(
-                    editingTable.mvBitemporalMode === "snapshot"
-                      ? "tableEditForm.updateStrategySnapshot"
-                      : "tableEditForm.updateStrategyDelta",
-                  )
+                ? t("tableEditForm.updateStrategyHistory")
                 : editingTable.mvIncremental
                   ? t("tableEditForm.updateStrategyIncremental")
                   : t(
@@ -311,5 +246,32 @@ export function MaterializedViewPanels({
         </FormField>
       )}
     </>
+  );
+}
+
+/** A view's Materialized View tick, which its materialization panels follow. */
+export function ViewMaterializeTick({
+  editingTable,
+  setEditingTable,
+}: {
+  editingTable: RegisteredTable;
+  setEditingTable: (t: RegisteredTable) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <FormChecks>
+      <FormField
+        size="short"
+        help={`${t("tableEditForm.materializedViewDesc")} ${t("tableEditForm.materializedViewHelp")}`}
+      >
+        <Checkbox
+          checked={editingTable.materialize}
+          onChange={(e) =>
+            setEditingTable({ ...editingTable, materialize: e.currentTarget.checked })
+          }
+          label={t("tableEditForm.materializedViewLabel")}
+        />
+      </FormField>
+    </FormChecks>
   );
 }

@@ -41,7 +41,7 @@ const SOURCES = [
 ];
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   render(
     <RegisterTableForm
       sources={SOURCES as never}
@@ -53,13 +53,12 @@ function renderForm() {
       roles={[{ id: "admin" } as never]}
       getAvailableColumnsMetadata={vi.fn().mockResolvedValue([{ name: "id", dataType: "integer" }])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={vi.fn()}
     />,
   );
-  return { registerTable };
+  return { onContinue };
 }
 
 async function pick(sourceId: string) {
@@ -80,19 +79,19 @@ describe("RegisterTableForm region (REQ-1921)", () => {
   // The short step does not ask the region: the table starts where its source is, and the region
   // is changed on its Identity tab.
   it("starts a table in its source's region", async () => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pick("crm");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect(registerTable.mock.calls[0][0].region).toBe("eu");
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].input.region).toBe("eu");
   });
 
   it("starts a table of a source naming none in the connected region", async () => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pick("erp");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect(registerTable.mock.calls[0][0].region).toBe("us");
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].input.region).toBe("us");
   });
 
   it("does not ask the region in the short step", async () => {
@@ -103,11 +102,11 @@ describe("RegisterTableForm region (REQ-1921)", () => {
 
   it("shows no region and sends none when the platform declares no regions", async () => {
     choices.value = { regions: [], connected: null };
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pick("crm");
     expect(screen.queryByTestId("register-table-region-select")).toBeNull();
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect("region" in registerTable.mock.calls[0][0]).toBe(false);
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect("region" in onContinue.mock.calls[0][0].input).toBe(false);
   });
 });

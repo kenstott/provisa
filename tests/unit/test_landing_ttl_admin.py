@@ -492,7 +492,11 @@ async def landing_ttl_refusal_of(conn, table):
 
 
 def test_the_registration_input_carries_a_cache_ttl():
-    assert _table_input().cache_ttl is None
+    import strawberry
+
+    # REQ-2109: left out, the input carries none (a registration has none; an update keeps its own).
+    assert _table_input().cache_ttl is strawberry.UNSET
+    assert _table_input(cache_ttl=None).cache_ttl is None
     assert _table_input(cache_ttl=120).cache_ttl == 120
 
 

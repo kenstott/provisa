@@ -37,13 +37,14 @@ class BundleRefused(ValueError):
         self.params = params
 
 
-def content_hash(root: Path) -> str:
+def content_hash(root: Path, skipped: frozenset[str] = _IGNORED_DIRS) -> str:
     """The SHA-256 of the bundle under ``root``: every file, in sorted relative-path order, each
     as its path, its size and its bytes; a symbolic link as its path and target. The same files
-    give the same hash on every host; any changed byte, name or link changes it."""
+    give the same hash on every host; any changed byte, name or link changes it. ``skipped``: the
+    directories left out wherever they are (a code directory leaves out more than .git, REQ-2121)."""
     digest = hashlib.sha256()
     entries = sorted(
-        p for p in root.rglob("*") if not _IGNORED_DIRS.intersection(p.relative_to(root).parts)
+        p for p in root.rglob("*") if not skipped.intersection(p.relative_to(root).parts)
     )
     for path in entries:
         rel = path.relative_to(root).as_posix().encode()

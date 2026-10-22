@@ -1500,6 +1500,9 @@ class _Governed:
     stamp: str
     # Facts derived from this governed statement, kept with it (pgwire's result shape).
     memo: dict[str, Any] = field(default_factory=dict)
+    # The time travel it was governed under (``AsOf.key``; REQ-1163): a held statement governed
+    # under another is governed again (REQ-2110, a pgwire session's SET provisa.as_of).
+    as_of: str | None = None
 
 
 def _calls_a_registered_command(tree: Any, state: Any) -> bool:
@@ -1514,13 +1517,16 @@ def _calls_a_registered_command(tree: Any, state: Any) -> bool:
     return bool(commands) and any(n.name in commands for n in tree.find_all(exp.Anonymous))
 
 
-def governed_statement_is_current(governed: _Governed, state: Any) -> bool:
-    """Whether ``governed`` may still be routed: minted by this process's ``govern_statement`` and
-    governed under the schema generation that is still live. A caller holding a stale one governs
-    the statement again."""
-    return stamp_is_valid(governed.stamp) and governed.schema_generation == (
-        state.schema_boot_id,
-        state.schema_version,
+def governed_statement_is_current(
+    governed: _Governed, state: Any, *, as_of: str | None = None
+) -> bool:
+    """Whether ``governed`` may still be routed: minted by this process's ``govern_statement``,
+    governed under the schema generation that is still live and under the time travel ``as_of``
+    the caller now reads at (REQ-2110). A caller holding a stale one governs the statement again."""
+    return (
+        stamp_is_valid(governed.stamp)
+        and governed.schema_generation == (state.schema_boot_id, state.schema_version)
+        and governed.as_of == as_of
     )
 
 
@@ -1680,6 +1686,14 @@ async def govern_statement(
             normalized_sql, _view_map, state, gov_ctx
         )
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
+    # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
+    from provisa.mv.bitemporal_tables import read_versions
+
+    _versioned = read_versions(normalized_sql, state, gov_ctx, as_of)
+    if _versioned != normalized_sql:
+        normalized_sql = _versioned
+        _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
+        _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
     _bypass_guard = product_statement or relationship_guard_bypassed(
@@ -1809,6 +1823,7 @@ async def govern_statement(
         schema_generation=(state.schema_boot_id, state.schema_version),
         stamp=_mint_stamp(),
         memo=_memo,
+        as_of=as_of,
     )
     # Not kept: a write (its admission checks run per call) and a statement that runs a registered
     # command while it is prepared. The slot itself refuses one governed while a schema rebuild
@@ -2214,6 +2229,21 @@ async def route_governed(
                 route=Route.ENGINE, source_id=None, dialect=None, reason="query references a view"
             )
 
+    # REQ-2109: a table updated in place, read under as_of or as_recorded, is read from its
+    # version log, kept in the engine's store: the engine computes the statement.
+    if decision.route != Route.ENGINE:
+        from provisa.mv.bitemporal_capture import reads_a_log
+
+        if reads_a_log(_table_ids, state, as_of):
+            from provisa.transpiler.router import RouteDecision
+
+            decision = RouteDecision(
+                route=Route.ENGINE,
+                source_id=None,
+                dialect=None,
+                reason="query reads a table's version log",
+            )
+
     # REQ-1194/REQ-1195: a delivery request materializes the result via the federation engine's
     # CTAS-to-object-store terminal, so the plan MUST carry engine-physical SQL regardless of the
     # route the rows would otherwise take. Force ENGINE so the physical_sql branch below runs.
@@ -2397,6 +2427,10 @@ async def route_governed(
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
             # went through at line 456 before routing).
             _qualified = lower_to_catalog_physical(_qualified, ctx)
+        # REQ-2109: a table updated in place is read from its version log under as_of.
+        from provisa.mv.bitemporal_capture import read_logs
+
+        _qualified = read_logs(_qualified, state, ctx, as_of)
 
         _routed_sql = _qualified
         physical_sql = await _kept_engine_form(
@@ -4632,6 +4666,14 @@ async def _govern_compiled(
         _views = views_read(sql, _view_map)
         sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
         _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
+    # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
+    from provisa.mv.bitemporal_tables import read_versions
+
+    _versioned = read_versions(sql, state, gov_ctx, as_of)
+    if _versioned != sql:
+        sql = _versioned
+        _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
+        _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
     # The V-rules every statement meets (a masked column in a filter, a hidden column, tables
     # related outside the approved relationships, …), on the compiled path too. The relationship
@@ -4790,6 +4832,10 @@ async def _route_compiled(
         _exec_sql = expand_view_refs(
             _exec_sql, unnarrowed_view_bodies(_exec_sql, _view_map, state, as_of=as_of)
         )
+    # REQ-2109: a table updated in place is read from its version log under as_of.
+    from provisa.mv.bitemporal_capture import read_logs
+
+    _exec_sql = read_logs(_exec_sql, state, ctx, as_of)
     from provisa.api.data.materialization import frozen_parameter_filters
     from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
     from provisa.vector import similarity as _similarity
@@ -5091,8 +5137,11 @@ def opening_write_verb(sql: str) -> str | None:
     return m.group("verb").upper() if m else None
 
 
-async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
-    return await _govern_and_route(sql, role_id)
+async def plan_pgwire_sql(  # REQ-267
+    sql: str, role_id: str, *, as_of: str | None = None
+) -> _Plan:
+    """A COPY's query, governed and routed; ``as_of`` is the session's time travel (REQ-2110)."""
+    return await _govern_and_route(sql, role_id, as_of=as_of)
 
 
 async def govern_pgwire_plan(  # REQ-028, REQ-266
@@ -5102,8 +5151,12 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     wire_formats: list[int] | None = None,
     *,
     deliver: Delivery | None,
+    as_of: str | None = None,
 ) -> _Plan | QueryResult:
     """Govern a pgwire statement to its last-mile plan WITHOUT executing the ENGINE terminal.
+
+    ``as_of`` — the session's time travel (``SET provisa.as_of`` / ``provisa.as_recorded``,
+    REQ-2110), applied to the statement as a request's headers are on the HTTP transports.
 
     ``deliver`` — the forced redirect the session asked for (REQ-1194), or None; pgwire is a
     streaming transport and is never delivered automatically (REQ-1224 amended 2026-10-04).
@@ -5152,7 +5205,13 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         return fn_result
 
     plan = await _govern_and_route(
-        sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats, deliver=deliver
+        sql,
+        role_id,
+        params=params,
+        serve_cached=True,
+        wire_formats=wire_formats,
+        deliver=deliver,
+        as_of=as_of,
     )
     return plan
 
@@ -5188,7 +5247,9 @@ def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
     return [(c["name"], c["type"]) for c in declared]
 
 
-async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # REQ-589
+async def describe_pgwire_statement(  # REQ-589
+    sql: str, role_id: str, *, as_of: str | None = None
+) -> _Described:
     """Govern *sql* and derive its result columns from registered metadata — nothing is routed,
     executed or sent to a source. The Execute continues from the returned governed statement
     (:func:`plan_pgwire_statement`), so the statement is governed exactly once."""
@@ -5209,7 +5270,7 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
         return _Described([], None)
 
     await _wake_before_governing(state)
-    governed = await govern_statement(sql, role_id)
+    governed = await govern_statement(sql, role_id, as_of=as_of)  # REQ-2110: the session's
     # REQ-1882: the derivation parses and may annotate the statement (sqlglot); off-loaded like the
     # pipeline's other parse work (see _off_loop).
     shape = governed.memo.get("result_shape")
@@ -5242,11 +5303,17 @@ async def plan_pgwire_statement(  # REQ-589
 ) -> _Plan:
     """The executable plan for a statement :func:`describe_pgwire_statement` already governed, with
     the Bind's parameter values. Routing runs here, against live state; governance does not run
-    again. ``wire_formats`` and ``deliver``: see :func:`govern_pgwire_plan`."""
+    again. ``wire_formats`` and ``deliver``: see :func:`govern_pgwire_plan`. It is routed under
+    the time travel it was governed under (REQ-2110)."""
     from provisa.api.app import state
 
     plan = await _route_bounded(
-        governed, params=params, serve_cached=True, wire_formats=wire_formats, deliver=deliver
+        governed,
+        params=params,
+        serve_cached=True,
+        wire_formats=wire_formats,
+        deliver=deliver,
+        as_of=governed.as_of,
     )
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 

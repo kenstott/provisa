@@ -59,7 +59,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { ...window.location, assign, hostname: "cloud.provisa.dev", protocol: "https:", port: "" },
+    value: {
+      ...window.location,
+      assign,
+      hostname: "cloud.provisa.dev",
+      protocol: "https:",
+      port: "",
+    },
   });
   endVisit();
 });
@@ -153,6 +159,38 @@ describe("the live demo link", () => {
       );
       expect(screen.queryByTestId("demo-open-retry")).toBeNull();
       expect(assign).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops waiting on a demo whose stores could not be started, offering a retry", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(openDemoSandbox).mockRejectedValueOnce(
+        new SandboxRefused("Weblogs is still being prepared.", "sandbox.demo_not_ready"),
+      );
+      vi.mocked(fetchDemoStatus).mockRejectedValueOnce(
+        new SandboxRefused(
+          "Weblogs could not be started; try again in a few minutes",
+          "sandbox.demo_stores_failed",
+        ),
+      );
+      vi.mocked(openDemoSandbox).mockResolvedValueOnce({
+        org_id: "sbx0123456789ab",
+        demo: "weblogs",
+        token: "t",
+      });
+      openAt("weblogs");
+      await screen.findByTestId("demo-open-starting");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await screen.findByTestId("demo-open-refused")).toHaveTextContent(
+        "could not be started",
+      );
+      expect(screen.queryByTestId("demo-open-starting")).toBeNull();
+      await userEvent.click(screen.getByTestId("demo-open-retry"));
+      await waitFor(() => expect(assign).toHaveBeenCalled());
+      expect(openDemoSandbox).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

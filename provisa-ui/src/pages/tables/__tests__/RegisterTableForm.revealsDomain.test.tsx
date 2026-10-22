@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A table registered into a domain the domain filter has not seen yet — a domain with no tables
-// until this one — is revealed in the filter, so the tables list shows it without a reload.
+// The create step names the domain a table is registered into; the domain is revealed in the
+// filter only once the table is registered, by the Save that follows its settings (REQ-2109,
+// pages/__tests__/tables-create.test.tsx).
 
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
@@ -33,9 +34,9 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
-describe("RegisterTableForm reveals the domain it registered into", () => {
-  it("checks the new table's domain in the filter once registration succeeds", async () => {
-    const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+describe("RegisterTableForm names the domain it registers into", () => {
+  it("hands on the one domain, revealing nothing before the table is registered", async () => {
+    const onContinue = vi.fn();
     render(
       <RegisterTableForm
         sources={[{ id: "petstore", type: "openapi", allowedDomains: [] } as never]}
@@ -49,8 +50,7 @@ describe("RegisterTableForm reveals the domain it registered into", () => {
           .fn()
           .mockResolvedValue([{ name: "id", dataType: "integer" }])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
-        registerTable={registerTable}
-        onSuccess={vi.fn()}
+        onContinue={onContinue}
         onCancel={() => {}}
         setError={vi.fn()}
       />,
@@ -62,7 +62,8 @@ describe("RegisterTableForm reveals the domain it registered into", () => {
     await user.selectOptions(await screen.findByTestId("register-table-table-select"), "getStore");
     await screen.findByTestId("register-table-columns-summary");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    await waitFor(() => expect(ensureDomainChecked).toHaveBeenCalledWith("inventory-copies"));
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].input.domainId).toBe("inventory-copies");
+    expect(ensureDomainChecked).not.toHaveBeenCalled();
   });
 });

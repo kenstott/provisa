@@ -13,6 +13,7 @@ relazione di origine. Si assegna un nome, la si punta a un'origine, si dichiara 
 dell'entity e gli attributi da portare, e si sceglie una modalità di storicizzazione (history).
 Provisa scrive l'SQL della vista e registra la MV (vista materializzata). Quando la history è
 abilitata, la MV è bitemporale.
+Dichiara allora la chiave dell'entity come `business_key` insieme alle colonne di tempo di validità e di registrazione indicate.
 
 Un **fatto** è un join sulle chiavi delle entità, ridotto a una granularità dichiarata, con misure aggregate. Provisa scrive una query di MV aggregata (`GROUP BY` granularità + colonne FK) e registra una relazione per ogni collegamento di dimensione dichiarato. Un fatto senza misure è un puro insieme di chiavi, il pattern link di Data Vault.
 
@@ -20,18 +21,15 @@ Entrambi i costrutti sono IR. Le definizioni generate passano da un motore all'a
 
 ## Modalità di history {: #history-modes }
 
-Su un'entity sono disponibili tre modalità:
+Su una entity sono disponibili tre modalità:
 
-| Modalità | Significato | Modalità bitemporale |
-| --- | --- | --- |
-| `none` | Solo stato corrente. Nessuna history. | — |
-| `scd2` | Traccia ogni modifica. Aggiunge solo le righe modificate (delta), con chiave sulla chiave dell'entity. | `delta` |
-| `snapshot` | Traccia ogni aggiornamento. Aggiunge l'intero set di risultati a ogni aggiornamento, con timestamp di sistema. | `snapshot` |
+| Modalità | Significato |
+| --- | --- |
+| `none` | Solo stato corrente. Nessuna history. |
+| `scd2` | Traccia ogni modifica, con chiave sulla chiave dell'entity. |
+| `snapshot` | Traccia ogni aggiornamento, con chiave sulla chiave dell'entity. |
 
-`scd2` richiede una chiave dell'entity per calcolare il delta. `snapshot` funziona su qualsiasi
-motore, ma lo storage cresce di una copia completa a ogni aggiornamento. Scegliere `scd2` per
-origini grandi e a lenta variazione; scegliere `snapshot` quando serve la history completa e
-l'origine non può fornire una chiave.
+`scd2` e `snapshot` conservano entrambe ogni versione, e Provisa sceglie come memorizzarle. Ognuna richiede una colonna di tempo di validità e una di tempo di registrazione (`validTime`, `recordedTime`): la data che l'azienda dà al record, e quando questa versione è stata inserita o modificata. [Viste con cronologia](configuration.md#views-with-history-time-travel) spiega i due tempi.
 
 I fatti non hanno una propria modalità di storico; la loro copertura nel tempo viene dallo storico delle entità sottostanti.
 
@@ -47,7 +45,7 @@ L'aggregazione predefinita è `sum`.
 
 ### Le tabelle di origine {: #the-source-tables }
 
-- `raw.customers` — id, name, region, tier
+- `raw.customers` — id, name, region, tier, effective_date, updated_at
 - `raw.orders` — order_id, customer_id, amount, quantity
 
 ### Registrare l'entity Customer {: #register-the-customer-entity }
@@ -60,9 +58,11 @@ L'aggregazione predefinita è `sum`.
        - **Name:** `Customer`
        - **Source relation:** `raw.customers`
        - **Domain:** *(il proprio dominio)*
-       - **Entity key:** `id`
+       - **Business key:** `id`
        - **Attributes:** `name, region, tier`
-       - **History:** `SCD2 (track changes — delta bitemporal)`
+       - **Keep history:** `Bitemporal`
+       - **Valid time:** `effective_date`
+       - **Recorded time:** `updated_at`
     4. Fare clic su **Create**.
 
 === "GraphQL API"
@@ -76,6 +76,8 @@ L'aggregazione predefinita è `sum`.
         key: ["id"]
         attributes: ["name", "region", "tier"]
         history: "scd2"
+        validTime: "effective_date"
+        recordedTime: "updated_at"
       }) {
         success
         message
@@ -86,8 +88,9 @@ L'aggregazione predefinita è `sum`.
 Provisa genera e registra questa MV bitemporale:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- registered as a bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- registered as a bitemporal MV: business_key ["id"], valid_time effective_date,
+-- recorded_time updated_at
 ```
 
 ### Registrare il fact Sales {: #register-the-sales-fact }
@@ -159,6 +162,8 @@ Un controllo segmentato in cima alla finestra modale alterna tra **Entity (dimen
 | Entity key | sì | Colonna/e chiave separate da virgole, es. `id` |
 | Attributes | no | Colonne di attributi separate da virgole, es. `name, region, tier` |
 | History | no | `none` / `scd2` / `snapshot`; il valore predefinito è `none` |
+| Valid time | con history | La colonna con la data che l'azienda dà al record |
+| Recorded time | con history | La colonna con il momento in cui questa versione è stata inserita o modificata |
 
 ### Campi Fact {: #fact-fields }
 
@@ -199,6 +204,8 @@ Campi di `EntityInput`:
 | `key` | [String] | — | Colonna/e chiave dell'entity |
 | `attributes` | [String] | `[]` | Colonne di attributi da proiettare |
 | `history` | String | `"none"` | `"none"` \| `"scd2"` \| `"snapshot"` |
+| `validTime` | String | `null` | Colonna del tempo di validità; obbligatoria quando `history` non è `"none"` |
+| `recordedTime` | String | `null` | Colonna del tempo di registrazione; obbligatoria quando `history` non è `"none"` |
 | `visibleTo` | [String] | `["public"]` | Elenco di visibilità per ruolo |
 
 ### `registerFact`
@@ -252,7 +259,7 @@ La modalità di history è l'unico parametro che distingue SCD Type 1 da Type 2:
 | Tipo SCD | Modalità di history | Effetto |
 | --- | --- | --- |
 | Type 1 (solo corrente) | `none` | La MV viene ricostruita a ogni aggiornamento; nessuna history delle righe |
-| Type 2 (versionato) | `scd2` | MV delta bitemporale; ogni modifica aggiunge una nuova riga, con chiave sulla chiave dell'entity |
+| Type 2 (versionato) | `scd2` | MV bitemporale; ogni modifica aggiunge una nuova versione, con chiave sulla chiave dell'entity |
 
 Usate `scd2` quando le query a valle devono unire una dimensione com'era al momento della transazione, come il livello di un cliente al momento dell'acquisto invece di quello attuale. Usate `none` per tabelle di lookup stabili. Un asse delle date non cambia mai, e un catalogo prodotti in cui conta solo il prezzo attuale può essere ricostruito a ogni aggiornamento.
 
@@ -273,15 +280,17 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
 
-Genera una MV delta bitemporale con chiave su `id`:
+Genera una MV bitemporale con chiave su `id`:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 **Product** (SCD Type 1 — catalogo corrente, nessuna history delle versioni necessaria):
@@ -458,9 +467,7 @@ SELECT "order_id" FROM "raw"."orders"
 
 #### Satellite
 
-Il satellite si colloca accanto alla chiave dell'hub e porta la history completa degli
-attributi. Usare `scd2` per aggiungere solo le righe modificate; usare `snapshot` per marcare
-ogni aggiornamento completo.
+Il satellite si colloca accanto alla chiave dell'hub e porta la history completa degli attributi. Usare `scd2` per tracciare ogni modifica, o `snapshot` per tracciare ogni aggiornamento.
 
 ```graphql
 mutation {
@@ -471,6 +478,8 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
@@ -478,8 +487,8 @@ mutation {
 Genera:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 `CustomerSat` e `CustomerHub` hanno entrambi chiave su `id`. L'hub è il target di join
@@ -677,4 +686,4 @@ arbitrarie.
 
 ## Il vantaggio dell'IR {: #the-ir-payoff }
 
-Ogni chiamata di registrazione segue lo stesso percorso di una MV scritta a mano. La specifica di entity e fact è una rappresentazione intermedia; non è un template né una macro. Il warehouse di destinazione è una proprietà del deployment, e il modello non lo nomina. Cambiate il motore di destinazione, e le stesse dichiarazioni `entity` / `fact` si materializzano lì, perché l'SQL generato e le modalità bitemporali sono neutrali rispetto al motore per costruzione.
+Ogni chiamata di registrazione segue lo stesso percorso di una MV scritta a mano. La specifica di entity e fact è una rappresentazione intermedia; non è un template né una macro. Il warehouse di destinazione è una proprietà del deployment, e il modello non lo nomina. Cambiate il motore di destinazione, e le stesse dichiarazioni `entity` / `fact` si materializzano lì, perché l'SQL generato e la history bitemporale è neutrale rispetto al motore per costruzione.
