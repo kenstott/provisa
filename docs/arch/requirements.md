@@ -26167,3 +26167,15 @@ The named demo "beneficial ownership": KYC parties, companies, owners and their 
 **Code:** —
 
 **Tests:** —
+
+### REQ-2140 · UI {#REQ-2140}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo "groupexposure" joins company data to public linked data by an identifier both share. A fictional Prague bank books its corporate loans to real Czech companies by Legal Entity Identifier (LEI) in its own database, read live. A sparql source ([REQ-1683](#REQ-1683)) on Wikidata's public query service finds each borrower by its LEI (P1278) and the group at the top of its chain of parent organizations (P749, one property path). The question is one neither side answers alone: which corporate groups is the bank over its large-exposure limit to (25% of Tier 1, EU CRR Article 395) once each borrower is counted with the group that owns it? No borrower alone is near the limit; two groups are over it, and a borrower with two owners counts in both. The Wikidata tables are landed when the bundle is built (cache_ttl -1, replicate 0, as govdata's are), so the sandbox never calls the public endpoint, and every call names Provisa in its User-Agent, as Wikidata's policy asks. Its tour follows the settled demo shape: the scenario, how the pieces fit, then the solution in SQL, GraphQL and REST; its integration test captures the card's data.
+
+**Use case:** A risk or data buyer sees their own records joined to a public knowledge graph by an identifier they already hold, and an answer appear that neither source gives alone.
+
+**Code:** —
+
+**Tests:** —

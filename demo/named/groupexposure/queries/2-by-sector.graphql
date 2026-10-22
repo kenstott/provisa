@@ -1,0 +1,16 @@
+# What each borrower owes the bank, alone, summed by the bank's own sectors: the view its books give
+# without knowing who owns whom.
+query BySector {
+  g__viewBorrowerExposureGroupBy(by: [sector], order_by: [{ aggregate: { sum: { committedEur: desc } } }]) {
+    groupKey
+    aggregate {
+      count
+      sum {
+        committedEur
+      }
+      max {
+        pctOfTier1
+      }
+    }
+  }
+}

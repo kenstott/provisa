@@ -1,0 +1,263 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "groupexposure" (start-ui-install.sh --demo groupexposure):
+# which corporate groups is the bank over its large-exposure limit to, once each borrower is
+# counted with the companies that own it? A Prague bank -- fictional, Vltava Commercial Bank --
+# lends to real Czech companies, each booked by its Legal Entity Identifier (LEI). No single
+# borrower is near the limit; who owns whom is not in the bank's books.
+#
+#   bank      the bank's Postgres (db/init.sql): its counterparties, their facilities and its
+#             Tier 1 capital. Read live. docker-compose.yml brings it up.
+#   wikidata  Wikidata, the public knowledge graph, through its SPARQL query service: each
+#             borrower's entity found by its LEI (P1278), and the group at the top of its chain of
+#             parent organizations (P749). A public endpoint, so its two tables are landed once,
+#             when the demo's bundle is built, and read from that replica for good (cache_ttl -1,
+#             replicate 0): a visitor never calls Wikidata. Every call names Provisa in its
+#             User-Agent, as Wikidata's policy asks.
+#
+# group_exposure, the answer, joins the bank's facilities to Wikidata's groups by LEI: each group's
+# committed exposure against 25% of Tier 1 (EU CRR Article 395). A borrower Wikidata gives two
+# owners counts in both groups' exposure, as connected clients do.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: groupexposure
+  description: A Prague bank's corporate loan book, and who owns its borrowers, from Wikidata
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+# The bank's credit risk team: every facility, the bank's capital and the groups.
+- id: risk
+  description: "The bank's credit risk team: every facility, the bank's capital and the groups its borrowers belong to."
+  capabilities:
+  - query_development
+  domain_access:
+  - groupexposure
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: bank
+  type: postgresql
+  host: ${env:GROUPEXPOSURE_PG_HOST:-localhost}
+  port: ${env:GROUPEXPOSURE_PG_PORT:-27832}
+  database: groupexposure${env:GROUPEXPOSURE_PG_NS}
+  username: provisa_reader
+  password: provisa_reader
+  description: The bank's own database -- its counterparties, their facilities and its capital
+- id: wikidata
+  type: sparql
+  host: https://query.wikidata.org/sparql
+  cache_ttl: -1
+  replicate: 0
+  description: Wikidata's SPARQL query service -- each borrower's entity, country and industry,
+    and the group that owns it, landed once when the demo is built
+tables:
+- source_id: bank
+  domain_id: groupexposure
+  schema: public
+  table: counterparties
+  description: Each borrower the bank lends to, booked by its LEI
+  columns:
+  - {name: lei, data_type: varchar, is_primary_key: true, description: "The borrower's Legal Entity Identifier", visible_to: [org_admin, risk]}
+  - {name: name, data_type: varchar, description: The borrower's name as the bank books it, visible_to: [org_admin, risk]}
+  - {name: sector, data_type: varchar, description: The bank's sector for it, visible_to: [org_admin, risk]}
+  - {name: relationship_manager, data_type: varchar, description: The banker who looks after it, visible_to: [org_admin, risk]}
+- source_id: bank
+  domain_id: groupexposure
+  schema: public
+  table: facilities
+  description: Each facility lent to a borrower -- term loans, revolving credit and guarantees
+  columns:
+  - {name: facility_id, data_type: integer, is_primary_key: true, description: "The facility's number", visible_to: [org_admin, risk]}
+  - {name: lei, data_type: varchar, description: The borrower it was lent to, visible_to: [org_admin, risk]}
+  - {name: product, data_type: varchar, description: 'What it is: a term loan, a revolving credit facility or a bank guarantee', visible_to: [org_admin, risk]}
+  - {name: committed_eur, data_type: decimal, description: What the bank has committed in EUR -- the exposure the limit counts, visible_to: [org_admin, risk]}
+  - {name: drawn_eur, data_type: decimal, description: What the borrower has drawn of it in EUR, visible_to: [org_admin, risk]}
+  - {name: maturity, data_type: date, description: When it ends, visible_to: [org_admin, risk]}
+- source_id: bank
+  domain_id: groupexposure
+  schema: public
+  table: capital
+  description: "The bank's Tier 1 capital, the base of its large-exposure limit"
+  columns:
+  - {name: as_of, data_type: date, is_primary_key: true, description: The quarter end it was measured at, visible_to: [org_admin, risk]}
+  - {name: tier1_eur, data_type: decimal, description: Tier 1 capital in EUR, visible_to: [org_admin, risk]}
+- source_id: wikidata
+  domain_id: groupexposure
+  schema: wikidata
+  table: company
+  description: Each borrower as Wikidata knows it, found by its LEI -- its entity, country and
+    industries
+  query_template: >-
+    PREFIX wd: <http://www.wikidata.org/entity/>
+    PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+    PREFIX wikibase: <http://wikiba.se/ontology#>
+    PREFIX bd: <http://www.bigdata.com/rdf#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    SELECT ?lei ?entity (SAMPLE(?entityLabel) AS ?name) (SAMPLE(?countryLabel) AS ?country)
+           (GROUP_CONCAT(DISTINCT ?industryLabel; separator=", ") AS ?industry)
+    WHERE {
+      VALUES ?lei {
+      "315700BBUYTISOHBNX72" "31570010000000032881" "315700SIBEYEAWSYLB92" "3157006J6U81BE72XQ70"
+      "315700LRO9CWUFOSLP09" "315700E9N4IWMYLZR464" "315700NV6I3O0YKF2J28" "315700MSXDA6CBYQHX43"
+      "315700JBGD5JC944GN38" "213800Z39ZW4XHAAUA27" "315700R4N2U5DETXUT60" "2138001NW8Y1K1JD6Z84"
+      "549300ZH5M6JULTFH175" "5493004EO3OSZXYHCG78" "529900IOTOEK0X15ES10" "5299001OCDH15TOWRF13"
+      "529900ICUI439HM59347" "529900IMBA1N98URTN21" "529900MS61RNNI1PL958" "31570010000000054609"
+      "31570010000000041611" "529900LJ3P01VB8JSB31" "3157005G1F88901HAL31" "5299008G66F3XXXRZO62"
+      "529900R3IPCKHXJDUK29" "5299003ILFQKHJYNK282" "213800BK4RVHF9F2TI85" "213800GFNAQ5J7UO4C22"
+      "3157008NR0WMEIJUCX48" "31570010000000006303" "315700MJRNJSVB95U852" "315700ZK0SK94900L056"
+      "8945006E6MDJI98E4T61" "315700X3NSNAKRW9CN85" "3157007JGSGEZ1TESO89" "315700PWW41IJ2RM0G35"
+      "315700BEDUVR2H0FM180"
+      }
+      ?entity wdt:P1278 ?lei .
+      OPTIONAL { ?entity wdt:P17 ?c }
+      OPTIONAL { ?entity wdt:P452 ?i }
+      SERVICE wikibase:label {
+        bd:serviceParam wikibase:language "en,cs" .
+        ?entity rdfs:label ?entityLabel . ?c rdfs:label ?countryLabel . ?i rdfs:label ?industryLabel .
+      }
+    }
+    GROUP BY ?lei ?entity
+  columns:
+  - {name: lei, data_type: varchar, is_primary_key: true, description: "The company's LEI (Wikidata P1278)", visible_to: [org_admin, risk]}
+  - {name: entity, data_type: varchar, description: "Its Wikidata entity's IRI", visible_to: [org_admin, risk]}
+  - {name: name, data_type: varchar, description: "Its name on Wikidata", visible_to: [org_admin, risk]}
+  - {name: country, data_type: varchar, description: Its country (P17), visible_to: [org_admin, risk]}
+  - {name: industry, data_type: varchar, description: 'Its industries (P452), comma-separated', visible_to: [org_admin, risk]}
+- source_id: wikidata
+  domain_id: groupexposure
+  schema: wikidata
+  table: group_member
+  description: The group each borrower belongs to -- the company at the top of its chain of
+    parent organizations on Wikidata, or the borrower itself when nothing owns it. A borrower
+    with two owners at the top is in both groups.
+  query_template: >-
+    PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+    PREFIX wikibase: <http://wikiba.se/ontology#>
+    PREFIX bd: <http://www.bigdata.com/rdf#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    SELECT DISTINCT ?lei ?group_entity ?group_name
+    WHERE {
+      VALUES ?lei {
+      "315700BBUYTISOHBNX72" "31570010000000032881" "315700SIBEYEAWSYLB92" "3157006J6U81BE72XQ70"
+      "315700LRO9CWUFOSLP09" "315700E9N4IWMYLZR464" "315700NV6I3O0YKF2J28" "315700MSXDA6CBYQHX43"
+      "315700JBGD5JC944GN38" "213800Z39ZW4XHAAUA27" "315700R4N2U5DETXUT60" "2138001NW8Y1K1JD6Z84"
+      "549300ZH5M6JULTFH175" "5493004EO3OSZXYHCG78" "529900IOTOEK0X15ES10" "5299001OCDH15TOWRF13"
+      "529900ICUI439HM59347" "529900IMBA1N98URTN21" "529900MS61RNNI1PL958" "31570010000000054609"
+      "31570010000000041611" "529900LJ3P01VB8JSB31" "3157005G1F88901HAL31" "5299008G66F3XXXRZO62"
+      "529900R3IPCKHXJDUK29" "5299003ILFQKHJYNK282" "213800BK4RVHF9F2TI85" "213800GFNAQ5J7UO4C22"
+      "3157008NR0WMEIJUCX48" "31570010000000006303" "315700MJRNJSVB95U852" "315700ZK0SK94900L056"
+      "8945006E6MDJI98E4T61" "315700X3NSNAKRW9CN85" "3157007JGSGEZ1TESO89" "315700PWW41IJ2RM0G35"
+      "315700BEDUVR2H0FM180"
+      }
+      ?entity wdt:P1278 ?lei ; wdt:P749* ?group_entity .
+      FILTER NOT EXISTS { ?group_entity wdt:P749 ?owner }
+      SERVICE wikibase:label {
+        bd:serviceParam wikibase:language "en,cs" . ?group_entity rdfs:label ?group_name .
+      }
+    }
+  columns:
+  - {name: lei, data_type: varchar, description: "The borrower's LEI", visible_to: [org_admin, risk]}
+  - {name: group_entity, data_type: varchar, description: "The group's Wikidata entity's IRI", visible_to: [org_admin, risk]}
+  - {name: group_name, data_type: varchar, description: "The group's name on Wikidata", visible_to: [org_admin, risk]}
+views:
+# The answer: each group's committed exposure against 25% of the bank's Tier 1 capital.
+- id: group_exposure
+  domain_id: groupexposure
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each corporate group's committed exposure, its borrowers rolled up through
+    Wikidata's parent organizations, against the bank's large-exposure limit (25% of Tier 1)
+  sql: >-
+    SELECT g.group_name, g.group_entity,
+           COUNT(DISTINCT c.lei) AS borrowers,
+           SUM(f.committed_eur) AS committed_eur,
+           SUM(f.drawn_eur) AS drawn_eur,
+           ROUND(100 * SUM(f.committed_eur) / k.tier1_eur, 1) AS pct_of_tier1,
+           SUM(f.committed_eur) > 0.25 * k.tier1_eur AS over_limit
+    FROM "groupexposure"."facilities" AS f
+    JOIN "groupexposure"."counterparties" AS c ON c.lei = f.lei
+    JOIN "groupexposure"."group_member" AS g ON g.lei = c.lei
+    CROSS JOIN "groupexposure"."capital" AS k
+    GROUP BY g.group_name, g.group_entity, k.tier1_eur
+  columns:
+  - {name: group_name, data_type: varchar, description: "The group's name on Wikidata", visible_to: [org_admin, risk]}
+  - {name: group_entity, data_type: varchar, description: "The group's Wikidata entity", visible_to: [org_admin, risk]}
+  - {name: borrowers, data_type: bigint, description: "The group's companies the bank lends to", visible_to: [org_admin, risk]}
+  - {name: committed_eur, data_type: decimal, description: What the bank has committed to them in EUR, visible_to: [org_admin, risk]}
+  - {name: drawn_eur, data_type: decimal, description: What they have drawn in EUR, visible_to: [org_admin, risk]}
+  - {name: pct_of_tier1, data_type: decimal, description: 'The committed exposure as a percentage of Tier 1 capital', visible_to: [org_admin, risk]}
+  - {name: over_limit, data_type: boolean, description: Whether it is over the 25% large-exposure limit, visible_to: [org_admin, risk]}
+# What the bank sees alone: each borrower's own exposure. None is near the limit.
+- id: borrower_exposure
+  domain_id: groupexposure
+  enable_aggregates: true
+  enable_group_by: true
+  description: "Each borrower's own committed exposure against the bank's large-exposure limit, as the bank's books alone see it"
+  sql: >-
+    SELECT c.lei, c.name, c.sector,
+           SUM(f.committed_eur) AS committed_eur,
+           ROUND(100 * SUM(f.committed_eur) / k.tier1_eur, 1) AS pct_of_tier1
+    FROM "groupexposure"."facilities" AS f
+    JOIN "groupexposure"."counterparties" AS c ON c.lei = f.lei
+    CROSS JOIN "groupexposure"."capital" AS k
+    GROUP BY c.lei, c.name, c.sector, k.tier1_eur
+  columns:
+  - {name: lei, data_type: varchar, description: "The borrower's LEI", visible_to: [org_admin, risk]}
+  - {name: name, data_type: varchar, description: The borrower's name as booked, visible_to: [org_admin, risk]}
+  - {name: sector, data_type: varchar, description: The bank's sector for it, visible_to: [org_admin, risk]}
+  - {name: committed_eur, data_type: decimal, description: What the bank has committed to it in EUR, visible_to: [org_admin, risk]}
+  - {name: pct_of_tier1, data_type: decimal, description: 'That exposure as a percentage of Tier 1 capital', visible_to: [org_admin, risk]}
+relationships:
+- {id: facility-to-counterparty, alias: LENT_TO, cardinality: many-to-one, source_table_id: facilities, source_column: lei, target_table_id: counterparties, target_column: lei}
+- {id: counterparty-to-company, alias: KNOWN_AS, cardinality: one-to-one, source_table_id: counterparties, source_column: lei, target_table_id: company, target_column: lei}
+- {id: group-member-to-counterparty, alias: GROUP_OF, cardinality: many-to-one, source_table_id: group_member, source_column: lei, target_table_id: counterparties, target_column: lei}
+glossary_terms:
+- name: large exposure
+  definition: 'What a bank lends to one client or group of connected clients that comes to 10% or more of its Tier 1 capital. Under EU CRR Article 395 no large exposure may pass 25% of Tier 1.'
+  domains:
+  - groupexposure
+- name: group of connected clients
+  definition: 'Clients that are one risk because one controls the others, or because one failing would bring the others down: a parent and its subsidiaries are counted together against the large-exposure limit.'
+  domains:
+  - groupexposure
+  edges:
+  - to: large exposure
+    rel_type: RELATED_TO
+- name: Tier 1 capital
+  definition: "A bank's core capital -- its shares and retained earnings -- and the base its large-exposure limit is measured against."
+  domains:
+  - groupexposure
+  edges:
+  - to: large exposure
+    rel_type: RELATED_TO
+- name: Legal Entity Identifier
+  definition: 'The 20-character code (ISO 17442) that names one legal entity in financial reporting worldwide; the bank books each borrower by it, and Wikidata records it as P1278.'
+  domains:
+  - groupexposure
+- name: parent organization
+  definition: "The company that owns or controls another (Wikidata's P749); followed upward, it leads to the group at the top."
+  domains:
+  - groupexposure
+  edges:
+  - to: group of connected clients
+    rel_type: RELATED_TO

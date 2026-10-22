@@ -1,0 +1,70 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The groupexposure demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and the features it shows; how the pieces fit, each step on its real
+# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
+# optional, its answer stored); a recap; and "Where next?", the landing page below.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+# The scenario: the bank, and the public graph it does not have.
+- key: groupexposureScenario
+  route: /sources
+  capability: source_registration
+  source: bank
+- key: groupexposureWikidata
+  source: wikidata
+# How the pieces fit: the bank's facilities, Wikidata's groups, the LEI that joins them, the terms.
+- key: groupexposureFacilities
+  route: /tables
+  capability: table_registration
+  table: bank.facilities
+- key: groupexposureGroups
+  table: wikidata.group_member
+- key: groupexposureJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: GROUP_OF
+- key: groupexposureTerms
+  route: /admin/glossary
+  capability: glossary_read
+  term: group of connected clients
+# The solution: the books alone, then the books rolled up through Wikidata.
+- key: groupexposureAlone
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT b.name, b.sector, b.committed_eur, b.pct_of_tier1
+    FROM "groupexposure"."view_borrower_exposure" AS b
+    ORDER BY b.committed_eur DESC
+    LIMIT 10
+- key: groupexposureAnswer
+  sql: >-
+    SELECT g.group_name, g.borrowers, g.committed_eur, g.pct_of_tier1, g.over_limit
+    FROM "groupexposure"."view_group_exposure" AS g
+    ORDER BY g.committed_eur DESC
+    LIMIT 15
+- key: groupexposureExample
+  route: /query
+  capability: query_development
+  example: 1-groups-over-limit
+- key: groupexposureRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/groupexposure/view_group_exposure?groupBy=over_limit&aggregate=count,sum
+- key: groupexposureRecap
+  route: /sources
+  capability: source_registration
+  source: wikidata

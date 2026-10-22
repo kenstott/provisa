@@ -87277,3 +87277,39 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2138
   - REQ-2056
   target: "2027-Q1"
+- id: REQ-2140
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The named demo "groupexposure" joins company data to public linked data by an identifier both
+    share. A fictional Prague bank books its corporate loans to real Czech companies by Legal Entity
+    Identifier (LEI) in its own database, read live. A sparql source (REQ-1683) on Wikidata's public
+    query service finds each borrower by its LEI (P1278) and the group at the top of its chain of
+    parent organizations (P749, one property path). The question is one neither side answers alone:
+    which corporate groups is the bank over its large-exposure limit to (25% of Tier 1, EU CRR Article
+    395) once each borrower is counted with the group that owns it? No borrower alone is near the
+    limit; two groups are over it, and a borrower with two owners counts in both. The Wikidata tables
+    are landed when the bundle is built (cache_ttl -1, replicate 0, as govdata's are), so the sandbox
+    never calls the public endpoint, and every call names Provisa in its User-Agent, as Wikidata's
+    policy asks. Its tour follows the settled demo shape: the scenario, how the pieces fit, then the
+    solution in SQL, GraphQL and REST; its integration test captures the card's data.
+  use_case: >-
+    A risk or data buyer sees their own records joined to a public knowledge graph by an identifier
+    they already hold, and an answer appear that neither source gives alone.
+  scenario: |-
+    Given the groupexposure demo started from its bundle
+    When a visitor walks its tour to the end
+    Then no single borrower is over the large-exposure limit, the Veolia and Vinci groups are over it,
+    every predesigned query answers rows joining the bank's facilities to Wikidata's groups, and no
+    request leaves the demo for Wikidata
+  relates_to:
+  - REQ-1683
+  - REQ-2138
+  - REQ-2031
+  - REQ-2042
+  target: "2027-Q1"
