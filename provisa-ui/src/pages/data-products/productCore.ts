@@ -118,6 +118,7 @@ const PANEL: Selection = {
       alias: "edges",
       sel: {
         fields: [
+          "id",
           "kind",
           "direction",
           "target_product_id",
@@ -176,6 +177,8 @@ export interface CoreEdge {
   /** REQ-2126: joins (relationship, the graph's), direct neighbours (related, the panel's),
    * provenance (lineage) and built-from products (derivation). */
   kind: "relationship" | "related" | "lineage" | "derivation";
+  /** The edge's key in data_product_edges, unique per product. */
+  id: string;
   direction: "upstream" | "downstream" | null;
   target_product_id: string | null;
   target_table_id: number | null;
@@ -219,6 +222,14 @@ export interface CoreCheck {
     latest_run_at?: string | null;
   } | null;
   checked_table?: { id: number; domain_id: string; table_name: string } | null;
+}
+
+/** What a lineage edge reaches: its relation, or, for a member read straight from a source (the
+ * view names no relation there, REQ-2126), its address in that source. */
+export function edgeTarget(e: CoreEdge): string {
+  const name = e.target_relation ?? e.target_address;
+  if (name == null) throw new Error(`data_product_edges row ${e.id} names no target`);
+  return name;
 }
 
 interface PanelRow {

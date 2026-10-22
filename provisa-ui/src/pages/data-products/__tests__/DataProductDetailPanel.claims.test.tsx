@@ -85,6 +85,7 @@ const CHECKS: CoreCheck[] = [
 ];
 
 const input = (id: number, relation: string): CoreEdge => ({
+  id: `c360:lineage:${relation}`,
   kind: "lineage",
   direction: "upstream",
   target_product_id: null,
@@ -230,6 +231,7 @@ describe("a set of checks' summary status", () => {
 describe("Related Tables (REQ-2126)", () => {
   it("lists the directly related tables only; the indirect joins are the graph's", () => {
     const edge = (over: Partial<CoreEdge>): CoreEdge => ({
+      id: `c360:related:${over.target_table_id}`,
       kind: "related",
       direction: null,
       target_product_id: null,

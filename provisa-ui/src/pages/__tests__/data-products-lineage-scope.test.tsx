@@ -39,6 +39,7 @@ const lineage = (
   hops: number,
   vias: string | null,
 ): CoreEdge => ({
+  id: `c360:lineage:${relation}`,
   kind: "lineage",
   direction,
   target_product_id: null,
@@ -95,6 +96,41 @@ describe("product detail lineage scope (REQ-1666, REQ-2127)", () => {
         .getAllByRole("listitem")
         .map((li) => li.textContent),
     ).toEqual(["mart.churn via mart.v_churn"]);
+  });
+
+  it("names a member read straight from a source by its address, each row its own", () => {
+    const source = (table: number, address: string): CoreEdge => ({
+      ...lineage("unused", "upstream", 1, null),
+      id: `c360:lineage:source:${table}`,
+      target_table_id: table,
+      target_relation: null,
+      nearest_input: true,
+      target_source_type: "sqlite",
+      target_address: address,
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <DataProductDetailPanel
+        p={P}
+        core={{ ...CORE, edges: [source(1, "pg/sales/orders"), source(2, "pg/sales/customers")] }}
+        coreError={null}
+        reader={null}
+        sources={[]}
+        internalRelationships={[]}
+        canEdit={false}
+        canSeeLineage={true}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    const up = screen.getByTestId("data-product-detail-lineage-upstream-c360");
+    expect(
+      within(up)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["pg/sales/customers 1 hop", "pg/sales/orders 1 hop"]);
+    expect(logged.mock.calls.some((c) => String(c[0]).includes("same key"))).toBe(false);
+    logged.mockRestore();
   });
 
   it("draws no Lineage section for a role without view_governance", () => {

@@ -22,7 +22,7 @@ import { Alert, Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { tableSqlRef } from "../../naming";
-import type { CoreCheck, CoreEdge } from "./productCore";
+import { edgeTarget, type CoreCheck, type CoreEdge } from "./productCore";
 import { checksIn, dqStatus, type DqStatus } from "./dataProductClaims";
 
 const COLOR: Record<DqStatus, string> = { passing: "green", failing: "red", notRun: "gray" };
@@ -248,10 +248,9 @@ export function InputsList({
   return (
     <List size="sm" data-testid={testId}>
       {inputs.map((e) => {
-        const name = e.target_relation ?? e.target_address ?? "";
         return (
-          <List.Item key={name} ff="monospace">
-            {name}
+          <List.Item key={e.id} ff="monospace">
+            {edgeTarget(e)}
             {e.target_source_type && (
               <Text component="span" c="var(--text-muted)" ff="text" size="xs">
                 {" "}

@@ -39,7 +39,7 @@ import { cypherRelType, tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
-import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
+import { edgeTarget, type CoreEdge, type CoreTable, type ProductCore } from "./productCore";
 import { ClaimsCallout, DqIcon, InputsList, PartnersAndOrphans } from "./dataProductDq";
 import { checksIn } from "./dataProductClaims";
 
@@ -301,10 +301,7 @@ export function DataProductDetailPanel({
   const lineage = core.edges?.filter((e) => e.kind === "lineage");
   const upstream = lineage
     ?.filter((e) => e.direction === "upstream")
-    .sort(
-      (a, b) =>
-        b.hops - a.hops || String(a.target_relation).localeCompare(String(b.target_relation)),
-    );
+    .sort((a, b) => b.hops - a.hops || edgeTarget(a).localeCompare(edgeTarget(b)));
   const downstream = lineage?.filter((e) => e.direction === "downstream");
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
@@ -715,7 +712,7 @@ export function DataProductDetailPanel({
             ) : (
               <List size="sm" data-testid={`data-product-detail-related-tables-${p.id}`}>
                 {related.map((e) => (
-                  <List.Item key={`${e.target_product_id}:${e.target_table_id}`} ff="monospace">
+                  <List.Item key={e.id} ff="monospace">
                     {relatedLabel(e)}
                     {e.target_product && (
                       <Muted>
@@ -813,8 +810,8 @@ export function DataProductDetailPanel({
                         </Text>
                         <List size="sm" data-testid={`data-product-detail-lineage-${dir}-${p.id}`}>
                           {rows.map((e) => (
-                            <List.Item key={String(e.target_relation)} ff="monospace">
-                              {e.target_relation}
+                            <List.Item key={e.id} ff="monospace">
+                              {edgeTarget(e)}
                               <Muted>
                                 {[
                                   dir === "upstream"
