@@ -9,6 +9,8 @@
     "attraction": "Atracción",
     "attractionLoose": "Suelto",
     "attractionTight": "Compacto",
-    "grid": "Cuadrícula"
+    "grid": "Cuadrícula",
+    "resetSettings": "Restablecer ajustes de vista",
+    "resetSettingsHelp": "Olvida el diseño, las capas, los filtros y los interruptores guardados de este grafo y vuelve a los valores predeterminados."
   }
 }

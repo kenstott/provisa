@@ -9,6 +9,8 @@
     "attraction": "吸引力",
     "attractionLoose": "鬆散",
     "attractionTight": "緊密",
-    "grid": "網格"
+    "grid": "網格",
+    "resetSettings": "重設檢視設定",
+    "resetSettingsHelp": "清除此圖已儲存的版面配置、圖層、篩選器及開關，恢復預設設定。"
   }
 }

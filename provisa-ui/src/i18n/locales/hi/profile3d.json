@@ -9,6 +9,8 @@
     "attraction": "आकर्षण",
     "attractionLoose": "ढीला",
     "attractionTight": "कसा हुआ",
-    "grid": "ग्रिड"
+    "grid": "ग्रिड",
+    "resetSettings": "दृश्य सेटिंग रीसेट करें",
+    "resetSettingsHelp": "इस ग्राफ़ के सहेजे गए लेआउट, लेयर, फ़िल्टर और टॉगल भूलकर डिफ़ॉल्ट पर लौटें।"
   }
 }

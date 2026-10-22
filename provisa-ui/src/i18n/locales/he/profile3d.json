@@ -9,6 +9,8 @@
     "attraction": "משיכה",
     "attractionLoose": "רופף",
     "attractionTight": "צפוף",
-    "grid": "רשת"
+    "grid": "רשת",
+    "resetSettings": "איפוס הגדרות התצוגה",
+    "resetSettingsHelp": "שכחת הפריסה, השכבות, המסננים והמתגים השמורים של הגרף הזה וחזרה לברירות המחדל."
   }
 }

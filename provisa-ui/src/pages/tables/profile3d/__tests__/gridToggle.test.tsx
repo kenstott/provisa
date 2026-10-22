@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // Every 3D network graph's toolbar has one Grid checkbox, checked at first. Clearing it tells the
-// scene to leave the floor grid out, and the choice is kept for the session, per graph.
+// scene to leave the floor grid out, and the choice is kept across reloads, per graph.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
@@ -54,12 +54,18 @@ const g: GraphData = {
 describe("a 3D network graph's Grid checkbox", () => {
   beforeEach(() => {
     made.scenes.length = 0;
-    window.sessionStorage.clear();
   });
 
-  it("is checked at first, turns the scene's grid off, and keeps that for the session", async () => {
+  it("is checked at first, turns the scene's grid off, and keeps that across reloads", async () => {
     const view = render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        testId="x"
+      />,
     );
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const scene = made.scenes[0];
@@ -70,7 +76,14 @@ describe("a 3D network graph's Grid checkbox", () => {
     await waitFor(() => expect(scene.setGrid).toHaveBeenLastCalledWith(false));
     view.unmount();
     render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        testId="x"
+      />,
     );
     expect(screen.getByRole("checkbox", { name: "Grid" })).not.toBeChecked();
     await waitFor(() => expect(made.scenes).toHaveLength(2));
@@ -78,13 +91,26 @@ describe("a 3D network graph's Grid checkbox", () => {
   });
 
   it("is its own per graph", () => {
-    window.sessionStorage.clear();
     render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        testId="x"
+      />,
     );
     fireEvent.click(screen.getByRole("checkbox", { name: "Grid" }));
     render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="y" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: "another" }}
+        testId="y"
+      />,
     );
     expect(screen.getAllByRole("checkbox", { name: "Grid" })[1]).toBeChecked();
   });

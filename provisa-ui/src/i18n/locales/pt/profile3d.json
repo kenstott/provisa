@@ -9,6 +9,8 @@
     "attraction": "Atração",
     "attractionLoose": "Solto",
     "attractionTight": "Compacto",
-    "grid": "Grade"
+    "grid": "Grade",
+    "resetSettings": "Redefinir configurações de exibição",
+    "resetSettingsHelp": "Esquece o layout, as camadas, os filtros e as opções salvos deste grafo e volta aos padrões."
   }
 }

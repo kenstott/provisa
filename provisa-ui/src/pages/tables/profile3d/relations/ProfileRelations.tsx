@@ -17,9 +17,10 @@ import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import { AttractionSlider } from "../Attraction";
-import { useAttraction } from "../attractionState";
+import { ATTRACTION_MAX, ATTRACTION_MIN } from "../attractionState";
 import { GridToggle } from "../GridToggle";
-import { useGrid } from "../gridState";
+import { ResetSettingsButton } from "../ResetSettingsButton";
+import { useGraphSettings } from "../graphSettings";
 import { Stage3D, type CameraCommand } from "../Stage3D";
 import { useLazyScene } from "../useLazyScene";
 import {
@@ -52,7 +53,10 @@ interface Shared {
   setSelected: (id: string) => void;
   hover: RelHover | null;
   setHover: (h: RelHover | null) => void;
+  resetSettings: () => void;
 }
+
+const KINDS: readonly EdgeKind[] = ["spearman", "correlation_ratio", "dependence"];
 
 const edgeValue = (e: RelEdge) => e.value.toFixed(2);
 
@@ -327,6 +331,7 @@ function RelationsView({
         >
           {t("profile3d.resetView")}
         </Button>
+        <ResetSettingsButton onReset={s.resetSettings} testId="relations" />
         {onExpand && <ExpandButton onClick={onExpand} testId="relations-expand" />}
       </Group>
       <div className="p3d-body">
@@ -345,20 +350,39 @@ function RelationsView({
 
 export function ProfileRelations({
   results,
+  tableId,
   tableName,
 }: {
   results: ProfileRunResults;
+  tableId: number;
   tableName: string;
 }) {
   const { t } = useTranslation();
-  const [attraction, setAttraction] = useAttraction("relations");
-  const model = useMemo(() => buildRelations(results, attraction), [results, attraction]);
-  const [min, setMin] = useState("0.3");
-  const [kinds, setKinds] = useState<Set<EdgeKind>>(
-    new Set(["spearman", "correlation_ratio", "dependence"]),
+  // Remembered for this table's relationship graph (graphSettings.ts).
+  const [saved, save, resetSettings] = useGraphSettings(
+    { kind: "profile-relations", subject: tableId },
+    {
+      attraction: 1 as number,
+      min: "0.3",
+      kinds: [...KINDS] as string[],
+      rotate: true as boolean,
+      grid: true as boolean,
+    },
   );
-  const [rotate, setRotate] = useState(true);
-  const [grid, setGrid] = useGrid("relations");
+  const attraction = Math.min(ATTRACTION_MAX, Math.max(ATTRACTION_MIN, saved.attraction as number));
+  const setAttraction = (v: number) => save("attraction", v);
+  const model = useMemo(() => buildRelations(results, attraction), [results, attraction]);
+  const min = STRENGTHS.includes(saved.min as string) ? (saved.min as string) : "0.3";
+  const setMin = (v: string) => save("min", v);
+  const savedKinds = saved.kinds as string[];
+  const kinds = useMemo(
+    () => new Set(savedKinds.filter((k): k is EdgeKind => KINDS.includes(k as EdgeKind))),
+    [savedKinds],
+  );
+  const rotate = saved.rotate as boolean;
+  const setRotate = (on: boolean) => save("rotate", on);
+  const grid = saved.grid as boolean;
+  const setGrid = (on: boolean) => save("grid", on);
   const [picked, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<RelHover | null>(null);
   const edges = useMemo(() => visibleEdges(model, Number(min), kinds), [model, min, kinds]);
@@ -383,21 +407,21 @@ export function ProfileRelations({
     min,
     setMin,
     kinds,
-    toggleKind: (k, on) =>
-      setKinds((prev) => {
-        const next = new Set(prev);
-        const members: EdgeKind[] =
-          k === "correlation" ? ["spearman", "correlation_ratio"] : ["dependence"];
-        for (const m of members) {
-          if (on) next.add(m);
-          else next.delete(m);
-        }
-        return next;
-      }),
+    toggleKind: (k, on) => {
+      const next = new Set(kinds);
+      const members: EdgeKind[] =
+        k === "correlation" ? ["spearman", "correlation_ratio"] : ["dependence"];
+      for (const m of members) {
+        if (on) next.add(m);
+        else next.delete(m);
+      }
+      save("kinds", [...next]);
+    },
     rotate,
     setRotate,
     grid,
     setGrid,
+    resetSettings,
     selected,
     setSelected,
     hover,

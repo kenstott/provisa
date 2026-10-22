@@ -254,6 +254,7 @@ describe("the Glossary page's Ontology View", () => {
         preset="ontology"
         focus="term:1"
         zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
         testId="x"
       />,
     );
@@ -266,6 +267,7 @@ describe("the Glossary page's Ontology View", () => {
         preset="ontology"
         focus="term:2"
         zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
         testId="x"
       />,
     );

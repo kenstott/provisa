@@ -9,6 +9,8 @@
     "attraction": "Attraction",
     "attractionLoose": "Lâche",
     "attractionTight": "Serré",
-    "grid": "Grille"
+    "grid": "Grille",
+    "resetSettings": "Réinitialiser les réglages d'affichage",
+    "resetSettingsHelp": "Oublie la disposition, les couches, les filtres et les bascules enregistrés de ce graphe et revient aux valeurs par défaut."
   }
 }

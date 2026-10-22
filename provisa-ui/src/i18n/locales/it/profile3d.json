@@ -9,6 +9,8 @@
     "attraction": "Attrazione",
     "attractionLoose": "Largo",
     "attractionTight": "Stretto",
-    "grid": "Griglia"
+    "grid": "Griglia",
+    "resetSettings": "Ripristina le impostazioni di visualizzazione",
+    "resetSettingsHelp": "Dimentica layout, livelli, filtri e opzioni salvati di questo grafo e torna ai valori predefiniti."
   }
 }

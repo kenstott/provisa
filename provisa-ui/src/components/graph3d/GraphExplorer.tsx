@@ -17,9 +17,15 @@ import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
-import { useAttraction } from "../../pages/tables/profile3d/attractionState";
+import { ATTRACTION_MAX, ATTRACTION_MIN } from "../../pages/tables/profile3d/attractionState";
 import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
-import { useGrid } from "../../pages/tables/profile3d/gridState";
+import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
+import {
+  chosenNow,
+  selectionToSave,
+  useGraphSettings,
+  type GraphKey,
+} from "../../pages/tables/profile3d/graphSettings";
 import { matchesSearch, searchItems } from "../../lib/searchItems";
 import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
@@ -59,6 +65,7 @@ export function GraphExplorer({
   zero,
   onExpand,
   search,
+  settingsKey,
   testId = "graph3d",
 }: {
   data: GraphData;
@@ -72,6 +79,8 @@ export function GraphExplorer({
   /** The page's search, focusing the graph in place of its own focus field: the terms and
    * products it matches (searchItems' rule) and their neighbourhoods; empty, the whole graph. */
   search?: string;
+  /** Which graph's settings these are (graphSettings.ts): kept across reloads, per graph. */
+  settingsKey: GraphKey;
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -91,24 +100,95 @@ export function GraphExplorer({
   );
   const hasStatus = useMemo(() => data.nodes.some((n) => n.status !== undefined), [data]);
   const hasTerms = useMemo(() => data.nodes.some((n) => n.type === "term"), [data]);
-  // Terms left with no relationship under the chosen edge types and domains: drawn until unchecked.
-  const [orphans, setOrphans] = useState(true);
-  const [preset, setPreset] = useState<PresetId>(initialPreset);
-  const [layers, setLayers] = useState<Set<LayerId>>(new Set(presetOf(initialPreset).layers));
-  // The first render is the whole graph: every edge type (unless the preset picks its own) and
-  // every domain chosen, and the reader narrows from there.
-  const [filters, setFilters] = useState<GraphFilters>({
-    ...NO_FILTERS,
-    focus: initialFocus ? [initialFocus] : [],
-    domains: choices.domains,
-    edgeTypes: presetOf(initialPreset).edgeTypes ?? edgeTypes,
-    hiddenStatuses: scope.hiddenStatuses,
+  // Everything the reader sets here is remembered for this graph (graphSettings.ts): the preset,
+  // layers, toggles and filters. The focus is the page's (its search, or the product it opened on)
+  // and the camera is where the reader left it, so neither is kept.
+  const [saved, save, resetSettings] = useGraphSettings(settingsKey, {
+    preset: initialPreset as string,
+    layers: presetOf(initialPreset).layers as string[],
+    // Terms left with no relationship under the chosen edge types and domains: drawn until unchecked.
+    orphans: true as boolean,
+    rotate: false as boolean,
+    attraction: 1 as number,
+    grid: true as boolean,
+    // null: every domain, every edge type (or the preset's own), so a new one is drawn too.
+    domains: null as string[] | null,
+    edgeTypes: null as string[] | null,
+    hiddenStatuses: scope.hiddenStatuses as string[],
+    tags: [] as string[],
+    sensitivities: [] as string[],
   });
+  const preset: PresetId = scope.presetOrder.includes(saved.preset as PresetId)
+    ? (saved.preset as PresetId)
+    : initialPreset;
+  const presetOwn = scope.presets[preset]?.edgeTypes;
+  const presetTypes = useMemo(() => presetOwn ?? edgeTypes, [presetOwn, edgeTypes]);
+  const savedLayers = saved.layers as string[];
+  const layers = useMemo(
+    () => new Set(savedLayers.filter((l): l is LayerId => scope.layerOrder.includes(l as LayerId))),
+    [savedLayers, scope],
+  );
+  const orphans = saved.orphans as boolean;
+  const rotate = saved.rotate as boolean;
+  const attraction = Math.min(ATTRACTION_MAX, Math.max(ATTRACTION_MIN, saved.attraction as number));
+  const grid = saved.grid as boolean;
+  const [focus, setFocus] = useState<string[]>(initialFocus ? [initialFocus] : []);
+  const savedDomains = saved.domains as string[] | null;
+  const savedTypes = saved.edgeTypes as string[] | null;
+  const savedStatuses = saved.hiddenStatuses as string[];
+  const savedTags = saved.tags as string[];
+  const savedSensitivities = saved.sensitivities as string[];
+  const filters: GraphFilters = useMemo(
+    () => ({
+      ...NO_FILTERS,
+      focus,
+      domains: chosenNow(savedDomains, choices.domains),
+      edgeTypes: savedTypes === null ? presetTypes : chosenNow(savedTypes, edgeTypes),
+      hiddenStatuses: savedStatuses.filter((st): st is TermStatus =>
+        STATUSES.includes(st as TermStatus),
+      ),
+      tags: chosenNow(savedTags, choices.tags),
+      sensitivities: chosenNow(savedSensitivities, choices.sensitivities),
+    }),
+    [
+      focus,
+      savedDomains,
+      savedTypes,
+      savedStatuses,
+      savedTags,
+      savedSensitivities,
+      choices,
+      presetTypes,
+      edgeTypes,
+    ],
+  );
+  const setFilters = (change: (f: GraphFilters) => GraphFilters) => {
+    const next = change(filters);
+    if (next.focus !== filters.focus) setFocus(next.focus);
+    if (next.domains !== filters.domains)
+      save("domains", selectionToSave(next.domains, choices.domains));
+    if (next.edgeTypes !== filters.edgeTypes)
+      save(
+        "edgeTypes",
+        presetTypes.length === next.edgeTypes.length &&
+          presetTypes.every((x) => next.edgeTypes.includes(x))
+          ? null
+          : [...next.edgeTypes],
+      );
+    if (next.hiddenStatuses !== filters.hiddenStatuses)
+      save("hiddenStatuses", [...next.hiddenStatuses]);
+    if (next.tags !== filters.tags) save("tags", [...next.tags]);
+    if (next.sensitivities !== filters.sensitivities)
+      save("sensitivities", [...next.sensitivities]);
+  };
+  const setOrphans = (on: boolean) => save("orphans", on);
+  const setRotate = (on: boolean) => save("rotate", on);
+  const setAttraction = (v: number) => save("attraction", v);
+  const setGrid = (on: boolean) => save("grid", on);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [frame, setFrame] = useState(0);
   const [picked, setSelected] = useState<string | null>(initialFocus);
   const [hover, setHover] = useState<GraphHover | null>(null);
-  const [rotate, setRotate] = useState(false);
   const [command, setCommand] = useState<CameraCommand | null>(null);
   const move = (kind: CameraCommand["kind"], target: string | null) =>
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
@@ -149,8 +229,6 @@ export function GraphExplorer({
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
   }, [data, layers, offered, filters, expanded, scope, choices, edgeTypes, orphans, search]);
   const layout = presetOf(preset).layout;
-  const [attraction, setAttraction] = useAttraction(testId);
-  const [grid, setGrid] = useGrid(testId);
   const at = useMemo(
     () => layoutGraph(shown, layout, zero, attraction),
     [shown, layout, zero, attraction],
@@ -164,19 +242,15 @@ export function GraphExplorer({
     [data],
   );
 
+  // A preset chooses its layers and its edge types afresh.
   const choosePreset = (p: PresetId) => {
-    setPreset(p);
-    setLayers(new Set(presetOf(p).layers));
-    setFilters((f) => ({ ...f, edgeTypes: presetOf(p).edgeTypes ?? edgeTypes }));
+    save("preset", p);
+    save("layers", [...presetOf(p).layers]);
+    save("edgeTypes", null);
     setFrame((f) => f + 1);
   };
   const toggleLayer = (l: LayerId, on: boolean) =>
-    setLayers((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(l);
-      else next.delete(l);
-      return next;
-    });
+    save("layers", on ? [...layers, l] : [...layers].filter((x) => x !== l));
 
   const selected = shown.nodes.some((n) => n.id === picked) ? picked : null;
   const s: StageState = {
@@ -219,6 +293,7 @@ export function GraphExplorer({
         {layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}
+        <ResetSettingsButton onReset={resetSettings} testId={testId} />
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
       <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>

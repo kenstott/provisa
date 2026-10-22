@@ -21,7 +21,8 @@ import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { GraphExplorer } from "./GraphExplorer";
 import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
-import { useGrid } from "../../pages/tables/profile3d/gridState";
+import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
+import { useGraphSettings, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
 import { GraphStage, type StageState } from "./GraphStage";
 import {
   PRODUCT_SCOPE,
@@ -48,6 +49,7 @@ export function GraphModal({
   focus,
   zero,
   search,
+  settingsKey,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -59,6 +61,8 @@ export function GraphModal({
   zero: string[];
   /** The page's search driving the focus (the Ontology View's), as GraphExplorer takes it. */
   search?: string;
+  /** Which graph's remembered settings (graphSettings.ts): the same as its in-place view's. */
+  settingsKey: GraphKey;
 }) {
   return (
     <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
@@ -70,6 +74,7 @@ export function GraphModal({
           focus={focus}
           zero={zero}
           search={search}
+          settingsKey={settingsKey}
           testId="graph3d"
         />
       )}
@@ -77,12 +82,27 @@ export function GraphModal({
   );
 }
 
-function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
+function PanelStage({
+  graph,
+  product,
+  productId,
+}: {
+  graph: GraphData;
+  product: string;
+  productId: string;
+}) {
   const at = useMemo(() => layoutGraph(graph, "force", []), [graph]);
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
-  const [rotate, setRotate] = useState(true);
-  const [grid, setGrid] = useGrid("kg-panel");
+  // Remembered for this product's panel (graphSettings.ts).
+  const [saved, save, resetSettings] = useGraphSettings(
+    { kind: "product-panel", subject: productId },
+    { rotate: true as boolean, grid: true as boolean },
+  );
+  const rotate = saved.rotate as boolean;
+  const grid = saved.grid as boolean;
+  const setRotate = (on: boolean) => save("rotate", on);
+  const setGrid = (on: boolean) => save("grid", on);
   const [command, setCommand] = useState<CameraCommand | null>(null);
   const { t } = useTranslation();
   const s: StageState = {
@@ -115,6 +135,7 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
         >
           {t("profile3d.resetView")}
         </Button>
+        <ResetSettingsButton onReset={resetSettings} testId="kg-panel" />
       </Group>
       <GraphStage s={s} command={command} testId="kg-panel-stage" />
     </>
@@ -162,7 +183,7 @@ export function KnowledgeGraphPanel({
       <div className="p3d g3d-panel-view">
         {seen &&
           (graph ? (
-            <PanelStage graph={graph} product={product} />
+            <PanelStage graph={graph} product={product} productId={productId} />
           ) : (
             <Loading error={error} testId="kg-panel" />
           ))}
@@ -177,6 +198,7 @@ export function KnowledgeGraphPanel({
           preset="knowledge"
           focus={product}
           zero={membersOf(data, product)}
+          settingsKey={{ kind: "product-graph", subject: productId }}
         />
       )}
     </div>
@@ -215,6 +237,7 @@ export function ProductMapButton() {
           preset="productMap"
           focus={null}
           zero={[]}
+          settingsKey={{ kind: "product-map", subject: null }}
         />
       )}
     </>

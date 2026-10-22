@@ -9,6 +9,8 @@
     "attraction": "引力",
     "attractionLoose": "疎",
     "attractionTight": "密",
-    "grid": "グリッド"
+    "grid": "グリッド",
+    "resetSettings": "表示設定をリセット",
+    "resetSettingsHelp": "このグラフに保存されたレイアウト、レイヤー、フィルター、切り替えを破棄し、既定値に戻します。"
   }
 }

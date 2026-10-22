@@ -9,6 +9,8 @@
     "attraction": "Attraction",
     "attractionLoose": "Loose",
     "attractionTight": "Tight",
-    "grid": "Grid"
+    "grid": "Grid",
+    "resetSettings": "Reset view settings",
+    "resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults."
   }
 }

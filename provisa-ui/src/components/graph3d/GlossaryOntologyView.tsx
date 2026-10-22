@@ -31,6 +31,7 @@ import {
 import { GraphModal } from "./KnowledgeGraphPanel";
 import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
+import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
 
 async function loadGlossaryGraph(role: string): Promise<GraphData | null> {
   const m = await metaReader(role);
@@ -49,6 +50,9 @@ async function loadGlossaryGraph(role: string): Promise<GraphData | null> {
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
+/** The org's one ontology graph, in place and expanded: one set of remembered settings. */
+const ONTOLOGY_SETTINGS: GraphKey = { kind: "ontology", subject: null };
+
 export function OntologyToggle({
   open,
   onChange,
@@ -124,6 +128,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         zero={[]}
         search={search}
         onExpand={() => setOpen(true)}
+        settingsKey={ONTOLOGY_SETTINGS}
         testId="ontology"
       />
       <GraphModal
@@ -136,6 +141,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         focus={null}
         zero={[]}
         search={search}
+        settingsKey={ONTOLOGY_SETTINGS}
       />
     </div>
   );

@@ -7759,5 +7759,7 @@
   "ja/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasonerNone": "None",
   "ja/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axioms": "OWL axioms",
   "ja/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer.",
-  "ja/glossaryTab.json::glossaryTab.generateMenu": "Generate with AI"
+  "ja/glossaryTab.json::glossaryTab.generateMenu": "Generate with AI",
+  "ja/profile3d.json::profile3d.resetSettings": "Reset view settings",
+  "ja/profile3d.json::profile3d.resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults."
 }

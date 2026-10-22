@@ -20,7 +20,7 @@ configure({ asyncUtilTimeout: 10000 });
 import "fake-indexeddb/auto";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
-import { bindStorageScope } from "./lib/browserStorage";
+import { bindStorageScope, removeStored, storedKeys } from "./lib/browserStorage";
 
 // @testing-library/react auto-cleanup doesn't reliably fire between tests in
 // vitest's vmThreads pool.  Register it explicitly so DOM state never leaks.
@@ -32,6 +32,14 @@ afterEach(cleanup);
 export const TEST_STORAGE_SCOPE = { controlPlaneId: "test-cp", orgId: "test-org" } as const;
 bindStorageScope(TEST_STORAGE_SCOPE);
 afterEach(() => bindStorageScope(TEST_STORAGE_SCOPE));
+// A 3D graph remembers its view settings in the browser (graphSettings.ts); a test that changes one
+// leaves it saved, and the next test's graph would open with it. Each test starts from defaults.
+// A file run in the node environment (`@vitest-environment node`) has no browser storage to clear.
+afterEach(() => {
+  if (typeof window === "undefined") return;
+  bindStorageScope(TEST_STORAGE_SCOPE);
+  for (const key of storedKeys()) if (key.startsWith("graph3d.")) removeStored(key);
+});
 
 // Mantine components (ScrollArea, Select, transitions) depend on browser APIs
 // jsdom does not implement. Provide the standard polyfills once, globally, so

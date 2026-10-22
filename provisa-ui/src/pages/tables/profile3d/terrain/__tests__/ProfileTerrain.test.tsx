@@ -73,7 +73,6 @@ const RESULTS = {
 
 beforeEach(() => {
   scenes.length = 0;
-  window.sessionStorage.clear();
 });
 
 describe("ProfileTerrain", () => {
@@ -146,7 +145,7 @@ describe("ProfileTerrain", () => {
       await waitFor(() => expect(drawn()).toEqual(["amount", "status"]));
     });
 
-    it("keeps the choice for the session, per table", async () => {
+    it("keeps the choice across reloads, per table", async () => {
       const first = render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
       await waitFor(() => expect(scenes).toHaveLength(1));
       fireEvent.click(screen.getByTestId("terrain-include-status"));

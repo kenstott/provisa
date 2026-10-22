@@ -9,6 +9,8 @@
     "attraction": "Anziehung",
     "attractionLoose": "Locker",
     "attractionTight": "Eng",
-    "grid": "Raster"
+    "grid": "Raster",
+    "resetSettings": "Ansichtseinstellungen zurücksetzen",
+    "resetSettingsHelp": "Die gespeicherten Einstellungen dieses Graphen (Layout, Ebenen, Filter, Schalter) verwerfen und zu den Standardwerten zurückkehren."
   }
 }
