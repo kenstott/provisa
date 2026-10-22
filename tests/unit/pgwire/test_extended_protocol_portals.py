@@ -50,7 +50,7 @@ def trust_state():
 
 
 def _pipeline(calls: list[str]):
-    async def _stub(sql, role_id, params=None, wire_formats=None, *, deliver):
+    async def _stub(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
         calls.append(sql)
         if "FROM t" in sql:
             return EngineResult(rows=[(i,) for i in range(5)], column_names=["n"])
@@ -64,7 +64,7 @@ def _describes(shape_for, described: list[str] | None = None):
     token the Execute hands back to ``plan_pgwire_statement``."""
     from provisa.pgwire._pipeline import _Described
 
-    async def _stub(sql, role_id):
+    async def _stub(sql, role_id, *, as_of=None):
         if described is not None:
             described.append(sql)
         shape = shape_for(sql) if callable(shape_for) else shape_for
@@ -128,7 +128,7 @@ def _serving(trust_state, engine: _Engine, govern_sql: str, governed: list | Non
 
     seen = governed if governed is not None else []
 
-    async def _govern(sql, role_id, params=None, wire_formats=None, *, deliver):
+    async def _govern(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
         seen.append(("govern", sql, params))
         return _engine_plan(govern_sql)
 
@@ -138,7 +138,7 @@ def _serving(trust_state, engine: _Engine, govern_sql: str, governed: list | Non
         plan.exec_params = params
         return plan
 
-    async def _describe(sql, role_id):
+    async def _describe(sql, role_id, *, as_of=None):
         from provisa.pgwire._pipeline import _Described
 
         seen.append(("describe", sql, None))
@@ -157,7 +157,10 @@ def _serving(trust_state, engine: _Engine, govern_sql: str, governed: list | Non
     stack.enter_context(patch("provisa.pgwire._pipeline.describe_pgwire_statement", _describe))
     stack.enter_context(patch("provisa.pgwire._pipeline.plan_pgwire_statement", _plan))
     stack.enter_context(
-        patch("provisa.pgwire._pipeline.governed_statement_is_current", lambda held, state: True)
+        patch(
+            "provisa.pgwire._pipeline.governed_statement_is_current",
+            lambda held, state, as_of=None: True,
+        )
     )
     stack.enter_context(
         patch("provisa.pgwire._pipeline.prepare_residency_and_check_cache", _no_cache)
@@ -185,7 +188,10 @@ async def test_a_suspended_portal_is_not_served_to_the_next_query(pgwire_port, t
         patch("provisa.pgwire._pipeline.govern_pgwire_plan", _pipeline(calls)),
         patch("provisa.pgwire._pipeline.describe_pgwire_statement", _describes(_shape)),
         # These statements run through govern_pgwire_plan itself (a materialized result).
-        patch("provisa.pgwire._pipeline.governed_statement_is_current", lambda held, state: False),
+        patch(
+            "provisa.pgwire._pipeline.governed_statement_is_current",
+            lambda held, state, as_of=None: False,
+        ),
     ):
         conn = await _connect(pgwire_port)
         try:

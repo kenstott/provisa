@@ -32,13 +32,7 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
 function renderForm(domainHints: string[]) {
-  const registerTable = vi.fn().mockResolvedValue({
-    success: true,
-    message: "Table 'getStore' registered (id=42)",
-    code: "schema.table_registered",
-    params: { table: "getStore", id: 42 },
-  });
-  const onSuccess = vi.fn();
+  const onContinue = vi.fn();
   render(
     <RegisterTableForm
       sources={[{ id: "petstore", type: "openapi", allowedDomains: [] } as never]}
@@ -53,13 +47,12 @@ function renderForm(domainHints: string[]) {
         { name: "name", dataType: "varchar" },
       ])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={onSuccess}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={vi.fn()}
     />,
   );
-  return { registerTable, onSuccess };
+  return { onContinue };
 }
 
 async function pick(domain?: string) {
@@ -89,19 +82,19 @@ describe("RegisterTableForm — the short step", () => {
   });
 
   it("asks the domain when there is more than one to choose from", async () => {
-    const { registerTable } = renderForm(["sales", "finance"]);
+    const { onContinue } = renderForm(["sales", "finance"]);
     const user = await pick("finance");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect(registerTable.mock.calls[0][0].domainId).toBe("finance");
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].input.domainId).toBe("finance");
   });
 
-  it("registers every discovered column with its type, into the one domain, and names the table", async () => {
-    const { registerTable, onSuccess } = renderForm(["sales"]);
+  it("hands on every discovered column with its type, in the one domain, for the table's settings", async () => {
+    const { onContinue } = renderForm(["sales"]);
     const user = await pick();
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    const input = registerTable.mock.calls[0][0];
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    const input = onContinue.mock.calls[0][0].input;
     expect(input.domainId).toBe("sales");
     expect(input.description).toBe("The store");
     expect(
@@ -110,6 +103,5 @@ describe("RegisterTableForm — the short step", () => {
       ["id", "integer"],
       ["name", "varchar"],
     ]);
-    expect(onSuccess).toHaveBeenCalledWith({ id: 42 }); // the table, by the id the server gave it
   });
 });

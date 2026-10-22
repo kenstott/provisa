@@ -50,6 +50,8 @@
     "draftLabel": "Rascunho",
     "draftTooltip": "Rascunho: fora de serviço — em nenhum esquema e não lida por ninguém. Desmarque para publicar a tabela; marque para a retirar de serviço.",
     "draftNoRightTooltip": "Publicar uma tabela, ou devolvê-la a rascunho, requer o direito de Registo de tabelas no domínio da tabela.",
-    "draftPreviewNote": "Pré-visualização do rascunho: os leitores ainda não conseguem ver esta tabela."
+    "draftPreviewNote": "Pré-visualização do rascunho: os leitores ainda não conseguem ver esta tabela.",
+    "keepsHistory": "Guarda histórico: cada versão, com quando aconteceu e quando foi registrada.",
+    "keepsHistoryQuery": "Consultar em uma data ou como registrado"
   }
 }

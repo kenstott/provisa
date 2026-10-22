@@ -247,7 +247,14 @@ def source_to_catalog(source_id: str) -> str:  # REQ-471
 #: The kinds of object an engine keeps to reach a source live, each named ``<kind>_<catalog>``:
 #: a pg engine's foreign servers and staging schemas (postgres_fdw and the other FDWs, the
 #: connector-pgwire bridge, file_fdw) and a ClickHouse engine's databases.
-ATTACH_KINDS: tuple[str, ...] = ("fdw", "fdw_pgwire", "fdw_file", "ch", "ch_pgwire")
+ATTACH_KINDS: tuple[str, ...] = (
+    "fdw",
+    "fdw_pgwire",
+    "fdw_file",
+    "fdw_codehost",  # REQ-2100: a built code host
+    "ch",
+    "ch_pgwire",
+)
 
 
 def engine_attach_name(kind: str, catalog: str) -> str:  # REQ-1266, REQ-1529
@@ -357,9 +364,28 @@ def normalize_convention(convention: str) -> str:  # REQ-195, REQ-416
     return _CONVENTION_ALIASES.get(convention, convention)
 
 
-VALID_CONVENTIONS = frozenset(
-    {"snake", "hasura_graphql", "apollo_graphql"} | set(_CONVENTION_ALIASES)
-)
+#: REQ-416: the naming conventions a table, a source or the deployment may name, in the order the
+#: admin offers them; VALID_CONVENTIONS adds the Hasura/DDN literals that resolve to them.
+PRESET_CONVENTIONS: tuple[str, ...] = ("snake", "hasura_graphql", "apollo_graphql")
+
+VALID_CONVENTIONS = frozenset(set(PRESET_CONVENTIONS) | set(_CONVENTION_ALIASES))
+
+
+def stored_convention(convention: str | None) -> str | None:  # REQ-195, REQ-416
+    """The preset ``convention`` is kept as (None: inherit): a Hasura/DDN spelling is taken as
+    input and stored as the preset it names, so every stored convention is one of
+    PRESET_CONVENTIONS. Raises ValueError for any other name."""
+    return None if convention is None else preset_convention(convention)
+
+
+def preset_convention(convention: str) -> str:  # REQ-195, REQ-416
+    """:func:`stored_convention` of a named convention."""
+    preset = normalize_convention(convention)
+    if preset not in PRESET_CONVENTIONS:
+        raise ValueError(
+            f"unknown naming convention {convention!r}; expected one of {sorted(VALID_CONVENTIONS)}"
+        )
+    return preset
 
 
 def validation_error_for_convention(convention: str) -> str | None:  # REQ-416

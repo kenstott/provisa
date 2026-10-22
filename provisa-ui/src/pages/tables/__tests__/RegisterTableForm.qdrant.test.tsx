@@ -54,7 +54,7 @@ beforeEach(() => {
 
 describe("RegisterTableForm on a Qdrant search (REQ-1983)", () => {
   it("previews the search with its arguments and registers its query as required", async () => {
-    const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+    const onContinue = vi.fn();
     render(
       <RegisterTableForm
         sources={[{ id: "vec", type: "qdrant", database: "", allowedDomains: [] } as never]}
@@ -66,8 +66,7 @@ describe("RegisterTableForm on a Qdrant search (REQ-1983)", () => {
         roles={[{ id: "analyst" } as never]}
         getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
-        registerTable={registerTable}
-        onSuccess={vi.fn()}
+        onContinue={onContinue}
         onCancel={() => {}}
         setError={vi.fn()}
       />,
@@ -98,8 +97,8 @@ describe("RegisterTableForm on a Qdrant search (REQ-1983)", () => {
       expect(screen.getByTestId("register-table-col-selected-score")).toBeChecked(),
     );
     fireEvent.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalledTimes(1));
-    const input = registerTable.mock.calls[0][0];
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    const input = onContinue.mock.calls[0][0].input;
     expect(input).toMatchObject({
       schemaName: "default",
       tableName: "docs_search",

@@ -362,9 +362,9 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay": getattr(table, "push_debounce_max_delay", 5.0),  # REQ-1733
         "mv_consistency": getattr(table, "mv_consistency", "shared"),  # REQ-879
         "mv_preprocess": getattr(table, "mv_preprocess", None),  # REQ-957
-        "mv_bitemporal_mode": getattr(table, "mv_bitemporal_mode", None),  # REQ-1162
-        "mv_bitemporal_key": getattr(table, "mv_bitemporal_key", []),  # REQ-1162
-        "mv_bitemporal_source_time": getattr(table, "mv_bitemporal_source_time", None),  # REQ-1163
+        "business_key": getattr(table, "business_key", []),  # REQ-2109
+        "valid_time": getattr(table, "valid_time", None),  # REQ-2109
+        "recorded_time": getattr(table, "recorded_time", None),  # REQ-2109
         "mv_persist": getattr(table, "mv_persist", "replace"),  # REQ-965
         "mv_primary_key": getattr(table, "mv_primary_key", []),  # REQ-970
         "mv_incremental": getattr(table, "mv_incremental", False),  # REQ-969
@@ -433,9 +433,9 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay",
         "mv_consistency",
         "mv_preprocess",
-        "mv_bitemporal_mode",  # REQ-1162
-        "mv_bitemporal_key",  # REQ-1162
-        "mv_bitemporal_source_time",  # REQ-1163
+        "business_key",  # REQ-2109
+        "valid_time",  # REQ-2109
+        "recorded_time",  # REQ-2109
         "mv_persist",  # REQ-965
         "mv_primary_key",  # REQ-970
         "mv_incremental",  # REQ-969

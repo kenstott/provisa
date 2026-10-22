@@ -155,6 +155,7 @@ def _register_table_in_ctx(
     ctx.pk_columns[t.table_id] = [
         col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
     ]
+    ctx.write_ops[t.table_id] = t.write_ops
 
     # REQ-1093: carry declared UNIQUE constraints (name + ordered columns) into ctx for pgwire.
     ctx.unique_constraints[t.table_id] = _visible_unique_constraints(t, si)
@@ -595,7 +596,7 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
 
     assert isinstance(si, SchemaInput)
-    ctx = CompilationContext()
+    ctx = CompilationContext(role_id=si.role["id"])
 
     domain_alias_map = {
         d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))

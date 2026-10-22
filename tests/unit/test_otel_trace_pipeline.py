@@ -328,6 +328,13 @@ class TestSignalPartitionLayout:
     so the metrics report read zero rows on a node whose writer produced a file every 15 seconds.
     """
 
+    @pytest.fixture(autouse=True)
+    def _tables_readable(self, monkeypatch):
+        """Each signal's table is readable: these tests are of which files a run takes, not of the
+        probes (test_otel_missing_metadata)."""
+        monkeypatch.setattr("provisa.observability.ops_trino.metadata_missing", lambda *_: False)
+        monkeypatch.setattr("provisa.observability.ops_trino.metadata_files_gone", lambda *_: False)
+
     def _run(self, monkeypatch, signal, keys, max_files=50):
         import boto3
 
@@ -629,7 +636,8 @@ class TestOtelStorageReclamation:
     outright, so the configured value only applies if the catalog session properties are set with
     the statement."""
 
-    async def _run(self, monkeypatch, retention):
+    async def _run(self, monkeypatch, retention, gone=lambda _rows, _keys, _table: False):
+        """``gone`` answers which tables' bucket holds no metadata file (none, by default)."""
         from provisa.api import app as app_module
         from provisa.scheduler import jobs
 
@@ -645,6 +653,9 @@ class TestOtelStorageReclamation:
 
         monkeypatch.setattr(app_module.state, "otel_snapshot_retention_hours", retention)
         monkeypatch.setattr(app_module.state, "federation_engine", _Engine())
+        # The bucket: no store in a unit test, so the bucket's answer is ``gone``.
+        monkeypatch.setattr("provisa.observability.ops_trino.otel_bucket_keys", lambda: None)
+        monkeypatch.setattr("provisa.observability.ops_trino.metadata_files_gone", gone)
         await jobs.reclaim_otel_storage()
         return calls
 
@@ -678,6 +689,14 @@ class TestOtelStorageReclamation:
         calls = await self._run(monkeypatch, 1)
         assert not any("otel.signals.traces" in sql for sql, _ in calls)
         assert sum("EXECUTE" in sql for sql, _ in calls) == 4  # logs and metrics, both procedures
+
+    async def test_a_table_whose_bucket_holds_no_metadata_file_is_not_reclaimed(self, monkeypatch):
+        """The engine's probe is answered from the catalog's metadata cache for a table with no
+        snapshot; the bucket is what says its metadata is gone (ops_trino.metadata_files_gone)."""
+        calls = await self._run(monkeypatch, 1, gone=lambda _rows, _keys, table: table == "metrics")
+        procedures = [sql for sql, _ in calls if "EXECUTE" in sql]
+        assert not any("otel.signals.metrics" in sql for sql in procedures)
+        assert len(procedures) == 4  # logs and traces, both procedures
 
 
 # ---------------------------------------------------------------------------

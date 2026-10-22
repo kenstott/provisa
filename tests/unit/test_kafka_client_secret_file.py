@@ -21,14 +21,20 @@ deployed.
 
 from __future__ import annotations
 
-import os
 import stat
 from pathlib import Path
 
+import pytest
 import yaml
 
 from provisa.core import trino_catalog_files
-from provisa.core.trino_catalog_files import TRINO_UID, write_kafka_client_file
+from provisa.core.trino_catalog_files import (
+    TRINO_FILES_GID_ENV,
+    TRINO_GID,
+    TRINO_UID,
+    EngineFilesGroupRefused,
+    write_kafka_client_file,
+)
 
 _REPO = Path(__file__).resolve().parents[2]
 _SASL = 'sasl.jaas.config=... password="s3cret";\n'
@@ -38,7 +44,8 @@ def _mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
-def test_the_file_is_readable_by_its_owner_alone(tmp_path):
+def test_as_trinos_own_user_the_file_is_readable_by_its_owner_alone(tmp_path, monkeypatch):
+    monkeypatch.setattr(trino_catalog_files.os, "geteuid", lambda: TRINO_UID)
     path = tmp_path / "kafka-client" / "org_acme__events.properties"
     write_kafka_client_file(path, _SASL)
     assert path.read_text() == _SASL
@@ -46,7 +53,8 @@ def test_the_file_is_readable_by_its_owner_alone(tmp_path):
     assert _mode(path.parent) == 0o700
 
 
-def test_a_file_an_earlier_write_left_open_is_narrowed(tmp_path):
+def test_a_file_an_earlier_write_left_open_is_narrowed(tmp_path, monkeypatch):
+    monkeypatch.setattr(trino_catalog_files.os, "geteuid", lambda: TRINO_UID)
     path = tmp_path / "kafka-client" / "org_acme__events.properties"
     path.parent.mkdir(mode=0o755)
     path.write_text("old")
@@ -66,22 +74,54 @@ def test_as_root_the_file_is_given_to_trinos_user(tmp_path, monkeypatch):
     monkeypatch.setattr(
         trino_catalog_files.os, "chown", lambda p, uid, gid: given.append(("dir", uid, gid))
     )
-    write_kafka_client_file(tmp_path / "kafka-client" / "c.properties", _SASL)
-    assert given == [("file", TRINO_UID, TRINO_UID), ("dir", TRINO_UID, TRINO_UID)]
-
-
-def test_not_as_root_ownership_is_left_with_the_writer(tmp_path, monkeypatch):
-    def _refuse(*a):
-        raise AssertionError("only root gives a file away")
-
-    # The writer's own uid, read before os.geteuid is replaced (trino_catalog_files.os is os).
-    writer = os.geteuid()
-    monkeypatch.setattr(trino_catalog_files.os, "geteuid", lambda: 501)
-    monkeypatch.setattr(trino_catalog_files.os, "fchown", _refuse)
-    monkeypatch.setattr(trino_catalog_files.os, "chown", _refuse)
     path = tmp_path / "kafka-client" / "c.properties"
     write_kafka_client_file(path, _SASL)
-    assert path.stat().st_uid == writer
+    assert given == [("file", TRINO_UID, TRINO_UID), ("dir", TRINO_UID, TRINO_UID)]
+    assert _mode(path) == 0o600
+
+
+def test_beside_trino_of_another_user_the_file_is_given_to_its_group(tmp_path, monkeypatch):
+    """REQ-2073: a native app beside Trino's container (the integration lane, uid 1001)."""
+    given: list[tuple[str, int, int]] = []
+    monkeypatch.setattr(trino_catalog_files.os, "geteuid", lambda: 1001)
+    monkeypatch.setattr(trino_catalog_files.os, "getegid", lambda: 1001)
+    monkeypatch.setattr(trino_catalog_files.os, "getgroups", lambda: [1001, TRINO_GID])
+    monkeypatch.setattr(
+        trino_catalog_files.os, "fchown", lambda fd, uid, gid: given.append(("file", uid, gid))
+    )
+    monkeypatch.setattr(
+        trino_catalog_files.os, "chown", lambda p, uid, gid: given.append(("dir", uid, gid))
+    )
+    path = tmp_path / "kafka-client" / "c.properties"
+    write_kafka_client_file(path, _SASL)
+    assert given == [("file", -1, TRINO_GID), ("dir", -1, TRINO_GID)]
+    assert _mode(path) == 0o640
+    assert _mode(path.parent) == 0o750
+
+
+def test_the_group_is_the_deployments_setting(tmp_path, monkeypatch):
+    given: list[int] = []
+    monkeypatch.setenv(TRINO_FILES_GID_ENV, "2345")
+    monkeypatch.setattr(trino_catalog_files.os, "geteuid", lambda: 1001)
+    monkeypatch.setattr(trino_catalog_files.os, "getgroups", lambda: [2345])
+    monkeypatch.setattr(trino_catalog_files.os, "fchown", lambda fd, uid, gid: given.append(gid))
+    monkeypatch.setattr(trino_catalog_files.os, "chown", lambda p, uid, gid: given.append(gid))
+    write_kafka_client_file(tmp_path / "kafka-client" / "c.properties", _SASL)
+    assert given == [2345, 2345]
+
+
+def test_a_user_outside_trinos_group_is_refused_by_name_and_nothing_is_written(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(trino_catalog_files.os, "geteuid", lambda: 1001)
+    monkeypatch.setattr(trino_catalog_files.os, "getegid", lambda: 1001)
+    monkeypatch.setattr(trino_catalog_files.os, "getgroups", lambda: [1001])
+    path = tmp_path / "kafka-client" / "c.properties"
+    with pytest.raises(
+        EngineFilesGroupRefused, match=f"group {TRINO_GID} \\({TRINO_FILES_GID_ENV}\\)"
+    ):
+        write_kafka_client_file(path, _SASL)
+    assert not path.exists()
 
 
 def _compose(name: str) -> dict:

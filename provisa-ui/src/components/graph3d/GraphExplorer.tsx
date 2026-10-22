@@ -14,13 +14,12 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, MultiSelect, SegmentedControl, Select, Text } from "@mantine/core";
+import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
+import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
+import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
 import {
-  LAYER_ORDER,
   NO_FILTERS,
-  PRESETS,
-  PRESET_ORDER,
   availableLayers,
   edgesOf,
   filterChoices,
@@ -28,34 +27,63 @@ import {
   visibleGraph,
   type GraphData,
   type GraphFilters,
+  type GraphScope,
   type LayerId,
+  type Preset,
   type PresetId,
+  type TermStatus,
 } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
+/** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
+const STATUSES: TermStatus[] = ["proposed", "deprecated", "retired"];
+
 export function GraphExplorer({
   data,
+  scope,
   preset: initialPreset,
   focus: initialFocus = null,
   zero,
+  onExpand,
   testId = "graph3d",
 }: {
   data: GraphData;
+  scope: GraphScope;
   preset: PresetId;
   focus?: string | null;
   /** The member tables lineage lanes are drawn around (lane 0). */
   zero: string[];
+  /** Drawn in place: its expand button opens it at 95% of the viewport. */
+  onExpand?: () => void;
   testId?: string;
 }) {
   const { t } = useTranslation();
-  const offered = useMemo(() => availableLayers(data), [data]);
+  const presetOf = (p: PresetId): Preset => {
+    const found = scope.presets[p];
+    if (!found) throw new Error(`No ${p} preset in this graph`);
+    return found;
+  };
+  const offered = useMemo(() => availableLayers(data, scope), [data, scope]);
   const choices = useMemo(() => filterChoices(data), [data]);
+  const edgeTypes = useMemo(
+    () =>
+      [...new Set(data.edges.filter((e) => e.kind === "term_edge").map((e) => e.label ?? ""))]
+        .filter(Boolean)
+        .sort(),
+    [data],
+  );
+  const hasStatus = useMemo(() => data.nodes.some((n) => n.status !== undefined), [data]);
   const [preset, setPreset] = useState<PresetId>(initialPreset);
-  const [layers, setLayers] = useState<Set<LayerId>>(new Set(PRESETS[initialPreset].layers));
-  const [filters, setFilters] = useState<GraphFilters>({ ...NO_FILTERS, focus: initialFocus });
+  const [layers, setLayers] = useState<Set<LayerId>>(new Set(presetOf(initialPreset).layers));
+  const [filters, setFilters] = useState<GraphFilters>({
+    ...NO_FILTERS,
+    focus: initialFocus,
+    edgeTypes: presetOf(initialPreset).edgeTypes ?? [],
+    hiddenStatuses: scope.hiddenStatuses,
+  });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [frame, setFrame] = useState(0);
   const [picked, setSelected] = useState<string | null>(initialFocus);
@@ -67,9 +95,10 @@ export function GraphExplorer({
 
   const shown = useMemo(() => {
     const on = new Set([...layers].filter((l) => offered.has(l)));
-    return visibleGraph(data, on, filters, expanded);
-  }, [data, layers, offered, filters, expanded]);
-  const at = useMemo(() => layoutGraph(shown, PRESETS[preset].layout, zero), [shown, preset, zero]);
+    return visibleGraph(data, on, filters, expanded, scope);
+  }, [data, layers, offered, filters, expanded, scope]);
+  const layout = presetOf(preset).layout;
+  const at = useMemo(() => layoutGraph(shown, layout, zero), [shown, layout, zero]);
   const focusable = useMemo(
     () =>
       data.nodes
@@ -81,7 +110,8 @@ export function GraphExplorer({
 
   const choosePreset = (p: PresetId) => {
     setPreset(p);
-    setLayers(new Set(PRESETS[p].layers));
+    setLayers(new Set(presetOf(p).layers));
+    setFilters((f) => ({ ...f, edgeTypes: presetOf(p).edgeTypes ?? [] }));
     setFrame((f) => f + 1);
   };
   const toggleLayer = (l: LayerId, on: boolean) =>
@@ -97,6 +127,7 @@ export function GraphExplorer({
     graph: shown,
     at,
     frame,
+    frontal: layout !== "force",
     selected,
     setSelected,
     hover,
@@ -106,13 +137,13 @@ export function GraphExplorer({
   };
 
   return (
-    <div className="p3d is-expanded g3d" data-testid={testId}>
+    <div className={`p3d g3d${onExpand ? " g3d-inline" : " is-expanded"}`} data-testid={testId}>
       <Group className="p3d-toolbar" gap="xs" wrap="wrap">
         <SegmentedControl
           size="xs"
           value={preset}
           onChange={(v) => choosePreset(v as PresetId)}
-          data={PRESET_ORDER.map((p) => ({ value: p, label: t(`graph3d.preset_${p}`) }))}
+          data={scope.presetOrder.map((p) => ({ value: p, label: t(`graph3d.preset_${p}`) }))}
           aria-label={t("graph3d.preset")}
           data-testid={`${testId}-preset`}
         />
@@ -127,54 +158,87 @@ export function GraphExplorer({
         >
           {t("profile3d.resetView")}
         </Button>
+        {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
       <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>
         <Text size="xs" c="dimmed">
           {t("graph3d.layers")}
         </Text>
-        {LAYER_ORDER.filter((l) => offered.has(l)).map((l) => (
-          <Chip
-            key={l}
-            size="xs"
-            checked={layers.has(l)}
-            onChange={(on) => toggleLayer(l, on)}
-            data-testid={`${testId}-layer-${l}`}
-          >
-            {t(`graph3d.layer_${l}`)}
-          </Chip>
-        ))}
+        {scope.layerOrder
+          .filter((l) => offered.has(l))
+          .map((l) => (
+            <Chip
+              key={l}
+              size="xs"
+              checked={layers.has(l)}
+              onChange={(on) => toggleLayer(l, on)}
+              data-testid={`${testId}-layer-${l}`}
+            >
+              {t(`graph3d.layer_${l}`)}
+            </Chip>
+          ))}
       </Group>
       <Group className="p3d-toolbar g3d-filters" gap="xs" wrap="wrap">
-        <MultiSelect
-          size="xs"
-          placeholder={t("graph3d.filterDomain")}
-          aria-label={t("graph3d.filterDomain")}
+        {hasStatus && (
+          <Group gap={4} data-testid={`${testId}-statuses`}>
+            <Text size="xs" c="dimmed">
+              {t("graph3d.show")}
+            </Text>
+            {STATUSES.map((st) => (
+              <Chip
+                key={st}
+                size="xs"
+                checked={!filters.hiddenStatuses.includes(st)}
+                onChange={(on) =>
+                  setFilters((f) => ({
+                    ...f,
+                    hiddenStatuses: on
+                      ? f.hiddenStatuses.filter((x) => x !== st)
+                      : [...f.hiddenStatuses, st],
+                  }))
+                }
+                data-testid={`${testId}-status-${st}`}
+              >
+                {t(`graph3d.status_${st}`)}
+              </Chip>
+            ))}
+          </Group>
+        )}
+        {edgeTypes.length > 0 && (
+          <SummaryMultiSelect
+            label={t("graph3d.filterEdgeType")}
+            data={edgeTypes}
+            value={filters.edgeTypes}
+            onChange={(types) => setFilters((f) => ({ ...f, edgeTypes: types }))}
+            testId={`${testId}-filter-edge-type`}
+          />
+        )}
+        <SummaryMultiSelect
+          label={t("graph3d.filterDomain")}
           data={choices.domains}
           value={filters.domains}
           onChange={(domains) => setFilters((f) => ({ ...f, domains }))}
-          clearable
-          data-testid={`${testId}-filter-domain`}
+          testId={`${testId}-filter-domain`}
         />
-        <MultiSelect
-          size="xs"
-          placeholder={t("graph3d.filterTag")}
-          aria-label={t("graph3d.filterTag")}
-          data={choices.tags}
-          value={filters.tags}
-          onChange={(tags) => setFilters((f) => ({ ...f, tags }))}
-          clearable
-          data-testid={`${testId}-filter-tag`}
-        />
-        <MultiSelect
-          size="xs"
-          placeholder={t("graph3d.filterSensitivity")}
-          aria-label={t("graph3d.filterSensitivity")}
-          data={choices.sensitivities}
-          value={filters.sensitivities}
-          onChange={(sensitivities) => setFilters((f) => ({ ...f, sensitivities }))}
-          clearable
-          data-testid={`${testId}-filter-sensitivity`}
-        />
+        {/* A filter with nothing to choose from is not offered. */}
+        {choices.tags.length > 0 && (
+          <SummaryMultiSelect
+            label={t("graph3d.filterTag")}
+            data={choices.tags}
+            value={filters.tags}
+            onChange={(tags) => setFilters((f) => ({ ...f, tags }))}
+            testId={`${testId}-filter-tag`}
+          />
+        )}
+        {choices.sensitivities.length > 0 && (
+          <SummaryMultiSelect
+            label={t("graph3d.filterSensitivity")}
+            data={choices.sensitivities}
+            value={filters.sensitivities}
+            onChange={(sensitivities) => setFilters((f) => ({ ...f, sensitivities }))}
+            testId={`${testId}-filter-sensitivity`}
+          />
+        )}
         <Select
           size="xs"
           placeholder={t("graph3d.filterFocus")}

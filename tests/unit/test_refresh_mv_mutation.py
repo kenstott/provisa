@@ -61,7 +61,7 @@ def _info(monkeypatch):
 async def test_a_failed_refresh_is_reported_with_the_views_error(view, monkeypatch):
     mv, registry = view
 
-    async def _fails(_engine, target, reg, store=None, ledger=None):
+    async def _fails(_engine, target, reg, store=None, ledger=None, full=False, window=None):
         reg.mark_refresh_failed(target.id, "relation sales.orders does not exist")
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _fails)
@@ -77,7 +77,7 @@ async def test_a_refresh_that_built_the_view_is_reported_as_refreshed(view, monk
     mv, registry = view
     mv.last_error = "an earlier failure"
 
-    async def _builds(_engine, target, reg, store=None, ledger=None):
+    async def _builds(_engine, target, reg, store=None, ledger=None, full=False, window=None):
         reg.mark_refreshed(target.id, row_count=4)
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _builds)
@@ -86,6 +86,22 @@ async def test_a_refresh_that_built_the_view_is_reported_as_refreshed(view, monk
     assert result.success is True
     assert result.code == "schema.mv_refreshed"
     assert mv.last_error is None and mv.status == MVStatus.FRESH
+
+
+async def test_a_full_refresh_is_asked_of_the_refresh(view, monkeypatch):
+    """REQ-2109: the admin refresh's ``full`` reaches the refresh, which then ignores an inherited
+    view's watermark."""
+    mv, _registry = view
+    asked: list[bool] = []
+
+    async def _builds(_engine, target, reg, store=None, ledger=None, full=False, window=None):
+        asked.append(full)
+        reg.mark_refreshed(target.id, row_count=4)
+
+    monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _builds)
+    await Mutation().refresh_mv(_info(monkeypatch), mv_id="view-sales")
+    await Mutation().refresh_mv(_info(monkeypatch), mv_id="view-sales", full=True)
+    assert asked == [False, True]
 
 
 async def test_a_view_refused_for_an_unreadable_input_is_reported_with_that_reason(
@@ -113,3 +129,47 @@ async def test_a_view_refused_for_an_unreadable_input_is_reported_with_that_reas
     assert result.success is False
     assert "'sales.orders' is a row-level replicated table" in result.message
     assert result.message == mv.last_error
+
+
+async def test_a_sealed_build_of_a_view_naming_no_calendar_is_refused_by_name(view, monkeypatch):
+    """REQ-2120: ``window`` builds a view sealed at a business day's close, which its calendar
+    says; the real refresh refuses it for a view that names none, before anything is built."""
+    import datetime as dt
+
+    mv, _registry = view
+    result = await Mutation().refresh_mv(
+        _info(monkeypatch), mv_id="view-sales", window=dt.date(2026, 10, 2)
+    )
+
+    assert result.success is False
+    assert result.code == "schema.mv_window_needs_calendar"
+    assert result.params == {"mv": "view-sales"}
+    assert "MV 'view-sales' names no calendar" in result.message
+    assert mv.last_error is None  # nothing was recorded on the view
+
+
+async def test_a_sealed_build_that_appends_nothing_is_reported_as_not_sealed(view, monkeypatch):
+    """REQ-2120: a build sealed at a close that recorded no version there is not a success: the
+    caller is told the view was not sealed, and why, and nothing is recorded on the view."""
+    import datetime as dt
+
+    from provisa.mv.refresh import SealedBuildNotDone
+
+    mv, _registry = view
+
+    async def _unchanged(_engine, view_mv, *_args, window=None, **_kwargs):
+        raise SealedBuildNotDone(view_mv.id, window, "unchanged")
+
+    monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _unchanged)
+    result = await Mutation().refresh_mv(
+        _info(monkeypatch), mv_id="view-sales", window=dt.date(2026, 10, 2)
+    )
+
+    assert result.success is False
+    assert result.code == "schema.mv_window_unchanged"
+    assert result.params == {"mv": "view-sales", "day": "2026-10-02"}
+    assert result.message == (
+        "MV 'view-sales' was not sealed at 2026-10-02's close: nothing it reads changed since "
+        "its last build"
+    )
+    assert mv.last_error is None

@@ -56,6 +56,7 @@ _VIEWS = (
     "table_columns",
     "tracked_functions",
     "tag_assignments",
+    "glossary_term_domains",  # glossary_term_refs_meta reads each term's domains from it
     "glossary_term_refs",
 )
 

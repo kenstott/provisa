@@ -88,8 +88,14 @@ def server():
                 },
             ],
             "roles": [
-                {"id": "bound", "capabilities": reads, "domain_access": ["*"]},
                 {
+                    "description": "Test role.",
+                    "id": "bound",
+                    "capabilities": reads,
+                    "domain_access": ["*"],
+                },
+                {
+                    "description": "Test role.",
                     "id": "free",
                     "capabilities": [*reads, "ignore_relationships"],
                     "domain_access": ["*"],

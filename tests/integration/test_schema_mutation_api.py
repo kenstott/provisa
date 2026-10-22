@@ -179,7 +179,7 @@ class TestRoleInheritance:  # REQ-1677
                 client,
                 f"""
                 mutation {{
-                    createRole(input: {{
+                    createRole(input: {{ description: "Test role.",
                         id: "{role_id}", capabilities: [], domainAccess: [],
                         parentRoleId: "{parent}"
                     }}) {{ success message }}

@@ -35,8 +35,9 @@ from provisa.mv.view_read import semantic_statement, unnarrowed_view_bodies
 pytestmark = pytest.mark.unit
 
 LOG = '"mat_store"."org_default_mv_cache"."mv_bt_view"'
-DEFINITION = "SELECT id, amount FROM sales.orders"
-SPEC = BitemporalSpec(key=("id",), mode="delta")
+DEFINITION = "SELECT id, business_date, amount FROM sales.orders"
+# REQ-2109: every bitemporal view's reads travel on its valid time.
+SPEC = BitemporalSpec(key=("id",), mode="delta", valid_column="business_date")
 CURRENT = view_read_sql(LOG, SPEC)
 STATEMENT = "SELECT id, amount FROM bt_view"
 

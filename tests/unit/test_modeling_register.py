@@ -21,15 +21,19 @@ def test_entity_scd2_lowers_to_bitemporal_table_input():
             key=["id"],
             attributes=["name", "region"],
             history="scd2",
+            valid_time="effective_at",
+            recorded_time="updated_at",
         )
     )
     assert ti.source_id == "__derived__"
     assert ti.table_name == "Customer"
     assert ti.materialize is True
-    assert ti.view_sql == 'SELECT "id", "name", "region" FROM "raw"."customers"'
-    assert ti.mv_bitemporal_mode == "delta"
-    assert ti.mv_bitemporal_key == ["id"]
-    assert [c.name for c in ti.columns] == ["id", "name", "region"]
+    assert ti.view_sql == (
+        'SELECT "id", "name", "region", "effective_at", "updated_at" FROM "raw"."customers"'
+    )
+    assert ti.business_key == ["id"]
+    assert (ti.valid_time, ti.recorded_time) == ("effective_at", "updated_at")
+    assert [c.name for c in ti.columns] == ["id", "name", "region", "effective_at", "updated_at"]
     assert ti.columns[0].visible_to == ["public"]
     assert ti.modeling_role == "dimension"  # REQ-1320
     assert ti.modeling_history == "scd2"  # REQ-1320
@@ -40,7 +44,7 @@ def test_entity_no_history_is_plain_materialized_table_input():
         EntityInput(name="Product", source="raw.products", domain_id="sales", key=["sku"])
     )
     assert ti.materialize is True
-    assert ti.mv_bitemporal_mode is None
+    assert ti.business_key == []
     assert ti.modeling_role == "dimension"  # REQ-1320
     assert ti.modeling_history is None  # REQ-1320: no history → no mode
 

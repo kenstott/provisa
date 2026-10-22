@@ -46,7 +46,7 @@ const { RegisterTableForm } = await import("../RegisterTableForm");
 const CYPHER = "MATCH (a:Adopter) RETURN a.adopter_id AS adopter_id, a.name AS name";
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   const setError = vi.fn();
   const getAvailableColumnsMetadata = vi.fn().mockResolvedValue([]);
   render(
@@ -60,13 +60,12 @@ function renderForm() {
       roles={[{ id: "org_admin" } as never, { id: "analyst" } as never]}
       getAvailableColumnsMetadata={getAvailableColumnsMetadata}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={setError}
     />,
   );
-  return { registerTable, setError, getAvailableColumnsMetadata };
+  return { onContinue, setError, getAvailableColumnsMetadata };
 }
 
 async function pickSourceAndType() {
@@ -142,7 +141,7 @@ describe("RegisterTableForm on a neo4j source (REQ-1670)", () => {
   });
 
   it("refuses to register before a preview typed the columns", async () => {
-    const { registerTable, setError } = renderForm();
+    const { onContinue, setError } = renderForm();
     await pickSourceAndType();
     fireEvent.click(screen.getByTestId("register-table-submit"));
 
@@ -151,11 +150,11 @@ describe("RegisterTableForm on a neo4j source (REQ-1670)", () => {
         "Preview the Cypher first so the columns and their types are known.",
       ),
     );
-    expect(registerTable).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
   });
 
   it("registers the previewed columns with the Cypher as queryTemplate under the neo4j schema", async () => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pickSourceAndType();
     await user.click(screen.getByTestId("register-table-neo4j-preview"));
     await waitFor(() =>
@@ -163,8 +162,8 @@ describe("RegisterTableForm on a neo4j source (REQ-1670)", () => {
     );
     fireEvent.click(screen.getByTestId("register-table-submit"));
 
-    await waitFor(() => expect(registerTable).toHaveBeenCalledTimes(1));
-    const input = registerTable.mock.calls[0][0];
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    const input = onContinue.mock.calls[0][0].input;
     expect(input).toMatchObject({
       sourceId: "neo4j-demo",
       domainId: "shelter",

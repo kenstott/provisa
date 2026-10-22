@@ -326,7 +326,7 @@ def all_three_loops_complete(shared_data: dict, job_store: InMemoryJobStore) -> 
         app_state = _FakeAppState()
         app_state.contexts[role] = CompilationContext()
         # The acting role as the state holds it: table selection reads the domains it reaches.
-        app_state.roles = {role: {"id": role, "domain_access": ["*"]}}
+        app_state.roles = {role: {"description": "Test role.", "id": role, "domain_access": ["*"]}}
         # Its surfaces as they stand now, with the role's context: they were taken when it was built.
         from tests.role_state import with_surfaces
 

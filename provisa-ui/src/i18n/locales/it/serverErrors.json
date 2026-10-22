@@ -443,7 +443,12 @@
       "role_description_missing": "Il ruolo '{{role}}' ha bisogno di una descrizione di a cosa serve",
       "rls_rule_description_missing": "Una regola di riga ha bisogno di una descrizione di a cosa serve",
       "file_download_refused": "Sorgente {{source}}: {{reason}}",
-      "source_created_without_table": "Sorgente {{source}} creata; la sua tabella non è stata impostata: {{reason}}"
+      "source_created_without_table": "Sorgente {{source}} creata; la sua tabella non è stata impostata: {{reason}}",
+      "mv_window_needs_calendar": "La MV '{{mv}}' non indica alcun calendario: una build sigillata alla chiusura di un giorno lavorativo ne richiede uno",
+      "version_log_updated": "Registro delle versioni '{{mv}}' aggiornato",
+      "mv_window_held": "La MV '{{mv}}' non è stata sigillata alla chiusura del {{day}}: un'altra build ne detiene la richiesta",
+      "mv_window_unchanged": "La MV '{{mv}}' non è stata sigillata alla chiusura del {{day}}: nulla di ciò che legge è cambiato dalla sua ultima build",
+      "landing_time_pipeline": "La tabella '{{table}}' tiene l'ora di arrivo in {{column}}, ma il suo store carica il topic con una propria pipeline, dove Provisa non vede arrivare ogni messaggio."
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",
@@ -599,6 +604,7 @@
       "wrong_tier": "Questa sandbox è servita altrove; aprila dal suo indirizzo.",
       "unknown_demo": "Non esiste una demo pubblicata di nome {{demo}}.",
       "demo_not_ready": "Questa demo è ancora in preparazione. Riprova a breve.",
+      "demo_stores_failed": "Non è stato possibile avviare questa demo. Riprova tra qualche minuto.",
       "at_capacity": "Tutte le sandbox demo sono in uso. Riprova a breve.",
       "starting": "Il server demo si sta avviando. Riprova tra un paio di minuti.",
       "disk_full": "Questa sandbox ha esaurito il suo limite di disco di {{limit}} byte; non vi si può scrivere altro.",

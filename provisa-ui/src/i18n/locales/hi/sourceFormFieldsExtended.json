@@ -203,6 +203,7 @@
     "accountEmailHint": "जिस ईमेल से आप Atlassian में साइन इन करते हैं; API टोकन इसी खाते का है।",
     "apiToken": "API टोकन",
     "apiTokenHint": "id.atlassian.com पर बनाएँ, Security, API tokens। सीक्रेट वॉल्ट में रखा जाता है।",
-    "siteAddressInvalid": "साइट का पूरा पता दर्ज करें, जो https:// से शुरू हो"
+    "siteAddressInvalid": "साइट का पूरा पता दर्ज करें, जो https:// से शुरू हो",
+    "namingInherit": "इनहेरिट (वैश्विक)"
   }
 }

@@ -67,7 +67,15 @@
       "refreshing": "...",
       "disable": "Desabilitar",
       "enable": "Habilitar",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "Registro de versões de {{table}}",
+      "fullCapture": "Captura completa",
+      "fullCaptureHelp": "Lê a tabela inteira novamente e registra as linhas excluídas desde a última captura.",
+      "logSettings": "Configurações",
+      "logInterval": "Intervalo de captura (segundos)",
+      "logIntervalHelp": "Com que frequência a tabela é lida em busca de linhas registradas desde a última captura.",
+      "logLateness": "Atraso permitido (segundos)",
+      "logLatenessHelp": "Quanto antes do último horário de registro cada captura volta a ler, para que uma linha confirmada com atraso seja mantida."
     },
     "pagination": {
       "first": "Primeira página",

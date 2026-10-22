@@ -33,11 +33,6 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
     useAvailableTables(sourceId, schema),
 }));
 
-const upsertRlsRule = vi.fn();
-vi.mock("../../../hooks/useSecurityQueries", () => ({
-  useUpsertRlsRule: () => ({ upsertRlsRule, loading: false }),
-}));
-
 const fetchProfilerCatalog = vi.fn();
 vi.mock("../../../api/profiler", () => ({
   fetchProfilerCatalog: (id: string) => fetchProfilerCatalog(id),
@@ -88,12 +83,10 @@ const CATALOG = [
 beforeEach(() => {
   vi.clearAllMocks();
   fetchProfilerCatalog.mockResolvedValue(CATALOG);
-  upsertRlsRule.mockResolvedValue({ success: true, message: "" });
 });
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
-  const onSuccess = vi.fn();
+  const onContinue = vi.fn();
   render(
     <RegisterTableForm
       sources={[{ id: "prof", type: "data_profiler", allowedDomains: [] } as never]}
@@ -105,18 +98,17 @@ function renderForm() {
       roles={[{ id: "org_admin" } as never, { id: "analyst" } as never]}
       getAvailableColumnsMetadata={vi.fn()}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={onSuccess}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={vi.fn()}
     />,
   );
-  return { registerTable, onSuccess };
+  return { onContinue };
 }
 
 describe("RegisterTableForm on a Data Profiler source (REQ-1934)", () => {
   it("registers a picked result table with the catalog's rules, then its edited row rules", async () => {
-    const { registerTable, onSuccess } = renderForm();
+    const { onContinue } = renderForm();
     const user = userEvent.setup();
     await user.selectOptions(screen.getByTestId("register-table-source-select"), "prof");
     await user.selectOptions(screen.getByTestId("register-table-domain-select"), "sales");
@@ -131,8 +123,8 @@ describe("RegisterTableForm on a Data Profiler source (REQ-1934)", () => {
     fireEvent.change(rule, { target: { value: "column_name IN ('id', 'region')" } });
 
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    const input = registerTable.mock.calls[0][0];
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    const input = onContinue.mock.calls[0][0].input;
     expect(input.tableName).toBe(TOP);
     const value = input.columns.find((c: { name: string }) => c.name === "value");
     expect(value).toMatchObject({
@@ -142,10 +134,10 @@ describe("RegisterTableForm on a Data Profiler source (REQ-1934)", () => {
         { to: ["*"], mask: { type: "constant", value: null } },
       ],
     });
-    expect(upsertRlsRule).toHaveBeenCalledWith({
-      tableId: TOP,
+    // The edited row rules go with the registration, saved once the table exists (REQ-2109).
+    expect(onContinue.mock.calls[0][0].rowRules).toContainEqual({
       roleId: "analyst",
-      filterExpr: "column_name IN ('id', 'region')",
+      filter: "column_name IN ('id', 'region')",
       description: "Keeps the profile rows analyst may read.",
     });
   });

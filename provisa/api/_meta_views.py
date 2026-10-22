@@ -164,10 +164,20 @@ def _data_product_edges_sql() -> str:
     number of distinct relationships (or derivations) leaving the members that lead on to the
     target, the hops are the shortest distance, and the aliases and supporting tables are those on
     any walk from a member to the target. Each recursion's rows are bounded by the model's tables
-    (or relations), so the cost grows with the model, not with the routes through it."""
+    (or relations), so the cost grows with the model, not with the routes through it.
+
+    Every table a row names -- a supporting table, a view a lineage edge goes through -- is named
+    as the model names it: its domain and its alias, or its name when it has none."""
     return """
         CREATE OR REPLACE VIEW data_product_edges AS
-        WITH RECURSIVE members AS (
+        WITH RECURSIVE
+        -- Each registered table by the name the model gives it: its domain and its alias, or its
+        -- name when it has none -- every reference this view returns is a model name.
+        model_names AS (
+            SELECT id AS table_id, domain_id || '.' || COALESCE(alias, table_name) AS model_name
+            FROM registered_tables
+        ),
+        members AS (
             SELECT id AS table_id, product_id, dq_contract
             FROM registered_tables
             WHERE product_id IS NOT NULL AND NOT draft
@@ -314,10 +324,10 @@ def _data_product_edges_sql() -> str:
         ),
         rel_support AS (
             SELECT s.product_id, s.target_product_id, s.target_table_id,
-                   STRING_AGG(DISTINCT t.table_name, ', ' ORDER BY t.table_name)
+                   STRING_AGG(DISTINCT t.model_name, ', ' ORDER BY t.model_name)
                        AS supporting_tables
             FROM supporting s
-            JOIN registered_tables t ON t.id = s.node
+            JOIN model_names t ON t.table_id = s.node
             GROUP BY s.product_id, s.target_product_id, s.target_table_id
         ),
         ledges AS (
@@ -412,16 +422,26 @@ def _data_product_edges_sql() -> str:
             FROM lineage_paths l
             GROUP BY l.product_id, l.direction, l.relation
         ),
+        -- A view a derivation goes through, by its model name; a command, by its own name; a
+        -- relation the model has not registered, by the name the lineage records.
+        via_names AS (
+            SELECT DISTINCT e.via, COALESCE(n.model_name, e.via) AS via_name
+            FROM lineage_edges e
+            LEFT JOIN relation_tables rt ON e.via_kind = 'view' AND rt.relation = e.via
+            LEFT JOIN model_names n ON n.table_id = rt.table_id
+        ),
         lineage_vias AS (
-            SELECT product_id, 'upstream' AS direction, relation,
-                   STRING_AGG(DISTINCT via, ', ' ORDER BY via) AS vias
-            FROM up_vias
-            GROUP BY product_id, relation
+            SELECT u.product_id, 'upstream' AS direction, u.relation,
+                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name) AS vias
+            FROM up_vias u
+            JOIN via_names n ON n.via = u.via
+            GROUP BY u.product_id, u.relation
             UNION ALL
             SELECT mr.product_id, 'downstream', e.tgt,
-                   STRING_AGG(DISTINCT e.via, ', ' ORDER BY e.via)
+                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name)
             FROM member_relations mr
             JOIN ledges e ON e.src = mr.relation
+            JOIN via_names n ON n.via = e.via
             GROUP BY mr.product_id, e.tgt
         )
         SELECT r.product_id || ':relationship:'
@@ -540,6 +560,32 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM tag_assignments
         WHERE expires_on IS NOT NULL
     """,
+    # REQ-1591: each term's domains by the one rule (provisa.core.repositories.glossary.
+    # term_domains): the domains of the tables its refs point at while it holds refs, its declared
+    # rows otherwise. "*" is the enterprise scope (REQ-1592). term_domains is the term's whole set
+    # as |a|b|, the column every glossary view's readable-term row scope tests (REQ-1593); it is
+    # first because the other glossary views read it.
+    "glossary_term_domains": """
+        CREATE OR REPLACE VIEW glossary_term_domains_meta AS
+        WITH d AS (
+            SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
+            FROM glossary_term_refs r
+            JOIN registered_tables rt ON rt.id = r.table_id
+            UNION ALL
+            SELECT g.term_id, g.domain_id, g.tenant_id
+            FROM glossary_term_domains g
+            WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
+        ),
+        s AS (
+            SELECT term_id, '|' || STRING_AGG(domain_id, '|') || '|' AS term_domains
+            FROM d
+            GROUP BY term_id
+        )
+        SELECT CAST(d.term_id AS TEXT) || ':' || d.domain_id AS id, d.term_id, d.domain_id,
+               d.tenant_id, s.term_domains
+        FROM d
+        JOIN s ON s.term_id = d.term_id
+    """,
     # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
     # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
     # in service, defined, and connected over in-service edges to a term holding a physical ref.
@@ -584,19 +630,18 @@ _META_TABLE_VIEWS: dict[str, str] = {
                CASE WHEN t.id IN (SELECT id FROM grounded)
                      AND TRIM(COALESCE(t.definition, '')) <> ''
                     THEN TRUE ELSE FALSE END AS live,
-               t.tenant_id
+               t.tenant_id,
+               CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = t.id) AS term_domains
         FROM glossary_terms t
     """,
-    # A ref binds a term to a COLUMN — (table_id, column_name) — deliberately not
-    # table_columns.id, which the table upsert replaces wholesale. `relationships` is
-    # single-column, so the ref and the column view both emit the same synthesized
-    # column_key and the registered edge joins on that: stable where the surrogate id is not.
     "glossary_term_refs": """
         CREATE OR REPLACE VIEW glossary_term_refs_meta AS
         SELECT r.id, r.term_id, r.table_id, r.column_name,
                CAST(r.table_id AS TEXT) || ':' || r.column_name AS column_key,
                rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
-               r.tenant_id
+               r.tenant_id,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
         FROM glossary_term_refs r
         JOIN registered_tables rt ON rt.id = r.table_id
     """,
@@ -604,7 +649,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW glossary_term_edges_meta AS
         SELECT e.id, e.from_term_id, e.to_term_id, e.rel_type,
                f.name AS from_term, t.name AS to_term,
-               e.tenant_id
+               e.tenant_id,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = e.from_term_id) AS from_term_domains,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = e.to_term_id) AS to_term_domains
         FROM glossary_term_edges e
         JOIN glossary_terms f ON f.id = e.from_term_id
         JOIN glossary_terms t ON t.id = e.to_term_id

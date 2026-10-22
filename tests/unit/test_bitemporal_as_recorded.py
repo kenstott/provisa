@@ -8,14 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Time travel on both axes (REQ-1163 as amended): as of a time on the view's clock, as Provisa
-had recorded it at another. A correction recorded later changes what the view says about the past,
+"""Time travel on both axes (REQ-1163 as amended 2026-10-20): as of a time on the view's valid
+time, as Provisa had recorded it at another. A correction recorded later changes what the view says about the past,
 and a read as recorded before it answers what was said then. Run on DuckDB.
 
 The scenario: the rates desk's exposure, valid from 30 September, was recorded on 1 October
 (1540000) and corrected on 5 October (1550000), still valid from 30 September."""
 
-# Requirements: REQ-1163
+# Requirements: REQ-1163, REQ-2109
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _log(mode: str):
     return con, BitemporalSpec(
         key=("desk",),
         mode=mode,
-        source_column="valid_from",
+        valid_column="valid_from",  # REQ-2109: the view's valid time; recorded on its append stamp
         columns=("desk", "exposure", "valid_from"),
     )
 
