@@ -104,6 +104,7 @@ class TestUpsertMutations:
     def test_compile_upsert_produces_on_conflict_sql(self):
         # REQ-212: compile_upsert returns SQL with ON CONFLICT clause
         from provisa.compiler.mutation_gen import compile_upsert
+        from provisa.compiler.sql_gen import CompilationContext
 
         table = _make_table_meta()
         field_node = _make_field_node(
@@ -111,7 +112,7 @@ class TestUpsertMutations:
             {"input": {"id": 1, "amount": 99}, "on_conflict": ["id"]},
         )
 
-        result = compile_upsert(field_node, table, variables=None)  # type: ignore[arg-type]
+        result = compile_upsert(field_node, table, None, CompilationContext())  # type: ignore[arg-type]
 
         assert "ON CONFLICT" in result.sql
         assert result.mutation_type == "upsert"
@@ -119,6 +120,7 @@ class TestUpsertMutations:
     def test_compile_upsert_do_update_set_clause(self):
         # REQ-212: non-conflict columns appear in DO UPDATE SET
         from provisa.compiler.mutation_gen import compile_upsert
+        from provisa.compiler.sql_gen import CompilationContext
 
         table = _make_table_meta()
         field_node = _make_field_node(
@@ -126,7 +128,7 @@ class TestUpsertMutations:
             {"input": {"id": 1, "amount": 99, "status": "open"}, "on_conflict": ["id"]},
         )
 
-        result = compile_upsert(field_node, table, variables=None)  # type: ignore[arg-type]
+        result = compile_upsert(field_node, table, None, CompilationContext())  # type: ignore[arg-type]
 
         assert "DO UPDATE SET" in result.sql
         assert "EXCLUDED" in result.sql
@@ -134,6 +136,7 @@ class TestUpsertMutations:
     def test_compile_upsert_do_nothing_when_all_conflict_cols(self):
         # REQ-212: when all columns are conflict columns, DO NOTHING is emitted
         from provisa.compiler.mutation_gen import compile_upsert
+        from provisa.compiler.sql_gen import CompilationContext
 
         table = _make_table_meta()
         field_node = _make_field_node(
@@ -141,7 +144,7 @@ class TestUpsertMutations:
             {"input": {"id": 1}, "on_conflict": ["id"]},
         )
 
-        result = compile_upsert(field_node, table, variables=None)  # type: ignore[arg-type]
+        result = compile_upsert(field_node, table, None, CompilationContext())  # type: ignore[arg-type]
 
         assert "DO NOTHING" in result.sql
 
@@ -337,10 +340,11 @@ class TestColumnPresets:
 
     def test_a_compiled_insert_carries_the_preset_once_admitted(self):
         from provisa.compiler.mutation_gen import compile_insert
+        from provisa.compiler.sql_gen import CompilationContext
         from provisa.compiler.stage2 import apply_governance
 
         field_node = _make_field_node("insertOrders", {"input": {"id": 1, "amount": 50}})
-        compiled = compile_insert(field_node, _make_table_meta(), variables=None)  # type: ignore[arg-type]
+        compiled = compile_insert(field_node, _make_table_meta(), None, CompilationContext())  # type: ignore[arg-type]
         governed = apply_governance(
             compiled.sql,
             _preset_gov({"column": "created_by", "source": "literal", "value": "7"}),

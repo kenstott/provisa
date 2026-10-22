@@ -60,7 +60,12 @@ from tests.helpers import ALL_DATA_CAPABILITIES, registry_write_ops, registry_wr
 
 pytestmark = [pytest.mark.integration]
 
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 _SCHEMA = "public"
 _TABLE = "orders"
 

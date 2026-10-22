@@ -52,15 +52,21 @@ export interface TermRow {
   retired: boolean;
   live: boolean;
   grounded?: boolean;
-  domains?: { domain_id: string }[];
-  refs?: {
-    column_key: string;
-    column_name: string;
-    table_id: number;
-    table_name: string;
-    domain_id: string;
-    table?: { id: number; product?: { id: string; name: string; domain_id: string } | null } | null;
-  }[];
+  // One-to-many: null when the term has none (see rowsOf).
+  domains?: { domain_id: string }[] | null;
+  refs?:
+    | {
+        column_key: string;
+        column_name: string;
+        table_id: number;
+        table_name: string;
+        domain_id: string;
+        table?: {
+          id: number;
+          product?: { id: string; name: string; domain_id: string } | null;
+        } | null;
+      }[]
+    | null;
 }
 
 export interface TermEdgeRow {

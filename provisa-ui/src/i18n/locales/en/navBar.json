@@ -28,7 +28,7 @@
     "itemOrgs": "Orgs",
     "itemDashboard": "Dashboard",
     "itemDomains": "Domains",
-    "itemEnvironments": "Environments",
+    "itemEnvironments": "DataOps",
     "itemCache": "Cache",
     "itemScheduler": "Triggers",
     "itemFederation": "Federation",

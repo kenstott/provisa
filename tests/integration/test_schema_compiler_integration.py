@@ -45,6 +45,7 @@ def _col(name: str, data_type: str = "varchar", nullable: bool = True) -> Column
 
 def _make_role(role_id: str = "admin", domain_access: list[str] | None = None) -> dict:
     return {
+        "description": "Test role.",
         "id": role_id,
         "domain_access": domain_access if domain_access is not None else ["*"],
         "capabilities": [],
@@ -201,7 +202,12 @@ class TestViewRLSEnforcement:
             relationships=[],
             column_types=col_types,
             naming_rules=[],
-            role={"id": "admin", "domain_access": ["*"], "capabilities": []},
+            role={
+                "description": "Test role.",
+                "id": "admin",
+                "domain_access": ["*"],
+                "capabilities": [],
+            },
             domains=[{"id": "sales", "graphql_alias": None}],
         )
         analyst_si = SchemaInput(
@@ -209,7 +215,12 @@ class TestViewRLSEnforcement:
             relationships=[],
             column_types=col_types,
             naming_rules=[],
-            role={"id": "analyst", "domain_access": ["*"], "capabilities": []},
+            role={
+                "description": "Test role.",
+                "id": "analyst",
+                "domain_access": ["*"],
+                "capabilities": [],
+            },
             domains=[{"id": "sales", "graphql_alias": None}],
         )
         return admin_si, analyst_si
@@ -267,7 +278,12 @@ class TestViewRLSEnforcement:
             relationships=[],
             column_types=col_types,
             naming_rules=[],
-            role={"id": "analyst", "domain_access": ["*"], "capabilities": []},
+            role={
+                "description": "Test role.",
+                "id": "analyst",
+                "domain_access": ["*"],
+                "capabilities": [],
+            },
             domains=[{"id": "sales", "graphql_alias": None}],
         )
         ctx = build_context(analyst_si)

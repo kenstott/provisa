@@ -30,6 +30,7 @@ from provisa.federation.replica_address import ReplicaRoutes
 from provisa.federation.replica_routing import table_floor
 from provisa.federation.replica_state import ReplicaBuildFailed, ReplicaBuilding
 from provisa.federation.replica_state import RetryPolicy
+from provisa.federation.engine import FederationEngine
 
 pytestmark = pytest.mark.unit
 
@@ -185,6 +186,7 @@ def _state(sources, tables, backend, plane):
             name="snowflake",
             native_store="snowflake",
             connectors={},  # no connector reads any source in place, unless a test declares one
+            asks_in_place=FederationEngine.asks_in_place,  # REQ-1867, REQ-2100: as the engine asks
             replica_store_backend=lambda: "snowflake",  # as FederationEngine: its native store
             materialize_store=lambda: "postgresql://localhost/materialize",
         )

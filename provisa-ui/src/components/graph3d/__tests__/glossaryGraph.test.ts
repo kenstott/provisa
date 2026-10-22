@@ -101,6 +101,11 @@ describe("the Ontology View's terms", () => {
     expect(node(u, "term:9")?.note).toBe("undefined");
   });
 
+  it("draws a term the server answered no domains and no references for (null lists)", () => {
+    const g = glossaryGraph([term(7, "Lone", { domains: null, refs: null })], [], say);
+    expect(node(g, "term:7")?.label).toBe("Lone");
+  });
+
   it("draws abstract terms hollow and concrete ones solid", () => {
     expect(node(G, "term:2")?.hollow).toBe(true);
     expect(node(G, "term:1")?.hollow).toBe(false);

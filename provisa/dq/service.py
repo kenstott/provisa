@@ -75,6 +75,10 @@ async def answer(grant: Any, role: str | None, method: str, sub: str, span: Any)
             found = await product(name, role)
         else:
             raise ServiceRefused(404, f"dq answers dataset/<name> and product/<id>, not {sub!r}")
+    except PermissionError as refused:
+        # Governance refused a read of the role's: the caller is told why, as the role's own
+        # statement would be, not that the service failed.
+        raise ServiceRefused(403, f"dq read as {role!r} was refused: {refused}") from refused
     finally:
         reset_current_org(token)
     if found is None:

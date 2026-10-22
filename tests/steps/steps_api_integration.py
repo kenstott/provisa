@@ -919,7 +919,12 @@ def _build_orders_schema_ctx():
         ],
         2: [_col("id", "integer"), _col("name", "varchar(100)")],
     }
-    role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ["query_development"],
+        "domain_access": ["*"],
+    }
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,
@@ -1230,8 +1235,8 @@ def rest_same_governance_as_graphql(shared_data):
         # A role always lists the domains it reaches; both reach every domain here, so the row
         # filter is the only difference between them.
         roles={
-            "filtered": {"id": "filtered", "domain_access": ["*"]},
-            "unfiltered": {"id": "unfiltered", "domain_access": ["*"]},
+            "filtered": {"description": "Test role.", "id": "filtered", "domain_access": ["*"]},
+            "unfiltered": {"description": "Test role.", "id": "unfiltered", "domain_access": ["*"]},
         },
         source_types={"sales-pg": "postgresql"},
         metrics={},

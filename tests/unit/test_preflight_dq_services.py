@@ -279,6 +279,28 @@ async def test_dq_is_read_only_answers_a_role_and_names_what_it_cannot_find(meta
         reset_current_org(token)
 
 
+@pytest.mark.asyncio
+async def test_a_read_governance_refuses_is_a_refusal_naming_why(monkeypatch):
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    async def refused(sql, role):
+        raise PermissionError("[V006] Relation 'qa.x' is not a registered table")
+
+    monkeypatch.setattr(dq, "_read", refused)
+    grant = SimpleNamespace(org_id="acme", product_id=None)
+    span = SimpleNamespace(set_attribute=lambda *a: None)
+    token = set_current_org("acme")
+    try:
+        with pytest.raises(ServiceRefused) as no:
+            await dq.answer(grant, "analyst", "GET", "dataset/sales.orders", span)
+    finally:
+        reset_current_org(token)
+    assert no.value.status == 403
+    assert no.value.reason == (
+        "dq read as 'analyst' was refused: [V006] Relation 'qa.x' is not a registered table"
+    )
+
+
 # -- Hold on failing checks -----------------------------------------------------------------------
 
 

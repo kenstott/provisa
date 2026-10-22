@@ -247,7 +247,8 @@ def _sql(srv, sql: str, role: str = _ADMIN) -> list[dict]:
         headers={"X-Provisa-Role": role},
         timeout=srv.request_timeout + 120,
     )
-    assert response.status_code == 200, response.text
+    # A failure carries the server's log tail: a services call's failure is told there.
+    assert response.status_code == 200, f"{response.text}\n{srv.dump_stderr_debug()[-6000:]}"
     return response.json()["data"]["sql"]
 
 

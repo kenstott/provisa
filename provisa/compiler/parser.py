@@ -54,12 +54,14 @@ def _refuse_unoffered_writes(
 ) -> None:  # REQ-209, REQ-1925
     """A mutation field naming a table the role reads, for an operation the table does not take,
     is refused by name (``data.write_not_supported``) — the refusal every surface gives such a
-    write. The schema offers a table only the mutations its source takes, so the field is absent
-    and validation alone would answer with an unnamed "Cannot query field"."""
+    write. The schema offers a table only the mutations its source takes and the role holds a
+    write grant for (REQ-2074), so the field is absent and validation alone would answer with an
+    unnamed "Cannot query field". Where the source takes the operation, what the role lacks is the
+    grant, and it is refused as every surface refuses a write with no grant."""
     from graphql import OperationDefinitionNode, OperationType
 
     from provisa.compiler.mutation_gen import _get_mutation_meta
-    from provisa.compiler.write_admission import WriteNotSupported
+    from provisa.compiler.write_admission import WriteNotSupported, no_grant
 
     mutation_type = schema.mutation_type
     offered = set(mutation_type.fields) if mutation_type is not None else set()
@@ -80,6 +82,8 @@ def _refuse_unoffered_writes(
                 # An upsert inserts or updates: what is missing is the insert, unless the table's
                 # insert field is offered, in which case it is the update.
                 operation = "update" if name.replace("upsert", "insert", 1) in offered else "insert"
+            if operation in ctx.write_ops.get(table.table_id, frozenset()):
+                raise no_grant(ctx.role_id, table.table_name, operation)
             raise WriteNotSupported(table.table_name, operation)
 
 

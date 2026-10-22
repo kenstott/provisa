@@ -48,7 +48,12 @@ from tests.embedded_pg import DATABASE, ROLE, LocalPostgres, start_local_postgre
 from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 
 # All CSV columns in file order (file_fdw is positional — the foreign table must list every column).
 _CSV_COLS = [
