@@ -12,6 +12,7 @@ Provisa נותן לכם שני רכיבי יסוד הצהרתיים, `entity` ו
 נותנים לו שם, מכוונים אותו למקור, מצהירים את מפתח ה-entity והתכונות שברצונכם לשאת,
 ובוחרים מצב היסטוריה. Provisa כותבת את ה-SQL של התצוגה ורושמת את ה-MV. כאשר היסטוריה
 מופעלת, ה-MV הוא בי-טמפורלי.
+ה-MV מצהיר אז על מפתח ה-entity כ-`business_key` יחד עם עמודות זמן התוקף וזמן הרישום שאתם מציינים.
 
 **fact** הוא join למפתחות של ישויות, מצומצם לגרעין מוצהר, עם מדדים מצטברים. Provisa כותב שאילתת MV מצטברת (`GROUP BY` גרעין + עמודות FK) ורושם קשר לכל קישור ממד מוצהר. fact בלי מדדים הוא קבוצת מפתחות טהורה, תבנית ה-link של Data Vault.
 
@@ -19,17 +20,15 @@ Provisa נותן לכם שני רכיבי יסוד הצהרתיים, `entity` ו
 
 ## מצבי היסטוריה {: #history-modes }
 
-שלושה מצבים זמינים על entity:
+שלושה מצבים זמינים ב-entity:
 
-| מצב | משמעות | מצב בי-טמפורלי |
-| --- | --- | --- |
-| `none` | נוכחי-בלבד. ללא היסטוריה. | — |
-| `scd2` | מעקב אחר כל שינוי. הוספת שורות שהשתנו בלבד (delta) מוקלדות על מפתח ה-entity. | `delta` |
-| `snapshot` | מעקב אחר כל רענון. הוספת סט התוצאות המלא בכל רענון, מוחתם בזמן מערכת. | `snapshot` |
+| מצב | משמעות |
+| --- | --- |
+| `none` | מצב נוכחי בלבד. ללא היסטוריה. |
+| `scd2` | עוקב אחרי כל שינוי, מוקלד על מפתח ה-entity. |
+| `snapshot` | עוקב אחרי כל רענון, מוקלד על מפתח ה-entity. |
 
-`scd2` דורש מפתח entity כדי לחשב את ה-delta. `snapshot` עובד על כל מנוע אך האחסון גדל
-בעותק מלא לכל רענון. בחרו `scd2` עבור מקורות גדולים, איטיים-בשינוי; בחרו `snapshot` כאשר
-אתם זקוקים להיסטוריה מלאה והמקור אינו יכול לספק מפתח.
+`scd2` ו-`snapshot` שומרים שניהם כל גרסה, ו-Provisa בוחרת איך לאחסן אותן. כל אחד מהם צריך עמודת זמן תוקף ועמודת זמן רישום (`validTime`,‏ `recordedTime`): התאריך שהעסק שלכם נותן לרשומה, ומתי גרסה זו הוזנה או שונתה. [תצוגות עם היסטוריה](configuration.md#views-with-history-time-travel) מסביר את שני הזמנים.
 
 ל-facts אין מצב היסטוריה משלהם; הכיסוי שלהם לאורך זמן מגיע מההיסטוריה של הישויות שמתחתיהם.
 
@@ -45,7 +44,7 @@ Provisa נותן לכם שני רכיבי יסוד הצהרתיים, `entity` ו
 
 ### טבלאות המקור {: #the-source-tables }
 
-- `raw.customers` — id, name, region, tier
+- `raw.customers` — id, name, region, tier, effective_date, updated_at
 - `raw.orders` — order_id, customer_id, amount, quantity
 
 ### רישום ה-entity לקוח {: #register-the-customer-entity }
@@ -58,9 +57,11 @@ Provisa נותן לכם שני רכיבי יסוד הצהרתיים, `entity` ו
        - **Name:** `Customer`
        - **Source relation:** `raw.customers`
        - **Domain:** *(הדומיין שלכם)*
-       - **Entity key:** `id`
+       - **Business key:** `id`
        - **Attributes:** `name, region, tier`
-       - **History:** `SCD2 (track changes — delta bitemporal)`
+       - **Keep history:** `Bitemporal`
+       - **Valid time:** `effective_date`
+       - **Recorded time:** `updated_at`
     4. לחצו **Create**.
 
 === "GraphQL API"
@@ -74,6 +75,8 @@ Provisa נותן לכם שני רכיבי יסוד הצהרתיים, `entity` ו
         key: ["id"]
         attributes: ["name", "region", "tier"]
         history: "scd2"
+        validTime: "effective_date"
+        recordedTime: "updated_at"
       }) {
         success
         message
@@ -84,8 +87,9 @@ Provisa נותן לכם שני רכיבי יסוד הצהרתיים, `entity` ו
 Provisa יוצרת ורושמת MV בי-טמפורלי זה:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- registered as a bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- registered as a bitemporal MV: business_key ["id"], valid_time effective_date,
+-- recorded_time updated_at
 ```
 
 ### רישום ה-fact מכירות {: #register-the-sales-fact }
@@ -155,6 +159,8 @@ schema / Data Vault)").
 | Entity key | כן | עמודת/עמודות מפתח מופרדות-פסיק, למשל `id` |
 | Attributes | לא | עמודות תכונה מופרדות-פסיק, למשל `name, region, tier` |
 | History | לא | `none` / `scd2` / `snapshot`; ברירת מחדל `none` |
+| Valid time | עם היסטוריה | העמודה שמחזיקה את התאריך שהעסק שלכם נותן לרשומה |
+| Recorded time | עם היסטוריה | העמודה שמחזיקה את המועד שבו גרסה זו הוזנה או שונתה |
 
 ### שדות Fact {: #fact-fields }
 
@@ -194,6 +200,8 @@ mutation RegisterEntity($input: EntityInput!) {
 | `key` | [String] | — | עמודת/עמודות מפתח entity |
 | `attributes` | [String] | `[]` | עמודות תכונה להקרנה |
 | `history` | String | `"none"` | `"none"` \| `"scd2"` \| `"snapshot"` |
+| `validTime` | String | `null` | עמודת זמן התוקף; נדרשת כאשר `history` אינו `"none"` |
+| `recordedTime` | String | `null` | עמודת זמן הרישום; נדרשת כאשר `history` אינו `"none"` |
 | `visibleTo` | [String] | `["public"]` | רשימת נראות תפקידים |
 
 ### `registerFact`
@@ -246,7 +254,7 @@ mutation RegisterFact($input: FactInput!) {
 | סוג SCD | מצב היסטוריה | אפקט |
 | --- | --- | --- |
 | Type 1 (נוכחי-בלבד) | `none` | MV נבנה-מחדש ברענון; ללא היסטוריית שורה |
-| Type 2 (עם גרסאות) | `scd2` | MV‏ delta בי-טמפורלי; כל שינוי מוסיף שורה חדשה מוקלדת על מפתח ה-entity |
+| Type 2 (עם גרסאות) | `scd2` | MV‏ בי-טמפורלי; כל שינוי מוסיף גרסה חדשה מוקלדת על מפתח ה-entity |
 
 השתמשו ב-`scd2` כששאילתות בהמשך צריכות לבצע join לממד כפי שהיה בזמן העסקה, כמו הדרגה של לקוח ברגע הרכישה ולא הדרגה הנוכחית שלו. השתמשו ב-`none` לטבלאות עזר יציבות. ציר תאריכים לעולם לא משתנה, וקטלוג מוצרים שבו צריך רק את המחיר הנוכחי יכול להיבנות מחדש בכל רענון.
 
@@ -267,15 +275,17 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
 
-יוצר MV‏ delta בי-טמפורלי מוקלד על `id`:
+יוצר MV בי-טמפורלי מוקלד על `id`:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 **Product** (SCD Type 1 — קטלוג נוכחי, אין צורך בהיסטוריית גרסאות):
@@ -450,8 +460,7 @@ SELECT "order_id" FROM "raw"."orders"
 
 #### Satellite
 
-ה-satellite יושב לצד מפתח ה-hub ונושא היסטוריית תכונה מלאה. השתמשו ב-`scd2` כדי להוסיף
-רק שורות שהשתנו; השתמשו ב-`snapshot` כדי להחתים כל רענון מלא.
+ה-satellite יושב לצד מפתח ה-hub ונושא היסטוריית תכונה מלאה. השתמשו ב-`scd2` כדי לעקוב אחרי כל שינוי, או ב-`snapshot` כדי לעקוב אחרי כל רענון.
 
 ```graphql
 mutation {
@@ -462,6 +471,8 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
@@ -469,8 +480,8 @@ mutation {
 יוצר:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 `CustomerSat` ו-`CustomerHub` שניהם מוקלדים על `id`. ה-hub הוא יעד ה-join היציב; ה-satellite
@@ -657,4 +668,4 @@ fact המקור (מסוננת ל-`modelingRole=fact`), עמודת מדד, ופו
 
 ## התועלת של ה-IR {: #the-ir-payoff }
 
-כל קריאת רישום עוברת באותו נתיב כמו MV שנכתב ביד. מפרט ה-entity וה-fact הוא ייצוג ביניים; הוא לא תבנית ולא מאקרו. המחסן שהוא מכוון אליו הוא מאפיין של הפריסה, והמודל לא מציין אותו. החליפו את מנוע היעד, ואותן הצהרות `entity` / `fact` מתממשות שם, כי ה-SQL שנוצר והמצבים הדו-זמניים ניטרליים למנוע מעצם התכנון.
+כל קריאת רישום עוברת באותו נתיב כמו MV שנכתב ביד. מפרט ה-entity וה-fact הוא ייצוג ביניים; הוא לא תבנית ולא מאקרו. המחסן שהוא מכוון אליו הוא מאפיין של הפריסה, והמודל לא מציין אותו. החליפו את מנוע היעד, ואותן הצהרות `entity` / `fact` מתממשות שם, כי ה-SQL שנוצר וההיסטוריה הדו-זמנית ניטרליים למנוע מעצם התכנון.

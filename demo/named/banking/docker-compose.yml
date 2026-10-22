@@ -1,0 +1,45 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "banking" (start-ui-install.sh --demo banking; REQ-2107). This file is its one
+# start point: `docker compose up -d` brings up the bank's ledger, loaded from db/init.sql.
+#
+#   postgres  the ledger (db/init.sql), with the role Provisa reads it as (db/reader.sql). The
+#             postings start in feed.postings; the demo's setup (setup.yaml, load_days.py) moves
+#             them into the ledger a business day at a time.
+#
+# Port: 27032 the database; it can be moved by its variable.
+x-demo-labels: &demo-labels
+  com.provisa.demo: banking
+name: provisa-demo-banking
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ledger
+    ports:
+      - "127.0.0.1:${BANKING_PG_PORT:-27032}:5432"
+    volumes:
+      - banking_pg:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ledger"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  banking_pg:

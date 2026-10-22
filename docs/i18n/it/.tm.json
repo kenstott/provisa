@@ -1,6 +1,6 @@
 {
   "index.md": "4c6791df32af1652467dd1a537440d957042e95dad761c66effa1e692a923412",
-  "configuration.md": "cb6aadd477f624992c8b0cc1fb849f228c167ef86f651c22de7ba4aa69a8f682",
+  "configuration.md": "10d9b9f2a8761481d30c2109fcbe5d62cf01c1193a12c413685add4e3d192ba0",
   "api-reference.md": "5713969669b099bba3ac6cf311f467b8f7c041d0910f23da6792b8225011091e",
   "sources.md": "9ee84df8de5c7b93807a1de8d171385909fefc8c98fe1b047d8935b265088a75",
   "python-client.md": "72587a15c990d156e03ee427c950f92fde4eec3d59bd4bab690ef294f7955588",
@@ -15,8 +15,8 @@
   "integrations.md": "1aa64a5a24b943feb6d22213c34f4ff3183ea64506fa9b2fabf9f08a21f9dae6",
   "admin.md": "907be712515d768847b4c1b70d1861b99a61de0c10f721d4199607bd5f9f7f04",
   "releasing.md": "ce1a860c7ccb962f92bf13e718c261300054cada8312eecdff93f503c5cb396d",
-  "lineage.md": "896bbc5d55283352762a1f9fc5a3e9a550daf89316a4cdff39f0a3f44a5a75ff",
-  "modeling.md": "b75a50bf9584d1bc3b727fa4a6bd30250265ecbef9006e956559e619c760c739",
+  "lineage.md": "fec1129c7e227b68b8de301ac52f5250ae0adebb20395dad5969bfb3a24b0959",
+  "modeling.md": "baf89e4e1e6ddbc352737e65cda7bc6940edeb51295ee027ee09b0626cc8c191",
   "pgwire.md": "b975b7574c379db350a0d16505120302e23e9118f83b5ad4ee3ea72f3e464e34",
   "remote-schemas.md": "d07b277d22e5c242c7bc21ad7c955e3850c9e02e70376a77a48a529286b4b17f",
   "domain-principles.md": "ac5ce74bdab4406aa19e12feae69b13fcc403b2a97798875760587d2c08e98d1",
@@ -27,10 +27,11 @@
   "environments.md": "08696872f9334942c82dc8fbc5e1354bc7a19428a98ce9e6d683c18f64c13eb2",
   "data-products.md": "c3556ba40ca271c2565bdfcf318efc469a1134b4ab6f37137a42d70bb617e8ed",
   "cli.md": "b1fd69b10cf41fbf249cb9b24e6974aff57693e57eec5b7fdb09408fcac0d8de",
-  "admin-graphql.md": "69a14d7566acd575452dae8dabfb0af5ea9d7cd567aedfc3958e898570031cb0",
+  "admin-graphql.md": "213bd74fc22573256b52743cbf6f6acaf055d92efe45a45abd344bf24be291af",
   "replicas.md": "0b3e05180bd7b8805f1ef79bafadadb442b0dddf7e7b6647cd5729064b9c6188",
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
   "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
-  "code-sources.md": "46e046e30ca7a146d1c0551f2063e64ebd5c2d838e8f3a6c99e9aa679759b8a0"
+  "code-sources.md": "c10c9afefdf91c1dfab20ef5eaa162a73918e48ebfbacca9b0c48958d09ff235",
+  "bitemporal-views.md": "7e9cab7b614ab415ed3d5b2e493c8e506bca73488fc352578c85578ccdf459c2"
 }

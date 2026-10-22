@@ -291,12 +291,11 @@ registered_tables = Table(
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
     # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
     Column("mv_preprocess", Text),
-    # REQ-1162: append-only bitemporal materialization. NULL = ordinary MV; "snapshot"|"delta".
-    # mv_bitemporal_key is the business-key column list a version belongs to (required for delta).
-    Column("mv_bitemporal_mode", Text),
-    Column("mv_bitemporal_key", JSON(none_as_null=True)),
-    # REQ-1163: the view's column holding the source's change time -- its time travel's clock.
-    Column("mv_bitemporal_source_time", Text),
+    # REQ-2109: the bitemporal declaration of a table or view, all three or none: the business-key
+    # column list, the valid-time column and the recorded-time column.
+    Column("business_key", JSON(none_as_null=True)),
+    Column("valid_time", Text),
+    Column("recorded_time", Text),
     # REQ-965/969/970: MV persistence outcome + row identity + incremental maintenance.
     Column("mv_persist", Text, nullable=False, server_default="replace"),
     Column("mv_primary_key", JSON(none_as_null=True)),
@@ -805,6 +804,8 @@ calendars = Table(
     Column(
         "weekend", JSON(none_as_null=True), default=list, server_default="[5, 6]"
     ),  # weekday ints (Sat, Sun)
+    # REQ-2111: the local time a day closes at ("18:00"); NULL = local midnight.
+    Column("day_close", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "base_system IN ('gregorian', 'fiscal', 'retail_445')",

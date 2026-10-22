@@ -203,6 +203,7 @@
     "accountEmailHint": "The email you sign in to Atlassian with; the API token is this account's.",
     "apiToken": "API token",
     "apiTokenHint": "Made at id.atlassian.com, Security, API tokens. Kept in the secrets vault.",
-    "siteAddressInvalid": "Enter the full site address, starting with https://"
+    "siteAddressInvalid": "Enter the full site address, starting with https://",
+    "namingInherit": "Inherit (global)"
   }
 }

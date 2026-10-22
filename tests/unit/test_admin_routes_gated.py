@@ -137,6 +137,11 @@ EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model con
 EXEMPT[("graphql:query", "regionChoices")] = (
     "region ids only, read by every form with a region field; no store or connection detail"
 )
+# REQ-416: the naming presets the server takes, a constant list read by every form with a naming
+# field (tables, sources, the deployment's naming); holds no model, store or credential.
+EXEMPT[("graphql:query", "namingConventions")] = (
+    "the server's constant list of naming presets, read by every form with a naming field"
+)
 # Pure text parse (parse_contract reads no source, credential or model row); called by DqRulesModal
 # on /data-products, opened with data_product_read.
 EXEMPT[("graphql:query", "dqContractParse")] = (

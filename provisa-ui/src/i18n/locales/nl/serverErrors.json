@@ -444,7 +444,12 @@
       "role_description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
       "rls_rule_description_missing": "Een rijregel heeft een beschrijving nodig van waar hij voor is",
       "file_download_refused": "Bron {{source}}: {{reason}}",
-      "source_created_without_table": "Bron {{source}} aangemaakt; de tabel ervan is niet ingericht: {{reason}}"
+      "source_created_without_table": "Bron {{source}} aangemaakt; de tabel ervan is niet ingericht: {{reason}}",
+      "mv_window_needs_calendar": "MV '{{mv}}' noemt geen kalender: een build die wordt verzegeld bij het sluiten van een werkdag heeft er een nodig",
+      "version_log_updated": "Versielogboek '{{mv}}' bijgewerkt",
+      "mv_window_held": "MV '{{mv}}' is niet verzegeld bij de afsluiting van {{day}}: een andere build ervan houdt de claim vast",
+      "mv_window_unchanged": "MV '{{mv}}' is niet verzegeld bij de afsluiting van {{day}}: niets wat ze leest is veranderd sinds haar laatste build",
+      "landing_time_pipeline": "Tabel '{{table}}' houdt zijn aankomsttijd bij in {{column}}, maar de opslag laadt het topic via een eigen pipeline, waar Provisa niet ziet wanneer elk bericht binnenkomt."
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",

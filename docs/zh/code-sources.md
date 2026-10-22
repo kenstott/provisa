@@ -18,6 +18,78 @@ from dataclasses import dataclass
 
 
 @dataclass
+class Region:
+    code: str
+    name: str
+
+
+def regions() -> list[Region]:
+    """Sales regions.
+
+    @table
+    """
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
+```
+
+提供服务的步骤：
+
+1. 添加一个 `python` 数据源并指向代码：PyPI 包、Git 提交、上传文件或文件夹（见[代码从哪里来](#where-the-code-comes-from)）。
+2. 保存。Provisa 安装并读取代码，把 `regions` 作为一张表提供出来，包含 `code` 和 `name` 两列。
+3. 数据管家在一个域（这里是 `sales`）中注册该表，并像其他表一样授予访问权限。
+
+然后在 GraphQL 中读取它：
+
+```graphql
+{
+  regions {
+    code
+    name
+  }
+}
+```
+
+或者在 SQL 中：
+
+```sql
+SELECT code, name
+FROM sales.regions
+```
+
+Node 的用法相同，使用 JSDoc 标签和 TypeScript 类型：见 [Node](#node)。
+
+## 构建 {: #build }
+
+### 函数会变成什么 {: #what-a-function-becomes }
+
+Provisa 读取代码自身的声明：Python 中的 docstring 和类型提示，Node 中的 JSDoc 标签和 TypeScript 类型。
+
+| 标签 | 变成 |
+|---|---|
+| `@table` | 一张表。函数返回列表或可迭代对象，每个元素是一行。 |
+| `@command` | 一个命令，按请求运行。 |
+| `@stream` | 一张实时表。函数是生成器，每产出一行就发送一行。 |
+
+- 没有标签的函数会被忽略。
+- Provisa 不认识的标签会被拒绝，无法映射的类型也会被拒绝。拒绝信息会一次列出所有问题，方便你一次改完。
+
+行类型决定列：
+
+- 文本、数字、布尔值、日期和时间戳映射为对应的列类型。列表保持为列表，嵌套对象变为具名类型。
+- 在 Python 中，行类型可以是 dataclass、`TypedDict`、`NamedTuple`、Pydantic 模型或任何带注解字段的类。Pydantic 模型的行按 `model_dump(by_alias=True)` 的结果发送，因此带别名的字段会成为以别名命名的列。
+- 在 TypeScript 中，行类型可以是接口、类型别名或类。
+- 注册表时，字段自身的文档会成为其列的描述：Pydantic 的 `Field(description=...)`，或 TypeScript 属性上的文档注释。
+- 宽松的行类型（Python 中的 `Any` 或 `dict`，TypeScript 中的 `any`、`unknown` 或 `Record`）没有可读取的列。Provisa 会不带参数调用函数一次，并根据返回的行建议列。如果函数有必填参数，就无法这样调用，你需要在注册表时自己填写列类型。
+
+### 参数 {: #parameters }
+
+函数的参数成为其表的参数。下面这个函数为一个账户打分：
+
+```python
+@dataclass
 class Risk:
     score: float
     reasons: list[str]
@@ -31,13 +103,7 @@ def churn_risk(account_id: str) -> list[Risk]:
     return [Risk(score=0.82, reasons=["no logins in 30 days"])]
 ```
 
-提供服务的步骤：
-
-1. 添加一个 `python` 数据源并指向代码：PyPI 包、Git 提交、上传文件或文件夹（见[代码从哪里来](#where-the-code-comes-from)）。
-2. 保存。Provisa 安装并读取代码，把 `churn_risk` 作为一张表提供出来，包含 `score` 和 `reasons` 两列和一个必填参数 `account_id`。
-3. 数据管家在一个域（这里是 `accounts`）中注册该表，并像其他表一样授予访问权限。
-
-然后读取它。在 GraphQL 中，参数是字段参数：
+在 GraphQL 中，参数是字段参数：
 
 ```graphql
 {
@@ -56,36 +122,15 @@ FROM accounts.churn_risk
 WHERE _nf_account_id = 'A-1042'
 ```
 
-Node 的用法相同，使用 JSDoc 标签和 TypeScript 类型：见 [Node](#node)。
-
-## 构建 {: #build }
-
-### 函数会变成什么 {: #what-a-function-becomes }
-
-Provisa 读取代码自身的声明：Python 中的 docstring 和类型提示，Node 中的 JSDoc 标签和 TypeScript 类型。
-
-| 标签 | 变成 |
-|---|---|
-| `@table` | 一张表。函数返回列表或可迭代对象，每个元素是一行。 |
-| `@command` | 一个命令，按请求运行。 |
-| `@stream` | 一张实时表。函数是生成器，每产出一行就发送一行。 |
-
-- 没有标签的函数会被忽略。
-- Provisa 不认识的标签会被拒绝，无法映射的类型也会被拒绝。拒绝信息会指明函数并一次列出所有问题，方便你一次改完。
-
-行类型决定列：
-
-- 文本、数字、布尔值、日期和时间戳映射为对应的列类型。列表保持为列表，嵌套对象变为具名类型。
-- 在 Python 中，行类型可以是 dataclass、`TypedDict`、`NamedTuple`、Pydantic 模型或任何带注解字段的类。Pydantic 模型的行按 `model_dump(by_alias=True)` 的结果发送，因此带别名的字段会成为以别名命名的列。
-- 在 TypeScript 中，行类型可以是接口、类型别名或类。
-- 注册表时，字段自身的文档会成为其列的描述：Pydantic 的 `Field(description=...)`，或 TypeScript 属性上的文档注释。
-- 宽松的行类型（Python 中的 `Any` 或 `dict`，TypeScript 中的 `any`、`unknown` 或 `Record`）没有可读取的列。Provisa 会不带参数调用函数一次，并根据返回的行建议列。如果函数有必填参数，就无法这样调用，你需要在注册表时自己填写列类型。
-
-函数的参数成为表的参数：
-
 - 没有默认值的参数是必填的。省略它的读取会在代码运行前被拒绝。
 - 有默认值的参数是可选的。省略时使用你的默认值。
 - 数据管家仍可以把可选参数设为必填。
+
+### 函数能收到什么 {: #what-reaches-your-function }
+
+一次调用只收到读取的参数，请求中的其他内容一概收不到。每个参数的值来自字段参数、`_nf_` 条件、下推给它的过滤条件或 join 的键。你的函数永远看不到是谁在提问：调用者的身份和角色留在 Provisa，由它治理函数返回的行。
+
+下推正是建立在这一点之上。查询中的过滤条件成为某个参数的值，因此函数可以只取所请求的行。
 
 ### 过滤下推 {: #pushdown }
 
@@ -105,7 +150,7 @@ Provisa 读取代码自身的声明：Python 中的 docstring 和类型提示，
 
 - 列上的范围会填满它的两个参数：`score BETWEEN 0.5 AND 0.9` 得到 `gte_score` 和 `lte_score`。
 - 列名完全按你在行类型中声明的样子匹配。只有在 Provisa 为读者重命名列之后才匹配的名称不算匹配。
-- 函数类型无法接受的声明会被指名拒绝。
+- 函数类型无法接受的声明会被拒绝。
 - 过滤条件仍会作用于函数返回的行，因此忽略或放宽所给值的函数不会返回错误的行。
 
 ### 批量键：`loader` 参数 {: #batched-keys }
@@ -122,7 +167,7 @@ join 可以连到代码表，由另一张表的行提供其参数：比如把客
 - **类型照常。** 函数仍只声明其行类型，即行的列表。
 - **需要默认值。** `loader` 之外的参数需要默认值，因为 loader 调用只传 `loader`。
 - **批大小。** 像 DataLoader 的 `maxBatchSize` 一样设上限，在以下三处之一写 `loader N`：在 `@table` 旁写一行 `@loader 100`，在 TypeScript 的 `loader` 参数前写注释 `/* @loader 100 */`，或在 Python 中用 `Annotated` 字符串，`loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`。Provisa 随后把键按该大小分批，并按哈希合并结果。不设大小时，一批包含所有键。
-- **指名拒绝。** 在没有 `loader` 参数的函数上设大小、大小不是正整数、一个函数上有两个大小。
+- **拒绝。** 在没有 `loader` 参数的函数上设大小、大小不是正整数、一个函数上有两个大小。
 
 当一次处理多个键的调用比多次处理一个键的调用更好时，使用 `loader`：
 
@@ -172,7 +217,7 @@ def churn_score(
 - **一个 Git 仓库。** 完整的 40 字符提交，如果代码不在顶层则指定子目录。
 - **一次上传。** 代码的 `.zip`、`.tgz` 或 `.tar.gz`。
 - **你电脑上的文件夹。** **选择文件夹**会在浏览器中把文件夹打包成 zip（排除 `node_modules`、`.venv`、`__pycache__` 和 `.git`），并作为数据源的归档上传。在能保留文件夹的浏览器（Chrome、Edge）中，**保存**会重新打包并再次发送；其他浏览器会再次让你选择文件夹。
-- **服务器上的目录。** 在单组织安装中，可以是运维人员允许的目录之下的某个目录。它在原处被读取，因此修改会被下一次查询读到。多组织的服务器会指名拒绝它。
+- **服务器上的目录。** 在单组织安装中，可以是运维人员允许的目录之下的某个目录。它在原处被读取，因此修改会被下一次查询读到。多组织的服务器会拒绝它。
 
 除服务器目录外，每种来源都是固定的，因此数据源运行的正是保存时的代码。
 
@@ -308,7 +353,7 @@ volumes:
 
 **如果代码变了。**
 
-- 回来时运行的是其他代码的容器会被拒绝，并指明数据源固定的哈希和主机报告的哈希，直到数据管家审核代码并在表单中重新固定。
+- 回来时运行的是其他代码的容器会被拒绝，直到数据管家审核代码并在表单中重新固定。
 - 要修改代码本身，把数据源切回 dev，保存新代码，再重新构建。
 
 ### Provisa 的服务 {: #provisas-services }
@@ -403,7 +448,7 @@ const reply = await client.chat.completions.create({
 
 - **按角色。** 把模型写成 `provisa:<role>`，你会得到组织在 **Admin → AI Models** 下为该角色指定的模型；管理员更改选择后它会随之改变。当某个模型被指定了角色时，你也可以直接写出该模型。
 - **嵌入。** `$PROVISA_SERVICES/llm/v1/embeddings` 接受你所在组织的任何向量模型。
-- 其他任何模型都会被指名拒绝。
+- 其他任何模型都会被拒绝。
 - 调用通过你所在组织自己的供应商、端点和密钥发出，发送的内容会先经过 Provisa 的脱敏规则。
 - 不提供流式输出。请发送 `stream: false`，这也是默认值。
 
@@ -416,9 +461,9 @@ const reply = await client.chat.completions.create({
 - 无法提供沙箱的主机会拒绝启动 worker 并指明缺少什么；代码绝不会在无约束状态下运行。在 Windows 上，代码数据源会被拒绝。
 - 在远程主机上，容器的网络策略就是代码的出站边界。服务器的出站允许列表适用于 dev 模式。
 
-### 指名拒绝 {: #refusals }
+### 拒绝 {: #refusals }
 
-每次拒绝都会指明拒绝了什么以及原因，能在代码运行前拒绝的都会在运行前拒绝：
+以下每种情况都会被拒绝，能在代码运行前拒绝的都会在运行前拒绝：
 
 - 未知标签或 Provisa 无法映射的类型，一次列出一个函数的所有问题。
 - 省略必填参数的读取。

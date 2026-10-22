@@ -105,10 +105,10 @@ async def test_select_1(pgwire_server, mock_state):
     port = pgwire_server
     provider = _stub_auth_provider("alice", "secret")
 
-    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None, *, deliver):
+    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
         return EngineResult(rows=[(1,)], column_names=["?column?"])
 
-    async def _stub_describe(sql, role_id):
+    async def _stub_describe(sql, role_id, *, as_of=None):
         from provisa.pgwire._pipeline import _Described
 
         return _Described([("?column?", "INT")], None)
@@ -161,12 +161,12 @@ async def test_none_provider_trust_mode(pgwire_server):
     trust_state.auth_config = {"provider": "none"}
     trust_state.auth_middleware_active = False
 
-    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None, *, deliver):
+    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
         from provisa.executor.result import QueryResult as EngineResult
 
         return EngineResult(rows=[(role_id,)], column_names=["role"])
 
-    async def _stub_describe(sql, role_id):
+    async def _stub_describe(sql, role_id, *, as_of=None):
         from provisa.pgwire._pipeline import _Described
 
         return _Described([("role", "VARCHAR")], None)
@@ -319,3 +319,51 @@ async def test_a_simple_query_of_transaction_control_then_a_catalog_select(
     # The last statement's own completion tag: the catalog SELECT returned its rows.
     assert status.startswith("SELECT ") and int(status.split()[1]) >= 1
     assert "pg_catalog" in names
+
+
+@pytest.mark.asyncio
+async def test_a_sessions_time_travel_applies_to_every_statement_it_runs(pgwire_server, mock_state):
+    """REQ-2110: SET provisa.as_of / provisa.as_recorded on a session is the time travel every
+    statement it runs is governed under, as the HTTP transports' headers are; RESET clears it and
+    a value that cannot be read is refused by name."""
+    from provisa.mv.bitemporal import request_as_of
+
+    port = pgwire_server
+    provider = _stub_auth_provider("alice", "secret")
+    governed_under: list[str | None] = []
+
+    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
+        governed_under.append(as_of)
+        return EngineResult(rows=[(1,)], column_names=["?column?"])
+
+    async def _stub_describe(sql, role_id, *, as_of=None):
+        from provisa.pgwire._pipeline import _Described
+
+        return _Described([("?column?", "INT")], None)
+
+    with (
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
+        patch("provisa.api.app.state", mock_state),
+        patch("provisa.pgwire._pipeline.govern_pgwire_plan", _stub_pipeline),
+        patch("provisa.pgwire._pipeline.describe_pgwire_statement", _stub_describe),
+    ):
+        conn = await asyncpg.connect(
+            host="127.0.0.1", port=port, user="alice", password="secret", database="provisa"
+        )
+        try:
+            await conn.fetchval("SELECT 1")
+            await conn.execute("SET provisa.as_recorded = '2026-10-03T18:00:00'")
+            await conn.fetchval("SELECT 1")
+            await conn.execute("SET provisa.as_of TO '2026-10-03'")
+            await conn.fetchval("SELECT 1")
+            await conn.fetchval("SELECT 1")
+            await conn.execute("RESET provisa.as_recorded")
+            await conn.execute("SET provisa.as_of = DEFAULT")
+            await conn.fetchval("SELECT 1")
+            with pytest.raises(asyncpg.PostgresError, match="provisa.as_recorded"):
+                await conn.execute("SET provisa.as_recorded = 'yesterday'")
+        finally:
+            await conn.close()
+    recorded = request_as_of(None, "2026-10-03T18:00:00")
+    both = request_as_of("2026-10-03", "2026-10-03T18:00:00")
+    assert governed_under == [None, recorded, both, both, None]

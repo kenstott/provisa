@@ -15,6 +15,7 @@
 # REQ-250, REQ-251, REQ-281, REQ-369, REQ-370, REQ-393, REQ-399, REQ-400, REQ-415, REQ-419, REQ-421
 
 import re
+from datetime import date
 from enum import Enum
 from typing import Any, Literal
 
@@ -347,6 +348,14 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     )
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
+
+    @field_validator("gql_naming_convention")
+    @classmethod
+    def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416
+        from provisa.compiler.naming import stored_convention
+
+        return stored_convention(v)
+
     # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
     # vocabulary), translated to the engine session props at query time. Raw the engine keys still pass
     # through for backward compatibility but are deprecated.
@@ -622,6 +631,43 @@ def base_tag_id(tag_id: str) -> str:
     return split_tag_id(tag_id)[0]
 
 
+class CalendarConfig(BaseModel):  # REQ-962, REQ-2120
+    """A named, versioned calendar a config declares (``calendars:``): the ``calendars`` table's
+    columns, as the ``createCalendar`` mutation takes them. A view names it as ``mv_calendar``."""
+
+    name: str
+    version: str
+    base_system: str = "gregorian"
+    tz: str = "UTC"
+    fiscal_anchor_month: int = 1
+    fiscal_anchor_day: int = 1
+    retail_anchor: str | None = None
+    week_start: int = 0
+    holidays: list[str] = Field(default_factory=list)
+    weekend: list[int] = Field(default_factory=lambda: [5, 6])
+    day_close: str | None = None  # REQ-2111: "HH:MM", None = midnight
+
+    @field_validator("retail_anchor", mode="before")
+    @classmethod
+    def _anchor_as_text(cls, v: Any) -> Any:
+        # YAML reads an unquoted date as a date; the column's text form is its ISO date.
+        return v.isoformat() if isinstance(v, date) else v
+
+    @field_validator("holidays", mode="before")
+    @classmethod
+    def _holidays_as_text(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return [d.isoformat() if isinstance(d, date) else d for d in v]
+        return v
+
+    @model_validator(mode="after")
+    def _defines_a_calendar(self) -> "CalendarConfig":
+        from provisa.events.calendars import calendar_of
+
+        calendar_of(self.model_dump())  # the mutation's own validation (raises InvalidCalendar)
+        return self
+
+
 class Tag(BaseModel):  # REQ-1373, REQ-1375
     id: str
     description: str = ""
@@ -828,6 +874,14 @@ class NamingRule(BaseModel):
 
 class NamingConfig(BaseModel):  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-415, REQ-416
     convention: str = "apollo_graphql"
+
+    @field_validator("convention")
+    @classmethod
+    def _preset_convention(cls, v: str) -> str:  # REQ-195, REQ-416
+        from provisa.compiler.naming import preset_convention
+
+        return preset_convention(v)
+
     sql_convention: str = "snake"
     rules: list[NamingRule] = Field(default_factory=list)
     relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
@@ -1188,6 +1242,10 @@ class LiveKafkaParams(BaseModel):  # REQ-813
     format: str = "json"  # "json" | "avro"
     key_column: str | None = None  # column used as the Kafka message key
     field_mapping: dict[str, str] = Field(default_factory=dict)  # kafka field → table column
+    # REQ-813 (amended 2026-10-21): a column Provisa fills with the time it lands each message,
+    # stamped as mail landing stamps its rows (federation.mail_landing.Stamps): one stamp per
+    # landed batch, each later than the last. None: the table carries no landing time.
+    landing_time_column: str | None = None
 
 
 class DeltaConfig(BaseModel):  # REQ-874
@@ -1339,6 +1397,14 @@ class Table(
     off_peak_window: str | None = None
     off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
+
+    @field_validator("gql_naming_convention")
+    @classmethod
+    def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416
+        from provisa.compiler.naming import stored_convention
+
+        return stored_convention(v)
+
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     # REQ-318: how this table is read page by page -- a paged REST endpoint's paging, or a
@@ -1469,15 +1535,14 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
-    # REQ-1162: append-only bitemporal materialization. None = ordinary MV; "snapshot" appends the
-    # whole fresh dataset each refresh; "delta" appends only engine-computed changes. mv_bitemporal_key
-    # is the business identity a version belongs to (required for delta). Time travel ("as of") is then
-    # derived at read time from the immutable append log — no UPDATE ever retires a row.
-    mv_bitemporal_mode: str | None = None
-    mv_bitemporal_key: list[str] = []
-    # REQ-1163: the view's column holding the source's own change time (an updated_at, or the
-    # commit time a CDC landing carries, source_committed_at): the clock its time travel reads on.
-    mv_bitemporal_source_time: str | None = None
+    # REQ-2109: the bitemporal declaration of a table or a view, all three or none. business_key
+    # names the columns identifying the same thing across versions; valid_time the column holding
+    # the date the business gives the record (when it was agreed, booked or took effect);
+    # recorded_time the column holding when this version was entered or changed. A view declaring
+    # them is materialized and keeps every version, appended (REQ-1162), read on recorded_time.
+    business_key: list[str] = []
+    valid_time: str | None = None
+    recorded_time: str | None = None
     # REQ-965/969/970: how a materialized view's recompute is applied to its own store, and whether
     # it is maintained incrementally. mv_persist ∈ replace|append|upsert; mv_primary_key is the row
     # identity (required for upsert and for incremental); mv_incremental applies upstream deltas
@@ -1523,18 +1588,67 @@ class Table(
                 )
         return self
 
+    @property
+    def is_bitemporal(self) -> bool:
+        """REQ-2109: the table or view declares its business key, valid time and recorded time."""
+        return bool(self.business_key)
+
     @model_validator(mode="after")
-    def _bitemporal_reads_on_source_time(self) -> "Table":
-        """REQ-1163, REQ-2064: a bitemporal view names the key its versions belong to. Its clock is
-        its source-time column when it names one, else Provisa's recorded time (REQ-1163 as
-        amended); its three read columns are added where it is declared or saved
+    def _bitemporal_declares_all_three(self) -> "Table":
+        """REQ-2109: business_key, valid_time and recorded_time are declared together or not at
+        all, each naming a column the table has (where its columns are known); a view declaring
+        them is materialized. Its read columns are added where it is declared or saved
         (mv.bitemporal.with_read_columns)."""
-        if not self.mv_bitemporal_mode:
+        declared = {
+            "business_key": bool(self.business_key),
+            "valid_time": bool(self.valid_time),
+            "recorded_time": bool(self.recorded_time),
+        }
+        if not any(declared.values()):
             return self
-        if not self.mv_bitemporal_key:
+        missing = [name for name, given in declared.items() if not given]
+        if missing:
             raise ValueError(
-                f"view {self.table_name!r}: a bitemporal view names the key its versions belong "
-                "to (bitemporal_key)"
+                f"table {self.table_name!r}: business_key, valid_time and recorded_time are "
+                f"declared together; missing {', '.join(missing)}"
+            )
+        names = {c.name for c in self.columns}
+        if names and "*" not in names:
+            named = [*self.business_key, self.valid_time, self.recorded_time]
+            unknown = [c for c in named if c not in names]
+            if unknown:
+                raise ValueError(
+                    f"table {self.table_name!r}: business_key, valid_time and recorded_time name "
+                    f"columns the table does not have: {unknown}"
+                )
+        if (self.view_sql is not None or self.view_metrics is not None) and not self.materialize:
+            raise ValueError(
+                f"view {self.table_name!r}: a view declaring business_key, valid_time and "
+                "recorded_time is materialized (materialize: true)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _landing_time_names_a_column(self) -> "Table":
+        """REQ-813 (amended 2026-10-21): a live Kafka table's landing-time column is one of its
+        columns (where its columns are known), a timestamp."""
+        kafka = self.live.kafka if self.live is not None else None
+        column = kafka.landing_time_column if kafka is not None else None
+        if column is None:
+            return self
+        declared = {c.name: c for c in self.columns}
+        if not declared or "*" in declared:
+            return self
+        if column not in declared:
+            raise ValueError(
+                f"table {self.table_name!r}: its landing-time column {column!r} is not one of "
+                "its columns"
+            )
+        data_type = declared[column].data_type
+        if data_type is None or not data_type.lower().startswith("timestamp"):
+            raise ValueError(
+                f"table {self.table_name!r}: its landing-time column {column!r} is "
+                f"{data_type or 'untyped'}, not a timestamp"
             )
         return self
 
@@ -2991,6 +3105,7 @@ class ProvisaConfig(BaseModel):
     sources: list[Source]
     domains: list[Domain]
     tags: list[Tag] = Field(default_factory=list)  # REQ-1373
+    calendars: list[CalendarConfig] = Field(default_factory=list)  # REQ-2120
     tag_assignments: list[TagAssignment] = Field(default_factory=list)  # REQ-1377
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]

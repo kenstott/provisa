@@ -65,10 +65,13 @@ def main() -> None:
                 raise SystemExit(f"order_margins did not reach {READY_ROWS} rows in {WAIT_S}s")
             time.sleep(5)
         for team in ("finance", "data_science"):
+            # As the scheduled triggers send it (config.yaml): as recorded up to the newest
+            # recorded time the dataset holds.
             _sql(
                 client,
-                'INSERT INTO "provisioning"."notices" (dataset, consumer) '
-                f"VALUES ('order_margins', '{team}')",
+                'INSERT INTO "provisioning"."notices" (dataset, consumer, version_time) '
+                f"SELECT 'order_margins', '{team}', MAX(m.landed_at) AT TIME ZONE 'UTC' "
+                'FROM "provisioning"."view_order_margins" AS m',
             )
     # The stores where config.yaml reads them: its variables, else its own defaults (a local start
     # sets none; the bundle build sets the ports it ran the stores on).

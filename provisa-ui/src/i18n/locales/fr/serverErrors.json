@@ -444,7 +444,12 @@
       "role_description_missing": "Le rôle '{{role}}' a besoin d'une description de ce à quoi il sert",
       "rls_rule_description_missing": "Une règle de ligne a besoin d'une description de ce à quoi elle sert",
       "file_download_refused": "Source {{source}} : {{reason}}",
-      "source_created_without_table": "Source {{source}} créée ; sa table n'a pas été mise en place : {{reason}}"
+      "source_created_without_table": "Source {{source}} créée ; sa table n'a pas été mise en place : {{reason}}",
+      "mv_window_needs_calendar": "La vue matérialisée « {{mv}} » ne nomme aucun calendrier : une construction scellée à la clôture d'un jour ouvré en exige un",
+      "version_log_updated": "Journal des versions '{{mv}}' mis à jour",
+      "mv_window_held": "La MV '{{mv}}' n'a pas été scellée à la clôture du {{day}} : une autre construction de celle-ci détient la réservation",
+      "mv_window_unchanged": "La MV '{{mv}}' n'a pas été scellée à la clôture du {{day}} : rien de ce qu'elle lit n'a changé depuis sa dernière construction",
+      "landing_time_pipeline": "La table '{{table}}' garde son heure d'arrivée dans {{column}}, mais son stockage charge le topic par son propre pipeline, où Provisa ne voit pas arriver chaque message."
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",

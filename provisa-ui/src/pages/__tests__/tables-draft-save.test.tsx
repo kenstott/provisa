@@ -105,8 +105,9 @@ function table(
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -243,18 +244,30 @@ describe("TablesPage — draft (REQ-1921)", () => {
     expect(calls).toEqual([]);
   });
 
-  it("goes to draft before it moves region", async () => {
+  // REQ-2109: the draft and the region go with the table's own save, in one transaction; the
+  // server judges the move with the table as draft when it is draft before or after the save.
+  it("goes to draft and moves region in the one save", async () => {
     await userEvent.click(await openEditor("orders"));
     await pickRegion("us");
     await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() => expect(calls).toEqual(["draft 7 true", "region 7 us"]));
+    await waitFor(() =>
+      expect(updateTable).toHaveBeenCalledWith(
+        expect.objectContaining({ draft: true, region: "us" }),
+      ),
+    );
+    expect(calls).toEqual([]);
   });
 
-  it("is claimed by its new region before it is released", async () => {
+  it("moves and is released in the one save", async () => {
     await userEvent.click(await openEditor("staging"));
     await pickRegion("us");
     await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() => expect(calls).toEqual(["region 8 us", "draft 8 false"]));
+    await waitFor(() =>
+      expect(updateTable).toHaveBeenCalledWith(
+        expect.objectContaining({ draft: false, region: "us" }),
+      ),
+    );
+    expect(calls).toEqual([]);
   });
 });
 

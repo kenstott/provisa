@@ -34,8 +34,12 @@ from provisa.security.rights import META_DOMAIN_ID
 A, B, C, D, E, V = 1, 2, 3, 4, 5, 6
 
 
-async def _seed(conn, *, dead_end: bool = False) -> None:
+async def _seed(
+    conn, *, dead_end: bool = False, domain: str = "sales", view_alias: str | None = None
+) -> None:
     from sqlalchemy import insert
+
+    from provisa.compiler.naming import domain_to_sql_name
 
     from provisa.core.schema_org import (
         data_products,
@@ -46,11 +50,11 @@ async def _seed(conn, *, dead_end: bool = False) -> None:
         table_columns,
     )
 
-    await conn.execute_core(insert(domains).values(id="sales", description="sales"))
+    await conn.execute_core(insert(domains).values(id=domain, description=domain))
     await conn.execute_core(insert(sources).values(id="crm", type="postgres"))
     await conn.execute_core(insert(sources).values(id=DERIVED_SOURCE_ID, type="postgres"))
     for pid in ("p1", "p2"):
-        await conn.execute_core(insert(data_products).values(id=pid, domain_id="sales", name=pid))
+        await conn.execute_core(insert(data_products).values(id=pid, domain_id=domain, name=pid))
     tables = [
         dict(id=A, table_name="a", product_id="p1"),
         dict(id=B, table_name="b", product_id="p2"),
@@ -62,19 +66,20 @@ async def _seed(conn, *, dead_end: bool = False) -> None:
             table_name="v",
             product_id="p1",
             source_id=DERIVED_SOURCE_ID,
-            view_sql="SELECT d.amount AS amount FROM sales.d d",
+            alias=view_alias,
+            view_sql=f"SELECT d.amount AS amount FROM {domain_to_sql_name(domain)}.d d",
         ),
     ]
     for t in tables:
         await conn.execute_core(
             insert(registered_tables).values(
-                **{"source_id": "crm", "domain_id": "sales", "schema_name": "public", **t}
+                **{"source_id": "crm", "domain_id": domain, "schema_name": "public", **t}
             )
         )
     for table_id, column in ((D, "amount"), (V, "amount"), (A, "id"), (B, "id")):
         await conn.execute_core(
             insert(table_columns).values(
-                table_id=table_id, domain_id="sales", column_name=column, data_type="varchar"
+                table_id=table_id, domain_id=domain, column_name=column, data_type="varchar"
             )
         )
     links = [("a_b", A, B, "toB"), ("a_c", A, C, None), ("c_b", C, B, "viaC")]
@@ -131,13 +136,36 @@ async def test_two_paths_to_another_product_are_one_direct_edge(control_plane):
     assert (edge["direct"], edge["hops"], edge["path_count"]) == (True, 1, 2)
     assert edge["aliases"] == "toB, viaC"
     assert edge["relationship_ids"] == "a_b, a_c, c_b"
-    assert edge["supporting_tables"] == "c"
+    assert edge["supporting_tables"] == "sales.c"
 
     # One lineage edge: D, which P1's view reads, upstream of P1.
     assert [
         (r["direction"], r["target_relation"], r["target_table_id"], r["hops"], r["vias"])
         for r in lineage
     ] == [("upstream", "sales.d", D, 1, "sales.v")]
+
+
+@pytest.mark.asyncio
+async def test_every_table_a_row_names_is_named_as_the_model_names_it(control_plane):
+    """A view a lineage edge goes through and a supporting table are named by their domain and
+    their alias (or name), as the Data Products panel names every table -- not by the SQL form the
+    lineage records (sales_ops.v)."""
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _seed(conn, domain="sales-ops", view_alias="revenue")
+            rows = await _edges(conn, "p1")
+    finally:
+        await db.close()
+
+    (edge,) = [r for r in rows if r["kind"] == "relationship"]
+    assert edge["supporting_tables"] == "sales-ops.c"
+    (lineage,) = [r for r in rows if r["kind"] == "lineage"]
+    assert (lineage["target_relation"], lineage["target_table_id"], lineage["vias"]) == (
+        "sales_ops.d",
+        D,
+        "sales-ops.revenue",
+    )
 
 
 @pytest.mark.asyncio

@@ -396,11 +396,11 @@ query {
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-将一张新表（或视图）注册到某个域中。需要 `table_registration` 能力以及目标域的成员身份。缺少 `create_relationship` 能力而提交视图的调用者，会被加入待权限持有者批准的创建请求队列。
+将一张新表（或视图）注册到某个 domain，并在一个事务中应用输入携带的每项设置，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules` 和 `draft`：任何一项被拒绝，就不注册任何内容。需要 `table_registration` 能力和目标 domain 的成员身份；携带 `writeGrants` 还需要该 domain 的 `masking_config`。缺少 `create_relationship` 而提交视图的调用者，会作为创建请求排队，等待权限持有者批准。
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-更新一张现有表的别名、描述、列元数据、物化视图设置和实时投递配置。需要 `table_registration`。
+更新现有表的别名、描述、列元数据、MV 设置、实时投递配置，以及输入携带的设置（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules`、`draft`），在一个事务中完成：任何一项被拒绝，就不保存任何内容。省略的设置保留其已存储的值。需要 `table_registration`。
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -728,7 +728,9 @@ mutation {
 | `mvRefreshInterval` | 刷新间隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量维护 |
-| `mvBitemporalMode` | 双时态表的 `snapshot` \| `delta` |
+| `businessKey` | 在各个版本之间标识同一事物的列；与 `validTime`、`recordedTime` 一起声明，三者全有或全无 |
+| `validTime` | 保存业务赋予该记录的日期的列 |
+| `recordedTime` | 保存该版本何时录入或修改的列 |
 | `mvCalendar` | 快照日历名称 |
 | `mvGrain` | 快照粒度：`daily`、`weekly`、`monthly`、`annual`，或自定义的 `3WE` / `LFR` |
 | `viewSql` | 派生视图的 SQL |
@@ -737,6 +739,15 @@ mutation {
 | `queryTemplate` | Neo4j 表的 Cypher |
 | `live` | SSE/Kafka 推送的实时投递配置 |
 | `discover` | 在注册时从实时数据源推断列 |
+| `gqlNamingConvention` | 表的 GraphQL 命名约定；`null` 表示继承。省略时，新表继承，更新保留已存储的值 |
+| `roleTtl` | 完整的角色到 TTL 列表，`[{ role, ttl }]` |
+| `replicate` | 表何时由其副本提供；`null` 继承数据源的值 |
+| `writeGrants` | 表的完整写入授权集合；需要 `masking_config` |
+| `draft` | `false` 发布该表；否则注册后为草稿 |
+| `cacheTtl` | 表自身的 Cache TTL；`null` 表示没有自身的 |
+| `pagination` | 表声明的分页；`null` 表示不声明 |
+| `region` | 表数据所在的位置；更新时给出另一个区域会迁移该表，检查方式与 `setTableRegion` 相同 |
+| `rowRules` | 表的行规则（`RLSRuleInput`），随表一起保存；需要 `masking_config` |
 
 ### `RelationshipInput`
 

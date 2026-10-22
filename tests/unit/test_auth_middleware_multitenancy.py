@@ -1051,3 +1051,81 @@ def test_the_right_to_a_named_environment_is_judged_by_the_roles_the_org_assigns
         assert ("acme", "qa") not in runtimes
     else:
         assert ("acme", "qa") in runtimes
+
+
+def _meta_built(monkeypatch) -> tuple[list[tuple], list[tuple]]:
+    """Every meta-role built with the runtime it was built in, and every runtime made ready."""
+    built: list[tuple] = []
+    runtimes: list[tuple] = []
+
+    async def selected(_admin, _org, _identity, requested, _caps):
+        return requested or "prod"
+
+    async def runtime(org_id, env=None):
+        runtimes.append((org_id, env))
+
+    async def caps(_identity, _org):
+        return set()
+
+    def meta_role(acting_set, org_binding, qualifiers=()):
+        built.append((tuple(sorted(acting_set)), org_binding))
+        return "meta:" + "+".join(sorted(acting_set))
+
+    monkeypatch.setattr("provisa.api.env_routing.resolve_selected_env", selected)
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", runtime, raising=False)
+    monkeypatch.setattr("provisa.auth.middleware.org_env_capabilities", caps)
+    monkeypatch.setattr(AuthMiddleware, "_meta_role", staticmethod(meta_role))
+    return built, runtimes
+
+
+def test_an_unsecured_role_sets_meta_role_is_built_in_the_environment_the_request_names(
+    monkeypatch,
+):
+    """The demo's "Role: All" in its synthetic environment (unsecured, the default org): the
+    meta-role was built unbound, in prod's runtime, and the request -- bound to synthetic by
+    _OrgRoutingMiddleware -- was refused "unknown role 'meta:...'"."""
+    built, runtimes = _meta_built(monkeypatch)
+    app = FastAPI()
+    app.add_middleware(AuthMiddleware, provider=None, default_org_id="default")
+
+    @app.get("/test")
+    async def _test(request: Request):
+        return {"role": request.state.role}
+
+    resp = TestClient(app).get(
+        "/test",
+        headers={"x-provisa-env": "synthetic", "X-Provisa-Role": "analyst,data_steward"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "meta:analyst+data_steward"
+    assert built == [(("analyst", "data_steward"), ("default", "synthetic"))]
+    assert ("default", "synthetic") in runtimes
+
+
+def test_a_default_org_role_sets_meta_role_is_built_in_the_environment_the_request_names(
+    monkeypatch,
+):
+    """A signed-in member of the default org acting as several roles in a named environment: the
+    meta-role is built there, as a tenant org's is."""
+    built, runtimes = _meta_built(monkeypatch)
+    db = _Pool(
+        rows_by_table={
+            "user_role_assignments": [
+                {"role_id": "analyst", "domain_id": "*"},
+                {"role_id": "developer", "domain_id": "*"},
+            ]
+        }
+    )
+    app = _make_app(assignments_source="provisa", db_pool=db, default_org_id="default")
+    resp = TestClient(app).get(
+        "/test",
+        headers={
+            **_auth("u1"),
+            "x-provisa-env": "synthetic",
+            "X-Provisa-Role": "analyst,developer",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "meta:analyst+developer"
+    assert built == [(("analyst", "developer"), ("default", "synthetic"))]
+    assert ("default", "synthetic") in runtimes

@@ -129,6 +129,8 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await pickSchemaAndTable(page, "wh", "widgets");
     await expectDiscoveredColumns(page, ["name"], 60000);
     await page.getByTestId("register-table-submit").click();
+    // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
+    await page.getByTestId("table-edit-save").click();
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.

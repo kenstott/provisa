@@ -11,12 +11,85 @@ Ce qui change par rapport à un resolver écrit à la main :
 - **Délégué.** Un filtre sur une colonne atteint votre fonction comme paramètre quand vous le demandez.
 - **Servi partout.** La même fonction répond à GraphQL, SQL (sur HTTP, pgwire et Arrow Flight), Cypher (sur HTTP et Bolt), gRPC, REST, JSON:API et MCP.
 
+
 ## Un premier resolver {: #an-example }
 
 ```python
 from dataclasses import dataclass
 
 
+@dataclass
+class Region:
+    code: str
+    name: str
+
+
+def regions() -> list[Region]:
+    """Sales regions.
+
+    @table
+    """
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
+```
+
+Pour le servir :
+
+1. Ajoutez une source `python` et pointez-la vers le code : un paquet PyPI, un commit Git, un téléversement ou un dossier (voir [D'où vient le code](#where-the-code-comes-from)).
+2. Enregistrez-la. Provisa installe le code, le lit et propose `regions` comme table avec les colonnes `code` et `name`.
+3. Un intendant enregistre la table dans un domaine, ici `sales`, et l'accorde comme n'importe quelle autre.
+
+Lisez-la ensuite en GraphQL :
+
+```graphql
+{
+  regions {
+    code
+    name
+  }
+}
+```
+
+Ou en SQL :
+
+```sql
+SELECT code, name
+FROM sales.regions
+```
+
+Node fonctionne de la même façon, avec des balises JSDoc et des types TypeScript : voir [Node](#node).
+
+## Construire {: #build }
+
+### Ce que devient une fonction {: #what-a-function-becomes }
+
+Provisa lit les déclarations de votre code lui-même : docstrings et annotations de type en Python, balises JSDoc et types TypeScript en Node.
+
+| Balise | Devient |
+|---|---|
+| `@table` | Une table. La fonction renvoie une liste ou un itérable, et chaque élément est une ligne. |
+| `@command` | Une commande, exécutée à la demande. |
+| `@stream` | Une table en direct. La fonction est un générateur, et chaque ligne est envoyée dès qu'elle est produite. |
+
+- Une fonction sans balise est ignorée.
+- Une balise que Provisa ne connaît pas est refusée, tout comme un type qu'il ne sait pas mapper. Le refus liste tous les problèmes d'un coup, pour que vous les corrigiez en une passe.
+
+Le type de ligne donne les colonnes :
+
+- Le texte, les nombres, les booléens, les dates et les horodatages correspondent à leurs types de colonne. Les listes restent des listes, et les objets imbriqués deviennent des types nommés.
+- En Python, un type de ligne est une dataclass, un `TypedDict`, un `NamedTuple`, un modèle Pydantic ou toute classe à champs annotés. Les lignes d'un modèle Pydantic sont envoyées telles que `model_dump(by_alias=True)` les donne, si bien qu'un champ avec un alias devient une colonne nommée par son alias.
+- En TypeScript, un type de ligne est une interface, un alias de type ou une classe.
+- La documentation propre d'un champ devient la description de sa colonne quand vous enregistrez la table : un `Field(description=...)` Pydantic, ou un commentaire de documentation sur une propriété TypeScript.
+- Un type de ligne lâche (`Any` ou un `dict` en Python, `any`, `unknown` ou un `Record` en TypeScript) n'a pas de colonnes à lire. Provisa appelle la fonction une fois sans argument et propose des colonnes à partir des lignes renvoyées. Si la fonction a un paramètre obligatoire, elle ne peut pas être appelée ainsi, et vous indiquez vous-même les types des colonnes en enregistrant la table.
+
+### Paramètres {: #parameters }
+
+Les paramètres d'une fonction deviennent les paramètres de sa table. Celle-ci note un compte :
+
+```python
 @dataclass
 class Risk:
     score: float
@@ -31,13 +104,7 @@ def churn_risk(account_id: str) -> list[Risk]:
     return [Risk(score=0.82, reasons=["no logins in 30 days"])]
 ```
 
-Pour le servir :
-
-1. Ajoutez une source `python` et pointez-la vers le code : un paquet PyPI, un commit Git, un téléversement ou un dossier (voir [D'où vient le code](#where-the-code-comes-from)).
-2. Enregistrez-la. Provisa installe le code, le lit et propose `churn_risk` comme table avec les colonnes `score` et `reasons` et un paramètre obligatoire, `account_id`.
-3. Un intendant enregistre la table dans un domaine, ici `accounts`, et l'accorde comme n'importe quelle autre.
-
-Lisez-la ensuite. En GraphQL, le paramètre est un argument de champ :
+En GraphQL, le paramètre est un argument de champ :
 
 ```graphql
 {
@@ -56,36 +123,15 @@ FROM accounts.churn_risk
 WHERE _nf_account_id = 'A-1042'
 ```
 
-Node fonctionne de la même façon, avec des balises JSDoc et des types TypeScript : voir [Node](#node).
-
-## Construire {: #build }
-
-### Ce que devient une fonction {: #what-a-function-becomes }
-
-Provisa lit les déclarations de votre code lui-même : docstrings et annotations de type en Python, balises JSDoc et types TypeScript en Node.
-
-| Balise | Devient |
-|---|---|
-| `@table` | Une table. La fonction renvoie une liste ou un itérable, et chaque élément est une ligne. |
-| `@command` | Une commande, exécutée à la demande. |
-| `@stream` | Une table en direct. La fonction est un générateur, et chaque ligne est envoyée dès qu'elle est produite. |
-
-- Une fonction sans balise est ignorée.
-- Une balise que Provisa ne connaît pas est refusée, tout comme un type qu'il ne sait pas mapper. Le refus nomme la fonction et liste tous les problèmes d'un coup, pour que vous les corrigiez en une passe.
-
-Le type de ligne donne les colonnes :
-
-- Le texte, les nombres, les booléens, les dates et les horodatages correspondent à leurs types de colonne. Les listes restent des listes, et les objets imbriqués deviennent des types nommés.
-- En Python, un type de ligne est une dataclass, un `TypedDict`, un `NamedTuple`, un modèle Pydantic ou toute classe à champs annotés. Les lignes d'un modèle Pydantic sont envoyées telles que `model_dump(by_alias=True)` les donne, si bien qu'un champ avec un alias devient une colonne nommée par son alias.
-- En TypeScript, un type de ligne est une interface, un alias de type ou une classe.
-- La documentation propre d'un champ devient la description de sa colonne quand vous enregistrez la table : un `Field(description=...)` Pydantic, ou un commentaire de documentation sur une propriété TypeScript.
-- Un type de ligne lâche (`Any` ou un `dict` en Python, `any`, `unknown` ou un `Record` en TypeScript) n'a pas de colonnes à lire. Provisa appelle la fonction une fois sans argument et propose des colonnes à partir des lignes renvoyées. Si la fonction a un paramètre obligatoire, elle ne peut pas être appelée ainsi, et vous indiquez vous-même les types des colonnes en enregistrant la table.
-
-Les paramètres de la fonction deviennent les paramètres de la table :
-
 - Un paramètre sans valeur par défaut est obligatoire. Une lecture qui l'omet est refusée avant que votre code ne s'exécute.
 - Un paramètre avec une valeur par défaut est facultatif. Omettez-le et votre valeur par défaut s'applique.
 - Un intendant peut tout de même rendre obligatoire un paramètre facultatif.
+
+### Ce qui parvient à votre fonction {: #what-reaches-your-function }
+
+Un appel reçoit les arguments de la lecture et rien d'autre de la requête. La valeur de chaque paramètre vient d'un argument de champ, d'une condition `_nf_`, d'un filtre qui lui est délégué ou des clés d'une jointure. Votre fonction ne voit jamais qui demande : l'identité et les rôles de l'appelant restent chez Provisa, qui gouverne les lignes que votre fonction renvoie.
+
+La délégation des filtres repose là-dessus. Un filtre de la requête devient la valeur d'un paramètre, si bien que votre fonction peut ne récupérer que les lignes demandées.
 
 ### Délégation des filtres {: #pushdown }
 
@@ -105,7 +151,7 @@ Les opérateurs :
 
 - Un intervalle sur une colonne remplit ses deux paramètres : `score BETWEEN 0.5 AND 0.9` donne `gte_score` et `lte_score`.
 - Les noms de colonne sont comparés exactement comme vous les avez déclarés dans le type de ligne. Un nom qui ne correspond qu'une fois que Provisa renomme la colonne pour un lecteur n'est pas une correspondance.
-- Une déclaration que les types de votre fonction ne peuvent pas accepter est refusée en la nommant.
+- Une déclaration que les types de votre fonction ne peuvent pas accepter est refusée.
 - Le filtre est quand même appliqué aux lignes que renvoie votre fonction, si bien qu'une fonction qui ignore ou assouplit une valeur reçue ne peut pas renvoyer de mauvaises lignes.
 
 ### Clés par lots : le paramètre `loader` {: #batched-keys }
@@ -122,7 +168,7 @@ Une fonction qui prend un paramètre nommé `loader` est appelée à la place un
 - **Typée comme d'habitude.** La fonction déclare toujours son seul type de ligne, une liste de lignes.
 - **Valeurs par défaut requises.** Ses paramètres à côté de `loader` ont besoin de valeurs par défaut, car un appel avec loader ne passe que `loader`.
 - **Taille de lot.** Limitez-la, comme le `maxBatchSize` de DataLoader, avec `loader N` à l'un de trois endroits : une ligne `@loader 100` à côté de `@table`, un commentaire `/* @loader 100 */` avant le paramètre `loader` en TypeScript, ou une chaîne `Annotated` en Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa répartit alors les clés en lots de cette taille et fusionne les réponses par hash. Sans taille, un lot contient toutes les clés.
-- **Refusé en le nommant.** Une taille sur une fonction sans paramètre `loader`, une taille qui n'est pas un entier positif, et deux tailles sur une même fonction.
+- **Refusé.** Une taille sur une fonction sans paramètre `loader`, une taille qui n'est pas un entier positif, et deux tailles sur une même fonction.
 
 Utilisez `loader` quand un appel sur de nombreuses clés vaut mieux que de nombreux appels sur une seule :
 
@@ -172,7 +218,7 @@ Jointe à une table de clients, elle est appelée avec un `loader` tel que `{"9f
 - **Un dépôt Git.** Un commit complet de 40 caractères, avec un sous-répertoire si le code n'est pas à la racine.
 - **Un téléversement.** Un `.zip`, `.tgz` ou `.tar.gz` du code.
 - **Un dossier sur votre machine.** **Choisir un dossier** compresse le dossier dans votre navigateur, en laissant de côté `node_modules`, `.venv`, `__pycache__` et `.git`, et le téléverse comme archive de la source. Dans un navigateur qui peut conserver le dossier (Chrome, Edge), **Enregistrer** le compresse et l'envoie à nouveau ; un autre navigateur vous redemande le dossier.
-- **Un répertoire sur le serveur.** Sur une installation à une seule organisation, un répertoire sous ceux que l'opérateur autorise. Il est lu sur place, donc une modification est lue par la requête suivante. Un serveur à plusieurs organisations le refuse en le nommant.
+- **Un répertoire sur le serveur.** Sur une installation à une seule organisation, un répertoire sous ceux que l'opérateur autorise. Il est lu sur place, donc une modification est lue par la requête suivante. Un serveur à plusieurs organisations le refuse.
 
 Toute origine sauf le répertoire du serveur est figée, si bien que la source exécute exactement ce qui a été enregistré.
 
@@ -308,7 +354,7 @@ volumes:
 
 **Si le code change.**
 
-- Un conteneur qui revient avec un autre code est refusé, en nommant le hash auquel la source est figée et celui que l'hôte annonce, jusqu'à ce qu'un intendant examine le code et le refige depuis le formulaire.
+- Un conteneur qui revient avec un autre code est refusé jusqu'à ce qu'un intendant examine le code et le refige depuis le formulaire.
 - Pour changer le code lui-même, repassez la source en mode dev, enregistrez le nouveau code et reconstruisez.
 
 ### Les services de Provisa {: #provisas-services }
@@ -403,7 +449,7 @@ const reply = await client.chat.completions.create({
 
 - **Par rôle.** Nommez un modèle `provisa:<role>` et vous obtenez celui que votre organisation attribue à ce rôle sous **Admin → AI Models** ; il suit ce choix quand un administrateur le modifie. Vous pouvez aussi nommer un modèle directement quand un rôle lui est attribué.
 - **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` accepte n'importe lequel des modèles vectoriels de votre organisation.
-- Tout autre modèle est refusé en le nommant.
+- Tout autre modèle est refusé.
 - L'appel sort par les propres fournisseurs, endpoints et clés de votre organisation, et ce qu'il envoie passe d'abord par les règles de masquage de Provisa.
 - Le streaming n'est pas proposé. Envoyez `stream: false`, la valeur par défaut.
 
@@ -416,9 +462,9 @@ const reply = await client.chat.completions.create({
 - Un hôte qui ne peut pas fournir le sandbox refuse de démarrer le worker et nomme ce qui manque ; le code ne s'exécute jamais sans confinement. Sous Windows, les sources de code sont refusées.
 - Sur un hôte distant, la politique réseau du conteneur est la limite de sortie du code. La liste d'autorisation en sortie du serveur s'applique au mode dev.
 
-### Refus nommés {: #refusals }
+### Refus {: #refusals }
 
-Chaque refus nomme ce qu'il a refusé et pourquoi, avant l'exécution de votre code quand c'est possible :
+Chacun de ces cas est refusé, avant l'exécution de votre code quand c'est possible :
 
 - Une balise inconnue ou un type que Provisa ne sait pas mapper, tous les problèmes d'une fonction d'un coup.
 - Une lecture qui omet un paramètre obligatoire.

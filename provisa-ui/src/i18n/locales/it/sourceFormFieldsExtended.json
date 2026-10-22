@@ -203,6 +203,7 @@
     "accountEmailHint": "L'e-mail con cui accedi ad Atlassian; il token API appartiene a questo account.",
     "apiToken": "Token API",
     "apiTokenHint": "Creato su id.atlassian.com, Security, API tokens. Conservato nel vault dei segreti.",
-    "siteAddressInvalid": "Inserisci l'indirizzo completo del sito, che inizi con https://"
+    "siteAddressInvalid": "Inserisci l'indirizzo completo del sito, che inizi con https://",
+    "namingInherit": "Eredita (globale)"
   }
 }

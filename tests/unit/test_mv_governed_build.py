@@ -64,7 +64,9 @@ def pipeline(monkeypatch):
     from provisa.federation import query_residency
     from provisa.pgwire import _pipeline
 
-    calls = SimpleNamespace(routed=[], resident=[], executed=[], refuse=None, route=Route.ENGINE)
+    calls = SimpleNamespace(
+        routed=[], resident=[], executed=[], refuse=None, route=Route.ENGINE, column_types=None
+    )
     monkeypatch.setattr(
         app,
         "state",
@@ -73,10 +75,12 @@ def pipeline(monkeypatch):
 
     async def _govern_and_route(sql, role_id, **kw):
         calls.routed.append((sql, role_id, kw))
+        route = Route.ENGINE if kw.get("route_hint") == "engine" else calls.route
         return SimpleNamespace(
-            route=calls.route,
+            route=route,
             physical_sql="SELECT id, home FROM governed",
             exec_params=None,
+            dialect="postgres",
             columns=None,
         )
 
@@ -87,7 +91,9 @@ def pipeline(monkeypatch):
 
     async def _execute_plan(plan):
         calls.executed.append(plan.physical_sql)
-        return SimpleNamespace(column_names=["id", "home"], rows=[(1, "us")])
+        return SimpleNamespace(
+            column_names=["id", "home"], rows=[(1, "us")], column_types=calls.column_types
+        )
 
     monkeypatch.setattr(_pipeline, "_govern_and_route", _govern_and_route)
     monkeypatch.setattr(_pipeline, "_execute_plan", _execute_plan)
@@ -102,13 +108,13 @@ async def test_a_regions_build_is_governed_by_the_pipeline_as_its_administrator(
     node_in("us")
     sql = await view_build_sql(_view(), _Engine())
     # The view's SQL as defined, through the one pipeline as org_admin with the role's own
-    # constants and this node's region — no caller's values — routed to the engine it lands
-    # through; its inputs made readable as the administrator's read's are, before it runs.
+    # constants and this node's region — no caller's values — routed as a query with the same
+    # definition is (REQ-2108); its inputs made readable as the administrator's read's are.
     assert pipeline.routed == [
         (
             "SELECT id, home FROM sales.orders",
             "org_admin",
-            {"session_vars": {"tier": "gold", "region": "us"}, "route_hint": "engine"},
+            {"session_vars": {"tier": "gold", "region": "us"}, "route_hint": None},
         )
     ]
     assert pipeline.resident == ["SELECT id, home FROM governed"]
@@ -145,7 +151,7 @@ async def test_a_view_the_pipeline_cannot_govern_is_refused_never_built_physical
     node_in("us")
     with pytest.raises(ViewNotBuildable, match="no definition"):
         await view_build_sql(_view(semantic=None), _Engine())
-    pipeline.route = Route.DIRECT
+    pipeline.route = Route.API
     with pytest.raises(ViewNotBuildable, match="routes"):
         await view_build_sql(_view(), _Engine())
 
@@ -164,7 +170,7 @@ async def test_with_no_platform_regions_a_build_is_governed_the_same_way(pipelin
         (
             "SELECT id, home FROM sales.orders",
             "org_admin",
-            {"session_vars": {"tier": "gold", "region": DEFAULT_REGION}, "route_hint": "engine"},
+            {"session_vars": {"tier": "gold", "region": DEFAULT_REGION}, "route_hint": None},
         )
     ]
     assert pipeline.resident == ["SELECT id, home FROM governed"]
@@ -286,3 +292,65 @@ def test_the_event_loop_wires_only_the_views_this_region_builds(node_in):
         view.id, view.target_table, view.region = mv_id, f"mv_{mv_id}", region
         reg.register(view)
     assert sorted(v.id for v in _views_built_here(reg)) == ["everywhere", "ours"]
+
+
+class _StagingEngine(_Engine):
+    """An engine that lands a DIRECT build's rows (the store's write face) and answers a shape."""
+
+    def __init__(self) -> None:
+        self.landed: list[dict] = []
+        self.ran: list[str] = []
+
+    async def land_source_table(self, **kw):
+        self.landed.append(kw)
+        return f"{kw['schema']}.{kw['table']}"
+
+    async def execute_engine(self, sql, **_kw):
+        self.ran.append(sql)
+        return SimpleNamespace(column_names=["id", "home"], column_types=["INTEGER", "VARCHAR"])
+
+
+@pytest.mark.asyncio
+async def test_a_single_source_build_runs_whole_at_its_source_and_stages_only_its_rows(
+    pipeline, node_in
+):
+    """REQ-2108: routed DIRECT, the build runs at its source on any engine kind; only its result
+    rows come back, landed beside the view's table, and every build step reads them there."""
+    from provisa.mv.governed_build import lineage_sql, staged_table, view_build_sql
+
+    node_in("us")
+    pipeline.route = Route.DIRECT
+    pipeline.column_types = ["int4", "text"]
+    engine = _StagingEngine()
+    view = _view()
+    sql = await view_build_sql(view, engine)
+    assert pipeline.executed == ["SELECT id, home FROM governed"]  # once, at its source
+    assert pipeline.resident == []  # nothing read through the engine
+    assert engine.landed == [
+        {
+            "schema": "mv",
+            "table": "mv_eu_orders__direct",
+            "columns": [("id", "integer"), ("home", "text")],
+            "rows": [{"id": 1, "home": "us"}],
+        }
+    ]
+    assert staged_table(view) == "mv_eu_orders__direct"
+    assert sql == 'SELECT * FROM "mat_store"."mv"."mv_eu_orders__direct"'
+    # its lineage is read from its definition, which names what it derives from
+    assert lineage_sql(view, sql) == view.sql
+    assert lineage_sql(view, "SELECT id, home FROM governed") == "SELECT id, home FROM governed"
+
+
+@pytest.mark.asyncio
+async def test_a_source_that_reports_no_types_takes_its_shape_from_the_engine(pipeline, node_in):
+    """REQ-2108: a driver that reports no result types (the SQLAlchemy drivers) leaves the staged
+    table's shape to the engine, which reads the definition with LIMIT 0 and no rows."""
+    from provisa.mv.governed_build import view_build_sql
+
+    node_in("us")
+    pipeline.route = Route.DIRECT
+    engine = _StagingEngine()
+    await view_build_sql(_view(), engine)
+    assert engine.ran == ["SELECT * FROM (SELECT id, home FROM governed) AS _shape LIMIT 0"]
+    assert pipeline.routed[-1][2]["route_hint"] == "engine"
+    assert engine.landed[0]["columns"] == [("id", "integer"), ("home", "text")]

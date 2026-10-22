@@ -11,6 +11,7 @@ What differs from a resolver you write by hand:
 - **Pushed down.** A filter on a column reaches your function as a parameter when you ask for it.
 - **Served everywhere.** The same function answers GraphQL, SQL (over HTTP, pgwire and Arrow Flight), Cypher (over HTTP and Bolt), gRPC, REST, JSON:API and MCP.
 
+
 ## A first resolver {: #an-example }
 
 ```python
@@ -18,42 +19,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 To serve it:
 
 1. Add a `python` source and point it at the code: a PyPI package, a Git commit, an upload or a folder (see [Where the code comes from](#where-the-code-comes-from)).
-2. Save it. Provisa installs the code, reads it, and offers `churn_risk` as a table with the columns `score` and `reasons` and a required parameter, `account_id`.
-3. A steward registers the table in a domain, here `accounts`, and grants it like any other.
+2. Save it. Provisa installs the code, reads it, and offers `regions` as a table with the columns `code` and `name`.
+3. A steward registers the table in a domain, here `sales`, and grants it like any other.
 
-Then read it. In GraphQL the parameter is a field argument:
+Then read it in GraphQL:
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-In SQL it is an `_nf_` condition:
+Or in SQL:
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node works the same way, with JSDoc tags and TypeScript types: see [Node](#node).
@@ -72,7 +76,7 @@ Provisa reads your code's own declarations: docstrings and type hints in Python,
 | `@columns` | A column transform: a batch of rows in, one result per row out. See [Column transforms](#column-transforms). |
 
 - A function without a tag is ignored.
-- A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal names the function and lists every problem at once, so you fix them in one pass.
+- A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal lists every problem at once, so you fix them in one pass.
 
 The row type gives the columns:
 
@@ -82,11 +86,53 @@ The row type gives the columns:
 - A field's own documentation becomes its column's description when you register the table: a Pydantic `Field(description=...)`, or a doc comment on a TypeScript property.
 - A loose row type (`Any` or a `dict` in Python, `any`, `unknown` or a `Record` in TypeScript) has no columns to read. Provisa calls the function once with no arguments and suggests columns from the rows that come back. When the function has a required parameter it can't be called that way, so you type the columns yourself when you register the table.
 
-The function's parameters become the table's parameters:
+### Parameters {: #parameters }
+
+A function's parameters become its table's parameters. This one scores one account:
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+In GraphQL a parameter is a field argument:
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+In SQL it is an `_nf_` condition:
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - A parameter without a default is required. A read that leaves it out is refused before your code runs.
 - A parameter with a default is optional. Leave it out and your default applies.
 - A steward can still make an optional one required.
+
+### What reaches your function {: #what-reaches-your-function }
+
+A call gets the read's arguments and nothing else of the request. Each parameter's value comes from a field argument, an `_nf_` condition, a filter pushed down to it or a join's keys. Your function never sees who is asking: the caller's identity and roles stay with Provisa, which governs the rows your function returns.
+
+Pushdown builds on this. A filter in the query becomes a parameter's value, so your function can fetch only the rows asked for.
 
 ### Pushdown {: #pushdown }
 
@@ -106,7 +152,7 @@ The operators:
 
 - A range on a column fills both of its parameters: `score BETWEEN 0.5 AND 0.9` gives `gte_score` and `lte_score`.
 - Column names are matched exactly as you declared them in the row type. A name that matches only once Provisa renames the column for a reader is not a match.
-- A declaration your function's types can't take is refused by name.
+- A declaration your function's types can't take is refused.
 - The filter is still applied to the rows your function returns, so a function that ignores or loosens a value it is given can't return wrong rows.
 
 ### Batched keys: the `loader` parameter {: #batched-keys }
@@ -123,7 +169,7 @@ A function that takes a parameter named `loader` is called once per batch instea
 - **Typed as usual.** The function still declares its row type alone, a list of rows.
 - **Defaults needed.** Its parameters beside `loader` need defaults, because a loader call passes `loader` alone.
 - **Batch size.** Cap it, as DataLoader's `maxBatchSize` does, with `loader N` in any one of three places: a `@loader 100` line beside `@table`, a `/* @loader 100 */` comment before the `loader` parameter in TypeScript, or an `Annotated` string in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa then splits the keys into batches of that size and merges the answers by hash. Without a size, one batch holds every key.
-- **Refused by name.** A size on a function with no `loader` parameter, a size that isn't a positive integer, and two sizes on one function.
+- **Refused.** A size on a function with no `loader` parameter, a size that isn't a positive integer, and two sizes on one function.
 
 Use `loader` when one call over many keys does better than many calls over one:
 
@@ -213,7 +259,7 @@ A view that applies a column transform is landed, whether or not you declare it 
 - **A Git repository.** A full 40-character commit, with a subdirectory if the code isn't at the top.
 - **An upload.** A `.zip`, `.tgz` or `.tar.gz` of the code.
 - **A folder on your machine.** **Choose folder** zips the folder in your browser, leaving out `node_modules`, `.venv`, `__pycache__` and `.git`, and uploads it as the source's archive. In a browser that can keep the folder (Chrome, Edge), **Save** zips and sends it again; another browser asks you for the folder again.
-- **A directory on the server.** On a single-organization install, a directory under the ones the operator allows. It is read where it is, so an edit is read by the next query. A server of many organizations refuses it by name.
+- **A directory on the server.** On a single-organization install, a directory under the ones the operator allows. It is read where it is, so an edit is read by the next query. A server of many organizations refuses it.
 
 Every origin but the server directory is pinned, so the source runs exactly what was saved.
 
@@ -349,7 +395,7 @@ On its first start the container prints a line beginning `pairing code:` in its 
 
 **If the code changes.**
 
-- A container that comes back running other code is refused, naming the hash the source is pinned to and the one the host reports, until a steward reviews the code and re-pins it from the form.
+- A container that comes back running other code is refused until a steward reviews the code and re-pins it from the form.
 - To change the code itself, switch the source back to dev, save the new code, and build again.
 
 ### Provisa's services {: #provisas-services }
@@ -444,7 +490,7 @@ const reply = await client.chat.completions.create({
 
 - **By role.** Name a model as `provisa:<role>` and you get whichever model your organization assigns that role under **Admin → AI Models**; it follows that choice when an administrator changes it. You can also name a model directly when a role is assigned it.
 - **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` takes any of your organization's vector models.
-- Any other model is refused by name.
+- Any other model is refused.
 - The call goes out through your organization's own vendors, endpoints and keys, and what it sends passes through Provisa's redaction rules first.
 - Streaming isn't offered. Send `stream: false`, which is the default.
 
@@ -457,9 +503,9 @@ const reply = await client.chat.completions.create({
 - A host that can't provide the sandbox refuses to start the worker and names what is missing; code never runs unconfined. On Windows, code sources are refused.
 - On a remote host, the container's network policy is the code's egress boundary. The server's egress allow-list applies to dev mode.
 
-### Refusals by name {: #refusals }
+### Refusals {: #refusals }
 
-Every refusal names what it refused and why, before your code runs where it can:
+Each of these is refused, before your code runs where it can:
 
 - An unknown tag or a type Provisa can't map, every problem of a function at once.
 - A read that leaves out a required parameter.

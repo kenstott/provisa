@@ -30,8 +30,8 @@ import {
   BRAND_AUTH,
   FILE_TRANSPORTS,
   KAFKA_AUTH_TYPES,
-  NAMING_CONVENTIONS,
 } from "./constants";
+import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
@@ -158,6 +158,7 @@ export function SourceFormFieldsExtended({
   // A kind whose tables land cannot be created without its Cache TTL (sourceKind).
   const landsWithTtl = useCacheTtlRequired(form.type);
   const { t } = useTranslation();
+  const namingConventions = useNamingConventions();
   const regionChoices = useRegionChoices();
   // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
   // the sole Streaming member — websocket/rss/ingest now share the category and each needs its own
@@ -916,7 +917,11 @@ export function SourceFormFieldsExtended({
               label={t("sourceFormFieldsExtended.namingConvention")}
               value={form.gqlNamingConvention}
               onChange={(v) => setForm({ ...form, gqlNamingConvention: v ?? "" })}
-              data={NAMING_CONVENTIONS.map((nc) => ({ value: nc.value, label: nc.label }))}
+              // REQ-416: the server's conventions; none of its own is the deployment's.
+              data={[
+                { value: "", label: t("sourceFormFieldsExtended.namingInherit") },
+                ...namingConventions.map((c) => ({ value: c, label: namingConventionLabel(t, c) })),
+              ]}
               allowDeselect={false}
               data-testid="naming-convention-select"
             />

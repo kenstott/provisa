@@ -58,8 +58,18 @@ def _config() -> dict:
                 _view(
                     "sat_customer",
                     materialize=True,
-                    bitemporal_mode="delta",
-                    bitemporal_key=["customer_hk"],
+                    business_key=["customer_hk"],
+                    valid_time="effective_at",
+                    recorded_time="loaded_at",
+                    sql="SELECT 1 AS customer_hk, now() AS effective_at, now() AS loaded_at",
+                    columns=[
+                        {"name": n, "data_type": t, "visible_to": []}
+                        for n, t in (
+                            ("customer_hk", "varchar"),
+                            ("effective_at", "timestamp"),
+                            ("loaded_at", "timestamp"),
+                        )
+                    ],
                 ),
                 _view("mart", materialize=True),
                 _view("live"),
@@ -70,7 +80,11 @@ def _config() -> dict:
 
 def test_a_config_view_declares_how_it_keeps_its_versions():
     [sat] = [t for t in _config()["tables"] if t["table"] == "view_sat_customer"]
-    assert (sat["mv_bitemporal_mode"], sat["mv_bitemporal_key"]) == ("delta", ["customer_hk"])
+    assert (sat["business_key"], sat["valid_time"], sat["recorded_time"]) == (
+        ["customer_hk"],
+        "effective_at",
+        "loaded_at",
+    )
 
 
 def test_the_append_logs_are_those_of_the_bitemporal_materialized_views():

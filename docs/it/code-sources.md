@@ -11,12 +11,85 @@ Cosa cambia rispetto a un resolver scritto a mano:
 - **Delegato.** Un filtro su una colonna arriva alla tua funzione come parametro quando lo chiedi.
 - **Servito ovunque.** La stessa funzione risponde a GraphQL, SQL (su HTTP, pgwire e Arrow Flight), Cypher (su HTTP e Bolt), gRPC, REST, JSON:API e MCP.
 
+
 ## Un primo resolver {: #an-example }
 
 ```python
 from dataclasses import dataclass
 
 
+@dataclass
+class Region:
+    code: str
+    name: str
+
+
+def regions() -> list[Region]:
+    """Sales regions.
+
+    @table
+    """
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
+```
+
+Per servirlo:
+
+1. Aggiungi un'origine `python` e puntala al codice: un pacchetto PyPI, un commit Git, un caricamento o una cartella (vedi [Da dove viene il codice](#where-the-code-comes-from)).
+2. Salvala. Provisa installa il codice, lo legge e offre `regions` come tabella con le colonne `code` e `name`.
+3. Uno steward registra la tabella in un dominio, qui `sales`, e la concede come qualsiasi altra.
+
+Poi leggila in GraphQL:
+
+```graphql
+{
+  regions {
+    code
+    name
+  }
+}
+```
+
+Oppure in SQL:
+
+```sql
+SELECT code, name
+FROM sales.regions
+```
+
+Node funziona allo stesso modo, con tag JSDoc e tipi TypeScript: vedi [Node](#node).
+
+## Costruire {: #build }
+
+### Cosa diventa una funzione {: #what-a-function-becomes }
+
+Provisa legge le dichiarazioni del tuo codice stesso: docstring e annotazioni di tipo in Python, tag JSDoc e tipi TypeScript in Node.
+
+| Tag | Diventa |
+|---|---|
+| `@table` | Una tabella. La funzione restituisce una lista o un iterabile, e ogni elemento è una riga. |
+| `@command` | Un comando, eseguito su richiesta. |
+| `@stream` | Una tabella live. La funzione è un generatore, e ogni riga viene inviata appena prodotta. |
+
+- Una funzione senza tag viene ignorata.
+- Un tag che Provisa non conosce viene rifiutato, come un tipo che non sa mappare. Il rifiuto elenca tutti i problemi in una volta, così li correggi in un solo passaggio.
+
+Il tipo di riga dà le colonne:
+
+- Testo, numeri, booleani, date e timestamp corrispondono ai loro tipi di colonna. Le liste restano liste, e gli oggetti annidati diventano tipi con nome.
+- In Python un tipo di riga è una dataclass, un `TypedDict`, un `NamedTuple`, un modello Pydantic o qualsiasi classe con campi annotati. Le righe di un modello Pydantic vengono inviate come le dà `model_dump(by_alias=True)`, quindi un campo con un alias diventa una colonna con il nome dell'alias.
+- In TypeScript un tipo di riga è un'interfaccia, un alias di tipo o una classe.
+- La documentazione propria di un campo diventa la descrizione della sua colonna quando registri la tabella: un `Field(description=...)` di Pydantic, o un commento di documentazione su una proprietà TypeScript.
+- Un tipo di riga generico (`Any` o un `dict` in Python, `any`, `unknown` o un `Record` in TypeScript) non ha colonne da leggere. Provisa chiama la funzione una volta senza argomenti e propone colonne dalle righe restituite. Se la funzione ha un parametro obbligatorio non può essere chiamata così, e indichi tu i tipi delle colonne quando registri la tabella.
+
+### Parametri {: #parameters }
+
+I parametri di una funzione diventano i parametri della sua tabella. Questa valuta un account:
+
+```python
 @dataclass
 class Risk:
     score: float
@@ -31,13 +104,7 @@ def churn_risk(account_id: str) -> list[Risk]:
     return [Risk(score=0.82, reasons=["no logins in 30 days"])]
 ```
 
-Per servirlo:
-
-1. Aggiungi un'origine `python` e puntala al codice: un pacchetto PyPI, un commit Git, un caricamento o una cartella (vedi [Da dove viene il codice](#where-the-code-comes-from)).
-2. Salvala. Provisa installa il codice, lo legge e offre `churn_risk` come tabella con le colonne `score` e `reasons` e un parametro obbligatorio, `account_id`.
-3. Uno steward registra la tabella in un dominio, qui `accounts`, e la concede come qualsiasi altra.
-
-Poi leggila. In GraphQL il parametro è un argomento di campo:
+In GraphQL il parametro è un argomento di campo:
 
 ```graphql
 {
@@ -56,36 +123,15 @@ FROM accounts.churn_risk
 WHERE _nf_account_id = 'A-1042'
 ```
 
-Node funziona allo stesso modo, con tag JSDoc e tipi TypeScript: vedi [Node](#node).
-
-## Costruire {: #build }
-
-### Cosa diventa una funzione {: #what-a-function-becomes }
-
-Provisa legge le dichiarazioni del tuo codice stesso: docstring e annotazioni di tipo in Python, tag JSDoc e tipi TypeScript in Node.
-
-| Tag | Diventa |
-|---|---|
-| `@table` | Una tabella. La funzione restituisce una lista o un iterabile, e ogni elemento è una riga. |
-| `@command` | Un comando, eseguito su richiesta. |
-| `@stream` | Una tabella live. La funzione è un generatore, e ogni riga viene inviata appena prodotta. |
-
-- Una funzione senza tag viene ignorata.
-- Un tag che Provisa non conosce viene rifiutato, come un tipo che non sa mappare. Il rifiuto nomina la funzione ed elenca tutti i problemi in una volta, così li correggi in un solo passaggio.
-
-Il tipo di riga dà le colonne:
-
-- Testo, numeri, booleani, date e timestamp corrispondono ai loro tipi di colonna. Le liste restano liste, e gli oggetti annidati diventano tipi con nome.
-- In Python un tipo di riga è una dataclass, un `TypedDict`, un `NamedTuple`, un modello Pydantic o qualsiasi classe con campi annotati. Le righe di un modello Pydantic vengono inviate come le dà `model_dump(by_alias=True)`, quindi un campo con un alias diventa una colonna con il nome dell'alias.
-- In TypeScript un tipo di riga è un'interfaccia, un alias di tipo o una classe.
-- La documentazione propria di un campo diventa la descrizione della sua colonna quando registri la tabella: un `Field(description=...)` di Pydantic, o un commento di documentazione su una proprietà TypeScript.
-- Un tipo di riga generico (`Any` o un `dict` in Python, `any`, `unknown` o un `Record` in TypeScript) non ha colonne da leggere. Provisa chiama la funzione una volta senza argomenti e propone colonne dalle righe restituite. Se la funzione ha un parametro obbligatorio non può essere chiamata così, e indichi tu i tipi delle colonne quando registri la tabella.
-
-I parametri della funzione diventano i parametri della tabella:
-
 - Un parametro senza valore predefinito è obbligatorio. Una lettura che lo omette viene rifiutata prima che il tuo codice venga eseguito.
 - Un parametro con valore predefinito è facoltativo. Omettilo e si applica il tuo valore predefinito.
 - Uno steward può comunque rendere obbligatorio uno facoltativo.
+
+### Cosa arriva alla tua funzione {: #what-reaches-your-function }
+
+Una chiamata riceve gli argomenti della lettura e nient'altro della richiesta. Il valore di ogni parametro viene da un argomento di campo, da una condizione `_nf_`, da un filtro delegato a esso o dalle chiavi di un join. La tua funzione non vede mai chi chiede: identità e ruoli del chiamante restano a Provisa, che governa le righe che la tua funzione restituisce.
+
+La delega dei filtri si basa su questo. Un filtro nella query diventa il valore di un parametro, così la tua funzione può recuperare solo le righe richieste.
 
 ### Delega dei filtri {: #pushdown }
 
@@ -105,7 +151,7 @@ Gli operatori:
 
 - Un intervallo su una colonna riempie entrambi i suoi parametri: `score BETWEEN 0.5 AND 0.9` dà `gte_score` e `lte_score`.
 - I nomi delle colonne vengono confrontati esattamente come li hai dichiarati nel tipo di riga. Un nome che corrisponde solo quando Provisa rinomina la colonna per un lettore non è una corrispondenza.
-- Una dichiarazione che i tipi della tua funzione non possono accettare viene rifiutata per nome.
+- Una dichiarazione che i tipi della tua funzione non possono accettare viene rifiutata.
 - Il filtro viene comunque applicato alle righe che la tua funzione restituisce, quindi una funzione che ignora o allenta un valore ricevuto non può restituire righe sbagliate.
 
 ### Chiavi a lotti: il parametro `loader` {: #batched-keys }
@@ -122,7 +168,7 @@ Una funzione che accetta un parametro chiamato `loader` viene invece chiamata un
 - **Tipizzata come sempre.** La funzione dichiara comunque solo il suo tipo di riga, una lista di righe.
 - **Servono valori predefiniti.** I suoi parametri accanto a `loader` hanno bisogno di valori predefiniti, perché una chiamata con loader passa solo `loader`.
 - **Dimensione del lotto.** Limitala, come `maxBatchSize` di DataLoader, con `loader N` in uno di tre punti: una riga `@loader 100` accanto a `@table`, un commento `/* @loader 100 */` prima del parametro `loader` in TypeScript, o una stringa `Annotated` in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa divide allora le chiavi in lotti di quella dimensione e unisce le risposte per hash. Senza dimensione, un lotto contiene tutte le chiavi.
-- **Rifiutato per nome.** Una dimensione su una funzione senza parametro `loader`, una dimensione che non è un intero positivo, e due dimensioni su una funzione.
+- **Rifiutato.** Una dimensione su una funzione senza parametro `loader`, una dimensione che non è un intero positivo, e due dimensioni su una funzione.
 
 Usa `loader` quando una chiamata su molte chiavi rende più di molte chiamate su una:
 
@@ -172,7 +218,7 @@ Unita a una tabella di clienti, viene chiamata con un `loader` come `{"9f2c...":
 - **Un repository Git.** Un commit completo di 40 caratteri, con una sottodirectory se il codice non è in cima.
 - **Un caricamento.** Un `.zip`, `.tgz` o `.tar.gz` del codice.
 - **Una cartella sulla tua macchina.** **Scegli cartella** comprime la cartella nel tuo browser, lasciando fuori `node_modules`, `.venv`, `__pycache__` e `.git`, e la carica come archivio dell'origine. In un browser che può conservare la cartella (Chrome, Edge), **Salva** la comprime e la invia di nuovo; un altro browser ti chiede di nuovo la cartella.
-- **Una directory sul server.** Su un'installazione con una sola organizzazione, una directory sotto quelle che l'operatore consente. Viene letta dov'è, quindi una modifica viene letta dalla query successiva. Un server con molte organizzazioni la rifiuta per nome.
+- **Una directory sul server.** Su un'installazione con una sola organizzazione, una directory sotto quelle che l'operatore consente. Viene letta dov'è, quindi una modifica viene letta dalla query successiva. Un server con molte organizzazioni la rifiuta.
 
 Ogni origine tranne la directory del server è fissata, quindi l'origine esegue esattamente ciò che è stato salvato.
 
@@ -308,7 +354,7 @@ Al primo avvio il container stampa nel suo log una riga che inizia con `pairing 
 
 **Se il codice cambia.**
 
-- Un container che torna eseguendo altro codice viene rifiutato, nominando l'hash a cui l'origine è fissata e quello che l'host riporta, finché uno steward non esamina il codice e lo rifissa dal modulo.
+- Un container che torna eseguendo altro codice viene rifiutato finché uno steward non esamina il codice e lo rifissa dal modulo.
 - Per cambiare il codice stesso, riporta l'origine in modalità dev, salva il nuovo codice e costruisci di nuovo.
 
 ### I servizi di Provisa {: #provisas-services }
@@ -403,7 +449,7 @@ const reply = await client.chat.completions.create({
 
 - **Per ruolo.** Nomina un modello come `provisa:<role>` e ottieni quello che la tua organizzazione assegna a quel ruolo in **Admin → AI Models**; segue quella scelta quando un amministratore la cambia. Puoi anche nominare un modello direttamente quando gli è assegnato un ruolo.
 - **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` accetta uno qualsiasi dei modelli vettoriali della tua organizzazione.
-- Qualsiasi altro modello viene rifiutato per nome.
+- Qualsiasi altro modello viene rifiutato.
 - La chiamata esce tramite i fornitori, gli endpoint e le chiavi della tua organizzazione, e ciò che invia passa prima per le regole di oscuramento di Provisa.
 - Lo streaming non è offerto. Invia `stream: false`, che è il valore predefinito.
 
@@ -416,9 +462,9 @@ const reply = await client.chat.completions.create({
 - Un host che non può fornire il sandbox rifiuta di avviare il worker e nomina ciò che manca; il codice non gira mai senza confinamento. Su Windows, le origini di codice vengono rifiutate.
 - Su un host remoto, la policy di rete del container è il limite di uscita del codice. La lista di uscita consentita del server vale per la modalità dev.
 
-### Rifiuti per nome {: #refusals }
+### Rifiuti {: #refusals }
 
-Ogni rifiuto nomina cosa ha rifiutato e perché, prima che il tuo codice venga eseguito quando possibile:
+Ognuno di questi casi viene rifiutato, prima che il tuo codice venga eseguito quando possibile:
 
 - Un tag sconosciuto o un tipo che Provisa non sa mappare, tutti i problemi di una funzione in una volta.
 - Una lettura che omette un parametro obbligatorio.

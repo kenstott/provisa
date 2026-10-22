@@ -210,11 +210,16 @@ def _seed_zip(*, catalog: bytes = b"the prebuilt catalog") -> bytes:
     import io
     import zipfile
 
+    # Each entry carries a fixed time: a zip stamps the wall clock (to two seconds), so two seeds
+    # built either side of a tick would differ, and the installed seed's fingerprint with them.
+    def entry(name: str) -> zipfile.ZipInfo:
+        return zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as seed:
-        seed.writestr(".duckdb/govdata.duckdb", catalog)
+        seed.writestr(entry(".duckdb/govdata.duckdb"), catalog)
         for schema in _SEED_SCHEMAS:
-            seed.writestr(f".aperio/{schema}/.conversions.json", f'{{"schema": "{schema}"}}')
+            seed.writestr(entry(f".aperio/{schema}/.conversions.json"), f'{{"schema": "{schema}"}}')
     return out.getvalue()
 
 
