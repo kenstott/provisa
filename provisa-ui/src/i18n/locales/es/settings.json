@@ -862,6 +862,12 @@
         "label": "Umbral de tasa de fuga de los valores ficticios",
         "help": "La proporción de los valores de muestra de una columna sensible que su valor ficticio puede dejar igual al valor real antes de que la comprobación de tasa de fuga lo marque como inadecuado. 0 hace fallar un valor ficticio que deja cualquier valor sin cambiar."
       }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Permitir comandos de código del host",
+        "help": "Activado: se pueden registrar y llamar comandos python y script. Cada uno se ejecuta con el acceso completo del servidor a su memoria, credenciales, archivos y red, y su código no viaja con el modelo. Desactivado por defecto; use un resolutor de código en su lugar."
+      }
     }
   }
 }

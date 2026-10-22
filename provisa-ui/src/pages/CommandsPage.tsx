@@ -58,6 +58,7 @@ import type { ActionType, FormState } from "./commands/types";
 import {
   EMPTY_FORM,
   OPERATION_SCHEMA,
+  CODE_SCHEMA,
   deriveReturnSchema,
   columnsFromReturnSchema,
 } from "./commands/types";
@@ -138,7 +139,7 @@ export function CommandsPage() {
     if (!src) return;
     // A remote source offers its write operations; a database source offers the routines of
     // the schema named (REQ-887). Either list only proposes: nothing is registered until saved.
-    const schema = OPERATION_SCHEMA[src.type] ?? form.schemaName;
+    const schema = OPERATION_SCHEMA[src.type] ?? CODE_SCHEMA[src.type] ?? form.schemaName;
     if (!schema) return;
     setLoadingFunctions(true);
     getAvailableFunctions(form.sourceId, schema)

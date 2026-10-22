@@ -862,6 +862,12 @@
         "label": "Leckraten-Schwelle für Fake-Werte",
         "help": "Der Anteil der Stichprobenwerte einer sensiblen Spalte, den ihr Fake-Wert gleich dem echten Wert lassen darf, bevor die Leckraten-Prüfung den Fake-Wert als unzureichend markiert. 0 lässt einen Fake-Wert scheitern, der irgendeinen Wert unverändert lässt."
       }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Host-Code-Befehle zulassen",
+        "help": "Ein: Python- und Skript-Befehle dürfen registriert und aufgerufen werden. Jeder läuft mit dem vollen Zugriff des Servers auf seinen Speicher, seine Zugangsdaten, Dateien und sein Netzwerk, und sein Code wird nicht mit dem Modell übertragen. Standardmäßig aus; verwenden Sie stattdessen einen Code-Resolver."
+      }
     }
   }
 }

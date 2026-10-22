@@ -195,6 +195,12 @@ def _bitemporal_reads(state: Any) -> dict:
     return getattr(state, "bitemporal_view_reads", None) or {}
 
 
+def _stored_reads(state: Any) -> set[str]:
+    """The views that apply a column transform (REQ-2131): each answered from its stored table,
+    whose entry in the view map reads it, since its outputs exist nowhere else."""
+    return getattr(state, "stored_view_reads", None) or set()
+
+
 def _answered_after_governance(
     view: str, view_sql_map: dict[str, str], state: Any, gov: "GovernanceContext"
 ) -> bool:
@@ -206,6 +212,8 @@ def _answered_after_governance(
         return True
     if view in _bitemporal_reads(state):
         return True
+    if view in _stored_reads(state):
+        return True  # REQ-2131: its outputs are its stored table's alone
     # Only while its stored rows are fresh: a view whose build is not is read through its own
     # SQL, expanded into the statement and governed with it, so every table it reads is read as
     # a direct statement reads it (a search table under its arguments among them).
@@ -277,15 +285,17 @@ def semantic_statement(
 
 def _definitions(view_sql_map: dict[str, str], state: Any) -> dict[str, str]:
     """Each view's definition: its entry in the view map, but a bitemporal view's own SQL (its
-    materialized view's ``semantic_sql``) in place of the reading of its log."""
-    bitemporal = _bitemporal_reads(state)
-    if not bitemporal:
+    materialized view's ``semantic_sql``) in place of the reading of its log, and a view applying
+    a column transform's in place of the reading of its stored table (REQ-2131)."""
+    read_from_store = [*_bitemporal_reads(state), *_stored_reads(state)]
+    if not read_from_store:
         return view_sql_map
     definitions = dict(view_sql_map)
-    for view in bitemporal:
+    for view in read_from_store:
         mv = state.mv_registry.get(f"view-{view}")
         if mv is None or mv.semantic_sql is None:
-            raise RuntimeError(f"bitemporal view {view!r} has no definition registered")
+            kind = "bitemporal view" if view in _bitemporal_reads(state) else "view"
+            raise RuntimeError(f"{kind} {view!r} has no definition registered")
         definitions[view] = mv.semantic_sql.rstrip().rstrip(";")
     return definitions
 
@@ -313,6 +323,9 @@ def unnarrowed_view_bodies(
                 continue
             if view in bitemporal:
                 bodies[view] = as_of_reads[view]
+                continue
+            if view in _stored_reads(state):
+                bodies[view] = view_sql  # REQ-2131: a reading of its stored table
                 continue
             stored = _home_copy(view, state) or _stored_rows(view, state)
             if stored is None:

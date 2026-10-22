@@ -104,6 +104,23 @@ async def _register_user_views_in_state(
     from provisa.api.app import state
 
     with tolerate_startup_failure("user views for inline expansion"):
+        # REQ-2131: the org's column transforms, by name: a view applying one is landed (built as
+        # a materialized view, declared or not) and read only from its stored table.
+        from provisa.codesource.columns import COLUMN_TRANSFORM
+        from provisa.codesource.columns_fold import called
+        from provisa.core.schema_org import tracked_functions as _tracked_functions_t
+
+        _transforms = {
+            _r.name
+            for _r in (
+                await conn.execute_core(
+                    select(_tracked_functions_t.c.name).where(
+                        _tracked_functions_t.c.impl_kind == COLUMN_TRANSFORM
+                    )
+                )
+            ).fetchall()
+        }
+        state.stored_view_reads = set()
         _view_rows = [
             dict(_r._mapping)
             for _r in (
@@ -197,6 +214,22 @@ async def _register_user_views_in_state(
                 # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
                 # reconstruction over this view's append log at query time.
                 state.bitemporal_view_reads[_vr["table_name"]] = (_mv_ref, _bt_spec)
+            elif called(_semantic_sql, _transforms):
+                # REQ-2131: its outputs exist only in its stored table, so that is what it reads.
+                from provisa.mv.models import stored_table_ref
+
+                _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
+                    state.active_org_id
+                )
+                _stored = stored_table_ref(
+                    _tgt_cat,
+                    _tgt_schema,
+                    f"mv_{_vr['table_name']}",
+                    catalog_qualified=state.federation_engine.engine.catalog_qualified,
+                )
+                _vr["materialize"] = True  # landed, declared or not
+                state.view_sql_map[_vr["table_name"]] = f"SELECT * FROM {_stored}"
+                state.stored_view_reads.add(_vr["table_name"])
             else:
                 state.view_sql_map[_vr["table_name"]] = _semantic_sql
             if _vr.get("materialize"):
@@ -363,8 +396,14 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
             # rewrite mangles the fully-qualified store ref (drops the schema). Only the ordinary
             # semantic view SQL needs compiling.
             _bt_views = getattr(state, "bitemporal_view_reads", {})
+            # REQ-2131: a view applying a column transform reads its stored table, already physical.
+            _stored_views = getattr(state, "stored_view_reads", set())
             state.view_sql_map = {
-                name: (sql if name in _bt_views else compile_view_sql_to_physical(sql, ctx))
+                name: (
+                    sql
+                    if name in _bt_views or name in _stored_views
+                    else compile_view_sql_to_physical(sql, ctx)
+                )
                 for name, sql in state.view_sql_map.items()
             }
         compile_registry_mvs_to_physical(state.mv_registry, ctx)

@@ -216,3 +216,32 @@ def search(
         with_vectors=vectors,
     )
     return [document(p) for p in response.points]
+
+
+def search_each(
+    conn: QdrantConnection, requests: list[dict], *, vectors: bool | list[str]
+) -> list[list[dict]]:
+    """Each of ``requests`` (``table.plan``'s, all of one collection) answered as :func:`search`
+    answers one, in one Query API batch request: each request's points, nearest first, in the
+    requests' order (REQ-2099)."""
+    from qdrant_client import models
+
+    if not requests:
+        return []
+    [collection] = {r["collection"] for r in requests}
+    responses = conn.client().query_batch_points(
+        collection_name=collection,
+        requests=[
+            models.QueryRequest(
+                query=r["query"],
+                using=r["using"],
+                filter=None if r["filter"] is None else models.Filter.model_validate(r["filter"]),
+                limit=r["limit"],
+                score_threshold=r["score_threshold"],
+                with_payload=True,
+                with_vector=vectors,
+            )
+            for r in requests
+        ],
+    )
+    return [[document(p) for p in response.points] for response in responses]

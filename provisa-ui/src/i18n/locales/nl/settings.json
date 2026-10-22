@@ -862,6 +862,12 @@
         "label": "Lekpercentagedrempel voor nepwaarden",
         "help": "Het aandeel van de steekproefwaarden van een gevoelige kolom dat de nepwaarde gelijk aan de echte waarde mag laten voordat de lekpercentagecontrole haar als ontoereikend markeert. 0 laat een nepwaarde falen die een waarde ongewijzigd laat."
       }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Hostcode-opdrachten toestaan",
+        "help": "Aan: python- en script-opdrachten mogen worden geregistreerd en aangeroepen. Elke opdracht draait met de volledige toegang van de server tot zijn geheugen, inloggegevens, bestanden en netwerk, en de code gaat niet mee met het model. Standaard uit; gebruik in plaats daarvan een code-resolver."
+      }
     }
   }
 }

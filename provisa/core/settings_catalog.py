@@ -475,6 +475,19 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="commands.allow_host_code",
+        card="security",
+        type="bool",
+        effect="live",  # read when a command is registered, updated or called
+        # REQ-2134: python and script commands run code with the server's own access; off by
+        # default, so neither an organization nor a promoted model can run code on the host.
+        req="REQ-2134",
+        env="PROVISA_COMMANDS_ALLOW_HOST_CODE",
+        config_path=("server", "commands", "allow_host_code"),
+        default=False,
+        guard="confirm",
+    ),
+    Setting(
         key="bolt.allowed_origins",
         card="security",
         type="list",

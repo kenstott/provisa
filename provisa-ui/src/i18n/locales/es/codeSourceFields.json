@@ -47,6 +47,8 @@
     "llmCap": "Límite mensual de LLM",
     "llmCapHint": "Lo que pueden costar al mes (UTC) las llamadas de este código a $PROVISA_SERVICES/llm, en USD. Con un límite, solo puede usar modelos con precio en Precios de modelos de Polly, y sus llamadas se rechazan cuando el mes alcanza el límite. Vacío: sin límite.",
     "llmCapPlaceholder": "Sin límite",
+    "workers": "Workers",
+    "workersHint": "Cuántos workers ejecuta esta fuente en cada proceso de Provisa. Los lotes de una transformación de columnas se ejecutan en paralelo entre ellos, así que más workers aumentan su rendimiento.",
     "settings": "Ajustes",
     "settingsHint": "Valores que el código lee con settings.get(name), uno por línea como nombre = valor. No para secretos: esos van en Secretos. Un responsable los cambia aquí sin cambiar el código."
   }

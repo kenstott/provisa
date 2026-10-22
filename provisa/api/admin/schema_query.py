@@ -1183,13 +1183,26 @@ class Query:  # REQ-021, REQ-042
         offers write operations (REQ-1924): an OpenAPI source's operations that are not GETs, a
         remote GraphQL source's mutations, a gRPC source's mutation methods. An OpenAPI source
         also offers each GET whose response declares no row schema. A database source
-        offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. Listing
+        offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. A code
+        source offers its ``@columns`` functions under schema ``code`` (REQ-2131). Listing
         them registers none: registration is the steward's curation step."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.executor.source_operation import OPERATION_SCHEMA, offered_operations
 
         source_type = (getattr(state, "source_types", None) or {}).get(source_id, "")
+        from provisa.codesource.source import CODE_SOURCE_TYPES
+
+        if source_type in CODE_SOURCE_TYPES:
+            # REQ-2131: a code source offers its @columns functions, each a batch column transform.
+            from provisa.codesource.columns import SCHEMA, offered
+
+            if schema_name != SCHEMA:
+                return []
+            return [
+                AvailableTableType(name=name, comment=comment)
+                for name, comment in await offered(state, source_id)
+            ]
         operation_schema = OPERATION_SCHEMA.get(source_type)
         if operation_schema is None:
             from provisa.api.admin.introspect import native_routines

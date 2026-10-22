@@ -1564,6 +1564,16 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     undefined = await undefined_commands(conn)
     not_defined = [f for f in tracked_functions if f["name"] in undefined]
     tracked_functions = [f for f in tracked_functions if f["name"] not in undefined]
+    # REQ-2131: a column transform is applied in a projection, never called on its own: it is kept
+    # apart, so no surface offers it as a command.
+    from provisa.codesource.columns import COLUMN_TRANSFORM
+
+    state.column_transforms = {
+        f["name"]: {**f, "output_columns": _json_list(f["output_columns"])}
+        for f in tracked_functions
+        if f["impl_kind"] == COLUMN_TRANSFORM
+    }
+    tracked_functions = [f for f in tracked_functions if f["impl_kind"] != COLUMN_TRANSFORM]
     # REQ-2001: a statement command's contract, derived again at every build; one whose statement
     # no longer resolves against the model carries why (contract.broken), and a call is refused.
     from provisa.compiler.statement_contract import derive as _derive_contract

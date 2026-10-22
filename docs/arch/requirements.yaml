@@ -83721,7 +83721,6 @@
   related_reqs: [REQ-1858, REQ-2010, REQ-2012, REQ-2001, REQ-2002, REQ-1983, REQ-2000, REQ-1586]
   code:
   - demo/named/sonnets/config.yaml
-  - demo/named/sonnets/echoes.py
   - demo/named/sonnets/setup.yaml
   - scripts/run_demo_setup.py
   - scripts/demo_extras.py
@@ -83730,6 +83729,7 @@
   tests:
   - tests/unit/test_demo_setup.py
   - tests/unit/test_named_demo_tour.py
+  - tests/unit/test_sonnets_demo_echoes.py
   notes: 'Lead, 2026-10-14: the demo (Postgres sonnets, embed_lines, lines_like, theme MVs, link_echoes, the
     three relationships, 4-6 example queries with a Cypher of cross-sonnet echoes); no governance or role angle.
     Offline check: the Fair Youth / Dark Lady split does not show in unsupervised clusters, so the tour makes no
@@ -84204,12 +84204,13 @@
     emails for a match score. One demo, framed as investment-bank compliance. Built 2026-10-15: the matching of mail to the watch list (names fuzzily, aliases, ticker, code name, and meaning through the local model) runs in the match_deals command and writes deal_match with the flagged entity, because a text or similarity match is no join along a relationship and the SQL guard refuses it; the review queue reads deal_match, the mail and the staff along declared relationships and weights the match by context in SQL. A read of a view is governed against the tables it reads, so the queue reads no row of the watch list: a first-level reviewer is granted no column of it, row rules keep the mail and its matches to the desks they review, and the queue masks the deal id.'
   code:
   - demo/named/insider/config.yaml
-  - demo/named/insider/matching.py
+  - demo/named/insider/insider_signals/insider_signals.py
   - demo/named/insider/generate.py
   - demo/named/insider/db/init.sql
   - demo/named/insider/tour.yaml
   tests:
   - tests/integration/test_insider_demo.py
+  - tests/unit/test_insider_demo_signals.py
   - tests/unit/test_named_demo_tour.py
   - tests/unit/test_polly_bakeoff_questions.py
 - id: REQ-2060
@@ -86094,7 +86095,7 @@ And a second build keeps it once, and an archive that is not a usable bundle is 
   feature: semantic-model-relationships
   priority: MUST
   type: behavioral
-  description: "A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them. (Amended 2026-10-20, ONE CALL:) The distinct argument sets go to the code's host in one call, and the host calls the function once per set in its own process, every set's rows coming back under that call in the sets' order: no round trip per set. Functions are unchanged."
+  description: "A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them. (Amended 2026-10-20, ONE CALL:) The distinct argument sets go to the code's host in one call, and the host calls the function once per set in its own process, every set's rows coming back under that call in the sets' order: no round trip per set. Functions are unchanged. (Amended 2026-10-22, QDRANT SEARCH:) A relationship may feed a Qdrant search table's parameters (REQ-1983), its query among them, by the same feed: the search is read live once per distinct set, one Qdrant query a set. A search's points hold nothing of the query that found them, so a relationship may join on the target's parameter column: each row read for a set then carries, in that column, the value the set gave the parameter, typed as the source column it was read from, and the join matches each source row to the rows read for it. A relationship that joins on a parameter it does not feed is refused. A statement that gives one of the parameters a relationship feeds reads the target under its own arguments and is not fed by it, so a search for a phrase of its own still joins its points back to the source's rows."
   use_case: "A churn model packaged as a Python code table, churn_risk(customer_id, plan, tenure_months, ...), is joined to the customers' features view: each customer the analyst may read is scored with that customer's features, emails masked, and a regional role's join scores only its region's customers."
   scenario: "Given a relationship from customers to churn_risk with parameters {customer_id: id, email: email, plan: plan, tenure_months: tenure_months}, a row rule region = 'EU' and a regex mask on email for the analyst
 
@@ -86116,8 +86117,12 @@ And SELECT score FROM churn_risk is refused for its required parameters before t
   - provisa/codesource/worker.py
   - provisa/python/host.py
   - provisa/node/host-core.mjs
+  - provisa/qdrant/table.py
+  - demo/named/sonnets/config.yaml
   tests:
   - tests/unit/test_relationship_fed_code_table.py
+  - tests/unit/test_relationship_fed_qdrant_search.py
+  - tests/integration/test_sonnets_demo.py
   - tests/unit/test_code_worker.py
   - tests/unit/test_python_source.py
   - tests/unit/test_node_host_argument_sets.py
@@ -86918,7 +86923,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     or enrich a whole batch, metered and capped as any code-source LLM call. In a materialized view,
     @columns outputs are recomputed when the view is refreshed, as the view's freshness declares; they
     have no schedule of their own. A function that returns a different number of results than rows it
-    was given is refused naming the function.
+    was given is refused naming the function. (Amended 2026-10-21, LANDED:) A view that applies a column transform is landed, whether or not its steward declares it materialized, as API and code tables are landed: it is built through the materialized views' governed build (its inputs read, the function called in batches, the result stored), refreshed as the view's freshness declares, and read by the engine from its stored table.
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
@@ -87027,4 +87032,39 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1443
   - REQ-2106
   - REQ-2126
+  target: "2027-Q1"
+- id: REQ-2134
+  status: proposed
+  since: 2026-10
+  group: 5. Query Languages, Compilation & Operations
+  category: Extensible Functions
+  feature: commands-and-functions-tracked-functions
+  priority: MUST
+  type: behavioral
+  description: >-
+    A deployment setting, commands.allow_host_code (off by default), governs host code: the python
+    command kind (an in-process module:attr callable) and the script command kind (a subprocess on
+    the server's host). Both run with the server's full access to its memory, credentials, files and
+    network, so code that is malicious, buggy or greedy can read anything the server can, starve it
+    or take it down. A model entry holds only a reference to the code (module:attr or a path), so the
+    code does not travel with the model when it is promoted. While the setting is off, registering or
+    updating a command of either kind is refused, from the admin API and from a config file alike, and
+    calling an existing one is refused; one check makes both refusals. The setting is the operator's,
+    never an organization's, and has its field in Deployment settings. Code resolvers are the governed
+    alternative: sandboxed, pinned, and promoted with the model.
+  use_case: >-
+    An operator runs a server of many organizations without any of them, or a model promoted into
+    it, being able to run code with the server's own access.
+  scenario: |
+    Given commands.allow_host_code is off, as it is by default
+    When a steward registers or updates a command of kind python or script
+    Then it is refused, naming the kind and the setting
+    When an existing command of kind python or script is called
+    Then the call is refused, naming the kind and the setting
+    Given commands.allow_host_code is on
+    Then commands of either kind are registered, updated and called
+  relates_to:
+  - REQ-885
+  - REQ-1913
+  - REQ-2104
   target: "2027-Q1"
