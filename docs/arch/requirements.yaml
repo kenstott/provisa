@@ -87115,7 +87115,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     governed whole, optimized, routed). Every graph language front end parses into the Cypher+ IR:
     Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing below it is
     duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within what
-    Cypher expresses, the SPARQL tab may also show the equivalent Cypher.
+    Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric:
+    Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no
+    language is its IR, the namesake included. So the refactor makes Cypher's parser a front end like
+    SPARQL's, and nothing below the IR is specific to Cypher.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
