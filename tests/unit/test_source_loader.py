@@ -121,11 +121,12 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
     # default params, and flattens the response pages into rows.
     calls: dict = {}
 
-    async def _fake_call_api(endpoint, params, *, base_url, auth):
+    async def _fake_call_api(endpoint, params, *, base_url, auth, source_headers):
         calls["endpoint"] = endpoint
         calls["params"] = params
         calls["base_url"] = base_url
         calls["auth"] = auth
+        calls["source_headers"] = source_headers
         from provisa.api_source.caller import ApiAnswer
 
         return ApiAnswer([{"data": [{"id": 1}, {"id": 2}]}])
@@ -143,7 +144,9 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
         columns=[],
         response_normalizer=None,
     )
-    api_source = SimpleNamespace(id="api", base_url="https://x.test", auth=None, headers={})
+    api_source = SimpleNamespace(
+        id="api", base_url="https://x.test", auth=None, headers={"User-Agent": "Provisa/x"}
+    )
     load = make_openapi_loader(
         SimpleNamespace(
             api_endpoints={("api", "events"): endpoint},
@@ -154,6 +157,7 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
     rows = await load(_src("api", "openapi"), _tbl("default", "events"))
     assert rows == [{"id": 1}, {"id": 2}]
     assert calls["base_url"] == "https://x.test" and calls["params"] == {"limit": 100}
+    assert calls["source_headers"] == {"User-Agent": "Provisa/x"}  # the source's own headers
 
 
 @pytest.mark.asyncio

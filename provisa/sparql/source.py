@@ -37,6 +37,15 @@ from provisa.core.secrets import resolve_secrets
 _REFERENCE = "${"  # a credential reference (provisa.core.secrets), resolved where it is used
 
 
+def sparql_headers() -> dict[str, str]:  # REQ-2138
+    """The headers every call to a SPARQL endpoint carries. A public endpoint asks its clients to
+    say who they are (Wikidata's User-Agent policy refuses a library's default): Provisa, its
+    version and where to reach it."""
+    from provisa.core.demo_bundles import running_provisa
+
+    return {"User-Agent": f"Provisa/{running_provisa()} (https://provisa.dev)"}
+
+
 @dataclass
 class SparqlSourceConfig:  # REQ-297
     """User-supplied SPARQL endpoint configuration."""
@@ -66,6 +75,7 @@ def build_api_source(cfg: SparqlSourceConfig) -> ApiSource:  # REQ-297
         type=ApiSourceType.sparql,
         base_url=base_url,
         auth=cfg.auth,
+        headers=sparql_headers(),
     )
 
 
@@ -178,6 +188,7 @@ async def probe_endpoint(
     data.update(cfg.extra_params)
 
     headers = {
+        **sparql_headers(),
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/sparql-results+json",
     }
