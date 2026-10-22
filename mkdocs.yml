@@ -135,6 +135,7 @@ nav:
       - Remote Schemas: remote-schemas.md
       - Import (Hasura / DDN): import.md
   - Modeling, Commands & Lineage:
+      - Governing Across Domains: governing-across-domains.md
       - Business Logic: business-logic.md
       - Data Modeling (Entities & Facts): modeling.md
       - Commands: commands.md
