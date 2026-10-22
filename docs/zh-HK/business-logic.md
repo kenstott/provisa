@@ -6,6 +6,8 @@
 
 業界對其中的部分問題已有答案。指標層常以語義層的名義出售，它把「淨收入」定義一次，供每個工具讀取。[Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard)（ODPS，開放資料產品標準）描述資料產品，[Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard)（ODCS，開放資料合約標準）描述資料合約。Provisa [兩者都能匯出](metadata-export.md#data-products-as-odps-and-odcs)。這些都是好主意，亦都越來越受歡迎，但每個只涵蓋一部分。更大的問題是，它們如何作為一個連貫、可組合的模型融入受控、受管治的資料。衍生或更改資料的邏輯需要與資料本身同樣的管治：誰可以使用它，它讀取和寫入甚麼，它的結果去往哪裡。
 
+交付渠道令情況更差。邏輯被分別建構進每個渠道：BI 工具裡的計算欄位、API 處理程式裡的規則、應用程式解析器裡的篩選條件。每個渠道最終都有自己版本的真相，因此同一個問題透過其中兩個渠道提出，很少得到相同的答案。
+
 ## 甚麼是業務邏輯 {: #definition }
 
 業務邏輯是建立、更新、刪除或轉換數據的規則。
@@ -49,6 +51,7 @@
 
 ## 模型帶給你甚麼 {: #what-you-get }
 
+- 邏輯存在於模型之中，而不是渠道之中。每個渠道（SQL、GraphQL、REST、Arrow Flight、MCP 等）都讀取相同的規則，因此同一個問題在任何地方都得到相同的答案。
 - 每條規則都登錄在一個網域中，並有授權。
 - 每條規則都以同樣的方式治理，無論它如何編寫。
 - 每條規則都在[血緣](lineage.md)中可見。

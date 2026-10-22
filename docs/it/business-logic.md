@@ -6,6 +6,8 @@ Ogni organizzazione ha degli standard per la logica di business, e la maggior pa
 
 Per parti di questo esistono risposte del settore. Un metrics layer, spesso venduto come semantic layer, definisce il «ricavo netto» una volta per ogni strumento. L'[Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) (ODPS) descrive i data product e l'[Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) (ODCS) descrive i data contract. Provisa [li esporta entrambi](metadata-export.md#data-products-as-odps-and-odcs). Sono tutte buone idee e tutte stanno prendendo piede, ma ciascuna copre una parte. La domanda più grande è come si inseriscono in dati controllati e governati come un unico modello coerente e componibile. La logica che deriva o modifica i dati ha bisogno della stessa governance dei dati stessi: chi può usarla, cosa legge e scrive, e dove vanno i suoi risultati.
 
+I canali di consegna peggiorano le cose. La logica viene costruita in ciascuno: un campo calcolato nello strumento di BI, una regola nell'handler dell'API, un filtro nel resolver dell'app. Ogni canale finisce con la propria versione della verità, così la stessa domanda posta attraverso due di essi raramente ottiene la stessa risposta.
+
 ## Cos'è la logica di business {: #definition }
 
 La logica di business sono le regole che creano, aggiornano, eliminano o trasformano i dati.
@@ -49,6 +51,7 @@ Questi limiti contengono gli effetti collaterali ma non possono eliminarli. Ciò
 
 ## Cosa ti dà il modello {: #what-you-get }
 
+- La logica vive nel modello, non nel canale. Ogni canale (SQL, GraphQL, REST, Arrow Flight, MCP e gli altri) legge le stesse regole, così la stessa domanda ottiene la stessa risposta ovunque.
 - Ogni regola è registrata in un dominio, con permessi.
 - Ogni regola è governata allo stesso modo, comunque sia scritta.
 - Ogni regola è visibile nel [lineage](lineage.md).

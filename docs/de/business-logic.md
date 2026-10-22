@@ -6,6 +6,8 @@ Jede Organisation hat Standards für Geschäftslogik, und die meisten Teams halt
 
 Für Teile davon gibt es Antworten aus der Branche. Ein Metrics Layer, oft als Semantic Layer verkauft, definiert „Nettoumsatz“ einmal für jedes Werkzeug. Der [Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) (ODPS) beschreibt Datenprodukte und der [Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) (ODCS) beschreibt Datenverträge. Provisa [exportiert beide](metadata-export.md#data-products-as-odps-and-odcs). Alle sind gute Ideen und alle gewinnen an Verbreitung, aber jede deckt nur einen Teil ab. Die größere Frage ist, wie sie sich als ein stimmiges, zusammensetzbares Modell in kontrollierte, gesteuerte Daten einfügen. Logik, die Daten ableitet oder ändert, braucht dieselbe Governance wie die Daten selbst: wer sie nutzen darf, was sie liest und schreibt und wohin ihre Ergebnisse gehen.
 
+Auslieferungskanäle verschärfen das. In jeden wird Logik eingebaut: ein berechnetes Feld im BI-Werkzeug, eine Regel im API-Handler, ein Filter im Resolver der App. Jeder Kanal hat am Ende seine eigene Version der Wahrheit, sodass dieselbe Frage über zwei von ihnen selten dieselbe Antwort bekommt.
+
 ## Was Geschäftslogik ist {: #definition }
 
 Geschäftslogik sind die Regeln, die Daten erzeugen, ändern, löschen oder umformen.
@@ -49,6 +51,7 @@ Diese Grenzen dämmen Nebenwirkungen ein, können sie aber nicht beseitigen. Was
 
 ## Was Ihnen das Modell gibt {: #what-you-get }
 
+- Die Logik lebt im Modell, nicht im Kanal. Jeder Kanal (SQL, GraphQL, REST, Arrow Flight, MCP und die übrigen) liest dieselben Regeln, sodass dieselbe Frage überall dieselbe Antwort bekommt.
 - Jede Regel ist in einer Domäne registriert, mit Berechtigungen.
 - Jede Regel wird gleich gesteuert, egal wie sie geschrieben ist.
 - Jede Regel ist in der [Lineage](lineage.md) sichtbar.

@@ -6,6 +6,8 @@ Toda organización tiene estándares para la lógica de negocio, y la mayoría d
 
 Para partes de esto existen respuestas de la industria. Una capa de métricas, a menudo vendida como capa semántica, define los «ingresos netos» una vez para que todas las herramientas los lean. El [Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) (ODPS) describe productos de datos y el [Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) (ODCS) describe contratos de datos. Provisa [exporta ambos](metadata-export.md#data-products-as-odps-and-odcs). Todas son buenas ideas y todas ganan adopción, pero cada una cubre una parte. La pregunta mayor es cómo encajan en datos controlados y gobernados como un modelo único, coherente y componible. La lógica que deriva o cambia datos necesita la misma gobernanza que los propios datos: quién puede usarla, qué lee y escribe, y adónde van sus resultados.
 
+Los canales de entrega lo empeoran. La lógica se construye en cada uno: un campo calculado en la herramienta de BI, una regla en el manejador de la API, un filtro en el resolvedor de la aplicación. Cada canal acaba con su propia versión de la verdad, así que la misma pregunta hecha por dos de ellos rara vez obtiene la misma respuesta.
+
 ## Qué es la lógica de negocio {: #definition }
 
 La lógica de negocio son las reglas que crean, actualizan, eliminan o transforman datos.
@@ -49,6 +51,7 @@ Estos límites contienen los efectos secundarios, pero no pueden eliminarlos. Lo
 
 ## Lo que le da el modelo {: #what-you-get }
 
+- La lógica vive en el modelo, no en el canal. Cada canal (SQL, GraphQL, REST, Arrow Flight, MCP y el resto) lee las mismas reglas, así que la misma pregunta obtiene la misma respuesta en todas partes.
 - Cada regla está registrada en un dominio, con permisos.
 - Cada regla se gobierna igual, se escriba como se escriba.
 - Cada regla es visible en el [linaje](lineage.md).

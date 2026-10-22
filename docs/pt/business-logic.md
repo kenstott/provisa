@@ -6,6 +6,8 @@ Toda organização tem padrões para a lógica de negócio, e a maioria das equi
 
 Existem respostas do setor para partes disso. Uma camada de métricas, muitas vezes vendida como camada semântica, define a “receita líquida” uma vez para toda ferramenta ler. O [Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) (ODPS) descreve produtos de dados e o [Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) (ODCS) descreve contratos de dados. O Provisa [exporta os dois](metadata-export.md#data-products-as-odps-and-odcs). Todas são boas ideias e todas estão ganhando adoção, mas cada uma cobre uma parte. A pergunta maior é como elas se encaixam em dados controlados e governados como um único modelo coerente e componível. A lógica que deriva ou altera dados precisa da mesma governança que os próprios dados: quem pode usá-la, o que ela lê e escreve, e para onde vão seus resultados.
 
+Os canais de entrega pioram tudo. A lógica é construída em cada um: um campo calculado na ferramenta de BI, uma regra no handler da API, um filtro no resolver do app. Cada canal acaba com sua própria versão da verdade, então a mesma pergunta feita por dois deles raramente recebe a mesma resposta.
+
 ## O que é lógica de negócio {: #definition }
 
 Lógica de negócio são as regras que criam, atualizam, excluem ou transformam dados.
@@ -49,6 +51,7 @@ Esses limites contêm os efeitos colaterais, mas não podem eliminá-los. O que 
 
 ## O que o modelo oferece {: #what-you-get }
 
+- A lógica vive no modelo, não no canal. Todo canal (SQL, GraphQL, REST, Arrow Flight, MCP e os demais) lê as mesmas regras, então a mesma pergunta recebe a mesma resposta em todo lugar.
 - Toda regra é registrada em um domínio, com permissões.
 - Toda regra é governada do mesmo jeito, seja qual for a forma de escrita.
 - Toda regra aparece na [linhagem](lineage.md).

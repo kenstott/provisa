@@ -6,6 +6,8 @@
 
 行业对其中的部分问题已有答案。指标层常以语义层的名义出售，它把“净收入”定义一次，供每个工具读取。[Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard)（ODPS，开放数据产品标准）描述数据产品，[Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard)（ODCS，开放数据契约标准）描述数据契约。Provisa [两者都能导出](metadata-export.md#data-products-as-odps-and-odcs)。这些都是好主意，也都越来越受欢迎，但每个只覆盖一部分。更大的问题是，它们如何作为一个连贯、可组合的模型融入受控、受治理的数据。派生或更改数据的逻辑需要与数据本身同样的治理：谁可以使用它，它读取和写入什么，它的结果去往哪里。
 
+交付渠道让情况更糟。逻辑被分别构建进每个渠道：BI 工具里的计算字段、API 处理程序里的规则、应用解析器里的过滤条件。每个渠道最终都有自己版本的真相，因此同一个问题通过其中两个渠道提出，很少得到相同的答案。
+
 ## 什么是业务逻辑 {: #definition }
 
 业务逻辑是创建、更新、删除或转换数据的规则。
@@ -49,6 +51,7 @@
 
 ## 模型带给你什么 {: #what-you-get }
 
+- 逻辑存在于模型中，而不是渠道中。每个渠道（SQL、GraphQL、REST、Arrow Flight、MCP 等）都读取相同的规则，因此同一个问题在任何地方都得到相同的答案。
 - 每条规则都注册在一个域中，并有授权。
 - 每条规则都以同样的方式治理，无论它如何编写。
 - 每条规则都在[血缘](lineage.md)中可见。

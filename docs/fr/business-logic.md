@@ -6,6 +6,8 @@ Toute organisation a des standards pour la logique métier, et la plupart des é
 
 Le secteur apporte des réponses à certaines parties de ce problème. Une couche de métriques, souvent vendue comme couche sémantique, définit le « chiffre d'affaires net » une fois pour que tous les outils le lisent. L'[Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) (ODPS) décrit les produits de données et l'[Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) (ODCS) décrit les contrats de données. Provisa [exporte les deux](metadata-export.md#data-products-as-odps-and-odcs). Toutes sont de bonnes idées et toutes gagnent du terrain, mais chacune couvre une partie. La vraie question est de savoir comment elles s'insèrent dans des données contrôlées et gouvernées, en un seul modèle cohérent et composable. Une logique qui dérive ou modifie des données a besoin de la même gouvernance que les données elles-mêmes : qui peut l'utiliser, ce qu'elle lit et écrit, et où vont ses résultats.
 
+Les canaux de diffusion aggravent les choses. La logique est construite dans chacun : un champ calculé dans l'outil de BI, une règle dans le gestionnaire de l'API, un filtre dans le résolveur de l'application. Chaque canal finit avec sa propre version de la vérité, si bien que la même question posée par deux d'entre eux obtient rarement la même réponse.
+
 ## Ce qu'est la logique métier {: #definition }
 
 La logique métier, ce sont les règles qui créent, modifient, suppriment ou transforment des données.
@@ -49,6 +51,7 @@ Ces limites contiennent les effets de bord mais ne peuvent pas les supprimer. Ce
 
 ## Ce que le modèle vous apporte {: #what-you-get }
 
+- La logique vit dans le modèle, pas dans le canal. Chaque canal (SQL, GraphQL, REST, Arrow Flight, MCP et les autres) lit les mêmes règles, si bien que la même question obtient la même réponse partout.
 - Chaque règle est enregistrée dans un domaine, avec des droits.
 - Chaque règle est gouvernée de la même façon, quelle que soit sa forme d'écriture.
 - Chaque règle est visible dans le [lignage](lineage.md).
