@@ -147,7 +147,7 @@ nav:
       - Security Model: security.md
       - Regions: regions.md
       - Secrets: secrets.md
-      - Business Glossary: glossary.md
+      - Ontology: ontology.md
       - Metadata Export: metadata-export.md
       - Data Products: data-products.md
   - Clients:

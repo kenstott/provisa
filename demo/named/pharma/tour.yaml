@@ -38,7 +38,7 @@ steps:
   capability: create_relationship
   relationship: RECALLED_BY
 - key: pharmaTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: supply risk
 - key: pharmaAnswer

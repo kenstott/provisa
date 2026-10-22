@@ -42,7 +42,7 @@ steps:
   capability: create_relationship
   relationship: DRAWS
 - key: filesTerm
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: open complaint
 - key: filesAnswer

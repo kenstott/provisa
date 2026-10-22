@@ -12,7 +12,7 @@ I canali di consegna peggiorano le cose. La logica viene costruita in ciascuno: 
 
 La logica di business sono le regole che creano, aggiornano, eliminano o trasformano i dati.
 
-La terminologia di business è un'altra cosa. I nomi e le descrizioni di domini, tabelle e colonne, e i termini del [glossario](glossary.md), dicono cosa significano i dati. La logica di business dice cosa se ne fa.
+La terminologia di business è un'altra cosa. I nomi e le descrizioni di domini, tabelle e colonne, e i termini dell'[ontologia](ontology.md), dicono cosa significano i dati. La logica di business dice cosa se ne fa.
 
 ## Tre ruoli {: #roles }
 

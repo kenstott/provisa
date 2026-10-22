@@ -1,8 +1,8 @@
-# Glossaire métier {: #business-glossary }
+# Ontologie {: #ontology }
 
-Le glossaire métier est un vocabulaire vivant posé sur votre modèle de données. Chaque colonne physique du modèle correspond à un terme, et les colonnes qui portent le même concept partagent un seul terme, quelle que soit leur graphie. Chaque terme peut avoir une définition, un ensemble de relations typées vers d'autres termes et une liste d'experts métier qui en possèdent le sens.
+L'ontologie est un vocabulaire vivant posé sur votre modèle de données. Chaque colonne physique du modèle correspond à un terme, et les colonnes qui portent le même concept partagent un seul terme, quelle que soit leur graphie. Chaque terme peut avoir une définition, un ensemble de relations typées vers d'autres termes et une liste d'experts métier qui en possèdent le sens.
 
-Le glossaire est une ontologie : un graphe de concepts, de leurs définitions et des relations entre eux. Provisa le fait correspondre aux structures de base de données qui contiennent les valeurs, ce qui lui permet de répondre à des questions sur vos données. Un concept reste un brouillon tant qu'il n'atteint pas les données, directement ou par d'autres concepts. Le glossaire est distinct des métriques : un terme dit ce qu'est un concept, une métrique dit comment un chiffre est calculé.
+C'est un graphe de concepts, de leurs définitions et des relations entre eux. Provisa le fait correspondre aux structures de base de données qui contiennent les valeurs, ce qui lui permet de répondre à des questions sur vos données. Un concept reste un brouillon tant qu'il n'atteint pas les données, directement ou par d'autres concepts. L'ontologie est distincte des métriques : un terme dit ce qu'est un concept, une métrique dit comment un chiffre est calculé.
 
 Ce vocabulaire commun relie le langage métier aux données physiques. Un agent d'IA qui sait que « customer » désigne toute colonne portant un identifiant client n'a pas à deviner laquelle de `cust_id`, `customerId` et `CUSTOMER_KEY` est la bonne. Toutes correspondent au même terme, et c'est le terme qui porte la définition.
 
@@ -43,7 +43,7 @@ Un terme dérivé suit le **nom métier** de la colonne : son alias si le modél
 
 Donner un alias à la colonne est la correction la plus forte. Un alias se propage à toutes les surfaces qui lisent la colonne (SQL, GraphQL, agents d'IA, le catalogue), si bien que le modèle se décrit correctement partout. Renommer le terme corrige une entrée du catalogue et laisse la colonne s'appeler `usr_nm` pour le lecteur suivant. Le bandeau de terme proposé dans l'interface le dit : donnez d'abord un alias à la colonne, et ne renommez le terme que si le nom de colonne est juste et le vocabulaire ne l'est pas.
 
-Changer l'alias d'une colonne re-dérive son terme proposé ; le glossaire suit ainsi le modèle et ne demande jamais deux fois la même correction. Dès qu'un curateur a ajouté à un terme une définition, une relation ou un expert, une modification d'alias laisse la référence en place, car ce travail est celui du curateur et il reste.
+Changer l'alias d'une colonne re-dérive son terme proposé ; l'ontologie suit ainsi le modèle et ne demande jamais deux fois la même correction. Dès qu'un curateur a ajouté à un terme une définition, une relation ou un expert, une modification d'alias laisse la référence en place, car ce travail est celui du curateur et il reste.
 
 ### Noms de table décrivant un chemin d'accès {: #access-path-table-names }
 
@@ -97,7 +97,7 @@ Les relations sont orientées. L'interface montre à la fois les arêtes sortant
 autre) et les arêtes entrantes (un autre terme → ce terme), en étiquetant chaque direction par sa
 propre formulation en langage courant.
 
-Les arêtes vivent dans `glossary_term_edges`, une table associative déclarée comme relation de jonction : sa colonne `rel_type` est le discriminant, de sorte que chacun des types ci-dessus est un type de relation Cypher distinct entre deux nœuds `GlossaryTerm`, et non une propriété portée par un nœud réifié. La table est provisionnée avec le reste du schéma de métadonnées et n'apparaît pas comme un nœud dans les clients graphe : elle est l'arête. Rien en elle n'est spécifique au glossaire : elle se déclare exactement comme vous déclareriez une jonction sur vos propres tables, et elle est lue par le même code.
+Les arêtes vivent dans `glossary_term_edges`, une table associative déclarée comme relation de jonction : sa colonne `rel_type` est le discriminant, de sorte que chacun des types ci-dessus est un type de relation Cypher distinct entre deux nœuds `GlossaryTerm`, et non une propriété portée par un nœud réifié. La table est provisionnée avec le reste du schéma de métadonnées et n'apparaît pas comme un nœud dans les clients graphe : elle est l'arête. Rien en elle n'est spécifique à l'ontologie : elle se déclare exactement comme vous déclareriez une jonction sur vos propres tables, et elle est lue par le même code.
 
 ## Termes abstraits {: #abstract-terms }
 
@@ -116,14 +116,14 @@ Un terme qu'une surface consommatrice peut proposer doit satisfaire trois condit
    sens. Sans définition, c'est une proposition en attente d'un curateur, jamais du vocabulaire sur
    lequel un agent peut fonder une question.
 3. **Ancré** — relié, par des termes en service, à au moins un terme portant une référence de
-   colonne physique. Le glossaire est un point d'entrée vers les données : chaque chaîne doit donc
+   colonne physique. L'ontologie est un point d'entrée vers les données : chaque chaîne doit donc
    se terminer sur une colonne.
 
 La connectivité se propage dans le graphe : un terme abstrait atteint les données par tout voisin en service qui les atteint. Les termes hors service ne transmettent pas ; un terme retiré ne maintient donc pas ses dépendants en vie.
 
 ## Export de métadonnées {: #metadata-export }
 
-Le glossaire est publié dans des catalogues de données externes dans le cadre de l'export de métadonnées. La même règle d'admission s'applique, avec une restriction : l'enracinement d'un terme ne se juge que sur les colonnes réellement publiées. Un terme dont toutes les colonnes sont retenues hors de l'export, parce que leurs tables ne sont pas marquées comme produits de données ou que des filtres techniques les excluent, n'est pas enraciné pour l'export, même s'il a des références dans le plan de contrôle.
+L'ontologie est publiée dans des catalogues de données externes dans le cadre de l'export de métadonnées. La même règle d'admission s'applique, avec une restriction : l'enracinement d'un terme ne se juge que sur les colonnes réellement publiées. Un terme dont toutes les colonnes sont retenues hors de l'export, parce que leurs tables ne sont pas marquées comme produits de données ou que des filtres techniques les excluent, n'est pas enraciné pour l'export, même s'il a des références dans le plan de contrôle.
 
 Les arêtes de relation ne se publient que lorsque les deux termes qu'elles relient se publient.
 
@@ -139,11 +139,11 @@ contrôle **Exclure de l'export de métadonnées** retient le terme, ainsi que t
 qui s'y termine, hors des catalogues vers lesquels Provisa publie, tandis que les colonnes
 elles-mêmes continuent de s'exporter comme actifs.
 
-Ce qui compte, c'est si le métier emploie le mot ; la qualité de la définition n'en décide pas. Un identifiant de lot ETL a un sens clair qui a sa place dans le glossaire pour les ingénieurs, mais pas dans un catalogue métier à côté de `customer` et `revenue`.
+Ce qui compte, c'est si le métier emploie le mot ; la qualité de la définition n'en décide pas. Un identifiant de lot ETL a un sens clair qui a sa place dans l'ontologie pour les ingénieurs, mais pas dans un catalogue métier à côté de `customer` et `revenue`.
 
-## Travailler avec le glossaire {: #working-with-the-glossary }
+## Travailler avec l'ontologie {: #working-with-the-ontology }
 
-Ouvrez **Admin → Glossaire** dans l'interface. Le panneau de gauche liste tous les termes ; cliquez
+Ouvrez **Ontologie** dans la barre de navigation de l'interface. Le panneau de gauche liste tous les termes ; cliquez
 sur l'un d'eux pour ouvrir sa vue détaillée. De là :
 
 - **Renommez** le terme pour changer sa formulation sans déplacer ses colonnes.
@@ -159,9 +159,9 @@ sur l'un d'eux pour ouvrir sa vue détaillée. De là :
 - **Retirez** un terme pour le sortir du service. Il conserve ses colonnes et reste modifiable ici,
   mais la recherche de termes par les agents comme l'export de métadonnées le sautent. Restaurez-le
   plus tard si le concept revient.
-- **Générez les définitions en masse** pour remplir toutes les définitions vides en une seule
+- **Générez les définitions en masse** (**Définitions** dans le menu ✨) pour remplir toutes les définitions vides en une seule
   passe. Seules les définitions vides sont écrites ; le texte humain n'est jamais écrasé.
-- **Générez les relations en masse** pour proposer des arêtes typées sur l'ensemble de la liste des
+- **Générez les relations en masse** (**Relations** dans le menu ✨) pour proposer des arêtes typées sur l'ensemble de la liste des
   termes. Les propositions mal formées — noms de termes inconnus, arêtes vers soi-même, types non
   reconnus — sont écartées automatiquement.
 
@@ -174,4 +174,4 @@ Lorsque vous la voyez, le terme n'est pas encore accessible aux agents ni aux ca
 - [Export de métadonnées](metadata-export.md) — comment les termes et les relations se publient
   vers des catalogues de données externes, et quels termes la règle d'admission à l'export admet.
 - [Traçabilité au niveau des colonnes](lineage.md) — l'explorateur de traçabilité et la façon dont
-  `columnDependents` rapporte les liaisons du glossaire comme dépendants d'une colonne physique.
+  `columnDependents` rapporte les liaisons de l'ontologie comme dépendants d'une colonne physique.

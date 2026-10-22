@@ -1,8 +1,8 @@
-# Glossario aziendale {: #business-glossary }
+# Ontologia {: #ontology }
 
-Il glossario aziendale è un vocabolario vivo sopra il vostro modello di dati. Ogni colonna fisica del modello corrisponde a un termine, e le colonne che portano lo stesso concetto condividono un solo termine, comunque lo scrivano. Ogni termine può avere una definizione, un insieme di relazioni tipizzate con altri termini e un elenco di esperti di dominio a cui appartiene il suo significato.
+L'ontologia è un vocabolario vivo sopra il vostro modello di dati. Ogni colonna fisica del modello corrisponde a un termine, e le colonne che portano lo stesso concetto condividono un solo termine, comunque lo scrivano. Ogni termine può avere una definizione, un insieme di relazioni tipizzate con altri termini e un elenco di esperti di dominio a cui appartiene il suo significato.
 
-Il glossario è un'ontologia: un grafo di concetti, delle loro definizioni e delle relazioni tra essi. Provisa lo mappa sulle strutture di database che contengono i valori, ed è questo che gli permette di rispondere a domande sui tuoi dati. Un concetto è una bozza finché non raggiunge i dati, direttamente o tramite altri concetti. Il glossario è distinto dalle metriche: un termine dice che cos'è un concetto, una metrica dice come si calcola un numero.
+È un grafo di concetti, delle loro definizioni e delle relazioni tra essi. Provisa lo mappa sulle strutture di database che contengono i valori, ed è questo che gli permette di rispondere a domande sui tuoi dati. Un concetto è una bozza finché non raggiunge i dati, direttamente o tramite altri concetti. L'ontologia è distinta dalle metriche: un termine dice che cos'è un concetto, una metrica dice come si calcola un numero.
 
 Quel vocabolario condiviso collega il linguaggio del business ai dati fisici. Un agente di IA che sa che "customer" indica ogni colonna con un identificativo cliente non deve indovinare quale tra `cust_id`, `customerId` e `CUSTOMER_KEY` sia quella giusta. Corrispondono tutte allo stesso termine, ed è il termine a portare la definizione.
 
@@ -43,7 +43,7 @@ Un termine derivato segue il **nome di business** della colonna: il suo alias se
 
 Dare un alias alla colonna è la correzione più forte. Un alias arriva a ogni superficie che legge la colonna (SQL, GraphQL, agenti di IA, il catalogo), così il modello si descrive correttamente ovunque. Rinominare il termine corregge una voce del catalogo e lascia la colonna come `usr_nm` per il lettore successivo. Il banner del termine proposto nella UI lo dice: prima date un alias alla colonna, e rinominate il termine solo quando il nome della colonna è giusto e il vocabolario no.
 
-Cambiare l'alias di una colonna rideriva il suo termine proposto, così il glossario segue il modello e non chiede mai due volte la stessa correzione. Quando un curatore ha già aggiunto a un termine una definizione, una relazione o un esperto, una modifica dell'alias lascia il riferimento dov'è, perché quel lavoro è del curatore e resta.
+Cambiare l'alias di una colonna rideriva il suo termine proposto, così l'ontologia segue il modello e non chiede mai due volte la stessa correzione. Quando un curatore ha già aggiunto a un termine una definizione, una relazione o un esperto, una modifica dell'alias lascia il riferimento dov'è, perché quel lavoro è del curatore e resta.
 
 ### Nomi di tabella che descrivono un percorso di accesso {: #access-path-table-names }
 
@@ -97,7 +97,7 @@ Le relazioni sono direzionali. La UI mostra sia gli archi in uscita (questo term
 quelli in entrata (un altro termine → questo termine), etichettando ogni direzione con una frase in
 linguaggio corrente.
 
-Gli archi vivono in `glossary_term_edges`, una tabella associativa dichiarata come relazione di giunzione (junction): la sua colonna `rel_type` è il discriminatore, quindi ciascuno dei tipi qui sopra è un tipo di relazione Cypher distinto fra due nodi `GlossaryTerm`, non una proprietà su un nodo reificato. La tabella viene provisionata con il resto dello schema di metadati e non è mostrata come nodo nei client grafo: è l'arco. Nulla in essa è specifico del glossario: si dichiara esattamente come dichiareresti una giunzione sulle tue tabelle, ed è letta dallo stesso codice.
+Gli archi vivono in `glossary_term_edges`, una tabella associativa dichiarata come relazione di giunzione (junction): la sua colonna `rel_type` è il discriminatore, quindi ciascuno dei tipi qui sopra è un tipo di relazione Cypher distinto fra due nodi `GlossaryTerm`, non una proprietà su un nodo reificato. La tabella viene provisionata con il resto dello schema di metadati e non è mostrata come nodo nei client grafo: è l'arco. Nulla in essa è specifico dell'ontologia: si dichiara esattamente come dichiareresti una giunzione sulle tue tabelle, ed è letta dallo stesso codice.
 
 ## Termini astratti {: #abstract-terms }
 
@@ -116,14 +116,14 @@ Un termine che una superficie consumatrice può offrire deve soddisfare tre cond
    token, non un significato. Senza una definizione è una proposta in attesa di un curatore, mai
    vocabolario su cui un agente possa ancorare una domanda.
 3. **Ancorato** — collegato, attraverso termini in servizio, ad almeno un termine che detiene un ref
-   verso una colonna fisica. Il glossario è un punto d'ingresso nei dati, quindi ogni catena deve
+   verso una colonna fisica. L'ontologia è un punto d'ingresso nei dati, quindi ogni catena deve
    terminare su una colonna.
 
 La connettività si propaga nel grafo: un termine astratto raggiunge i dati attraverso qualsiasi vicino in servizio che li raggiunga. I termini fuori servizio non trasmettono, quindi un termine ritirato non tiene in vita i suoi dipendenti.
 
 ## Esportazione dei metadati {: #metadata-export }
 
-Il glossario viene pubblicato nei cataloghi di dati esterni come parte dell'esportazione dei metadati. Vale la stessa regola di ammissione, con una restrizione: se un termine è radicato si giudica solo sulle colonne che vengono davvero pubblicate. Un termine le cui colonne sono tutte escluse dall'esportazione, perché le loro tabelle non sono marcate come data product o perché filtri tecnici le escludono, non è radicato ai fini dell'esportazione, anche se ha riferimenti nel piano di controllo.
+L'ontologia viene pubblicata nei cataloghi di dati esterni come parte dell'esportazione dei metadati. Vale la stessa regola di ammissione, con una restrizione: se un termine è radicato si giudica solo sulle colonne che vengono davvero pubblicate. Un termine le cui colonne sono tutte escluse dall'esportazione, perché le loro tabelle non sono marcate come data product o perché filtri tecnici le escludono, non è radicato ai fini dell'esportazione, anche se ha riferimenti nel piano di controllo.
 
 Gli archi di relazione vengono pubblicati solo quando entrambi i termini agli estremi vengono
 pubblicati.
@@ -140,11 +140,11 @@ Il controllo **Escludi dall'esportazione dei metadati** trattiene il termine, e 
 relazione che termina su di esso, dai cataloghi verso cui Provisa pubblica, mentre le colonne stesse
 continuano a essere esportate come asset.
 
-Conta se il business usa la parola; quanto sia buona la definizione non lo decide. Un identificativo di batch ETL ha un significato chiaro che appartiene al glossario per gli ingegneri, ma non a un catalogo di business accanto a `customer` e `revenue`.
+Conta se il business usa la parola; quanto sia buona la definizione non lo decide. Un identificativo di batch ETL ha un significato chiaro che appartiene all'ontologia per gli ingegneri, ma non a un catalogo di business accanto a `customer` e `revenue`.
 
-## Lavorare con il glossario {: #working-with-the-glossary }
+## Lavorare con l'ontologia {: #working-with-the-ontology }
 
-Aprire **Admin → Glossario** nella UI. Il pannello di sinistra elenca ogni termine; fare clic su uno
+Aprire **Ontologia** nella barra di navigazione della UI. Il pannello di sinistra elenca ogni termine; fare clic su uno
 per aprirne la vista di dettaglio. Da lì:
 
 - **Rinominare** il termine per cambiarne la formulazione senza spostarne le colonne.
@@ -160,9 +160,9 @@ per aprirne la vista di dettaglio. Da lì:
 - **Ritirare** un termine per toglierlo dal servizio. Conserva le proprie colonne e resta
   modificabile qui, ma la ricerca di termini degli agenti e l'esportazione dei metadati lo saltano
   entrambe. Può essere ripristinato in seguito se il concetto ritorna.
-- **Generare definizioni in blocco** per riempire ogni definizione vuota in un'unica passata.
+- **Generare definizioni in blocco** (**Definizioni** nel menu ✨) per riempire ogni definizione vuota in un'unica passata.
   Vengono scritte solo le definizioni vuote; il testo umano non viene mai sovrascritto.
-- **Generare relazioni in blocco** per proporre archi tipizzati sull'intero elenco dei termini. Le
+- **Generare relazioni in blocco** (**Relazioni** nel menu ✨) per proporre archi tipizzati sull'intero elenco dei termini. Le
   proposte malformate — nomi di termine sconosciuti, archi verso se stessi, tipi non riconosciuti —
   vengono scartate automaticamente.
 
@@ -177,4 +177,4 @@ da agenti o cataloghi.
   verso cataloghi dati esterni, inclusi i termini che la regola di ammissione all'esportazione
   ammette.
 - [Derivazione a livello di colonna](lineage.md) — l'esploratore della derivazione e come
-  `columnDependents` riporta i collegamenti del glossario come dipendenti di una colonna fisica.
+  `columnDependents` riporta i collegamenti dell'ontologia come dipendenti di una colonna fisica.

@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "Domänen und ihre Stewards",
-        "description": "🗂️ Eine Domäne gruppiert Tabellen, und ihr Data Steward steuert diesen Teil des Modells: wer was sieht, Masken und Zeilenregeln, sensible Daten sowie ihr Glossar und ihre Datenprodukte."
+        "description": "🗂️ Eine Domäne gruppiert Tabellen, und ihr Data Steward steuert diesen Teil des Modells: wer was sieht, Masken und Zeilenregeln, sensible Daten sowie ihre Ontologie und ihre Datenprodukte."
       },
       "stepTags": {
         "title": "Tags tragen Bedeutung",
@@ -287,12 +287,12 @@
         "description": "📦 Nennen Sie Eigentümer und Team, Zweck, Nutzung, SLA und Support und wählen Sie dann die Tabellen und Befehle, die es enthält. Das sind die Felder, die veröffentlicht werden. Eine Tabelle gehört nur dann zu einem Produkt, wenn beide dieselbe Domäne haben."
       },
       "stepGlossary": {
-        "title": "Ein lebendiges Fachglossar",
-        "description": "📖 Jeder Begriff verweist auf die Spalten, die ihn tragen, und auf andere Begriffe. Pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
+        "title": "Eine lebendige Ontologie",
+        "description": "📖 Jeder Begriff verweist auf die Spalten, die ihn tragen, und auf andere Begriffe. Pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI über das Menü <strong>✨</strong> die Lücken füllen: <strong>Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>Beziehungen</strong> schlägt Verknüpfungen in der gesamten Ontologie vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
       },
       "stepDataProducts": {
         "title": "Datenprodukte, veröffentlicht dort, wo Konsumenten bereits suchen",
-        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard): Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support und benutzerdefinierte Eigenschaften. Provisa veröffentlicht es direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> (Tabellen, Lineage, Tags, Glossarbegriffe), sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Das Veröffentlichen sendet außerdem einen <strong>Ontologie-Auszug</strong>: den Teil Ihres Glossars, der für das Veröffentlichte relevant ist, also die Begriffe, die seine Spalten definieren, die übergeordneten und verwandten Begriffe, mit denen sie verbunden sind, und die typisierten Beziehungen zwischen ihnen. Die Datenqualitätsergebnisse der Prüfer, die es scannen, gehen mit. Das Feld <strong>Verwandte Begriffe</strong> eines Produkts listet seine Begriffe.</p>"
+        "description": "📦 Jedes Produkt hier spricht <strong>ODPS</strong> (den Open Data Product Standard): Eigentümer, Team, Zweck, Einschränkungen, Nutzung, SLA, Support und benutzerdefinierte Eigenschaften. Provisa veröffentlicht es direkt in <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong>, sodass es als natives Produkt in dem Katalog erscheint, den Ihre Konsumenten ohnehin nutzen.<p>🔁 Es gibt keinen separaten Exportschritt, den man vergessen könnte: Die Spezifikation wird jedes Mal <strong>aus dem Live-Modell abgeleitet</strong> (Tabellen, Lineage, Tags, Ontologiebegriffe), sodass das Veröffentlichte nicht veralten kann wie eine von Hand gepflegte ODPS-Datei.</p><p>✅ Das Veröffentlichen sendet außerdem einen <strong>Ontologie-Auszug</strong>: den Teil Ihrer Ontologie, der für das Veröffentlichte relevant ist, also die Begriffe, die seine Spalten definieren, die übergeordneten und verwandten Begriffe, mit denen sie verbunden sind, und die typisierten Beziehungen zwischen ihnen. Die Datenqualitätsergebnisse der Prüfer, die es scannen, gehen mit. Das Feld <strong>Verwandte Begriffe</strong> eines Produkts listet seine Begriffe.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Einen Begriff hinzufügen",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "Was eine offene Beschwerde ist",
-        "description": "Das Glossar sagt, was eine offene Beschwerde ist: eine, die die Stadt noch nicht geschlossen hat. Begriffe wie dieser sagen, was die Daten des Katalogs bedeuten."
+        "description": "Die Ontologie sagt, was eine offene Beschwerde ist: eine, die die Stadt noch nicht geschlossen hat. Begriffe wie dieser sagen, was die Daten des Katalogs bedeuten."
       },
       "filesAnswer": {
         "title": "Die Antwort",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "Aus einem Ordner wurde ein Katalog",
-        "description": "Ein Ordner mit Dateien wurde zu einem verwalteten Katalog: Tabellen, Beziehungen, ein Glossarbegriff und eine gespeicherte Ansicht, ohne dass etwas geladen wurde. Eine neue monatliche Beschwerdedatei braucht keine neue Tabelle: Das Muster erfasst sie bereits."
+        "description": "Ein Ordner mit Dateien wurde zu einem verwalteten Katalog: Tabellen, Beziehungen, ein Ontologiebegriff und eine gespeicherte Ansicht, ohne dass etwas geladen wurde. Eine neue monatliche Beschwerdedatei braucht keine neue Tabelle: Das Muster erfasst sie bereits."
       },
       "reviewsCatalog": {
         "title": "Worum es in dieser Demo geht",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "In der Sprache des Versicherers",
-        "description": "Das Glossar benennt, wonach ein Underwriter fragt: Gesamtversicherungswert, Kumulierung, wahrscheinlicher Höchstschaden und erwarteter Jahresschaden. Kumulierung bedeutet hier eine Konzentration der Exponierung dort, wo ein Ereignis viele Policen treffen kann."
+        "description": "Die Ontologie benennt, wonach ein Underwriter fragt: Gesamtversicherungswert, Kumulierung, wahrscheinlicher Höchstschaden und erwarteter Jahresschaden. Kumulierung bedeutet hier eine Konzentration der Exponierung dort, wo ein Ereignis viele Policen treffen kann."
       },
       "insuranceByRating": {
         "title": "Nach Risikoeinstufung, in GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "Das Vokabular",
-        "description": "Das Glossar des Unternehmens definiert bekannte ausgenutzte Schwachstelle, CVE, CWE und CVSS und verknüpft jeden Begriff mit den Spalten, die er beschreibt. Ein CVSS-Wert sagt, wie schwer eine Schwachstelle ist. Nur der Katalog sagt, ob jemand sie ausnutzt."
+        "description": "Die Ontologie des Unternehmens definiert bekannte ausgenutzte Schwachstelle, CVE, CWE und CVSS und verknüpft jeden Begriff mit den Spalten, die er beschreibt. Ein CVSS-Wert sagt, wie schwer eine Schwachstelle ist. Nur der Katalog sagt, ob jemand sie ausnutzt."
       },
       "vulnerabilitiesAnswer": {
         "title": "Die Antwort in SQL",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "Das Vokabular",
-        "description": "Das Glossar definiert Datenprofil, plausibler Typ, Wertform, doppelte Zeile und Platzhalterwert und verknüpft jeden Begriff mit den Messwerten, die er beschreibt."
+        "description": "Die Ontologie definiert Datenprofil, plausibler Typ, Wertform, doppelte Zeile und Platzhalterwert und verknüpft jeden Begriff mit den Messwerten, die er beschreibt."
       },
       "profilingAnswer": {
         "title": "Was jede Spalte enthält",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "In einfachen Worten",
-        "description": "Das Glossar erklärt die Begriffe, auf die ein Ratsmitglied oder ein Einwohner stößt: Vergleichsfonds, Abhilfe, Zuweisung, Ausgabe, unterdrückte Zahl und Rate pro 100.000. Abhilfe bedeutet hier, wofür das Geld laut den Vergleichen ausgegeben werden muss."
+        "description": "Die Ontologie erklärt die Begriffe, auf die ein Ratsmitglied oder ein Einwohner stößt: Vergleichsfonds, Abhilfe, Zuweisung, Ausgabe, unterdrückte Zahl und Rate pro 100.000. Abhilfe bedeutet hier, wofür das Geld laut den Vergleichen ausgegeben werden muss."
       },
       "opioidsAsPublic": {
         "title": "Als Öffentlichkeit ausführen",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "In den Begriffen des Versicherers",
-        "description": "Das Glossar benennt, wonach ein Ernte-Underwriter fragt: Schadenquote, Schadenursache, tatsächliche Produktionshistorie, Deckungsgrad, Haftung und Wachstumsperiode. Die Schadenquote ist hier die Entschädigungen geteilt durch die Prämie. Über 1 hat das Jahr Geld verloren."
+        "description": "Die Ontologie benennt, wonach ein Ernte-Underwriter fragt: Schadenquote, Schadenursache, tatsächliche Produktionshistorie, Deckungsgrad, Haftung und Wachstumsperiode. Die Schadenquote ist hier die Entschädigungen geteilt durch die Prämie. Über 1 hat das Jahr Geld verloren."
       },
       "agricultureAnswer": {
         "title": "Die Antwort in SQL",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "In der Sprache der Apotheke",
-        "description": "Das Glossar benennt, wonach ein Apothekeneinkäufer fragt: NDC, Arzneimittelliste, Lieferengpass, Rückrufklasse und Reichweite in Tagen. Versorgungsrisiko bedeutet hier einen Lieferengpass, einen Rückruf durch den Hersteller des Produkts oder zu wenige Tage Vorrat."
+        "description": "Die Ontologie benennt, wonach ein Apothekeneinkäufer fragt: NDC, Arzneimittelliste, Lieferengpass, Rückrufklasse und Reichweite in Tagen. Versorgungsrisiko bedeutet hier einen Lieferengpass, einen Rückruf durch den Hersteller des Produkts oder zu wenige Tage Vorrat."
       },
       "pharmaAnswer": {
         "title": "Die Antwort in SQL",

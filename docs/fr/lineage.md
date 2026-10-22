@@ -243,7 +243,7 @@ contrats de qualité des données, grains de vues de métriques et clés de lign
 écrits contre ce nom : **renommer un alias les casse donc aussi sûrement que supprimer la colonne**.
 
 Le **nom physique** est `table_columns.column_name`, l'identité qui survit au remplacement en bloc
-des colonnes lors de l'upsert d'une table. Les relations, les liaisons du [glossaire](glossary.md), les affectations
+des colonnes lors de l'upsert d'une table. Les relations, les liaisons de l'[ontologie](ontology.md), les affectations
 d'étiquettes, la colonne de filigrane et les préréglages de colonnes stockent celui-là : ils ne
 cassent donc que lorsque la colonne est **supprimée**.
 

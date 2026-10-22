@@ -90,6 +90,7 @@ describe("the tooltip rules fail what they are meant to fail", () => {
 const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
   "components/GrantPicker.tsx": 1, // a column grant's "combine roles" popover
   "components/TagControl.tsx": 1, // the tag picker's toggle
+  "components/admin/GlossaryTab.tsx": 1, // the Ontology page's AI menu (ontology-page.cjs)
   "components/graph/GraphFrame.tsx": 1, // the frame's download menu
   "components/graph/Inspector.tsx": 1, // the inspector's colour chip
   "pages/sql/ColumnFilterMenu.tsx": 1, // a result column's filter

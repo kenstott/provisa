@@ -1,8 +1,8 @@
-# Glossário de Negócios {: #business-glossary }
+# Ontologia {: #ontology }
 
-O glossário de negócios é um vocabulário vivo sobre o seu modelo de dados. Toda coluna física do modelo corresponde a um termo, e colunas que trazem o mesmo conceito compartilham um termo, por mais diferente que o escrevam. Cada termo pode ter uma definição, um conjunto de relacionamentos tipados com outros termos e uma lista de especialistas no assunto que são donos do seu significado.
+A ontologia é um vocabulário vivo sobre o seu modelo de dados. Toda coluna física do modelo corresponde a um termo, e colunas que trazem o mesmo conceito compartilham um termo, por mais diferente que o escrevam. Cada termo pode ter uma definição, um conjunto de relacionamentos tipados com outros termos e uma lista de especialistas no assunto que são donos do seu significado.
 
-O glossário é uma ontologia: um grafo de conceitos, suas definições e as relações entre eles. O Provisa o mapeia para as estruturas de banco de dados que guardam os valores, o que permite responder perguntas sobre seus dados. Um conceito é um rascunho até chegar aos dados, diretamente ou por meio de outros conceitos. O glossário é separado das métricas: um termo diz o que um conceito é, uma métrica diz como um número é calculado.
+É um grafo de conceitos, suas definições e as relações entre eles. O Provisa o mapeia para as estruturas de banco de dados que guardam os valores, o que permite responder perguntas sobre seus dados. Um conceito é um rascunho até chegar aos dados, diretamente ou por meio de outros conceitos. A ontologia é separada das métricas: um termo diz o que um conceito é, uma métrica diz como um número é calculado.
 
 Esse vocabulário compartilhado liga a linguagem do negócio aos dados físicos. Um agente de IA que sabe que "customer" nomeia toda coluna com um identificador de cliente não precisa adivinhar qual de `cust_id`, `customerId` e `CUSTOMER_KEY` é a certa. Todas correspondem ao mesmo termo, e o termo traz a definição.
 
@@ -42,7 +42,7 @@ Um termo derivado segue o **nome de negócio** da coluna: o alias quando o model
 
 Dar um alias à coluna é a correção mais forte. Um alias chega a toda superfície que lê a coluna (SQL, GraphQL, agentes de IA, o catálogo), então o modelo se descreve corretamente em todo lugar. Renomear o termo corrige uma entrada do catálogo e deixa a coluna como `usr_nm` para o próximo leitor. O aviso de termo proposto na UI diz isso: primeiro dê um alias à coluna, e só renomeie o termo quando o nome da coluna estiver certo e o vocabulário não.
 
-Trocar o alias de uma coluna deriva de novo o termo proposto, então o glossário acompanha o modelo e nunca pede a mesma correção duas vezes. Depois que um curador acrescentou a um termo uma definição, um relacionamento ou um especialista, editar o alias deixa a referência onde está, porque esse trabalho é do curador e permanece.
+Trocar o alias de uma coluna deriva de novo o termo proposto, então a ontologia acompanha o modelo e nunca pede a mesma correção duas vezes. Depois que um curador acrescentou a um termo uma definição, um relacionamento ou um especialista, editar o alias deixa a referência onde está, porque esse trabalho é do curador e permanece.
 
 ### Nomes de tabela de caminho de acesso {: #access-path-table-names }
 
@@ -92,7 +92,7 @@ Termos se relacionam com outros termos através de arestas tipadas. Os tipos de 
 Relacionamentos são direcionais. A UI mostra tanto arestas de saída (este termo → outro) quanto arestas
 de entrada (outro termo → este termo), rotulando cada direção com sua própria frase em linguagem simples.
 
-As arestas vivem em `glossary_term_edges`, uma tabela associativa declarada como relação de junção: a coluna `rel_type` é o discriminador, de modo que cada um dos tipos acima é um tipo de relação Cypher distinto entre dois nós `GlossaryTerm`, e não uma propriedade de um nó reificado. A tabela é provisionada com o restante do esquema de metadados e não aparece como nó nos clientes de grafo: ela é a aresta. Nada nela é específico do glossário: é declarada do mesmo modo que você declararia uma junção sobre as suas próprias tabelas, e é lida pelo mesmo código.
+As arestas vivem em `glossary_term_edges`, uma tabela associativa declarada como relação de junção: a coluna `rel_type` é o discriminador, de modo que cada um dos tipos acima é um tipo de relação Cypher distinto entre dois nós `GlossaryTerm`, e não uma propriedade de um nó reificado. A tabela é provisionada com o restante do esquema de metadados e não aparece como nó nos clientes de grafo: ela é a aresta. Nada nela é específico da ontologia: é declarada do mesmo modo que você declararia uma junção sobre as suas próprias tabelas, e é lida pelo mesmo código.
 
 ## Termos abstratos {: #abstract-terms }
 
@@ -110,14 +110,14 @@ Um termo que uma interface consumidora pode oferecer precisa satisfazer três co
    significado. Sem uma definição, é uma proposta aguardando um curador, nunca vocabulário no qual um agente
    possa fundamentar uma pergunta.
 3. **Fundamentado** — conectado, sobre termos em serviço, a pelo menos um termo que contenha um ref de coluna
-   física. O glossário é um ponto de entrada para os dados, então toda cadeia precisa terminar em uma
+   física. A ontologia é um ponto de entrada para os dados, então toda cadeia precisa terminar em uma
    coluna.
 
 A conectividade se propaga pelo grafo: um termo abstrato alcança os dados por qualquer vizinho em serviço que os alcance. Termos fora de serviço não conduzem, então um termo aposentado não mantém vivos os seus dependentes.
 
 ## Exportação de metadados {: #metadata-export }
 
-O glossário é publicado em catálogos de dados externos como parte da exportação de metadados. Vale a mesma regra de admissão, com uma restrição: se um termo é enraizado se julga só pelas colunas que de fato são publicadas. Um termo cujas colunas ficam todas de fora da exportação, porque as tabelas delas não estão marcadas como data products ou porque filtros técnicos as excluem, não é enraizado para a exportação, mesmo que tenha referências no plano de controle.
+A ontologia é publicada em catálogos de dados externos como parte da exportação de metadados. Vale a mesma regra de admissão, com uma restrição: se um termo é enraizado se julga só pelas colunas que de fato são publicadas. Um termo cujas colunas ficam todas de fora da exportação, porque as tabelas delas não estão marcadas como data products ou porque filtros técnicos as excluem, não é enraizado para a exportação, mesmo que tenha referências no plano de controle.
 
 Arestas de relacionamento publicam apenas quando ambos os termos das pontas publicam.
 
@@ -131,11 +131,11 @@ que simplesmente não é vocabulário de negócios. O controle **Excluir da expo
 retém o termo e quaisquer arestas de relacionamento que terminem nele dos catálogos em que o Provisa publica,
 enquanto as próprias colunas ainda exportam como ativos.
 
-O que conta é se o negócio usa a palavra; o quanto a definição é boa não decide isso. Um identificador de lote de ETL tem um significado claro que pertence ao glossário para os engenheiros, mas não a um catálogo de negócio ao lado de `customer` e `revenue`.
+O que conta é se o negócio usa a palavra; o quanto a definição é boa não decide isso. Um identificador de lote de ETL tem um significado claro que pertence à ontologia para os engenheiros, mas não a um catálogo de negócio ao lado de `customer` e `revenue`.
 
-## Trabalhando com o glossário {: #working-with-the-glossary }
+## Trabalhando com a ontologia {: #working-with-the-ontology }
 
-Abra **Administração → Glossário** na UI. O painel esquerdo lista todos os termos; clique em um para abrir sua
+Abra **Ontologia** na barra de navegação da UI. O painel esquerdo lista todos os termos; clique em um para abrir sua
 visão de detalhe. A partir daí:
 
 - **Renomeie** o termo para mudar sua redação sem mover suas colunas.
@@ -150,9 +150,9 @@ visão de detalhe. A partir daí:
 - **Designe especialistas** por ID de usuário, com um tipo `expert` ou `author`.
 - **Aposente** um termo para retirá-lo de serviço. Ele mantém suas colunas e continua editável aqui, mas
   a busca de termos por agentes e a exportação de metadados o ignoram. Restaure-o depois se o conceito voltar.
-- **Gere definições em massa** para preencher toda definição em branco de uma vez. Somente definições vazias
+- **Gere definições em massa** (**Definições** no menu ✨) para preencher toda definição em branco de uma vez. Somente definições vazias
   são escritas; texto humano nunca é sobrescrito.
-- **Gere relacionamentos em massa** para propor arestas tipadas por toda a lista de termos. Propostas
+- **Gere relacionamentos em massa** (**Relacionamentos** no menu ✨) para propor arestas tipadas por toda a lista de termos. Propostas
   malformadas — nomes de termo desconhecidos, arestas para si mesmo, tipos não reconhecidos — são descartadas automaticamente.
 
 O banner **Proposto** em um termo sem definição diz se o termo está indefinido
@@ -164,4 +164,4 @@ Quando você o vê, o termo ainda não é alcançável por agentes ou catálogos
 - [Exportação de Metadados](metadata-export.md) — como termos e relacionamentos publicam em catálogos
   de dados externos, incluindo quais termos a regra de admissão da exportação admite.
 - [Lineage em Nível de Coluna](lineage.md) — o explorador de lineage e como `columnDependents`
-  reporta vínculos de glossário como dependentes de uma coluna física.
+  reporta vínculos de ontologia como dependentes de uma coluna física.

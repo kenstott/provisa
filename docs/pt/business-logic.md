@@ -12,7 +12,7 @@ Os canais de entrega pioram tudo. A lógica é construída em cada um: um campo 
 
 Lógica de negócio são as regras que criam, atualizam, excluem ou transformam dados.
 
-A terminologia de negócio é outra coisa. Os nomes e descrições de domínios, tabelas e colunas, e os termos do [glossário](glossary.md), dizem o que os dados significam. A lógica de negócio diz o que se faz com eles.
+A terminologia de negócio é outra coisa. Os nomes e descrições de domínios, tabelas e colunas, e os termos da [ontologia](ontology.md), dizem o que os dados significam. A lógica de negócio diz o que se faz com eles.
 
 ## Três papéis {: #roles }
 

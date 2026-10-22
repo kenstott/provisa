@@ -12,7 +12,7 @@ Auslieferungskanäle verschärfen das. In jeden wird Logik eingebaut: ein berech
 
 Geschäftslogik sind die Regeln, die Daten erzeugen, ändern, löschen oder umformen.
 
-Die Fachterminologie ist etwas anderes. Die Namen und Beschreibungen von Domänen, Tabellen und Spalten und die Begriffe im [Glossar](glossary.md) sagen, was Daten bedeuten. Geschäftslogik sagt, was mit ihnen geschieht.
+Die Fachterminologie ist etwas anderes. Die Namen und Beschreibungen von Domänen, Tabellen und Spalten und die Begriffe in der [Ontologie](ontology.md) sagen, was Daten bedeuten. Geschäftslogik sagt, was mit ihnen geschieht.
 
 ## Drei Rollen {: #roles }
 
