@@ -87145,7 +87145,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     into the expression tree (expr_ast) when it parses the statement, and the back end walks trees
     only, proven by the Cypher tests. Only then is the IR fully structural: SPARQL's FILTER, BIND and
     ORDER BY convert straight to trees, and nothing below the IR reads Cypher syntax. Phase 1 keeps the
-    text on purpose, so that its move stays purely structural.
+    text on purpose, so that its move stays purely structural. (Amended 2026-10-22, SPARQL
+    VISUALIZER:) Phase 5's SPARQL visualizer is the Cypher visualizer (GraphSidebar and the graph
+    canvas) with a second vocabulary: one component, not a separate visualizer. It keeps the same
+    shell (history, favorites, settings, export, the canvas and how results are drawn), and its
+    left-hand pills are in SPARQL's vocabulary: Domains; Classes (terms typing a table, with abstract
+    terms as superclasses); Properties (term-linked columns); Relationships (edge-type predicates:
+    declared relationships and term edges); Concepts (the SKOS vocabulary); and Prefixes. Clicking a
+    pill adds a triple pattern to the current query rather than replacing it. IRIs are shown compacted
+    by prefix, with the full IRI on hover; literals are drawn distinct from resources; and CONSTRUCT
+    results are drawn as a graph.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
