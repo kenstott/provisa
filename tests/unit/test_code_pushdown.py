@@ -43,12 +43,12 @@ ORDER = {
     "kind": "object",
     "name": "Order",
     "fields": [
-        {"name": "id", "optional": False, "type": N},
-        {"name": "status", "optional": False, "type": S},
-        {"name": "score", "optional": False, "type": N},
-        {"name": "signup", "optional": False, "type": DATE},
-        {"name": "region", "optional": False, "type": S},
-        {"name": "customerName", "optional": False, "type": S},
+        {"name": "id", "description": "", "optional": False, "type": N},
+        {"name": "status", "description": "", "optional": False, "type": S},
+        {"name": "score", "description": "", "optional": False, "type": N},
+        {"name": "signup", "description": "", "optional": False, "type": DATE},
+        {"name": "region", "description": "", "optional": False, "type": S},
+        {"name": "customerName", "description": "", "optional": False, "type": S},
     ],
 }
 
@@ -60,6 +60,7 @@ def _opt(t: dict) -> dict:
 def _param(name: str, t: dict, *, optional: bool = True, pushdown: tuple = ()) -> dict:
     return {
         "name": name,
+        "description": "",
         "optional": optional,
         "rest": False,
         "type": _opt(t) if optional else t,
@@ -335,7 +336,9 @@ def test_two_names_one_wire_form_cannot_tell_apart_are_refused():
     from provisa.codesource.names import name_tables
 
     raw = _orders()
-    raw["types"]["Order"]["fields"].append({"name": "ID", "optional": False, "type": N})
+    raw["types"]["Order"]["fields"].append(
+        {"name": "ID", "description": "", "optional": False, "type": N}
+    )
     with pytest.raises(ManifestRefused) as caught:
         name_tables(read_manifest(raw))
     assert "orders: id and ID are both id on pgwire" in caught.value.problems
