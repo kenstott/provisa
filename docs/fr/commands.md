@@ -2,6 +2,8 @@
 
 Une commande est une fonction enregistrée et gouvernée qui place un calcul externe sous la gouvernance, l'audit et la traçabilité de Provisa. Le moteur de fédération traite SQL nativement. Une commande couvre le calcul que SQL ne peut pas exprimer, comme un microservice d'enrichissement, un modèle Python, un script shell ou une procédure stockée native de la base. Vous l'enregistrez une fois, et chaque surface cliente (GraphQL, SQL via pgwire, REST, Arrow Flight, gRPC, Bolt/Cypher) peut l'appeler sous une gouvernance identique.
 
+Les commandes sont l'une des façons d'écrire la logique métier dans Provisa. Voir [La logique métier dans Provisa](business-logic.md).
+
 Une commande est un **RPC gouverné**. Ses entrées et sorties sont déclarées, typées, validées, tracées et reliées à la traçabilité. Une étape ETL improvisée, un appel curl non gouverné ou un sous-processus n'ont rien de tout cela.
 
 ## Genres d'implémentation {: #implementation-kinds }

@@ -11,6 +11,8 @@ What differs from a resolver you write by hand:
 - **Pushed down.** A filter on a column reaches your function as a parameter when you ask for it.
 - **Served everywhere.** The same function answers GraphQL, SQL (over HTTP, pgwire and Arrow Flight), Cypher (over HTTP and Bolt), gRPC, REST, JSON:API and MCP.
 
+Code resolvers are one of three ways to write business logic in Provisa. See [Business Logic in Provisa](business-logic.md).
+
 ## A first resolver {: #an-example }
 
 ```python

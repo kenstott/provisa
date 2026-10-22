@@ -34,6 +34,7 @@
     "cli.md",
     "admin-graphql.md",
     "package-registries.md",
-    "code-sources.md"
+    "code-sources.md",
+    "business-logic.md"
   ]
 }

@@ -11,6 +11,8 @@ Ce qui change par rapport à un resolver écrit à la main :
 - **Délégué.** Un filtre sur une colonne atteint votre fonction comme paramètre quand vous le demandez.
 - **Servi partout.** La même fonction répond à GraphQL, SQL (sur HTTP, pgwire et Arrow Flight), Cypher (sur HTTP et Bolt), gRPC, REST, JSON:API et MCP.
 
+Les resolvers de code sont l'une des trois façons d'écrire la logique métier dans Provisa. Voir [La logique métier dans Provisa](business-logic.md).
+
 ## Un premier resolver {: #an-example }
 
 ```python

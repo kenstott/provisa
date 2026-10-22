@@ -11,6 +11,8 @@
 - **下推。** 在你要求时，列上的过滤条件会作为参数传给你的函数。
 - **处处可用。** 同一个函数回答 GraphQL、SQL（通过 HTTP、pgwire 和 Arrow Flight）、Cypher（通过 HTTP 和 Bolt）、gRPC、REST、JSON:API 和 MCP。
 
+代码解析器是在 Provisa 中编写业务逻辑的三种方式之一。见 [Provisa 中的业务逻辑](business-logic.md)。
+
 ## 第一个 resolver {: #an-example }
 
 ```python

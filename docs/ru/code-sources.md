@@ -11,6 +11,8 @@
 - **С передачей фильтров.** Фильтр по столбцу доходит до функции как параметр, если вы этого просите.
 - **Везде.** Одна и та же функция отвечает на GraphQL, SQL (через HTTP, pgwire и Arrow Flight), Cypher (через HTTP и Bolt), gRPC, REST, JSON:API и MCP.
 
+Резолверы кода — один из трёх способов писать бизнес-логику в Provisa. См. [Бизнес-логика в Provisa](business-logic.md).
+
 ## Первый resolver {: #an-example }
 
 ```python

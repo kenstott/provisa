@@ -11,6 +11,8 @@ Was sich von einem Resolver unterscheidet, den Sie selbst schreiben:
 - **Heruntergereicht.** Ein Filter auf eine Spalte erreicht Ihre Funktion als Parameter, wenn Sie danach fragen.
 - **Überall bedient.** Dieselbe Funktion beantwortet GraphQL, SQL (über HTTP, pgwire und Arrow Flight), Cypher (über HTTP und Bolt), gRPC, REST, JSON:API und MCP.
 
+Code-Resolver sind eine von drei Arten, Geschäftslogik in Provisa zu schreiben. Siehe [Geschäftslogik in Provisa](business-logic.md).
+
 ## Ein erster Resolver {: #an-example }
 
 ```python

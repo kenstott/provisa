@@ -2,6 +2,8 @@
 
 Ein Befehl ist eine registrierte, gesteuerte Funktion, die externe Berechnung unter die Governance, das Audit und die Lineage von Provisa bringt. Die Federation-Engine verarbeitet SQL nativ. Ein Befehl deckt die Berechnung ab, die SQL nicht ausdrücken kann, etwa einen Anreicherungs-Microservice, ein Python-Modell, ein Shell-Skript oder eine native gespeicherte Prozedur der Datenbank. Sie registrieren ihn einmal, und jede Client-Oberfläche (GraphQL, pgwire-SQL, REST, Arrow Flight, gRPC, Bolt/Cypher) kann ihn unter identischer Governance aufrufen.
 
+Befehle sind eine der Arten, Geschäftslogik in Provisa zu schreiben. Siehe [Geschäftslogik in Provisa](business-logic.md).
+
 Ein Befehl ist ein **geregeltes RPC**. Seine Ein- und Ausgaben sind deklariert, typisiert, validiert, verfolgt und in die Lineage eingebunden. Ein Ad-hoc-ETL-Schritt, ein ungesteuerter curl-Aufruf oder ein Subprozess hat nichts davon.
 
 ## Implementierungsarten {: #implementation-kinds }
