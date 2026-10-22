@@ -151,6 +151,8 @@ class HasuraMetadata:  # REQ-417
     remote_schemas: list[HasuraRemoteSchema] = field(default_factory=list)
     # The action output types: object type name -> [(field, GraphQL type)].
     custom_types: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    # The action argument types that are input objects: the handler receives each as a JSON object.
+    input_types: set[str] = field(default_factory=set)
     graphql_engine: dict = field(default_factory=dict)  # e.g. {"enable_relay": true}
     # REQ-1174: api_limits.yaml (rate_limit / depth_limit / node_limit / time_limit, each with
     # `global` + `per_role`) — mapped to per-role rate + query-complexity limits by the mapper.

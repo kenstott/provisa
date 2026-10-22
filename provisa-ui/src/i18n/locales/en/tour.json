@@ -958,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "As a group analyst",
-        "description": "Next, the SQL explorer runs as group_analyst, who works on group reporting in the US."
+        "description": "Next, the role picker switches to <strong>group_analyst</strong>, who works on group reporting in the US, so the SQL and GraphQL after this run as group_analyst."
       },
       "retailGroupView": {
         "title": "Group reporting, EU customers pseudonymised",
@@ -967,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "The same, in GraphQL",
         "description": "The same group view over GraphQL: one model, every transport, the same rules."
+      },
+      "retailEveryRole": {
+        "title": "Back to every role",
+        "description": "Next, the role picker switches back to <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "As EU marketing",
@@ -1286,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Read as the analyst",
-        "description": "The statements after this run as the analyst, the role the data scientist reads with."
+        "description": "Next, the role picker switches to <strong>analyst</strong>, the role the data scientist reads with, so every surface after this runs as the analyst."
       },
       "churnFeatures": {
         "title": "The features the model learns from",
@@ -1299,6 +1303,10 @@
       "churnNotebook": {
         "title": "A model, trained in your browser",
         "description": "The demo's notebook, run in the Notebook tab: the features read into pandas as the analyst, a scikit-learn model trained on them, and the customers most at risk listed. Python runs in your browser, and the email addresses are still masked."
+      },
+      "churnEveryRole": {
+        "title": "Back to every role",
+        "description": "Next, the role picker switches back to <strong>All</strong>."
       },
       "churnRecap": {
         "title": "What you saw",

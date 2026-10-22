@@ -12,6 +12,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ActionIcon, useComputedColorScheme } from "@mantine/core";
 import { CirclePlus, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useScreenEditor } from "../../mcp/screenState";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
 import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
@@ -59,6 +60,8 @@ export function QueryBar({
   const { t } = useTranslation();
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
+  // REQ-2115: Polly's read_screen reads the Cypher in the bar from here.
+  useScreenEditor("/graph", { language: "cypher", text: query, tab: null });
   const viewRef = useRef<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
   const pendingFocusRef = useRef(false);

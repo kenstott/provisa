@@ -958,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "כאנליסט קבוצתי",
-        "description": "בהמשך, סייר ה-SQL פועל כ-group_analyst, שעובד על הדיווח הקבוצתי ב-US."
+        "description": "עכשיו בורר התפקידים עובר ל-<strong>group_analyst</strong>, שעובד על הדיווח הקבוצתי ב-US, כך שה-SQL וה-GraphQL מכאן והלאה רצים בתור group_analyst."
       },
       "retailGroupView": {
         "title": "דיווח קבוצתי, לקוחות EU בפסאודונימיזציה",
@@ -967,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "אותו הדבר, ב-GraphQL",
         "description": "אותה תצוגה קבוצתית דרך GraphQL: מודל אחד, כל תעבורה, אותם כללים."
+      },
+      "retailEveryRole": {
+        "title": "חזרה לכל התפקידים",
+        "description": "עכשיו בורר התפקידים חוזר ל-<strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "כשיווק EU",
@@ -1286,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "קריאה בתור analyst",
-        "description": "השאילתות הבאות רצות בתור analyst, התפקיד שבו מדען הנתונים קורא."
+        "description": "עכשיו בורר התפקידים עובר ל-<strong>analyst</strong>, התפקיד שבו מדען הנתונים קורא, כך שכל ממשק מכאן והלאה רץ בתור analyst."
       },
       "churnFeatures": {
         "title": "המאפיינים שמהם המודל לומד",
@@ -1299,6 +1303,10 @@
       "churnNotebook": {
         "title": "מודל שאומן בדפדפן שלך",
         "description": "המחברת של ההדגמה, שרצה בכרטיסייה Notebook: המאפיינים נקראים ל-pandas בתור analyst, מודל scikit-learn מאומן עליהם, והלקוחות בסיכון הגבוה ביותר מוצגים. Python רץ בדפדפן שלך, וכתובות הדוא״ל עדיין ממוסכות."
+      },
+      "churnEveryRole": {
+        "title": "חזרה לכל התפקידים",
+        "description": "עכשיו בורר התפקידים חוזר ל-<strong>All</strong>."
       },
       "churnRecap": {
         "title": "מה ראית",

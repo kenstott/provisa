@@ -230,3 +230,45 @@ def test_a_checker_table_without_a_scan_interval_is_refused(ttl):
     results.cache_ttl = ttl
     with pytest.raises(ValueError, match="scans every cache_ttl seconds"):
         _validate_dq_contracts(_config(results, _target_table()))
+
+
+@pytest.mark.parametrize("checker", ["soda", "great_expectations"])
+def test_a_checker_whose_password_the_deployment_has_not_set_loads_as_written(checker, monkeypatch):
+    """A checker source made in the Sources form names its password by reference; the scan
+    resolves it, so a deployment without the variable still loads its org's model."""
+    from provisa.core.config_loader import parse_config_dict
+
+    monkeypatch.delenv("PROVISA_DQ_PASSWORD", raising=False)
+    mapping = {
+        "host": "localhost",
+        "port": 5439,
+        "database": "provisa",
+        "user": "org_admin",
+        "password": "${env:PROVISA_DQ_PASSWORD}",
+    }
+    config = parse_config_dict(
+        {
+            "sources": [{"id": "dq", "type": checker, "mapping": mapping}],
+            "domains": [],
+            "tables": [],
+            "roles": [],
+        }
+    )
+    assert config.sources[0].mapping == mapping
+    assert config.written.sources[0].mapping == mapping
+
+
+@pytest.mark.parametrize(
+    ("secured", "password"), [(True, "${env:PROVISA_DQ_PASSWORD}"), (False, "")]
+)
+def test_a_checker_made_in_the_sources_form_names_a_password_only_under_an_auth_provider(
+    secured, password, monkeypatch
+):
+    """With no auth provider pgwire is in trust mode and ignores the password, as the shipped
+    dq-checker and dq-soda sources write it; under one, the scan resolves the reference."""
+    from provisa.api.admin import schema_mutation
+    from provisa.api.app import state
+
+    monkeypatch.setattr(state, "auth_middleware_active", secured)
+    monkeypatch.setattr(schema_mutation, "_dq_pgwire_port", lambda: "5439")
+    assert schema_mutation.checker_mapping()["password"] == password

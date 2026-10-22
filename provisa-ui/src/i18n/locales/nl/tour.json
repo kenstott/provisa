@@ -958,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "Als concernanalist",
-        "description": "Hierna draait de SQL-verkenner als group_analyst, die in de US aan de concernrapportage werkt."
+        "description": "Vervolgens schakelt de rolkiezer naar <strong>group_analyst</strong>, die in de US aan de concernrapportage werkt, zodat de SQL en GraphQL hierna als group_analyst draaien."
       },
       "retailGroupView": {
         "title": "Concernrapportage, EU-klanten gepseudonimiseerd",
@@ -967,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "Hetzelfde, in GraphQL",
         "description": "Dezelfde concernview via GraphQL: één model, elk transport, dezelfde regels."
+      },
+      "retailEveryRole": {
+        "title": "Terug naar alle rollen",
+        "description": "Vervolgens schakelt de rolkiezer terug naar <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "Als EU-marketing",
@@ -1286,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Gelezen als analyst",
-        "description": "De query's hierna draaien als analyst, de rol waarmee de data scientist leest."
+        "description": "Vervolgens schakelt de rolkiezer naar <strong>analyst</strong>, de rol waarmee de data scientist leest, zodat elk oppervlak hierna als analyst draait."
       },
       "churnFeatures": {
         "title": "De kenmerken waarvan het model leert",
@@ -1299,6 +1303,10 @@
       "churnNotebook": {
         "title": "Een model, getraind in je browser",
         "description": "Het notebook van de demo, uitgevoerd op het tabblad Notebook: de kenmerken als analyst in pandas gelezen, een scikit-learn-model erop getraind en de klanten met het hoogste risico op een rij. Python draait in je browser, en de e-mailadressen blijven gemaskeerd."
+      },
+      "churnEveryRole": {
+        "title": "Terug naar alle rollen",
+        "description": "Vervolgens schakelt de rolkiezer terug naar <strong>All</strong>."
       },
       "churnRecap": {
         "title": "Wat je hebt gezien",

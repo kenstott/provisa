@@ -352,6 +352,8 @@ def parse_metadata_dir(
     if isinstance(actions_data, dict):
         for obj in (actions_data.get("custom_types") or {}).get("objects") or []:
             metadata.custom_types.setdefault(obj["name"], [])
+        for obj in (actions_data.get("custom_types") or {}).get("input_objects") or []:
+            metadata.input_types.add(obj["name"])
 
     # Cron triggers
     cron_data = _load_yaml(md / "cron_triggers.yaml")
@@ -428,6 +430,8 @@ def parse_metadata_document(
         metadata.custom_types[obj["name"]] = [
             (f["name"], str(f["type"])) for f in obj.get("fields") or []
         ]
+    for obj in (doc.get("custom_types") or {}).get("input_objects") or []:
+        metadata.input_types.add(obj["name"])
     for raw_cron in doc.get("cron_triggers", []) or []:
         metadata.cron_triggers.append(_parse_cron_trigger(raw_cron))
     for raw_ir in doc.get("inherited_roles", []) or []:
@@ -492,10 +496,17 @@ def _read_actions_sdl(sdl: str, metadata: HasuraMetadata) -> None:
     """Fill each action's arguments and output type, and the output types' fields, from
     actions.graphql -- where the CLI writes them; the document carries them inline."""
     from graphql import parse
-    from graphql.language import ObjectTypeDefinitionNode, ObjectTypeExtensionNode
+    from graphql.language import (
+        InputObjectTypeDefinitionNode,
+        ObjectTypeDefinitionNode,
+        ObjectTypeExtensionNode,
+    )
 
     by_name = {a.name: a for a in metadata.actions}
     for node in parse(sdl).definitions:
+        if isinstance(node, InputObjectTypeDefinitionNode):
+            metadata.input_types.add(node.name.value)
+            continue
         if not isinstance(node, (ObjectTypeDefinitionNode, ObjectTypeExtensionNode)):
             continue
         type_name = node.name.value

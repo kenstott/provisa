@@ -427,6 +427,7 @@ class TestPagination:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -440,6 +441,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "queries",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
@@ -450,8 +452,8 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            3: [_col("table_name"), _col("query")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            3: [_col("domain_id"), _col("table_name"), _col("query")],
         }
         schema, ctx = _build_schema_and_ctx(
             tables=tables,
@@ -486,6 +488,7 @@ class TestPagination:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -499,6 +502,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "traces",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "trace_id", "visible_to": ["admin"]},
                 ],
@@ -509,8 +513,8 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            4: [_col("table_name"), _col("trace_id")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            4: [_col("domain_id"), _col("table_name"), _col("trace_id")],
         }
         schema, ctx = _build_schema_and_ctx(
             tables=tables,
@@ -545,6 +549,7 @@ class TestPagination:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -558,6 +563,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "queries",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
@@ -568,8 +574,8 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            3: [_col("table_name"), _col("query")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            3: [_col("domain_id"), _col("table_name"), _col("query")],
         }
         schema, ctx = _build_schema_and_ctx(
             tables=tables,
@@ -1404,6 +1410,7 @@ class TestOpsDefaultLimit:
                 "table_name": "registered_tables",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
@@ -1417,6 +1424,7 @@ class TestOpsDefaultLimit:
                 "schema_name": "public",
                 "table_name": "queries",
                 "columns": [
+                    {"column_name": "domain_id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
@@ -1427,8 +1435,8 @@ class TestOpsDefaultLimit:
         ]
         column_types = {
             1: [_col("id", "integer")],
-            2: [_col("id", "integer"), _col("table_name")],
-            3: [_col("table_name"), _col("query")],
+            2: [_col("id", "integer"), _col("domain_id"), _col("table_name")],
+            3: [_col("domain_id"), _col("table_name"), _col("query")],
         }
         return _build_schema_and_ctx(
             tables=tables,

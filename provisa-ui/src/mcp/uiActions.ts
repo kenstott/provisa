@@ -69,7 +69,7 @@ function normalized(text: string | null | undefined): string {
   return (text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function hidden(el: Element): boolean {
+export function hidden(el: Element): boolean {
   return el.closest("[hidden], [aria-hidden='true'], [inert]") !== null;
 }
 
@@ -102,7 +102,7 @@ function spokenText(el: Element): string {
   return text;
 }
 
-function accessibleName(el: Element): string {
+export function accessibleName(el: Element): string {
   const label = el.getAttribute("aria-label");
   if (label) return label;
   const by = el.getAttribute("aria-labelledby");
