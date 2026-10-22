@@ -489,6 +489,14 @@ def test_a_device_is_ready_only_when_every_setup_step_passed() -> None:
     assert script.rstrip().endswith('echo "${commit}" > "$READY"')
 
 
+def test_the_server_device_has_a_pinned_py_spy_before_it_is_ready() -> None:
+    """A step's stall records can be followed by the server's stacks without another boot."""
+    script = _STARTUP.read_text()
+    install = script.index("uv tool install py-spy==")
+    assert script.rindex('if [ "$DEVICE" = server ]', 0, install) > script.index("uv sync")
+    assert install < script.index('echo "${commit}" > "$READY"')
+
+
 def test_the_results_go_where_the_lifecycle_says() -> None:
     import os
     import subprocess
