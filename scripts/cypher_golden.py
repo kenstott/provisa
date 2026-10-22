@@ -65,13 +65,13 @@ _IR = {
 
 
 def _module(name: str) -> Any:
-    """The compiler module ``name`` wherever this checkout keeps it."""
-    for package in ("provisa.gql", "provisa.cypher"):
-        try:
-            return importlib.import_module(f"{package}.{name}")
-        except ModuleNotFoundError:
-            continue
-    raise ModuleNotFoundError(name)
+    """The compiler module ``name`` where this checkout keeps it. Decided by this checkout's own
+    files: ``provisa`` can be extended by another checkout's (an editable install), whose
+    ``provisa.gql`` would otherwise be found first."""
+    package = (
+        "provisa.gql" if (REPO / "provisa" / "gql" / f"{name}.py").exists() else "provisa.cypher"
+    )
+    return importlib.import_module(f"{package}.{name}")
 
 
 class _Unpickler(pickle.Unpickler):
@@ -82,7 +82,7 @@ class _Unpickler(pickle.Unpickler):
             short = module.rsplit(".", 1)[1]
             if short == "parser" and name in _IR:
                 return super().find_class(_ir_module(), name)
-            if short in _MOVED and importlib.util.find_spec(f"provisa.gql.{short}") is not None:
+            if short in _MOVED and (REPO / "provisa" / "gql" / f"{short}.py").exists():
                 return super().find_class(f"provisa.gql.{short}", name)
         return super().find_class(module, name)
 
@@ -98,11 +98,26 @@ def load_blob(digest: str) -> Any:
         return _Unpickler(f).load()
 
 
+#: Every dialect a statement may be rendered in: one node shape can render alike in one and not in
+#: another (a parameter is $1 in postgres and @1 in trino).
+DIALECTS = (
+    "postgres", "trino", "duckdb", "snowflake", "bigquery", "databricks", "spark", "mysql", "tsql",
+    "oracle",
+)  # fmt: skip
+
+
+def _render(sql_ast: Any, dialect: str) -> str:
+    try:
+        return sql_ast.sql(dialect=dialect)
+    except Exception as exc:  # a dialect that cannot render a construct: that is what it gives
+        return f"!{type(exc).__name__}: {exc}"
+
+
 def rendered(result: tuple) -> dict:
     """What a translation produced, as the golden set compares it."""
     sql_ast, ordered, graph_vars = result
     return {
-        "sql": sql_ast.sql(dialect="postgres"),
+        "sql": {dialect: _render(sql_ast, dialect) for dialect in DIALECTS},
         "params": list(ordered),
         "graph_vars": {k: getattr(v, "name", str(v)) for k, v in sorted(graph_vars.items())},
     }

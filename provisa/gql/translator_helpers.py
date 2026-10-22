@@ -21,8 +21,38 @@ import re
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
+from provisa.gql.expr_ast import CypherExpr
 from provisa.gql.ir import MatchClause, PathPattern
 from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapping
+
+
+def _properties_of(var: str, exprs: "list[CypherExpr]") -> list[str]:
+    """The properties ``exprs`` read of ``var`` (``var.prop``), each once, in the order written."""
+    from provisa.gql.expr_ast import Property, Variable, walk
+
+    seen: dict[str, None] = {}
+    for expr in exprs:
+        for node in walk(expr):
+            if (
+                isinstance(node, Property)
+                and isinstance(node.obj, Variable)
+                and node.obj.name == var
+            ):
+                seen.setdefault(node.name, None)
+    return list(seen)
+
+
+def _collects_maps(expr: "CypherExpr") -> bool:
+    """Whether ``expr`` collects map literals (``collect({...})``): its value is a list of maps."""
+    from provisa.gql.expr_ast import FunctionCall, MapLiteral, walk
+
+    return any(
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "collect"
+        and bool(node.args)
+        and isinstance(node.args[0], MapLiteral)
+        for node in walk(expr)
+    )
 
 
 def _safe_alias(expr: str) -> str:
@@ -385,7 +415,6 @@ def _split_and(expr: "exp.Expression") -> "list[exp.Expression]":  # pyright: ig
 def _fold_where_into_optional_joins(
     where_expr: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     optional_vars: "set[str]",
-    where_text: str,
     joins: "list[dict]",
 ) -> "tuple[list[dict], exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Fold WHERE conditions referencing optional variables into the relevant LEFT JOIN ON clauses.
@@ -401,7 +430,8 @@ def _fold_where_into_optional_joins(
 
     Returns (modified_joins, remaining_where_or_None).
     """
-    referenced = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", where_text)}
+    where_sql = where_expr.sql(dialect="postgres")
+    referenced = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", where_sql)}
     if not referenced:
         return joins, where_expr
 
@@ -453,45 +483,6 @@ def _fold_where_into_optional_joins(
         remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
 
     return modified, remaining
-
-
-def _is_bare_variable(expr: str) -> bool:
-    return bool(re.match(r"^[A-Za-z_]\w*$", expr.strip()))
-
-
-_CYPHER_DQUOTE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
-
-
-def _rewrite_cypher_dquote_strings(expr: str) -> str:  # REQ-410
-    """Cypher ``"str"`` → SQL ``'str'``, leaving quoted identifiers (after ``.``) untouched. Retained
-    for the UNWIND text path + REQ-410; the AST grammar handles this on the predicate paths (REQ-913)."""
-    result: list[str] = []
-    pos = 0
-    for m in _CYPHER_DQUOTE_RE.finditer(expr):
-        start = m.start()
-        result.append(expr[pos:start])
-        keep = start > 0 and expr[start - 1] == "."  # property name after `.` — leave as-is
-        result.append(m.group(0) if keep else "'" + m.group(1).replace("'", "\\'") + "'")
-        pos = m.end()
-    result.append(expr[pos:])
-    return "".join(result)
-
-
-_ISO_TS_LITERAL_RE = re.compile(r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)'")
-
-
-def _coerce_ts_literals(text: str) -> str:  # REQ-409
-    """Wrap ISO-datetime string literals as ``TIMESTAMP '...'`` (retained for REQ-409)."""
-    return _ISO_TS_LITERAL_RE.sub(lambda m: f"TIMESTAMP {m.group(0)}", text)
-
-
-def _rewrite_property_access(expr: str) -> str:
-    """Rewrite n.prop → n."prop" for SQL."""
-    return re.sub(
-        r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b",
-        lambda m: f'{m.group(1)}."{m.group(2)}"',
-        expr,
-    )
 
 
 # ---------------------------------------------------------------------------

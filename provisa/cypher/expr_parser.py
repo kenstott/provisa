@@ -244,9 +244,12 @@ def _build_grammar() -> pp.ParserElement:
     )
 
     def _mk_subq(t):
+        from provisa.cypher.parser import subquery_statement
+
         raw = t["body"].strip()
         inner = raw[1:-1].strip() if raw.startswith("{") else raw  # drop the outer braces
-        return SubqueryExpr(kind=t["kind"].upper(), body=inner)
+        kind = t["kind"].upper()
+        return SubqueryExpr(kind=kind, body=subquery_statement(kind, inner))
 
     subq.set_parse_action(_mk_subq)
 
@@ -287,8 +290,10 @@ def _build_grammar() -> pp.ParserElement:
     )
 
     def _mk_pattern_comp(t):
+        from provisa.cypher.parser import parse_pattern
+
         return PatternComprehension(
-            pattern=t["pattern"].strip(),
+            pattern=parse_pattern(t["pattern"].strip()),
             path_var=str(_val(t["pathvar"])) if "pathvar" in t else None,
             predicate=t["pred"] if "pred" in t else None,
             projection=t["proj"],
