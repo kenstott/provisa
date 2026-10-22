@@ -46801,7 +46801,7 @@
   - REQ-1377
   docs:
   - api-reference.md
-  - glossary.md
+  - ontology.md
   - metadata-export.md
 - id: REQ-1388
   status: complete
@@ -57268,7 +57268,7 @@
   depends_on:
   - REQ-1387
   docs:
-  - glossary.md
+  - ontology.md
 - id: REQ-1582
   status: complete
   since: 2026-08
@@ -57302,7 +57302,7 @@
   depends_on:
   - REQ-1387
   docs:
-  - glossary.md
+  - ontology.md
 - id: REQ-1581
   status: complete
   since: 2026-08
@@ -57346,7 +57346,7 @@
   depends_on:
   - REQ-1387
   docs:
-  - glossary.md
+  - ontology.md
 - id: REQ-1584
   status: complete
   since: 2026-08
@@ -57608,7 +57608,7 @@
   - architecture.md
   - configuration.md
   - cypher.md
-  - glossary.md
+  - ontology.md
   - metadata-export.md
   - pgwire.md
   - sources.md

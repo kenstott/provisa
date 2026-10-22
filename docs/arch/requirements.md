@@ -15310,7 +15310,7 @@ Dictionary/ontology of business terms over the semantic layer. Every physical fi
 
 **Tests:** `tests/unit/test_glossary_normalize.py`, `tests/unit/test_glossary_repository.py`, `tests/unit/test_glossary_admin_surface.py`, `tests/unit/test_mcp_glossary_protocol.py`, `tests/unit/test_metadata_export_glossary.py`, `tests/unit/test_metadata_export_glossary_atlas.py`, `tests/unit/test_metadata_export_glossary_atlan.py`, `tests/unit/test_metadata_export_glossary_datahub.py`, `tests/unit/test_metadata_export_glossary_openmetadata.py`, `tests/unit/test_metadata_export_glossary_collibra.py`, `tests/unit/test_column_dependents.py`, `tests/integration/test_glossary_lifecycle.py`, `tests/steps/steps_business_glossary_ontology.py`, `provisa-ui/src/__tests__/GlossaryTab.test.tsx`, `provisa-ui/e2e/glossary.spec.ts`, `tests/steps/steps_business_glossary_ontology.py`, `tests/unit/test_glossary_meta_domains_grounded.py`
 
-**Docs:** [api-reference.md](../api-reference.md), [glossary.md](../glossary.md), [metadata-export.md](../metadata-export.md)
+**Docs:** [api-reference.md](../api-reference.md), [ontology.md](../ontology.md), [metadata-export.md](../metadata-export.md)
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -17742,7 +17742,7 @@ The exclude-from-metadata-export control says which columns it is for. Some colu
 
 **Tests:** `provisa-ui/src/__tests__/GlossaryTab.test.tsx`
 
-**Docs:** [glossary.md](../glossary.md)
+**Docs:** [ontology.md](../ontology.md)
 
 ### REQ-1582 · Business Glossary & Ontology {#REQ-1582}
 
@@ -17754,7 +17754,7 @@ A table name is cut at its connective when its concept is derived. An access-pat
 
 **Tests:** `tests/unit/test_glossary_normalize.py`
 
-**Docs:** [glossary.md](../glossary.md)
+**Docs:** [ontology.md](../ontology.md)
 
 ### REQ-1581 · Business Glossary & Ontology {#REQ-1581}
 
@@ -17768,7 +17768,7 @@ A derived glossary term names the column's BUSINESS name: its alias where the mo
 
 **Tests:** `tests/unit/test_glossary_alias_derivation.py`, `tests/integration/test_glossary_lifecycle.py`
 
-**Docs:** [glossary.md](../glossary.md)
+**Docs:** [ontology.md](../ontology.md)
 
 ### REQ-1584 · Business Glossary & Ontology {#REQ-1584}
 
@@ -17806,7 +17806,7 @@ A junction table is declarable as a first-class Cypher relationship, and its own
 
 **Tests:** `tests/unit/test_cypher_junction_relationships.py`, `tests/unit/test_mv_junction_pattern.py`, `tests/integration/test_glossary_meta_domain.py`, `provisa-ui/src/__tests__/GraphDropExpansion.test.ts`, `provisa-ui/src/__tests__/JunctionPanel.test.tsx`
 
-**Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [configuration.md](../configuration.md), [cypher.md](../cypher.md), [glossary.md](../glossary.md), [metadata-export.md](../metadata-export.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
+**Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [configuration.md](../configuration.md), [cypher.md](../cypher.md), [ontology.md](../ontology.md), [metadata-export.md](../metadata-export.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
 ## 10. UI & Admin Surfaces
 
