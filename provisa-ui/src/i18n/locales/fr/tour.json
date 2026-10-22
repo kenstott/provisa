@@ -1730,15 +1730,15 @@
       },
       "groupexposureScenario": {
         "title": "De quoi parle cette démo",
-        "description": "Une banque pragoise prête à des entreprises tchèques et enregistre chacune par son Legal Entity Identifier (LEI). Les règles de l'UE plafonnent ce qu'elle peut prêter à un client, ou à un groupe d'entreprises contrôlé par un même propriétaire, à 25 % de ses fonds propres de base (Tier 1). La question : envers quels groupes la banque dépasse-t-elle ce plafond ? Ses livres disent à qui elle a prêté, pas qui détient qui. La banque et ses prêts sont fictifs ; les entreprises sont réelles."
+        "description": "Une banque pragoise prête à des entreprises et enregistre la société qui détient chacune par son Legal Entity Identifier (LEI). Les règles de l'UE plafonnent ce qu'elle peut prêter à un client, ou à un groupe d'entreprises contrôlé par un même propriétaire, à 25 % de ses fonds propres de base (Tier 1). La question : envers quels groupes la banque dépasse-t-elle ce plafond ? Ses livres nomment le propriétaire de chaque emprunteur, pas qui détient ce propriétaire. La banque, ses emprunteurs et ses prêts sont fictifs ; les groupes qui les détiennent sont réels."
       },
       "groupexposureJoin": {
         "title": "Reliés par le LEI",
-        "description": "Les contreparties de la banque et les tables de Wikidata partagent le LEI, et ces relations les relient. Les données de la banque restent dans sa base, celles de Wikidata dans leur réplique ; la jointure se fait dans la requête."
+        "description": "La table des propriétaires de la banque et les tables de Wikidata partagent le LEI du propriétaire, et ces relations les relient. Les données de la banque restent dans sa base, celles de Wikidata dans leur réplique ; la jointure se fait dans la requête."
       },
       "groupexposureAnswer": {
         "title": "La réponse en SQL",
-        "description": "La vue group_exposure rattache chaque financement au groupe de son emprunteur selon Wikidata. Les sociétés d'eau et de chauffage de Veolia et les sociétés de construction de Vinci dépassent chacune 25 % des fonds propres de base. Ni les livres de la banque ni Wikidata ne le montrent seuls."
+        "description": "La vue group_exposure rattache chaque financement au groupe de son emprunteur, via le LEI du propriétaire et Wikidata. Les groupes Veolia et Vinci dépassent chacun 25 % des fonds propres de base, et une coentreprise de Veolia et d'EPH compte dans les deux. Ni les livres de la banque ni Wikidata ne le montrent seuls. Les emprunteurs et leurs prêts sont fictifs."
       },
       "groupexposureExample": {
         "title": "La réponse en GraphQL",
@@ -1746,19 +1746,19 @@
       },
       "groupexposureRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Le portefeuille de prêts d'une banque et des données liées publiques de Wikidata, reliés par LEI dans un modèle gouverné. Les chaînes de propriété de Wikidata transforment de nombreux petits prêts en quelques grandes expositions de groupe, et la réponse est servie en SQL, GraphQL et REST."
+        "description": "Le portefeuille de prêts d'une banque fictive et des données liées publiques de Wikidata, reliés par LEI dans un modèle gouverné. Les chaînes de propriété de Wikidata transforment de nombreux petits prêts en quelques grandes expositions de groupe, et la réponse est servie en SQL, GraphQL et REST."
       },
       "groupexposureWikidata": {
-        "title": "Qui détient qui, selon Wikidata",
+        "title": "Qui détient les propriétaires, selon Wikidata",
         "description": "Wikidata, le graphe de connaissances public, enregistre le LEI de chaque entreprise et son organisation mère. Cette source le lit via le service de requêtes SPARQL de Wikidata. Ses tables ont été chargées une seule fois, à la construction de la démo, si bien que la démo n'appelle jamais Wikidata pendant que vous l'utilisez."
       },
       "groupexposureFacilities": {
         "title": "Les financements de la banque",
-        "description": "Chaque prêt à terme, ligne de crédit renouvelable et garantie accordé par la banque, avec le LEI de l'emprunteur, le montant engagé et le montant tiré. La limite compte le montant engagé."
+        "description": "Chaque prêt à terme, ligne de crédit renouvelable et garantie accordé par la banque, avec l'emprunteur, le montant engagé et le montant tiré. La limite compte le montant engagé."
       },
       "groupexposureGroups": {
-        "title": "Le groupe de chaque emprunteur",
-        "description": "Pour chaque emprunteur, l'entreprise au sommet de sa chaîne d'organisations mères sur Wikidata, trouvée avec un seul chemin de propriétés SPARQL. Un emprunteur que personne ne détient est son propre groupe. Un emprunteur a deux propriétaires au sommet ; il figure donc dans les deux groupes."
+        "title": "Le groupe de chaque propriétaire",
+        "description": "Pour chaque propriétaire que la banque enregistre, l'entreprise au sommet de sa chaîne d'organisations mères sur Wikidata, trouvée avec un seul chemin de propriétés SPARQL. Wikidata sait qu'une holding tchèque appartient à Veolia ou à E.ON, même si les livres de la banque l'ignorent."
       },
       "groupexposureTerms": {
         "title": "En termes simples",
@@ -1890,7 +1890,7 @@
       },
       "groupexposure": {
         "title": "Exposition par groupe via Wikidata",
-        "summary": "Envers quels groupes une banque dépasse-t-elle sa limite de grands risques ? Son portefeuille de prêts, relié par LEI aux chaînes d'organisations mères de Wikidata via SPARQL, rattache chaque emprunteur au groupe qui le détient."
+        "summary": "Envers quels groupes une banque dépasse-t-elle sa limite de grands risques ? Son portefeuille de prêts, relié par le LEI du propriétaire de chaque emprunteur aux chaînes d'organisations mères de Wikidata via SPARQL, rattache chaque emprunteur à son groupe. La banque et ses emprunteurs sont fictifs ; les groupes sont réels."
       }
     }
   }

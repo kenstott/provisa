@@ -12,9 +12,10 @@
 # Provisa, is beside it.
 title: Group exposure through Wikidata
 description: >-
-  A Prague bank's corporate loan book, in its own database, joined by Legal Entity Identifier to
-  Wikidata's chains of parent organizations over SPARQL: which corporate groups is the bank over
-  its 25% large-exposure limit to, once each borrower is counted with the group that owns it?
+  A Prague bank's corporate loan book, in its own database, joined by each borrower's owner's Legal
+  Entity Identifier to Wikidata's chains of parent organizations over SPARQL: which corporate groups
+  is the bank over its 25% large-exposure limit to? The bank, its borrowers and its loans are
+  fictional; the groups that own them are real.
 screenshot: card.png
 published: false
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused

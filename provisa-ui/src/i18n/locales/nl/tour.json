@@ -1730,15 +1730,15 @@
       },
       "groupexposureScenario": {
         "title": "Waar deze demo over gaat",
-        "description": "Een Praagse bank leent aan Tsjechische bedrijven en boekt elk bedrijf op zijn Legal Entity Identifier (LEI). EU-regels beperken wat zij mag lenen aan één klant, of aan een groep bedrijven die één eigenaar beheerst, tot 25% van haar tier 1-kapitaal. De vraag: bij welke groepen zit de bank boven die grens? Haar boeken zeggen aan wie zij leende, niet wie van wie is. De bank en haar leningen zijn verzonnen; de bedrijven zijn echt."
+        "description": "Een Praagse bank leent aan bedrijven en legt van elk bedrijf de eigenaar vast met diens Legal Entity Identifier (LEI). EU-regels beperken wat zij mag lenen aan één klant, of aan een groep bedrijven die één eigenaar beheerst, tot 25% van haar tier 1-kapitaal. De vraag: bij welke groepen zit de bank boven die grens? Haar boeken noemen de eigenaar van elke kredietnemer, niet van wie die eigenaar is. De bank, haar kredietnemers en haar leningen zijn verzonnen; de concerns die hen bezitten zijn echt."
       },
       "groupexposureJoin": {
         "title": "Gekoppeld via de LEI",
-        "description": "De tegenpartijen van de bank en de tabellen uit Wikidata delen de LEI, en deze relaties koppelen ze. De gegevens van de bank blijven in haar database en die van Wikidata in de replica; de koppeling gebeurt in de query."
+        "description": "De eigenarentabel van de bank en de tabellen uit Wikidata delen de LEI van de eigenaar, en deze relaties koppelen ze. De gegevens van de bank blijven in haar database en die van Wikidata in de replica; de koppeling gebeurt in de query."
       },
       "groupexposureAnswer": {
         "title": "Het antwoord in SQL",
-        "description": "De view group_exposure brengt elke faciliteit onder bij het concern van de kredietnemer volgens Wikidata. De water- en warmtebedrijven van Veolia en de bouwbedrijven van Vinci komen elk boven 25% van het tier 1-kapitaal. Noch de boeken van de bank noch Wikidata laten dat alleen zien."
+        "description": "De view group_exposure brengt elke faciliteit via de LEI van de eigenaar en Wikidata onder bij het concern van de kredietnemer. De concerns Veolia en Vinci komen elk boven 25% van het tier 1-kapitaal, en een joint venture van Veolia en EPH telt bij beide mee. Noch de boeken van de bank noch Wikidata laten dat alleen zien. De kredietnemers en hun leningen zijn verzonnen."
       },
       "groupexposureExample": {
         "title": "Het antwoord in GraphQL",
@@ -1746,19 +1746,19 @@
       },
       "groupexposureRecap": {
         "title": "Wat u hebt gezien",
-        "description": "Het eigen leningenboek van een bank en openbare linked data uit Wikidata, via LEI gekoppeld in één beheerst model. De eigendomsketens uit Wikidata maken van veel kleine leningen een paar grote groepsblootstellingen, en het antwoord wordt geleverd in SQL, GraphQL en REST."
+        "description": "Het leningenboek van een verzonnen bank en openbare linked data uit Wikidata, via LEI gekoppeld in één beheerst model. De eigendomsketens uit Wikidata maken van veel kleine leningen een paar grote groepsblootstellingen, en het antwoord wordt geleverd in SQL, GraphQL en REST."
       },
       "groupexposureWikidata": {
-        "title": "Wie van wie is, uit Wikidata",
+        "title": "Van wie de eigenaren zijn, uit Wikidata",
         "description": "Wikidata, de openbare kennisgraaf, legt van elk bedrijf de LEI en de moederorganisatie vast. Deze bron leest dat via de SPARQL-querydienst van Wikidata. De tabellen zijn één keer geladen, toen de demo werd gebouwd, dus de demo roept Wikidata nooit aan terwijl u hem gebruikt."
       },
       "groupexposureFacilities": {
         "title": "De kredietfaciliteiten van de bank",
-        "description": "Elke termijnlening, doorlopende kredietfaciliteit en garantie die de bank heeft verstrekt, met de LEI van de kredietnemer, wat is toegezegd en wat is opgenomen. De grens telt wat is toegezegd."
+        "description": "Elke termijnlening, doorlopende kredietfaciliteit en garantie die de bank heeft verstrekt, met de kredietnemer, wat is toegezegd en wat is opgenomen. De grens telt wat is toegezegd."
       },
       "groupexposureGroups": {
-        "title": "Het concern van elke kredietnemer",
-        "description": "Voor elke kredietnemer het bedrijf bovenaan de keten van moederorganisaties in Wikidata, gevonden met één SPARQL-eigenschapspad. Een kredietnemer zonder eigenaar is zijn eigen groep. Eén kredietnemer heeft bovenaan twee eigenaren en staat daarom in beide groepen."
+        "title": "Het concern van elke eigenaar",
+        "description": "Voor elke eigenaar die de bank vastlegt, het bedrijf bovenaan de keten van moederorganisaties in Wikidata, gevonden met één SPARQL-eigenschapspad. Wikidata weet dat een Tsjechische holding bij Veolia of E.ON hoort, ook al weten de boeken van de bank dat niet."
       },
       "groupexposureTerms": {
         "title": "In gewone woorden",
@@ -1890,7 +1890,7 @@
       },
       "groupexposure": {
         "title": "Groepsblootstelling via Wikidata",
-        "summary": "Bij welke concerns gaat een bank over haar grens voor grote blootstellingen? Haar leningenportefeuille, via LEI en SPARQL gekoppeld aan de ketens van moederorganisaties in Wikidata, brengt elke kredietnemer onder bij het concern waartoe hij behoort."
+        "summary": "Bij welke concerns gaat een bank over haar grens voor grote blootstellingen? Haar leningenportefeuille, via de LEI van de eigenaar van elke kredietnemer en SPARQL gekoppeld aan de ketens van moederorganisaties in Wikidata, brengt elke kredietnemer onder bij zijn concern. De bank en haar kredietnemers zijn verzonnen; de concerns zijn echt."
       }
     }
   }
