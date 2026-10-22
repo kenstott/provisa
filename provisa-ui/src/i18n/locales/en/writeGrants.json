@@ -29,6 +29,7 @@
     "addGrant": "Add a grant",
     "removeGrant": "Remove this grant",
     "save": "Save grants",
-    "saved": "Grants saved."
+    "saved": "Grants saved.",
+    "kept": "Kept: saved with the table."
   }
 }

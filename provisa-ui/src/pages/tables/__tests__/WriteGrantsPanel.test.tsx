@@ -50,6 +50,7 @@ function renderPanel(props: Partial<Parameters<typeof WriteGrantsPanel>[0]> = {}
           { id: "customer", label: "customer" },
           { id: "support", label: "support" },
         ]}
+        kept={false}
         {...props}
       />
     </MantineProvider>,

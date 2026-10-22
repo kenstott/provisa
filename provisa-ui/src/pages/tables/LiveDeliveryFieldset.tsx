@@ -52,6 +52,10 @@ export function LiveDeliveryFieldset({
   const live = editingTable.live;
   const setLive = (patch: Partial<LiveDeliveryConfig>) =>
     setEditingTable(live ? { ...editingTable, live: { ...live, ...patch } } : editingTable);
+  // REQ-813: the columns a landing time can be kept in.
+  const timestampCols = editingTable.columns.filter((c) =>
+    (editingColumnTypes[c.columnName] ?? c.dataType ?? "").toLowerCase().startsWith("timestamp"),
+  );
   const wmCols = editingTable.columns.filter((c) => {
     const dt = editingColumnTypes[c.columnName];
     return !dt || isWatermarkEligible(dt);
@@ -317,6 +321,21 @@ export function LiveDeliveryFieldset({
                     }
                     placeholder="(optional)"
                     data-testid="live-kafka-key-column"
+                  />
+                </FormField>
+                <FormField size="medium" hint={t("liveDeliveryFieldset.kafkaLandingTimeHint")}>
+                  <Select
+                    label={t("liveDeliveryFieldset.kafkaLandingTimeLabel")}
+                    placeholder={t("liveDeliveryFieldset.kafkaLandingTimeNone")}
+                    clearable
+                    data={timestampCols.map((c) => ({ value: c.columnName, label: c.columnName }))}
+                    value={live.kafka?.landingTimeColumn ?? null}
+                    onChange={(value) =>
+                      setLive({
+                        kafka: { ...(live.kafka ?? { topic: "" }), landingTimeColumn: value },
+                      })
+                    }
+                    data-testid="live-kafka-landing-time-column"
                   />
                 </FormField>
               </FormLayout>

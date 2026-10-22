@@ -443,7 +443,12 @@
       "role_description_missing": "角色 '{{role}}' 需要说明其用途",
       "rls_rule_description_missing": "行规则需要说明其用途",
       "file_download_refused": "源 {{source}}：{{reason}}",
-      "source_created_without_table": "已创建源 {{source}}；其表未设置：{{reason}}"
+      "source_created_without_table": "已创建源 {{source}}；其表未设置：{{reason}}",
+      "mv_window_needs_calendar": "物化视图 '{{mv}}' 未指定日历：在营业日结束时封存的构建需要一个日历",
+      "version_log_updated": "版本日志 '{{mv}}' 已更新",
+      "mv_window_held": "MV '{{mv}}' 未在 {{day}} 的收盘时封存：它的另一次构建持有认领",
+      "mv_window_unchanged": "MV '{{mv}}' 未在 {{day}} 的收盘时封存：自上次构建以来，它读取的内容没有任何变化",
+      "landing_time_pipeline": "表 '{{table}}' 将到达时间保存在 {{column}} 中，但它的存储通过自己的管道载入该主题，Provisa 看不到每条消息何时到达。"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
@@ -602,6 +607,7 @@
       "wrong_tier": "此沙盒由其他位置提供；请从它自己的地址打开。",
       "unknown_demo": "没有名为 {{demo}} 的已发布演示。",
       "demo_not_ready": "此演示仍在准备中。请稍后再试。",
+      "demo_stores_failed": "无法启动此演示。请过几分钟再试。",
       "at_capacity": "所有演示沙盒都在使用中。请稍后再试。",
       "starting": "演示服务器正在启动。请一两分钟后重试。",
       "disk_full": "此沙盒已用完 {{limit}} 字节的磁盘上限；无法再写入任何内容。",

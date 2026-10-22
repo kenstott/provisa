@@ -1806,6 +1806,10 @@ export interface MVInfo {
   lastRefreshAt: number | null;
   rowCount: number | null;
   lastError: string | null;
+  /** The table whose version log this view is; null for any other view. */
+  versionLogOf: string | null;
+  /** Seconds a row its refresh reads may be committed late. */
+  allowedLateness: number;
 }
 
 export interface CacheStats {

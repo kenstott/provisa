@@ -42,7 +42,7 @@ const SOURCES = [
 ];
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   const setError = vi.fn();
   render(
     <RegisterTableForm
@@ -55,13 +55,12 @@ function renderForm() {
       roles={[{ id: "admin" } as never]}
       getAvailableColumnsMetadata={vi.fn().mockResolvedValue([{ name: "id", dataType: "integer" }])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={setError}
     />,
   );
-  return { registerTable, setError };
+  return { onContinue, setError };
 }
 
 async function pick(sourceId: string) {
@@ -89,7 +88,7 @@ describe("RegisterTableForm Cache TTL", () => {
   });
 
   it("asks for it, refuses without it, and registers with it", async () => {
-    const { registerTable, setError } = renderForm();
+    const { onContinue, setError } = renderForm();
     const user = await pick("docs");
     const field = await screen.findByTestId("register-table-cache-ttl");
     expect(field).toBeRequired();
@@ -97,11 +96,11 @@ describe("RegisterTableForm Cache TTL", () => {
     expect(setError).toHaveBeenLastCalledWith(
       "Set a Cache TTL: this table will be a replica, and its source states none.",
     );
-    expect(registerTable).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
     await user.type(field, "300");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect(registerTable.mock.calls[0][0].cacheTtl).toBe(300);
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].input.cacheTtl).toBe(300);
   });
 
   it.each([
@@ -109,12 +108,12 @@ describe("RegisterTableForm Cache TTL", () => {
     ["its source's signal has its own clock", "docs-push"],
     ["the engine reads the source in place", "pg"],
   ])("does not ask when %s, and sends none", async (_why, sourceId) => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pick(sourceId);
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
     expect(screen.queryByTestId("register-table-cache-ttl")).toBeNull();
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
-    expect(registerTable.mock.calls[0][0].cacheTtl).toBeUndefined();
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
+    expect(onContinue.mock.calls[0][0].input.cacheTtl).toBeUndefined();
   });
 });

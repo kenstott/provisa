@@ -38,6 +38,9 @@ const TABLE = {
   roleTtl: [],
   delta: null,
   live: null,
+  businessKey: [],
+  validTime: null,
+  recordedTime: null,
 } as unknown as RegisteredTable;
 
 const BUILD = {

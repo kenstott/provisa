@@ -95,6 +95,8 @@ import { LOGS, logsMapping } from "./sources/logs";
 import { COSMOSDB, cosmosHints } from "./sources/cosmosdb";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
 import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
+import { NEW_SOURCE, keepFolderAs, resendHeldFolder } from "./sources/folderZip";
+import { uploadCodeArchive } from "../api/codeUploads";
 import { WIKIPEDIA, wikipediaHints } from "./sources/wikipedia";
 import { sourceFormCacheTtl, sourceLoadFieldsValid } from "./sources/loadManagement";
 import { useCacheTtlRequired } from "./sources/sourceKind";
@@ -136,7 +138,7 @@ export function SourcesPage() {
   // `_refuse_soda_on_hosted_plane` gates on server-side (commerce.enabled()). soda is Elastic
   // License 2.0 and must never be offered as a hosted/managed service; hiding it here is
   // defense-in-depth UX, not the enforcement boundary — the server refuses it regardless.
-  const { billing: hostedPlane } = useAuth();
+  const { billing: hostedPlane, activeOrgId } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
@@ -745,49 +747,61 @@ export function SourcesPage() {
           : form.type === "databricks" && authType === "token"
             ? { password: authFields.access_token }
             : {};
+      // REQ-2121: a folder the browser keeps for this source's code is zipped and sent again.
+      const codeFields =
+        CODE_SOURCE_TYPES.has(form.type) && activeOrgId
+          ? await resendHeldFolder(editingSourceId ?? NEW_SOURCE, authFields, (file) =>
+              uploadCodeArchive(activeOrgId, file),
+            )
+          : authFields;
       const spMappingJson =
         form.type === "data_profiler"
           ? profilerMappingJson(authFields) // REQ-1934
           : CODE_SOURCE_TYPES.has(form.type)
-            ? codeMappingJson(form.type, authFields) // REQ-1984, REQ-1993
-          : form.type === "cloudops"
-            ? cloudopsMappingJson(authFields) // REQ-1947
-            : form.type === GOOGLE_WORKSPACE
-              ? JSON.stringify(gwMapping(authFields)) // REQ-1923
-              : form.type === MICROSOFT_365
-                ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
-                : form.type === LOGS
-                  ? JSON.stringify(logsMapping(authFields)) // REQ-1996
-                  : form.type === "salesforce"
-                    ? salesforceMappingJson(authFields) // REQ-1946
-                    : form.type === "sharepoint"
-                      ? JSON.stringify({
-                          auth_type: spAuthType,
-                          ...(spAuthType === "CERTIFICATE"
-                            ? { certificate_path: spCertPath, certificate_password: spCertPassword }
-                            : {}),
-                          ...(spAuthType === "USERNAME_PASSWORD"
-                            ? { sp_username: spUsername, sp_password: spPassword }
-                            : {}),
-                        })
-                      : form.type === "splunk"
+            ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
+            : form.type === "cloudops"
+              ? cloudopsMappingJson(authFields) // REQ-1947
+              : form.type === GOOGLE_WORKSPACE
+                ? JSON.stringify(gwMapping(authFields)) // REQ-1923
+                : form.type === MICROSOFT_365
+                  ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
+                  : form.type === LOGS
+                    ? JSON.stringify(logsMapping(authFields)) // REQ-1996
+                    : form.type === "salesforce"
+                      ? salesforceMappingJson(authFields) // REQ-1946
+                      : form.type === "sharepoint"
                         ? JSON.stringify({
-                            use_token: splunkAuthMode === "token",
-                            ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                            auth_type: spAuthType,
+                            ...(spAuthType === "CERTIFICATE"
+                              ? {
+                                  certificate_path: spCertPath,
+                                  certificate_password: spCertPassword,
+                                }
+                              : {}),
+                            ...(spAuthType === "USERNAME_PASSWORD"
+                              ? { sp_username: spUsername, sp_password: spPassword }
+                              : {}),
                           })
-                        : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                          // sheet id (which rides in `database`), so it travels in the mapping like the other
-                          // connectors' extra options.
-                          form.type === "google_sheets"
-                          ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
-                          : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                            // region/endpoint) are a mapping-discriminated config choice read by
-                            // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                            // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                            // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                            form.type === "hive" || form.type === "hive_s3"
-                            ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                            : undefined;
+                        : form.type === "splunk"
+                          ? JSON.stringify({
+                              use_token: splunkAuthMode === "token",
+                              ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                            })
+                          : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                            // sheet id (which rides in `database`), so it travels in the mapping like the other
+                            // connectors' extra options.
+                            form.type === "google_sheets"
+                            ? JSON.stringify({
+                                credentials_json: authFields.credentials_json ?? "",
+                              })
+                            : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                              // region/endpoint) are a mapping-discriminated config choice read by
+                              // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                              // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                              // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                              form.type === "hive" || form.type === "hive_s3"
+                              ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                              : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
@@ -947,6 +961,7 @@ export function SourcesPage() {
         }
       }
       const created = editingSourceId ? null : form.id.trim();
+      if (created) keepFolderAs(created); // REQ-2121
       handleCancelForm();
       load();
       if (created) await openCreated(created);
@@ -1513,7 +1528,10 @@ export function SourcesPage() {
                 }}
               >
                 {typeSelectData().map((group) => (
-                  <optgroup key={group.group} label={group.group}>
+                  <optgroup
+                    key={group.group}
+                    label={t(`sourceTypePicker.categories.${group.group}`)}
+                  >
                     {group.items.map((item) => (
                       <option key={item.value} value={item.value} disabled={item.disabled}>
                         {item.label}

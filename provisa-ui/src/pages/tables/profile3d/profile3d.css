@@ -1,9 +1,11 @@
 /* REQ-2123, REQ-2124: the 3D profile views. Colours the scenes read are --p3d-* tokens here, set
  * for both Mantine colour schemes; a scene re-reads them when the scheme changes. */
 .p3d {
-  --p3d-canvas: #0e1412;
-  --p3d-ground: #19221f;
-  --p3d-grid: #2d3934;
+  /* The stage is a slate a step lighter than the dark panels around it, with a grid that reads
+   * on it, so the edges and the darker node colours do not sink into black. */
+  --p3d-canvas: #283442;
+  --p3d-ground: #33414f;
+  --p3d-grid: #6f8499;
   --p3d-ramp-0: #1f4a4f;
   --p3d-ramp-1: #3e7a66;
   --p3d-ramp-2: #8fa556;
@@ -32,9 +34,10 @@
   gap: 8px;
 }
 :root[data-mantine-color-scheme="light"] .p3d {
-  --p3d-canvas: #e3e8e1;
-  --p3d-ground: #d5dcd3;
-  --p3d-grid: #b6c0b7;
+  /* A cool grey stage, set apart from the white panels around it. */
+  --p3d-canvas: #dbe2e9;
+  --p3d-ground: #cbd4dd;
+  --p3d-grid: #8b9aab;
   --p3d-ramp-0: #2e5a5e;
   --p3d-ramp-1: #4f7f68;
   --p3d-ramp-2: #9baa5c;

@@ -26,7 +26,7 @@ administrator in the one default region: its definition is read as a direct stat
 so a search table it reads is read under its arguments (REQ-1922).
 """
 
-# Requirements: REQ-133, REQ-1912, REQ-1921, REQ-1922
+# Requirements: REQ-133, REQ-1912, REQ-1921, REQ-1922, REQ-2108
 
 from __future__ import annotations
 
@@ -43,9 +43,95 @@ async def view_build_sql(mv: "MVDefinition", engine: Any) -> str:
     from provisa.api.app import state
     from provisa.federation.query_residency import prepare_engine_residency
 
+    from provisa.transpiler.router import Route
+
     require_built_here(mv)
     plan = await _governed_plan(state, mv)
+    if plan.route == Route.DIRECT:
+        return await _staged_direct_build(state, mv, plan, engine)
     # Its inputs are made readable as the administrator's read's are, before it runs.
+    await prepare_engine_residency(state, plan)
+    assert plan.physical_sql is not None  # an ENGINE plan always carries it
+    return plan.physical_sql
+
+
+def staged_table(mv: "MVDefinition") -> str:
+    """The table a DIRECT build's rows are staged in, beside the view's own table (REQ-2108)."""
+    assert mv.target_table is not None  # set by MVDefinition.__post_init__
+    return f"{mv.target_table}__direct"
+
+
+def lineage_sql(mv: "MVDefinition", select_sql: str) -> str:
+    """The SQL a build's column lineage is read from: its statement, or for a staged DIRECT build
+    (which reads only :func:`staged_table`) the view's definition, which names what it derives
+    from (REQ-2108)."""
+    if staged_table(mv) not in select_sql:
+        return select_sql
+    definition = mv.sql or mv.semantic_sql
+    assert definition is not None  # a staged build was governed from it
+    return definition
+
+
+async def _staged_direct_build(state: Any, mv: "MVDefinition", plan: Any, engine: Any) -> str:
+    """REQ-2108: a build its definition routes DIRECT (one source reads it all) runs whole at that
+    source, on any engine kind, so only its result rows come back. They are landed through the
+    store's write face (``land_source_table``) into :func:`staged_table` in the view's store, and
+    the engine statement every build step runs reads them from there, unchanged whatever the step
+    (create, append, bitemporal version, shape probe, size guard)."""
+    from provisa.mv.models import stored_table_ref
+    from provisa.pgwire._pipeline import _execute_plan
+
+    result = await _execute_plan(plan)
+    columns = await _direct_columns(state, mv, plan, result, engine)
+    table = staged_table(mv)
+    await engine.land_source_table(
+        schema=mv.target_schema,
+        table=table,
+        columns=columns,
+        rows=[dict(zip(result.column_names, row)) for row in result.rows],
+    )
+    ref = stored_table_ref(
+        mv.target_catalog, mv.target_schema, table, catalog_qualified=mv.target_catalog_qualified
+    )
+    return f"SELECT * FROM {ref}"
+
+
+async def _direct_columns(
+    state: Any, mv: "MVDefinition", plan: Any, result: Any, engine: Any
+) -> list[tuple[str, str]]:
+    """The staged table's (name, IR type) columns: the source driver's own result types where it
+    reports them (``plan.dialect`` spells them). A driver that reports none (the SQLAlchemy
+    drivers) leaves the shape to the engine, which reads the same definition's shape with LIMIT 0
+    and no rows (REQ-2108)."""
+    from provisa.core.ir_types import to_ir
+    from provisa.federation.execution_auth import SystemAuth, mint_system_token
+
+    if result.column_types is not None:
+        return [
+            (n, to_ir(t, plan.dialect))
+            for n, t in zip(result.column_names, result.column_types, strict=True)
+        ]
+    shape = await engine.execute_engine(
+        f"SELECT * FROM ({await view_shape_sql(mv)}) AS _shape LIMIT 0",
+        authorization=SystemAuth(mint_system_token(), reason=f"mv_direct_shape:{mv.id}"),
+    )
+    if shape.column_types is None:
+        raise ViewNotBuildable(mv.id, "neither its source nor the engine reports its column types")
+    return [
+        (n, to_ir(t, engine.dialect))
+        for n, t in zip(shape.column_names, shape.column_types, strict=True)
+    ]
+
+
+async def view_shape_sql(mv: "MVDefinition") -> str:
+    """The engine statement of ``mv``'s definition, governed as :func:`view_build_sql`'s is: what
+    reading its shape (``LIMIT 0``) runs, never its rows (REQ-2108: a DIRECT build would read and
+    stage them)."""
+    from provisa.api.app import state
+    from provisa.federation.query_residency import prepare_engine_residency
+
+    require_built_here(mv)
+    plan = await _governed_plan(state, mv, route_hint="engine")
     await prepare_engine_residency(state, plan)
     assert plan.physical_sql is not None  # an ENGINE plan always carries it
     return plan.physical_sql
@@ -84,9 +170,11 @@ def require_built_here(mv: "MVDefinition") -> None:
         )
 
 
-async def _governed_plan(state: Any, mv: "MVDefinition") -> Any:
-    """The one pipeline's plan for ``mv``'s definition, as the region's administrator, routed to
-    the engine (what it reads lands through the engine into the view's storage)."""
+async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | None = None) -> Any:
+    """The one pipeline's plan for ``mv``'s definition, as the region's administrator, routed as
+    a query with the same definition is (REQ-2108): DIRECT when one source reads it all, on the
+    engine otherwise. ``route_hint`` "engine" asks the engine for it (its shape, see
+    :func:`_direct_columns`)."""
     from provisa.core import region_admin
     from provisa.pgwire._pipeline import _govern_and_route
     from provisa.transpiler.router import Route
@@ -101,10 +189,12 @@ async def _governed_plan(state: Any, mv: "MVDefinition") -> Any:
         semantic,
         region_admin.ROLE,
         session_vars=region_admin.session_vars(state),
-        route_hint="engine",
+        route_hint=route_hint,
     )
-    if plan.route != Route.ENGINE:
-        raise ViewNotBuildable(mv.id, f"its definition routes {plan.route}, not to the engine")
+    if plan.route not in (Route.ENGINE, Route.DIRECT):
+        raise ViewNotBuildable(
+            mv.id, f"its definition routes {plan.route}, not to its source or the engine"
+        )
     if plan.exec_params:
         raise ViewNotBuildable(mv.id, "its definition carries bound parameters")
     return plan

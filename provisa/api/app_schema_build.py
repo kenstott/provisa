@@ -80,7 +80,9 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
     if raw_config:
         domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
         if raw_config.get("naming", {}).get("convention"):
-            state.global_gql_naming_convention = raw_config["naming"]["convention"]
+            state.global_gql_naming_convention = _naming.preset_convention(
+                raw_config["naming"]["convention"]
+            )
         if raw_config.get("naming", {}).get("sql_convention"):
             state.global_sql_naming_convention = raw_config["naming"]["sql_convention"]
     else:
@@ -96,7 +98,9 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
             if isinstance(raw_config, dict):
                 domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
                 if raw_config.get("naming", {}).get("convention"):
-                    state.global_gql_naming_convention = raw_config["naming"]["convention"]
+                    state.global_gql_naming_convention = _naming.preset_convention(
+                        raw_config["naming"]["convention"]
+                    )
                 if raw_config.get("naming", {}).get("sql_convention"):
                     state.global_sql_naming_convention = raw_config["naming"]["sql_convention"]
     # Single-domain mode: domain prefixing is meaningless with one domain — force it off.

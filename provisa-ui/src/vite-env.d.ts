@@ -50,6 +50,7 @@ declare module "*.graphql" {
   export const GenerateTableDescription: DocumentNode;
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
+  export const NamingConventions: DocumentNode;
   export const CacheStats: DocumentNode;
   export const CacheTableStats: DocumentNode;
   export const HotTables: DocumentNode;
@@ -88,6 +89,7 @@ declare module "*.graphql" {
   export const DeployViewToDb: DocumentNode;
   export const RefreshMv: DocumentNode;
   export const ToggleMv: DocumentNode;
+  export const UpdateVersionLog: DocumentNode;
   export const ToggleScheduledTask: DocumentNode;
   export const CreateScheduledTask: DocumentNode;
   export const UpdateScheduledTask: DocumentNode;
@@ -177,6 +179,7 @@ declare module "*.gql" {
   export const GenerateTableDescription: DocumentNode;
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
+  export const NamingConventions: DocumentNode;
   export const CacheStats: DocumentNode;
   export const CacheTableStats: DocumentNode;
   export const HotTables: DocumentNode;
@@ -215,6 +218,7 @@ declare module "*.gql" {
   export const DeployViewToDb: DocumentNode;
   export const RefreshMv: DocumentNode;
   export const ToggleMv: DocumentNode;
+  export const UpdateVersionLog: DocumentNode;
   export const ToggleScheduledTask: DocumentNode;
   export const CreateScheduledTask: DocumentNode;
   export const UpdateScheduledTask: DocumentNode;

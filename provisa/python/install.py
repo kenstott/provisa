@@ -51,6 +51,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from provisa.codesource import install as shared
 from provisa.codesource.bundle import BundleRefused, unpack
 from provisa.codesource.install import (
+    DirectoryCode,
     GitCode,
     Http,
     Installed,
@@ -87,7 +88,7 @@ class PypiCode:
     version: str
 
 
-Code = PypiCode | GitCode | UploadCode
+Code = PypiCode | GitCode | UploadCode | DirectoryCode
 
 
 # -- indexes ---------------------------------------------------------------------------------------

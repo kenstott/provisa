@@ -10,7 +10,7 @@ live debounce (REQ-963), and completeness-gated windows (REQ-958)."""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 from provisa.events import queue
@@ -51,6 +51,49 @@ def test_daily_window_gregorian_utc():
     assert w.end == datetime(2026, 7, 11, tzinfo=UTC)
     assert w.window_id == "2026-07-10"
     assert (w.end - w.start) == timedelta(hours=24)
+
+
+# REQ-2111: a calendar's day can close at a declared local time instead of midnight.
+_LONDON_CLOSE = {"tz": "Europe/London", "day_close": time(18, 0)}
+
+
+def test_a_day_runs_from_the_previous_close_to_its_own():
+    cal = _greg(**_LONDON_CLOSE)
+    # Tue 6 Oct 2026, 17:59 in London (BST, UTC+1) is still business date 6 Oct
+    w = window_for(cal, "daily", datetime(2026, 10, 6, 16, 59, tzinfo=UTC))
+    assert w is not None and w.window_id == "2026-10-06"
+    assert w.start == datetime(2026, 10, 5, 17, tzinfo=UTC)  # 5 Oct 18:00 London
+    assert w.end == datetime(2026, 10, 6, 17, tzinfo=UTC)  # 6 Oct 18:00 London
+    # at the close it is the next business date's
+    after = window_for(cal, "daily", datetime(2026, 10, 6, 17, tzinfo=UTC))
+    assert after is not None and after.window_id == "2026-10-07"
+    assert next_boundary(cal, "daily", datetime(2026, 10, 6, 9, tzinfo=UTC)) == w.end
+
+
+def test_a_close_after_friday_s_opens_no_weekend_business_day():
+    cal = _greg(**_LONDON_CLOSE)
+    friday_evening = datetime(2026, 10, 9, 18, 30, tzinfo=UTC)  # 19:30 London, past the close
+    assert window_for(cal, "daily", friday_evening, business_day=True) is None  # Saturday's
+    # the next business window is Monday's, which closes Monday 18:00 London
+    assert next_boundary(cal, "daily", friday_evening, business_day=True) == datetime(
+        2026, 10, 12, 17, tzinfo=UTC
+    )
+
+
+def test_a_close_keeps_the_day_dst_aware():
+    cal = _greg(**_LONDON_CLOSE)
+    # London leaves BST on Sun 25 Oct 2026: that day runs 24 Oct 18:00 BST to 25 Oct 18:00 GMT
+    w = window_for(cal, "daily", datetime(2026, 10, 25, 12, tzinfo=UTC))
+    assert w is not None and (w.end - w.start) == timedelta(hours=25)
+    assert w.end == datetime(2026, 10, 25, 18, tzinfo=UTC)
+
+
+def test_a_close_moves_every_grain_s_boundary():
+    cal = _greg(**_LONDON_CLOSE)
+    month = window_for(cal, "monthly", datetime(2026, 10, 15, tzinfo=UTC))
+    assert month is not None and month.window_id == "2026-10"
+    assert month.start == datetime(2026, 9, 30, 17, tzinfo=UTC)  # 30 Sep 18:00 BST
+    assert month.end == datetime(2026, 10, 31, 18, tzinfo=UTC)  # 31 Oct 18:00 GMT
 
 
 def test_daily_dst_spring_forward_is_23h():

@@ -11,6 +11,7 @@ Provisa 提供兩個宣告式原語 `entity` 及 `fact`，涵蓋了構成每個�
 **entity** 係源關係嘅一個帶鍵、去重複、可選歷史化嘅投影。你為佢命名、指向一個數據來源、
 宣告 entity key 同要保留嘅屬性，並選擇一個歷史模式。Provisa 會撰寫檢視嘅 SQL 並登記該具體化
 檢視。當歷史啟用時，該具體化檢視為雙時態。
+此時佢將 entity key 宣告為 `business_key`，並附上你指定嘅有效時間欄同記錄時間欄。
 
 **fact** 是一個連到實體鍵的聯結，歸約到宣告的粒度，並帶有彙總量度。Provisa 會寫出一個彙總 MV 查詢（`GROUP BY` 粒度 + 外鍵資料行），並為每個宣告的維度連結註冊一個關係。沒有量度的 fact 是純鍵集合，亦即 Data Vault 的 link 模式。
 
@@ -18,17 +19,15 @@ Provisa 提供兩個宣告式原語 `entity` 及 `fact`，涵蓋了構成每個�
 
 ## 歷史模式 {: #history-modes }
 
-一個 entity 有三種可用模式：
+entity 有三種可用模式：
 
-| 模式 | 含義 | 雙時態模式 |
-| --- | --- | --- |
-| `none` | 僅當前狀態，冇歷史。 | — |
-| `scd2` | 追蹤每個變更。只附加變更咗嘅行（delta），以 entity key 為鍵。 | `delta` |
-| `snapshot` | 追蹤每次刷新。每次刷新都附加完整嘅結果集，並蓋上系統時間戳。 | `snapshot` |
+| 模式 | 含義 |
+| --- | --- |
+| `none` | 僅當前狀態，無歷史。 |
+| `scd2` | 追蹤每次變更，以 entity key 為鍵。 |
+| `snapshot` | 追蹤每次刷新，以 entity key 為鍵。 |
 
-`scd2` 需要一個 entity key 嚟計算 delta。`snapshot` 喺任何引擎都可以運行，但每次刷新儲存空間
-就會增加一份完整副本。對大型、緩慢變化嘅數據來源選用 `scd2`；當你需要完整歷史而數據來源
-又冇辦法提供鍵時，選用 `snapshot`。
+`scd2` 同 `snapshot` 都保留每個版本，由 Provisa 決定點樣儲存。兩者都需要一個有效時間欄同一個記錄時間欄（`validTime`、`recordedTime`）：業務賦予該記錄嘅日期，以及該版本幾時輸入或修改。[帶歷史的檢視](configuration.md#views-with-history-time-travel)解釋呢兩種時間。
 
 fact 沒有自己的歷史模式；它們在時間上的覆蓋來自下層實體的歷史。
 
@@ -44,7 +43,7 @@ fact 沒有自己的歷史模式；它們在時間上的覆蓋來自下層實體
 
 ### 源表 {: #the-source-tables }
 
-- `raw.customers` —— id、name、region、tier
+- `raw.customers` —— id、name、region、tier、effective_date、updated_at
 - `raw.orders` —— order_id、customer_id、amount、quantity
 
 ### 登記 Customer entity {: #register-the-customer-entity }
@@ -57,9 +56,11 @@ fact 沒有自己的歷史模式；它們在時間上的覆蓋來自下層實體
        - **Name：** `Customer`
        - **Source relation：** `raw.customers`
        - **Domain：** *（你嘅 domain）*
-       - **Entity key：** `id`
+       - **Business key：** `id`
        - **Attributes：** `name, region, tier`
-       - **History：** `SCD2 (track changes — delta bitemporal)`
+       - **Keep history：** `Bitemporal`
+       - **Valid time：** `effective_date`
+       - **Recorded time：** `updated_at`
     4. 按 **Create**。
 
 === "GraphQL API"
@@ -73,6 +74,8 @@ fact 沒有自己的歷史模式；它們在時間上的覆蓋來自下層實體
         key: ["id"]
         attributes: ["name", "region", "tier"]
         history: "scd2"
+        validTime: "effective_date"
+        recordedTime: "updated_at"
       }) {
         success
         message
@@ -83,8 +86,9 @@ fact 沒有自己的歷史模式；它們在時間上的覆蓋來自下層實體
 Provisa 會生成並登記呢個雙時態具體化檢視：
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- registered as a bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- registered as a bitemporal MV: business_key ["id"], valid_time effective_date,
+-- recorded_time updated_at
 ```
 
 ### 登記 Sales fact {: #register-the-sales-fact }
@@ -154,6 +158,8 @@ Data Vault)"）。
 | Entity key | 是 | 以逗號分隔嘅鍵欄位，例如 `id` |
 | Attributes | 否 | 以逗號分隔嘅屬性欄位，例如 `name, region, tier` |
 | History | 否 | `none` / `scd2` / `snapshot`；預設為 `none` |
+| Valid time | 啟用歷史時 | 儲存業務賦予該記錄嘅日期嘅欄 |
+| Recorded time | 啟用歷史時 | 儲存該版本幾時輸入或修改嘅欄 |
 
 ### Fact 欄位 {: #fact-fields }
 
@@ -193,6 +199,8 @@ mutation RegisterEntity($input: EntityInput!) {
 | `key` | [String] | — | Entity key 欄位 |
 | `attributes` | [String] | `[]` | 要投影嘅屬性欄位 |
 | `history` | String | `"none"` | `"none"` \| `"scd2"` \| `"snapshot"` |
+| `validTime` | String | `null` | 有效時間欄；`history` 唔係 `"none"` 時必填 |
+| `recordedTime` | String | `null` | 記錄時間欄；`history` 唔係 `"none"` 時必填 |
 | `visibleTo` | [String] | `["public"]` | 角色可見性列表 |
 
 ### `registerFact`
@@ -245,7 +253,7 @@ mutation RegisterFact($input: FactInput!) {
 | SCD 類型 | 歷史模式 | 效果 |
 | --- | --- | --- |
 | Type 1（僅當前） | `none` | 每次刷新時重建具體化檢視；冇行歷史 |
-| Type 2（版本化） | `scd2` | 雙時態 delta 具體化檢視；每次變更都會附加一行新記錄，以 entity key 為鍵 |
+| Type 2（版本化） | `scd2` | 雙時態具體化檢視；每次變更都新增一個版本，以 entity key 為鍵 |
 
 當下游查詢需要按交易發生時的狀態聯結維度時，使用 `scd2`，例如購買時客戶所在的等級，而不是目前等級。穩定的查找表用 `none`。日期軸永遠不變；只需要目前價格的產品目錄可以在每次重新整理時重建。
 
@@ -266,15 +274,17 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
 
-生成一個以 `id` 為鍵嘅雙時態 delta 具體化檢視：
+生成一個以 `id` 為鍵嘅雙時態具體化檢視：
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 **Product**（SCD Type 1 —— 當前目錄，唔需要版本歷史）：
@@ -448,8 +458,7 @@ SELECT "order_id" FROM "raw"."orders"
 
 #### Satellite
 
-Satellite 位於 hub key 旁邊，攜帶完整嘅屬性歷史。用 `scd2` 只附加變更咗嘅行；用
-`snapshot` 為每次完整刷新蓋上時間戳。
+Satellite 位於 hub key 旁邊，攜帶完整嘅屬性歷史。用 `scd2` 追蹤每次變更，或用 `snapshot` 追蹤每次刷新。
 
 ```graphql
 mutation {
@@ -460,6 +469,8 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
@@ -467,8 +478,8 @@ mutation {
 生成：
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 `CustomerSat` 同 `CustomerHub` 都以 `id` 為鍵。Hub 係穩定嘅連接目標；satellite 透過雙時態層
@@ -653,4 +664,4 @@ GROUP BY orders.region, orders.month
 
 ## IR 帶嚟嘅好處 {: #the-ir-payoff }
 
-每次註冊呼叫都與人手編寫的 MV 走同一條路徑。entity 及 fact 規格是一種中間表示，不是範本，亦不是巨集。它面向哪個數據倉庫是部署的屬性，模型本身不指定。更換目標引擎後，同樣的 `entity` / `fact` 宣告會在那裏具體化，因為產生的 SQL 及雙時態模式在設計上就與引擎無關。
+每次註冊呼叫都與人手編寫的 MV 走同一條路徑。entity 及 fact 規格是一種中間表示，不是範本，亦不是巨集。它面向哪個數據倉庫是部署的屬性，模型本身不指定。更換目標引擎後，同樣的 `entity` / `fact` 宣告會在那裏具體化，因為產生的 SQL 及雙時態歷史在設計上就與引擎無關。

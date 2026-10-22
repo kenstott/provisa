@@ -54,7 +54,7 @@ def test_entity_no_history_is_plain_materialized_view():
     assert reg["materialize"] is True
     assert reg["view_sql"] == 'SELECT "id", "name", "region" FROM "raw"."customers"'
     assert reg["columns"] == ["id", "name", "region"]
-    assert "mv_bitemporal_mode" not in reg  # no history → not bitemporal
+    assert "business_key" not in reg  # no history → not bitemporal
 
 
 def test_entity_scd2_lowers_to_delta_bitemporal_mv():
@@ -65,15 +65,41 @@ def test_entity_scd2_lowers_to_delta_bitemporal_mv():
             key=("id",),
             attributes=("tier",),
             history="scd2",
+            valid_time="effective_at",
+            recorded_time="updated_at",
         )
     )
-    assert reg["mv_bitemporal_mode"] == "delta"
-    assert reg["mv_bitemporal_key"] == ["id"]
+    assert reg["business_key"] == ["id"]
+    assert (reg["valid_time"], reg["recorded_time"]) == ("effective_at", "updated_at")
+    assert reg["columns"] == ["id", "tier", "effective_at", "updated_at"]
 
 
-def test_entity_snapshot_history_lowers_to_snapshot_mode():
-    reg = entity_registration(Entity(name="C", source="s", key=("id",), history="snapshot"))
-    assert reg["mv_bitemporal_mode"] == "snapshot"
+def test_entity_snapshot_history_declares_the_same_three():
+    reg = entity_registration(
+        Entity(
+            name="C",
+            source="s",
+            key=("id",),
+            history="snapshot",
+            valid_time="as_of_date",
+            recorded_time="loaded_at",
+        )
+    )
+    assert (reg["business_key"], reg["valid_time"], reg["recorded_time"]) == (
+        ["id"],
+        "as_of_date",
+        "loaded_at",
+    )
+    assert reg["modeling_history"] == "snapshot"
+
+
+@pytest.mark.parametrize(
+    ("times", "missing"),
+    [({}, "valid_time, recorded_time"), ({"valid_time": "d"}, "recorded_time")],
+)
+def test_a_historized_entity_declares_both_times(times, missing):
+    with pytest.raises(ValueError, match=f"missing {missing}"):
+        Entity(name="C", source="s", key=("id",), history="scd2", **times)
 
 
 def test_entity_key_not_duplicated_in_columns():
@@ -147,8 +173,11 @@ def test_entity_registration_emits_dimension_role():
 
 
 def test_entity_registration_emits_history_mode():
-    scd2 = entity_registration(Entity(name="C", source="s", key=("id",), history="scd2"))
-    snap = entity_registration(Entity(name="C", source="s", key=("id",), history="snapshot"))
+    times = {"valid_time": "effective_at", "recorded_time": "updated_at"}
+    scd2 = entity_registration(Entity(name="C", source="s", key=("id",), history="scd2", **times))
+    snap = entity_registration(
+        Entity(name="C", source="s", key=("id",), history="snapshot", **times)
+    )
     assert scd2["modeling_history"] == "scd2"
     assert snap["modeling_history"] == "snapshot"
 

@@ -443,7 +443,12 @@
       "role_description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
       "rls_rule_description_missing": "Eine Zeilenregel braucht eine Beschreibung, wofür sie da ist",
       "file_download_refused": "Quelle {{source}}: {{reason}}",
-      "source_created_without_table": "Quelle {{source}} angelegt; ihre Tabelle wurde nicht eingerichtet: {{reason}}"
+      "source_created_without_table": "Quelle {{source}} angelegt; ihre Tabelle wurde nicht eingerichtet: {{reason}}",
+      "mv_window_needs_calendar": "MV '{{mv}}' nennt keinen Kalender: Ein zum Geschäftsschluss eines Geschäftstags versiegelter Build braucht einen",
+      "version_log_updated": "Versionsprotokoll '{{mv}}' aktualisiert",
+      "mv_window_held": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Ein anderer Build davon hält den Anspruch",
+      "mv_window_unchanged": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Nichts, was sie liest, hat sich seit ihrem letzten Build geändert",
+      "landing_time_pipeline": "Tabelle '{{table}}' hält ihre Ankunftszeit in {{column}}, aber ihr Speicher lädt das Topic über seine eigene Pipeline, in der Provisa nicht sieht, wann jede Nachricht ankommt."
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
@@ -602,6 +607,7 @@
       "wrong_tier": "Diese Sandbox wird anderswo bereitgestellt; öffnen Sie sie über ihre eigene Adresse.",
       "unknown_demo": "Es gibt keine veröffentlichte Demo namens {{demo}}.",
       "demo_not_ready": "Diese Demo wird noch vorbereitet. Versuchen Sie es gleich noch einmal.",
+      "demo_stores_failed": "Diese Demo konnte nicht gestartet werden. Versuchen Sie es in ein paar Minuten erneut.",
       "at_capacity": "Alle Demo-Sandboxes sind belegt. Versuchen Sie es gleich noch einmal.",
       "starting": "Der Demo-Server wird gestartet. Versuchen Sie es in ein bis zwei Minuten erneut.",
       "disk_full": "Diese Sandbox hat ihre Speichergrenze von {{limit}} Bytes erreicht; es kann nichts mehr hineingeschrieben werden.",

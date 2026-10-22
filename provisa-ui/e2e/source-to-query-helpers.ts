@@ -316,9 +316,17 @@ export async function releaseDraftTables(
  * asks for it then (register-table-cache-ttl), and nothing is registered until it has one.
  */
 export async function submitRegister(page: Page, cacheTtlSeconds = 300): Promise<void> {
+  await continueRegister(page, cacheTtlSeconds);
+  await page.getByTestId("table-edit-save").click();
+}
+
+/** The register step's Continue: the chosen table's settings follow in the editor's sections,
+ * where Save registers it (REQ-2109). */
+async function continueRegister(page: Page, cacheTtlSeconds: number): Promise<void> {
   const cacheTtl = page.getByTestId("register-table-cache-ttl");
   if ((await cacheTtl.count()) > 0) await cacheTtl.fill(String(cacheTtlSeconds));
   await page.getByTestId("register-table-submit").click();
+  await expect(page.getByTestId("table-edit-save")).toBeVisible({ timeout: 30000 });
 }
 
 /**
@@ -341,15 +349,9 @@ export async function submitRegisterAndExpectListed(
   baseUrl = "",
   columns: RegisteredColumnEdits = {},
 ): Promise<string> {
-  await submitRegister(page);
-  // Registration rebuilds the schemas; the row lands in the tables list when it is done.
-  const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
-  await expect(row).toBeVisible({ timeout: timeoutMs });
-  // The registered draft opens in its editor. What the test sets on its columns is set there and
-  // saved, before the draft is released (a save writes the form's Draft tick); else the editor is
-  // left untouched.
-  const save = page.getByTestId("table-edit-save");
-  await expect(save).toBeVisible({ timeout: 30000 });
+  await continueRegister(page, 300);
+  // What the test sets on its columns is set in the create form's Columns section, before the one
+  // Save registers the table (REQ-2109).
   const paths = Object.entries(columns.paths ?? {});
   const primaryKey = columns.primaryKey ?? [];
   if (paths.length > 0 || primaryKey.length > 0) {
@@ -366,10 +368,12 @@ export async function submitRegisterAndExpectListed(
           .check();
       }
     }
-    await save.click();
-  } else {
-    await page.getByTestId("table-edit-cancel").click();
   }
+  const save = page.getByTestId("table-edit-save");
+  await save.click();
+  // Registration rebuilds the schemas; the row lands in the tables list when it is done.
+  const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+  await expect(row).toBeVisible({ timeout: timeoutMs });
   await expect(save).toBeHidden({ timeout: 15000 });
   await releaseDraftTables(page, { sourceId }, baseUrl);
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {

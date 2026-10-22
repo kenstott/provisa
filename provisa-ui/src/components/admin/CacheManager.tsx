@@ -26,6 +26,7 @@ import {
   Text,
 } from "@mantine/core";
 import { usePurgeCache, useTables } from "../../hooks/useAdminQueries";
+import { VersionLogSettings } from "./VersionLogSettings";
 import {
   useCacheStats,
   useCacheTableStats,
@@ -433,7 +434,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
   );
 }
 
-function MaterializedStoreTab({ platform }: { platform: boolean }) {
+export function MaterializedStoreTab({ platform }: { platform: boolean }) {
   const { t } = useTranslation();
   const unknown = t("cacheManager.materialized.unknown");
   const navigate = useNavigate();
@@ -446,11 +447,11 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
 
   // Why the last refresh did not start: the server's refusal, or the error it raised.
   const [refreshMsg, setRefreshMsg] = useState("");
-  const handleRefresh = async (id: string) => {
+  const handleRefresh = async (id: string, full = false) => {
     setRefreshing(id);
     setRefreshMsg("");
     try {
-      const result = await refreshMV(id);
+      const result = await refreshMV(id, full);
       if (!result.success) setRefreshMsg(result.message);
     } catch (e) {
       setRefreshMsg(e instanceof Error ? e.message : String(e));
@@ -555,8 +556,13 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
             render={(mv) => (
               <ListRow key={mv.id}>
                 <Table.Td>
-                  {/* Show the user's alias; mv.id stays the action key below. */}
-                  <code>{displayMvName(mv.id)}</code>
+                  {/* Show the user's alias; mv.id stays the action key below. A table's version
+                      log is named for its table. */}
+                  {mv.versionLogOf ? (
+                    t("cacheManager.materialized.versionLog", { table: mv.versionLogOf })
+                  ) : (
+                    <code>{displayMvName(mv.id)}</code>
+                  )}
                 </Table.Td>
                 <Table.Td>{mv.sourceTables.join(", ")}</Table.Td>
                 <Table.Td>
@@ -597,22 +603,32 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
                         <RefreshCw size={16} />
                       </ActionIcon>
                     </Tip>
-                    <Tip
-                      text={
-                        mv.enabled
-                          ? t("cacheManager.materialized.disable")
-                          : t("cacheManager.materialized.enable")
-                      }
-                      named
-                    >
-                      <ActionIcon
-                        variant="subtle"
-                        onClick={() => toggleMV(mv.id, !mv.enabled)}
-                        data-testid={`mv-toggle-btn-${mv.id}`}
+                    {mv.versionLogOf ? (
+                      // A version log is kept as its table declares: here only its capture
+                      // settings, and a full capture, which records what the table deleted.
+                      <VersionLogSettings
+                        log={mv}
+                        capturing={refreshing === mv.id}
+                        onFullCapture={() => handleRefresh(mv.id, true)}
+                      />
+                    ) : (
+                      <Tip
+                        text={
+                          mv.enabled
+                            ? t("cacheManager.materialized.disable")
+                            : t("cacheManager.materialized.enable")
+                        }
+                        named
                       >
-                        {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
-                      </ActionIcon>
-                    </Tip>
+                        <ActionIcon
+                          variant="subtle"
+                          onClick={() => toggleMV(mv.id, !mv.enabled)}
+                          data-testid={`mv-toggle-btn-${mv.id}`}
+                        >
+                          {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
+                        </ActionIcon>
+                      </Tip>
+                    )}
                   </Group>
                 </ListActions>
               </ListRow>

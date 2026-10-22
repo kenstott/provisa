@@ -9,6 +9,25 @@
     "reachLive": "Direct (lu sur place)",
     "reachReplica": "Réplique (copie rafraîchie)",
     "reachLiveOn": "Direct uniquement sur {{engines}}",
-    "reachNone": "Inaccessible depuis ce moteur"
+    "reachNone": "Inaccessible depuis ce moteur",
+    "categories": {
+      "Subscriptions": "Abonnements",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "Entrepôt de données cloud",
+      "Analytics": "Analytique",
+      "Data Lake": "Data lake",
+      "NoSQL": "NoSQL",
+      "Code": "Resolvers de code",
+      "Graph": "Graphes",
+      "File": "Fichiers",
+      "API": "API",
+      "Streaming": "Streaming",
+      "Enterprise": "Entreprise",
+      "Data Quality": "Qualité des données",
+      "Other": "Autres"
+    },
+    "categorySubtitles": {
+      "Code": "Logique métier en Python ou Node"
+    }
   }
 }

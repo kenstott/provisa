@@ -20,6 +20,7 @@
  * same right the server checks on the write.
  */
 
+import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettingsBlocks } from "./useSettingsBlocks";
@@ -57,8 +58,6 @@ import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayou
 import { Tip } from "../Tip";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
-
-const CONVENTIONS = ["snake", "hasura_graphql", "apollo_graphql"] as const;
 
 export function SaveRow({ save, saving, msg }: { save: () => void; saving: boolean; msg: string }) {
   return (
@@ -425,20 +424,16 @@ export function ApolloSubgraphCard() {
 export function NamingConventionsCard() {
   const { t } = useTranslation();
   const { settings, setSettings, save, saving, msg } = useSettingsBlocks(["naming"]);
+  const conventions = useNamingConventions();
   // The naming module those three fields configure is process-global, so they are the deployment's
   // and the payload omits them entirely for anyone else.
   if (!settings?.features?.deployment_settings || settings.naming.convention === undefined) {
     return null;
   }
-  const conventionData = CONVENTIONS.map((value) => ({
+  // REQ-416: the server's conventions, the one list the admin offers.
+  const conventionData = conventions.map((value) => ({
     value,
-    label: t(
-      value === "snake"
-        ? "adminPage.namingConventionSnake"
-        : value === "hasura_graphql"
-          ? "adminPage.namingConventionHasura"
-          : "adminPage.namingConventionApollo",
-    ),
+    label: namingConventionLabel(t, value),
   }));
 
   return (

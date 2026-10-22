@@ -349,8 +349,9 @@ async def test_a_build_that_keeps_failing_is_not_attempted_again_until_its_wait_
     )
     try:
         await runner.run_pass()
-        # Bounded: a runner that spun would never let this finish.
-        await asyncio.wait_for(asyncio.gather(*tasks), 5)
+        # Bounded: a runner that spun would never let this finish. The bound tells forever from
+        # done; a full parallel unit run on the shared control plane took the one attempt past 5s.
+        await asyncio.wait_for(asyncio.gather(*tasks), 60)
     finally:
         for task in tasks:
             task.cancel()

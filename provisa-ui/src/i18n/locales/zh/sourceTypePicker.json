@@ -9,6 +9,25 @@
     "reachLive": "实时（就地读取）",
     "reachReplica": "副本（定期刷新的副本）",
     "reachLiveOn": "仅在 {{engines}} 上实时",
-    "reachNone": "此引擎无法访问"
+    "reachNone": "此引擎无法访问",
+    "categories": {
+      "Subscriptions": "订阅",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "云数据仓库",
+      "Analytics": "分析",
+      "Data Lake": "数据湖",
+      "NoSQL": "NoSQL",
+      "Code": "代码解析器",
+      "Graph": "图",
+      "File": "文件",
+      "API": "API",
+      "Streaming": "流式",
+      "Enterprise": "企业",
+      "Data Quality": "数据质量",
+      "Other": "其他"
+    },
+    "categorySubtitles": {
+      "Code": "用 Python 或 Node 编写的业务逻辑"
+    }
   }
 }

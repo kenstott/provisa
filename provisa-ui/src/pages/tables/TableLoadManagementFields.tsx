@@ -21,7 +21,7 @@ import { FormField, FormLayout, LabelWithHelp } from "../../components/form/Form
 import { PagingField } from "./PagingField";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
 import { RoleTtlField } from "./RoleTtlField";
-import type { CacheTtlEdit } from "./TableEditForm";
+import type { CacheTtlEdit } from "./tableEditTypes";
 import { OffPeakWindowFields } from "../../components/admin/OffPeakWindowFields";
 import { useSourceKind } from "../sources/sourceKind";
 
