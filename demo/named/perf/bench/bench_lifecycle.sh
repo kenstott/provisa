@@ -126,10 +126,10 @@ if [ -n "$DRY_RUN" ]; then
 fi
 
 # The bucket's checkpoints (every finished run's results) are copied into the run directory
-# before destroy, which deletes the bucket.
+# before destroy, which deletes the bucket. One process: gsutil -m deadlocks on macOS.
 copy_checkpoints() {
   mkdir -p "$RUN_DIR/checkpoints"
-  gsutil -m rsync -r "gs://$BUCKET/$RUN_ID" "$RUN_DIR/checkpoints" \
+  gsutil rsync -r "gs://$BUCKET/$RUN_ID" "$RUN_DIR/checkpoints" \
     || echo "the checkpoints in gs://$BUCKET/$RUN_ID were not copied into $RUN_DIR/checkpoints"
 }
 
