@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from graphql import (
+    DirectiveLocation,
     GraphQLArgument,
     GraphQLField,
     GraphQLList,
@@ -39,6 +40,29 @@ GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 
 FEDERATION_LINK_URL = "https://specs.apollo.dev/federation/v2.3"
 FEDERATION_IMPORTS = ["@key", "@shareable", "@external"]
+
+#: Where a directive applies to an operation a client sends, never to the schema.
+_EXECUTABLE = frozenset(
+    {
+        DirectiveLocation.QUERY,
+        DirectiveLocation.MUTATION,
+        DirectiveLocation.SUBSCRIPTION,
+        DirectiveLocation.FIELD,
+        DirectiveLocation.FRAGMENT_DEFINITION,
+        DirectiveLocation.FRAGMENT_SPREAD,
+        DirectiveLocation.INLINE_FRAGMENT,
+        DirectiveLocation.VARIABLE_DEFINITION,
+    }
+)
+
+
+def _subgraph_schema(schema: GraphQLSchema) -> GraphQLSchema:
+    """``schema`` as a subgraph publishes it: without Provisa's operation directives (@join,
+    @route, @cached, ...). A router plans the operations it sends a subgraph itself and passes no
+    client's operation directive on, and their names are the supergraph's own: Provisa's @join
+    is the name of the federation join spec, which composition cannot print back."""
+    kept = [d for d in schema.directives if not set(d.locations) <= _EXECUTABLE]
+    return GraphQLSchema(**{**schema.to_kwargs(), "directives": kept})
 
 
 @dataclass
@@ -195,7 +219,7 @@ def generate_federation_sdl(  # REQ-259
     Returns:
         Federation-annotated SDL string.
     """
-    base_sdl = print_schema(schema)
+    base_sdl = print_schema(_subgraph_schema(schema))
 
     lines: list[str] = []
 

@@ -234,3 +234,30 @@ class TestGenerateFederationSDL:
         schema = _make_base_schema()
         sdl = generate_federation_sdl(schema, None)
         assert "@key(fields:" not in sdl
+
+
+# --- Operation directives ---
+
+
+def test_the_subgraph_sdl_leaves_out_provisas_operation_directives():
+    """A router composes the subgraph SDL into its supergraph, where @join is the federation join
+    spec's own name: a subgraph that defined Provisa's @join (an operation directive) failed
+    composition with a syntax error. A router passes no client's operation directive on, so the
+    subgraph publishes none; a directive on the schema is kept."""
+    from graphql import DirectiveLocation, GraphQLArgument, GraphQLDirective
+
+    base = _make_base_schema()
+    join = GraphQLDirective(
+        "join",
+        [DirectiveLocation.QUERY, DirectiveLocation.SUBSCRIPTION],
+        {"strategy": GraphQLArgument(GraphQLNonNull(GraphQLString))},
+    )
+    watermark = GraphQLDirective("watermark", [DirectiveLocation.FIELD])
+    on_schema = GraphQLDirective("label", [DirectiveLocation.FIELD_DEFINITION])
+    schema = GraphQLSchema(
+        **{**base.to_kwargs(), "directives": [*base.directives, join, watermark, on_schema]}
+    )
+    sdl = generate_federation_sdl(schema, {"Orders": "id"})
+    assert "directive @join" not in sdl and "directive @watermark" not in sdl
+    assert "directive @label on FIELD_DEFINITION" in sdl
+    assert 'type Orders @key(fields: "id") {' in sdl
