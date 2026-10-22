@@ -24,7 +24,7 @@ from typing import Any, cast
 
 import pyparsing as pp
 
-from provisa.cypher.expr_ast import (
+from provisa.gql.expr_ast import (
     Binary,
     Case,
     CypherExpr,

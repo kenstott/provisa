@@ -117,6 +117,24 @@ async def for_table(conn: "Connection", table_id: int) -> list[dict[str, Any]]:
     return [_grant(r) for r in result.fetchall()]
 
 
+async def for_tables(conn: "Connection", table_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    """The write grants of each of ``table_ids``, by table id, each ordered as :func:`for_table`
+    orders them: one query for all of them."""
+    result = await conn.execute_core(
+        select(table_write_grants)
+        .where(table_write_grants.c.table_id.in_(table_ids))
+        .order_by(
+            table_write_grants.c.table_id,
+            table_write_grants.c.role_id,
+            table_write_grants.c.operation,
+        )
+    )
+    grants: dict[int, list[dict[str, Any]]] = {}
+    for row in result.fetchall():
+        grants.setdefault(row._mapping["table_id"], []).append(_grant(row))
+    return grants
+
+
 #: Every grant, ordered as :func:`by_table` orders them, for a reader that speaks SQL text.
 BY_TABLE_SQL = (
     "SELECT table_id, role_id, operation, columns, rows_expr, check_expr, presets, why "

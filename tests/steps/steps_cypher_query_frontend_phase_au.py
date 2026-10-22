@@ -98,15 +98,15 @@ import pytest
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.cypher.parser import parse_cypher, CypherParseError
-from provisa.cypher.label_map import (
+from provisa.gql.label_map import (
     CypherLabelMap,
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.translator import cypher_to_sql
-from provisa.cypher.translator_types import GraphVarKind
-from provisa.cypher.graph_rewriter import apply_graph_rewrites
-from provisa.cypher.assembler import (
+from provisa.gql.translator import cypher_to_sql
+from provisa.gql.translator_types import GraphVarKind
+from provisa.gql.graph_rewriter import apply_graph_rewrites
+from provisa.gql.assembler import (
     Node,
     Edge,
     Path,

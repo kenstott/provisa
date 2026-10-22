@@ -149,7 +149,15 @@ def test_a_respawned_worker_skips_the_once_work(four_workers):
     assert log.count("startup phase once-per-launch      applied") == 1
     assert log.count("startup phase once-per-launch      found complete") == _WORKERS
     assert _error_lines(log) == []
+    # The replacement logs "ready" before it adds itself to the roll call /health counts
+    # (provisa/api/app.py: the log line, then register_ready_worker): the count is waited for
+    # within the same deadline, not read once.
     health = boot.health()
+    while time.monotonic() < deadline and (
+        health is None or health["workers"]["ready"] != _WORKERS
+    ):
+        time.sleep(0.2)
+        health = boot.health()
     assert health is not None
     assert health["workers"] == {"ready": _WORKERS, "expected": _WORKERS}
 

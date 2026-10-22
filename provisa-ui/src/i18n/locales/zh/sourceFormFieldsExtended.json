@@ -204,6 +204,10 @@
     "apiToken": "API 令牌",
     "apiTokenHint": "在 id.atlassian.com 创建，Security, API tokens。保存在密钥保管库中。",
     "siteAddressInvalid": "请输入完整的站点地址，以 https:// 开头",
-    "namingInherit": "继承（全局）"
+    "namingInherit": "继承（全局）",
+    "reasoner": "推理机",
+    "reasonerNone": "无",
+    "axioms": "OWL 公理",
+    "axiomsHint": "Turtle、RDF/XML、函数式或 Manchester 语法。查询为单个 IRI（例如 <http://example.org/kyc#controls>）的表读取由公理推断出的内容。"
   }
 }

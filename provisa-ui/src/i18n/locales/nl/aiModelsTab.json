@@ -42,7 +42,7 @@
     "addEndpoint": "Endpoint toevoegen",
     "removeEndpoint": "Verwijderen",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Optioneel. Indien ingesteld, gebruikt Provisa de API voor gekalibreerde betrouwbaarheidsbeslissingen van Jev om voorstellen voor glossariumrelatietypen en gevonden refererende-sleutelrelaties te beoordelen, in plaats van alleen te vertrouwen op de door het genererende model zelf opgegeven betrouwbaarheid. Is er niets ingesteld, dan blijven deze functies hun bestaande, uitsluitend modelgebaseerde gedrag vertonen. Is hier niets ingesteld, dan wordt de omgevingsvariabele TYPESAFEAI_API_KEY van de installatie gebruikt indien aanwezig.",
+    "jevIntro": "Optioneel. Indien ingesteld, gebruikt Provisa de API voor gekalibreerde betrouwbaarheidsbeslissingen van Jev om voorstellen voor ontologierelatietypen en gevonden refererende-sleutelrelaties te beoordelen, in plaats van alleen te vertrouwen op de door het genererende model zelf opgegeven betrouwbaarheid. Is er niets ingesteld, dan blijven deze functies hun bestaande, uitsluitend modelgebaseerde gedrag vertonen. Is hier niets ingesteld, dan wordt de omgevingsvariabele TYPESAFEAI_API_KEY van de installatie gebruikt indien aanwezig.",
     "saveButtonLabel": "AI-modelinstellingen opslaan",
     "loading": "Laden…",
     "saved": "Opgeslagen.",

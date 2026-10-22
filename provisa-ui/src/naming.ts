@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 /**
- * TypeScript mirror of provisa/cypher/label_map.py naming utilities.
+ * TypeScript mirror of provisa/gql/label_map.py naming utilities.
  *
  * These functions derive Cypher labels from raw DB table names using the same
  * rules as the Python backend so that the UI and backend agree on label format.
@@ -77,7 +77,7 @@ export function applyConvention(name: string, convention: string | null | undefi
   return toSnakeCase(name);
 }
 
-/** Mirror of Python _upper_snake (provisa/cypher/label_map.py): any name → UPPER_SNAKE. */
+/** Mirror of Python _upper_snake (provisa/gql/label_map.py): any name → UPPER_SNAKE. */
 export function upperSnake(text: string): string {
   const spaced = text.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
   return spaced

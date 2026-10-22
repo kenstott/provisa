@@ -18,7 +18,7 @@ Leaf module (no route handlers).
 
 from __future__ import annotations
 
-from provisa.cypher.translator_types import GraphVarKind
+from provisa.gql.translator_types import GraphVarKind
 
 __all__ = ["graph_columns"]
 

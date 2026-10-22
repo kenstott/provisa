@@ -12,7 +12,7 @@ Delivery channels make it worse. Logic gets built into each one: a calculated fi
 
 Business logic is the rules that create, update, delete or transform data.
 
-Business terminology is separate. The names and descriptions of domains, tables and columns, and the terms in the [glossary](glossary.md), say what data means. Business logic says what is done to it.
+Business terminology is separate. The names and descriptions of domains, tables and columns, and the terms in the [ontology](ontology.md), say what data means. Business logic says what is done to it.
 
 ## Three roles {: #roles }
 

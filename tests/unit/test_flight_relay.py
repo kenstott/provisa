@@ -86,6 +86,16 @@ def test_a_large_stream_arrives_whole_through_the_relay(started):
     server = started(_Big("grpc://127.0.0.1:0"))
     port = lease_port()
     started(FlightRelay("127.0.0.1", port, server.port))
+    # Under -n 4 this server's own listener once refused the relay's connection moments after it
+    # was bound, and the client saw only the relay's reset ("recvmsg: Connection reset"). Asked
+    # directly first, so such a failure says where it is.
+    try:
+        socket.create_connection(("127.0.0.1", server.port), timeout=5).close()
+    except OSError as exc:
+        raise AssertionError(
+            f"the Flight server's own listener (127.0.0.1:{server.port}) refused a direct "
+            f"connection before the relay was used: {exc}"
+        ) from exc
     client = fl.connect(f"grpc://127.0.0.1:{port}")
     try:
         table = client.do_get(fl.Ticket(b"x"), fl.FlightCallOptions(timeout=60)).read_all()

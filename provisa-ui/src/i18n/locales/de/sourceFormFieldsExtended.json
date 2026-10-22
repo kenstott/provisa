@@ -204,6 +204,10 @@
     "apiToken": "API-Token",
     "apiTokenHint": "Erstellt unter id.atlassian.com, Security, API tokens. Liegt im Secrets-Vault.",
     "siteAddressInvalid": "Geben Sie die vollständige Adresse der Site ein, beginnend mit https://",
-    "namingInherit": "Erben (global)"
+    "namingInherit": "Erben (global)",
+    "reasoner": "Reasoner",
+    "reasonerNone": "Keiner",
+    "axioms": "OWL-Axiome",
+    "axiomsHint": "Turtle, RDF/XML, funktionale oder Manchester-Syntax. Eine Tabelle, deren Abfrage eine einzelne IRI ist, etwa <http://example.org/kyc#controls>, liest, was daraus folgt."
   }
 }

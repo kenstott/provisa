@@ -12,7 +12,7 @@ Los canales de entrega lo empeoran. La lógica se construye en cada uno: un camp
 
 La lógica de negocio son las reglas que crean, actualizan, eliminan o transforman datos.
 
-La terminología de negocio es otra cosa. Los nombres y descripciones de dominios, tablas y columnas, y los términos del [glosario](glossary.md), dicen qué significan los datos. La lógica de negocio dice qué se hace con ellos.
+La terminología de negocio es otra cosa. Los nombres y descripciones de dominios, tablas y columnas, y los términos de la [ontología](ontology.md), dicen qué significan los datos. La lógica de negocio dice qué se hace con ellos.
 
 ## Tres roles {: #roles }
 

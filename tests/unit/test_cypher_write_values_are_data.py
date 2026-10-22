@@ -15,7 +15,7 @@ import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
 from provisa.cypher.write_translator import WriteTranslator, parse_cypher_write
 
 HOSTILE = [

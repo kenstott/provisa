@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-from provisa.cypher.assembler import register_node_ids
+from provisa.gql.assembler import register_node_ids
 
 
 @pytest.fixture

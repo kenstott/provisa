@@ -244,7 +244,7 @@ eliminare la colonna**.
 
 Il **nome fisico** è `table_columns.column_name`, l'identità che sopravvive alla sostituzione in
 blocco delle colonne durante l'upsert della tabella. Relazioni, collegamenti del
-[glossario](glossary.md), assegnazioni di tag, la colonna di watermark e i preset di colonna
+[ontologia](ontology.md), assegnazioni di tag, la colonna di watermark e i preset di colonna
 memorizzano questo, quindi si rompono solo quando la colonna viene **rimossa**.
 
 `columnDependents` riporta entrambi. Le viste e le MV a valle provengono dal ritaglio del grafo di

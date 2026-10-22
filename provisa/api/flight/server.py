@@ -1059,15 +1059,15 @@ class ProvisaFlightServer(
         self, request: dict[str, object]
     ) -> flight.RecordBatchStream:  # REQ-345, REQ-347, REQ-352  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a Cypher query ticket and return Arrow record batches."""
-        from provisa.cypher.graph_rewriter import apply_graph_rewrites
-        from provisa.cypher.label_map import CypherLabelMap
+        from provisa.gql.graph_rewriter import apply_graph_rewrites
+        from provisa.gql.label_map import CypherLabelMap
         from provisa.cypher.params import (
             CypherParamError,
             bind_params,
             collect_param_names,
         )
         from provisa.cypher.parser import CypherParseError, parse_cypher
-        from provisa.cypher.translator import (
+        from provisa.gql.translator import (
             CypherCrossSourceError,
             CypherTranslateError,
             cypher_to_sql,
@@ -1277,7 +1277,7 @@ class ProvisaFlightServer(
         raw_rows: list[dict[str, object]], graph_vars: dict[str, Any], warnings: Any = ()
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Assemble a Cypher result's rows into graph values and return them as an Arrow stream."""
-        from provisa.cypher.assembler import assemble_rows, to_serializable
+        from provisa.gql.assembler import assemble_rows, to_serializable
 
         assembled = assemble_rows(raw_rows, graph_vars)
         serialized = [to_serializable(r) for r in assembled]

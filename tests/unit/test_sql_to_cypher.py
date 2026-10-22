@@ -14,7 +14,7 @@
 from dataclasses import dataclass, field
 
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 
 

@@ -187,7 +187,8 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
             return [1]
 
     class FakeGrpc:
-        _channel = SimpleNamespace()
+        def channel(self) -> Any:
+            return SimpleNamespace(unary_stream=unary_stream, close=lambda: None)
 
         def _resolve_message_class(self, name: str) -> Any:
             return Req
@@ -199,7 +200,6 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 
         return call
 
-    FakeGrpc._channel.unary_stream = unary_stream  # type: ignore[attr-defined]
     monkeypatch.setattr(ol, "_grpc_shared", FakeGrpc())
     return sent
 

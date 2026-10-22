@@ -14,7 +14,7 @@ compilation context. This covers that data flow.
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
-from provisa.cypher.label_map import CypherLabelMap
+from provisa.gql.label_map import CypherLabelMap
 
 
 def _col(name, data_type="varchar(100)", nullable=False):

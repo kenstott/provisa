@@ -232,6 +232,13 @@ def sparql_bindings(
     return rows
 
 
+def owl_inferred(
+    response: object,  # object-ok: the reasoner's rows (provisa/sparql/reasoning)
+) -> list[dict]:  # REQ-2138
+    """An inferred table's answer is its rows already: one dict per member or pair."""
+    return [row for row in _as_list(response) if isinstance(row, dict)]
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 NORMALIZERS: dict[
@@ -243,6 +250,7 @@ NORMALIZERS: dict[
     "neo4j_graph_rels": neo4j_graph_rels,
     "neo4j_query_v2": neo4j_query_v2,
     "sparql_bindings": sparql_bindings,
+    "owl_inferred": owl_inferred,
 }
 
 

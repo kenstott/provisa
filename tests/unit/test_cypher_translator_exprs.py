@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/translator.py — expressions, subqueries, map projections."""
+"""Unit tests for provisa/gql/translator.py — expressions, subqueries, map projections."""
 
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.translator import cypher_to_sql
 
 
 def _make_label_map_multi_path() -> CypherLabelMap:
@@ -554,7 +554,7 @@ def test_reduce_basic():
 
 def test_reduce_string_concat():
     """reduce emits Trino lambda form: reduce(list, init, (acc, x) -> expr, acc -> acc)."""
-    from provisa.cypher.comprehension import rewrite_reduce
+    from provisa.gql.comprehension import rewrite_reduce
 
     result = rewrite_reduce("reduce(acc = '', x IN names | acc || x)")
     assert result == "reduce(names, '', (acc, x) -> acc || x, acc -> acc)"

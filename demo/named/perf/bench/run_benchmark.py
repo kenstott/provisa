@@ -68,6 +68,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from queries import QUERIES, Query
 
@@ -808,19 +809,28 @@ class GrpcTransport(Transport):
             # start_grpc_server) — a client-chosen batch_rows large enough to exceed the previous
             # 4MB default (e.g. large_scan's 65,536-row batches) needs the client side raised too,
             # or the response would be rejected on receipt even though the server sent it fine.
-            self._channel = _grpc.insecure_channel(
-                f"{host}:{port}",
-                options=[
-                    ("grpc.max_send_message_length", 32 * 1024 * 1024),
-                    ("grpc.max_receive_message_length", 32 * 1024 * 1024),
-                ],
-            )
+            self._target = f"{host}:{port}"
+            self._channel = self.channel()
             _grpc.channel_ready_future(self._channel).result(timeout=10)
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)
 
     def available(self) -> bool:
         return self._channel is not None
+
+    def channel(self) -> Any:
+        """A new channel to the server on a connection of its own. Channels with the same target
+        and options otherwise share one connection (gRPC's global subchannel pool), and the server
+        spreads connections, not calls, over its worker processes (SO_REUSEPORT): a client of many
+        simulated callers on one connection loads one worker."""
+        return self._grpc.insecure_channel(
+            self._target,
+            options=[
+                ("grpc.max_send_message_length", 32 * 1024 * 1024),
+                ("grpc.max_receive_message_length", 32 * 1024 * 1024),
+                ("grpc.use_local_subchannel_pool", 1),
+            ],
+        )
 
     @staticmethod
     def _compile_role_proto(http_base_url: str, role: str, auth_headers: dict[str, str]):

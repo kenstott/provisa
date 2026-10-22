@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "Dominios y sus responsables de datos",
-        "description": "🗂️ Un dominio agrupa tablas, y su responsable de datos gobierna esa parte del modelo: quién ve qué, máscaras y reglas de fila, datos sensibles, y su glosario y sus productos de datos."
+        "description": "🗂️ Un dominio agrupa tablas, y su responsable de datos gobierna esa parte del modelo: quién ve qué, máscaras y reglas de fila, datos sensibles, y su ontología y sus productos de datos."
       },
       "stepTags": {
         "title": "Las etiquetas llevan significado",
@@ -287,12 +287,12 @@
         "description": "📦 Indique el propietario y el equipo, el propósito, el uso, el SLA y el soporte, y elija las tablas y los comandos que contiene. Son los campos que se publican. Una tabla se une a un producto solo si ambos comparten el mismo dominio."
       },
       "stepGlossary": {
-        "title": "Un glosario de negocio vivo",
-        "description": "📖 Cada término remite a las columnas que lo contienen y a otros términos. Cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos: <strong>✨ Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>✨ Relaciones</strong> propone enlaces en todo el glosario. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
+        "title": "Una ontología viva",
+        "description": "📖 Cada término remite a las columnas que lo contienen y a otros términos. Cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos desde el menú <strong>✨</strong>: <strong>Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>Relaciones</strong> propone enlaces en toda la ontología. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
       },
       "stepDataProducts": {
         "title": "Productos de datos, publicados donde los consumidores ya buscan",
-        "description": "📦 Cada producto aquí habla <strong>ODPS</strong> (el Open Data Product Standard): propietario, equipo, propósito, limitaciones, uso, SLA, soporte y propiedades personalizadas. Provisa lo publica directamente en <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong>, de modo que aparece como un producto nativo en el catálogo que sus consumidores ya usan.<p>🔁 No hay un paso de exportación aparte que olvidar: la especificación se <strong>deriva del modelo en vivo</strong> (tablas, linaje, etiquetas, términos del glosario) cada vez, así que lo publicado no puede quedar desactualizado como lo haría un archivo ODPS mantenido a mano.</p><p>✅ Publicar también envía un <strong>extracto de ontología</strong>: la parte de su glosario que afecta a lo publicado, es decir, los términos que definen sus columnas, los términos más amplios y relacionados con los que se conectan, y las relaciones tipadas entre ellos. Los resultados de calidad de datos de los verificadores que lo escanean van con él. El panel <strong>Términos relacionados</strong> de un producto lista sus términos.</p>"
+        "description": "📦 Cada producto aquí habla <strong>ODPS</strong> (el Open Data Product Standard): propietario, equipo, propósito, limitaciones, uso, SLA, soporte y propiedades personalizadas. Provisa lo publica directamente en <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong>, de modo que aparece como un producto nativo en el catálogo que sus consumidores ya usan.<p>🔁 No hay un paso de exportación aparte que olvidar: la especificación se <strong>deriva del modelo en vivo</strong> (tablas, linaje, etiquetas, términos de la ontología) cada vez, así que lo publicado no puede quedar desactualizado como lo haría un archivo ODPS mantenido a mano.</p><p>✅ Publicar también envía un <strong>extracto de ontología</strong>: la parte de su ontología que afecta a lo publicado, es decir, los términos que definen sus columnas, los términos más amplios y relacionados con los que se conectan, y las relaciones tipadas entre ellos. Los resultados de calidad de datos de los verificadores que lo escanean van con él. El panel <strong>Términos relacionados</strong> de un producto lista sus términos.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Añadir un término",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "Qué es una queja abierta",
-        "description": "El glosario dice qué es una queja abierta: una que la ciudad aún no ha cerrado. Términos como este dicen qué significan los datos del catálogo."
+        "description": "La ontología dice qué es una queja abierta: una que la ciudad aún no ha cerrado. Términos como este dicen qué significan los datos del catálogo."
       },
       "filesAnswer": {
         "title": "La respuesta",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "Una carpeta se volvió un catálogo",
-        "description": "Una carpeta de archivos se volvió un catálogo gobernado: tablas, relaciones, un término del glosario y una vista almacenada, sin cargar nada. Un nuevo archivo mensual de quejas no necesita una tabla nueva: el patrón ya lo incluye."
+        "description": "Una carpeta de archivos se volvió un catálogo gobernado: tablas, relaciones, un término de la ontología y una vista almacenada, sin cargar nada. Un nuevo archivo mensual de quejas no necesita una tabla nueva: el patrón ya lo incluye."
       },
       "reviewsCatalog": {
         "title": "Qué es esta demo",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "En los términos de la aseguradora",
-        "description": "El glosario nombra lo que pregunta un suscriptor: valor asegurado total, acumulación, pérdida máxima probable y pérdida anual esperada. Aquí, acumulación significa exposición concentrada donde un solo evento puede alcanzar muchas pólizas."
+        "description": "La ontología nombra lo que pregunta un suscriptor: valor asegurado total, acumulación, pérdida máxima probable y pérdida anual esperada. Aquí, acumulación significa exposición concentrada donde un solo evento puede alcanzar muchas pólizas."
       },
       "insuranceByRating": {
         "title": "Por calificación de riesgo, en GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "El vocabulario",
-        "description": "El glosario de la empresa define vulnerabilidad explotada conocida, CVE, CWE y CVSS, y vincula cada término a las columnas que describe. Una puntuación CVSS dice lo grave que es una vulnerabilidad. Solo el catálogo dice si alguien la está explotando."
+        "description": "La ontología de la empresa define vulnerabilidad explotada conocida, CVE, CWE y CVSS, y vincula cada término a las columnas que describe. Una puntuación CVSS dice lo grave que es una vulnerabilidad. Solo el catálogo dice si alguien la está explotando."
       },
       "vulnerabilitiesAnswer": {
         "title": "La respuesta en SQL",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "El vocabulario",
-        "description": "El glosario define perfil de datos, tipo plausible, forma del valor, fila duplicada y valor de relleno, y vincula cada término a las medidas que describe."
+        "description": "La ontología define perfil de datos, tipo plausible, forma del valor, fila duplicada y valor de relleno, y vincula cada término a las medidas que describe."
       },
       "profilingAnswer": {
         "title": "Qué contiene cada columna",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "En palabras sencillas",
-        "description": "El glosario explica los términos que encontrará un miembro del consejo o un vecino: fondo del acuerdo, mitigación, asignación, gasto, recuento suprimido y tasa por 100.000. Aquí, mitigación significa aquello en lo que los acuerdos exigen gastar el dinero."
+        "description": "La ontología explica los términos que encontrará un miembro del consejo o un vecino: fondo del acuerdo, mitigación, asignación, gasto, recuento suprimido y tasa por 100.000. Aquí, mitigación significa aquello en lo que los acuerdos exigen gastar el dinero."
       },
       "opioidsAsPublic": {
         "title": "Ejecutar como el público",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "En los términos del asegurador",
-        "description": "El glosario nombra lo que pregunta un suscriptor de seguros agrícolas: siniestralidad, causa de pérdida, historial real de producción, nivel de cobertura, responsabilidad y temporada de cultivo. Aquí, la siniestralidad es la indemnización dividida por la prima. Por encima de 1, el año perdió dinero."
+        "description": "La ontología nombra lo que pregunta un suscriptor de seguros agrícolas: siniestralidad, causa de pérdida, historial real de producción, nivel de cobertura, responsabilidad y temporada de cultivo. Aquí, la siniestralidad es la indemnización dividida por la prima. Por encima de 1, el año perdió dinero."
       },
       "agricultureAnswer": {
         "title": "La respuesta en SQL",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "En los términos de la farmacia",
-        "description": "El glosario nombra lo que pregunta un comprador de farmacia: NDC, formulario, desabastecimiento, clase de retirada y días de suministro. Aquí, riesgo de suministro significa un desabastecimiento, una retirada por parte del fabricante del producto o muy pocos días de existencias."
+        "description": "La ontología nombra lo que pregunta un comprador de farmacia: NDC, formulario, desabastecimiento, clase de retirada y días de suministro. Aquí, riesgo de suministro significa un desabastecimiento, una retirada por parte del fabricante del producto o muy pocos días de existencias."
       },
       "pharmaAnswer": {
         "title": "La respuesta en SQL",

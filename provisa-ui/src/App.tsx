@@ -625,7 +625,7 @@ function App() {
                                           // REQ-1590: the glossary has its own read right. Reading a term
                                           // is not administering the org, so an analyst opens it; the
                                           // curation controls inside are gated on `glossary_rw`.
-                                          ["/admin/glossary", "glossary_read"], // REQ-1387
+                                          ["/admin/ontology", "glossary_read"], // REQ-1387
                                           ["/admin/security", "platform_settings"],
                                           ["/admin/maintenance", "platform_settings"], // REQ-1466
                                           ["/admin/deployment-settings", "platform_settings"], // REQ-1913

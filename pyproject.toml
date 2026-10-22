@@ -337,6 +337,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
+# REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
+"provisa.sparql" = ["reasoner/Reasoner.java"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]
@@ -489,8 +491,24 @@ forbidden_modules = ["provisa.executor", "provisa.api"]
 [[tool.importlinter.contracts]]
 name = "cypher must not import executor"
 type = "forbidden"
-source_modules = ["provisa.cypher"]
+source_modules = ["provisa.cypher", "provisa.gql"]
 forbidden_modules = ["provisa.executor", "provisa.api"]
+
+# REQ-2135: the graph IR and its back end belong to no graph language; each language's front end
+# parses into the IR and may import it, never the reverse. The three imports ignored here are the
+# back end still lowering clause expressions held as Cypher text (Cypher's expression grammar, an
+# embedded subquery's body, the parse error a bad path raises); expressions become IR trees next and
+# these go.
+[[tool.importlinter.contracts]]
+name = "the graph back end imports no front end"
+type = "forbidden"
+source_modules = ["provisa.gql"]
+forbidden_modules = ["provisa.cypher"]
+ignore_imports = [
+    "provisa.gql.translator -> provisa.cypher.expr_parser",
+    "provisa.gql.expr_context -> provisa.cypher.parser",
+    "provisa.gql.path_translator -> provisa.cypher.parser",
+]
 
 [tool.ruff]
 target-version = "py312"

@@ -45,6 +45,21 @@ def _navigate_path(
     return current
 
 
+# The lexical forms of a boolean an answer gives as text (xsd:boolean's four: a SPARQL binding's
+# value is always a string).
+_BOOLEAN_TEXT = {"true": True, "1": True, "false": False, "0": False}
+
+
+def _boolean(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in _BOOLEAN_TEXT:
+        return _BOOLEAN_TEXT[value.strip().lower()]
+    if isinstance(value, int):
+        return bool(value)
+    raise ValueError(f"{value!r} is not a boolean")
+
+
 def _extract_value(row: dict, col: ApiColumn) -> object:
     """Extract and coerce a single column value from a row dict."""
     value = row.get(col.name)
@@ -60,7 +75,7 @@ def _extract_value(row: dict, col: ApiColumn) -> object:
     if col.type == ApiColumnType.number:
         return float(value)
     if col.type == ApiColumnType.boolean:
-        return bool(value)
+        return _boolean(value)
     if col.type == ApiColumnType.date:
         return value if isinstance(value, date) else date.fromisoformat(str(value))
     if col.type == ApiColumnType.timestamp:

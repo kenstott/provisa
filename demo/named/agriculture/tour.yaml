@@ -40,7 +40,7 @@ steps:
   capability: create_relationship
   relationship: WEATHER_IN
 - key: agricultureTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: loss ratio
 # The solution: the answer's view by crop year, then its worst seasons, in GraphQL and over REST.

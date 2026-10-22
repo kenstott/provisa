@@ -689,16 +689,16 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
-    route: "/admin/glossary",
-    // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
-    // what this step points at is the AI-generation buttons, which only a curator is shown — so a
+    route: "/admin/ontology",
+    // REQ-1590: stricter than the route's own gate. /admin/ontology opens to `glossary_read`, but
+    // what this step points at is the AI-generation menu, which only a curator is shown — so a
     // read-only viewer skips the step rather than waiting out an anchor that never mounts.
     capability: "glossary_rw",
-    element: '[data-testid="glossary-bulk-definitions-btn"]',
+    element: '[data-testid="glossary-generate-menu"]',
     key: "stepGlossary",
   },
   {
-    route: "/admin/glossary",
+    route: "/admin/ontology",
     capability: "glossary_rw",
     element: '[data-testid="glossary-new-btn"]',
     key: "stepGlossaryTerm",

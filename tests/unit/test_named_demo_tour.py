@@ -146,7 +146,7 @@ def _surface(config: dict) -> tuple[set[tuple[str, str]], set[str], set[str]]:
     from provisa.compiler.introspect import ColumnMetadata
     from provisa.compiler.schema_gen import SchemaInput, build_table_path_map
     from provisa.core.config_loader import views_as_tables
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
     from provisa.grpc.proto_gen import generate_proto
 
     tables = views_as_tables(json.loads(json.dumps(config)))["tables"]

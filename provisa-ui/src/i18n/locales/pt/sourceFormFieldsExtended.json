@@ -204,6 +204,10 @@
     "apiToken": "Token de API",
     "apiTokenHint": "Criado em id.atlassian.com, Security, API tokens. Guardado no cofre de segredos.",
     "siteAddressInvalid": "Informe o endereço completo do site, começando com https://",
-    "namingInherit": "Herdar (global)"
+    "namingInherit": "Herdar (global)",
+    "reasoner": "Raciocinador",
+    "reasonerNone": "Nenhum",
+    "axioms": "Axiomas OWL",
+    "axiomsHint": "Sintaxe Turtle, RDF/XML, funcional ou Manchester. Uma tabela cuja consulta é um único IRI, como <http://example.org/kyc#controls>, lê o que deles é inferido."
   }
 }

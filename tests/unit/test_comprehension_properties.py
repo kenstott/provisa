@@ -28,7 +28,7 @@ import sqlglot
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from provisa.cypher.comprehension import rewrite_list_comprehensions
+from provisa.gql.comprehension import rewrite_list_comprehensions
 
 _VARS = ["x", "y", "n", "i"]
 _LISTS = ["list", "items", "nums", "vals"]

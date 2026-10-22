@@ -86,11 +86,11 @@ async def _execute_cypher(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
 ) -> dict:
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.label_map import CypherLabelMap
-    from provisa.cypher.translator import cypher_to_sql
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.label_map import CypherLabelMap
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params
-    from provisa.cypher.assembler import assemble_rows, to_serializable
+    from provisa.gql.assembler import assemble_rows, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan

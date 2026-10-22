@@ -443,7 +443,7 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
     from provisa.compiler.params import embed_params_comment
     from provisa.compiler.sql_gen import compile_query as _compile_query
     from provisa.compiler.sql_rewrite import make_semantic_sql
-    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.gql.label_map import CypherLabelMap
     from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 
     # A missing role would silently grant unrestricted domain_access — require it.

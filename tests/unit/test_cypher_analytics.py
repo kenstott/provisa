@@ -229,8 +229,8 @@ class TestImputeRelationshipsEdgeGeneration:
                 "provisa.api.rest.graph_tools_router._execute_call_body",
                 side_effect=_fake_execute_call_body,
             ),
-            patch("provisa.cypher.assembler.register_node_ids", new_callable=AsyncMock),
-            patch("provisa.cypher.assembler.assemble_rows", return_value=[]),
+            patch("provisa.gql.assembler.register_node_ids", new_callable=AsyncMock),
+            patch("provisa.gql.assembler.assemble_rows", return_value=[]),
             patch("provisa.cypher.parser.parse_cypher", side_effect=_capture_parse),
         ):
             mock_request = MagicMock(spec=FastAPIRequest)
@@ -349,10 +349,10 @@ class TestImputeRelationshipsEdgeGeneration:
                 "provisa.api.rest.graph_tools_router._execute_call_body",
                 side_effect=_fake_execute_call_body,
             ),
-            patch("provisa.cypher.assembler.register_node_ids", new_callable=AsyncMock),
-            patch("provisa.cypher.assembler.register_rel_ids", new_callable=AsyncMock),
+            patch("provisa.gql.assembler.register_node_ids", new_callable=AsyncMock),
+            patch("provisa.gql.assembler.register_rel_ids", new_callable=AsyncMock),
             patch("provisa.cypher.parser.parse_cypher", return_value=MagicMock()),
-            patch("provisa.cypher.assembler.assemble_rows", return_value=assembled_rows),
+            patch("provisa.gql.assembler.assemble_rows", return_value=assembled_rows),
         ):
             mock_request = MagicMock(spec=FastAPIRequest)
             mock_request.headers = {}
@@ -383,7 +383,7 @@ class TestImputeStableIds:
 
     def test_register_node_ids_replaces_composite_with_integer(self):
         """register_node_ids replaces composite string IDs with DB-assigned integers."""
-        from provisa.cypher.assembler import _apply_id_map
+        from provisa.gql.assembler import _apply_id_map
 
         id_map = {"Person|1": 101, "Company|2": 202}
         node = {"id": "Person|1", "label": "Person", "tableLabel": "Person", "properties": {}}
@@ -392,7 +392,7 @@ class TestImputeStableIds:
 
     def test_apply_id_map_replaces_edge_start_end(self):
         """_apply_id_map updates edge start/end and nested startNode/endNode ids."""
-        from provisa.cypher.assembler import _apply_id_map
+        from provisa.gql.assembler import _apply_id_map
 
         id_map = {"Person|1": 101, "Company|2": 202}
         edge = {
@@ -412,7 +412,7 @@ class TestImputeStableIds:
 
     def test_same_input_produces_same_id(self):
         """Same composite_id always maps to the same integer (deterministic, not random)."""
-        from provisa.cypher.assembler import _apply_id_map
+        from provisa.gql.assembler import _apply_id_map
 
         id_map = {"Person|42": 9999}
         node_a = {"id": "Person|42", "label": "Person", "properties": {}}
@@ -425,7 +425,7 @@ class TestImputeStableIds:
 
     def test_walk_for_nodes_collects_composite_ids(self):
         """_walk_for_nodes collects nodes whose id contains '|' (composite format)."""
-        from provisa.cypher.assembler import _walk_for_nodes
+        from provisa.gql.assembler import _walk_for_nodes
 
         out: dict = {}
         node = {
@@ -439,7 +439,7 @@ class TestImputeStableIds:
 
     def test_walk_for_nodes_skips_non_composite_ids(self):
         """_walk_for_nodes does not collect nodes whose id is already an integer."""
-        from provisa.cypher.assembler import _walk_for_nodes
+        from provisa.gql.assembler import _walk_for_nodes
 
         out: dict = {}
         node = {
@@ -452,7 +452,7 @@ class TestImputeStableIds:
 
     def test_walk_for_nodes_descends_into_edge_endpoints(self):
         """_walk_for_nodes extracts startNode and endNode ids from edge dicts."""
-        from provisa.cypher.assembler import _walk_for_nodes
+        from provisa.gql.assembler import _walk_for_nodes
 
         out: dict = {}
         edge = {
@@ -471,7 +471,7 @@ class TestImputeStableIds:
     @pytest.mark.asyncio
     async def test_register_node_ids_calls_upsert_then_replaces(self):
         """register_node_ids upserts to DB and mutates rows in place with returned ids."""
-        from provisa.cypher.assembler import register_node_ids
+        from provisa.gql.assembler import register_node_ids
 
         conn = AsyncMock()
         # No pre-existing node_ids row → JSON merge falls back to new props.
@@ -496,7 +496,7 @@ class TestImputeStableIds:
     @pytest.mark.asyncio
     async def test_register_node_ids_noop_without_pg_pool(self):
         """register_node_ids is a no-op when tenant_db is None."""
-        from provisa.cypher.assembler import register_node_ids
+        from provisa.gql.assembler import register_node_ids
 
         rows = [{"node": {"id": "Person|5", "label": "Person", "properties": {}}}]
         original_id = rows[0]["node"]["id"]
@@ -505,7 +505,7 @@ class TestImputeStableIds:
 
     def test_id_stability_across_multiple_apply_calls(self):
         """Applying the same id_map twice yields the same result (idempotent)."""
-        from provisa.cypher.assembler import _apply_id_map
+        from provisa.gql.assembler import _apply_id_map
 
         id_map = {"Person|3": 300, "Company|4": 400}
         edge = {

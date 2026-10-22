@@ -284,18 +284,22 @@ def _literal_colons_escaped(sql: str) -> str:
     return _QUOTED_OR_DOLLAR.sub(_escape, sql)
 
 
-def _translate(sql: str, args: tuple, dialect: str = "") -> tuple[str, dict[str, Any]]:
+def _translate(
+    sql: str, args: tuple, dialect: str = "", *, bind_as_given: bool = False
+) -> tuple[str, dict[str, Any]]:
     """Convert asyncpg ``$1``-style SQL + positional args to SQLAlchemy
     ``:pN``-style SQL + a param dict.
 
     On PostgreSQL a ``dict``/``list`` argument is wrapped as JSON: asyncpg learned each
     placeholder's type from the server and its jsonb codec JSON-encoded these, whereas psycopg
     dumps a list as an ARRAY and cannot dump a dict at all. Every control-plane column such a
-    value lands in is ``jsonb`` (the schema has no array columns), so JSONB is the old semantics."""
+    value lands in is ``jsonb`` (the schema has no array columns), so JSONB is the old semantics.
+    ``bind_as_given``: a governed read's own values (a client's ``ANY($2)``), bound as they are --
+    a list as an ARRAY."""
     sql = _literal_colons_escaped(sql)
     if not args:
         return sql, {}
-    if dialect == "postgresql":
+    if dialect == "postgresql" and not bind_as_given:
         from psycopg.types.json import Jsonb
 
         args = tuple(Jsonb(a) if isinstance(a, (dict, list)) else a for a in args)
@@ -871,8 +875,8 @@ class Connection:
             self._record_write(target, -1 if rowcount is None else rowcount)
         return result
 
-    def _run(self, sql: str, args: tuple) -> Any:
-        stmt, params = _translate(sql, args, self.capabilities.dialect)
+    def _run(self, sql: str, args: tuple, *, bind_as_given: bool = False) -> Any:
+        stmt, params = _translate(sql, args, self.capabilities.dialect, bind_as_given=bind_as_given)
         return self._exec(text(stmt), params)
 
     def _commit_if_autocommit(self) -> None:
@@ -909,9 +913,12 @@ class Connection:
         return rows
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
-    async def fetch_with_columns(self, sql: str, *args: Any) -> tuple[list[str], list[Row]]:
-        """Rows plus the result's column names — known even when no row comes back."""
-        result = self._run(sql, args)
+    async def fetch_with_columns(
+        self, sql: str, *args: Any, bind_as_given: bool = False
+    ) -> tuple[list[str], list[Row]]:
+        """Rows plus the result's column names — known even when no row comes back.
+        ``bind_as_given``: see :func:`_translate`."""
+        result = self._run(sql, args, bind_as_given=bind_as_given)
         columns = list(result.keys())
         rows = [Row(r) for r in result.fetchall()]
         self._commit_if_autocommit()

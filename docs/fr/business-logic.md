@@ -12,7 +12,7 @@ Les canaux de diffusion aggravent les choses. La logique est construite dans cha
 
 La logique métier, ce sont les règles qui créent, modifient, suppriment ou transforment des données.
 
-La terminologie métier est autre chose. Les noms et descriptions des domaines, des tables et des colonnes, et les termes du [glossaire](glossary.md), disent ce que signifient les données. La logique métier dit ce qu'on en fait.
+La terminologie métier est autre chose. Les noms et descriptions des domaines, des tables et des colonnes, et les termes de l'[ontologie](ontology.md), disent ce que signifient les données. La logique métier dit ce qu'on en fait.
 
 ## Trois rôles {: #roles }
 

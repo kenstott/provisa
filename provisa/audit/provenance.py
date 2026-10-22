@@ -29,6 +29,7 @@ at ``logged_at``)."""
 from __future__ import annotations
 
 import re
+import threading
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -107,6 +108,36 @@ def _write_summary(tree: Any, gov: "GovernanceContext") -> dict[str, Any] | None
     }
 
 
+# The summaries GraphQL rows were given, kept for the governance inputs in force: every request of
+# a role between two model builds has the same inputs, and a governance build per row put a
+# whole-model build on the audit writer's thread for every record, holding the GIL in a burst each
+# batch. The inputs are replaced, never changed in place, when a build or a meta-role changes
+# them, so their identities name them. Only the current inputs are kept: the model's (masking
+# rules, tables, relationships) for every role, then each role's own (row filters, compilation
+# context, role); a row with other inputs replaces them, so a replaced model is never held.
+_KEPT_PER_ROLE = 4096  # distinct table sets one role's requests read
+_kept_model: tuple = ()
+_kept: dict[str, tuple[tuple, dict[tuple[int, ...], dict]]] = {}
+_kept_lock = threading.Lock()
+
+
+def _same(a: tuple, b: tuple) -> bool:
+    return len(a) == len(b) and all(x is y for x, y in zip(a, b))
+
+
+def _kept_summaries(role_id: str, model: tuple, own: tuple) -> dict[tuple[int, ...], dict]:
+    """The role's kept summaries for these inputs, emptied of any kept for others."""
+    global _kept_model
+    with _kept_lock:
+        if not _same(_kept_model, model):
+            _kept_model = model
+            _kept.clear()
+        entry = _kept.get(role_id)
+        if entry is None or not _same(entry[0], own):
+            entry = _kept[role_id] = (own, {})
+        return entry[1]
+
+
 def enforced_for_request(state: Any, role_id: str, ctx: Any) -> Callable[[tuple[int, ...]], dict]:
     """For an audit row whose statement's governance object is not at hand (a GraphQL request,
     whose fields were governed one by one): the role's governance as it stands NOW — every input
@@ -116,23 +147,32 @@ def enforced_for_request(state: Any, role_id: str, ctx: Any) -> Callable[[tuple[
     from provisa.compiler.stage2 import build_governance_context
     from provisa.security.rights import require_role
 
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+    rls = state.rls_contexts.get(role_id)
     masking_rules = state.masking_rules
     tables = getattr(state, "tables", [])
     relationships = getattr(state, "relationships", None)
     role = require_role(state.roles, role_id)
 
     def _summary(table_ids: tuple[int, ...]) -> dict:
+        kept = _kept_summaries(role_id, (masking_rules, tables, relationships), (rls, ctx, role))
+        summary = kept.get(table_ids)
+        if summary is not None:
+            return summary
         gov = build_governance_context(
             role_id,
-            rls,
+            rls if rls is not None else RLSContext.empty(),
             masking_rules,
             ctx,
             tables,
             role=role,
             relationships=relationships,
         )
-        return enforced_summary(gov, table_ids)
+        summary = enforced_summary(gov, table_ids)
+        with _kept_lock:
+            if len(kept) >= _KEPT_PER_ROLE:
+                kept.clear()
+            kept[table_ids] = summary
+        return summary
 
     return _summary
 

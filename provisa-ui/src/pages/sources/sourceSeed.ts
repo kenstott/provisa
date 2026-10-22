@@ -21,6 +21,7 @@ import { CLOUD_FILE_TYPES, objectStoreFields, objectStoreOf } from "./objectStor
 import { profilerFieldsFromMapping } from "./profilerMapping";
 import { salesforceFieldsFromMapping } from "./salesforce";
 import { cloudopsFieldsFromMapping } from "./cloudops";
+import { sparqlFieldsFromMapping } from "./sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwFieldsFromMapping } from "./googleWorkspace";
 import { MICROSOFT_365, m365FieldsFromMapping } from "./microsoft365";
 import { LOGS, logsFieldsFromMapping } from "./logs";
@@ -218,6 +219,9 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   // fields: it is orthogonal to which auth mode (none/bearer/basic) is selected.
   if (s.type === "sparql" && hints?.default_graph_uri) {
     authFields = { ...authFields, default_graph_uri: hints.default_graph_uri };
+  }
+  if (s.type === "sparql" && s.mappingJson) {
+    authFields = { ...authFields, ...sparqlFieldsFromMapping(s.mappingJson) }; // REQ-2138
   }
 
   const sp =

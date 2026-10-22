@@ -1121,13 +1121,16 @@ async def _mat_api_ep_table(
     values_cte_entries: dict,
     nf_args: dict | None = None,
     ctx=None,
+    pushed: dict | None = None,
 ) -> None:
     """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE.
 
     The cache table is kept under the arguments the statement gives the endpoint (REQ-318): an
     endpoint with a parameter is a function of its arguments, so the answer to one argument set
     is never another's. ``ctx`` is the model the statement compiled against, for the joins that
-    feed a parameter from a parent's keys."""
+    feed a parameter from a parent's keys. ``pushed``: the arguments the statement's own
+    conditions narrow the call by (a SPARQL table's narrowed query, REQ-2138), part of the call
+    and of the name its answer is kept under."""
     from provisa.api_source.engine_cache import (
         cache_table_name,
         ensure_cache_schema,
@@ -1147,7 +1150,7 @@ async def _mat_api_ep_table(
     )
 
     _cache_loc = source_cache_location(state, source_id, api_source)
-    args = endpoint_args(ep, nf_args)
+    args = {**endpoint_args(ep, nf_args), **(pushed or {})}
     # Read by its parent's keys, the fills are one argument set per key and the table is all of
     # them, whatever else the statement gives. Read by argument, the table is that answer's:
     # named as the fetch names it, with the endpoint's default parameters under the arguments.
@@ -1173,7 +1176,7 @@ async def _mat_api_ep_table(
     redirect_config = RedirectConfig.from_env()
     # An endpoint with a parameter is a function of its arguments: what its fills or a fetch hold
     # is the rows for some arguments, never the table's whole rows, so none of it is held hot.
-    whole = not any(c.param_type for c in ep.columns)
+    whole = not any(c.param_type for c in ep.columns) and not pushed
 
     if not response_cols:
         log.warning("[MAT] %s has no response columns — skipping", tn)
@@ -1393,6 +1396,7 @@ async def _materialize_api_to_engine_cache(
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
     from provisa.qdrant.table import is_search
+    from provisa.sparql import pushdown as sparql_pushdown
 
     code_direct.begin()
     cache_rewrites: dict = {}
@@ -1569,6 +1573,7 @@ async def _materialize_api_to_engine_cache(
             values_cte_entries,
             nf_args=nf_args,
             ctx=ctx,
+            pushed=sparql_pushdown.pushed_arguments(ep, exec_sql, tn),
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:
             log.warning("[MAT] %s could not be materialized — dropping union branch", tn)

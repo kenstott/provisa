@@ -3191,7 +3191,7 @@
     without node ID heuristics.
   code:
   - provisa/api/rest/cypher_router.py
-  - provisa/cypher/label_map.py
+  - provisa/gql/label_map.py
   tests:
   - tests/unit/test_core_registration.py
   - tests/unit/test_graph_schema.py
@@ -9609,7 +9609,7 @@
   use_case: Automatic timestamp coercion eliminates manual casting for timestamp PK comparisons in Cypher
     queries.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_cypher_translator.py
@@ -10056,8 +10056,8 @@
   use_case: CROSS JOIN LATERAL translation of correlated CALL subqueries lets graph clients use subquery-pattern
     idioms that are common in openCypher workloads.
   code:
-  - provisa/cypher/correlated_call.py
-  - provisa/cypher/translator.py
+  - provisa/gql/correlated_call.py
+  - provisa/gql/translator.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_cypher_translator.py
@@ -10097,8 +10097,8 @@
   use_case: Restricting relationships to join metadata avoids the complexity of relationship property
     storage while covering the vast majority of graph traversal use cases.
   code:
-  - provisa/cypher/label_map.py
-  - provisa/cypher/translator.py
+  - provisa/gql/label_map.py
+  - provisa/gql/translator.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_cypher_translator.py
@@ -10136,7 +10136,7 @@
   use_case: Bidirectional sugar covers common graph traversal patterns without requiring stewards to register
     both directions of every relationship.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_cypher_translator.py
@@ -10177,7 +10177,7 @@
   use_case: Flat JOIN for heterogeneous shortestPath avoids unnecessary recursive CTE overhead when the
     schema topology determines the path uniquely.
   code:
-  - provisa/cypher/path_translator.py
+  - provisa/gql/path_translator.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_cypher_path_translator.py
@@ -10219,7 +10219,7 @@
   use_case: Emitting all schema paths as UNION ALL branches ensures no valid traversal is silently omitted
     when multiple relationship types connect the same pair of node types.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_cypher_translator.py
@@ -10260,7 +10260,7 @@
   use_case: Positional CTE naming is deterministic within one translation call; the collision risk on
     batch composition is a known limitation that callers must handle.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_cypher_translator.py
@@ -10699,7 +10699,7 @@
     consistent with the declared join paths.
   code:
   - provisa/cypher/write_translator.py
-  - provisa/cypher/label_map.py
+  - provisa/gql/label_map.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_mutations.py
@@ -10732,7 +10732,7 @@
     statements without explicit SQL casting.
   code:
   - provisa/cypher/write_translator.py
-  - provisa/cypher/select_builder.py
+  - provisa/gql/select_builder.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
@@ -10775,7 +10775,7 @@
   use_case: WHERE clause reuse avoids duplicating filter translation logic between read and write paths.
   code:
   - provisa/cypher/write_translator.py
-  - provisa/cypher/select_builder.py
+  - provisa/gql/select_builder.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
@@ -10818,7 +10818,7 @@
     UPDATE patterns.
   code:
   - provisa/cypher/write_translator.py
-  - provisa/cypher/select_builder.py
+  - provisa/gql/select_builder.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
@@ -22258,8 +22258,8 @@
   use_case: Consistent JSON serialization of graph objects enables client libraries to deserialize typed
     node/edge/path representations.
   code:
-  - provisa/cypher/assembler.py
-  - provisa/cypher/graph_rewriter.py
+  - provisa/gql/assembler.py
+  - provisa/gql/graph_rewriter.py
   tests:
   - tests/unit/test_cypher_assembler.py
   - tests/unit/test_cypher_graph_rewriter.py
@@ -22304,7 +22304,7 @@
   use_case: Variable-length traversals enable clients to explore multi-hop relationships without writing
     nested joins.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - provisa-ui/e2e/cypher-variable-length-path.spec.ts
@@ -22345,7 +22345,7 @@
   use_case: Complex traversals require filtering and returning properties from intermediate nodes without
     manual projection.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22383,8 +22383,8 @@
   use_case: Returning entire paths as objects enables clients to navigate graph traversals without unpacking
     individual nodes/edges.
   code:
-  - provisa/cypher/translator.py
-  - provisa/cypher/graph_rewriter.py
+  - provisa/gql/translator.py
+  - provisa/gql/graph_rewriter.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - provisa-ui/e2e/cypher-variable-length-path.spec.ts
@@ -22423,7 +22423,7 @@
   use_case: Correlated subqueries enable filtering inner results based on outer row context without materializing
     cartesian joins.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22459,7 +22459,7 @@
     originate from it.
   use_case: Label alternation enables flexible node matching without explicit OR conditions.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22496,7 +22496,7 @@
   use_case: Subquery predicates enable complex filtering based on related-node aggregations without intermediate
     MATCH clauses.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22532,7 +22532,7 @@
   use_case: Map projections enable client-friendly reshaping of returned objects without manual column
     aliasing.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22569,7 +22569,7 @@
   use_case: Bidirectional traversal enables undirected graph exploration without explicit forward/backward
     branches.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22606,7 +22606,7 @@
     to tgt.id = src.join_column.
   use_case: Backward traversal enables reverse-direction path queries without schema bidirectionality.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22642,7 +22642,7 @@
     `{param}` syntax is normalized to `$param` before parsing.
   use_case: Function support enables rich query expressions without learning Trino-specific syntax.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22677,7 +22677,7 @@
     declaration.
   use_case: Implicit GROUP BY matches Neo4j Cypher semantics and reduces query verbosity.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22712,7 +22712,7 @@
   use_case: CASE expressions enable conditional logic in projections and filters without external control
     flow.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22747,7 +22747,7 @@
     the SQL output.
   use_case: UNWIND enables iteration over lists without explicit array expansion in the application.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22780,7 +22780,7 @@
     with literal or parameter values.
   use_case: IN predicates enable efficient filtering on multi-value sets without repeated OR conditions.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22813,7 +22813,7 @@
     subqueries with the pattern matched inside and the pipe expression projected.
   use_case: Pattern comprehensions enable inline aggregation of related rows without explicit GROUP BY.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22849,7 +22849,7 @@
     count.
   use_case: length(p) enables path-based filtering and ordering without explicit edge counting.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22885,7 +22885,7 @@
   use_case: Shortest-path functions enable efficient shortest-path queries without client-side traversal
     algorithms.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22921,7 +22921,7 @@
   use_case: Node deserialization enables type-safe access to node objects in the assembler stage before
     HTTP response serialization.
   code:
-  - provisa/cypher/assembler.py
+  - provisa/gql/assembler.py
   tests:
   - tests/unit/test_cypher_assembler.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22958,7 +22958,7 @@
   use_case: Edge deserialization enables type-safe access to relationship objects with start/end node
     tracking.
   code:
-  - provisa/cypher/assembler.py
+  - provisa/gql/assembler.py
   tests:
   - tests/unit/test_cypher_assembler.py
   - tests/integration/test_cypher_integration_extra.py
@@ -22995,7 +22995,7 @@
   use_case: Path deserialization enables client-friendly navigation of multi-hop graph results without
     manual array unpacking.
   code:
-  - provisa/cypher/assembler.py
+  - provisa/gql/assembler.py
   tests:
   - tests/unit/test_cypher_assembler.py
   - tests/integration/test_cypher_integration_extra.py
@@ -23030,7 +23030,7 @@
     as None. Empty lists result from zero-edge paths.
   use_case: Variable-length edge deserialization enables structured access to multi-hop relationship sequences.
   code:
-  - provisa/cypher/assembler.py
+  - provisa/gql/assembler.py
   tests:
   - tests/unit/test_cypher_assembler.py
   - tests/integration/test_cypher_integration_extra.py
@@ -23065,7 +23065,7 @@
     Scalar columns remain unwrapped. The wrapping ensures nodes/edges/paths are serializable to JSON.
   use_case: The graph rewriter preserves data integrity by making every graph variable JSON-compatible before HTTP serialization.
   code:
-  - provisa/cypher/graph_rewriter.py
+  - provisa/gql/graph_rewriter.py
   tests:
   - tests/unit/test_cypher_graph_rewriter.py
   - tests/integration/test_cypher_integration_extra.py
@@ -23101,8 +23101,8 @@
   use_case: Domain-scoped queries enable exploration of all entities within a business domain without
     explicit type specification.
   code:
-  - provisa/cypher/graph_rewriter.py
-  - provisa/cypher/translator.py
+  - provisa/gql/graph_rewriter.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_graph_rewriter.py
   - tests/integration/test_cypher_integration_extra.py
@@ -23139,7 +23139,7 @@
   use_case: Duplicate key prevention ensures well-formed JSON output from federated tables with unconventional
     id column naming.
   code:
-  - provisa/cypher/graph_rewriter.py
+  - provisa/gql/graph_rewriter.py
   tests:
   - tests/unit/test_cypher_graph_rewriter.py
   since: 2026-06
@@ -23173,7 +23173,7 @@
     references are emitted.
   use_case: Anonymous paths enable exploratory graph queries without schema knowledge.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
   - tests/integration/test_cypher_integration_extra.py
@@ -23209,7 +23209,7 @@
   use_case: OPTIONAL MATCH chains enable exploratory traversals where intermediate results may be absent
     without failing the entire query.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - provisa-ui/e2e/cypher-breed-filter.spec.ts
   - tests/unit/test_cypher_frontend.py
@@ -23250,7 +23250,7 @@
   use_case: UNION ALL queries enable multi-entity result merging and cross-entity property filtering in
     a single query.
   code:
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   tests:
   - provisa-ui/e2e/cypher-union-all-email.spec.ts
   - tests/unit/test_cypher_frontend.py
@@ -23496,7 +23496,7 @@
     querying each relationship type.
   code:
   - provisa/api/rest/cypher_router.py
-  - provisa/cypher/assembler.py
+  - provisa/gql/assembler.py
   tests:
   - provisa-ui/e2e/cypher-impute-edges.spec.ts
   - tests/unit/test_cypher_analytics.py
@@ -23526,7 +23526,7 @@
     edges with visible nodes; raw PKs cause canvas lookup failures.
   code:
   - provisa/api/rest/cypher_router.py
-  - provisa/cypher/assembler.py
+  - provisa/gql/assembler.py
   tests:
   - provisa-ui/e2e/cypher-impute-edges.spec.ts
   - tests/unit/test_cypher_analytics.py
@@ -24455,7 +24455,7 @@
     not an advisory filter.
   code:
   - provisa/bolt/session.py
-  - provisa/cypher/assembler.py
+  - provisa/gql/assembler.py
   - provisa/api/rest/cypher_router.py
   tests:
   - tests/unit/test_bolt_domain_ceiling.py
@@ -29252,7 +29252,7 @@
   - provisa/compiler/stage2.py
   - provisa/compiler/rls.py
   - provisa/transpiler/transpile.py
-  - provisa/cypher/translator.py
+  - provisa/gql/translator.py
   - provisa/cypher/expr_parser.py
   tests:
   - tests/unit/test_ast_transform_invariants.py
@@ -44121,7 +44121,7 @@
   code:
   - provisa/mv/modeling.py
   - provisa/api/admin/modeling_register.py
-  - provisa/cypher/label_map.py
+  - provisa/gql/label_map.py
   - provisa/compiler/schema_gen.py
   tests:
   - tests/unit/test_modeling.py
@@ -47213,7 +47213,7 @@
     access that node's properties in RETURN fail with "Column cannot be resolved" errors without correct
     SQL table qualification.
   code:
-  - provisa/cypher/expr_context.py
+  - provisa/gql/expr_context.py
   tests:
   - tests/unit/test_cypher_translator.py
   scenario: 'Given a Cypher query with a node variable carried through a WITH clause with an aggregate
@@ -57575,13 +57575,13 @@
   - provisa/core/schema.sql
   - provisa/core/schema_org.py
   - provisa/cypher/parser.py
-  - provisa/cypher/label_map.py
-  - provisa/cypher/translator_rel.py
-  - provisa/cypher/translator_helpers.py
-  - provisa/cypher/select_builder.py
-  - provisa/cypher/translator.py
-  - provisa/cypher/translator_union.py
-  - provisa/cypher/expr_context.py
+  - provisa/gql/label_map.py
+  - provisa/gql/translator_rel.py
+  - provisa/gql/translator_helpers.py
+  - provisa/gql/select_builder.py
+  - provisa/gql/translator.py
+  - provisa/gql/translator_union.py
+  - provisa/gql/expr_context.py
   - provisa/api/_meta_seed.py
   - provisa/mv/models.py
   - provisa/mv/refresh.py
@@ -59513,9 +59513,9 @@
     tags, steward) in one query.
   code:
   - provisa/compiler/context.py
-  - provisa/cypher/label_map.py
-  - provisa/cypher/path_functions.py
-  - provisa/cypher/graph_rewriter.py
+  - provisa/gql/label_map.py
+  - provisa/gql/path_functions.py
+  - provisa/gql/graph_rewriter.py
   - provisa/api/admin/schema_query.py
   since: 2026-09
   tests:
@@ -59526,7 +59526,7 @@
   notes: 'Reworded 2026-10-03 at the maintainer''s direction: the earlier text prescribed `_name` and
     `_domain` properties on every node and a graph-sync layer, neither of which is needed; the requirement
     is the traceability, which is built. Implementation: _register_meta_synthetic_joins (provisa/compiler/context.py:359-398);
-    exclusion from variable-length paths at provisa/cypher/path_functions.py:96-103. Code that cites REQ-1630
+    exclusion from variable-length paths at provisa/gql/path_functions.py:96-103. Code that cites REQ-1630
     for sandbox account deletion (provisa/api/auth_router.py:822, provisa/auth/providers/firebase.py:78)
     cites the wrong id.'
 - id: REQ-1631
@@ -75706,9 +75706,9 @@
     translator.py:638-648 rejection; test_cypher_translator.py:1546 section.'
   since: 2026-04
   code:
-  - provisa/cypher/label_map.py
-  - provisa/cypher/translator.py
-  - provisa/cypher/translator_union.py
+  - provisa/gql/label_map.py
+  - provisa/gql/translator.py
+  - provisa/gql/translator_union.py
   tests:
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_cypher_label_map.py
@@ -75764,7 +75764,7 @@
   since: 2026-04
   code:
   - provisa/compiler/sql_validator.py
-  - provisa/cypher/label_map.py
+  - provisa/gql/label_map.py
   - provisa/compiler/schema_gen.py
   tests:
   - tests/unit/test_sql_endpoint_governance.py
@@ -76327,10 +76327,10 @@
   description: Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via
     pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema)
     are each the responsibility of a single dedicated module. No transport implements catalog logic directly; transports consume the output of the centralized catalog module for their language.
-  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was written on 2026-06-11 under the heading ''Data & Storage''; it was dropped when requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: SQL catalog is in provisa/pgwire/catalog.py and Cypher label_map is in provisa/cypher/label_map.py, but provisa/bolt/session.py:899-915 answers db.labels()/db.relationshipTypes() inside the Bolt transport itself, so catalog logic is not fully centralized; no test asserts the centralization. Roadmap audit 2026-10-13: partly built. Missing: SQL and Cypher catalogs have dedicated modules; GraphQL introspection has no single catalog module (_detect_introspection in endpoint_helpers.py only); no test.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was written on 2026-06-11 under the heading ''Data & Storage''; it was dropped when requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: SQL catalog is in provisa/pgwire/catalog.py and Cypher label_map is in provisa/gql/label_map.py, but provisa/bolt/session.py:899-915 answers db.labels()/db.relationshipTypes() inside the Bolt transport itself, so catalog logic is not fully centralized; no test asserts the centralization. Roadmap audit 2026-10-13: partly built. Missing: SQL and Cypher catalogs have dedicated modules; GraphQL introspection has no single catalog module (_detect_introspection in endpoint_helpers.py only); no test.'
   code:
   - provisa/pgwire/catalog.py
-  - provisa/cypher/label_map.py
+  - provisa/gql/label_map.py
   - provisa/bolt/session.py
   scenario: 'Given a transport serving catalog metadata
 
@@ -78545,7 +78545,7 @@
   code:
   - provisa/core/models.py
   - provisa/core/repositories/relationship.py
-  - provisa/cypher/label_map.py
+  - provisa/gql/label_map.py
   tests:
   - tests/unit/test_relationship_alias.py
   scenario: 'Given a Relationship built with alias WORKS_FOR
@@ -78598,8 +78598,8 @@
     the alias resolves to the mapped source and target tables. RelationshipMapping carries the alias,
     defaulting to None, and a wrong arrow direction or unknown type yields an empty result.
   code:
-  - provisa/cypher/label_map.py
-  - provisa/cypher/translator_rel.py
+  - provisa/gql/label_map.py
+  - provisa/gql/translator_rel.py
   tests:
   - tests/unit/test_relationship_alias.py
   - tests/unit/test_cypher_translator.py
@@ -78612,7 +78612,7 @@
     '
   notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
     in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: tests/unit/test_relationship_alias.py,
-    tests/unit/test_cypher_translator.py. Audited 2026-10-03 against the code: provisa/cypher/label_map.py:117
+    tests/unit/test_cypher_translator.py. Audited 2026-10-03 against the code: provisa/gql/label_map.py:117
     RelationshipMapping.alias, :155 self.aliases; tests/unit/test_cypher_translator.py:1255.'
 - id: REQ-391
   status: complete
@@ -78625,8 +78625,8 @@
   description: When several source/target pairs share one relationship alias, the aliases index stores
     every mapping under that alias and the Cypher translator emits a UNION ALL across them.
   code:
-  - provisa/cypher/label_map.py
-  - provisa/cypher/translator_rel.py
+  - provisa/gql/label_map.py
+  - provisa/gql/translator_rel.py
   tests:
   - tests/unit/test_relationship_alias.py
   - tests/unit/test_cypher_translator.py
@@ -78640,7 +78640,7 @@
   notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
     in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: tests/unit/test_relationship_alias.py,
     tests/unit/test_cypher_translator.py. Audited 2026-10-03 against the code: tests/unit/test_cypher_translator.py:1280
-    asserts UNION ALL for a shared alias; provisa/cypher/label_map.py:155 aliases dict of lists.'
+    asserts UNION ALL for a shared alias; provisa/gql/label_map.py:155 aliases dict of lists.'
 - id: REQ-735
   status: complete
   group: 4. Source Connectors
@@ -81210,8 +81210,8 @@
   - REQ-1986
   notes: 'Maintainer 2026-10-12, via the lead: "every query surface should strive to match the capabilities of other surfaces"; ruled that Cypher exposes an embedded object of an unregistered type as a map property while lists of registered types stay edges. The wording of the general principle beyond his sentence, and the scenario, are the teammate''s. Roadmap audit 2026-10-13: partly built. Missing: Cypher embedded-object MAP properties are built; cross-surface capability parity is a standing goal with no complete check.'
   code:
-  - provisa/cypher/label_map.py
-  - provisa/cypher/translator_types.py
+  - provisa/gql/label_map.py
+  - provisa/gql/translator_types.py
   tests:
   - tests/unit/test_cypher_label_map.py
   docs:
@@ -87112,7 +87112,50 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     changes nothing. Second, a SPARQL front end lowers rdflib's SPARQL algebra to that IR and adds what
     SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded
     variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib
-    is a new dependency, taken under the dependency rules.
+    is a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:)
+    [SUPERSEDED by REQ-2135, 2026-10-22 -- the IR is the GQL+ IR, a GQL-inspired IR (GQL+ IR amendment
+    below); the tiers and the symmetry stand, read with GQL+ IR for Cypher+ IR. Kept here for history;
+    do not implement against it.] The canonical graph
+    form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher's pattern IR extended with what
+    SPARQL needs, which is path expressions (sequence, alternative and inverse among them), variable
+    predicates, a triples output for CONSTRUCT, and IRI and datatype values. [END SUPERSEDED BLOCK] It stands
+    to graph languages as semantic SQL stands to every language, and semantic SQL is likewise a
+    superset IR, not SQL: SQL extended with the model (model names, views and metrics resolved,
+    governance attached), lowered per engine at routing and never run as written. Neither is the
+    language it is named after. The tiers are: a graph language, parsed into the Cypher+ IR, which
+    holds the graph meaning (patterns, paths, variable predicates, triples out); the graph mapping
+    lowers that, in one back end, into semantic SQL, which holds the data meaning (views expanded,
+    governed whole, optimized, routed). Every graph language front end parses into the Cypher+ IR:
+    Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing below it is
+    duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within what
+    Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric:
+    Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no
+    language is its IR, the namesake included. So the refactor makes Cypher's parser a front end like
+    SPARQL's, and nothing below the IR is specific to Cypher. (Amended 2026-10-22, GQL+ IR:) The
+    graph-side IR is the GQL+ IR. As semantic SQL is a SQL-inspired IR, the GQL+ IR is a GQL-inspired
+    IR: each borrows its namesake's shape, each is our own representation, and neither claims
+    conformance to the standard. The GQL+ IR borrows GQL's pattern concepts (quantified path patterns,
+    the path modes WALK, TRAIL, ACYCLIC and SIMPLE, label expressions) and adds only variable predicates,
+    a triples output for CONSTRUCT, and IRI and datatype values. Cypher maps straight in, its
+    depth-capped cycle-free paths being ACYCLIC with a bound; SPARQL's path sequences, alternatives and
+    inverses map onto those same concepts; a GQL or SQL/PGQ front end would be a parser only. The tiers
+    are unchanged, and GraphQL still lowers straight to semantic SQL. Both IR names are internal: no
+    user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:) Built in five phases.
+    1: the GQL IR starts as today's Cypher compiler; its Cypher AST and precompile (the parser and the
+    Cypher-specific front end) are split out, and what remains is the GQL IR back end, proven by
+    Cypher's existing tests. 2: that back end gains the GQL-inspired features SPARQL needs: quantified
+    paths, path modes, label expressions, variable predicates, CONSTRUCT triples, IRI and datatype
+    values. 3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol
+    endpoint. 5: the UI, the SPARQL tab and the Ontology page's SPARQL button (REQ-2136); it comes last
+    and can wait. (Amended 2026-10-22, EXPRESSIONS AS TREES:) Phase 2 opens with expressions as trees.
+    Today the Cypher AST holds WHERE, RETURN, WITH, UNWIND and ORDER BY expressions as raw text (the
+    expression field of WhereClause, ReturnItem, UnwindClause and OrderItem), and the back end reads
+    that text in about twenty places: regex scans, map-literal rewriting, and a late re-parse with
+    Cypher's expression grammar (expr_parser). The Cypher front end instead parses every expression
+    into the expression tree (expr_ast) when it parses the statement, and the back end walks trees
+    only, proven by the Cypher tests. Only then is the IR fully structural: SPARQL's FILTER, BIND and
+    ORDER BY convert straight to trees, and nothing below the IR reads Cypher syntax. Phase 1 keeps the
+    text on purpose, so that its move stays purely structural.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -87148,7 +87191,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Turtle, JSON-LD or N-Triples, and streamed. Terms only exports SKOS and OWL, with DCAT and DPROD
     for the links to columns, tables and data products. With instances extends the slice to the rows
     behind the grounded columns, read as the viewer. The server estimates the export's size first;
-    past a limit it narrows the export or runs it as a background job.
+    past a limit it narrows the export or runs it as a background job. (Amended 2026-10-22, PHASING:)
+    The SPARQL button is phase 5 of REQ-2135's phasing, with the SPARQL tab: it comes after the SPARQL
+    front end and endpoint, and can wait.
   use_case: >-
     A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog
     tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope
