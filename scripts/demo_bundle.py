@@ -769,7 +769,22 @@ def _held_and_views(conn: Any, schema: str, demo_name: str, region: str | None) 
     ).scalars()
     for name in names:
         rows = conn.execute(text(f'SELECT count(*) FROM "{replicas}"."{name}"')).scalar()
-        lines.append(f"  {replicas}.{name}: {rows} rows")
+        # Whether rows were ever inserted into THIS relation (a re-created table starts at 0),
+        # and whether its key was built (a replica is keyed after it lands).
+        stats = (
+            conn.execute(
+                text(
+                    "SELECT s.n_tup_ins, s.n_tup_del, s.n_live_tup, "
+                    "EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conrelid = s.relid "
+                    "AND c.contype = 'p') AS keyed "
+                    "FROM pg_stat_user_tables s WHERE s.schemaname = :s AND s.relname = :t"
+                ),
+                {"s": replicas, "t": name},
+            )
+            .mappings()
+            .first()
+        )
+        lines.append(f"  {replicas}.{name}: {rows} rows; {dict(stats or {})}")
     if conn.execute(
         text("SELECT to_regclass(:t) IS NOT NULL"), {"t": f'"{schema}".mv_build_state'}
     ).scalar():
@@ -778,6 +793,34 @@ def _held_and_views(conn: Any, schema: str, demo_name: str, region: str | None) 
         ).mappings():
             lines.append(f"  {schema} view build: " + ", ".join(f"{k}={v!r}" for k, v in r.items()))
     return lines
+
+
+def _embedded_stores(work: Path) -> list[str]:
+    """The tables, with their rows, of every DuckDB store file the seeding node wrote under its
+    data folder: a replica a build wrote somewhere other than its region's store is found here."""
+    import duckdb
+
+    lines: list[str] = []
+    copies = work / "diagnosed-stores"
+    for path in sorted((work / "data").rglob("*.duckdb")):
+        # A copy: the running node holds the file's lock.
+        copy = copies / path.relative_to(work / "data")
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, copy)
+        con = duckdb.connect(str(copy), read_only=True)
+        try:
+            for schema, table in con.execute(
+                "SELECT schema_name, table_name FROM duckdb_tables() ORDER BY 1, 2"
+            ).fetchall():
+                rows = con.execute(f'SELECT count(*) FROM "{schema}"."{table}"').fetchone()[0]
+                lines.append(f"  {path.relative_to(work)} {schema}.{table}: {rows} rows")
+        except (
+            duckdb.Error
+        ) as exc:  # allow-ble: a diagnostic of a timed-out run; says what it could not read
+            lines.append(f"  {path.relative_to(work)}: not read ({exc})")
+        finally:
+            con.close()
+    return lines or ["  no DuckDB store file under the data folder"]
 
 
 def _replica_states(places: list[tuple[str, str | None]], demo_name: str) -> str:
@@ -806,7 +849,7 @@ def _replica_states(places: list[tuple[str, str | None]], demo_name: str) -> str
                     text(
                         "SELECT source_id, schema_name, table_name, build_state, requested_at, "
                         "requested_reason, build_wait, completed_at, completed_rows, built_store, "
-                        "last_error "
+                        "build_method, rows_copied, last_error "
                         f'FROM "{schema}".replica_state ORDER BY 1, 2, 3'
                     )
                 ).mappings()
@@ -897,6 +940,8 @@ def _seed_node(
                         ],
                         demo.name,
                     )
+                    + "\nembedded stores:\n"
+                    + "\n".join(_embedded_stores(work))
                 )
             time.sleep(2)
         httpx.get(f"http://127.0.0.1:{http_port}/health", timeout=10).raise_for_status()
