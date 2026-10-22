@@ -66,15 +66,29 @@ type Identity = {
   assignments?: { role_id: string; domain_id: string }[];
 };
 
-function identity({ userId, orgMemberships = [], assignments = [] }: Identity) {
+// The whole of /auth/me's answer, typed: a field the server sends is never left out of a stand-in,
+// as a mock missing env_capabilities once crashed onboarding ("envCapabilities is not iterable").
+function identity({
+  userId,
+  orgMemberships = [],
+  assignments = [],
+}: Identity): Awaited<ReturnType<typeof fetchMe>> {
   return {
     user_id: userId,
+    email: null,
+    display_name: null,
+    given_name: null,
+    family_name: null,
     dev_mode: false,
+    billing: false,
+    active_org_id: null,
+    control_plane_id: "cp-1",
     assignments,
     org_memberships: orgMemberships,
-    active_org_id: null,
+    // A member-less user owns no environment and holds no derived role: empty, never absent.
     env_capabilities: [],
-  } as unknown as Awaited<ReturnType<typeof fetchMe>>;
+    derived_roles: [],
+  };
 }
 
 function resolvesTo(spec: Identity) {

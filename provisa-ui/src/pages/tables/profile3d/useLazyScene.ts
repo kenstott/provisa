@@ -58,7 +58,11 @@ export function useLazyScene<S extends Themed>(
         setScene(s);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (cancelled) return;
+        // Shown on the stage (Stage3D's alert) and logged, so a browser without WebGL is a
+        // visible failure, never a stage that stays loading.
+        console.error("The 3D view could not start:", e);
+        setError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       cancelled = true;

@@ -32,6 +32,7 @@ lose and reconnect, because no connection ever outlives one call.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -42,27 +43,39 @@ import duckdb
 
 from provisa.core.host_lock import lock_fd, unlock_fd
 
+log = logging.getLogger(__name__)
+
 _MAT_STORE_ALIAS = "mat_store"
 _LOCK_SUFFIX = ".lock"
 _LOCK_POLL_S = 0.005
 
 
-def _lock_exclusive(fd: int) -> None:
-    """Take the exclusive `flock`, bounded by the current request's remaining budget (REQ-1882).
+def _lock_exclusive(fd: int, path: str) -> None:
+    """Take the exclusive `flock` on the store's lock file ``path``, bounded by the current
+    request's remaining budget (REQ-1882).
 
     Outside a request there is no budget and the wait is unbounded, as before. Inside one, a
     blocking `flock` could not be pre-empted by the request deadline (it is not a statement with a
-    cancel), so the lock is polled non-blocking until it frees or the budget runs out."""
+    cancel), so the lock is polled non-blocking until it frees or the budget runs out. A lock that
+    is held when asked for is named when the wait starts and when it ends, at WARNING (the hosted
+    tiers log at WARNING): a stall on a store then says which store it waited on."""
     from provisa.core import request_deadline
 
-    if request_deadline.remaining() is None:
-        lock_fd(fd, wait=True)
+    if lock_fd(fd, wait=False):
         return
-    while not lock_fd(fd, wait=False):
-        left = request_deadline.remaining()
-        if left is None or left <= 0:
-            raise TimeoutError("request budget spent waiting for the materialize store lock")
-        time.sleep(min(_LOCK_POLL_S, left))
+    started = time.monotonic()
+    log.warning("waiting on the materialize store lock %s", path)
+    try:
+        if request_deadline.remaining() is None:
+            lock_fd(fd, wait=True)
+            return
+        while not lock_fd(fd, wait=False):
+            left = request_deadline.remaining()
+            if left is None or left <= 0:
+                raise TimeoutError("request budget spent waiting for the materialize store lock")
+            time.sleep(min(_LOCK_POLL_S, left))
+    finally:
+        log.warning("materialize store lock %s: waited %.1fs", path, time.monotonic() - started)
 
 
 _GEN_SUFFIX = ".gen"
@@ -176,7 +189,7 @@ def _with_store(
     lock_path = db_path + _LOCK_SUFFIX
     mode = ", READ_ONLY" if read_only else ""
     with open(lock_path, "a+") as lockfile:
-        _lock_exclusive(lockfile.fileno())
+        _lock_exclusive(lockfile.fileno(), lock_path)
         try:
             con = duckdb.connect(":memory:")
             con.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb{mode})")

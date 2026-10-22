@@ -60800,8 +60800,9 @@
     the governed table to scan, not for a schema and table of the source. A checker has no remote schema
     — nothing exists upstream until a scan runs — so the schema/table pickers, column discovery, the column
     grid and the watermark picker are not shown. The contract panel's dataset picker names the table to
-    scan; the results table name (<table>_scan), alias (<table>_quality) and description are derived from
-    it and stay editable; the results envelope's visibility is one role list; the rules are authored in
+    scan; the results table name (<table>_scan), alias (<table>_quality) [SUPERSEDED by REQ-2132, 2026-10-21 -- the description is the registrant's
+    quality claim, not derived. Kept here for history; do not implement against it.] and description [END
+    SUPERSEDED BLOCK] are derived from it and stay editable; the results envelope's visibility is one role list; the rules are authored in
     the same form. The registration carries the contract plus the one placeholder column the server replaces
     (REQ-1443), and the source is never introspected.
   use_case: The add-table form offered "Select schema..." and a table picker stuck on "Loading..." for
@@ -86158,7 +86159,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2123
   target: "2026-Q4"
 - id: REQ-2125
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86200,8 +86201,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1584
   - REQ-1934
   target: "2026-Q4"
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/_catalog_descriptions.py
+  - provisa/api/app_loaders.py
+  - provisa/api/app.py
+  - provisa/dq/registration.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  tests:
+  - tests/unit/test_data_products_meta.py
+  - tests/unit/test_meta_glossary_views.py
+  - tests/integration/test_dq_scan_history_e2e.py
 - id: REQ-2126
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86259,6 +86273,24 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1640
   - REQ-1667
   target: "2026-Q4"
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/_catalog_descriptions.py
+  - provisa/api/app_loaders.py
+  - provisa/api/app.py
+  - provisa/api/admin/lineage_router.py
+  - provisa/lineage/edges.py
+  - provisa/lineage/merge.py
+  - provisa/lineage/commands.py
+  - provisa/security/rights.py
+  - provisa/compiler/stage2.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  tests:
+  - tests/unit/test_data_product_edges.py
+  - tests/unit/test_statement_contract.py
+  - tests/integration/test_data_product_edges_e2e.py
 - id: REQ-2127
   status: proposed
   since: 2026-10
@@ -86353,7 +86385,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1584
   target: "2026-Q4"
 - id: REQ-2129
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86391,6 +86423,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2128
   - REQ-1640
   target: "2026-Q4"
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/_catalog_descriptions.py
+  - provisa/api/app_loaders.py
+  - provisa/api/admin/lineage_router.py
+  - provisa/lineage/edges.py
+  - provisa/lineage/merge.py
+  - provisa/security/rights.py
+  - provisa/compiler/stage2.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  tests:
+  - tests/unit/test_column_lineage_edges.py
+  - tests/integration/test_data_product_edges_e2e.py
 - id: REQ-2130
   status: proposed
   since: 2026-10
@@ -86405,7 +86452,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     button. Nodes are glossary terms, and edges are term-to-term edges. Edge type (KIND_OF, PART_OF,
     SYNONYM_OF, REPLACES and the other term edge types) is a filter. The dimensions are as follows.
     Domain: domains are cluster nodes, and a term links to each domain it belongs to, as the glossary
-    derives them (REQ-1591), with enterprise-scope terms (REQ-1592) at the centre; terms are not
+    derives them (REQ-1591), with enterprise-scope terms (REQ-1593) at the centre; terms are not
     coloured by domain, because a term can belong to several. Status: a term is proposed when it is in
     service (neither retired nor deprecated) but not live, meaning it has no definition or is not
     grounded (no chain of edges from it reaches a term bound to a column), by the one admission rule

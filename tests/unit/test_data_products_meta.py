@@ -11,7 +11,8 @@
 """REQ-2125: data products in the meta domain.
 
 data_products_meta holds one row per product and only its own fields; every section of the
-product -- its domain, member tables (checkers told apart by dq_contract), commands, tags,
+product -- its domain, member tables (checkers told apart by dq_contract, each reaching the
+table its contract scans), commands, tags,
 glossary terms and profile results -- is reached from that row over the seeded meta
 relationships alone. The views run on the real control plane, and each hop joins on the columns
 the seeded relationship row names, so what is tested is the edge a GraphQL, Cypher or SQL client
@@ -27,6 +28,7 @@ import pytest
 from provisa.api._meta_seed import META_RELATIONSHIPS
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES
+from provisa.dq.registration import write_checker_targets
 from provisa.security.rights import GOVERNANCE_META_COLUMNS
 
 # The fields REQ-2125 lists, in order: nothing flattened, no arrays, no counts.
@@ -182,6 +184,8 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
             await _seed(conn)
             for name in _VIEWS:
                 await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
+            # The model build's own step: the checker's contract scans customers (id 1).
+            await write_checker_targets(conn, {2: 1})
 
             # The product's own fields, and nothing else.
             rows = (await conn.execute_core(text("SELECT * FROM data_products_meta"))).fetchall()
@@ -203,6 +207,16 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
                 "customers_checks": True,
             }
             member_ids = [m["id"] for m in members]
+
+            # The checker reaches the table it checks, and that table its checker.
+            checker = [m for m in members if m["dq_contract"] is not None]
+            assert [c["checked_table_id"] for c in checker] == [1]
+            checks = await _follow(
+                conn, "meta:registered_tables:checks", [c["id"] for c in checker]
+            )
+            assert [t["table_name"] for t in checks] == ["customers"]
+            checked_by = await _follow(conn, "meta:registered_tables:checked_by", [1])
+            assert [t["table_name"] for t in checked_by] == ["customers_checks"]
 
             # Back from a member to its product.
             back = await _follow(conn, "meta:registered_tables:data_products", member_ids)
@@ -252,6 +266,8 @@ def test_the_product_view_is_a_meta_table_whose_relationships_are_all_seeded():
         "meta:tag_assignments:data_products",
         "meta:registered_tables:profile_results",
         "meta:registered_tables:profiled_table",
+        "meta:registered_tables:checks",
+        "meta:registered_tables:checked_by",
     ):
         src, *_, tgt = _edge(rel_id)
         assert {src, tgt} <= set(_META_TABLES), rel_id
@@ -262,5 +278,34 @@ def test_each_view_keeps_its_own_tiers():
     member's registration hides from a caller without view_governance stays hidden however the
     member is reached, because the tier is the target view's own."""
     assert not set(PRODUCT_FIELDS) & GOVERNANCE_META_COLUMNS
-    assert not {"dq_contract", "profiled_table_id", "product_id"} & GOVERNANCE_META_COLUMNS
+    assert (
+        not {
+            "dq_contract",
+            "checked_table_id",
+            "profiled_table_id",
+            "product_id",
+        }
+        & GOVERNANCE_META_COLUMNS
+    )
     assert "view_sql" in GOVERNANCE_META_COLUMNS  # registered_tables_meta's governance column
+
+
+@pytest.mark.asyncio
+async def test_each_build_replaces_the_checker_targets(control_plane):
+    """The table is the last build's resolution and nothing else: a contract that scans another
+    table, or a checker that is gone, leaves no row of the build before."""
+    from sqlalchemy import text
+
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await write_checker_targets(conn, {2: 1, 5: 3})
+            await write_checker_targets(conn, {2: 4})
+            rows = (
+                await conn.execute_core(
+                    text("SELECT table_id, checked_table_id FROM checker_targets")
+                )
+            ).fetchall()
+    finally:
+        await db.close()
+    assert [tuple(r) for r in rows] == [(2, 4)]
