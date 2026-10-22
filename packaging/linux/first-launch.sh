@@ -947,7 +947,7 @@ services:
       # one's bundle into demo-bundles/ and runs its stores; the tier serves the ready version
       # and, at each sandbox opened, asks for a newer published one -- no redeploy. A demo's
       # logs are read live from its bundle there.
-      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod"
+      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom"
       PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       # This tier builds the deployment's org at startup too, from the control plane, and the
