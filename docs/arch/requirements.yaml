@@ -87103,16 +87103,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded
     variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib
     is a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:) The
-    canonical graph form is the Cypher+ IR: Cypher's pattern IR plus what SPARQL needs, which is path
-    expressions (sequence, alternative and inverse among them), variable predicates, a triples output
-    for CONSTRUCT, and IRI and datatype values. It is to graph languages what semantic SQL is to every
-    language, a canonical IR. The tiers are: a graph language, parsed into the Cypher+ IR, which holds
-    the graph meaning (patterns, paths, variable predicates, triples out); one back end lowers that to
-    semantic SQL, which holds the data meaning (views expanded, governed whole, optimized, routed).
-    Every graph language front end parses into the Cypher+ IR: Cypher, SPARQL, and GQL later. A new
-    graph language costs a parser into it, and nothing below it is duplicated. SPARQL is never
-    translated through Cypher text. Where a SPARQL query falls within what Cypher expresses, the SPARQL
-    tab may also show the equivalent Cypher.
+    canonical graph form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher's pattern IR
+    extended with what SPARQL needs, which is path expressions (sequence, alternative and inverse among
+    them), variable predicates, a triples output for CONSTRUCT, and IRI and datatype values. It stands
+    to graph languages as semantic SQL stands to every language, and semantic SQL is likewise a
+    superset IR, not SQL: SQL extended with the model (model names, views and metrics resolved,
+    governance attached), lowered per engine at routing and never run as written. Neither is the
+    language it is named after. The tiers are: a graph language, parsed into the Cypher+ IR, which
+    holds the graph meaning (patterns, paths, variable predicates, triples out); the graph mapping
+    lowers that, in one back end, into semantic SQL, which holds the data meaning (views expanded,
+    governed whole, optimized, routed). Every graph language front end parses into the Cypher+ IR:
+    Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing below it is
+    duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within what
+    Cypher expresses, the SPARQL tab may also show the equivalent Cypher.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
