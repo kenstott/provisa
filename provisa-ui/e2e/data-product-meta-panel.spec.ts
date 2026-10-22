@@ -133,8 +133,10 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     // Focused on the product, on the Knowledge graph preset, with the layers it has data for.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
     await expect(page.getByRole("radio", { name: "Knowledge graph" })).toBeChecked();
+    // The test id is on each chip's input, which Mantine hides behind its label: the layer is
+    // offered and on.
     for (const layer of ["products", "tables", "commands", "quality"]) {
-      await expect(page.getByTestId(`graph3d-layer-${layer}`)).toBeVisible();
+      await expect(page.getByTestId(`graph3d-layer-${layer}`)).toBeChecked();
     }
   });
 
