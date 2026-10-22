@@ -87102,10 +87102,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     changes nothing. Second, a SPARQL front end lowers rdflib's SPARQL algebra to that IR and adds what
     SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded
     variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib
-    is a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:) The
-    canonical graph form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher's pattern IR
-    extended with what SPARQL needs, which is path expressions (sequence, alternative and inverse among
-    them), variable predicates, a triples output for CONSTRUCT, and IRI and datatype values. It stands
+    is a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:)
+    [SUPERSEDED by REQ-2135, 2026-10-22 -- the IR is the GQL+ IR, its pattern core ISO GQL's, extended
+    only where GQL has nothing (GQL+ IR amendment below); the tiers and the symmetry stand, read with
+    GQL+ IR for Cypher+ IR. Kept here for history; do not implement against it.] The canonical graph
+    form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher's pattern IR extended with what
+    SPARQL needs, which is path expressions (sequence, alternative and inverse among them), variable
+    predicates, a triples output for CONSTRUCT, and IRI and datatype values. [END SUPERSEDED BLOCK] It stands
     to graph languages as semantic SQL stands to every language, and semantic SQL is likewise a
     superset IR, not SQL: SQL extended with the model (model names, views and metrics resolved,
     governance attached), lowered per engine at routing and never run as written. Neither is the
@@ -87118,7 +87121,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric:
     Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no
     language is its IR, the namesake included. So the refactor makes Cypher's parser a front end like
-    SPARQL's, and nothing below the IR is specific to Cypher.
+    SPARQL's, and nothing below the IR is specific to Cypher. (Amended 2026-10-22, GQL+ IR:) The
+    graph-side IR is the GQL+ IR. Its pattern core follows ISO GQL (ISO/IEC 39075:2024): quantified
+    path patterns, the path modes WALK, TRAIL, ACYCLIC and SIMPLE, and label expressions. It extends GQL
+    only with the three things GQL lacks: variable predicates over properties, a triples output for
+    CONSTRUCT, and IRI and datatype values. Cypher is close to a subset of GQL and maps straight in;
+    today's depth-capped, cycle-free paths are ACYCLIC with a bound. SPARQL's path sequences,
+    alternatives and inverses map onto GQL's own constructs, not invented ones. A GQL front end is a
+    parser and nothing more, and SQL/PGQ (SQL:2023 Part 16, GRAPH_TABLE), which uses the same pattern
+    model, could enter the same IR later. The tiers are unchanged: graph languages, then the GQL+ IR,
+    then semantic SQL. GraphQL is not a graph language here: it goes on lowering straight to semantic
+    SQL.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
