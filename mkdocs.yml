@@ -167,6 +167,7 @@ nav:
       - Features: features.md
       - Requirements: arch/requirements.md
   - Release Notes:
+      - v0.1.0-alpha.495: releases/v0.1.0-alpha.495.md
       - v0.1.0-alpha.494: releases/v0.1.0-alpha.494.md
       - v0.1.0-alpha.493: releases/v0.1.0-alpha.493.md
       - v0.1.0-alpha.492: releases/v0.1.0-alpha.492.md
