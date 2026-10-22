@@ -1248,7 +1248,7 @@
       },
       "reproduceAsFiled": {
         "title": "Registrado al momento de la presentación",
-        "description": "Es el momento en que empezó la reconstrucción de la corrección, tomado de la respuesta del paso de actualizaciones. Cae después de que se registraran las cifras presentadas y antes de que se registrara la corrección. El informe se lee ahora tal como Provisa lo tenía registrado en ese momento, así que nada registrado después puede cambiarlo."
+        "description": "Este es el momento en que el informe se generó y se presentó por primera vez, tomado de la respuesta del paso de actualizaciones. Es posterior al registro de las cifras presentadas y anterior a la corrección. El informe se lee ahora tal como Provisa lo tenía registrado en ese momento, de modo que nada registrado después puede cambiarlo."
       },
       "reproduceFiled": {
         "title": "El informe tal como se presentó",

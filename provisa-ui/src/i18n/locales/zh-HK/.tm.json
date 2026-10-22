@@ -6815,7 +6815,7 @@
   "zh-HK/tour.json::tour.steps.qualitySilver.title": "Silver: cleaned",
   "zh-HK/tour.json::tour.steps.qualityWhichChecks.description": "A silver sale and, along ADMITTED_BY, every check of the run that admitted it: each one passed, with no failing rows.",
   "zh-HK/tour.json::tour.steps.qualityWhichChecks.title": "Which checks admitted silver",
-  "zh-HK/tour.json::tour.steps.reproduceAsFiled.description": "This is the time the correction's rebuild began, taken from the answer in the refreshes step. It falls after the filed figures were recorded and before the correction was. The report is now read as Provisa had it recorded at that time, so nothing recorded later can change it.",
+  "zh-HK/tour.json::tour.steps.reproduceAsFiled.description": "This is the time the report was first built and filed, taken from the answer in the refreshes step. It falls after the filed figures were entered and before the correction was. The report is now read as Provisa had it recorded at that time, so nothing recorded later can change it.",
   "zh-HK/tour.json::tour.steps.reproduceAsFiled.title": "As recorded when it was filed",
   "zh-HK/tour.json::tour.steps.reproduceAsOf.description": "The report as of its business date: what the figures were for 30 September.",
   "zh-HK/tour.json::tour.steps.reproduceAsOf.title": "As of 30 September",

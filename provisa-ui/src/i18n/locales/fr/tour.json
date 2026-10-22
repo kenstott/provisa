@@ -1248,7 +1248,7 @@
       },
       "reproduceAsFiled": {
         "title": "Enregistré au moment du dépôt",
-        "description": "C'est l'heure à laquelle a commencé la reconstruction liée à la correction, reprise de la réponse de l'étape des rafraîchissements. Elle tombe après l'enregistrement des chiffres déposés et avant celui de la correction. Le rapport est maintenant lu tel que Provisa l'avait enregistré à ce moment-là, si bien que rien d'enregistré plus tard ne peut le changer."
+        "description": "C'est le moment où le rapport a été construit et déposé pour la première fois, tiré de la réponse de l'étape des actualisations. Il se situe après la saisie des chiffres déposés et avant celle de la correction. Le rapport est maintenant lu tel que Provisa l'avait enregistré à ce moment, si bien que rien de ce qui a été enregistré ensuite ne peut le modifier."
       },
       "reproduceFiled": {
         "title": "Le rapport tel que déposé",

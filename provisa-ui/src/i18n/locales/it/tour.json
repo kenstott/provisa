@@ -1248,7 +1248,7 @@
       },
       "reproduceAsFiled": {
         "title": "Registrato al momento della presentazione",
-        "description": "È l'ora in cui è iniziata la ricostruzione per la correzione, presa dalla risposta del passo sugli aggiornamenti. Cade dopo la registrazione dei valori depositati e prima di quella della correzione. Il report ora si legge come Provisa lo aveva registrato in quel momento, quindi nulla di registrato dopo può cambiarlo."
+        "description": "Questo è il momento in cui il report è stato costruito e depositato per la prima volta, preso dalla risposta del passaggio degli aggiornamenti. Cade dopo l'inserimento delle cifre depositate e prima di quello della correzione. Il report viene ora letto così come Provisa lo aveva registrato in quel momento, quindi nulla di registrato dopo può cambiarlo."
       },
       "reproduceFiled": {
         "title": "Il report come presentato",

@@ -1248,7 +1248,7 @@
       },
       "reproduceAsFiled": {
         "title": "Erfasst bis zur Einreichung",
-        "description": "Das ist der Zeitpunkt, zu dem der Neuaufbau für die Korrektur begann, entnommen aus der Antwort im Schritt zu den Aktualisierungen. Er liegt nach der Aufzeichnung der eingereichten Zahlen und vor der Aufzeichnung der Korrektur. Der Bericht wird jetzt so gelesen, wie Provisa ihn damals aufgezeichnet hatte, sodass nichts später Aufgezeichnetes ihn ändern kann."
+        "description": "Das ist der Zeitpunkt, zu dem der Bericht zum ersten Mal erstellt und eingereicht wurde, entnommen aus der Antwort im Schritt der Aktualisierungen. Er liegt nach der Erfassung der eingereichten Zahlen und vor der Korrektur. Der Bericht wird jetzt so gelesen, wie Provisa ihn zu diesem Zeitpunkt erfasst hatte, sodass nichts später Erfasstes ihn ändern kann."
       },
       "reproduceFiled": {
         "title": "Der Bericht wie eingereicht",

@@ -1248,7 +1248,7 @@
       },
       "reproduceAsFiled": {
         "title": "As recorded when it was filed",
-        "description": "This is the time the correction's rebuild began, taken from the answer in the refreshes step. It falls after the filed figures were recorded and before the correction was. The report is now read as Provisa had it recorded at that time, so nothing recorded later can change it."
+        "description": "This is the time the report was first built and filed, taken from the answer in the refreshes step. It falls after the filed figures were entered and before the correction was. The report is now read as Provisa had it recorded at that time, so nothing recorded later can change it."
       },
       "reproduceFiled": {
         "title": "The report as filed",

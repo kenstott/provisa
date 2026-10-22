@@ -1248,7 +1248,7 @@
       },
       "reproduceAsFiled": {
         "title": "Vastgelegd op het moment van indienen",
-        "description": "Dit is het moment waarop de herbouw voor de correctie begon, overgenomen uit het antwoord van de stap over verversingen. Het valt na de vastlegging van de ingediende cijfers en vóór die van de correctie. Het rapport wordt nu gelezen zoals Provisa het op dat moment had vastgelegd, dus niets wat later is vastgelegd kan het veranderen."
+        "description": "Dit is het moment waarop het rapport voor het eerst is gebouwd en ingediend, overgenomen uit het antwoord in de stap met de verversingen. Het valt na de invoer van de ingediende cijfers en vóór die van de correctie. Het rapport wordt nu gelezen zoals Provisa het op dat moment had vastgelegd, zodat niets dat later is vastgelegd het kan veranderen."
       },
       "reproduceFiled": {
         "title": "Het rapport zoals ingediend",

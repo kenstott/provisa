@@ -1248,7 +1248,7 @@
       },
       "reproduceAsFiled": {
         "title": "Registrado no momento da entrega",
-        "description": "Este é o momento em que começou a reconstrução da correção, tirado da resposta do passo das atualizações. Ele fica depois do registro dos números entregues e antes do registro da correção. O relatório agora é lido como o Provisa o tinha registrado naquele momento, então nada registrado depois pode mudá-lo."
+        "description": "Este é o momento em que o relatório foi gerado e entregue pela primeira vez, retirado da resposta da etapa de atualizações. Fica depois do registro dos valores entregues e antes do da correção. O relatório agora é lido como o Provisa o tinha registrado naquele momento, de modo que nada registrado depois pode alterá-lo."
       },
       "reproduceFiled": {
         "title": "O relatório como entregue",
