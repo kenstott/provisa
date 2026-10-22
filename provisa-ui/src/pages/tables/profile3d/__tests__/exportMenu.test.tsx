@@ -13,8 +13,8 @@
 // view, and a recording shows its progress and can be stopped.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
-import type { ExportableScene } from "../exportImage";
+import { fireEvent, render, screen, waitFor, within } from "../../../../test-utils/render";
+import { exportImage, type ExportableScene } from "../exportImage";
 
 const saved = vi.hoisted(() => ({ files: [] as string[], recordings: [] as AbortSignal[] }));
 vi.mock("../exportImage", async (actual) => {
@@ -52,7 +52,7 @@ const scene = (canVector: boolean) =>
   }) as unknown as ExportableScene;
 
 function stage(exportable: ExportableScene) {
-  render(
+  return render(
     <Stage3D
       wrapRef={{ current: null }}
       canvasRef={{ current: null }}
@@ -101,5 +101,23 @@ describe("a 3D view's Export control", () => {
     await waitFor(() => expect(screen.queryByTestId("x-recording")).toBeNull());
     expect(saved.recordings[0].aborted).toBe(true);
     expect(saved.files).toHaveLength(0);
+  });
+
+  it("remembers the scale and the format last chosen, for every view", async () => {
+    const first = stage(scene(true));
+    fireEvent.click(screen.getByTestId("x-export"));
+    const twice = within(await screen.findByTestId("x-export-scale")).getByLabelText("2×");
+    fireEvent.click(twice);
+    fireEvent.click(screen.getByTestId("x-export-jpeg"));
+    await waitFor(() => expect(saved.files).toHaveLength(1));
+    expect(vi.mocked(exportImage).mock.calls.at(-1)?.slice(2)).toEqual(["jpeg", 2]);
+    first.unmount();
+
+    stage(scene(true));
+    fireEvent.click(screen.getByTestId("x-export"));
+    const scale = await screen.findByTestId("x-export-scale");
+    expect(within(scale).getByLabelText("2×")).toBeChecked();
+    expect(within(screen.getByTestId("x-export-jpeg")).getByLabelText("Last used")).toBeTruthy();
+    expect(within(screen.getByTestId("x-export-png")).queryByLabelText("Last used")).toBeNull();
   });
 });

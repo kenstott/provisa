@@ -7779,5 +7779,6 @@
   "zh/profile3d.json::profile3d.format_webm": "WebM video",
   "zh/profile3d.json::profile3d.recording": "Recording the turn… {{percent}}%",
   "zh/profile3d.json::profile3d.cancelRecording": "Stop recording",
-  "zh/profile3d.json::profile3d.exportFailed": "The view could not be exported: {{error}}"
+  "zh/profile3d.json::profile3d.exportFailed": "The view could not be exported: {{error}}",
+  "zh/profile3d.json::profile3d.lastFormat": "Last used"
 }

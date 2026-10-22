@@ -26,6 +26,7 @@
     "format_webm": "WebM-Video",
     "recording": "Die Drehung wird aufgenommen … {{percent}} %",
     "cancelRecording": "Aufnahme beenden",
-    "exportFailed": "Die Ansicht konnte nicht exportiert werden: {{error}}"
+    "exportFailed": "Die Ansicht konnte nicht exportiert werden: {{error}}",
+    "lastFormat": "Zuletzt verwendet"
   }
 }

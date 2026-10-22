@@ -26,6 +26,7 @@
     "format_webm": "WebM 视频",
     "recording": "正在录制旋转… {{percent}}%",
     "cancelRecording": "停止录制",
-    "exportFailed": "无法导出视图：{{error}}"
+    "exportFailed": "无法导出视图：{{error}}",
+    "lastFormat": "上次使用"
   }
 }

@@ -26,6 +26,7 @@
     "format_webm": "WebM 動画",
     "recording": "回転を録画中… {{percent}}%",
     "cancelRecording": "録画を停止",
-    "exportFailed": "ビューをエクスポートできませんでした: {{error}}"
+    "exportFailed": "ビューをエクスポートできませんでした: {{error}}",
+    "lastFormat": "前回使用"
   }
 }

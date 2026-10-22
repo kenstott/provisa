@@ -26,6 +26,7 @@
     "format_webm": "WebM video",
     "recording": "Recording the turn… {{percent}}%",
     "cancelRecording": "Stop recording",
-    "exportFailed": "The view could not be exported: {{error}}"
+    "exportFailed": "The view could not be exported: {{error}}",
+    "lastFormat": "Last used"
   }
 }

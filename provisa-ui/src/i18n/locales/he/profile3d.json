@@ -26,6 +26,7 @@
     "format_webm": "סרטון WebM",
     "recording": "מקליט את הסיבוב… {{percent}}%",
     "cancelRecording": "עצירת ההקלטה",
-    "exportFailed": "לא ניתן היה לייצא את התצוגה: {{error}}"
+    "exportFailed": "לא ניתן היה לייצא את התצוגה: {{error}}",
+    "lastFormat": "שימוש אחרון"
   }
 }

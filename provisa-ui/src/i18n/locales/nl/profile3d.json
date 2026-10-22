@@ -26,6 +26,7 @@
     "format_webm": "WebM-video",
     "recording": "De draai wordt opgenomen… {{percent}}%",
     "cancelRecording": "Opname stoppen",
-    "exportFailed": "De weergave kon niet worden geëxporteerd: {{error}}"
+    "exportFailed": "De weergave kon niet worden geëxporteerd: {{error}}",
+    "lastFormat": "Laatst gebruikt"
   }
 }

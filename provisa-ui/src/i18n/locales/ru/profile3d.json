@@ -26,6 +26,7 @@
     "format_webm": "Видео WebM",
     "recording": "Запись оборота… {{percent}}%",
     "cancelRecording": "Остановить запись",
-    "exportFailed": "Не удалось экспортировать вид: {{error}}"
+    "exportFailed": "Не удалось экспортировать вид: {{error}}",
+    "lastFormat": "Последний использованный"
   }
 }

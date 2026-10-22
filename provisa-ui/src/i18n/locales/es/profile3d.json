@@ -26,6 +26,7 @@
     "format_webm": "Vídeo WebM",
     "recording": "Grabando el giro… {{percent}} %",
     "cancelRecording": "Detener la grabación",
-    "exportFailed": "No se pudo exportar la vista: {{error}}"
+    "exportFailed": "No se pudo exportar la vista: {{error}}",
+    "lastFormat": "Último usado"
   }
 }

@@ -26,6 +26,7 @@
     "format_webm": "WebM वीडियो",
     "recording": "घुमाव रिकॉर्ड हो रहा है… {{percent}}%",
     "cancelRecording": "रिकॉर्डिंग रोकें",
-    "exportFailed": "दृश्य निर्यात नहीं हो सका: {{error}}"
+    "exportFailed": "दृश्य निर्यात नहीं हो सका: {{error}}",
+    "lastFormat": "पिछली बार इस्तेमाल किया गया"
   }
 }
