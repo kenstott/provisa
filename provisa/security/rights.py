@@ -604,6 +604,18 @@ GOVERNANCE_META_ROWS: dict[str, str] = {
 }
 
 
+# REQ-1593: the glossary meta views, each with the columns holding the domains (as |a|b|) of the
+# terms its row is about. A row is read only when each of those terms is readable to the caller
+# by the glossary's own rule (provisa.core.glossary.readable_term): a term with no domains, an
+# enterprise ("*") term, or one sharing a domain with the caller.
+GLOSSARY_SCOPED_META_VIEWS: dict[str, tuple[str, ...]] = {
+    "glossary_terms_meta": ("term_domains",),
+    "glossary_term_refs_meta": ("term_domains",),
+    "glossary_term_edges_meta": ("from_term_domains", "to_term_domains"),
+    "glossary_term_domains_meta": ("term_domains",),
+}
+
+
 def compute_meta_row_scope(
     role: dict[str, object],
     tables: list[dict],

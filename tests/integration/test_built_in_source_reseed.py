@@ -71,12 +71,16 @@ async def seeded_schema(docker_postgres, monkeypatch):
     monkeypatch.setattr(state, "model_db", state.tenant_db, raising=False)
 
     async def seed(engine_name: str) -> None:
-        # The otel Iceberg catalog is Trino's alone (EngineBackend.has_otel_catalog), and the ops
-        # seed reads it to decide whether to register or remove the provisa-otel rows.
+        # The ops seed registers a provisa-otel table for each signal the engine reads at
+        # otel.signals.<table> (EngineBackend.landed_signals), and removes the rest: every one on
+        # Trino's otel catalog, the traces DuckDB lands itself (DuckDBBackend.landed_signals).
+        from provisa.observability.ops_schema import OPS_TABLES
+
+        landed = {"trino": frozenset(OPS_TABLES), "duckdb": frozenset({"traces"})}[engine_name]
         monkeypatch.setattr(
             state,
             "federation_engine",
-            SimpleNamespace(name=engine_name, has_otel_catalog=engine_name == "trino"),
+            SimpleNamespace(name=engine_name, landed_signals=landed),
             raising=False,
         )
         await _seed_built_in_sources(host, port, "provisa", "provisa", org_id=org_id)

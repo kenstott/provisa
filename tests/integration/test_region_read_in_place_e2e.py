@@ -122,6 +122,7 @@ def _config(stack: "_Stack", files: Path, work: Path, kind: str) -> dict:
         # Each region's readers see that region's rows (provisa.region is the answering node's).
         "rls_rules": [
             {
+                "description": "Test rule.",
                 "table_id": "orders",
                 "role_id": _ROLE,
                 "filter": "region = current_setting('provisa.region')",

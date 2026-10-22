@@ -25,6 +25,7 @@ PACKAGES = (
     "pyarrow",
     "scikit-learn",
     "matplotlib",
+    "networkx",
     "micropip",
     "ssl",
     "sqlite3",

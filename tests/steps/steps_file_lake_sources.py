@@ -94,7 +94,12 @@ def _build_lake_ctx(source_type: str):
             _col("payload", "varchar"),
         ]
     }
-    role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ["query_development"],
+        "domain_access": ["*"],
+    }
     domains = [{"id": "datalake", "description": "Data Lake"}]
     si = SchemaInput(
         tables=tables,
@@ -496,7 +501,12 @@ def then_graphql_fields_reflect_snake_case(shared_data):
             "gql_naming_convention": "snake",
         }
     ]
-    role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ["query_development"],
+        "domain_access": ["*"],
+    }
     domains = [{"id": "test_domain", "description": "Test Domain"}]
 
     si = SchemaInput(
@@ -836,7 +846,12 @@ def when_graphql_query_issued_for_customers(shared_data):
             "gql_naming_convention": "snake",
         }
     ]
-    role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ["query_development"],
+        "domain_access": ["*"],
+    }
     domains = [{"id": "datalake", "description": "Data Lake"}]
     si = SchemaInput(
         tables=tables,

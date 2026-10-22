@@ -58,6 +58,21 @@
     "edge_owns": "владеет",
     "loadError": "Не удалось прочитать граф: {{error}}",
     "zoomTo": "Приблизить",
-    "edge_column_lineage": "питает столбец"
+    "edge_column_lineage": "питает столбец",
+    "preset_taxonomy": "Таксономия",
+    "layer_domains": "Домены",
+    "layer_data": "Данные",
+    "show": "Показать",
+    "status_proposed": "Предложен",
+    "status_deprecated": "Устарел",
+    "status_retired": "Выведен",
+    "filterEdgeType": "Типы рёбер",
+    "why_undefined": "не определён",
+    "why_ungrounded": "не связан с данными",
+    "glossaryUnreadable": "Ваша роль не может читать глоссарий в домене meta.",
+    "ontologyTitle": "Онтология глоссария",
+    "ontologyView": "Вид онтологии",
+    "selected_one": "Выбрано: {{count}}",
+    "selected_other": "Выбрано: {{count}}"
   }
 }
