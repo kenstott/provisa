@@ -73,7 +73,7 @@ Provisa reads your code's own declarations: docstrings and type hints in Python,
 | `@stream` | A live table. The function is a generator, and each row is sent as it is yielded. |
 
 - A function without a tag is ignored.
-- A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal names the function and lists every problem at once, so you fix them in one pass.
+- A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal lists every problem at once, so you fix them in one pass.
 
 The row type gives the columns:
 
@@ -107,7 +107,7 @@ The operators:
 
 - A range on a column fills both of its parameters: `score BETWEEN 0.5 AND 0.9` gives `gte_score` and `lte_score`.
 - Column names are matched exactly as you declared them in the row type. A name that matches only once Provisa renames the column for a reader is not a match.
-- A declaration your function's types can't take is refused by name.
+- A declaration your function's types can't take is refused.
 - The filter is still applied to the rows your function returns, so a function that ignores or loosens a value it is given can't return wrong rows.
 
 ### Batched keys: the `loader` parameter {: #batched-keys }
@@ -124,7 +124,7 @@ A function that takes a parameter named `loader` is called once per batch instea
 - **Typed as usual.** The function still declares its row type alone, a list of rows.
 - **Defaults needed.** Its parameters beside `loader` need defaults, because a loader call passes `loader` alone.
 - **Batch size.** Cap it, as DataLoader's `maxBatchSize` does, with `loader N` in any one of three places: a `@loader 100` line beside `@table`, a `/* @loader 100 */` comment before the `loader` parameter in TypeScript, or an `Annotated` string in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa then splits the keys into batches of that size and merges the answers by hash. Without a size, one batch holds every key.
-- **Refused by name.** A size on a function with no `loader` parameter, a size that isn't a positive integer, and two sizes on one function.
+- **Refused.** A size on a function with no `loader` parameter, a size that isn't a positive integer, and two sizes on one function.
 
 Use `loader` when one call over many keys does better than many calls over one:
 
@@ -174,7 +174,7 @@ Joined to a table of customers, it is called with a `loader` such as `{"9f2c..."
 - **A Git repository.** A full 40-character commit, with a subdirectory if the code isn't at the top.
 - **An upload.** A `.zip`, `.tgz` or `.tar.gz` of the code.
 - **A folder on your machine.** **Choose folder** zips the folder in your browser, leaving out `node_modules`, `.venv`, `__pycache__` and `.git`, and uploads it as the source's archive. In a browser that can keep the folder (Chrome, Edge), **Save** zips and sends it again; another browser asks you for the folder again.
-- **A directory on the server.** On a single-organization install, a directory under the ones the operator allows. It is read where it is, so an edit is read by the next query. A server of many organizations refuses it by name.
+- **A directory on the server.** On a single-organization install, a directory under the ones the operator allows. It is read where it is, so an edit is read by the next query. A server of many organizations refuses it.
 
 Every origin but the server directory is pinned, so the source runs exactly what was saved.
 
@@ -405,7 +405,7 @@ const reply = await client.chat.completions.create({
 
 - **By role.** Name a model as `provisa:<role>` and you get whichever model your organization assigns that role under **Admin → AI Models**; it follows that choice when an administrator changes it. You can also name a model directly when a role is assigned it.
 - **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` takes any of your organization's vector models.
-- Any other model is refused by name.
+- Any other model is refused.
 - The call goes out through your organization's own vendors, endpoints and keys, and what it sends passes through Provisa's redaction rules first.
 - Streaming isn't offered. Send `stream: false`, which is the default.
 
@@ -418,9 +418,9 @@ const reply = await client.chat.completions.create({
 - A host that can't provide the sandbox refuses to start the worker and names what is missing; code never runs unconfined. On Windows, code sources are refused.
 - On a remote host, the container's network policy is the code's egress boundary. The server's egress allow-list applies to dev mode.
 
-### Refusals by name {: #refusals }
+### Refusals {: #refusals }
 
-Every refusal names what it refused and why, before your code runs where it can:
+Each of these is refused, before your code runs where it can:
 
 - An unknown tag or a type Provisa can't map, every problem of a function at once.
 - A read that leaves out a required parameter.

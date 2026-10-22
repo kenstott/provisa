@@ -73,7 +73,7 @@ Provisa lit les déclarations de votre code lui-même : docstrings et annotation
 | `@stream` | Une table en direct. La fonction est un générateur, et chaque ligne est envoyée dès qu'elle est produite. |
 
 - Une fonction sans balise est ignorée.
-- Une balise que Provisa ne connaît pas est refusée, tout comme un type qu'il ne sait pas mapper. Le refus nomme la fonction et liste tous les problèmes d'un coup, pour que vous les corrigiez en une passe.
+- Une balise que Provisa ne connaît pas est refusée, tout comme un type qu'il ne sait pas mapper. Le refus liste tous les problèmes d'un coup, pour que vous les corrigiez en une passe.
 
 Le type de ligne donne les colonnes :
 
@@ -107,7 +107,7 @@ Les opérateurs :
 
 - Un intervalle sur une colonne remplit ses deux paramètres : `score BETWEEN 0.5 AND 0.9` donne `gte_score` et `lte_score`.
 - Les noms de colonne sont comparés exactement comme vous les avez déclarés dans le type de ligne. Un nom qui ne correspond qu'une fois que Provisa renomme la colonne pour un lecteur n'est pas une correspondance.
-- Une déclaration que les types de votre fonction ne peuvent pas accepter est refusée en la nommant.
+- Une déclaration que les types de votre fonction ne peuvent pas accepter est refusée.
 - Le filtre est quand même appliqué aux lignes que renvoie votre fonction, si bien qu'une fonction qui ignore ou assouplit une valeur reçue ne peut pas renvoyer de mauvaises lignes.
 
 ### Clés par lots : le paramètre `loader` {: #batched-keys }
@@ -124,7 +124,7 @@ Une fonction qui prend un paramètre nommé `loader` est appelée à la place un
 - **Typée comme d'habitude.** La fonction déclare toujours son seul type de ligne, une liste de lignes.
 - **Valeurs par défaut requises.** Ses paramètres à côté de `loader` ont besoin de valeurs par défaut, car un appel avec loader ne passe que `loader`.
 - **Taille de lot.** Limitez-la, comme le `maxBatchSize` de DataLoader, avec `loader N` à l'un de trois endroits : une ligne `@loader 100` à côté de `@table`, un commentaire `/* @loader 100 */` avant le paramètre `loader` en TypeScript, ou une chaîne `Annotated` en Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa répartit alors les clés en lots de cette taille et fusionne les réponses par hash. Sans taille, un lot contient toutes les clés.
-- **Refusé en le nommant.** Une taille sur une fonction sans paramètre `loader`, une taille qui n'est pas un entier positif, et deux tailles sur une même fonction.
+- **Refusé.** Une taille sur une fonction sans paramètre `loader`, une taille qui n'est pas un entier positif, et deux tailles sur une même fonction.
 
 Utilisez `loader` quand un appel sur de nombreuses clés vaut mieux que de nombreux appels sur une seule :
 
@@ -174,7 +174,7 @@ Jointe à une table de clients, elle est appelée avec un `loader` tel que `{"9f
 - **Un dépôt Git.** Un commit complet de 40 caractères, avec un sous-répertoire si le code n'est pas à la racine.
 - **Un téléversement.** Un `.zip`, `.tgz` ou `.tar.gz` du code.
 - **Un dossier sur votre machine.** **Choisir un dossier** compresse le dossier dans votre navigateur, en laissant de côté `node_modules`, `.venv`, `__pycache__` et `.git`, et le téléverse comme archive de la source. Dans un navigateur qui peut conserver le dossier (Chrome, Edge), **Enregistrer** le compresse et l'envoie à nouveau ; un autre navigateur vous redemande le dossier.
-- **Un répertoire sur le serveur.** Sur une installation à une seule organisation, un répertoire sous ceux que l'opérateur autorise. Il est lu sur place, donc une modification est lue par la requête suivante. Un serveur à plusieurs organisations le refuse en le nommant.
+- **Un répertoire sur le serveur.** Sur une installation à une seule organisation, un répertoire sous ceux que l'opérateur autorise. Il est lu sur place, donc une modification est lue par la requête suivante. Un serveur à plusieurs organisations le refuse.
 
 Toute origine sauf le répertoire du serveur est figée, si bien que la source exécute exactement ce qui a été enregistré.
 
@@ -405,7 +405,7 @@ const reply = await client.chat.completions.create({
 
 - **Par rôle.** Nommez un modèle `provisa:<role>` et vous obtenez celui que votre organisation attribue à ce rôle sous **Admin → AI Models** ; il suit ce choix quand un administrateur le modifie. Vous pouvez aussi nommer un modèle directement quand un rôle lui est attribué.
 - **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` accepte n'importe lequel des modèles vectoriels de votre organisation.
-- Tout autre modèle est refusé en le nommant.
+- Tout autre modèle est refusé.
 - L'appel sort par les propres fournisseurs, endpoints et clés de votre organisation, et ce qu'il envoie passe d'abord par les règles de masquage de Provisa.
 - Le streaming n'est pas proposé. Envoyez `stream: false`, la valeur par défaut.
 
@@ -418,9 +418,9 @@ const reply = await client.chat.completions.create({
 - Un hôte qui ne peut pas fournir le sandbox refuse de démarrer le worker et nomme ce qui manque ; le code ne s'exécute jamais sans confinement. Sous Windows, les sources de code sont refusées.
 - Sur un hôte distant, la politique réseau du conteneur est la limite de sortie du code. La liste d'autorisation en sortie du serveur s'applique au mode dev.
 
-### Refus nommés {: #refusals }
+### Refus {: #refusals }
 
-Chaque refus nomme ce qu'il a refusé et pourquoi, avant l'exécution de votre code quand c'est possible :
+Chacun de ces cas est refusé, avant l'exécution de votre code quand c'est possible :
 
 - Une balise inconnue ou un type que Provisa ne sait pas mapper, tous les problèmes d'une fonction d'un coup.
 - Une lecture qui omet un paramètre obligatoire.

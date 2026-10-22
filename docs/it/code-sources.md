@@ -73,7 +73,7 @@ Provisa legge le dichiarazioni del tuo codice stesso: docstring e annotazioni di
 | `@stream` | Una tabella live. La funzione è un generatore, e ogni riga viene inviata appena prodotta. |
 
 - Una funzione senza tag viene ignorata.
-- Un tag che Provisa non conosce viene rifiutato, come un tipo che non sa mappare. Il rifiuto nomina la funzione ed elenca tutti i problemi in una volta, così li correggi in un solo passaggio.
+- Un tag che Provisa non conosce viene rifiutato, come un tipo che non sa mappare. Il rifiuto elenca tutti i problemi in una volta, così li correggi in un solo passaggio.
 
 Il tipo di riga dà le colonne:
 
@@ -107,7 +107,7 @@ Gli operatori:
 
 - Un intervallo su una colonna riempie entrambi i suoi parametri: `score BETWEEN 0.5 AND 0.9` dà `gte_score` e `lte_score`.
 - I nomi delle colonne vengono confrontati esattamente come li hai dichiarati nel tipo di riga. Un nome che corrisponde solo quando Provisa rinomina la colonna per un lettore non è una corrispondenza.
-- Una dichiarazione che i tipi della tua funzione non possono accettare viene rifiutata per nome.
+- Una dichiarazione che i tipi della tua funzione non possono accettare viene rifiutata.
 - Il filtro viene comunque applicato alle righe che la tua funzione restituisce, quindi una funzione che ignora o allenta un valore ricevuto non può restituire righe sbagliate.
 
 ### Chiavi a lotti: il parametro `loader` {: #batched-keys }
@@ -124,7 +124,7 @@ Una funzione che accetta un parametro chiamato `loader` viene invece chiamata un
 - **Tipizzata come sempre.** La funzione dichiara comunque solo il suo tipo di riga, una lista di righe.
 - **Servono valori predefiniti.** I suoi parametri accanto a `loader` hanno bisogno di valori predefiniti, perché una chiamata con loader passa solo `loader`.
 - **Dimensione del lotto.** Limitala, come `maxBatchSize` di DataLoader, con `loader N` in uno di tre punti: una riga `@loader 100` accanto a `@table`, un commento `/* @loader 100 */` prima del parametro `loader` in TypeScript, o una stringa `Annotated` in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa divide allora le chiavi in lotti di quella dimensione e unisce le risposte per hash. Senza dimensione, un lotto contiene tutte le chiavi.
-- **Rifiutato per nome.** Una dimensione su una funzione senza parametro `loader`, una dimensione che non è un intero positivo, e due dimensioni su una funzione.
+- **Rifiutato.** Una dimensione su una funzione senza parametro `loader`, una dimensione che non è un intero positivo, e due dimensioni su una funzione.
 
 Usa `loader` quando una chiamata su molte chiavi rende più di molte chiamate su una:
 
@@ -174,7 +174,7 @@ Unita a una tabella di clienti, viene chiamata con un `loader` come `{"9f2c...":
 - **Un repository Git.** Un commit completo di 40 caratteri, con una sottodirectory se il codice non è in cima.
 - **Un caricamento.** Un `.zip`, `.tgz` o `.tar.gz` del codice.
 - **Una cartella sulla tua macchina.** **Scegli cartella** comprime la cartella nel tuo browser, lasciando fuori `node_modules`, `.venv`, `__pycache__` e `.git`, e la carica come archivio dell'origine. In un browser che può conservare la cartella (Chrome, Edge), **Salva** la comprime e la invia di nuovo; un altro browser ti chiede di nuovo la cartella.
-- **Una directory sul server.** Su un'installazione con una sola organizzazione, una directory sotto quelle che l'operatore consente. Viene letta dov'è, quindi una modifica viene letta dalla query successiva. Un server con molte organizzazioni la rifiuta per nome.
+- **Una directory sul server.** Su un'installazione con una sola organizzazione, una directory sotto quelle che l'operatore consente. Viene letta dov'è, quindi una modifica viene letta dalla query successiva. Un server con molte organizzazioni la rifiuta.
 
 Ogni origine tranne la directory del server è fissata, quindi l'origine esegue esattamente ciò che è stato salvato.
 
@@ -405,7 +405,7 @@ const reply = await client.chat.completions.create({
 
 - **Per ruolo.** Nomina un modello come `provisa:<role>` e ottieni quello che la tua organizzazione assegna a quel ruolo in **Admin → AI Models**; segue quella scelta quando un amministratore la cambia. Puoi anche nominare un modello direttamente quando gli è assegnato un ruolo.
 - **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` accetta uno qualsiasi dei modelli vettoriali della tua organizzazione.
-- Qualsiasi altro modello viene rifiutato per nome.
+- Qualsiasi altro modello viene rifiutato.
 - La chiamata esce tramite i fornitori, gli endpoint e le chiavi della tua organizzazione, e ciò che invia passa prima per le regole di oscuramento di Provisa.
 - Lo streaming non è offerto. Invia `stream: false`, che è il valore predefinito.
 
@@ -418,9 +418,9 @@ const reply = await client.chat.completions.create({
 - Un host che non può fornire il sandbox rifiuta di avviare il worker e nomina ciò che manca; il codice non gira mai senza confinamento. Su Windows, le origini di codice vengono rifiutate.
 - Su un host remoto, la policy di rete del container è il limite di uscita del codice. La lista di uscita consentita del server vale per la modalità dev.
 
-### Rifiuti per nome {: #refusals }
+### Rifiuti {: #refusals }
 
-Ogni rifiuto nomina cosa ha rifiutato e perché, prima che il tuo codice venga eseguito quando possibile:
+Ognuno di questi casi viene rifiutato, prima che il tuo codice venga eseguito quando possibile:
 
 - Un tag sconosciuto o un tipo che Provisa non sa mappare, tutti i problemi di una funzione in una volta.
 - Una lettura che omette un parametro obbligatorio.
