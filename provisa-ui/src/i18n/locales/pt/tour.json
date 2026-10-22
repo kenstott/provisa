@@ -1730,15 +1730,15 @@
       },
       "groupexposureScenario": {
         "title": "Do que trata esta demo",
-        "description": "Um banco de Praga empresta a empresas checas e regista cada uma pelo seu Legal Entity Identifier (LEI). As regras da UE limitam o que pode emprestar a um cliente, ou a um grupo de empresas controlado por um mesmo dono, a 25% do seu capital de nível 1 (Tier 1). A pergunta: perante que grupos o banco ultrapassa esse limite? Os seus livros dizem a quem emprestou, não quem é dono de quem. O banco e os seus empréstimos são inventados; as empresas são reais."
+        "description": "Um banco de Praga empresta a empresas e regista a empresa que detém cada uma pelo seu Legal Entity Identifier (LEI). As regras da UE limitam o que pode emprestar a um cliente, ou a um grupo de empresas controlado por um mesmo dono, a 25% do seu capital de nível 1 (Tier 1). A pergunta: perante que grupos o banco ultrapassa esse limite? Os seus livros indicam o dono de cada mutuário, não quem é dono desse dono. O banco, os seus mutuários e os seus empréstimos são fictícios; os grupos que os detêm são reais."
       },
       "groupexposureJoin": {
         "title": "Ligados pelo LEI",
-        "description": "As contrapartes do banco e as tabelas do Wikidata partilham o LEI, e estas relações ligam-nas. Os dados do banco ficam na sua base de dados e os do Wikidata na sua réplica; a ligação faz-se na consulta."
+        "description": "A tabela de donos do banco e as tabelas do Wikidata partilham o LEI do dono, e estas relações ligam-nas. Os dados do banco ficam na sua base de dados e os do Wikidata na sua réplica; a ligação faz-se na consulta."
       },
       "groupexposureAnswer": {
         "title": "A resposta em SQL",
-        "description": "A vista group_exposure agrega cada linha de crédito no grupo do seu mutuário segundo o Wikidata. As empresas de água e aquecimento da Veolia e as construtoras da Vinci ultrapassam cada uma 25% do capital de nível 1. Nem os livros do banco nem o Wikidata o mostram sozinhos."
+        "description": "A vista group_exposure agrega cada linha de crédito no grupo do seu mutuário, através do LEI do dono e do Wikidata. Os grupos Veolia e Vinci ultrapassam cada um 25% do capital de nível 1, e uma empresa conjunta da Veolia e da EPH conta em ambos. Nem os livros do banco nem o Wikidata o mostram sozinhos. Os mutuários e os seus empréstimos são fictícios."
       },
       "groupexposureExample": {
         "title": "A resposta em GraphQL",
@@ -1746,19 +1746,19 @@
       },
       "groupexposureRecap": {
         "title": "O que viu",
-        "description": "A carteira de empréstimos de um banco e dados ligados públicos do Wikidata, unidos por LEI num modelo governado. As cadeias de propriedade do Wikidata transformam muitos pequenos empréstimos em poucas grandes exposições de grupo, e a resposta é servida em SQL, GraphQL e REST."
+        "description": "A carteira de empréstimos de um banco fictício e dados ligados públicos do Wikidata, unidos por LEI num modelo governado. As cadeias de propriedade do Wikidata transformam muitos pequenos empréstimos em poucas grandes exposições de grupo, e a resposta é servida em SQL, GraphQL e REST."
       },
       "groupexposureWikidata": {
-        "title": "Quem é dono de quem, segundo o Wikidata",
+        "title": "Quem é dono dos donos, segundo o Wikidata",
         "description": "O Wikidata, o grafo de conhecimento público, regista o LEI de cada empresa e a sua organização-mãe. Esta fonte lê-o através do serviço de consultas SPARQL do Wikidata. As suas tabelas foram carregadas uma única vez, quando a demo foi criada, por isso a demo nunca chama o Wikidata enquanto a usa."
       },
       "groupexposureFacilities": {
         "title": "As linhas de crédito do banco",
-        "description": "Cada empréstimo a prazo, linha de crédito rotativa e garantia concedidos pelo banco, com o LEI do mutuário, o valor comprometido e o valor utilizado. O limite conta o valor comprometido."
+        "description": "Cada empréstimo a prazo, linha de crédito rotativa e garantia concedidos pelo banco, com o mutuário, o valor comprometido e o valor utilizado. O limite conta o valor comprometido."
       },
       "groupexposureGroups": {
-        "title": "O grupo de cada mutuário",
-        "description": "Para cada mutuário, a empresa no topo da sua cadeia de organizações-mãe no Wikidata, encontrada com um único caminho de propriedades SPARQL. Um mutuário sem dono é o seu próprio grupo. Um mutuário tem dois donos no topo, por isso aparece nos dois grupos."
+        "title": "O grupo de cada dono",
+        "description": "Para cada dono que o banco regista, a empresa no topo da sua cadeia de organizações-mãe no Wikidata, encontrada com um único caminho de propriedades SPARQL. O Wikidata sabe que uma holding checa pertence à Veolia ou à E.ON, mesmo que os livros do banco não o saibam."
       },
       "groupexposureTerms": {
         "title": "Em palavras simples",
@@ -1890,7 +1890,7 @@
       },
       "groupexposure": {
         "title": "Exposição por grupo via Wikidata",
-        "summary": "Perante que grupos empresariais um banco ultrapassa o seu limite de grandes exposições? A sua carteira de empréstimos, ligada por LEI às cadeias de organizações-mãe do Wikidata via SPARQL, atribui cada mutuário ao grupo a que pertence."
+        "summary": "Perante que grupos empresariais um banco ultrapassa o seu limite de grandes exposições? A sua carteira de empréstimos, ligada pelo LEI do dono de cada mutuário às cadeias de organizações-mãe do Wikidata via SPARQL, atribui cada mutuário ao seu grupo. O banco e os seus mutuários são fictícios; os grupos são reais."
       }
     }
   }

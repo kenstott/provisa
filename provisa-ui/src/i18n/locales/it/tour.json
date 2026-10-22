@@ -1730,15 +1730,15 @@
       },
       "groupexposureScenario": {
         "title": "Di cosa tratta questa demo",
-        "description": "Una banca di Praga presta a società ceche e registra ciascuna con il suo Legal Entity Identifier (LEI). Le norme UE limitano quanto può prestare a un cliente, o a un gruppo di società controllato da un unico proprietario, al 25% del suo capitale di classe 1 (Tier 1). La domanda: verso quali gruppi la banca supera quel limite? I suoi libri dicono a chi ha prestato, non chi possiede chi. La banca e i suoi prestiti sono inventati; le società sono reali."
+        "description": "Una banca di Praga presta a società e registra la società che possiede ciascuna con il suo Legal Entity Identifier (LEI). Le norme UE limitano quanto può prestare a un cliente, o a un gruppo di società controllato da un unico proprietario, al 25% del suo capitale di classe 1 (Tier 1). La domanda: verso quali gruppi la banca supera quel limite? I suoi libri indicano il proprietario di ogni debitore, non chi possiede il proprietario. La banca, i suoi debitori e i suoi prestiti sono inventati; i gruppi che li possiedono sono reali."
       },
       "groupexposureJoin": {
         "title": "Collegati dal LEI",
-        "description": "Le controparti della banca e le tabelle di Wikidata condividono il LEI, e queste relazioni le collegano. I dati della banca restano nel suo database e quelli di Wikidata nella loro replica; il collegamento avviene nella query."
+        "description": "La tabella dei proprietari della banca e le tabelle di Wikidata condividono il LEI del proprietario, e queste relazioni le collegano. I dati della banca restano nel suo database e quelli di Wikidata nella loro replica; il collegamento avviene nella query."
       },
       "groupexposureAnswer": {
         "title": "La risposta in SQL",
-        "description": "La vista group_exposure riconduce ogni linea di credito al gruppo del suo debitore secondo Wikidata. Le società idriche e di teleriscaldamento di Veolia e le società di costruzioni di Vinci superano ciascuna il 25% del capitale di classe 1. Né i libri della banca né Wikidata lo mostrano da soli."
+        "description": "La vista group_exposure riconduce ogni linea di credito al gruppo del suo debitore, tramite il LEI del proprietario e Wikidata. I gruppi Veolia e Vinci superano ciascuno il 25% del capitale di classe 1, e una joint venture di Veolia ed EPH conta in entrambi. Né i libri della banca né Wikidata lo mostrano da soli. I debitori e i loro prestiti sono inventati."
       },
       "groupexposureExample": {
         "title": "La risposta in GraphQL",
@@ -1746,19 +1746,19 @@
       },
       "groupexposureRecap": {
         "title": "Cosa hai visto",
-        "description": "Il portafoglio prestiti di una banca e dati collegati pubblici di Wikidata, uniti tramite LEI in un unico modello governato. Le catene di proprietà di Wikidata trasformano molti piccoli prestiti in poche grandi esposizioni di gruppo, e la risposta è servita in SQL, GraphQL e REST."
+        "description": "Il portafoglio prestiti di una banca inventata e dati collegati pubblici di Wikidata, uniti tramite LEI in un unico modello governato. Le catene di proprietà di Wikidata trasformano molti piccoli prestiti in poche grandi esposizioni di gruppo, e la risposta è servita in SQL, GraphQL e REST."
       },
       "groupexposureWikidata": {
-        "title": "Chi possiede chi, da Wikidata",
+        "title": "Chi possiede i proprietari, da Wikidata",
         "description": "Wikidata, il grafo di conoscenza pubblico, registra il LEI di ogni società e la sua organizzazione controllante. Questa fonte lo legge tramite il servizio di query SPARQL di Wikidata. Le sue tabelle sono state caricate una sola volta, alla creazione della demo, quindi la demo non chiama mai Wikidata mentre la usi."
       },
       "groupexposureFacilities": {
         "title": "Le linee di credito della banca",
-        "description": "Ogni prestito a termine, linea di credito revolving e garanzia concessi dalla banca, con il LEI del debitore, l'importo accordato e quello utilizzato. Il limite conta l'importo accordato."
+        "description": "Ogni prestito a termine, linea di credito revolving e garanzia concessi dalla banca, con il debitore, l'importo accordato e quello utilizzato. Il limite conta l'importo accordato."
       },
       "groupexposureGroups": {
-        "title": "Il gruppo di ogni debitore",
-        "description": "Per ogni debitore, la società in cima alla sua catena di organizzazioni controllanti su Wikidata, trovata con un solo percorso di proprietà SPARQL. Un debitore che nessuno possiede è il proprio gruppo. Un debitore ha due proprietari in cima, quindi compare in entrambi i gruppi."
+        "title": "Il gruppo di ogni proprietario",
+        "description": "Per ogni proprietario registrato dalla banca, la società in cima alla sua catena di organizzazioni controllanti su Wikidata, trovata con un solo percorso di proprietà SPARQL. Wikidata sa che una holding ceca appartiene a Veolia o a E.ON, anche se i libri della banca non lo sanno."
       },
       "groupexposureTerms": {
         "title": "In parole semplici",
@@ -1890,7 +1890,7 @@
       },
       "groupexposure": {
         "title": "Esposizione per gruppo tramite Wikidata",
-        "summary": "Verso quali gruppi societari una banca supera il proprio limite alle grandi esposizioni? Il suo portafoglio prestiti, collegato tramite LEI alle catene di organizzazioni controllanti di Wikidata via SPARQL, riconduce ogni debitore al gruppo che lo possiede."
+        "summary": "Verso quali gruppi societari una banca supera il proprio limite alle grandi esposizioni? Il suo portafoglio prestiti, collegato tramite il LEI del proprietario di ogni debitore alle catene di organizzazioni controllanti di Wikidata via SPARQL, riconduce ogni debitore al suo gruppo. La banca e i suoi debitori sono inventati; i gruppi sono reali."
       }
     }
   }

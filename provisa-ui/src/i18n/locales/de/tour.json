@@ -1730,15 +1730,15 @@
       },
       "groupexposureScenario": {
         "title": "Worum es in dieser Demo geht",
-        "description": "Eine Prager Bank vergibt Kredite an tschechische Unternehmen und bucht jedes über seinen Legal Entity Identifier (LEI). EU-Regeln begrenzen, was sie einem Kunden oder einer von einem Eigentümer kontrollierten Unternehmensgruppe leihen darf, auf 25 % ihres Kernkapitals (Tier 1). Die Frage: Bei welchen Gruppen liegt die Bank über dieser Grenze? Ihre Bücher zeigen, wem sie Geld geliehen hat, nicht, wem wer gehört. Die Bank und ihre Kredite sind erfunden; die Unternehmen sind echt."
+        "description": "Eine Prager Bank vergibt Kredite an Unternehmen und hält für jedes das Unternehmen fest, dem es gehört, mit dessen Legal Entity Identifier (LEI). EU-Regeln begrenzen, was sie einem Kunden oder einer von einem Eigentümer kontrollierten Unternehmensgruppe leihen darf, auf 25 % ihres Kernkapitals (Tier 1). Die Frage: Bei welchen Gruppen liegt die Bank über dieser Grenze? Ihre Bücher nennen den Eigentümer jedes Kreditnehmers, nicht, wem dieser gehört. Die Bank, ihre Kreditnehmer und ihre Kredite sind erfunden; die Konzerne, denen sie gehören, sind echt."
       },
       "groupexposureJoin": {
         "title": "Verknüpft über den LEI",
-        "description": "Die Kontrahenten der Bank und die Tabellen aus Wikidata teilen den LEI, und diese Beziehungen verknüpfen sie. Die Daten der Bank bleiben in ihrer Datenbank, die von Wikidata in ihrem Replikat; die Verknüpfung geschieht in der Abfrage."
+        "description": "Die Eigentümertabelle der Bank und die Tabellen aus Wikidata teilen den LEI des Eigentümers, und diese Beziehungen verknüpfen sie. Die Daten der Bank bleiben in ihrer Datenbank, die von Wikidata in ihrem Replikat; die Verknüpfung geschieht in der Abfrage."
       },
       "groupexposureAnswer": {
         "title": "Die Antwort in SQL",
-        "description": "Die View group_exposure ordnet jede Kreditlinie dem Konzern ihres Kreditnehmers aus Wikidata zu. Die Wasser- und Wärmeunternehmen von Veolia und die Bauunternehmen von Vinci überschreiten jeweils 25 % des Kernkapitals. Weder die Bücher der Bank noch Wikidata zeigen das allein."
+        "description": "Die View group_exposure ordnet jede Kreditlinie über den LEI des Eigentümers und Wikidata dem Konzern ihres Kreditnehmers zu. Die Konzerne Veolia und Vinci überschreiten jeweils 25 % des Kernkapitals, und ein Gemeinschaftsunternehmen von Veolia und EPH zählt bei beiden. Weder die Bücher der Bank noch Wikidata zeigen das allein. Die Kreditnehmer und ihre Kredite sind erfunden."
       },
       "groupexposureExample": {
         "title": "Die Antwort in GraphQL",
@@ -1746,19 +1746,19 @@
       },
       "groupexposureRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Das eigene Kreditbuch einer Bank und öffentliche Linked Data aus Wikidata, per LEI in einem governten Modell verknüpft. Die Eigentümerketten aus Wikidata machen aus vielen kleinen Krediten wenige große Gruppen-Exposures, und die Antwort wird über SQL, GraphQL und REST bereitgestellt."
+        "description": "Das Kreditbuch einer erfundenen Bank und öffentliche Linked Data aus Wikidata, per LEI in einem governten Modell verknüpft. Die Eigentümerketten aus Wikidata machen aus vielen kleinen Krediten wenige große Gruppen-Exposures, und die Antwort wird über SQL, GraphQL und REST bereitgestellt."
       },
       "groupexposureWikidata": {
-        "title": "Wem wer gehört, aus Wikidata",
+        "title": "Wem die Eigentümer gehören, aus Wikidata",
         "description": "Wikidata, der öffentliche Wissensgraph, verzeichnet den LEI jedes Unternehmens und seine übergeordnete Organisation. Diese Quelle liest ihn über den SPARQL-Abfragedienst von Wikidata. Ihre Tabellen wurden einmal beim Erstellen der Demo geladen, daher ruft die Demo Wikidata nie auf, während Sie sie nutzen."
       },
       "groupexposureFacilities": {
         "title": "Die Kreditlinien der Bank",
-        "description": "Jedes Darlehen, jede revolvierende Kreditlinie und jede Garantie der Bank, mit dem LEI des Kreditnehmers, dem zugesagten und dem in Anspruch genommenen Betrag. Die Grenze zählt den zugesagten Betrag."
+        "description": "Jedes Darlehen, jede revolvierende Kreditlinie und jede Garantie der Bank, mit dem Kreditnehmer, dem zugesagten und dem in Anspruch genommenen Betrag. Die Grenze zählt den zugesagten Betrag."
       },
       "groupexposureGroups": {
-        "title": "Der Konzern jedes Kreditnehmers",
-        "description": "Für jeden Kreditnehmer das Unternehmen an der Spitze seiner Kette übergeordneter Organisationen in Wikidata, gefunden mit einem einzigen SPARQL-Eigenschaftspfad. Ein Kreditnehmer, dem niemand gehört, ist seine eigene Gruppe. Ein Kreditnehmer hat zwei Eigentümer an der Spitze und erscheint daher in beiden Gruppen."
+        "title": "Der Konzern jedes Eigentümers",
+        "description": "Für jeden Eigentümer, den die Bank festhält, das Unternehmen an der Spitze seiner Kette übergeordneter Organisationen in Wikidata, gefunden mit einem einzigen SPARQL-Eigenschaftspfad. Wikidata weiß, dass eine tschechische Holding zu Veolia oder zu E.ON gehört, auch wenn die Bücher der Bank es nicht wissen."
       },
       "groupexposureTerms": {
         "title": "In einfachen Worten",
@@ -1890,7 +1890,7 @@
       },
       "groupexposure": {
         "title": "Gruppenexposure über Wikidata",
-        "summary": "Bei welchen Konzernen überschreitet eine Bank ihre Großkreditgrenze? Ihr Kreditbuch, per LEI über SPARQL mit den Ketten übergeordneter Organisationen in Wikidata verknüpft, ordnet jeden Kreditnehmer dem Konzern zu, dem er gehört."
+        "summary": "Bei welchen Konzernen überschreitet eine Bank ihre Großkreditgrenze? Ihr Kreditbuch, über den LEI des Eigentümers jedes Kreditnehmers per SPARQL mit den Ketten übergeordneter Organisationen in Wikidata verknüpft, ordnet jeden Kreditnehmer seinem Konzern zu. Die Bank und ihre Kreditnehmer sind erfunden; die Konzerne sind echt."
       }
     }
   }

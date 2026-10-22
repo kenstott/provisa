@@ -1730,15 +1730,15 @@
       },
       "groupexposureScenario": {
         "title": "这个演示讲什么",
-        "description": "一家布拉格银行向捷克企业放贷，并按法人识别编码（LEI）登记每家企业。欧盟规定，银行对单一客户或同一所有者控制的企业集团的授信不得超过其一级资本（Tier 1）的 25%。问题是：银行对哪些集团超出了这一限额？银行的账簿只记录借给了谁，不记录谁拥有谁。银行及其贷款是虚构的，企业是真实的。"
+        "description": "一家布拉格银行向企业放贷，并按法人识别编码（LEI）记录每家企业的所有者。欧盟规定，银行对单一客户或同一所有者控制的企业集团的授信不得超过其一级资本（Tier 1）的 25%。问题是：银行对哪些集团超出了这一限额？银行的账簿记录了每个借款人的所有者，却不记录谁拥有这个所有者。银行、借款人及其贷款是虚构的，拥有它们的集团是真实的。"
       },
       "groupexposureJoin": {
         "title": "按 LEI 关联",
-        "description": "银行的交易对手与 Wikidata 的表共享 LEI，这些关系把它们关联起来。银行的数据留在其数据库中，Wikidata 的数据留在其副本中；关联在查询中完成。"
+        "description": "银行的所有者表与 Wikidata 的表共享所有者的 LEI，这些关系把它们关联起来。银行的数据留在其数据库中，Wikidata 的数据留在其副本中；关联在查询中完成。"
       },
       "groupexposureAnswer": {
         "title": "SQL 中的答案",
-        "description": "视图 group_exposure 将每笔授信按 Wikidata 归入借款人所属集团。Veolia 的供水和供热公司以及 Vinci 的建筑公司各自超过一级资本的 25%。无论银行账簿还是 Wikidata，单独都看不出这一点。"
+        "description": "视图 group_exposure 通过所有者的 LEI 和 Wikidata，将每笔授信归入借款人所属集团。Veolia 和 Vinci 集团各自超过一级资本的 25%，Veolia 与 EPH 的合资企业在两个集团中都计入。无论银行账簿还是 Wikidata，单独都看不出这一点。借款人及其贷款是虚构的。"
       },
       "groupexposureExample": {
         "title": "GraphQL 中的答案",
@@ -1746,19 +1746,19 @@
       },
       "groupexposureRecap": {
         "title": "您看到了什么",
-        "description": "银行自己的贷款账簿与 Wikidata 的公共关联数据，按 LEI 在一个受治理的模型中关联。Wikidata 的所有权链把许多小额贷款变成少数几个大额集团敞口，答案通过 SQL、GraphQL 和 REST 提供。"
+        "description": "一家虚构银行的贷款账簿与 Wikidata 的公共关联数据，按 LEI 在一个受治理的模型中关联。Wikidata 的所有权链把许多小额贷款变成少数几个大额集团敞口，答案通过 SQL、GraphQL 和 REST 提供。"
       },
       "groupexposureWikidata": {
-        "title": "谁拥有谁：来自 Wikidata",
+        "title": "谁拥有这些所有者：来自 Wikidata",
         "description": "公共知识图谱 Wikidata 记录了每家企业的 LEI 及其母公司。此数据源通过 Wikidata 的 SPARQL 查询服务读取这些信息。其表在构建演示时只加载一次，因此您使用演示时它从不调用 Wikidata。"
       },
       "groupexposureFacilities": {
         "title": "银行的授信",
-        "description": "银行发放的每笔定期贷款、循环信贷额度和保函，包括借款人的 LEI、承诺金额和已提款金额。限额按承诺金额计算。"
+        "description": "银行发放的每笔定期贷款、循环信贷额度和保函，包括借款人、承诺金额和已提款金额。限额按承诺金额计算。"
       },
       "groupexposureGroups": {
-        "title": "每个借款人所属的集团",
-        "description": "对每个借款人，取其在 Wikidata 上母公司链顶端的企业，只用一条 SPARQL 属性路径即可找到。没有所有者的借款人自成一个集团。有一个借款人顶端有两个所有者，因此同时出现在两个集团中。"
+        "title": "每个所有者所属的集团",
+        "description": "对银行记录的每个所有者，取其在 Wikidata 上母公司链顶端的企业，只用一条 SPARQL 属性路径即可找到。即使银行账簿不知道，Wikidata 也知道某家捷克控股公司属于 Veolia 或 E.ON。"
       },
       "groupexposureTerms": {
         "title": "通俗解释",
@@ -1890,7 +1890,7 @@
       },
       "groupexposure": {
         "title": "通过 Wikidata 计算集团敞口",
-        "summary": "银行对哪些企业集团超出了大额风险暴露限额？银行的贷款账簿按 LEI 通过 SPARQL 关联到 Wikidata 的母公司链，把每个借款人归入其所属集团。"
+        "summary": "银行对哪些企业集团超出了大额风险暴露限额？银行的贷款账簿按每个借款人所有者的 LEI 通过 SPARQL 关联到 Wikidata 的母公司链，把每个借款人归入其集团。银行及其借款人是虚构的，集团是真实的。"
       }
     }
   }

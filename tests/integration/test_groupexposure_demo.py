@@ -13,10 +13,11 @@ Its own docker-compose.yml brings the bank's Postgres up on a port of this test'
 compose project of its own (db/init.sql writes the counterparties, facilities and capital). A
 real Provisa server (DuckDB engine, its own control plane) loads the demo's config.yaml as is: the
 bank read live, and the two Wikidata tables landed from Wikidata's public SPARQL query service as
-TTL -1 replicas on their first read, as the bundle build lands them. Then:
-- every borrower is found on Wikidata by its LEI;
+TTL -1 replicas on their first read, as the bundle build lands them. The bank and its borrowers are
+fictional; each borrower's owner is a real company the bank records by LEI. Then:
+- every owner is found on Wikidata by its LEI, with one group at the top of its chain;
 - no borrower alone is over the large-exposure limit, while the Veolia and Vinci groups are;
-- the one borrower with two groups counts in both;
+- the joint venture, owned by two groups, counts in both;
 - the demo's example queries, its tour's statements and its REST call answer rows.
 
 With PROVISA_DEMO_CAPTURE_DIR set, each answer is kept for the demo's card.
@@ -55,8 +56,8 @@ _GROUPS = '"groupexposure"."view_group_exposure"'
 _ALONE = '"groupexposure"."view_borrower_exposure"'
 #: The groups the tour says are over the limit, by their Wikidata entities.
 _OVER = {"http://www.wikidata.org/entity/Q1632461", "http://www.wikidata.org/entity/Q1475312"}
-#: Pražská teplárenská: owned at the top by Veolia and by Energetický a průmyslový holding.
-_TWO_GROUPS = "31570010000000032881"
+#: The joint venture, owned through Veolia Česká republika and by Energetický a průmyslový holding.
+_TWO_GROUPS = "B-002"
 
 
 class GroupExposureStack:
@@ -130,7 +131,10 @@ def server(stack, tmp_path_factory):
     try:
         # Each Wikidata replica lands on its first read, from the public query service.
         await_tables_serving(
-            srv, _ROLE, ['"groupexposure"."company"', '"groupexposure"."group_member"'], timeout=900
+            srv,
+            _ROLE,
+            ['"groupexposure"."owner_company"', '"groupexposure"."owner_group"'],
+            timeout=900,
         )
         yield srv
     finally:
@@ -152,23 +156,26 @@ def query(server, sql: str, role: str = _ROLE) -> list[dict[str, Any]]:
 def test_the_bank_is_read_live(server):
     [row] = query(
         server,
-        "SELECT COUNT(*) AS facilities, COUNT(DISTINCT lei) AS borrowers "
+        "SELECT COUNT(*) AS facilities, COUNT(DISTINCT borrower_id) AS borrowers "
         'FROM "groupexposure"."facilities"',
     )
     assert (row["facilities"], row["borrowers"]) == (_FACILITIES, _BORROWERS)
 
 
-def test_every_borrower_is_found_on_wikidata_by_its_lei(server):
+def test_every_owner_is_found_on_wikidata_with_one_group(server):
     rows = query(
         server,
-        'SELECT c.lei FROM "groupexposure"."counterparties" AS c '
-        'LEFT JOIN "groupexposure"."company" AS w ON w.lei = c.lei WHERE w.entity IS NULL',
+        'SELECT o.owner_lei FROM "groupexposure"."owners" AS o '
+        'LEFT JOIN "groupexposure"."owner_company" AS w ON w.lei = o.owner_lei '
+        "WHERE w.entity IS NULL",
     )
     assert rows == []
-    members = query(server, 'SELECT lei, group_entity FROM "groupexposure"."group_member"')
-    assert {r["lei"] for r in members} == {
-        r["lei"] for r in query(server, 'SELECT lei FROM "groupexposure"."counterparties"')
-    }
+    groups = query(
+        server, 'SELECT lei, COUNT(*) AS n FROM "groupexposure"."owner_group" GROUP BY lei'
+    )
+    owners = query(server, 'SELECT DISTINCT owner_lei FROM "groupexposure"."owners"')
+    assert {r["lei"] for r in groups} == {r["owner_lei"] for r in owners}
+    assert [r for r in groups if r["n"] != 1] == []
 
 
 def test_no_borrower_alone_is_over_the_limit(server):
@@ -182,13 +189,15 @@ def test_the_veolia_and_vinci_groups_are_over_it(server):
     assert all(r["borrowers"] == 6 for r in rows), rows
 
 
-def test_a_borrower_with_two_owners_counts_in_both_groups(server):
+def test_the_joint_venture_counts_in_both_groups(server):
     rows = query(
         server,
-        'SELECT lei, COUNT(*) AS groups FROM "groupexposure"."group_member" '
-        "GROUP BY lei HAVING COUNT(*) > 1",
+        "SELECT o.borrower_id, COUNT(DISTINCT g.group_entity) AS groups "
+        'FROM "groupexposure"."owners" AS o '
+        'JOIN "groupexposure"."owner_group" AS g ON g.lei = o.owner_lei '
+        "GROUP BY o.borrower_id HAVING COUNT(DISTINCT g.group_entity) > 1",
     )
-    assert rows == [{"lei": _TWO_GROUPS, "groups": 2}]
+    assert rows == [{"borrower_id": _TWO_GROUPS, "groups": 2}]
 
 
 @pytest.mark.parametrize(

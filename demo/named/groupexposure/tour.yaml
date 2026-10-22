@@ -32,11 +32,11 @@ steps:
   capability: table_registration
   table: bank.facilities
 - key: groupexposureGroups
-  table: wikidata.group_member
+  table: wikidata.owner_group
 - key: groupexposureJoin
   route: /relationships
   capability: create_relationship
-  relationship: GROUP_OF
+  relationship: OWNER_IS
 - key: groupexposureTerms
   route: /admin/glossary
   capability: glossary_read
@@ -46,7 +46,7 @@ steps:
   route: /sql
   capability: query_development
   sql: >-
-    SELECT b.name, b.sector, b.committed_eur, b.pct_of_tier1
+    SELECT b.borrower_id, b.name, b.sector, b.committed_eur, b.pct_of_tier1
     FROM "groupexposure"."view_borrower_exposure" AS b
     ORDER BY b.committed_eur DESC
     LIMIT 10

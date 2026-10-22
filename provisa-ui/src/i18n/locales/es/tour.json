@@ -1730,15 +1730,15 @@
       },
       "groupexposureScenario": {
         "title": "De qué trata esta demo",
-        "description": "Un banco de Praga presta a empresas checas y registra cada una por su Legal Entity Identifier (LEI). Las normas de la UE limitan lo que puede prestar a un cliente, o a un grupo de empresas controlado por un mismo propietario, al 25 % de su capital de nivel 1 (Tier 1). La pregunta: ¿ante qué grupos supera el banco ese límite? Sus libros dicen a quién prestó, no quién es dueño de quién. El banco y sus préstamos son inventados; las empresas son reales."
+        "description": "Un banco de Praga presta a empresas y registra la empresa propietaria de cada una por su Legal Entity Identifier (LEI). Las normas de la UE limitan lo que puede prestar a un cliente, o a un grupo de empresas controlado por un mismo propietario, al 25 % de su capital de nivel 1 (Tier 1). La pregunta: ¿ante qué grupos supera el banco ese límite? Sus libros nombran al propietario de cada prestatario, no quién es dueño del propietario. El banco, sus prestatarios y sus préstamos son ficticios; los grupos que los poseen son reales."
       },
       "groupexposureJoin": {
         "title": "Unidos por el LEI",
-        "description": "Las contrapartes del banco y las tablas de Wikidata comparten el LEI, y estas relaciones las unen. Los datos del banco se quedan en su base de datos y los de Wikidata en su réplica; la unión se hace en la consulta."
+        "description": "La tabla de propietarios del banco y las tablas de Wikidata comparten el LEI del propietario, y estas relaciones las unen. Los datos del banco se quedan en su base de datos y los de Wikidata en su réplica; la unión se hace en la consulta."
       },
       "groupexposureAnswer": {
         "title": "La respuesta en SQL",
-        "description": "La vista group_exposure agrupa cada facilidad en el grupo de su prestatario según Wikidata. Las empresas de agua y calefacción de Veolia y las constructoras de Vinci superan cada una el 25 % del capital de nivel 1. Ni los libros del banco ni Wikidata lo muestran por separado."
+        "description": "La vista group_exposure agrupa cada facilidad en el grupo de su prestatario, a través del LEI del propietario y Wikidata. Los grupos Veolia y Vinci superan cada uno el 25 % del capital de nivel 1, y una empresa conjunta de Veolia y EPH cuenta en ambos. Ni los libros del banco ni Wikidata lo muestran por separado. Los prestatarios y sus préstamos son ficticios."
       },
       "groupexposureExample": {
         "title": "La respuesta en GraphQL",
@@ -1746,19 +1746,19 @@
       },
       "groupexposureRecap": {
         "title": "Lo que ha visto",
-        "description": "La cartera de préstamos propia de un banco y datos enlazados públicos de Wikidata, unidos por LEI en un modelo gobernado. Las cadenas de propiedad de Wikidata convierten muchos préstamos pequeños en unas pocas grandes exposiciones de grupo, y la respuesta se sirve en SQL, GraphQL y REST."
+        "description": "La cartera de préstamos de un banco ficticio y datos enlazados públicos de Wikidata, unidos por LEI en un modelo gobernado. Las cadenas de propiedad de Wikidata convierten muchos préstamos pequeños en unas pocas grandes exposiciones de grupo, y la respuesta se sirve en SQL, GraphQL y REST."
       },
       "groupexposureWikidata": {
-        "title": "Quién es dueño de quién, según Wikidata",
+        "title": "Quién es dueño de los propietarios, según Wikidata",
         "description": "Wikidata, el grafo de conocimiento público, registra el LEI de cada empresa y su organización matriz. Esta fuente lo lee a través del servicio de consultas SPARQL de Wikidata. Sus tablas se cargaron una sola vez, al crear la demo, por lo que la demo nunca llama a Wikidata mientras la usa."
       },
       "groupexposureFacilities": {
         "title": "Las facilidades del banco",
-        "description": "Cada préstamo a plazo, línea de crédito revolvente y garantía que el banco ha concedido, con el LEI del prestatario, lo comprometido y lo dispuesto. El límite cuenta lo comprometido."
+        "description": "Cada préstamo a plazo, línea de crédito revolvente y garantía que el banco ha concedido, con el prestatario, lo comprometido y lo dispuesto. El límite cuenta lo comprometido."
       },
       "groupexposureGroups": {
-        "title": "El grupo de cada prestatario",
-        "description": "Para cada prestatario, la empresa en la cima de su cadena de organizaciones matrices en Wikidata, encontrada con una sola ruta de propiedades SPARQL. Un prestatario sin propietario es su propio grupo. Un prestatario tiene dos propietarios en la cima, por lo que aparece en ambos grupos."
+        "title": "El grupo de cada propietario",
+        "description": "Para cada propietario que registra el banco, la empresa en la cima de su cadena de organizaciones matrices en Wikidata, encontrada con una sola ruta de propiedades SPARQL. Wikidata sabe que una sociedad holding checa pertenece a Veolia o a E.ON, aunque los libros del banco no lo sepan."
       },
       "groupexposureTerms": {
         "title": "En palabras sencillas",
@@ -1890,7 +1890,7 @@
       },
       "groupexposure": {
         "title": "Exposición por grupo a través de Wikidata",
-        "summary": "¿Ante qué grupos empresariales supera un banco su límite de grandes exposiciones? Su cartera de préstamos, unida por LEI a las cadenas de organizaciones matrices de Wikidata mediante SPARQL, asigna cada prestatario al grupo al que pertenece."
+        "summary": "¿Ante qué grupos empresariales supera un banco su límite de grandes exposiciones? Su cartera de préstamos, unida por el LEI del propietario de cada prestatario a las cadenas de organizaciones matrices de Wikidata mediante SPARQL, asigna cada prestatario a su grupo. El banco y sus prestatarios son ficticios; los grupos son reales."
       }
     }
   }
