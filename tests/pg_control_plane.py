@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -90,9 +91,16 @@ def build_template(pg: LocalPostgres | SessionPostgres) -> str:
         pg, f'DROP DATABASE IF EXISTS "{TEMPLATE}" WITH (FORCE)', f'CREATE DATABASE "{TEMPLATE}"'
     )
     engine = create_engine_from_url(pg.url(TEMPLATE))
+
+    async def _layout() -> None:
+        await init_registry_schema(Database(engine, name="admin"), ORG)
+        await init_schema(Database(engine, name="layout"), SCHEMA_SQL, org_id=ORG)
+
     try:
-        asyncio.run(init_registry_schema(Database(engine, name="admin"), ORG))
-        asyncio.run(init_schema(Database(engine, name="layout"), SCHEMA_SQL, org_id=ORG))
+        # Built on first use, from sync code that may run inside a test's event loop (an async
+        # fixture starting a server): on a thread of its own.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(asyncio.run, _layout()).result()
     finally:
         engine.dispose()  # a template with an open connection cannot be cloned
     return TEMPLATE
