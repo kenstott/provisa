@@ -14,10 +14,12 @@
 #
 #   sonnets  the sonnets' Postgres: sonnet, line, theme, and echo (empty until link_echoes runs).
 #   vectors  Qdrant: sonnet_lines, one point a line, its vector the line's embedding; and
-#            lines_like, a search of it by a phrase, read live under its arguments.
+#            lines_like, a search of it by a phrase, read live under its arguments, the points of
+#            one sonnet left out when its sonnet is given.
 #
 # embed_lines writes every line's embedding into sonnet_lines; link_echoes writes each line's three
-# nearest lines in other sonnets into echo. Each theme view stores one fixed search, joined back
+# nearest lines in other sonnets into echo: the line-searches relationship feeds lines_like each
+# line's words and sonnet, one Qdrant query a line. Each theme view stores one fixed search, joined back
 # to the lines it found. The relationships make the lines, sonnets and themes a graph.
 auth:
   assignments_source: provisa
@@ -130,13 +132,14 @@ tables:
   table: lines_like
   description: The lines nearest a phrase in meaning, nearest first, searched in Qdrant under its
     arguments
-  query_template: '{"collection": "sonnet_lines${env:SONNETS_QDRANT_NS}", "query": "@query", "using": "text", "model": "sentence-transformers/all-MiniLM-L6-v2", "limit": "@k"}'
+  query_template: '{"collection": "sonnet_lines${env:SONNETS_QDRANT_NS}", "query": "@query", "using": "text", "model": "sentence-transformers/all-MiniLM-L6-v2", "filter": {"must_not": [{"key": "sonnet_number", "match": {"value": "@sonnet"}}]}, "limit": "@k"}'
   columns:
   - {name: id, data_type: bigint, path: '@id', description: The line's id, visible_to: [org_admin]}
   - {name: score, data_type: double, path: '@score', description: 'How near the line is to the phrase, by cosine similarity: 1 the same', visible_to: [org_admin]}
   - {name: sonnet_number, data_type: integer, description: The sonnet the line is in, visible_to: [org_admin]}
   - {name: _nf_query, data_type: array(double), native_filter_type: query_arg, native_filter_required: true, description: The phrase to search for, visible_to: []}
   - {name: _nf_k, data_type: integer, native_filter_type: query_arg, native_filter_required: false, description: How many lines to find, visible_to: []}
+  - {name: _nf_sonnet, data_type: integer, native_filter_type: query_arg, native_filter_required: false, description: A sonnet whose lines are left out, visible_to: []}
 functions:
 # Every line's embedding, written to Qdrant: embed() embeds each line's words with the model, and
 # the rows are written to the collection through its write route.
@@ -154,18 +157,23 @@ functions:
       SELECT l.id, l.sonnet_number, embed('sentence-transformers/all-MiniLM-L6-v2', l.text)
       FROM "sonnets"."line" AS l
 # Each line's three nearest lines in other sonnets, as the vector store finds them, written to
-# the echo table (echoes.py).
+# the echo table: line-searches feeds lines_like each line's words and sonnet, and each search's
+# points carry the words they were found for, which the join matches.
 - name: link_echoes
   function_name: link_echoes
-  impl_kind: python
-  kind: mutation
+  impl_kind: statement
   domain_id: sonnets
   description: Find each line's three nearest lines in other sonnets in the vector store, and write them with their similarity to the echo table
   source_id: ''
   returns: ''
   visible_to: [org_admin]
   binding:
-    callable: demo.named.sonnets.echoes:link_echoes
+    sql: >-
+      INSERT INTO "sonnets"."echo" (line_id, echo_line_id, score)
+      SELECT l.id, s.id, s.score
+      FROM "sonnets"."line" AS l
+      JOIN "sonnets"."lines_like" AS s ON s._nf_query = l.text
+      WHERE s._nf_k = 3
 views:
 # The lines nearest "the ravages of time": one fixed search, stored, joined back to its lines.
 - id: theme_time
@@ -315,5 +323,8 @@ relationships:
 - {id: line-evokes-theme, alias: EVOKES, cardinality: one-to-many, source_table_id: line, source_column: id, target_table_id: theme, target_column: id, via_table: view_evokes, via_source_column: line_id, via_target_column: theme_id, via_label_source: fixed}
 - {id: echo-of-line, alias: ECHO_OF, graphql_alias: line, cardinality: many-to-one, source_table_id: echo, source_column: line_id, target_table_id: line, target_column: id}
 - {id: echo-to-line, alias: ECHOED_BY, graphql_alias: echoLine, cardinality: many-to-one, source_table_id: echo, source_column: echo_line_id, target_table_id: line, target_column: id}
+# Each line's words and sonnet searched for in lines_like: the line's own words, its sonnet's
+# points left out (REQ-2099). The search's points carry the words, so they join on them.
+- {id: line-searches, alias: SEARCHED, cardinality: one-to-many, source_table_id: line, source_column: text, target_table_id: lines_like, target_column: _nf_query, parameters: {query: text, sonnet: sonnet_number}}
 - {id: search-to-line, alias: FOUND, cardinality: many-to-one, source_table_id: lines_like, source_column: id, target_table_id: line, target_column: id}
 - {id: lines-self, alias: VECTOR_OF, cardinality: one-to-one, source_table_id: sonnet_lines, source_column: id, target_table_id: line, target_column: id}

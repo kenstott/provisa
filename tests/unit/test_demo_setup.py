@@ -303,47 +303,66 @@ def test_the_launcher_installs_a_demo_s_extras_before_the_server_and_sets_it_up_
     assert install < started < healthy < set_up
 
 
-def test_link_echoes_asks_for_each_line_s_nearest_lines_in_other_sonnets():
-    from types import SimpleNamespace
+def _sonnets_search() -> dict:
+    """The sonnets demo's lines_like search as registered: its columns under their column
+    names, its collection without the per-run namespace."""
+    config = yaml.safe_load((_REPO / "demo" / "named" / "sonnets" / "config.yaml").read_text())
+    [search] = [t for t in config["tables"] if t["table"] == "lines_like"]
+    return {
+        "table_name": search["table"],
+        "query_template": search["query_template"].replace("${env:SONNETS_QDRANT_NS}", ""),
+        "columns": [
+            {
+                "native_filter_type": None,
+                "native_filter_required": False,
+                **c,
+                "column_name": c["name"],
+            }
+            for c in search["columns"]
+        ],
+    }
 
-    from demo.named.sonnets import echoes
 
-    asked: list[dict] = []
+async def _planned(monkeypatch, given: dict) -> dict:
+    from provisa.qdrant import table as qdrant_table
 
-    class _Client:
-        def query_points(self, collection, **kw):
-            asked.append({"collection": collection, **kw})
-            line = kw["query"]
-            return SimpleNamespace(
-                points=[SimpleNamespace(id=line + 100 * n, score=1 - n / 10) for n in (1, 2, 3)]
-            )
+    async def embedded(_state, _table, _column, value, model):
+        assert model == "sentence-transformers/all-MiniLM-L6-v2"
+        return [float(len(value))]
 
-    conn = SimpleNamespace(client=_Client)
-    found = echoes._nearest(conn, [(3613, 36), (9613, 96)])
-    assert found[:3] == [(3613, 3713, 0.9), (3613, 3813, 0.8), (3613, 3913, 0.7)]
-    assert len(found) == 6
-    first = asked[0]
-    assert (first["collection"], first["query"], first["using"], first["limit"]) == (
+    monkeypatch.setattr(qdrant_table, "_vector", embedded)
+    return await qdrant_table.plan(None, _sonnets_search(), given)
+
+
+@pytest.mark.asyncio
+async def test_link_echoes_asks_for_each_line_s_nearest_lines_in_other_sonnets(monkeypatch):
+    """link_echoes's join feeds lines_like a line's words and sonnet, and takes 3 (REQ-2099)."""
+    request = await _planned(
+        monkeypatch,
+        {"query": "Then thou alone kingdoms of hearts shouldst owe.", "sonnet": 36, "k": 3},
+    )
+    assert (request["collection"], request["using"], request["limit"]) == (
         "sonnet_lines",
-        3613,
         "text",
         3,
     )
-    [kept_out] = first["query_filter"].must_not
-    assert (kept_out.key, kept_out.match.value) == ("sonnet_number", 36)
+    assert request["query"] == [48.0]
+    assert request["filter"] == {"must_not": [{"key": "sonnet_number", "match": {"value": 36}}]}
 
 
-def test_link_echoes_refuses_a_line_with_no_point():
-    from types import SimpleNamespace
-
-    from demo.named.sonnets import echoes
-
-    class _Client:
-        def query_points(self, _collection, **_kw):
-            return SimpleNamespace(points=[])
-
-    with pytest.raises(ValueError, match="line 101 has no point in sonnet_lines"):
-        echoes._nearest(SimpleNamespace(client=_Client), [(101, 1)])
+@pytest.mark.asyncio
+async def test_link_echoes_reads_the_points_embed_lines_wrote_and_a_theme_leaves_no_sonnet_out(
+    monkeypatch,
+):
+    """The points link_echoes searches are the ones embed_lines writes before it; a theme's search,
+    which gives no sonnet, leaves none out."""
+    steps = yaml.safe_load((_REPO / "demo" / "named" / "sonnets" / "setup.yaml").read_text())[
+        "steps"
+    ]
+    assert steps.index({"command": "embed_lines"}) < steps.index({"command": "link_echoes"})
+    request = await _planned(monkeypatch, {"query": "the ravages of time", "k": 20})
+    assert request["collection"] == "sonnet_lines"
+    assert (request["filter"], request["limit"]) == (None, 20)
 
 
 def test_a_profile_step_runs_the_profiler_for_every_member_table(monkeypatch, tmp_path):

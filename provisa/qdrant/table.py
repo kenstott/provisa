@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -363,6 +364,33 @@ async def read(state: Any, table: dict, given: dict | None) -> Any:
 
     rows = await asyncio.to_thread(_run)
     return PipelineRead(rows=rows, columns=[(c.name, to_ir(c.data_type)) for c in outputs])
+
+
+async def read_each(
+    state: Any,
+    table: dict,
+    argument_sets: Sequence[dict],
+    carried: Mapping[str, tuple[str, str]],
+) -> Any:
+    """REQ-2099: ``table`` searched once for each of ``argument_sets`` -- a join's distinct sets of
+    the values a relationship feeds it -- live, one query a set, and their rows together. Each row
+    carries, in each column of ``carried`` (``{column: (parameter, IR type)}``), the value its set
+    gave that parameter: a search's points hold nothing of the query that found them, and the
+    join matches them to the row they were searched for by that value."""
+    from provisa.core.ir_types import to_ir
+    from provisa.mongodb.pipeline_table import PipelineRead
+
+    columns = [
+        (c["column_name"], to_ir(c["data_type"]))
+        for c in table["columns"]
+        if c["native_filter_type"] is None
+    ] + [(column, to_ir(data_type)) for column, (_parameter, data_type) in carried.items()]
+    rows: list[dict] = []
+    for given in argument_sets:
+        found = await read(state, table, given)
+        stamp = {column: given[parameter] for column, (parameter, _t) in carried.items()}
+        rows.extend({**row, **stamp} for row in found.rows)
+    return PipelineRead(rows=rows, columns=columns)
 
 
 async def preview_search(
