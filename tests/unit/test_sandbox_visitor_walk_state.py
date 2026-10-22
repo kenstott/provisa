@@ -96,7 +96,7 @@ def test_time_travel_reaches_only_statements():
 def test_every_published_demo_is_a_parameter():
     names = walk_module.published_demos()
     assert "testdata" in names and "weblogs" in names
-    assert "retail" not in names  # published: false
+    assert "perf" not in names  # published: false
 
 
 _CLOSE = 'SELECT c.category FROM "provisioning"."view_close_by_category" AS c'
