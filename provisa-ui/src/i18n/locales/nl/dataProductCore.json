@@ -53,6 +53,8 @@
     "unassigned": "aan geen product toegewezen",
     "orphan": "Verweesde controle",
     "orphanWarning": "{{checker}} is aan dit product toegewezen maar controleert {{table}}, dat geen invoer en geen uitvoerpoort ervan is.",
-    "inProduct": "in {{product}}"
+    "inProduct": "in {{product}}",
+    "detailExpand": "Volledige vermelding tonen",
+    "detailCollapse": "Minder tonen"
   }
 }

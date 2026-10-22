@@ -53,6 +53,8 @@
     "unassigned": "assigned to no product",
     "orphan": "Orphan check",
     "orphanWarning": "{{checker}} is assigned to this product but scans {{table}}, which is neither one of its inputs nor one of its output ports.",
-    "inProduct": "in {{product}}"
+    "inProduct": "in {{product}}",
+    "detailExpand": "Show the whole entry",
+    "detailCollapse": "Show less"
   }
 }

@@ -60,11 +60,12 @@ const PANEL: Selection = {
           "domain_id",
           "schema_name",
           "table_name",
+          "alias",
           "description",
           "dq_contract",
         ],
         rels: {
-          checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
+          checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
           table_columns: {
             to: "table_columns",
             sel: {
@@ -79,7 +80,7 @@ const PANEL: Selection = {
           },
           profile_results: {
             alias: "profileResults",
-            sel: { fields: ["id", "domain_id", "table_name"] },
+            sel: { fields: ["id", "domain_id", "table_name", "alias"] },
           },
         },
       },
@@ -100,6 +101,7 @@ const PANEL: Selection = {
                 "source_id",
                 "domain_id",
                 "table_name",
+                "alias",
                 "description",
                 "dq_contract",
                 "latest_outcome",
@@ -109,7 +111,7 @@ const PANEL: Selection = {
           },
           checked_table: {
             alias: "checkedTable",
-            sel: { fields: ["id", "domain_id", "table_name"] },
+            sel: { fields: ["id", "domain_id", "table_name", "alias"] },
           },
         },
       },
@@ -139,7 +141,7 @@ const PANEL: Selection = {
           target_product: { alias: "targetProduct", sel: { fields: ["id", "name", "domain_id"] } },
           target_table: {
             alias: "targetTable",
-            sel: { fields: ["id", "domain_id", "table_name", "description"] },
+            sel: { fields: ["id", "domain_id", "table_name", "alias", "description"] },
           },
         },
       },
@@ -161,16 +163,19 @@ export interface CoreTable {
   domain_id: string;
   schema_name: string;
   table_name: string;
+  alias: string | null;
   description: string | null;
   dq_contract: string | null;
-  checks?: { id: number; domain_id: string; table_name: string } | null;
+  checks?: { id: number; domain_id: string; table_name: string; alias: string | null } | null;
   table_columns?:
     | {
         column_name: string;
         glossary_ref?: { term_id: number; term?: CoreTerm | null }[] | null;
       }[]
     | null;
-  profile_results?: { id: number; domain_id: string; table_name: string }[] | null;
+  profile_results?:
+    | { id: number; domain_id: string; table_name: string; alias: string | null }[]
+    | null;
 }
 
 export interface CoreEdge {
@@ -197,6 +202,7 @@ export interface CoreEdge {
     id: number;
     domain_id: string;
     table_name: string;
+    alias: string | null;
     description: string | null;
   } | null;
 }
@@ -215,21 +221,39 @@ export interface CoreCheck {
     source_id: string;
     domain_id: string;
     table_name: string;
+    alias: string | null;
     description: string | null;
     dq_contract: string | null;
     /** Absent when the role's schema does not say; null when the check has never run. */
     latest_outcome?: "pass" | "fail" | null;
     latest_run_at?: string | null;
   } | null;
-  checked_table?: { id: number; domain_id: string; table_name: string } | null;
+  checked_table?: {
+    id: number;
+    domain_id: string;
+    table_name: string;
+    alias: string | null;
+  } | null;
 }
 
-/** What a lineage edge reaches: its relation, or, for a member read straight from a source (the
- * view names no relation there, REQ-2126), its address in that source. */
+/** A registered table as the model names it: its domain, then its alias where it has one. Every
+ * table the panel names is named so -- never by its physical schema or relation. */
+export function modelName(t: {
+  domain_id: string;
+  table_name: string;
+  alias: string | null;
+}): string {
+  return `${t.domain_id}.${t.alias || t.table_name}`;
+}
+
+/** What a lineage edge reaches. A member read straight from a source names no relation (REQ-2126)
+ * and is the one reference given by its source address; a registered table is named as the model
+ * names it; a relation the model has not registered, by the name the lineage records. */
 export function edgeTarget(e: CoreEdge): string {
-  const name = e.target_relation ?? e.target_address;
-  if (name == null) throw new Error(`data_product_edges row ${e.id} names no target`);
-  return name;
+  if (e.target_relation === null && e.target_address) return e.target_address;
+  if (e.target_table) return modelName(e.target_table);
+  if (e.target_relation === null) throw new Error(`data_product_edges row ${e.id} names no target`);
+  return e.target_relation;
 }
 
 interface PanelRow {

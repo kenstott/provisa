@@ -53,6 +53,8 @@
     "unassigned": "לא משויכת לאף מוצר",
     "orphan": "בדיקה יתומה",
     "orphanWarning": "{{checker}} משויכת למוצר הזה אבל בודקת את {{table}}, שאינה אחד הקלטים שלו ולא אחד מפורטי הפלט שלו.",
-    "inProduct": "ב-{{product}}"
+    "inProduct": "ב-{{product}}",
+    "detailExpand": "הצג את הרשומה המלאה",
+    "detailCollapse": "הצג פחות"
   }
 }

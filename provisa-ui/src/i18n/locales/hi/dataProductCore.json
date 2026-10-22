@@ -53,6 +53,8 @@
     "unassigned": "किसी प्रोडक्ट को नहीं सौंपी गई",
     "orphan": "अनाथ जाँच",
     "orphanWarning": "{{checker}} इस प्रोडक्ट को सौंपी गई है पर {{table}} की जाँच करती है, जो न इसका इनपुट है न आउटपुट पोर्ट।",
-    "inProduct": "{{product}} में"
+    "inProduct": "{{product}} में",
+    "detailExpand": "पूरी प्रविष्टि दिखाएँ",
+    "detailCollapse": "कम दिखाएँ"
   }
 }

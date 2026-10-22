@@ -53,6 +53,8 @@
     "unassigned": "未分配给任何产品",
     "orphan": "孤立检查",
     "orphanWarning": "{{checker}} 已分配给本产品，但它检查的 {{table}} 既不是本产品的输入，也不是其输出端口。",
-    "inProduct": "属于 {{product}}"
+    "inProduct": "属于 {{product}}",
+    "detailExpand": "显示完整条目",
+    "detailCollapse": "收起"
   }
 }

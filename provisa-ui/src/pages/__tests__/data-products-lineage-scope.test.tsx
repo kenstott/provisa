@@ -128,9 +128,40 @@ describe("product detail lineage scope (REQ-1666, REQ-2127)", () => {
       within(up)
         .getAllByRole("listitem")
         .map((li) => li.textContent),
-    ).toEqual(["pg/sales/customers 1 hop", "pg/sales/orders 1 hop"]);
+    ).toEqual(["pg/sales/customers (sqlite) · 1 hop", "pg/sales/orders (sqlite) · 1 hop"]);
     expect(logged.mock.calls.some((c) => String(c[0]).includes("same key"))).toBe(false);
     logged.mockRestore();
+  });
+
+  it("names a registered lineage target as the model does, never by its physical relation", () => {
+    const dim: CoreEdge = {
+      ...lineage("pet_store.dim_pet", "downstream", 1, null),
+      target_table_id: 9,
+      target_table: {
+        id: 9,
+        domain_id: "pet-store",
+        table_name: "dim_pet",
+        alias: "pets_dimension",
+        description: null,
+      },
+    };
+    render(
+      <DataProductDetailPanel
+        p={P}
+        core={{ ...CORE, edges: [dim] }}
+        coreError={null}
+        reader={null}
+        sources={[]}
+        internalRelationships={[]}
+        canEdit={false}
+        canSeeLineage={true}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    const down = screen.getByTestId("data-product-detail-lineage-downstream-c360");
+    expect(down).toHaveTextContent("pet-store.pets_dimension");
+    expect(down).not.toHaveTextContent("pet_store.dim_pet");
   });
 
   it("draws no Lineage section for a role without view_governance", () => {

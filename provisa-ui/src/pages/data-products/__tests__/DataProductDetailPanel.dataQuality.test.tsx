@@ -64,6 +64,7 @@ function makeTable(overrides: Partial<CoreTable>): CoreTable {
     domain_id: "pet-store",
     schema_name: "pet_store",
     table_name: "vets",
+    alias: null,
     description: null,
     dq_contract: null,
     ...overrides,
@@ -78,7 +79,7 @@ const VETS_SCAN = makeTable({
   table_name: "vets_scan",
   dq_contract: "dataset: provisa/pet_store/vets\nchecks: []\n",
   description: "Soda contract over vets",
-  checks: { id: 1, domain_id: "pet-store", table_name: "vets" },
+  checks: { id: 1, domain_id: "pet-store", table_name: "vets", alias: null },
 });
 
 function renderPanel(tables: CoreTable[], sources: Source[] = SOURCES) {
@@ -168,6 +169,16 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     expect(screen.getByTestId("data-product-detail-dq-checks-2").textContent).toBe(
       "scans pet-store.vets",
     );
+  });
+
+  it("names a checker by its alias, as the model does", () => {
+    renderPanel([
+      VETS,
+      { ...VETS_SCAN, table_name: "vets_quality_dq_soda_dq", alias: "vets_quality" },
+    ]);
+    const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
+    expect(dq).toHaveTextContent("pet-store.vets_quality");
+    expect(dq).not.toHaveTextContent("vets_quality_dq_soda_dq");
   });
 
   it("disables the rules icon until the scan's source is known", () => {

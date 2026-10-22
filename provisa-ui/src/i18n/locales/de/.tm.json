@@ -983,6 +983,8 @@
   "de/dataProductCore.json::dataProductCore.copy": "Copy",
   "de/dataProductCore.json::dataProductCore.copyQuery": "Copy the {{surface}} query",
   "de/dataProductCore.json::dataProductCore.datasetsCovered": "Datasets covered",
+  "de/dataProductCore.json::dataProductCore.detailCollapse": "Show less",
+  "de/dataProductCore.json::dataProductCore.detailExpand": "Show the whole entry",
   "de/dataProductCore.json::dataProductCore.direct": "direct",
   "de/dataProductCore.json::dataProductCore.downstream": "Downstream",
   "de/dataProductCore.json::dataProductCore.dqIcon_failing_one": "{{count}} check, failing",

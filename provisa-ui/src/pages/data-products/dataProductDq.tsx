@@ -22,7 +22,7 @@ import { Alert, Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { tableSqlRef } from "../../naming";
-import { edgeTarget, type CoreCheck, type CoreEdge } from "./productCore";
+import { edgeTarget, modelName, type CoreCheck, type CoreEdge } from "./productCore";
 import { checksIn, dqStatus, type DqStatus } from "./dataProductClaims";
 
 const COLOR: Record<DqStatus, string> = { passing: "green", failing: "red", notRun: "gray" };
@@ -58,8 +58,7 @@ export function DqIcon({
   );
 }
 
-const datasetOf = (c: CoreCheck) =>
-  c.checked_table ? `${c.checked_table.domain_id}.${c.checked_table.table_name}` : "";
+const datasetOf = (c: CoreCheck) => (c.checked_table ? modelName(c.checked_table) : "");
 
 function ClaimRows({ checks, testId }: { checks: CoreCheck[]; testId: string }) {
   const { t, i18n } = useTranslation();
@@ -79,7 +78,11 @@ function ClaimRows({ checks, testId }: { checks: CoreCheck[]; testId: string }) 
           const outcome = c.checker?.latest_outcome;
           const ran = c.checker?.latest_run_at;
           const results = c.checker
-            ? tableSqlRef({ domainId: c.checker.domain_id, tableName: c.checker.table_name })
+            ? tableSqlRef({
+                domainId: c.checker.domain_id,
+                tableName: c.checker.table_name,
+                alias: c.checker.alias,
+              })
             : null;
           const open = () =>
             results &&
@@ -93,12 +96,10 @@ function ClaimRows({ checks, testId }: { checks: CoreCheck[]; testId: string }) 
             >
               <Table.Td>
                 <Text size="sm" fw={500}>
-                  {c.checker?.description || c.checker?.table_name}
+                  {c.checker?.description || (c.checker && modelName(c.checker))}
                 </Text>
                 <Text size="xs" c="var(--text-muted)" ff="monospace">
-                  {c.checker
-                    ? `${c.checker.domain_id}.${c.checker.table_name}`
-                    : c.checker_table_id}
+                  {c.checker ? modelName(c.checker) : c.checker_table_id}
                 </Text>
               </Table.Td>
               <Table.Td ff="monospace">{datasetOf(c)}</Table.Td>
@@ -192,7 +193,7 @@ export function PartnersAndOrphans({ checks, testId }: { checks: CoreCheck[]; te
           <List size="sm">
             {partners.map((c) => (
               <List.Item key={c.id}>
-                {c.checker?.description || c.checker?.table_name}
+                {c.checker?.description || (c.checker && modelName(c.checker))}
                 <Text component="span" c="var(--text-muted)" size="xs" ff="monospace">
                   {" "}
                   {datasetOf(c)} ·{" "}
@@ -214,7 +215,7 @@ export function PartnersAndOrphans({ checks, testId }: { checks: CoreCheck[]; te
           data-testid={`${testId}-orphan-${c.checker_table_id}`}
         >
           {t("dataProductCore.orphanWarning", {
-            checker: c.checker ? `${c.checker.domain_id}.${c.checker.table_name}` : "",
+            checker: c.checker ? modelName(c.checker) : "",
             table: datasetOf(c),
           })}
         </Alert>

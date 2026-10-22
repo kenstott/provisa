@@ -53,6 +53,8 @@
     "unassigned": "atribuída a nenhum produto",
     "orphan": "Verificação órfã",
     "orphanWarning": "{{checker}} está atribuída a este produto, mas verifica {{table}}, que não é uma de suas entradas nem uma de suas portas de saída.",
-    "inProduct": "em {{product}}"
+    "inProduct": "em {{product}}",
+    "detailExpand": "Mostrar a entrada completa",
+    "detailCollapse": "Mostrar menos"
   }
 }

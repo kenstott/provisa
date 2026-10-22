@@ -53,6 +53,8 @@
     "unassigned": "どのプロダクトにも未割り当て",
     "orphan": "孤立したチェック",
     "orphanWarning": "{{checker}} はこのプロダクトに割り当てられていますが、入力でも出力ポートでもない {{table}} をチェックしています。",
-    "inProduct": "{{product}} 内"
+    "inProduct": "{{product}} 内",
+    "detailExpand": "項目全体を表示",
+    "detailCollapse": "表示を減らす"
   }
 }

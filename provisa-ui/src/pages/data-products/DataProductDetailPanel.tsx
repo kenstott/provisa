@@ -39,17 +39,25 @@ import { cypherRelType, tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
-import { edgeTarget, type CoreEdge, type CoreTable, type ProductCore } from "./productCore";
+import { ClampedDetail } from "./ClampedDetail";
+import {
+  edgeTarget,
+  modelName,
+  type CoreEdge,
+  type CoreTable,
+  type ProductCore,
+} from "./productCore";
 import { ClaimsCallout, DqIcon, InputsList, PartnersAndOrphans } from "./dataProductDq";
 import { checksIn } from "./dataProductClaims";
 
 interface TableRef {
   domain_id: string;
   table_name: string;
+  alias: string | null;
 }
 
 const sqlRefOf = (tb: TableRef) =>
-  tableSqlRef({ domainId: tb.domain_id, tableName: tb.table_name });
+  tableSqlRef({ domainId: tb.domain_id, tableName: tb.table_name, alias: tb.alias });
 const selectAll = (tb: TableRef) => `select * from ${sqlRefOf(tb)}`;
 
 /** A table's root query field in the acting role's schema (from /data/graph-schema). */
@@ -235,9 +243,7 @@ function MetaQueries({ core, testId }: { core: ProductCore; testId: string }) {
 }
 
 function relatedLabel(e: CoreEdge): string {
-  return e.target_table
-    ? `${e.target_table.domain_id}.${e.target_table.table_name}`
-    : String(e.target_table_id);
+  return e.target_table ? modelName(e.target_table) : String(e.target_table_id);
 }
 
 // Row-click detail view for a data product — same detail-then-edit pattern as
@@ -268,9 +274,16 @@ export function DataProductDetailPanel({
   // Masonry panel grid: a CSS multi-column layout packs each section into whichever column has
   // room next, instead of flex-wrap's row-by-row layout (which pads every panel in a row up to
   // the row's tallest neighbor, leaving the shorter panels full of unused whitespace).
+  // A card of the masonry keeps what it holds: long names wrap, a wide table or query scrolls inside
+  // it, and the card is one unbroken block of its column, so no card runs into its neighbours.
   const panelStyle: React.CSSProperties = {
     breakInside: "avoid",
+    display: "inline-block",
+    width: "100%",
+    boxSizing: "border-box",
     minWidth: 0,
+    overflowWrap: "anywhere",
+    overflowX: "auto",
     marginBottom: "var(--mantine-spacing-sm)",
     border: "1px solid var(--mantine-color-default-border)",
     borderRadius: "var(--mantine-radius-sm)",
@@ -358,7 +371,7 @@ export function DataProductDetailPanel({
       <List.Item key={`gql-${tb.id}`} ff="monospace">
         <Group gap={4} wrap="nowrap">
           <Text component="span" size="sm" ff="monospace">
-            {tb.domain_id}.{tb.table_name}
+            {modelName(tb)}
           </Text>
           {graphql && (
             <Tip text={t("dataProductsTab.graphqlQueryAria", { table: tb.table_name })}>
@@ -488,7 +501,7 @@ export function DataProductDetailPanel({
                   <List size="sm" data-testid={`data-product-detail-tables-${p.id}`}>
                     {outputTables.map((tb) => (
                       <List.Item key={tb.id} ff="monospace">
-                        {tb.domain_id}.{tb.table_name}
+                        {modelName(tb)}
                         {core.checks && (
                           <DqIcon
                             checks={checksIn(core.checks, "promise")}
@@ -558,7 +571,7 @@ export function DataProductDetailPanel({
                       )}
                       <Group gap={4} wrap="nowrap">
                         <Text component="span" size="sm" ff="monospace">
-                          {tb.domain_id}.{tb.table_name}
+                          {modelName(tb)}
                         </Text>
                         {/* The scan results are reached through SQL alone here — the other
                             access patterns belong to the output ports, not to the evidence. */}
@@ -597,7 +610,7 @@ export function DataProductDetailPanel({
                           data-testid={`data-product-detail-dq-checks-${tb.id}`}
                         >
                           {t("dataProductCore.scans", {
-                            table: `${tb.checks.domain_id}.${tb.checks.table_name}`,
+                            table: modelName(tb.checks),
                           })}
                         </Text>
                       )}
@@ -623,7 +636,7 @@ export function DataProductDetailPanel({
               <List size="sm" data-testid={`data-product-detail-profiles-${p.id}`}>
                 {profiled.map((tb) => (
                   <List.Item key={tb.id} ff="monospace">
-                    {tb.domain_id}.{tb.table_name}
+                    {modelName(tb)}
                     <List size="xs" withPadding>
                       {(tb.profile_results ?? []).map((r) => (
                         <List.Item key={r.id} ff="monospace">
@@ -719,21 +732,23 @@ export function DataProductDetailPanel({
                         ({t("dataProductCore.inProduct", { product: e.target_product.name })})
                       </Muted>
                     )}
-                    <Text size="xs" c="var(--text-muted)">
-                      {[
-                        e.aliases,
-                        e.path_count > 1
-                          ? t("dataProductCore.paths", { count: e.path_count })
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                    {e.target_table?.description && (
+                    <ClampedDetail testId={`data-product-detail-related-${e.id}`}>
                       <Text size="xs" c="var(--text-muted)">
-                        {e.target_table.description}
+                        {[
+                          e.aliases,
+                          e.path_count > 1
+                            ? t("dataProductCore.paths", { count: e.path_count })
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </Text>
-                    )}
+                      {e.target_table?.description && (
+                        <Text size="xs" c="var(--text-muted)">
+                          {e.target_table.description}
+                        </Text>
+                      )}
+                    </ClampedDetail>
                   </List.Item>
                 ))}
               </List>
@@ -814,6 +829,11 @@ export function DataProductDetailPanel({
                               {edgeTarget(e)}
                               <Muted>
                                 {[
+                                  // The one reference by address: a member read from a source, named
+                                  // with that source's type, as Inputs names it.
+                                  e.target_relation === null && e.target_source_type
+                                    ? `(${e.target_source_type})`
+                                    : null,
                                   dir === "upstream"
                                     ? t("dataProductCore.hops", { count: e.hops })
                                     : null,

@@ -443,6 +443,11 @@
 .p3d-node-label {
   transform-origin: 50% 100%;
   translate: -50% -100%;
+  /* A halo of the stage's own colour, so a name stays legible where it crosses a shape or an edge. */
+  text-shadow:
+    0 0 2px var(--p3d-canvas),
+    0 0 3px var(--p3d-canvas),
+    0 0 4px var(--p3d-canvas);
 }
 .p3d-tick {
   font-size: 9.5px;

@@ -31,6 +31,8 @@ const NOT_PANELS: Readonly<Record<string, string>> = {
   "components/relationships/RelationshipRow.tsx": "a list row's selection",
   "pages/DataProductsPage.tsx": "a list row's expansion",
   "components/admin/LocalUsersTab.tsx": "a list row's detail",
+  "pages/data-products/ClampedDetail.tsx":
+    "a list entry's text, cut at three lines and shown whole in place",
   "components/admin/OrgsTab.tsx": "a list row's members",
   "pages/tables/ColumnsTable.tsx": "a column row's mask list, opened beneath the row",
   "pages/tables/TableEditForm.tsx": "a column row's mask list, opened beneath the row",
