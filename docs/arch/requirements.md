@@ -25870,27 +25870,27 @@ The profile runs modal has three more 3D tabs that share the Terrain tab's contr
 
 ### REQ-2125 · Data Catalog Integration {#REQ-2125}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Data products are part of the built-in meta domain. A data_products_meta view over the data_products table has one row per product and a fixed set of columns: id, domain_id, name, owner_role, team_role, purpose, limitations, usage, version, status, sla, support, support_contact, publish and custom_properties. It flattens nothing and holds no arrays or counts; everything one-to-many is reached through meta-domain relationships, so GraphQL, Cypher and SQL clients assemble a product the same way. Each section of the Data Product detail panel can be reached from a data_products_meta row by relationships alone. The domain is reached through domain_id to domains. Member tables are reached through registered_tables_meta.product_id; registered_tables_meta also exposes dq_contract, so the member tables that carry a data-quality contract (the panel's Data Quality section) are told apart from the output tables. Member commands are reached through tracked_functions_meta.product_id. Tags are reached through tag_assignments_meta.product_id. Glossary terms are reached from member columns through glossary_term_refs_meta. Profiling results are reached from each member table to the profile result tables registered for it on its profiler source. Related tables and lineage are reached through data_product_edges. Each of these views keeps its own column tiers (CORE and GOVERNANCE, view_governance), so a caller sees through a relationship only what the target view shows that caller directly.
 
 **Use case:** An analyst, a BI tool or an MCP agent finds a data product and everything that makes it up (its domain, members, commands, tags, terms, data-quality evidence and profiles) by querying the meta domain, with no admin API and no knowledge of the control-plane schema.
 
-**Code:** —
+**Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/app.py`, `provisa/dq/registration.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** —
+**Tests:** `tests/unit/test_data_products_meta.py`, `tests/unit/test_meta_glossary_views.py`, `tests/integration/test_dq_scan_history_e2e.py`
 
 ### REQ-2126 · Data Catalog Integration {#REQ-2126}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The meta domain has a view-only data_product_edges view, related to data_products_meta by product_id. It holds the links from a data product to the rest of the model, and the detail panel's Related Tables and Lineage sections read from it. There are two edge kinds. A relationship edge links a product to a table or to another product through approved relationships. It is direct when one relationship joins a member to the other end. It is indirect when the path runs through tables that belong to no product, and then it carries the shortest hop count. A lineage edge links a product to a relation upstream or downstream of a member at relation level: the full upstream ancestry and one hop downstream, crossing domains. There is at most one row per product, target and kind. When several paths connect the same pair, the row carries the path count and the connecting relationship aliases, so the extra paths become detail on one edge rather than separate edges. The path count is the number of distinct relationships leaving the product's members that lead on to the target; the aliases and supporting tables are those on any walk from a member to the target through tables that belong to no product. All of this is computed from reachability, so its cost grows with the model's size rather than with the number of routes through it. A product-to-product row exists when the target end is a member of another product, so the domain and cross-domain product graph is a query over this view. Relationship edges are computed from relationships and registered tables. Lineage edges are read from the lineage edge table ([REQ-2129](#REQ-2129)), which each model build derives from its compiled views; nothing in either is edited. (Amended 2026-10-21, INPUTS AND RELATED:) The detail panel separates three things: a product's own datasets, the datasets it is built from and the tables it can join to. Its own datasets stay in the existing Output Ports section. Related Tables becomes two sections. Related shows tables with a direct declared relationship to a member; indirect relationship edges stay in this view for the product graph but are not listed in the panel. Inputs shows the product's nearest physical datasets. For each member that is a view, materialized view or dataset transform ([REQ-1924](#REQ-1924)), its lineage is walked upstream through plain views, which are expanded at query time and so are not inputs, and stops at the first physical dataset on each path: a source table or a materialized view. A materialized view's inputs are what its refresh reads, found the same way. A member that is a source table has its source as its input, shown by source type and name with its physical address ([REQ-1364](#REQ-1364)). Lineage edges carry a direction (upstream or downstream), and an upstream edge carries whether its target is a nearest physical input, so Inputs is a query over this view. An input that is a member of another product makes a product-to-product derivation edge, distinct from a relationship edge, so the product graph can draw "built from" apart from "joins to". The Lineage section is unchanged: it shows the full ancestry, plain views included.
 
 **Use case:** A consumer sees which products and tables a data product joins to or derives from, whether each link is direct or through supporting tables, and how many paths connect them, from one meta-domain query that also draws the product graph across domains.
 
-**Code:** —
+**Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/app.py`, `provisa/api/admin/lineage_router.py`, `provisa/lineage/edges.py`, `provisa/lineage/merge.py`, `provisa/lineage/commands.py`, `provisa/security/rights.py`, `provisa/compiler/stage2.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** —
+**Tests:** `tests/unit/test_data_product_edges.py`, `tests/unit/test_statement_contract.py`, `tests/integration/test_data_product_edges_e2e.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -25922,15 +25922,15 @@ The Data Product detail panel has a Knowledge Graph panel, one of its masonry pa
 
 ### REQ-2129 · Data Catalog Integration {#REQ-2129}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The meta domain has a view-only column_lineage_edges view with one row per column-level lineage edge: the source relation and column, the target relation and column, and the view that derives the target. It holds the same lineage between registered relations as the federation column lineage graph (GET /admin/lineage/federation) across all domains, so a cross-domain ancestry chain is never cut. A view's internal steps (CTEs, subqueries) are folded: each row joins one of the view's input columns to one of its output columns, through any internal steps, and names that view; a command's write is a row from its input to the written column, naming the command. It is derived from compiled views: each model build writes its edges to a lineage edge table in the control plane, replacing all of them, with the same function that builds /admin/lineage/federation, so the two never differ. The table is derived state and is never edited. Its endpoints relate to table_columns_meta, so a client can traverse from a member column to its upstream columns by relationships. A caller sees an edge only if both of its ends are visible to that caller in table_columns_meta. The view is in the GOVERNANCE tier and needs view_governance, as [REQ-1640](#REQ-1640)'s lineage section does.
 
 **Use case:** Expanding a table to its columns in the data product graph, with the lineage layer on, shows which upstream columns feed each column. Any meta-domain client can answer the same question with one query.
 
-**Code:** —
+**Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/admin/lineage_router.py`, `provisa/lineage/edges.py`, `provisa/lineage/merge.py`, `provisa/security/rights.py`, `provisa/compiler/stage2.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** —
+**Tests:** `tests/unit/test_column_lineage_edges.py`, `tests/integration/test_data_product_edges_e2e.py`
 
 ## 10. UI & Admin Surfaces
 
