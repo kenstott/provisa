@@ -10,7 +10,9 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Box, Loader, Modal, Tabs, Text } from "@mantine/core";
+import { Alert, Box, Loader, Text } from "@mantine/core";
+import { FitModal } from "./profile3d/Expandable3D";
+import { VerticalNav } from "../../components/VerticalNav";
 import {
   fetchProfileRun,
   fetchProfileRuns,
@@ -79,7 +81,7 @@ function RowsTable({
   }
   const keys = Object.keys(rows[0]).filter((k) => !RUN_KEY.has(k));
   return (
-    <ProfileResultTable rows={rows} columns={keys} testId={testId} title={title} height={360} />
+    <ProfileResultTable rows={rows} columns={keys} testId={testId} title={title} height="fill" />
   );
 }
 
@@ -104,6 +106,7 @@ export function ProfileRunsModal({
   const [loaded, setLoaded] = useState<{ runId: string; data: ProfileRunResults } | null>(null);
   const results = loaded != null && loaded.runId === selected ? loaded.data : null;
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<string>("columns");
 
   useEffect(() => {
     fetchProfileRuns(tableId)
@@ -160,12 +163,14 @@ export function ProfileRunsModal({
   });
 
   return (
-    <Modal
+    // The modal never scrolls: the runs keep their height, and beneath them the menu and the chosen
+    // result each scroll on their own, side by side, down to the dialog's bottom edge.
+    <FitModal
       opened
       onClose={onClose}
       size="90%"
       title={t("profileRunsModal.title", { table: tableName })}
-      data-testid="profile-runs-modal"
+      testId="profile-runs-modal"
     >
       {error && (
         <Alert color="red" data-testid="profile-runs-error">
@@ -180,12 +185,13 @@ export function ProfileRunsModal({
         </Text>
       )}
       {runs != null && runs.length > 0 && (
-        <Box mb="md">
+        <Box mb="md" style={{ flex: "none" }}>
           <ProfileResultTable
             rows={runRows}
             columns={runColumns}
             expandable={false}
             height={220}
+            fitRows
             title={t("profileRunsModal.title", { table: tableName })}
             testId="profile-runs-list"
             selectedRow={(row) => row[RUN_ID] === selected}
@@ -198,68 +204,58 @@ export function ProfileRunsModal({
       )}
       {selected != null && results == null && !error && <Loader size="sm" />}
       {results != null && (
-        // REQ-2123 (amended): the many result tabs read down the side, each title on its own line.
-        <Tabs
-          defaultValue="columns"
-          keepMounted={false}
-          orientation="vertical"
-          // A panel beside the tabs is as wide as is left: a wide table scrolls inside it.
-          styles={{ panel: { minWidth: 0 } }}
-        >
-          <Tabs.List>
-            {/* REQ-2123, REQ-2124: the run drawn in 3D, ahead of its result relations. */}
-            {VIEWS_3D.map((v) => (
-              <Tabs.Tab key={v} value={v} data-testid={`profile-tab-${v}`}>
-                {t(`profileRunsModal.kind_${v}`)}
-              </Tabs.Tab>
-            ))}
-            {KINDS.map((k) => (
-              <Tabs.Tab key={k} value={k} data-testid={`profile-tab-${k}`}>
-                {t(`profileRunsModal.kind_${k}`)}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-          <Tabs.Panel value="terrain" pl="sm">
-            <ProfileTerrain results={results} tableName={tableName} />
-          </Tabs.Panel>
-          <Tabs.Panel value="relationsMap" pl="sm">
-            <ProfileRelations results={results} tableName={tableName} />
-          </Tabs.Panel>
-          <Tabs.Panel value="jointCloud" pl="sm">
-            <ProfileJointCloud results={results} tableName={tableName} />
-          </Tabs.Panel>
-          <Tabs.Panel value="driftStrata" pl="sm">
-            {selected != null && runs != null && role && (
-              <ProfileDriftStrata
+        // REQ-2123 (amended): the many results read down the side, each title on its own line, in
+        // the app's one vertical menu; the chosen one fills what is left of the dialog.
+        <div className="profile-runs-results">
+          <VerticalNav
+            label={t("profileRunsModal.resultsMenu")}
+            items={[...VIEWS_3D, ...KINDS].map((k) => ({
+              value: k,
+              label: t(`profileRunsModal.kind_${k}`),
+              testId: `profile-tab-${k}`,
+            }))}
+            value={tab}
+            onChange={setTab}
+            className="profile-runs-menu"
+            testId="profile-runs-menu"
+          />
+          <div className="profile-runs-panel" data-testid={`profile-panel-${tab}`}>
+            {tab === "terrain" ? (
+              <ProfileTerrain results={results} tableId={tableId} tableName={tableName} />
+            ) : tab === "relationsMap" ? (
+              <ProfileRelations results={results} tableName={tableName} />
+            ) : tab === "jointCloud" ? (
+              <ProfileJointCloud results={results} tableName={tableName} />
+            ) : tab === "driftStrata" ? (
+              selected != null &&
+              runs != null &&
+              role && (
+                <ProfileDriftStrata
+                  tableId={tableId}
+                  role={role.id}
+                  runs={runs}
+                  selectedRunId={selected}
+                  results={results}
+                  tableName={tableName}
+                />
+              )
+            ) : tab === "drift" && selected != null && role ? (
+              <ProfileDriftPanel
                 tableId={tableId}
+                runId={selected}
                 role={role.id}
-                runs={runs}
-                selectedRunId={selected}
-                results={results}
-                tableName={tableName}
+                rows={results.drift ?? []}
+              />
+            ) : (
+              <RowsTable
+                rows={results[tab as (typeof KINDS)[number]] ?? []}
+                testId={`profile-rows-${tab}`}
+                title={`${tableName} · ${t(`profileRunsModal.kind_${tab}`)}`}
               />
             )}
-          </Tabs.Panel>
-          {KINDS.map((k) => (
-            <Tabs.Panel key={k} value={k} pl="sm">
-              {k === "drift" && selected != null && role ? (
-                <ProfileDriftPanel
-                  tableId={tableId}
-                  runId={selected}
-                  role={role.id}
-                  rows={results.drift ?? []}
-                />
-              ) : (
-                <RowsTable
-                  rows={results[k] ?? []}
-                  testId={`profile-rows-${k}`}
-                  title={`${tableName} · ${t(`profileRunsModal.kind_${k}`)}`}
-                />
-              )}
-            </Tabs.Panel>
-          ))}
-        </Tabs>
+          </div>
+        </div>
       )}
-    </Modal>
+    </FitModal>
   );
 }

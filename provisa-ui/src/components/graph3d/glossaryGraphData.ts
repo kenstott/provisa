@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2130: the glossary's Ontology View data, read from the meta domain as the signed-in user --
-// glossary_terms_meta (its live and grounded columns), the domains each term is in, its refs to
+// glossary_terms_meta (its standing columns), the domains each term is in, its refs to
 // columns and the products owning those columns' tables, and glossary_term_edges_meta -- turned
 // into the graph's nodes and edges.
 
@@ -20,7 +20,7 @@ import type { GraphData, GraphEdge, GraphNode, TermStatus } from "./graphModel";
 export const ENTERPRISE_DOMAIN = "*";
 
 const TERMS: Selection = {
-  fields: ["id", "name", "definition", "is_abstract", "deprecated", "retired", "live", "grounded"],
+  fields: ["id", "name", "is_abstract", "deprecated", "retired", "live"],
   rels: {
     domains: { alias: "domains", sel: { fields: ["domain_id"] } },
     refs: {
@@ -46,12 +46,10 @@ const TERMS: Selection = {
 export interface TermRow {
   id: number;
   name: string;
-  definition: string | null;
   is_abstract: boolean;
   deprecated: boolean;
   retired: boolean;
   live: boolean;
-  grounded?: boolean;
   // One-to-many: null when the term has none (see rowsOf).
   domains?: { domain_id: string }[] | null;
   refs?:
@@ -86,32 +84,17 @@ export function termEdgesQuery(m: MetaReader): string | null {
   });
 }
 
-/** A term's standing, and why a proposal is one (REQ-1387: proposed is in service and not live;
- * live is defined and grounded). What the role's columns do not establish is not said. */
-export type ProposalReason = "undefined" | "ungrounded";
-
-export function standing(
-  t: TermRow,
-  say: (reason: ProposalReason) => string,
-): { status: TermStatus; note?: string } {
-  if (t.retired) return { status: "retired" };
-  if (t.deprecated) return { status: "deprecated" };
-  if (t.live) return { status: "live" };
-  const undefinedTerm = (t.definition ?? "").trim() === "";
-  // Not live and defined: so not grounded, whether or not the grounded column was read.
-  const ungrounded = t.grounded === undefined ? !undefinedTerm : !t.grounded;
-  const why: ProposalReason[] = [];
-  if (undefinedTerm) why.push("undefined");
-  if (ungrounded) why.push("ungrounded");
-  return { status: "proposed", note: why.map(say).join(", ") };
+/** A term's standing (REQ-1387: proposed is in service and not live). The graph names a term by its
+ * title and marks its standing by style; it carries neither the term's definition nor reasons. */
+export function standing(t: TermRow): TermStatus {
+  if (t.retired) return "retired";
+  if (t.deprecated) return "deprecated";
+  if (t.live) return "live";
+  return "proposed";
 }
 
-/** The glossary's graph; ``say`` words a proposal's reasons in the reader's language. */
-export function glossaryGraph(
-  terms: TermRow[],
-  edges: TermEdgeRow[],
-  say: (reason: ProposalReason) => string,
-): GraphData {
+/** The glossary's graph. */
+export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData {
   const nodes = new Map<string, GraphNode>();
   const out = new Map<string, GraphEdge>();
   const node = (n: GraphNode) => {
@@ -128,7 +111,7 @@ export function glossaryGraph(
 
   for (const t of terms) {
     const id = `term:${t.id}`;
-    const { status, note } = standing(t, say);
+    const status = standing(t);
     const domains = (t.domains ?? []).map((d) => d.domain_id);
     node({
       id,
@@ -136,7 +119,6 @@ export function glossaryGraph(
       label: t.name,
       status,
       hollow: t.is_abstract,
-      ...(note ? { note } : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),
     });

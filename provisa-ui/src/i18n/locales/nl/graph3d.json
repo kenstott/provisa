@@ -67,8 +67,6 @@
     "status_deprecated": "Verouderd",
     "status_retired": "Buiten gebruik",
     "filterEdgeType": "Randtypen",
-    "why_undefined": "ongedefinieerd",
-    "why_ungrounded": "niet verankerd in data",
     "glossaryUnreadable": "Uw rol kan de woordenlijst in het meta-domein niet lezen.",
     "ontologyTitle": "Ontologie van de woordenlijst",
     "ontologyView": "Ontologieweergave",

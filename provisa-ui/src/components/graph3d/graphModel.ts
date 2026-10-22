@@ -82,8 +82,6 @@ export interface GraphNode {
   status?: TermStatus;
   /** REQ-2130: drawn hollow (an abstract term). */
   hollow?: boolean;
-  /** REQ-2130: said beside the node's name (why a term is a proposal). */
-  note?: string;
 }
 
 export interface GraphEdge {

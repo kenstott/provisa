@@ -67,8 +67,6 @@
     "status_deprecated": "Deprecato",
     "status_retired": "Ritirato",
     "filterEdgeType": "Tipi di arco",
-    "why_undefined": "non definito",
-    "why_ungrounded": "non ancorato ai dati",
     "glossaryUnreadable": "Il tuo ruolo non può leggere il glossario nel dominio meta.",
     "ontologyTitle": "Ontologia del glossario",
     "ontologyView": "Vista ontologia",

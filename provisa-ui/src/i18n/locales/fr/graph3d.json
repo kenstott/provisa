@@ -67,8 +67,6 @@
     "status_deprecated": "Obsolète",
     "status_retired": "Retiré",
     "filterEdgeType": "Types d'arêtes",
-    "why_undefined": "non défini",
-    "why_ungrounded": "non ancré dans les données",
     "glossaryUnreadable": "Votre rôle ne peut pas lire le glossaire du domaine meta.",
     "ontologyTitle": "Ontologie du glossaire",
     "ontologyView": "Vue ontologie",

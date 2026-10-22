@@ -67,8 +67,6 @@
     "status_deprecated": "अप्रचलित",
     "status_retired": "सेवानिवृत्त",
     "filterEdgeType": "एज प्रकार",
-    "why_undefined": "अपरिभाषित",
-    "why_ungrounded": "डेटा से असंबद्ध",
     "glossaryUnreadable": "आपकी भूमिका meta डोमेन में शब्दावली नहीं पढ़ सकती।",
     "ontologyTitle": "शब्दावली ऑन्टोलॉजी",
     "ontologyView": "ऑन्टोलॉजी दृश्य",

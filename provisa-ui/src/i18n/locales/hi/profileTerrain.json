@@ -62,6 +62,11 @@
     "flagBimodal": "द्विशिखरीय",
     "flagSpike": "{{value}} पर शिखर ({{pct}})",
     "flagBeyond": "{{rows}} 3×IQR से आगे",
-    "flagDistinct": "{{count}} भिन्न"
+    "flagDistinct": "{{count}} भिन्न",
+    "includeColumn": "{{column}} को भू-दृश्य में दिखाएँ",
+    "includeAll": "सभी",
+    "includeNone": "कोई नहीं",
+    "includeAllAria": "हर कॉलम को भू-दृश्य में दिखाएँ",
+    "includeNoneAria": "हर कॉलम को भू-दृश्य से हटाएँ"
   }
 }

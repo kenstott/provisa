@@ -73,11 +73,12 @@ const RESULTS = {
 
 beforeEach(() => {
   scenes.length = 0;
+  window.sessionStorage.clear();
 });
 
 describe("ProfileTerrain", () => {
   it("builds the scene from the run and selects the first column", async () => {
-    render(<ProfileTerrain results={RESULTS} tableName="orders" />);
+    render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
     await waitFor(() => expect(scenes).toHaveLength(1));
     const [cols, order] = scenes[0].setData.mock.calls[0];
     expect(cols.map((c: { name: string }) => c.name)).toEqual(["amount", "status"]);
@@ -87,7 +88,7 @@ describe("ProfileTerrain", () => {
   });
 
   it("selects a column from the list and lights a value's slice from its row", async () => {
-    render(<ProfileTerrain results={RESULTS} tableName="orders" />);
+    render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
     await waitFor(() => expect(scenes).toHaveLength(1));
     fireEvent.click(screen.getByTestId("terrain-row-status"));
     expect(screen.getByTestId("terrain-detail")).toHaveTextContent("status");
@@ -99,7 +100,7 @@ describe("ProfileTerrain", () => {
   });
 
   it("re-orders the ridges and zooms to a column", async () => {
-    render(<ProfileTerrain results={RESULTS} tableName="orders" />);
+    render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
     await waitFor(() => expect(scenes).toHaveLength(1));
     fireEvent.click(screen.getByTestId("terrain-row-status"));
     fireEvent.click(screen.getByTestId("terrain-focus"));
@@ -108,7 +109,7 @@ describe("ProfileTerrain", () => {
   });
 
   it("opens the same terrain in a modal with a scene of its own", async () => {
-    render(<ProfileTerrain results={RESULTS} tableName="orders" />);
+    render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
     await waitFor(() => expect(scenes).toHaveLength(1));
     fireEvent.click(screen.getByTestId("terrain-expand"));
     expect(await screen.findByTestId("terrain-expanded")).toBeInTheDocument();
@@ -116,8 +117,50 @@ describe("ProfileTerrain", () => {
     expect(screen.getByText("Profile terrain of orders")).toBeInTheDocument();
   });
 
+  describe("which columns the terrain draws", () => {
+    const drawn = () => scenes[0].setOrder.mock.lastCall?.[0] as string[];
+
+    it("leaves an unchecked column out, the rest side by side, and still inspects it", async () => {
+      render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
+      await waitFor(() => expect(scenes).toHaveLength(1));
+      expect(screen.getByTestId("terrain-include-status")).toBeChecked();
+      fireEvent.click(screen.getByTestId("terrain-include-status"));
+      expect(screen.getByTestId("terrain-include-status")).not.toBeChecked();
+      await waitFor(() => expect(drawn()).toEqual(["amount"]));
+      // Still listed, and still the one inspected once picked.
+      fireEvent.click(screen.getByTestId("terrain-row-status"));
+      expect(screen.getByTestId("terrain-detail")).toHaveTextContent("status");
+      expect(screen.getByLabelText("Show status in the terrain")).toBe(
+        screen.getByTestId("terrain-include-status"),
+      );
+    });
+
+    it("puts every column in or takes every one out from the list head", async () => {
+      render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
+      await waitFor(() => expect(scenes).toHaveLength(1));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Leave every column out of the terrain" }),
+      );
+      await waitFor(() => expect(drawn()).toEqual([]));
+      fireEvent.click(screen.getByRole("button", { name: "Show every column in the terrain" }));
+      await waitFor(() => expect(drawn()).toEqual(["amount", "status"]));
+    });
+
+    it("keeps the choice for the session, per table", async () => {
+      const first = render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
+      await waitFor(() => expect(scenes).toHaveLength(1));
+      fireEvent.click(screen.getByTestId("terrain-include-status"));
+      first.unmount();
+      const again = render(<ProfileTerrain results={RESULTS} tableId={7} tableName="orders" />);
+      expect(screen.getByTestId("terrain-include-status")).not.toBeChecked();
+      again.unmount();
+      render(<ProfileTerrain results={RESULTS} tableId={8} tableName="invoices" />);
+      expect(screen.getByTestId("terrain-include-status")).toBeChecked();
+    });
+  });
+
   it("says so when the run profiled no columns", () => {
-    render(<ProfileTerrain results={{ columns: [] }} tableName="orders" />);
+    render(<ProfileTerrain results={{ columns: [] }} tableId={7} tableName="orders" />);
     expect(screen.getByTestId("terrain-empty")).toBeInTheDocument();
     expect(scenes).toHaveLength(0);
   });

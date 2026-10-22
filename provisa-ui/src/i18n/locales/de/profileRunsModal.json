@@ -42,6 +42,7 @@
     "kind_terrain": "Terrain",
     "kind_relationsMap": "Beziehungen",
     "kind_jointCloud": "Gemeinsame Wolke",
-    "kind_driftStrata": "Drift-Schichten"
+    "kind_driftStrata": "Drift-Schichten",
+    "resultsMenu": "Ergebnisse"
   }
 }

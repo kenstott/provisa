@@ -368,7 +368,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       world.add(mesh);
       // REQ-2130: a proposal says why beside its name; a deprecated term's name is dimmed too.
       const label = this.pin(
-        node.note ? `${node.label} · ${node.note}` : node.label,
+        node.label,
         `p3d-label p3d-node-label g3d-label-${node.type}` +
           (node.status === "proposed" ? " g3d-label-proposed" : "") +
           (node.status === "deprecated" ? " g3d-label-dim" : ""),

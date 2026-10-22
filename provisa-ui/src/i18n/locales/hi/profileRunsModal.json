@@ -42,6 +42,7 @@
     "kind_terrain": "टेरेन",
     "kind_relationsMap": "संबंध",
     "kind_jointCloud": "संयुक्त क्लाउड",
-    "kind_driftStrata": "ड्रिफ़्ट स्तर"
+    "kind_driftStrata": "ड्रिफ़्ट स्तर",
+    "resultsMenu": "परिणाम"
   }
 }

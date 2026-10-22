@@ -67,8 +67,6 @@
     "status_deprecated": "非推奨",
     "status_retired": "廃止",
     "filterEdgeType": "エッジの種類",
-    "why_undefined": "未定義",
-    "why_ungrounded": "データ未接続",
     "glossaryUnreadable": "あなたのロールは meta ドメインの用語集を読み取れません。",
     "ontologyTitle": "用語集オントロジー",
     "ontologyView": "オントロジービュー",

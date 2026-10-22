@@ -67,8 +67,6 @@
     "status_deprecated": "Veraltet",
     "status_retired": "Stillgelegt",
     "filterEdgeType": "Kantentypen",
-    "why_undefined": "undefiniert",
-    "why_ungrounded": "ohne Datenbezug",
     "glossaryUnreadable": "Ihre Rolle kann das Glossar in der Meta-Domäne nicht lesen.",
     "ontologyTitle": "Glossar-Ontologie",
     "ontologyView": "Ontologie-Ansicht",

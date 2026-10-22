@@ -25,17 +25,13 @@ import {
   glossaryGraph,
   termEdgesQuery,
   termsQuery,
-  type ProposalReason,
   type TermEdgeRow,
   type TermRow,
 } from "./glossaryGraphData";
 import { GraphModal } from "./KnowledgeGraphPanel";
 import { metaReader } from "./useProductGraph";
 
-async function loadGlossaryGraph(
-  role: string,
-  say: (reason: ProposalReason) => string,
-): Promise<GraphData | null> {
+async function loadGlossaryGraph(role: string): Promise<GraphData | null> {
   const m = await metaReader(role);
   const tq = termsQuery(m);
   if (tq === null) return null;
@@ -48,7 +44,7 @@ async function loadGlossaryGraph(
           (r) => r.glossary_term_edges,
         ),
   ]);
-  return glossaryGraph(terms, edges, say);
+  return glossaryGraph(terms, edges);
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
@@ -83,7 +79,7 @@ export function GlossaryOntologyView() {
   useEffect(() => {
     if (actingRoles === null) return;
     let cancelled = false;
-    loadGlossaryGraph(actingRoles, (reason) => t(`graph3d.why_${reason}`)).then(
+    loadGlossaryGraph(actingRoles).then(
       (data) => !cancelled && setRead({ data, error: null, done: true }),
       (e: unknown) =>
         !cancelled &&
@@ -110,7 +106,11 @@ export function GlossaryOntologyView() {
     );
   }
   return (
-    <div data-testid="ontology-view">
+    // In place of the term list it takes the list's space: the stage fills down to the page's foot.
+    <div
+      data-testid="ontology-view"
+      style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+    >
       <GraphExplorer
         data={read.data}
         scope={GLOSSARY_SCOPE}

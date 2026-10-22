@@ -67,8 +67,6 @@
     "status_deprecated": "Deprecated",
     "status_retired": "Retired",
     "filterEdgeType": "Edge types",
-    "why_undefined": "undefined",
-    "why_ungrounded": "ungrounded",
     "glossaryUnreadable": "Your role cannot read the glossary in the meta domain.",
     "ontologyTitle": "Glossary ontology",
     "ontologyView": "Ontology view",

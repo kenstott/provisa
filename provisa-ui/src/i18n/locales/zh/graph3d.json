@@ -67,8 +67,6 @@
     "status_deprecated": "已弃用",
     "status_retired": "已停用",
     "filterEdgeType": "边类型",
-    "why_undefined": "未定义",
-    "why_ungrounded": "未关联数据",
     "glossaryUnreadable": "你的角色无法读取 meta 域中的术语表。",
     "ontologyTitle": "术语表本体",
     "ontologyView": "本体视图",

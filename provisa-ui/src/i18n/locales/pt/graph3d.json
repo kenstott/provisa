@@ -67,8 +67,6 @@
     "status_deprecated": "Obsoleto",
     "status_retired": "Desativado",
     "filterEdgeType": "Tipos de aresta",
-    "why_undefined": "não definido",
-    "why_ungrounded": "sem vínculo com dados",
     "glossaryUnreadable": "Sua função não pode ler o glossário no domínio meta.",
     "ontologyTitle": "Ontologia do glossário",
     "ontologyView": "Visão de ontologia",

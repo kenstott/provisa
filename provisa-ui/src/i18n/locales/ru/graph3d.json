@@ -67,8 +67,6 @@
     "status_deprecated": "Устарел",
     "status_retired": "Выведен",
     "filterEdgeType": "Типы рёбер",
-    "why_undefined": "не определён",
-    "why_ungrounded": "не связан с данными",
     "glossaryUnreadable": "Ваша роль не может читать глоссарий в домене meta.",
     "ontologyTitle": "Онтология глоссария",
     "ontologyView": "Вид онтологии",

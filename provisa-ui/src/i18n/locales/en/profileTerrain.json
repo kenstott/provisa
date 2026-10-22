@@ -62,6 +62,11 @@
     "flagBimodal": "Bimodal",
     "flagSpike": "Spike at {{value}} ({{pct}})",
     "flagBeyond": "{{rows}} past 3×IQR",
-    "flagDistinct": "{{count}} distinct"
+    "flagDistinct": "{{count}} distinct",
+    "includeColumn": "Show {{column}} in the terrain",
+    "includeAll": "All",
+    "includeNone": "None",
+    "includeAllAria": "Show every column in the terrain",
+    "includeNoneAria": "Leave every column out of the terrain"
   }
 }

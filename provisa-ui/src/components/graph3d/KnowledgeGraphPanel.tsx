@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Chip, Group, Loader, Modal, Text } from "@mantine/core";
 import { Network } from "lucide-react";
-import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
+import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3D";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { GraphExplorer } from "./GraphExplorer";
 import { GraphStage, type StageState } from "./GraphStage";
@@ -56,18 +56,7 @@ export function GraphModal({
   zero: string[];
 }) {
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      size="95%"
-      title={title}
-      // The body takes what the header leaves, so the graph's foot (its legend) is never cut off.
-      styles={{
-        content: { height: "95vh", display: "flex", flexDirection: "column" },
-        body: { flex: 1, minHeight: 0, overflow: "hidden" },
-      }}
-      data-testid="graph3d-modal"
-    >
+    <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
       {opened && (
         <GraphExplorer
           data={data}
@@ -78,7 +67,7 @@ export function GraphModal({
           testId="graph3d"
         />
       )}
-    </Modal>
+    </FitModal>
   );
 }
 
