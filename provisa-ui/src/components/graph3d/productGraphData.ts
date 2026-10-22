@@ -12,7 +12,7 @@
 // data_products_meta and its relationships (REQ-2125), the glossary's term edges and the
 // sensitive columns — and turned into the graph's nodes and edges.
 
-import { rootQuery, type MetaReader, type Selection } from "../../api/metaGraph";
+import { rootQuery, rowsOf, type MetaReader, type Selection } from "../../api/metaGraph";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
 
 // Relationships by the GraphQL alias the meta domain declares for them (_meta_seed); the one
@@ -94,19 +94,21 @@ export const PRODUCT: Selection = {
 };
 
 interface Tagged {
-  tags?: { tag_id: string }[];
+  tags?: { tag_id: string }[] | null;
 }
 
 interface ColumnRow extends Tagged {
   column_name: string;
   column_key: string;
-  upstream?: {
-    source_column_key: string;
-    source_relation: string;
-    source_column: string;
-    via: string;
-  }[];
-  glossary_ref?: { term_id: number; term?: { id: number; name: string } | null }[];
+  upstream?:
+    | {
+        source_column_key: string;
+        source_relation: string;
+        source_column: string;
+        via: string;
+      }[]
+    | null;
+  glossary_ref?: { term_id: number; term?: { id: number; name: string } | null }[] | null;
 }
 
 interface TableRow extends Tagged {
@@ -115,19 +117,21 @@ interface TableRow extends Tagged {
   table_name: string;
   dq_contract?: string | null;
   product_id?: string | null;
-  table_columns?: ColumnRow[];
-  profile_results?: { id: number; table_name: string }[];
+  table_columns?: ColumnRow[] | null;
+  profile_results?: { id: number; table_name: string }[] | null;
   checks?: { id: number } | null;
-  checked_by?: TableRow[];
-  source_relationships?: {
-    id: number;
-    target_table?: {
-      id: number;
-      domain_id: string;
-      table_name: string;
-      product_id?: string | null;
-    } | null;
-  }[];
+  checked_by?: TableRow[] | null;
+  source_relationships?:
+    | {
+        id: number;
+        target_table?: {
+          id: number;
+          domain_id: string;
+          table_name: string;
+          product_id?: string | null;
+        } | null;
+      }[]
+    | null;
 }
 
 export interface EdgeRow {
@@ -146,9 +150,9 @@ export interface ProductRow extends Tagged {
   id: string;
   name: string;
   domain_id: string;
-  member_tables?: TableRow[];
-  commands?: { name: string; domain_id: string }[];
-  edges?: EdgeRow[];
+  member_tables?: TableRow[] | null;
+  commands?: { name: string; domain_id: string }[] | null;
+  edges?: EdgeRow[] | null;
 }
 
 export interface TermEdgeRow {
@@ -204,7 +208,7 @@ export const tableNode = (id: number) => `t:${id}`;
  * belongs to the product of the table it scans, so it is reached through that member's checkedBy;
  * one also assigned to the product directly is a member already.
  */
-export function withCheckers<T extends { id: number; checked_by?: T[] }>(members: T[]): T[] {
+export function withCheckers<T extends { id: number; checked_by?: T[] | null }>(members: T[]): T[] {
   const seen = new Set(members.map((t) => t.id));
   const checkers = members
     .flatMap((t) => t.checked_by ?? [])
@@ -245,8 +249,7 @@ export function toGraphData(
     const id = `${kind}:${a}>${b}`;
     if (!edges.has(id)) edges.set(id, { id, a, b, kind, ...(label ? { label } : {}) });
   };
-  const tagIds = (row: Tagged) =>
-    row.tags === undefined ? undefined : row.tags.map((t) => t.tag_id);
+  const tagIds = (row: Tagged) => rowsOf(row.tags)?.map((t) => t.tag_id);
   const tag = (row: Tagged, target: string) => {
     for (const t of row.tags ?? []) {
       node({ id: `g:${t.tag_id}`, type: "tag", label: t.tag_id });
