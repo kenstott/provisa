@@ -2,6 +2,8 @@
 
 A command is a registered, governed function that brings outside computation under Provisa's governance, audit and lineage. The federation engine handles SQL natively. A command covers the computation SQL can't express, such as an enrichment microservice, a Python model, a shell script or a native database stored procedure. You register it once, and every client surface (GraphQL, pgwire SQL, REST, Arrow Flight, gRPC, Bolt/Cypher) can call it under identical governance.
 
+Commands are one of the ways to write business logic in Provisa. See [Business Logic in Provisa](business-logic.md).
+
 A command is a **governed RPC**. Its inputs and outputs are declared, typed, validated, traced and wired into lineage. An ad-hoc ETL step, an ungoverned curl call or a subprocess has none of that.
 
 ## Implementation kinds

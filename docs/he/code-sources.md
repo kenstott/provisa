@@ -12,6 +12,8 @@
 - **בכל מקום.** אותה פונקציה עונה ל-GraphQL, ל-SQL (דרך HTTP, pgwire ו-Arrow Flight), ל-Cypher (דרך HTTP ו-Bolt), ל-gRPC, ל-REST, ל-JSON:API ול-MCP.
 
 
+Resolvers של קוד הם אחת משלוש הדרכים לכתוב לוגיקה עסקית ב-Provisa. ראו [לוגיקה עסקית ב-Provisa](business-logic.md).
+
 ## resolver ראשון {: #an-example }
 
 ```python
