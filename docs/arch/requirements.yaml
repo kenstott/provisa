@@ -87094,7 +87094,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (REQ-348): WITH RECURSIVE capped at a depth limit, or unrolled to that depth on an engine
     without recursion, with cycles handled. A result cut at the limit says it was cut. The depth
     limit is an operator setting with its field in Deployment settings. A variable predicate
-    (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded.
+    (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded. (Amended
+    2026-10-22, ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two steps.
+    First, a refactor makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary
+    no front end owns, with Cypher's parser on one side and select_builder, assembler, path_translator
+    and label_map as the back end both languages share; Cypher's existing tests prove the refactor
+    changes nothing. Second, a SPARQL front end lowers rdflib's SPARQL algebra to that IR and adds what
+    SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded
+    variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib
+    is a new dependency, taken under the dependency rules.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -87168,3 +87176,67 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1590
   - REQ-885
   target: "2027-Q2"
+- id: REQ-2138
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: SPARQL
+  feature: connector-catalog-nosql-search-and-graph
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A sparql source (REQ-1683) may name a reasoner, HermiT first, and an OWL axioms file. At each
+    refresh it pulls the slice of the graph its axioms need from its endpoint by CONSTRUCT, classifies
+    it, and serves the inferred class memberships and properties as tables, such as
+    sanctions_exposed(party) and controls(controller, controlled). How often it reasons is the source's
+    freshness declaration (cache_ttl, replica), as for any source. It works against any SPARQL 1.1
+    endpoint, Provisa's own among them (REQ-2135), which it reads as a service identity, so it reasons
+    over only what that identity is granted; what it serves is governed again for every reader, as any
+    table is. A source that would read predicates produced by its own inferred tables is refused, as a
+    view that reads itself is. The reasoner runs in the source's own process or container, never in
+    the server's. HermiT and owlready2 are LGPL: they are used as separate programs and imported
+    libraries, never linked into Provisa, under the dependency rules, and HermiT needs a Java runtime in
+    the source's image.
+  use_case: >-
+    A compliance team writes once, as OWL axioms, what makes a party sanctions-exposed or one company
+    control another, and every surface reads the inferred answer as a governed table, recomputed as
+    often as the source's freshness says.
+  scenario: |
+    Given a sparql source naming HermiT and an axioms file declaring controls transitive and SanctionsExposed as controlled by some SanctionedParty, its endpoint Provisa's own SPARQL endpoint read as a service identity
+    When the source refreshes
+    Then it reads the slice by CONSTRUCT, classifies it, and its tables sanctions_exposed and controls hold the inferred rows
+    When a role reads sanctions_exposed
+    Then the rows are governed for that role as any table's are
+    When the source is declared to read a predicate its own controls table produces
+    Then it is refused
+  relates_to:
+  - REQ-1683
+  - REQ-2135
+  - REQ-1387
+  target: "2027-Q1"
+- id: REQ-2139
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The named demo "beneficial ownership": KYC parties, companies, owners and their stakes, over a few
+    sources, with an ontology whose terms are linked to the stake and sanctions columns, and an OWL
+    file declaring controls transitive and SanctionsExposed equivalent to being controlled by some
+    SanctionedParty. A sparql source with HermiT (REQ-2138) reads Provisa's own SPARQL endpoint
+    (REQ-2135). The answer, which parties are sanctions-exposed and through which chain of control, is
+    queried from SQL, GraphQL and Cypher, and a role without the sanctions rights gets it masked or
+    filtered. Its tour follows the settled demo shape: the scenario, how the pieces fit, then the
+    solution.
+  use_case: >-
+    A visitor sees an ownership chain several companies deep turn into a governed yes-or-no on
+    sanctions exposure, inferred from rules written once, and readable from the language they already
+    use.
+  relates_to:
+  - REQ-2135
+  - REQ-2138
+  - REQ-2056
+  target: "2027-Q1"
