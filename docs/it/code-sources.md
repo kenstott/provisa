@@ -1,210 +1,134 @@
-# Sorgenti Node e Python
+# Code Resolvers
 
-A volte i dati che vi servono stanno dietro codice che il vostro team ha già scritto: un modello di scoring, un client per un servizio interno, uno script che sistema un'esportazione. Una sorgente Node o Python vi permette di servire quel codice come tabelle. Marcate le funzioni che volete condividere, indicate a Provisa dove si trova il codice, e ogni funzione marcata diventa una tabella che ogni ruolo legge con le stesse regole di qualsiasi altra tabella.
+Logica di business in Python o Node.
 
-## Cosa diventa una funzione {: #what-a-function-becomes }
+Se hai già scritto un server GraphQL, conosci questo schema. Un code resolver è una funzione che risponde per un tipo di oggetto: in GraphQL, una funzione marcata `@table` *è* il resolver del tipo della sua tabella. Provisa la chiama con gli argomenti della query e governa ciò che restituisce.
 
-Provisa legge le dichiarazioni del vostro codice: tag JSDoc e tipi TypeScript per Node, docstring e type hint per Python. Contano tre tag.
+Cosa cambia rispetto a un resolver scritto a mano:
+
+- **Governato.** Visibilità, maschere e regole di riga si applicano alle righe che la tua funzione restituisce, come per qualsiasi tabella.
+- **A lotti.** Una funzione che accetta un parametro `loader` riceve tutte le chiavi di un join in una sola chiamata, lo schema DataLoader.
+- **Delegato.** Un filtro su una colonna arriva alla tua funzione come parametro quando lo chiedi.
+- **Servito ovunque.** La stessa funzione risponde a GraphQL, SQL (su HTTP, pgwire e Arrow Flight), Cypher (su HTTP e Bolt), gRPC, REST, JSON:API e MCP.
+
+## Un primo resolver {: #an-example }
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+Per servirlo:
+
+1. Aggiungi un'origine `python` e puntala al codice: un pacchetto PyPI, un commit Git, un caricamento o una cartella (vedi [Da dove viene il codice](#where-the-code-comes-from)).
+2. Salvala. Provisa installa il codice, lo legge e offre `churn_risk` come tabella con le colonne `score` e `reasons` e un parametro obbligatorio, `account_id`.
+3. Uno steward registra la tabella in un dominio, qui `accounts`, e la concede come qualsiasi altra.
+
+Poi leggila. In GraphQL il parametro è un argomento di campo:
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+In SQL è una condizione `_nf_`:
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
+
+Node funziona allo stesso modo, con tag JSDoc e tipi TypeScript: vedi [Node](#node).
+
+## Costruire {: #build }
+
+### Cosa diventa una funzione {: #what-a-function-becomes }
+
+Provisa legge le dichiarazioni del tuo codice stesso: docstring e annotazioni di tipo in Python, tag JSDoc e tipi TypeScript in Node.
 
 | Tag | Diventa |
 |---|---|
-| `@table` | Una tabella. La funzione restituisce una lista o un iterabile, e ogni elemento è una riga |
-| `@command` | Un command, eseguito su richiesta |
-| `@stream` | Una tabella live. La funzione è un generatore, e ogni riga viene inviata appena prodotta |
+| `@table` | Una tabella. La funzione restituisce una lista o un iterabile, e ogni elemento è una riga. |
+| `@command` | Un comando, eseguito su richiesta. |
+| `@stream` | Una tabella live. La funzione è un generatore, e ogni riga viene inviata appena prodotta. |
 
-Una funzione senza tag viene ignorata. Un tag che Provisa non conosce viene rifiutato, come un tipo che non sa mappare. Il rifiuto nomina la funzione ed elenca tutti i problemi insieme, così li correggete in un solo passaggio.
+- Una funzione senza tag viene ignorata.
+- Un tag che Provisa non conosce viene rifiutato, come un tipo che non sa mappare. Il rifiuto nomina la funzione ed elenca tutti i problemi in una volta, così li correggi in un solo passaggio.
 
-Il tipo di riga dà le colonne. Testo, numeri, booleani, date e timestamp corrispondono ai loro tipi di colonna, le liste restano liste e gli oggetti annidati diventano tipi con nome. In TypeScript un tipo di riga è un'interfaccia, un alias di tipo o una classe. In Python è una dataclass, un `TypedDict`, un `NamedTuple`, un modello Pydantic o qualsiasi classe con campi annotati. Le righe di un modello Pydantic vengono inviate come le restituisce `model_dump(by_alias=True)`, quindi un campo con alias diventa una colonna con il nome del suo alias. La documentazione di un campo diventa la descrizione della sua colonna quando registrate la tabella: un commento di documentazione su una proprietà TypeScript, o un `Field(description=...)` di Pydantic. Quando il tipo di una riga è generico (`any`, `unknown` o un `Record` in TypeScript, `Any` o un `dict` in Python), Provisa chiama la funzione una volta, senza argomenti, e suggerisce le colonne dalle righe restituite. Se la funzione ha un parametro obbligatorio non può essere chiamata così, e tipizzate voi le colonne quando registrate la tabella.
+Il tipo di riga dà le colonne:
 
-I parametri della funzione diventano i parametri della tabella. Un parametro senza valore predefinito è obbligatorio, quindi una lettura che lo omette viene rifiutata prima che il codice venga eseguito. Un parametro con valore predefinito è facoltativo; se lo omettete, vale il vostro predefinito. Uno steward può comunque rendere obbligatorio un parametro facoltativo.
+- Testo, numeri, booleani, date e timestamp corrispondono ai loro tipi di colonna. Le liste restano liste, e gli oggetti annidati diventano tipi con nome.
+- In Python un tipo di riga è una dataclass, un `TypedDict`, un `NamedTuple`, un modello Pydantic o qualsiasi classe con campi annotati. Le righe di un modello Pydantic vengono inviate come le dà `model_dump(by_alias=True)`, quindi un campo con un alias diventa una colonna con il nome dell'alias.
+- In TypeScript un tipo di riga è un'interfaccia, un alias di tipo o una classe.
+- La documentazione propria di un campo diventa la descrizione della sua colonna quando registri la tabella: un `Field(description=...)` di Pydantic, o un commento di documentazione su una proprietà TypeScript.
+- Un tipo di riga generico (`Any` o un `dict` in Python, `any`, `unknown` o un `Record` in TypeScript) non ha colonne da leggere. Provisa chiama la funzione una volta senza argomenti e propone colonne dalle righe restituite. Se la funzione ha un parametro obbligatorio non può essere chiamata così, e indichi tu i tipi delle colonne quando registri la tabella.
 
-## Da dove viene il codice {: #where-the-code-comes-from }
+I parametri della funzione diventano i parametri della tabella:
 
-Il codice è fissato, così una sorgente esegue sempre esattamente ciò che è stato registrato:
+- Un parametro senza valore predefinito è obbligatorio. Una lettura che lo omette viene rifiutata prima che il tuo codice venga eseguito.
+- Un parametro con valore predefinito è facoltativo. Omettilo e si applica il tuo valore predefinito.
+- Uno steward può comunque rendere obbligatorio uno facoltativo.
 
-- **Un pacchetto**: un pacchetto npm per Node o un pacchetto PyPI per Python, a una versione esatta.
-- **Un repository Git**: un commit completo di 40 caratteri, con una sottodirectory se il codice non è in cima.
-- **Un caricamento**: un `.zip`, `.tgz` o `.tar.gz` del codice.
+### Delega dei filtri {: #pushdown }
 
-Il codice Node gira su Node.js, Bun o Deno, a vostra scelta. Il codice Python gira sul Python fornito con Provisa. Quando il codice ha più di un modulo Python di primo livello, indicate in **Modulo di ingresso** quello da cui si entra.
+Un filtro su una delle colonne restituite può arrivare alla tua funzione come argomento, così che recuperi solo le righe richieste. Dichiara quale parametro lo riceve in uno di tre modi:
 
-## Installare le dipendenze {: #installing-dependencies }
+- **Per nome.** Un parametro chiamato esattamente come una colonna restituita riceve un'uguaglianza su quella colonna. Uno chiamato `<op>_<column>` riceve quell'operatore, come `gte_score` o `in_region`.
+- **Per tag.** Una riga `@<op>_<column> <parameter>` (o `@<column> <parameter>`) nella docstring o nel JSDoc, o un `/* @<op>_<column> */` in linea prima di un parametro TypeScript.
+- **Per `Annotated`.** In Python, la stringa `"<op>_<column>"` (o `"<column>"`) sull'annotazione di tipo del parametro.
 
-Il codice con dipendenze ha bisogno di un lockfile, e ogni installazione lo segue alla lettera. Senza lockfile, un pacchetto che dichiara dipendenze viene rifiutato, e il rifiuto vi dice di aggiungerne uno.
+Gli operatori:
 
-| Runtime | Lockfile |
+| `op` | Riceve |
 |---|---|
-| Node.js | `package-lock.json` o `npm-shrinkwrap.json` |
-| Bun | `bun.lock` o `bun.lockb` |
-| Deno | `deno.lock` |
-| Python | `uv.lock` (con il suo `pyproject.toml`), `pylock.toml` o un `requirements.txt` con `--hash` su ogni riga |
+| `ne`, `gt`, `gte`, `lt`, `lte` | Un valore del tipo della colonna |
+| `in` | Una lista del tipo della colonna |
+| `like` | Testo, su una colonna di testo |
 
-Un lockfile è facoltativo, ma senza di esso due installazioni dello stesso codice possono differire, quindi un test che oggi passa può fallire domani per una nuova versione di una dipendenza. Per un'installazione identica ogni volta, il codice deve includere un lockfile, oppure ne create uno e lo fornite qui. Un'immagine costruita è già fissata. Una volta costruita l'immagine della sorgente ([Costruisci immagine](#running-on-a-remote-host)), le sue dipendenze sono al suo interno, e se è quell'immagine a passare per i vostri test e la vostra CI/CD, l'immagine testata è quella che viene eseguita. Un lockfile conta per la modalità dev e per ogni nuova build dell'immagine. Il codice che include il proprio lockfile si installa da quello: un repository Git o un caricamento che ne ha uno, oppure un pacchetto npm il cui autore ha pubblicato `npm-shrinkwrap.json` (npm non pubblica mai `package-lock.json`). Il codice senza lockfile si installa con dipendenze non fissate: un repository Git o un caricamento senza lockfile, la maggior parte dei pacchetti npm e i pacchetti Python da PyPI, i cui wheel non hanno posto per uno. Fornite un lockfile accanto a quel codice perché ogni installazione sia identica. Alcuni codici non ne hanno bisogno, perché il modo in cui sono distribuiti fissa già ogni dipendenza.
+- Un intervallo su una colonna riempie entrambi i suoi parametri: `score BETWEEN 0.5 AND 0.9` dà `gte_score` e `lte_score`.
+- I nomi delle colonne vengono confrontati esattamente come li hai dichiarati nel tipo di riga. Un nome che corrisponde solo quando Provisa rinomina la colonna per un lettore non è una corrispondenza.
+- Una dichiarazione che i tipi della tua funzione non possono accettare viene rifiutata per nome.
+- Il filtro viene comunque applicato alle righe che la tua funzione restituisce, quindi una funzione che ignora o allenta un valore ricevuto non può restituire righe sbagliate.
 
-Nessun pacchetto può eseguire i propri script di installazione: npm installa con `--ignore-scripts`, e Python installa solo wheel, senza mai compilare da una distribuzione sorgente.
+### Chiavi a lotti: il parametro `loader` {: #batched-keys }
 
-I pacchetti arrivano dai registri della vostra organizzazione, se ne avete. Un amministratore inserisce una volta registri npm, indici PyPI e host Git in **Admin → Registri di pacchetti**, e ogni sorgente Node e Python dell'organizzazione installa attraverso di essi. Il registro npm pubblico e il PyPI pubblico non richiedono voci. Vedere [Registri di pacchetti](package-registries.md).
+Un join può raggiungere una tabella di codice, con le righe di un'altra tabella che ne forniscono i parametri: ad esempio clienti uniti al loro punteggio di abbandono. Per impostazione predefinita Provisa chiama la funzione una volta per ogni insieme distinto di argomenti dato dalle righe del join, e invia tutte queste chiamate al worker in una sola richiesta.
 
-Un'installazione viene messa in cache per hash del contenuto del codice, così lo stesso codice si installa una volta sola.
+Una funzione che accetta un parametro chiamato `loader` viene invece chiamata una volta per lotto, lo schema reso noto dal DataLoader di GraphQL.
 
-## La sandbox {: #the-sandbox }
+- **Cosa riceve.** `loader` è un hash: un dict (un oggetto in TypeScript) da un hash stabile di ogni chiave alla chiave stessa. Una chiave è un oggetto JSON con i valori delle righe del join per gli altri parametri della funzione.
+- **Senza duplicati.** Ogni combinazione distinta di valori compare una volta.
+- **Sparsa.** Un campo senza valore è omesso dalla chiave, così si applica il valore predefinito della funzione, come in una chiamata singola.
+- **Cosa restituisce.** Un hash da ogni chiave ricevuta alle righe di quella chiave: righe normali della tabella, nessuna o molte. Provisa dà le righe di ogni chiave a ogni riga del join che condivideva la chiave.
+- **Associato per hash.** La funzione riempie con valori predefiniti i campi mancanti di una chiave sparsa, quindi i valori che vede differiscono da quelli della riga del join. Provisa calcola l'hash, e la funzione restituisce soltanto le chiavi ricevute.
+- **Tipizzata come sempre.** La funzione dichiara comunque solo il suo tipo di riga, una lista di righe.
+- **Servono valori predefiniti.** I suoi parametri accanto a `loader` hanno bisogno di valori predefiniti, perché una chiamata con loader passa solo `loader`.
+- **Dimensione del lotto.** Limitala, come `maxBatchSize` di DataLoader, con `loader N` in uno di tre punti: una riga `@loader 100` accanto a `@table`, un commento `/* @loader 100 */` prima del parametro `loader` in TypeScript, o una stringa `Annotated` in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa divide allora le chiavi in lotti di quella dimensione e unisce le risposte per hash. Senza dimensione, un lotto contiene tutte le chiavi.
+- **Rifiutato per nome.** Una dimensione su una funzione senza parametro `loader`, una dimensione che non è un intero positivo, e due dimensioni su una funzione.
 
-Il vostro codice gira in un proprio processo worker, in una sandbox. Può leggere il proprio codice installato e nient'altro sul disco. Raggiunge solo gli host della allow-list di uscita del deployment, tramite un proxy gestito da Provisa, e mai le porte di Provisa stesso. Un host che non può fornire la sandbox si rifiuta di avviare il worker e indica cosa manca, invece di eseguire il codice senza restrizioni. Su Windows le sorgenti di codice vengono rifiutate.
+Usa `loader` quando una chiamata su molte chiavi rende più di molte chiamate su una:
 
-## Secret {: #secrets }
-
-Il codice che chiama un'API a pagamento ha bisogno della sua chiave, e la chiave sta nel vault della vostra organizzazione, non nel codice. In **Secrets**, nel modulo della sorgente, scegliete i secret dell'organizzazione che il codice può leggere. In un file di configurazione, elencateli nel mapping della sorgente:
-
-```yaml
-mapping:
-  secrets: [openrouter]
-```
-
-Un nome da solo è il secret dell'organizzazione con quel nome. Per leggere invece una variabile d'ambiente del deployment, indicate il riferimento: `secrets: {openrouter: "${env:OPENROUTER_API_KEY}"}`. L'elenco è un riferimento al vault, mai una copia di un valore, quindi una configurazione che nomina un secret non ancora salvato da nessuno si carica comunque.
-
-Il vostro codice riceve una variabile d'ambiente, `PROVISA_SERVICES`, e legge un secret da `$PROVISA_SERVICES/secrets/<name>` quando gli serve. In Python:
-
-```python
-import os, urllib.request
-key = urllib.request.urlopen(f"{os.environ['PROVISA_SERVICES']}/secrets/openrouter").read().decode()
-```
-
-In TypeScript:
-
-```typescript
-const key = await (await fetch(`${process.env.PROVISA_SERVICES}/secrets/openrouter`)).text();
-```
-
-La richiesta passa per lo stesso proxy di uscita del resto del traffico del vostro codice, e il proxy risponde direttamente. Nient'altro di Provisa è raggiungibile per quella via. L'indirizzo porta un token che solo il worker di questa sorgente possiede; legge solo i nomi che la sorgente elenca, e smette di funzionare quando il worker si ferma. Ogni lettura risolve il secret nel vault in quel momento, quindi un secret ruotato vale dalla lettura successiva.
-
-Un nome che la sorgente non elenca viene rifiutato, così come un secret che non si riesce a risolvere. Il rifiuto nomina il secret, mai il suo valore. Ogni lettura è registrata nell'audit trail dell'organizzazione con la sorgente, il nome e l'ora, e nessun valore viene mai scritto in un log. L'host dell'API deve comunque essere nella lista di uscita consentita.
-
-## Chiamare un modello {: #calling-a-model }
-
-Il vostro codice può chiamare un modello linguistico tramite Provisa invece di tenere una chiave del fornitore. `$PROVISA_SERVICES/llm/v1` è un endpoint compatibile con OpenAI, quindi qualsiasi SDK OpenAI funziona se puntate lì il suo URL di base. L'indirizzo è la credenziale, quindi la chiave che l'SDK chiede può essere un testo qualsiasi. In Python:
-
-```python
-import os
-from openai import OpenAI
-
-client = OpenAI(base_url=f"{os.environ['PROVISA_SERVICES']}/llm/v1", api_key="unused")
-reply = client.chat.completions.create(
-    model="provisa:sql_generation",
-    messages=[{"role": "user", "content": "Summarise this account's last quarter."}],
-)
-```
-
-In TypeScript:
-
-```typescript
-import OpenAI from "openai";
-
-const client = new OpenAI({ baseURL: `${process.env.PROVISA_SERVICES}/llm/v1`, apiKey: "unused" });
-const reply = await client.chat.completions.create({
-  model: "provisa:sql_generation",
-  messages: [{ role: "user", content: "Summarise this account's last quarter." }],
-});
-```
-
-Nominate un modello per ruolo, come `provisa:<role>`: ottenete il modello che la vostra organizzazione assegna a quel ruolo in **Admin → AI Models**, e segue quella scelta quando un amministratore la cambia. Potete anche nominare un modello direttamente quando è assegnato a un ruolo. Per gli embedding, `$PROVISA_SERVICES/llm/v1/embeddings` accetta uno qualsiasi dei modelli vettoriali della vostra organizzazione. Qualsiasi altro modello viene rifiutato per nome. La chiamata esce attraverso i fornitori, gli endpoint e le chiavi della vostra organizzazione, e ciò che invia passa prima per le regole di oscuramento di Provisa. Lo streaming non è offerto: inviate `stream: false`, che è il valore predefinito.
-
-Ogni chiamata è registrata per la sorgente, con il modello, i suoi token e il suo costo secondo la voce del modello in **Polly model prices**, e scritta nell'audit trail dell'organizzazione. Per limitare la spesa di una sorgente, impostate **LLM monthly cap** nel suo modulo, in USD. In un file di configurazione va nel mapping:
-
-```yaml
-mapping:
-  llm: {cap_usd: 20}
-```
-
-Una sorgente con un tetto può chiamare solo modelli che lì hanno un prezzo. Quando la sua spesa del mese (UTC) raggiunge il tetto, le sue chiamate sono rifiutate finché il mese non cambia. Le chiamate già in corso quando il tetto viene raggiunto terminano comunque, quindi il mese può chiudersi leggermente sopra il tetto.
-
-## I servizi di Provisa {: #provisas-services }
-
-Il vostro codice può importare un modulo che Provisa fornisce sempre, ovunque venga eseguito: `provisa_services` in Python e `@provisa/services` in Node.js, Bun e Deno. Non c'è niente da installare, e non si trova in nessun registro di pacchetti. Fuori da Provisa il modulo non esiste, quindi i test delle vostre funzioni lo simulano.
-
-```python
-import provisa_services as ps
-
-region = ps.settings.get("region")
-rates = ps.cache.get("rates") or fetch_rates()
-ps.cache.set("rates", rates, ttl=3600)
-```
-
-```typescript
-import { settings, cache } from "@provisa/services";
-
-const region = await settings.get("region");
-const rates = (await cache.get("rates")) ?? (await fetchRates());
-await cache.set("rates", rates, 3600);
-```
-
-| Chiamata | Cosa fa |
-|---|---|
-| `secrets.get(name)` | Uno dei secret dichiarati della sorgente, letto ora dal vault. Vedere [Secret](#secrets). |
-| `settings.get(name, default)` | Una delle impostazioni della sorgente, da **Settings** nel suo modulo, che uno steward può cambiare senza cambiare il codice. Se manca e non c'è un valore predefinito, solleva un errore. |
-| `cache.get(key, default)`, `cache.set(key, value, ttl)`, `cache.delete(key)` | La cache propria della sorgente, condivisa da tutti i suoi worker. Un valore è qualunque cosa JSON possa contenere, fino a 1 MB, conservato per `ttl` secondi o finché non viene sostituito. |
-| `vectors.upsert(items, model)`, `vectors.search(query, k, model)`, `vectors.embed(texts, model)`, `vectors.delete(ids)` | La collezione vettoriale propria della sorgente, per i suoi dati di riferimento. Un elemento ha un `id` e un `text` o un `vector`; un testo viene vettorizzato da uno dei modelli vettoriali della vostra organizzazione. Non può cercare nelle vostre tabelle governate: i loro dati arrivano al codice solo come parametri. |
-| `http.get(url)`, `http.post(url, ...)` | Una richiesta che Provisa fa per il codice, attraverso il proxy in uscita e le autorità di certificazione del deployment. L'host deve essere nella lista di uscita consentita, e ogni richiesta è registrata nell'audit trail. |
-| `llm.chat(model, messages)`, `llm.embeddings(model, input)`, `llm.base_url()` (`llm.baseUrl()` in JavaScript) | Il servizio LLM di Provisa. Vedere [Chiamare un modello](#calling-a-model). |
-| `log(message, level, fields)`, `metric(name, value, kind, attributes)` | Una riga di log e un punto di metrica chiamato `code_source.<name>`, legati alla richiesta che il vostro codice sta servendo. |
-
-Una chiamata che il servizio rifiuta solleva un `ServiceError` che nomina il servizio e ne spiega il motivo.
-
-I servizi rispondono al codice eseguito sul server Provisa. Su un host remoto non sono ancora raggiungibili, e ogni chiamata solleva un errore.
-
-Ogni chiamata al vostro codice è tracciata come parte della richiesta che l'ha avviata, con la funzione, il suo tipo, quanti argomenti ha ricevuto (mai i loro valori), le righe e i lotti restituiti, la sua durata e la CPU del worker. Ogni chiamata a un servizio è tracciata allo stesso modo. Al livello di dettaglio normale queste informazioni sono sullo span della richiesta; al livello debug ogni chiamata è uno span a sé. Se il vostro codice usa OpenTelemetry, i suoi span si uniscono alla stessa traccia.
-
-## Eseguire su un host remoto {: #running-on-a-remote-host }
-
-Una sorgente gira per impostazione predefinita sul server Provisa; questa è la modalità dev. Quando il suo codice ha bisogno di una macchina che il server non è, come una macchina con GPU o un host dentro un'altra rete, costruite la sua immagine ed eseguitela lì. La sorgente passa allora alla modalità built, e le sue tabelle, i permessi e i lettori restano gli stessi.
-
-**Costruire l'immagine.** Salvate prima la sorgente in modalità dev, così il suo codice viene letto e fissato. In **Remote host** nel suo modulo, scegliete l'architettura (Linux x86-64 o ARM64) e dove va l'immagine: uno dei registri di container della vostra organizzazione, inseriti in **Admin → Container registries**, oppure un download. Provisa assembla l'immagine da sé. Contiene il codice al suo hash fissato, le sue dipendenze installate per quella piattaforma dal lockfile del codice attraverso i vostri registri di pacchetti, il runtime fissato e il programma dell'host remoto, su un'immagine di base minima. Nulla nell'immagine viene eseguito mentre è costruita, e non interviene alcun daemon Docker. Il tag dell'immagine porta l'hash del codice e la versione di Provisa, e le sue label nominano il runtime, l'hash del codice e gli export.
-
-**Eseguirla.** Il modulo mostra un servizio compose per l'immagine. Un'immagine scaricata si carica prima con `docker load -i <file>`. Il container ascolta internamente sulla porta 7443 e conserva la sua identità sul volume. La porta dell'host la scegliete con `PROVISA_HOST_PORT`; senza, il servizio non parte:
-
-```yaml
-services:
-  provisa-code-rates:
-    image: ghcr.io/example/provisa-code-rates:3f9a1c2e7b40-0.1.0
-    restart: unless-stopped
-    ports:
-      - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
-    volumes:
-      - provisa-code-rates-state:/var/lib/provisa
-volumes:
-  provisa-code-rates-state: {}
-```
-
-Al primo avvio il container scrive nel suo log una riga che inizia con `pairing code:`.
-
-**Collegarla.** Tornati nel modulo, inserite l'host a cui Provisa raggiunge il container, la porta che avete pubblicato e il codice di abbinamento. Su una rete Docker condivisa o in Kubernetes, inserite il nome del container o del Service e 7443, senza pubblicare nulla. Provisa si abbina al container con TLS reciproco. Il codice si usa una volta, e da allora ciascun lato accetta solo l'altro. Provisa verifica poi che il container esegua il codice della sorgente e ne offra gli export, e porta la sorgente in modalità built. Ogni processo Provisa mantiene la propria connessione con l'host e si ricollega se l'host smette di rispondere. Finché l'host non risponde, le letture delle tabelle della sorgente falliscono nominando l'host.
-
-**Se il codice cambia.** Un container che torna con un altro codice viene rifiutato, nominando l'hash a cui è fissata la sorgente e quello che l'host riporta, finché uno steward non esamina il codice e lo rifissa dal modulo. Per cambiare il codice stesso, riportate la sorgente in dev, salvate il nuovo codice e ricostruite.
-
-Nel container, la sua policy di rete è il confine di uscita del codice; la lista di uscita consentita del server vale per la modalità dev.
-
-## Leggere una tabella {: #reading-a-table }
-
-La tabella di una sorgente di codice viene materializzata localmente, mai letta sul posto. Provisa chiama la funzione con gli argomenti della lettura, controlla ogni riga rispetto alle colonne e conserva le righe sotto quegli argomenti per il TTL di cache della tabella. Visibilità, maschere e regole di riga si applicano poi alle righe materializzate, come per qualsiasi tabella.
-
-Gli argomenti si passano come qualsiasi parametro di tabella: come condizioni `_nf_` in SQL e come argomenti di campo in GraphQL.
-
-## Chiavi a lotti: il parametro `loader` {: #batched-keys }
-
-Un join può raggiungere una tabella di codice: le righe di un'altra tabella forniscono i suoi parametri, come i clienti uniti al loro punteggio di abbandono. Per impostazione predefinita Provisa chiama la funzione una volta per ogni insieme distinto di argomenti fornito dalle righe unite, e invia tutte queste chiamate al worker in una sola richiesta.
-
-Una funzione che accetta un parametro chiamato `loader` viene invece chiamata una volta per lotto, lo schema reso familiare da DataLoader di GraphQL. `loader` è un hash: un dict (un oggetto in TypeScript) che associa un hash stabile di ogni chiave alla chiave stessa, un oggetto JSON con i valori delle righe unite per gli altri parametri della funzione. Provisa elimina le chiavi duplicate, così ogni combinazione distinta di valori compare una volta. Una chiave è sparsa: un campo senza valore viene omesso invece di essere inviato come null, così vale il valore predefinito della funzione stessa, come in una chiamata singola.
-
-La funzione restituisce la stessa forma: un hash da ogni chiave ricevuta alle righe di quella chiave, righe normali della tabella. Provisa assegna le righe di ogni chiave a tutte le righe unite che condividevano quella chiave, e una chiave può corrispondere a zero righe o a molte. Associare tramite l'hash, e non tramite i valori delle righe, mantiene associata una chiave sparsa: la funzione riempie i campi mancanti con i valori predefiniti, quindi i valori che vede differiscono da quelli della riga unita. Provisa calcola l'hash; la funzione si limita a restituire le chiavi ricevute. La funzione dichiara comunque solo il suo tipo di riga, una lista di righe, e le righe di ogni chiave sono di quel tipo. I suoi parametri accanto a `loader` devono avere valori predefiniti, perché una chiamata con loader passa solo `loader`.
-
-Una funzione può limitare la dimensione dei suoi lotti, come fa `maxBatchSize` di DataLoader, dichiarando `loader N` in uno di tre punti: una riga `@loader 100` accanto a `@table` nella docstring o nel JSDoc, un commento `/* @loader 100 */` subito prima del parametro `loader` in TypeScript, oppure una stringa `Annotated` sul parametro in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa divide allora le chiavi in lotti di quella dimensione, chiama la funzione una volta per lotto e unisce le risposte tramite l'hash. Senza dimensione, un solo lotto contiene tutte le chiavi. La scoperta rifiuta per nome una dimensione su una funzione senza parametro `loader`, una dimensione che non è un intero positivo e due dimensioni sulla stessa funzione.
-
-Usate `loader` quando una chiamata su molte chiavi rende meglio di molte chiamate su una:
-
-- Valutare un modello su un intero lotto in un solo passaggio vettorizzato.
-- Raggruppare richieste a un'API o a un modello linguistico che accetta molti input alla volta.
-- Preparare una volta per lotto, come caricare un modello o aprire una connessione, invece che una volta per chiave.
-
-Questa funzione Python valuta ogni cliente di un lotto in un solo passaggio:
+- Valutare un modello su un intero lotto in un passaggio vettorizzato.
+- Raggruppare richieste a un'API o a un modello linguistico che accetta molti input insieme.
+- Preparare qualcosa una volta per lotto, come caricare un modello o aprire una connessione.
 
 ```python
 from dataclasses import dataclass
@@ -240,9 +164,61 @@ def churn_score(
     return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-Unita a una tabella di clienti, viene chiamata con un `loader` come `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. La seconda chiave porta solo `customer_id`, quindi piano e regione prendono i valori predefiniti. La funzione restituisce `{"9f2c...": [...], "41ab...": [...], ...}`, e Provisa assegna ogni lista di righe a ogni riga cliente che condivideva quella chiave.
+Unita a una tabella di clienti, viene chiamata con un `loader` come `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. La seconda chiave porta solo `customer_id`, quindi piano e regione prendono i valori predefiniti. La funzione restituisce `{"9f2c...": [...], "41ab...": [...], ...}`.
 
-La stessa funzione in TypeScript:
+### Da dove viene il codice {: #where-the-code-comes-from }
+
+- **Un pacchetto.** Un pacchetto npm per Node o un pacchetto PyPI per Python, in una versione esatta.
+- **Un repository Git.** Un commit completo di 40 caratteri, con una sottodirectory se il codice non è in cima.
+- **Un caricamento.** Un `.zip`, `.tgz` o `.tar.gz` del codice.
+- **Una cartella sulla tua macchina.** **Scegli cartella** comprime la cartella nel tuo browser, lasciando fuori `node_modules`, `.venv`, `__pycache__` e `.git`, e la carica come archivio dell'origine. In un browser che può conservare la cartella (Chrome, Edge), **Salva** la comprime e la invia di nuovo; un altro browser ti chiede di nuovo la cartella.
+- **Una directory sul server.** Su un'installazione con una sola organizzazione, una directory sotto quelle che l'operatore consente. Viene letta dov'è, quindi una modifica viene letta dalla query successiva. Un server con molte organizzazioni la rifiuta per nome.
+
+Ogni origine tranne la directory del server è fissata, quindi l'origine esegue esattamente ciò che è stato salvato.
+
+- **Modulo di ingresso.** Quando il codice Python ha più di un modulo di primo livello, indica quello da cui entrare.
+- **Apri in VS Code.** Una directory del server si apre nel tuo VS Code installato; un'origine Git si apre al suo commit su vscode.dev. Un pacchetto o un caricamento non ha questo link.
+
+### Installare le dipendenze {: #installing-dependencies }
+
+Il codice con dipendenze ha bisogno di un lockfile, e ogni installazione lo segue esattamente. Senza, un pacchetto che dichiara dipendenze viene rifiutato, e il rifiuto ti chiede di aggiungerne uno.
+
+| Runtime | Lockfile |
+|---|---|
+| Node.js | `package-lock.json` o `npm-shrinkwrap.json` |
+| Bun | `bun.lock` o `bun.lockb` |
+| Deno | `deno.lock` |
+| Python | `uv.lock` (con il suo `pyproject.toml`), `pylock.toml`, o un `requirements.txt` con `--hash` su ogni riga |
+
+- **Incluso o fornito.** Il codice che porta il proprio lockfile installa da quello: un repository Git, un caricamento o una cartella che ne contiene uno, o un pacchetto npm il cui autore ha pubblicato `npm-shrinkwrap.json` (npm non pubblica mai `package-lock.json`). La maggior parte dei pacchetti npm, e i pacchetti Python da PyPI, non ne portano, quindi fornisci un lockfile accanto.
+- **Perché conta.** Senza, due installazioni dello stesso codice possono differire, e un test che passa oggi può fallire domani per una nuova versione di una dipendenza.
+- **Un'immagine costruita è già fissa.** Appena [costruisci l'immagine dell'origine](#running-on-a-remote-host), le sue dipendenze sono dentro. Un lockfile conta per la modalità dev e per ogni nuova build.
+- **Nessuno script di installazione.** npm installa con `--ignore-scripts`, e Python installa solo wheel, senza mai costruire da una distribuzione sorgente.
+- **I tuoi registri.** I pacchetti arrivano dai registri npm, dagli indici PyPI e dagli host Git della tua organizzazione, inseriti una volta in **Admin → Package registries**. Il registro npm pubblico e PyPI non richiedono una voce. Vedi [Package Registries](package-registries.md).
+- **In cache.** Un'installazione viene messa in cache per hash del contenuto del codice, quindi lo stesso codice si installa una volta.
+
+### Node {: #node }
+
+- Il codice Node gira su Node.js, Bun o Deno, a tua scelta.
+- I tag vanno nel JSDoc, e i tipi vengono da TypeScript.
+
+Il primo resolver in TypeScript:
+
+```typescript
+export interface Risk {
+  score: number;
+  reasons: string[];
+}
+
+/** Churn risk of one account.
+ * @table
+ */
+export async function churnRisk(account_id: string): Promise<Risk[]> {
+  return [{ score: 0.82, reasons: ["no logins in 30 days"] }];
+}
+```
+
+Il `churnScore` a lotti in TypeScript:
 
 ```typescript
 export interface CustomerKey {
@@ -275,53 +251,205 @@ export async function churnScore(
 }
 ```
 
-## Un esempio {: #an-example }
+## Distribuzione {: #deployment }
 
-Questo modulo Python valuta quanto è probabile che un account se ne vada:
+### Modalità dev e worker {: #workers }
+
+Per impostazione predefinita un'origine gira sul server Provisa; questa è la modalità dev.
+
+- Il tuo codice gira in un processo worker tutto suo, uno per origine e versione del suo codice in ogni processo Provisa, avviato alla prima chiamata.
+- Un worker che va in crash fa fallire le chiamate in corso, nominando l'origine e la funzione. La chiamata successiva ne avvia uno nuovo.
+- Una chiamata viene annullata quando scade il termine della sua richiesta: al worker viene detto di fermarla, e la richiesta in attesa viene liberata subito.
+
+### Leggere una tabella {: #reading-a-table }
+
+Come una lettura raggiunge la tua funzione dipende da cos'altro legge:
+
+- **Una lettura di una sola tabella di codice** va dritta alla tua funzione. Non viene depositato nulla. Provisa la chiama con gli argomenti della lettura e i suoi filtri delegati, e applica il resto dell'istruzione alle righe che restituisce.
+- **Una lettura che unisce altre tabelle** spetta al motore di federazione. La tabella di un'origine in modalità dev viene depositata per essa: le righe sono conservate con quegli argomenti per il TTL di cache della tabella.
+- **La tabella di un'origine costruita** in un tale join viene letta dal vivo dal suo host remoto, che il motore collega come catalogo Postgres. Viene invece depositata quando la sua origine è replicata o con soglia minima, quando la tabella è conservata per sempre, quando dichiara un TTL di deposito sopra 0, o su un motore che non può collegare un host.
+
+In ogni caso visibilità, maschere e regole di riga si applicano alle righe, come per qualsiasi tabella. Passi gli argomenti come qualsiasi parametro di tabella: condizioni `_nf_` in SQL, argomenti di campo in GraphQL.
+
+### Eseguire su un host remoto {: #running-on-a-remote-host }
+
+Quando il tuo codice ha bisogno di una macchina diversa dal server, come una macchina con GPU o un host dentro un'altra rete, costruisci la sua immagine ed eseguila lì. L'origine passa allora alla modalità costruita, e le sue tabelle, concessioni e lettori restano gli stessi.
+
+**Costruire l'immagine.**
+
+- Salva prima l'origine in modalità dev, così il suo codice viene letto e fissato.
+- In **Remote host** nel suo modulo, scegli l'architettura (Linux x86-64 o ARM64) e dove va l'immagine: uno dei registri di container della tua organizzazione (**Admin → Container registries**), o un download.
+- Provisa assembla l'immagine da solo, su una base minima, senza demone Docker: il codice al suo hash fissato, le sue dipendenze installate per quella piattaforma dal suo lockfile tramite i tuoi registri di pacchetti, il runtime fissato e il programma di host remoto. Nulla nell'immagine viene eseguito mentre viene costruita.
+- Il tag dell'immagine porta l'hash del codice e la versione di Provisa, e le sue label nominano il runtime, l'hash del codice e le esportazioni.
+
+**Eseguirla.** Il modulo mostra un servizio compose per l'immagine. Carica prima un'immagine scaricata con `docker load -i <file>`. Il container è in ascolto su 7443 e conserva la sua identità sul suo volume. Scegli la porta dell'host con `PROVISA_HOST_PORT`; il servizio non parte senza.
+
+```yaml
+services:
+  provisa-code-rates:
+    image: ghcr.io/example/provisa-code-rates:3f9a1c2e7b40-0.1.0
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
+    volumes:
+      - provisa-code-rates-state:/var/lib/provisa
+volumes:
+  provisa-code-rates-state: {}
+```
+
+Al primo avvio il container stampa nel suo log una riga che inizia con `pairing code:`.
+
+**Collegarla.**
+
+- Nel modulo, inserisci l'host a cui Provisa raggiunge il container, la porta che hai pubblicato e il codice di abbinamento. Su una rete Docker condivisa o in Kubernetes, inserisci il nome del container o del Service e 7443, senza pubblicare nulla.
+- Provisa si abbina al container tramite TLS reciproco. Il codice si usa una volta; da lì in poi ciascun lato accetta solo l'altro.
+- Provisa verifica che il container esegua il codice dell'origine e ne offra le esportazioni, poi passa l'origine alla modalità costruita.
+- Ogni processo Provisa mantiene la propria connessione all'host e richiama se l'host smette di rispondere. Finché non risponde, le letture delle tabelle dell'origine falliscono e nominano l'host.
+
+**Se il codice cambia.**
+
+- Un container che torna eseguendo altro codice viene rifiutato, nominando l'hash a cui l'origine è fissata e quello che l'host riporta, finché uno steward non esamina il codice e lo rifissa dal modulo.
+- Per cambiare il codice stesso, riporta l'origine in modalità dev, salva il nuovo codice e costruisci di nuovo.
+
+### I servizi di Provisa {: #provisas-services }
+
+Il tuo codice può importare un modulo che Provisa fornisce sempre sul server: `provisa_services` in Python, `@provisa/services` in Node.js, Bun e Deno. Non c'è nulla da installare, e non è in nessun registro di pacchetti. Fuori da Provisa non esiste, quindi i tuoi test lo simulano.
 
 ```python
-from dataclasses import dataclass
-from datetime import datetime
+import provisa_services as ps
 
-
-@dataclass
-class RiskRow:
-    account_id: str
-    score: float
-    computed_at: datetime
-    reasons: list[str]
-
-
-def churn_risk(account_id: str, as_of: datetime | None = None) -> list[RiskRow]:
-    """Churn risk of one account.
-
-    @table
-    """
-    ...
+region = ps.settings.get("region")
+rates = ps.cache.get("rates") or fetch_rates()
+ps.cache.set("rates", rates, ttl=3600)
 ```
-
-Registratelo come sorgente `python` dal suo pacchetto PyPI, dal commit Git o da un caricamento. La discovery offre allora `churn_risk` come tabella con quattro colonne (`account_id`, `score`, `computed_at`, `reasons`), un parametro obbligatorio `account_id` e uno facoltativo, `as_of`. Quando uno steward ha registrato la tabella, leggetela in SQL:
-
-```sql
-SELECT score, reasons
-FROM churn_risk
-WHERE _nf_account_id = 'A-1042'
-```
-
-La stessa funzione in TypeScript si presenta così:
 
 ```typescript
-export interface RiskRow {
-  account_id: string;
-  score: number;
-  computed_at: Date;
-  reasons: string[];
-}
+import { settings, cache } from "@provisa/services";
 
-/** Churn risk of one account.
- * @table
- */
-export async function churnRisk(accountId: string, asOf?: Date): Promise<RiskRow[]> {
-  // ...
-}
+const region = await settings.get("region");
+const rates = (await cache.get("rates")) ?? (await fetchRates());
+await cache.set("rates", rates, 3600);
 ```
+
+| Chiamata | Cosa fa |
+|---|---|
+| `secrets.get(name)` | Uno dei segreti dichiarati dell'origine, letto ora dal vault. Vedi [Segreti](#secrets). |
+| `settings.get(name, default)`, `settings.all()` | Le impostazioni dell'origine, da **Settings** nel suo modulo, che uno steward può cambiare senza cambiare il codice. Una mancante senza valore predefinito solleva un errore. |
+| `cache.get(key, default)`, `cache.set(key, value, ttl)`, `cache.delete(key)` | La cache propria dell'origine, condivisa da tutti i suoi worker. Un valore è qualsiasi cosa JSON possa contenere, fino a 1 MB, conservato per `ttl` secondi o finché non viene sostituito. |
+| `vectors.upsert(items, model)`, `vectors.search(query, k, model)`, `vectors.embed(texts, model)`, `vectors.delete(ids)` | La collezione di vettori propria dell'origine, per i suoi dati di riferimento. Un elemento ha un `id` e un `text` o un `vector`; un testo viene vettorizzato da uno dei modelli vettoriali della tua organizzazione. Non può cercare nelle tue tabelle governate, i cui dati raggiungono il codice solo come parametri. |
+| `http.get(url)`, `http.post(url, ...)` | Una richiesta che Provisa fa per il codice, tramite il proxy in uscita e le autorità di certificazione della distribuzione. L'host deve essere nella lista di uscita consentita, e ogni richiesta viene registrata nella traccia di audit. |
+| `llm.chat(model, messages)`, `llm.embeddings(model, input)`, `llm.base_url()` (`llm.baseUrl()` in JavaScript) | Il servizio LLM di Provisa. Vedi [Chiamare un modello](#calling-a-model). |
+| `log(message, level, fields)`, `metric(name, value, kind, attributes)` | Una riga di log, e un punto di metrica chiamato `code_source.<name>`, collegati alla richiesta che il tuo codice serve. |
+
+- Una chiamata che il servizio rifiuta solleva un `ServiceError` che nomina il servizio e dice perché.
+- I servizi rispondono al codice che gira sul server Provisa. Su un host remoto ogni chiamata solleva un errore.
+
+#### Segreti {: #secrets }
+
+La chiave di un'API a pagamento va nel vault della tua organizzazione, non nel codice.
+
+- In **Secrets** nel modulo dell'origine, scegli i segreti dell'organizzazione che il codice può leggere. In un file di configurazione, elencali nel mapping dell'origine:
+
+    ```yaml
+    mapping:
+      secrets: [openrouter]
+    ```
+
+- Un nome da solo è il segreto dell'organizzazione con quel nome. Per leggere invece una variabile d'ambiente della distribuzione, dai il riferimento: `secrets: {openrouter: "${env:OPENROUTER_API_KEY}"}`.
+- L'elenco rimanda al vault e non copia mai un valore, quindi una configurazione che nomina un segreto che nessuno ha ancora salvato si carica comunque.
+
+Il tuo codice legge un segreto con `secrets.get(name)`, o direttamente da `$PROVISA_SERVICES/secrets/<name>`:
+
+```python
+import os, urllib.request
+key = urllib.request.urlopen(f"{os.environ['PROVISA_SERVICES']}/secrets/openrouter").read().decode()
+```
+
+```typescript
+const key = await (await fetch(`${process.env.PROVISA_SERVICES}/secrets/openrouter`)).text();
+```
+
+- `PROVISA_SERVICES` è l'unica variabile d'ambiente che il tuo codice riceve. La richiesta passa per lo stesso proxy di uscita del resto del suo traffico, e il proxy risponde da sé; nient'altro di Provisa è raggiungibile così.
+- L'indirizzo porta un token che solo il worker di questa origine possiede. Legge solo i nomi che l'origine elenca, e smette di funzionare quando il worker si ferma.
+- Ogni lettura risolve il segreto nel vault in quel momento, quindi un segreto ruotato vale dalla lettura successiva.
+- Un nome che l'origine non elenca viene rifiutato, come un segreto che non si può risolvere. Il rifiuto nomina il segreto, mai il suo valore.
+- Ogni lettura viene registrata nella traccia di audit dell'organizzazione con l'origine, il nome e l'ora. Nessun valore viene mai scritto in un log.
+- L'host dell'API deve comunque essere nella lista di uscita consentita.
+
+#### Chiamare un modello {: #calling-a-model }
+
+Il tuo codice può chiamare un modello linguistico tramite Provisa invece di tenere una chiave del fornitore. `$PROVISA_SERVICES/llm/v1` è un endpoint compatibile con OpenAI, quindi qualsiasi SDK OpenAI funziona con l'URL di base puntato lì. L'indirizzo è la credenziale, quindi la chiave che l'SDK chiede può essere qualsiasi testo.
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url=f"{os.environ['PROVISA_SERVICES']}/llm/v1", api_key="unused")
+reply = client.chat.completions.create(
+    model="provisa:sql_generation",
+    messages=[{"role": "user", "content": "Summarise this account's last quarter."}],
+)
+```
+
+```typescript
+import OpenAI from "openai";
+
+const client = new OpenAI({ baseURL: `${process.env.PROVISA_SERVICES}/llm/v1`, apiKey: "unused" });
+const reply = await client.chat.completions.create({
+  model: "provisa:sql_generation",
+  messages: [{ role: "user", content: "Summarise this account's last quarter." }],
+});
+```
+
+- **Per ruolo.** Nomina un modello come `provisa:<role>` e ottieni quello che la tua organizzazione assegna a quel ruolo in **Admin → AI Models**; segue quella scelta quando un amministratore la cambia. Puoi anche nominare un modello direttamente quando gli è assegnato un ruolo.
+- **Embeddings.** `$PROVISA_SERVICES/llm/v1/embeddings` accetta uno qualsiasi dei modelli vettoriali della tua organizzazione.
+- Qualsiasi altro modello viene rifiutato per nome.
+- La chiamata esce tramite i fornitori, gli endpoint e le chiavi della tua organizzazione, e ciò che invia passa prima per le regole di oscuramento di Provisa.
+- Lo streaming non è offerto. Invia `stream: false`, che è il valore predefinito.
+
+## Protezioni {: #safeguards }
+
+### Il sandbox {: #the-sandbox }
+
+- Il tuo codice gira nel proprio processo worker, in un sandbox. Può leggere il proprio codice installato e nient'altro sul disco.
+- Raggiunge solo gli host della lista di uscita consentita della distribuzione, tramite un proxy che Provisa esegue, e mai le porte di Provisa.
+- Un host che non può fornire il sandbox rifiuta di avviare il worker e nomina ciò che manca; il codice non gira mai senza confinamento. Su Windows, le origini di codice vengono rifiutate.
+- Su un host remoto, la policy di rete del container è il limite di uscita del codice. La lista di uscita consentita del server vale per la modalità dev.
+
+### Rifiuti per nome {: #refusals }
+
+Ogni rifiuto nomina cosa ha rifiutato e perché, prima che il tuo codice venga eseguito quando possibile:
+
+- Un tag sconosciuto o un tipo che Provisa non sa mappare, tutti i problemi di una funzione in una volta.
+- Una lettura che omette un parametro obbligatorio.
+- Una dichiarazione di delega o di `loader` che i tipi della funzione non possono accettare.
+- Un pacchetto con dipendenze e senza lockfile.
+- Una directory del server fuori da quelle consentite, o su un server con molte organizzazioni.
+- Un host remoto che esegue codice diverso da quello a cui l'origine è fissata.
+- Un segreto che l'origine non elenca, un modello non consentito, una chiamata di servizio a cui il servizio non risponde.
+
+### Misurazione e limiti {: #metering }
+
+- Ogni chiamata a un modello viene registrata per l'origine, con il modello, i suoi token e il suo costo secondo la voce del modello in **Polly model prices**, e scritta nella traccia di audit dell'organizzazione.
+- Per limitare quanto spende un'origine, imposta **LLM monthly cap** nel suo modulo, in USD. In un file di configurazione va nel mapping:
+
+    ```yaml
+    mapping:
+      llm: {cap_usd: 20}
+    ```
+
+- Un'origine con un limite può chiamare solo modelli che lì hanno un prezzo.
+- Quando la sua spesa del mese (UTC) raggiunge il limite, le sue chiamate vengono rifiutate fino al cambio del mese. Le chiamate già in corso quando si raggiunge il limite terminano comunque, quindi il mese può chiudersi di poco sopra il limite.
+
+### Governance sui risultati {: #governance }
+
+- Le righe della tua funzione vengono verificate rispetto alle colonne della tabella.
+- Visibilità, maschere e regole di riga si applicano poi per ogni lettore, come per qualsiasi tabella.
+- Il tuo codice vede i dati di una tabella governata solo come i parametri che una lettura gli passa.
+
+### Tracciamento {: #tracing }
+
+- Ogni chiamata al tuo codice viene tracciata come parte della richiesta che l'ha avviata: la funzione, il suo tipo, quanti argomenti ha ricevuto (mai i loro valori), le righe e i lotti restituiti, la sua durata e la CPU del worker.
+- Ogni chiamata di servizio viene tracciata allo stesso modo.
+- Al livello di dettaglio normale queste informazioni stanno sullo span della richiesta; al livello di debug ogni chiamata è uno span a sé.
+- Se il tuo codice usa OpenTelemetry, i suoi span si uniscono alla stessa traccia.
