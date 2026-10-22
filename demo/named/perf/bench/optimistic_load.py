@@ -701,6 +701,13 @@ def _client_process(
     open_loop = ep.setup.load.mode == "open_loop"
     lag = [0.0] * threads  # open loop: the most any request was sent after its scheduled time
     connected = threading.Barrier(threads + 1)
+    # Each slow request's wall-clock end and latency, and this process's own collections and
+    # stalls (stall_probe.py): what a slow request is put beside the server's stalls with.
+    slow: list[list[list[float]]] = [[] for _ in range(threads)]
+    stalls: list[dict[str, Any]] = []
+    import stall_probe
+
+    stall_probe.install(stalls.append)
 
     def _loop(i: int) -> None:
         try:
@@ -773,7 +780,10 @@ def _client_process(
                 if not first_error:
                     first_error.append(_brief(exc))
                 continue
-            mine.append((time.perf_counter() - t0, spec, hit, rows, cols))
+            took = time.perf_counter() - t0
+            mine.append((took, spec, hit, rows, cols))
+            if took >= SLOW_S:
+                slow[i].append([time.time(), round(took * 1000, 3)])
         client.close()
 
     workers = [threading.Thread(target=_loop, args=(i,), daemon=True) for i in range(threads)]
@@ -796,6 +806,8 @@ def _client_process(
             "first_error": first_error[0] if first_error else None,
             "cpu_s": _cpu_seconds() - cpu0,
             "max_lag_s": max(lag) if open_loop else None,
+            "slow": [x for per in slow for x in per],
+            "stalls": stalls,
         }
     )
 
@@ -833,6 +845,25 @@ def _paging_snapshots(server_pid: int | str | None, devices: tuple[tuple[str, st
             resp.raise_for_status()
             out[name] = resp.json()
     return out
+
+
+# A request this slow is listed with its wall-clock end (the step's "stalls").
+SLOW_S = 0.1
+
+
+def _server_stalls(
+    devices: tuple[tuple[str, str], ...], since: float, until: float
+) -> list[dict[str, Any]] | None:
+    """The server's collections and stalls over a step (its device agent's /stalls); None
+    without a server device (a single-host run)."""
+    url = dict(devices).get("server")
+    if url is None:
+        return None
+    import httpx
+
+    resp = httpx.get(f"{url}/stalls", params={"since": since, "until": until}, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _stage_totals(url: str | None) -> dict | None:
@@ -949,7 +980,9 @@ def run_step(
     if sampler is not None:
         sampler.start()
     go.set()
+    window_started = time.time()
     results = [out.get(timeout=window_s + 120) for _ in procs]
+    window_ended = time.time()
     server_cpu1 = _server_cpu_seconds(server_pid)
     paging1 = _paging_snapshots(server_pid, ep.devices)
     stages1 = _stage_totals(ep.stage_tally_url)
@@ -996,6 +1029,13 @@ def run_step(
                 c: sampled.cores[_BACKEND + c] for c in ep.backend_containers
             }
             step["backend_cpu_error"] = sampled.error
+    step["stalls"] = {
+        "slow_requests": sorted(
+            [t, ms, proc] for proc, r in enumerate(results) for t, ms in r["slow"]
+        ),
+        "client": sorted((x for r in results for x in r["stalls"]), key=lambda x: x["t"]),
+        "server": _server_stalls(ep.devices, window_started, window_ended),
+    }
     if ep.setup.load.mode == "open_loop":
         assert ep.setup.load.rate_per_s is not None
         step.update(

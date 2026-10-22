@@ -55,7 +55,14 @@ ulimit -n "$(ulimit -Hn)"
 # Several workers on Linux: each opens its own SO_REUSEPORT socket on the public port so the
 # kernel spreads connections over them (REQ-1900); uvicorn's supervisor gets a unix socket.
 export PROVISA_HTTP_LISTEN="0.0.0.0:$API_PORT"
-( cd "$REPO_ROOT" && exec "$REPO_ROOT/.venv/bin/uvicorn" main:app --workers "$WORKERS" \
+# Each server process records its collections and stalls here (stall_probe.py), for the host
+# agent's /stalls; a fresh directory per serve.
+STALL_DIR="$STATE_DIR/stalls-$TELEMETRY"
+rm -rf "$STALL_DIR"
+mkdir -p "$STALL_DIR"
+( cd "$REPO_ROOT" && PROVISA_BENCH_STALL_DIR="$STALL_DIR" \
+    PYTHONPATH="$SCRIPT_DIR/stallprobe${PYTHONPATH:+:$PYTHONPATH}" \
+    exec "$REPO_ROOT/.venv/bin/uvicorn" main:app --workers "$WORKERS" \
     --uds "$STATE_DIR/provisa-supervisor.sock" ) > "$STATE_DIR/provisa.log" 2>&1 &
 PROVISA_PID=$!
 AGENT_PID=""
@@ -83,6 +90,6 @@ echo "Provisa serving: $WORKERS workers, engine $ENGINE, telemetry $TELEMETRY"
 "$PYTHON_BIN" "$SCRIPT_DIR/host_agent.py" --listen "$PROVISA_BENCH_AGENT_LISTEN" \
   --pid "$PROVISA_PID" --fact "telemetry=$TELEMETRY" --fact "engine=$ENGINE" \
   --fact "workers=$WORKERS" --fact "request_threads=${PROVISA_REQUEST_THREADS:-default}" \
-  --rtt-target "backends=$PROVISA_BENCH_BACKENDS_HOST:25632" &
+  --rtt-target "backends=$PROVISA_BENCH_BACKENDS_HOST:25632" --stall-dir "$STALL_DIR" &
 AGENT_PID=$!
 wait "$PROVISA_PID"
