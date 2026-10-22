@@ -638,6 +638,10 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             shape, nullable = mapper.shape(p["type"], f"{name}({p['name']})")
             parameters.append(Parameter(p["name"], shape, nullable, required=not p["optional"]))
         returns = signature["returns"]
+        if kind != TABLE and (LOADER in tags or _loader_sizes(entry, signature)):
+            # REQ-2100: a loader batches a table's keys; any other kind declaring one would have
+            # it ignored, so it is refused by name.
+            problems.append(f"{name}: @loader batches a table's keys, and a @{kind} takes none")
         if kind == TABLE:
             result = _unwrap_promise(returns)
             if result["kind"] == "array":
