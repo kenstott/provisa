@@ -70,7 +70,7 @@ def _registered_table(shared_data):
             _col("created_at", "timestamp"),
         ],
     }
-    role = {"id": "admin", "capabilities": [], "domain_access": ["*"]}
+    role = {"description": "Test role.", "id": "admin", "capabilities": [], "domain_access": ["*"]}
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,
@@ -211,6 +211,7 @@ def _role_without_aggregations(shared_data):
     # The analyst role can see all columns (so the base table IS exposed) but has
     # allow_aggregations explicitly withheld (default v2 behaviour).
     role = {
+        "description": "Test role.",
         "id": "analyst",
         "capabilities": [],
         "domain_access": ["*"],

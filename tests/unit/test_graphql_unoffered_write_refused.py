@@ -27,7 +27,7 @@ from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.write_admission import WriteNotSupported
+from provisa.compiler.write_admission import WriteNotAdmitted, WriteNotSupported
 from tests.write_governance import grants_over
 
 
@@ -35,7 +35,12 @@ def _col(name: str, data_type: str) -> ColumnMetadata:
     return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=False)
 
 
-def _table(table_id: int, name: str, write_ops: list[str]) -> dict:
+def _table(
+    table_id: int,
+    name: str,
+    write_ops: list[str],
+    granted: tuple[str, ...] = ("insert", "update", "delete"),
+) -> dict:
     return {
         "id": table_id,
         "source_id": "sales-pg",
@@ -46,7 +51,9 @@ def _table(table_id: int, name: str, write_ops: list[str]) -> dict:
             {"column_name": "id", "visible_to": ["admin"]},
             {"column_name": "region", "visible_to": ["admin"]},
         ],
-        "write_grants": list(grants_over("admin", ["id", "region"]).values()),  # REQ-2074
+        "write_grants": [  # REQ-2074
+            g for op, g in grants_over("admin", ["id", "region"]).items() if op in granted
+        ],
         "write_ops": write_ops,
         "write_returns_rows": bool(write_ops),
         "write_refused_forms": [],
@@ -57,15 +64,17 @@ def _table(table_id: int, name: str, write_ops: list[str]) -> dict:
 def schema_and_ctx():
     _naming.configure(gql="snake")
     si = SchemaInput(
-        # orders takes every write; events takes inserts only; archive takes none.
+        # orders takes every write; events takes inserts only; archive takes none; ledger takes
+        # every write and the role holds no delete grant on it.
         tables=[
             _table(1, "orders", ["delete", "insert", "update"]),
             _table(2, "events", ["insert"]),
             _table(3, "archive", []),
+            _table(4, "ledger", ["delete", "insert", "update"], granted=("insert", "update")),
         ],
         relationships=[],
         column_types={
-            tid: [_col("id", "integer"), _col("region", "varchar(20)")] for tid in (1, 2, 3)
+            tid: [_col("id", "integer"), _col("region", "varchar(20)")] for tid in (1, 2, 3, 4)
         },
         naming_rules=[],
         role={"id": "admin", "capabilities": ["write"], "domain_access": ["*"]},
@@ -116,3 +125,21 @@ def test_an_offered_mutation_and_an_unknown_field_are_validation_as_before(schem
         parse_query(
             schema, "mutation { insert_nothing_here(input: {}) { affected_rows } }", ctx=ctx
         )
+
+
+def test_a_write_the_source_takes_and_the_role_holds_no_grant_for_is_refused_as_ungranted(
+    schema_and_ctx,
+):
+    """REQ-2074: the field is absent because the role holds no grant, not because the source
+    cannot take it -- refused as every surface refuses a write with no grant, naming the role."""
+    schema, ctx = schema_and_ctx
+    delete = next(f for f in _mutation_fields(schema) if "delete" in f and "orders" in f)
+    assert delete.replace("orders", "ledger") not in _mutation_fields(schema)
+    gql = "mutation { %s(where: {id: {_eq: 1}}) { affected_rows } }" % delete.replace(
+        "orders", "ledger"
+    )
+    with pytest.raises(WriteNotAdmitted) as refused:
+        parse_query(schema, gql, ctx=ctx)
+    assert str(refused.value) == (
+        "DELETE on 'ledger': role 'admin' holds no delete grant on this table"
+    )

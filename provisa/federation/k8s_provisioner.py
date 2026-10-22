@@ -619,12 +619,27 @@ def kafka_client_secret(shard: str) -> str:
     return f"{shard_workload_name(shard)}-kafka-client"
 
 
+#: REQ-2100: where a shard's coordinator reads each organisation's remote-host identity, the
+#: certificate and key a built code host accepts (provisa/codesource/engine_identity.py), from the
+#: shard's own Secret (:func:`codehost_client_secret`), as its Kafka client properties are.
+CODEHOST_CLIENT_DIR = "/etc/trino/codehost-client"
+
+
+def codehost_client_secret(shard: str) -> str:
+    """The Secret holding the remote-host identities of the orgs placed on ``shard``."""
+    return f"{shard_workload_name(shard)}-codehost-client"
+
+
 async def _ensure_kafka_client_secret(shard: str) -> None:
-    """Create ``shard``'s Kafka client Secret if it does not exist, empty. Never an apply: the keys
-    are written one catalog at a time (:func:`put_kafka_client_properties`), and an apply of the
-    empty Secret would remove them."""
+    """Create ``shard``'s Kafka client Secret if it does not exist, empty."""
+    await _ensure_shard_secret(shard, kafka_client_secret(shard))
+
+
+async def _ensure_shard_secret(shard: str, name: str) -> None:
+    """Create ``shard``'s Secret ``name`` if it does not exist, empty. Never an apply: its keys are
+    written one at a time (:func:`put_kafka_client_properties`, :func:`put_codehost_files`), and an
+    apply of the empty Secret would remove them."""
     settings = provisioner_settings()
-    name = kafka_client_secret(shard)
     resp = await _k8s(
         "POST",
         f"/api/v1/namespaces/{settings['namespace']}/secrets",
@@ -661,6 +676,23 @@ async def put_kafka_client_properties(shard: str, catalog: str, text: str) -> No
         )
 
 
+async def put_codehost_files(shard: str, files: dict[str, bytes]) -> None:  # REQ-2100
+    """Write an organisation's remote-host identity files into ``shard``'s Secret, where the
+    coordinator reads them at ``CODEHOST_CLIENT_DIR/<name>`` once the kubelet syncs the volume."""
+    settings = provisioner_settings()
+    name = codehost_client_secret(shard)
+    resp = await _k8s(
+        "PATCH",
+        f"/api/v1/namespaces/{settings['namespace']}/secrets/{name}",
+        {"data": {key: base64.b64encode(data).decode() for key, data in files.items()}},
+        content_type="application/merge-patch+json",
+    )
+    if resp.status_code >= 400:
+        raise K8sProvisioningError(
+            f"writing the remote-host identity into Secret {name} failed: {gcp_error_detail(resp)}"
+        )
+
+
 def _config_mounts(resource_groups: str | None) -> list[dict]:
     """One subPath mount per config file. ConfigMap keys are not a directory the image can take
     whole: mounting the volume at /etc/trino would hide catalog/, log.properties and everything else
@@ -672,6 +704,7 @@ def _config_mounts(resource_groups: str | None) -> list[dict]:
         {"name": "data", "mountPath": "/data/trino"},
         {"name": "fake-key", "mountPath": FAKE_KEY_DIR, "readOnly": True},  # REQ-1494
         {"name": "kafka-client", "mountPath": KAFKA_CLIENT_DIR, "readOnly": True},  # REQ-2073
+        {"name": "codehost-client", "mountPath": CODEHOST_CLIENT_DIR, "readOnly": True},  # REQ-2100
     ]
 
 
@@ -826,6 +859,13 @@ def _deployment_manifest(
                                 "defaultMode": 0o440,
                             },
                         },
+                        {
+                            "name": "codehost-client",
+                            "secret": {
+                                "secretName": codehost_client_secret(shard),
+                                "defaultMode": 0o440,
+                            },
+                        },
                     ],
                 },
             },
@@ -944,6 +984,7 @@ async def ensure_shard_running(
     ns = f"/api/v1/namespaces/{settings['namespace']}"
     await _k8s_apply(f"{ns}/secrets/{FAKE_KEY_SECRET}", _fake_key_manifest())  # REQ-1494
     await _ensure_kafka_client_secret(shard)  # REQ-2073
+    await _ensure_shard_secret(shard, codehost_client_secret(shard))  # REQ-2100
     await _k8s_apply(
         f"{ns}/configmaps/{shard_workload_name(shard)}-config",
         _config_manifest(shard, resource_groups, size),

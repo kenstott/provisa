@@ -34,7 +34,7 @@ def _src(sid: str, **kw):
 
 
 class _FakeFetch:
-    """Async fetch for _probe_pg_extension: reports installed / available extensions."""
+    """Async fetch for probe_pg_extension: reports installed / available extensions."""
 
     def __init__(self, *, installed: set[str] | None = None, available: set[str] | None = None):
         self._installed = set(installed or ())

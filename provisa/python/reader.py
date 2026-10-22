@@ -41,6 +41,8 @@ import types
 import typing
 
 _TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)$")
+#: REQ-2100: a pushdown tag line, ``@{op}_{column} parameter``.
+_PUSHDOWN_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$")
 _NONE = type(None)
 
 
@@ -173,23 +175,28 @@ class _Reader:
 
     def function(self, name: str, fn: typing.Callable) -> dict:
         doc = inspect.getdoc(fn) or ""
-        tags, text = [], []
+        tags, text, tag_arguments = [], [], []
         for line in doc.splitlines():
             match = _TAG.match(line.strip())
+            pushdown = _PUSHDOWN_TAG.match(line.strip())
             if match:
                 tags.append(match.group(1))
+            elif pushdown:
+                tag_arguments.append({"tag": pushdown.group(1), "text": pushdown.group(2)})
             else:
                 text.append(line)
         hints = typing.get_type_hints(fn, include_extras=True)
         parameters = []
         for p in inspect.signature(fn).parameters.values():
             rest = p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+            hint = hints.get(p.name, inspect.Parameter.empty)
             parameters.append(
                 {
                     "name": p.name,
                     "optional": p.default is not p.empty,
                     "rest": rest,
-                    "type": self.tree(hints.get(p.name, inspect.Parameter.empty)),
+                    "type": self.tree(hint),
+                    "pushdown": _annotated_strings(hint),
                 }
             )
         returns = self.tree(hints.get("return", inspect.Parameter.empty))
@@ -198,9 +205,17 @@ class _Reader:
         return {
             "name": name,
             "tags": tags,
+            "tag_arguments": tag_arguments,
             "description": "\n".join(text).strip(),
             "signatures": [{"parameters": parameters, "returns": returns}],
         }
+
+
+def _annotated_strings(hint: typing.Any) -> list[str]:
+    """REQ-2100: the strings a ``typing.Annotated`` hint carries, each a pushdown declaration."""
+    if typing.get_origin(hint) is not typing.Annotated:
+        return []
+    return [m for m in typing.get_args(hint)[1:] if isinstance(m, str)]
 
 
 def functions(module: types.ModuleType) -> list[tuple[str, typing.Callable]]:

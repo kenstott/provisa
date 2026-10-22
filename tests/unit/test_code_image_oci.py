@@ -118,7 +118,7 @@ def _image(tmp_path: Path) -> oci.Image:
     return oci.Image(
         architecture="arm64",
         layers=[layer],
-        entrypoint=["/opt/p/node", "/opt/p/remote_host.mjs"],
+        entrypoint=["/opt/p/node", "/opt/p/host.mjs"],
         env={"PROVISA_CODE_HASH": "h1"},
         labels={"dev.provisa.codehost": "1"},
         exposed=[7443],
@@ -131,7 +131,7 @@ def test_the_configuration_and_manifest_name_what_the_image_is(tmp_path: Path):
     image = _image(tmp_path)
     config = json.loads(image.config())
     assert config["architecture"] == "arm64" and config["os"] == "linux"
-    assert config["config"]["Entrypoint"] == ["/opt/p/node", "/opt/p/remote_host.mjs"]
+    assert config["config"]["Entrypoint"] == ["/opt/p/node", "/opt/p/host.mjs"]
     assert config["config"]["Env"] == ["PATH=/usr/bin", "PROVISA_CODE_HASH=h1"]
     assert config["config"]["ExposedPorts"] == {"7443/tcp": {}}
     assert config["config"]["User"] == "65532:65532"

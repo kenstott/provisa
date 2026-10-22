@@ -778,6 +778,11 @@ async def reissue_after_coordinator_restart(state: Any) -> None:  # REQ-2073
     # connected one) has nothing a restart could take away.
     if len(_start_generations) == 1:
         return
+    # Nor has this query's terminal when it is a native engine's, whatever coordinators other
+    # terminals of this process answer on: its one start never changes.
+    current = await coordinator_generation(state)
+    if current == _start_generations[""]:
+        return
 
     from provisa.api.org_runtime import runtime_key
     from provisa.core.request_context import active_env, require_current_org
@@ -799,7 +804,6 @@ async def reissue_after_coordinator_restart(state: Any) -> None:  # REQ-2073
     # REQ-1244: an org with an engine of its own dispatches through its own terminal; every other
     # runtime, the deployment org's environments included, through the shared one.
     shared = runtime is default or runtime.federation_engine is None
-    current = await coordinator_generation(state)
     if runtime.engine_generation == current and (
         not shared or default.engine_generation == current
     ):

@@ -27,6 +27,7 @@ from pathlib import Path
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.sandbox import sandboxed
 from provisa.codesource.worker import CODE_HASH_ENV, HostCommand, private_environment
+from provisa.node.install import code_command
 
 HOST = Path(__file__).with_name("host.mjs")
 #: REQ-2106: "@provisa/services" for Deno, which resolves bare names only through an import map.
@@ -85,7 +86,7 @@ def host_command(
     env = private_environment(NO_COLOR="1", PROVISA_HOST_LIB=str(host_lib))
     if runtime in ("node", "bun"):
         return sandboxed(
-            lambda address: [str(executable), str(HOST), address, str(entry)],
+            lambda address: [*code_command(runtime, executable), str(HOST), address, str(entry)],
             executable=executable,
             read=[HOST.parent, bundle, host_lib],
             env=env,

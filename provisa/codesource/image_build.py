@@ -13,15 +13,17 @@
 The image is the source's code at its pinned content hash, its dependencies installed for the
 image's platform from the code's lockfile through the organisation's package registries (wheels
 only; npm and Bun with no install scripts), the pinned runtime for that platform, the host
-program's Arrow library, and the remote host program (provisa/python/remote_host.py,
-provisa/node/remote_host.mjs), on a distroless base pinned by digest. Nothing in it runs while it
-is built (provisa/codesource/oci.py): no builder program, no daemon, no root.
+program's Arrow library, and the front end every image runs (REQ-2100, provisa/codehost/front.py)
+-- the pinned Python, its own libraries apart from the code's, and the code's name tables -- on a
+distroless base pinned by digest. The front end serves the port and runs the language's host
+program beside it. Nothing in the image runs while it is built (provisa/codesource/oci.py): no
+builder program, no daemon, no root.
 
 The container runs as an unprivileged user and listens on one fixed internal port, 7443, with no
 variable; its state (its identity and the Provisa it is paired to) is under /var/lib/provisa,
 which the operator keeps on a volume. Its tag carries the code hash and Provisa's version; its
-labels say what it is: ``dev.provisa.codehost=1``, the protocol, the runtime, the code hash and
-the exports.
+labels say what it is: ``dev.provisa.codehost=1``, the protocol, the runtime, the code hash, the
+exports and the name tables.
 
 Deno installs npm packages for the machine it runs on and has no way to name another platform, so
 a Deno source's image is built from the server's own install, and is refused by name when the
@@ -94,14 +96,20 @@ def tag_of(code_hash: str, version: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "-", f"{code_hash[:12]}-{version}")[:128]
 
 
-def labels(runtime: str, code_hash: str, exports: list[str]) -> dict[str, str]:
+def labels(runtime: str, code_hash: str, exports: list[str], names: dict) -> dict[str, str]:
     return {
         f"{LABEL}codehost": "1",
         f"{LABEL}protocol": str(PROTOCOL),
         f"{LABEL}runtime": runtime,
         f"{LABEL}code_hash": code_hash,
         f"{LABEL}exports": ",".join(sorted(exports)),
+        f"{LABEL}names": _names_text(names),
     }
+
+
+def _names_text(names: dict) -> str:
+    """The name tables as the image carries them (REQ-2100): one compact JSON document."""
+    return json.dumps(names, sort_keys=True, separators=(",", ":"))
 
 
 def compose_snippet(image_ref: str, service: str) -> str:
@@ -134,6 +142,8 @@ class Plan:
     code_hash: str
     entry: str | None
     exports: list[str]
+    #: REQ-2100: the code's name tables (provisa/codesource/names.py), by function.
+    names: dict
     registries: list[Any]  # core.package_registries.Resolved
     cache_root: Path
     version: str
@@ -169,15 +179,24 @@ def assemble(
         [oci.Entry(STATE, directory=True, mode=0o700, owner=NONROOT)], layers_dir
     )
     if plan.language == "python":
-        own, entrypoint, env = _python(plan, root, target, arch, workdir, run)
+        own, worker, env = _python(plan, root, target, arch, workdir, run)
+        front_python = None  # the code's own runtime runs the front end too
     else:
-        own, entrypoint, env = _node(plan, root, target, arch, workdir, run)
+        own, worker, env = _node(plan, root, target, arch, workdir, run)
+        front_python = _runtime(target, "python", FRONT_RUNTIME)
+    front, entrypoint = _front(plan, target, arch, workdir, run, worker, front_python)
+    own = [*own, *front]
     image = oci.Image(
         architecture=arch,
         layers=[*layers, *(oci.write_layer(entries, layers_dir) for entries in own), state],
         entrypoint=entrypoint,
-        env={"PROVISA_CODE_HASH": plan.code_hash, "PROVISA_HOST_LIB": f"{ROOT}/hostlib", **env},
-        labels=labels(plan.runtime, plan.code_hash, plan.exports),
+        env={
+            "PROVISA_CODE_HASH": plan.code_hash,
+            "PROVISA_HOST_LIB": f"{ROOT}/hostlib",
+            "PROVISA_FRONT_LIB": f"{ROOT}/frontlib",
+            **env,
+        },
+        labels=labels(plan.runtime, plan.code_hash, plan.exports, plan.names),
         exposed=[HOST_PORT],
         working_dir=f"{ROOT}/code",
         user=f"{NONROOT}:{NONROOT}",
@@ -233,6 +252,84 @@ def _files(root: Path, at: str, names: list[str]) -> list[oci.Entry]:
     return [oci.Entry(f"{at}/{n}", source=root / n) for n in names]
 
 
+def _uv_install_env(plan: Plan, home: Path) -> dict[str, str]:
+    from provisa.python import install as python_install
+
+    return {
+        **_scratch_env(plan.registries, home),
+        "UV_CACHE_DIR": str(home / "uv-cache"),
+        "UV_NO_CONFIG": "1",
+        "UV_PYTHON_DOWNLOADS": "never",
+        **python_install.uv_index_environment(plan.registries),
+    }
+
+
+def _uv_install(arch: str, site: Path) -> list[str]:
+    return [
+        "pip", "install", "--target", str(site), "--python-version", "3.12",
+        "--python-platform", _UV_PLATFORM[arch], "--only-binary", ":all:", "--no-deps",
+    ]  # fmt: skip
+
+
+#: Where a Node image's front end Python runs from (a Python image's front end runs on the code's).
+FRONT_RUNTIME = f"{ROOT}/front-runtime"
+#: The front end's programs (provisa/codehost), with the code's name tables beside them.
+FRONT = f"{ROOT}/front"
+FRONT_PROGRAMS = ("front.py", "residual.py", "pgfront.py", "pgcatalog.py")
+
+
+def _front(
+    plan: Plan,
+    target: CodeRuntimeResolver,
+    arch: str,
+    workdir: Path,
+    run: Runner,
+    worker: list[str],
+    front_python: list[oci.Entry] | None,
+) -> tuple[list[list[oci.Entry]], list[str]]:
+    """REQ-2100: the front end's layers, and the entrypoint that runs it with ``worker`` (the
+    host program's argv, ``{fd}`` where its socket goes)."""
+    import buenavista
+
+    from provisa.codehost import front as front_program
+
+    here = Path(front_program.__file__).parent
+    protocol = Path(buenavista.__file__).parent
+    server = CodeRuntimeResolver(cache_root=plan.cache_root)
+    uv = server.resolve("uv")
+    lib = workdir / "frontlib"
+    lib.mkdir(parents=True)
+    with tempfile.TemporaryDirectory(prefix="provisa-image-front-") as scratch:
+        env = _uv_install_env(plan, Path(scratch))
+        requirements = here / "front_requirements.txt"
+        run(
+            [str(uv), *_uv_install(arch, lib), "--require-hashes", "-r", str(requirements)],
+            workdir,
+            env,
+        )
+    executable = target.pin("python").asset(_PLATFORM[arch]).executable
+    python = (
+        f"{ROOT}/runtime/{executable}" if front_python is None else f"{FRONT_RUNTIME}/{executable}"
+    )
+    layers = [
+        *([front_python] if front_python is not None else []),
+        oci.tree(lib, f"{ROOT}/frontlib"),
+        # The PostgreSQL protocol, as provisa/pgwire serves it (REQ-2100, pgfront.py): its
+        # modules, never what an interpreter cached beside them.
+        _files(
+            protocol, f"{ROOT}/frontlib/buenavista", sorted(p.name for p in protocol.glob("*.py"))
+        ),
+        [
+            *_files(here, FRONT, list(FRONT_PROGRAMS)),
+            oci.Entry(f"{FRONT}/names.json", data=_names_text(plan.names).encode()),
+        ],
+    ]
+    entrypoint = [
+        python, "-I", f"{FRONT}/front.py", str(HOST_PORT), STATE, f"{FRONT}/names.json", *worker,
+    ]  # fmt: skip
+    return layers, entrypoint
+
+
 def _scratch_env(registries: list[Any], home: Path) -> dict[str, str]:
     from provisa.codesource import install as shared
 
@@ -266,17 +363,8 @@ def _python(
     site.mkdir(parents=True)
     with tempfile.TemporaryDirectory(prefix="provisa-image-python-") as scratch:
         home = Path(scratch)
-        env = {
-            **_scratch_env(plan.registries, home),
-            "UV_CACHE_DIR": str(home / "uv-cache"),
-            "UV_NO_CONFIG": "1",
-            "UV_PYTHON_DOWNLOADS": "never",
-            **python_install.uv_index_environment(plan.registries),
-        }
-        install = [
-            str(uv), "pip", "install", "--target", str(site), "--python-version", "3.12",
-            "--python-platform", _UV_PLATFORM[arch], "--only-binary", ":all:", "--no-deps",
-        ]  # fmt: skip
+        env = _uv_install_env(plan, home)
+        install = [str(uv), *_uv_install(arch, site)]
         lock = python_install.lockfile(root)
         if lock is not None:
             requirements = lock
@@ -290,17 +378,6 @@ def _python(
                 )  # fmt: skip
             hashed = ["--require-hashes"] if requirements.name.endswith(".txt") else []
             run([*install, *hashed, "-r", str(requirements)], root, env)
-        # The remote host's own: cryptography, for its identity.
-        run(
-            [
-                *install,
-                "--require-hashes",
-                "-r",
-                str(HOST.with_name("remote_host_requirements.txt")),
-            ],
-            root,
-            env,
-        )
     version = target.pin("python").version.split("+", 1)[0]
     venv = [
         oci.Entry(
@@ -318,17 +395,21 @@ def _python(
     layers = [
         _runtime(target, "python", f"{ROOT}/runtime"),
         _runtime(target, "pyarrow", f"{ROOT}/hostlib"),
-        _files(HOST.parent, f"{ROOT}/host", ["host.py", "remote_host.py"]),
+        _files(HOST.parent, f"{ROOT}/host", ["host.py"]),
         # REQ-2106: Provisa's services module, beside the host as it is on the server.
         oci.tree(HOST.parent / "services", f"{ROOT}/host/services"),
         venv,
         oci.tree(code, f"{ROOT}/code"),
     ]
-    entrypoint = [
-        f"{ROOT}/venv/bin/python", "-I", f"{ROOT}/host/remote_host.py",
-        str(HOST_PORT), STATE, f"{ROOT}/code", entry,
-    ]  # fmt: skip
-    return layers, entrypoint, {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}
+    worker = [
+        f"{ROOT}/venv/bin/python",
+        "-I",
+        f"{ROOT}/host/host.py",
+        "{fd}",
+        f"{ROOT}/code",
+        entry,
+    ]
+    return layers, worker, {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}
 
 
 # -- Node.js, Bun, Deno -------------------------------------------------------------------------
@@ -396,16 +477,15 @@ def _node(
                 (root / ".npmrc").unlink(missing_ok=True)
     exe = f"{ROOT}/runtime/{target.pin(runtime).asset(_PLATFORM[arch]).executable}"
     entry = entry_module(root).relative_to(root.resolve()).as_posix()
-    host = [f"{ROOT}/host/remote_host.mjs", str(HOST_PORT), STATE, f"{ROOT}/code/{entry}"]
+    host = [f"{ROOT}/host/host.mjs", "{fd}", f"{ROOT}/code/{entry}"]
     if runtime == "deno":
-        entrypoint = [
-            exe, "run", "--no-prompt", "--allow-net", f"--allow-read={ROOT}",
-            f"--allow-write={STATE}", "--allow-env",
+        worker = [
+            exe, "run", "--no-prompt", "--allow-net", f"--allow-read={ROOT}", "--allow-env",
             f"--import-map={ROOT}/host/services-import-map.json", *host,
         ]  # fmt: skip
         env = {"DENO_DIR": f"{ROOT}/code/.deno", "NO_COLOR": "1"}
     else:
-        entrypoint = [exe, *host]
+        worker = [*node_install.code_command(runtime, exe), *host]
         env = {"NO_COLOR": "1"}
     layers = [
         _runtime(target, runtime, f"{ROOT}/runtime"),
@@ -414,17 +494,11 @@ def _node(
             HOST.parent,
             f"{ROOT}/host",
             # REQ-2106: "@provisa/services", and Deno's import map naming it.
-            [
-                "host-core.mjs",
-                "host.mjs",
-                "remote_host.mjs",
-                "services.mjs",
-                "services-import-map.json",
-            ],
+            ["host-core.mjs", "host.mjs", "services.mjs", "services-import-map.json"],
         ),
         oci.tree(root, f"{ROOT}/code"),
     ]
-    return layers, entrypoint, env
+    return layers, worker, env
 
 
 def clean(workdir: Path) -> None:

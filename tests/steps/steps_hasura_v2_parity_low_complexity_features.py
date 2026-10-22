@@ -360,7 +360,7 @@ def _when_compiler_processes_upsert(shared_data: dict) -> None:
 
     field_node: FieldNode = shared_data["field_node"]
     table: TableMeta = shared_data["table"]
-    result: MutationResult = compile_upsert(field_node, table, variables=None)  # type: ignore[arg-type]
+    result: MutationResult = compile_upsert(field_node, table, None, CompilationContext())  # type: ignore[arg-type]
     shared_data["result"] = result
 
 

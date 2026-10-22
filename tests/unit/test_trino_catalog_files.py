@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from provisa.core import trino_catalog_files as tcf
 from provisa.core.models import Source, SourceType
@@ -175,7 +176,9 @@ class TestKafka:
         assert "kafka.table-description-supplier=CONFLUENT" in props
         assert not any(p.suffix == ".json" for p in written)
 
-    def test_catalog_file_with_sasl_auth_writes_client_props(self, tmp_path):
+    def test_catalog_file_with_sasl_auth_writes_client_props(self, tmp_path, monkeypatch):
+        # REQ-2073: the deployment's group for Trino's files: one this test's user is in.
+        monkeypatch.setenv(tcf.TRINO_FILES_GID_ENV, str(os.getgid()))
         written = tcf.write_kafka_catalog_files(
             {
                 "id": "secure",
@@ -234,7 +237,9 @@ class TestTwoOrgs:
         assert props["redis.table-description-dir"] == "/etc/trino/redis/org_a__cache"
         assert a[0].parent.name == "org_a__cache"
 
-    def test_kafka_files_are_each_catalogs_own(self, tmp_path):
+    def test_kafka_files_are_each_catalogs_own(self, tmp_path, monkeypatch):
+        # REQ-2073: the deployment's group for Trino's files: one this test's user is in.
+        monkeypatch.setenv(tcf.TRINO_FILES_GID_ENV, str(os.getgid()))
         source = {
             "id": "bus",
             "bootstrap_servers": "kafka:9092",

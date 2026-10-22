@@ -263,6 +263,7 @@ def _req128_col(name, data_type="varchar", nullable=True):
 
 def _req128_make_role(role_id, domain_access=None):
     return {
+        "description": "Test role.",
         "id": role_id,
         "domain_access": domain_access if domain_access is not None else ["*"],
         "capabilities": [],

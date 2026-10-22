@@ -729,6 +729,32 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM tag_assignments
         WHERE expires_on IS NOT NULL
     """,
+    # REQ-1591: each term's domains by the one rule (provisa.core.repositories.glossary.
+    # term_domains): the domains of the tables its refs point at while it holds refs, its declared
+    # rows otherwise. "*" is the enterprise scope (REQ-1592). term_domains is the term's whole set
+    # as |a|b|, the column every glossary view's readable-term row scope tests (REQ-1593); it is
+    # first because the other glossary views read it.
+    "glossary_term_domains": """
+        CREATE OR REPLACE VIEW glossary_term_domains_meta AS
+        WITH d AS (
+            SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
+            FROM glossary_term_refs r
+            JOIN registered_tables rt ON rt.id = r.table_id
+            UNION ALL
+            SELECT g.term_id, g.domain_id, g.tenant_id
+            FROM glossary_term_domains g
+            WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
+        ),
+        s AS (
+            SELECT term_id, '|' || STRING_AGG(domain_id, '|') || '|' AS term_domains
+            FROM d
+            GROUP BY term_id
+        )
+        SELECT CAST(d.term_id AS TEXT) || ':' || d.domain_id AS id, d.term_id, d.domain_id,
+               d.tenant_id, s.term_domains
+        FROM d
+        JOIN s ON s.term_id = d.term_id
+    """,
     # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
     # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
     # in service, defined, and connected over in-service edges to a term holding a physical ref.
@@ -773,19 +799,18 @@ _META_TABLE_VIEWS: dict[str, str] = {
                CASE WHEN t.id IN (SELECT id FROM grounded)
                      AND TRIM(COALESCE(t.definition, '')) <> ''
                     THEN TRUE ELSE FALSE END AS live,
-               t.tenant_id
+               t.tenant_id,
+               CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = t.id) AS term_domains
         FROM glossary_terms t
     """,
-    # A ref binds a term to a COLUMN — (table_id, column_name) — deliberately not
-    # table_columns.id, which the table upsert replaces wholesale. `relationships` is
-    # single-column, so the ref and the column view both emit the same synthesized
-    # column_key and the registered edge joins on that: stable where the surrogate id is not.
     "glossary_term_refs": """
         CREATE OR REPLACE VIEW glossary_term_refs_meta AS
         SELECT r.id, r.term_id, r.table_id, r.column_name,
                CAST(r.table_id AS TEXT) || ':' || r.column_name AS column_key,
                rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
-               r.tenant_id
+               r.tenant_id,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
         FROM glossary_term_refs r
         JOIN registered_tables rt ON rt.id = r.table_id
     """,
@@ -793,7 +818,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW glossary_term_edges_meta AS
         SELECT e.id, e.from_term_id, e.to_term_id, e.rel_type,
                f.name AS from_term, t.name AS to_term,
-               e.tenant_id
+               e.tenant_id,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = e.from_term_id) AS from_term_domains,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = e.to_term_id) AS to_term_domains
         FROM glossary_term_edges e
         JOIN glossary_terms f ON f.id = e.from_term_id
         JOIN glossary_terms t ON t.id = e.to_term_id

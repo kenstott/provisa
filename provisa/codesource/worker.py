@@ -71,7 +71,7 @@ import subprocess  # nosec B404 - argv-list invocation only, never shell=True
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -536,7 +536,29 @@ class Worker:
         """A table's or a stream's rows, batch by batch, as the host sends them against
         ``schema`` (arrow_rows.schema_text). Closing the iterator before its end cancels the
         call in the host."""
+        from contextlib import closing
+
         from provisa.codesource.arrow_rows import rows_of
+
+        # Closed here, not by the collector: closing rows is what cancels the call in the host.
+        with closing(self.batches(export, kind, args, names, schema=schema)) as batches:
+            for ipc in batches:
+                yield rows_of(ipc)
+
+    def batches(
+        self,
+        export: str,
+        kind: str,
+        args: Sequence[Any],
+        names: Sequence[str] = (),
+        *,
+        schema: str,
+        residual: dict | None = None,
+    ) -> Generator[bytes, None, None]:
+        """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent. With a
+        ``residual`` (a remote host's front end, provisa/codehost/front.py), the batches are the
+        statement's answer over the function's rows."""
+        import pyarrow as pa
 
         if kind not in ("table", "stream"):
             raise ValueError(f"rows() serves a table or a stream, not a {kind}")
@@ -546,7 +568,10 @@ class Worker:
             finished = False
             rows = batches = 0
             try:
-                self._send(self._call_frame(call_id, export, kind, args, names, schema))
+                frame = self._call_frame(call_id, export, kind, args, names, schema)
+                if residual is not None:
+                    frame["residual"] = residual
+                self._send(frame)
                 while True:
                     message = self._next(call_id, waiting, export)
                     if message["op"] == "end":
@@ -554,9 +579,10 @@ class Worker:
                         span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
                         return
                     if message["op"] == "rows":
-                        batch = rows_of(message["arrow"])
-                        rows, batches = rows + len(batch), batches + 1
-                        yield batch
+                        ipc = message["arrow"]
+                        rows += pa.ipc.open_stream(pa.py_buffer(ipc)).read_all().num_rows
+                        batches += 1
+                        yield ipc
             finally:
                 span.set_attribute("codesource.rows", rows)
                 span.set_attribute("codesource.batches", batches)
@@ -573,6 +599,7 @@ class Worker:
         calls: Sequence[tuple[Sequence[Any], Sequence[str]]],
         *,
         schema: str,
+        keyed: bool = False,
     ) -> Iterator[list[dict]]:
         """A table's rows for each of ``calls`` (its arguments and their names), in order, from
         one call to the host (REQ-2099): the host calls the function once per argument set
@@ -592,6 +619,9 @@ class Worker:
                 frame["calls"] = [
                     {"args": encode(list(args)), "names": list(names)} for args, names in calls
                 ]
+                if keyed:
+                    # REQ-2100: a loader call, answered with each key's rows, each with its $key.
+                    frame["keyed"] = True
                 self._send(frame)
                 while True:
                     message = self._next(call_id, waiting, export)
