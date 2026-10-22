@@ -295,6 +295,8 @@ StringFilter = GraphQLInputObjectType(
     lambda: {
         **_ordered_filter_fields(GraphQLString),
         "like": GraphQLInputField(GraphQLString),
+        # REQ-2136: LIKE with case ignored, the rule the UI's search matches by.
+        "ilike": GraphQLInputField(GraphQLString),
     },
 )
 

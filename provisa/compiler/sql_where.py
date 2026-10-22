@@ -37,9 +37,14 @@ from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_literals import sql_literal
 from provisa.compiler.sql_types import (
     CompilationContext,
+    JoinMeta,
+    StatementSources,
 )
 from provisa.compiler.sql_rewrite import (
+    _join_column_expr,
     _q,
+    _sql_str_literal,
+    _table_ref,
 )
 
 
@@ -176,6 +181,9 @@ def _compile_virtual_col_filter(
         elif op == "like":
             pattern = str(val).replace("%", "*").replace("_", "?")
             parts.append("TRUE" if _fnmatch.fnmatch(vv, pattern) else "FALSE")
+        elif op == "ilike":  # REQ-2136
+            pattern = str(val).lower().replace("%", "*").replace("_", "?")
+            parts.append("TRUE" if _fnmatch.fnmatchcase(vv.lower(), pattern) else "FALSE")
         elif op == "is_null":
             parts.append("FALSE")
     return parts
@@ -213,9 +221,120 @@ def _compile_column_filter(
         elif op == "like":
             placeholder = collector.add(val)
             parts.append(f"{col} LIKE {placeholder}")
+        elif op == "ilike":  # REQ-2136: LIKE with case ignored, in every engine's SQL
+            placeholder = collector.add(val)
+            parts.append(f"LOWER({col}) LIKE LOWER({placeholder})")
         elif op == "is_null":
             parts.append(f"{col} IS NULL" if val else f"{col} IS NOT NULL")
+        else:
+            # A condition this compiler does not know (a relationship's, where none is taken) is
+            # refused: dropping it would read wider than asked.
+            raise ValueError(f"unsupported condition {op!r} on {col}")
     return parts
+
+
+def join_exprs(  # REQ-2136
+    join_meta: JoinMeta,
+    source_alias: str,
+    target_alias: str,
+    ctx: CompilationContext,
+    source_table_id: int,
+) -> tuple[str, str]:
+    """The two sides of a relationship's join condition: its source's value (a column of
+    ``source_alias``, an expression, a constant or a virtual column) and its target's."""
+    if join_meta.source_expr is not None:
+        src = join_meta.source_expr.replace("{alias}", _q(source_alias))
+    elif join_meta.source_constant is not None:
+        src = (
+            _sql_str_literal(join_meta.source_constant)
+            if isinstance(join_meta.source_constant, str)
+            else str(join_meta.source_constant)
+        )
+    elif join_meta.source_column in _VIRTUAL_COLS:
+        _svc = (ctx.virtual_columns.get(source_table_id) or {}).get(join_meta.source_column, "")
+        src = _sql_str_literal(_svc)
+    elif join_meta.source_json_key:
+        src = (
+            f"CAST({_q(source_alias)}.{_q(join_meta.source_column)} AS JSON)"
+            f"->>'{join_meta.source_json_key}'"
+        )
+    else:
+        src = _join_column_expr(
+            source_alias,
+            join_meta.source_column,
+            join_meta.source_column_type,
+            join_meta.target_column_type,
+        )
+    if join_meta.target_expr is not None:
+        tgt = join_meta.target_expr.replace("{alias}", _q(target_alias))
+    elif join_meta.target_column in _VIRTUAL_COLS:
+        _tvc = (ctx.virtual_columns.get(join_meta.target.table_id) or {}).get(
+            join_meta.target_column, ""
+        )
+        tgt = _sql_str_literal(_tvc)
+    else:
+        tgt = _join_column_expr(
+            target_alias,
+            join_meta.target_column,
+            join_meta.target_column_type,
+            join_meta.source_column_type,
+        )
+    return src, tgt
+
+
+class RelationshipConditions:  # REQ-2136
+    """A where's relationship conditions, for a where over ``type_name``'s rows read as
+    ``alias``: each a row with a related row matching its own where, compiled to EXISTS over the
+    relationship's target. Every target read is added to the statement's ``sources``, and the
+    EXISTS body is governed as the rest of the statement is (stage2._govern_selects)."""
+
+    def __init__(
+        self,
+        ctx: CompilationContext,
+        type_name: str,
+        use_catalog: bool,
+        sources: StatementSources,
+        counter: list[int] | None = None,
+    ) -> None:
+        self.ctx = ctx
+        self.type_name = type_name
+        self.use_catalog = use_catalog
+        self.sources = sources
+        # Shared by every level, so each EXISTS reads its target under its own alias.
+        self.counter = counter if counter is not None else [0]
+
+    def join(self, field: str) -> JoinMeta | None:
+        return self.ctx.joins.get((self.type_name, field))
+
+    def exists(
+        self,
+        join_meta: JoinMeta,
+        where: dict,
+        collector: ParamCollector,
+        alias: str,
+        table_id: int,
+    ) -> str:
+        self.counter[0] += 1
+        inner = f"w{self.counter[0]}"
+        target = join_meta.target
+        self.sources.add_table(target)
+        src, tgt = join_exprs(join_meta, alias, inner, self.ctx, table_id)
+        deeper = RelationshipConditions(
+            self.ctx, target.type_name, self.use_catalog, self.sources, self.counter
+        )
+        cond = _compile_where(
+            where,
+            collector,
+            inner,
+            self.ctx.virtual_columns.get(target.table_id),
+            target.table_id,
+            self.ctx.exposed_to_physical,
+            deeper,
+        )
+        return (
+            f"EXISTS (SELECT 1 FROM {_table_ref(target, self.use_catalog)} {_q(inner)}"
+            f" WHERE {tgt} = {src} AND ({cond}))"
+        )
 
 
 def _compile_where(
@@ -225,25 +344,51 @@ def _compile_where(
     virtual_vals: dict[str, str] | None = None,
     table_id: int | None = None,
     exposed_to_physical: dict | None = None,
+    relationships: RelationshipConditions | None = None,
 ) -> str:
-    """Compile a where input object to a SQL WHERE clause fragment."""
+    """Compile a where input object to a SQL WHERE clause fragment. A relationship's condition is
+    compiled only where ``relationships`` is given (a root field's where, its rows aliased);
+    elsewhere it is refused, never dropped."""
     parts: list[str] = []
     _e2p = exposed_to_physical or {}
 
     for key, value in where_obj.items():
         if key == "_and":
             sub_parts = [
-                _compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical)
+                _compile_where(
+                    sub,
+                    collector,
+                    alias,
+                    virtual_vals,
+                    table_id,
+                    exposed_to_physical,
+                    relationships,
+                )
                 for sub in value
             ]
             parts.append(f"({' AND '.join(sub_parts)})")
             continue
         if key == "_or":
             sub_parts = [
-                _compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical)
+                _compile_where(
+                    sub,
+                    collector,
+                    alias,
+                    virtual_vals,
+                    table_id,
+                    exposed_to_physical,
+                    relationships,
+                )
                 for sub in value
             ]
             parts.append(f"({' OR '.join(sub_parts)})")
+            continue
+
+        join_meta = relationships.join(key) if relationships is not None else None
+        if relationships is not None and join_meta is not None:
+            if alias is None or table_id is None:
+                raise ValueError(f"relationship condition {key!r} needs its rows aliased")
+            parts.append(relationships.exists(join_meta, value, collector, alias, table_id))
             continue
 
         # Virtual column: resolve at compile time — no physical column exists
@@ -307,6 +452,22 @@ def _compile_order_by(
             col = _q(phys_col) if alias is None else f"{_q(alias)}.{_q(phys_col)}"
             parts.append(f"{col} {sql_dir}")
     return ", ".join(parts)
+
+
+def where_names_relationship(  # REQ-2136
+    where: object, ctx: CompilationContext, type_name: str
+) -> bool:
+    """Whether ``where`` (a where argument's value) states a relationship's condition, which
+    reads the field's rows under an alias."""
+    if isinstance(where, list):
+        return any(where_names_relationship(w, ctx, type_name) for w in where)
+    if not isinstance(where, dict):
+        return False
+    return any(
+        (k in ("_and", "_or") and where_names_relationship(v, ctx, type_name))
+        or (type_name, k) in ctx.joins
+        for k, v in where.items()
+    )
 
 
 def _has_joins(field_node: FieldNode, ctx: CompilationContext, type_name: str) -> bool:
