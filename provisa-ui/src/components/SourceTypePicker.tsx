@@ -34,6 +34,10 @@ export interface PickerGroup {
 }
 
 const RECENT_KEY = "provisa.sourceTypePicker.recent";
+
+/** The groups whose heading carries a line saying what is in them. Every group's heading is its
+ * category id's label (sourceTypePicker.categories); the id itself is the group's key. */
+const SUBTITLED: ReadonlySet<string> = new Set(["Code"]);
 const RECENT_MAX = 6;
 
 // Other names a reader may type for a source type.
@@ -58,6 +62,9 @@ const ALIASES: Record<string, string> = {
   openapi: "rest swagger",
   elasticsearch: "opensearch",
   saphana: "sap hana",
+  // The Code Resolvers group: what a person looking to run their own logic types.
+  python: "code resolver",
+  node: "javascript code resolver",
 };
 
 function readRecent(): string[] {
@@ -233,7 +240,7 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
               value={g.group}
               data-testid={`source-type-picker-cat-${g.group}`}
             >
-              {g.group} ({g.items.length})
+              {t(`sourceTypePicker.categories.${g.group}`)} ({g.items.length})
             </Chip>
           ))}
         </Group>
@@ -281,9 +288,20 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
                 style={{ breakInside: "avoid", marginBottom: 12 }}
                 data-testid={`source-type-picker-section-${g.group}`}
               >
-                <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4}>
-                  {g.group}
+                <Text
+                  size="xs"
+                  fw={700}
+                  c="dimmed"
+                  tt="uppercase"
+                  mb={SUBTITLED.has(g.group) ? 0 : 4}
+                >
+                  {t(`sourceTypePicker.categories.${g.group}`)}
                 </Text>
+                {SUBTITLED.has(g.group) && (
+                  <Text size="xs" c="dimmed" mb={4}>
+                    {t(`sourceTypePicker.categorySubtitles.${g.group}`)}
+                  </Text>
+                )}
                 {g.items.map((i) => row(i, g.group))}
               </section>
             ))}

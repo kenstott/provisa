@@ -9,6 +9,25 @@
     "reachLive": "即時（就地讀取）",
     "reachReplica": "副本（定期更新的副本）",
     "reachLiveOn": "僅在 {{engines}} 上即時",
-    "reachNone": "此引擎無法存取"
+    "reachNone": "此引擎無法存取",
+    "categories": {
+      "Subscriptions": "訂閱",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "雲端數據倉庫",
+      "Analytics": "分析",
+      "Data Lake": "數據湖",
+      "NoSQL": "NoSQL",
+      "Code": "代碼解析器",
+      "Graph": "圖",
+      "File": "檔案",
+      "API": "API",
+      "Streaming": "串流",
+      "Enterprise": "企業",
+      "Data Quality": "數據質素",
+      "Other": "其他"
+    },
+    "categorySubtitles": {
+      "Code": "以 Python 或 Node 編寫的業務邏輯"
+    }
   }
 }

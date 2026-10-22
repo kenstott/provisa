@@ -83,7 +83,7 @@
       },
       "step3": {
         "title": "73 types de source, 14 catégories",
-        "description": "Un sélecteur liste chaque type, groupé par catégorie : <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Cherchez par nom ou alias, ou filtrez avec les pastilles de catégorie. Chaque type affiche son logo et une icône de portée : ⚡ lu en direct sur place, ou une icône de copie lorsque Provisa lit une réplique rafraîchie.<p>Choisissez-en un, renseignez la connexion, enregistrez.</p>"
+        "description": "Un sélecteur liste chaque type, groupé par catégorie : <strong>Abonnements, RDBMS, Entrepôt de données cloud, Analytique, Data lake, NoSQL, Resolvers de code, Graphes, Fichiers, API, Streaming, Entreprise, Qualité des données, Autres</strong>. Cherchez par nom ou alias, ou filtrez avec les pastilles de catégorie. Chaque type affiche son logo et une icône de portée : ⚡ lu en direct sur place, ou une icône de copie lorsque Provisa lit une réplique rafraîchie.<p>Choisissez-en un, renseignez la connexion, enregistrez.</p>"
       },
       "stepBuildSource": {
         "title": "Une source, ajoutée en direct",

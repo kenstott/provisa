@@ -83,7 +83,7 @@
       },
       "step3": {
         "title": "73 种数据源类型，14 个类别",
-        "description": "一个选择器按类别列出所有类型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
+        "description": "一个选择器按类别列出所有类型：<strong>订阅、RDBMS、云数据仓库、分析、数据湖、NoSQL、代码解析器、图、文件、API、流式、企业、数据质量、其他</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
       "stepBuildSource": {
         "title": "现场添加一个数据源",
