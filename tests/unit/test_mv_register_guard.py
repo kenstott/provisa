@@ -195,6 +195,7 @@ def test_table_input_maps_consistency():
         push_debounce_max_delay=5.0,
         mv_consistency="distributed",
         mv_preprocess=None,  # REQ-957
+        mv_hold_on_failing_checks=False,  # REQ-2133
         mv_bitemporal_mode=None,  # REQ-1162
         mv_bitemporal_key=[],  # REQ-1162
         mv_bitemporal_source_time=None,  # REQ-1163

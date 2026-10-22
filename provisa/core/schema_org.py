@@ -291,6 +291,8 @@ registered_tables = Table(
     Column("mv_consistency", Text, nullable=False, server_default="shared"),
     # REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity.
     Column("mv_preprocess", Text),
+    # REQ-2133: the view's Hold on failing checks option, a built-in preflight beside mv_preprocess.
+    Column("mv_hold_on_failing_checks", Boolean, nullable=False, server_default=false()),
     # REQ-1162: append-only bitemporal materialization. NULL = ordinary MV; "snapshot"|"delta".
     # mv_bitemporal_key is the business-key column list a version belongs to (required for delta).
     Column("mv_bitemporal_mode", Text),

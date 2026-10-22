@@ -72,6 +72,12 @@ class ServiceGrant:
     #: REQ-2106: the egress allow-list a fetch Provisa makes for the source is held to -- the one
     #: the worker's own egress is.
     egress: tuple[str, ...] = ()
+    #: REQ-2133: the role the dq service answers as for every call under this grant -- a view's
+    #: preflight's, the role its build runs as. None: each call's own request role (a code source).
+    role: str | None = None
+    #: REQ-2133: the product of the view whose preflight holds this grant, which dq relates each
+    #: checker to (promise, expectation or partner DQ). None for a code source, or a view of none.
+    product_id: str | None = None
 
 
 class ServiceRefused(Exception):
@@ -179,7 +185,7 @@ JSON = "application/json"
 
 
 #: Every service under ``$PROVISA_SERVICES`` (provisa/codesource/service_ops.py for REQ-2106's).
-SERVICES = ("secrets", "llm", "settings", "cache", "vectors", "http", "log", "metric")
+SERVICES = ("secrets", "llm", "settings", "cache", "vectors", "http", "log", "metric", "dq")
 
 #: The header a worker's services request names its call by (the call's id), so the services'
 #: stages report to the request that call serves (REQ-2106).
@@ -207,7 +213,8 @@ def answer(
             stage(_tracer, f"codesource.service.{service}") as span,
         ):
             span.set_attribute("codesource.source", grant.source_id)
-            return 200, kind, _dispatch(grant, service, method, sub, body, span)
+            role = grant.role or _call_role(token, headers or {})
+            return 200, kind, _dispatch(grant, service, method, sub, body, span, role)
     except ServiceRefused as refused:
         if kind == TEXT:
             return refused.status, TEXT, refused.reason.encode()
@@ -226,8 +233,22 @@ def _call_scope(token: str, headers: Mapping[str, str]) -> Any:
     return nullcontext() if scope is None else in_carried_scope(scope)
 
 
+def _call_role(token: str, headers: Mapping[str, str]) -> str | None:
+    """The role the request a call serves acts as, or None when the request names no call."""
+    from provisa.codesource.worker import call_role
+
+    named = headers.get(CALL_HEADER, "")
+    return call_role(token, int(named)) if named.isdigit() else None
+
+
 def _dispatch(
-    grant: ServiceGrant, service: str, method: str, sub: str, body: bytes, span: Any
+    grant: ServiceGrant,
+    service: str,
+    method: str,
+    sub: str,
+    body: bytes,
+    span: Any,
+    role: str | None = None,
 ) -> bytes:
     from provisa.codesource import llm_service, service_ops
     from provisa.core.connection_loop import connection_loop
@@ -251,6 +272,10 @@ def _dispatch(
             return cl.run(service_ops.cache(grant, method, sub, body, span))
         if service == "vectors":
             return cl.run(service_ops.vectors(grant, method, sub, body, span))
+        if service == "dq":
+            from provisa.dq import service as dq_service
+
+            return cl.run(dq_service.answer(grant, role, method, sub, span))
         return cl.run(service_ops.http(grant, method, body, span))
 
 

@@ -362,6 +362,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay": getattr(table, "push_debounce_max_delay", 5.0),  # REQ-1733
         "mv_consistency": getattr(table, "mv_consistency", "shared"),  # REQ-879
         "mv_preprocess": getattr(table, "mv_preprocess", None),  # REQ-957
+        "mv_hold_on_failing_checks": getattr(table, "mv_hold_on_failing_checks", False),  # REQ-2133
         "mv_bitemporal_mode": getattr(table, "mv_bitemporal_mode", None),  # REQ-1162
         "mv_bitemporal_key": getattr(table, "mv_bitemporal_key", []),  # REQ-1162
         "mv_bitemporal_source_time": getattr(table, "mv_bitemporal_source_time", None),  # REQ-1163
@@ -433,6 +434,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay",
         "mv_consistency",
         "mv_preprocess",
+        "mv_hold_on_failing_checks",  # REQ-2133
         "mv_bitemporal_mode",  # REQ-1162
         "mv_bitemporal_key",  # REQ-1162
         "mv_bitemporal_source_time",  # REQ-1163

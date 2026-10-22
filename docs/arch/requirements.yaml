@@ -86605,7 +86605,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2127
   target: "2027-Q1"
 - id: REQ-2133
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 9. Live Data & Events
   category: Table Processor (Shared)
@@ -86643,6 +86643,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the refresh is aborted with a reason naming the checker table and A, the view keeps its previous copy, and views downstream of it are marked blocked upstream
     When the checker's next run on A passes
     Then the next refresh lands
+  code:
+  - provisa/dq/service.py
+  - provisa/mv/preflight_services.py
+  - provisa/mv/hold_checks.py
+  - provisa/mv/preprocess.py
+  - provisa/mv/preflight_eval.py
+  - provisa/codesource/services.py
+  - provisa/python/services/provisa_services/__init__.py
+  tests:
+  - tests/unit/test_preflight_dq_services.py
+  - provisa-ui/src/pages/tables/__tests__/TableEditForm.holdOnFailingChecks.test.tsx
   relates_to:
   - REQ-1165
   - REQ-941

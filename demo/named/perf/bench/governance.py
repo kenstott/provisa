@@ -82,8 +82,9 @@ TABLE_FIELDS = (
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
     "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
-    "pushDebounceMaxDelay mvConsistency mvPreprocess mvBitemporalMode mvBitemporalKey "
-    "mvBitemporalSourceTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
+    "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks mvBitemporalMode "
+    "mvBitemporalKey mvBitemporalSourceTime mvPersist mvIncremental mvCalendar mvGrain "
+    "mvAllowedLateness "
     "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
     "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn } "
@@ -131,6 +132,7 @@ _TABLE_AS_IS = (
     "mvBitemporalSourceTime",
     "mvPersist",
     "mvIncremental",
+    "mvHoldOnFailingChecks",
     "mvAllowedLateness",
     "mvExpectedEvents",
     "mvBusinessDayGrain",

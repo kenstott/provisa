@@ -162,6 +162,10 @@ export function mvStoreFields(t: TFunction, table: RegisteredTable): DetailField
       label: t("tableEditForm.preprocessLabel"),
       value: table.mvPreprocess ? <code className="detail-code">{table.mvPreprocess}</code> : null,
     },
+    {
+      label: t("tableEditForm.holdOnFailingChecksLabel"),
+      value: yesNo(t, table.mvHoldOnFailingChecks),
+    },
   ];
 }
 

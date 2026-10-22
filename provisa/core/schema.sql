@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- REQ-1733: CDC push-source debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
+    mv_hold_on_failing_checks BOOLEAN NOT NULL DEFAULT false,  -- REQ-2133: built-in preflight
     mv_bitemporal_mode TEXT,  -- REQ-1162: NULL | 'snapshot' | 'delta' (append-only time travel)
     mv_bitemporal_key JSONB,  -- REQ-1162: entity key columns (required for delta)
     mv_bitemporal_source_time TEXT,  -- REQ-1163: the column holding the source's change time

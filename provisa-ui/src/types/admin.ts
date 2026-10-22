@@ -383,6 +383,7 @@ export interface RegisteredTable {
   pushDebounceMaxDelay: number; // REQ-1733: staleness cap under continuous message churn
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
   mvPreprocess: string | null; // REQ-1165: inline preflight(rows, ctx) check source; null = no check
+  mvHoldOnFailingChecks: boolean; // REQ-2133: built-in preflight on its inputs' failing checks
   mvBitemporalMode: string | null; // REQ-1162: null | "snapshot" | "delta" (append-only time travel)
   mvBitemporalKey: string[]; // REQ-1162: entity key a version belongs to (required for delta)
   /** REQ-1163: the column holding the source's change time; null reads on recorded time. */

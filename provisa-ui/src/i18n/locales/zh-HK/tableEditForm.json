@@ -137,7 +137,7 @@
     "mvPrimaryKeyDerived": "資料列身分索引鍵（來自下方欄位清單中的主索引鍵核取方塊）：",
     "mvPrimaryKeyMissing": "upsert 及增量維護需要資料列身分索引鍵。請在下方欄位清單中將索引鍵欄位標記為主索引鍵。",
     "preprocessLabel": "預檢查（Python）",
-    "preprocessHelp": "在檢視 SQL 之後、落地之前執行的選用預檢查：定義 preflight(streams, ctx) 並回傳裁決 — ctx.ok() 繼續，ctx.abort(reason) 拒絕（錯誤 + 汙染下游），或 ctx.quarantine(reason) 暫留而不落地。streams 是以輸入節點為索引鍵的 dict：streams[\"schema.table\"] 以延遲方式產出該輸入的資料列，讓您無需具體化即可檢查輸入。檢查僅作檢視；它不會轉換資料列（轉換請放在 SQL 或外部處理器）。可用 SQL 表達的檢查 — 對單一輸入的資料列使用 any(...)/all(...) — 會下推到引擎，成為對該輸入的計數探測，因此可擴展至十億級資料列；其他情況則以 Arrow 批次串流每個輸入並短路。呼叫 ctx.warn(reason) 發出非致命警告。它必須是確定性的 — 不可使用時鐘、隨機性、匯入或 IO — 儲存時會進行純度檢查；非確定性或不安全的檢查會被拒絕。",
+    "preprocessHelp": "在檢視 SQL 之後、落地之前執行的選用預檢查：定義 preflight(streams, ctx) 並回傳裁決 — ctx.ok() 繼續，ctx.abort(reason) 拒絕（錯誤 + 汙染下游），或 ctx.quarantine(reason) 暫留而不落地。streams 是以輸入節點為索引鍵的 dict：streams[\"schema.table\"] 以延遲方式產出該輸入的資料列，讓您無需具體化即可檢查輸入。檢查僅作檢視；它不會轉換資料列（轉換請放在 SQL 或外部處理器）。可用 SQL 表達的檢查 — 對單一輸入的資料列使用 any(...)/all(...) — 會下推到引擎，成為對該輸入的計數探測，因此可擴展至十億級資料列；其他情況則以 Arrow 批次串流每個輸入並短路。呼叫 ctx.warn(reason) 發出非致命警告。它可以匯入唯一一個模組 provisa_services，以呼叫 Provisa 的服務（包括 dq）；這類檢查一律以串流方式執行，其結論是重新整理時的狀態。否則它必須是確定性的 — 不可使用時鐘、隨機性、其他匯入或 IO — 儲存時會進行純度檢查；非確定性或不安全的檢查會被拒絕。",
     "preprocessAria": "MV 預檢查 Python 原始碼",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "數據產品",
@@ -282,6 +282,11 @@
     "bitemporalSourceTimeLabel": "來源時間",
     "bitemporalSourceTimePlaceholder": "Provisa 記錄的時間",
     "bitemporalSourceTimeNone": "Provisa 記錄的時間",
-    "bitemporalSourceTimeHelp": "時間旅行讀取所依據的時鐘。指定記錄每行在來源中何時更改的欄（例如 updated_at，或 CDC 落地的 source_committed_at），即可按來源的時間讀取各版本。留空則按 Provisa 落地每次更改的時間讀取：版本將跟隨重新整理頻率，適用於重新整理頻繁、來源中時間無關緊要，或本意就是針對載入時間的讀取，例如稽核 Provisa 在何時持有哪些資料。"
+    "bitemporalSourceTimeHelp": "時間旅行讀取所依據的時鐘。指定記錄每行在來源中何時更改的欄（例如 updated_at，或 CDC 落地的 source_committed_at），即可按來源的時間讀取各版本。留空則按 Provisa 落地每次更改的時間讀取：版本將跟隨重新整理頻率，適用於重新整理頻繁、來源中時間無關緊要，或本意就是針對載入時間的讀取，例如稽核 Provisa 在何時持有哪些資料。",
+    "holdOnFailingChecksLabel": "檢查失敗時暫停",
+    "holdOnFailingChecksHelp": "當掃描此視圖某個輸入的檢查表最近一次執行失敗時，中止重新整理並保留上一份副本。在上方的預檢之前執行；兩者都必須通過才會繼續。",
+    "holdOnFailingChecksShowCode": "顯示程式碼",
+    "holdOnFailingChecksHideCode": "隱藏程式碼",
+    "holdOnFailingChecksCodeHelp": "此選項套用的檢查。如要修改，請將其複製到上方的預檢中。"
   }
 }

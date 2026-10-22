@@ -58,6 +58,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
+    mvHoldOnFailingChecks: false,
     mvBitemporalMode: null,
     mvBitemporalKey: [],
     mvPersist: "replace",
