@@ -26104,7 +26104,7 @@ A deployment setting, commands.allow_host_code (off by default), governs host co
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is a full surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same editor, results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients query; and a "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic SQL statement through the graph mapping Cypher uses ([REQ-351](#REQ-351)): a table is a class and its rows are its subjects, each subject's IRI built from its primary key, only on output; a column linked to a term is a predicate; a declared relationship is an edge predicate; and the meta-domain tables (terms, term edges, term references, tables, columns, domains) are mapped as SKOS and OWL. The statement is governed whole and routed as any query is; there is no separate triple store and no knowledge-graph views. A property path is lowered as a Cypher variable-length path is ([REQ-348](#REQ-348)): WITH RECURSIVE capped at a depth limit, or unrolled to that depth on an engine without recursion, with cycles handled. A result cut at the limit says it was cut. The depth limit is an operator setting with its field in Deployment settings. A variable predicate (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded.
+SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is a full surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same editor, results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients query; and a "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic SQL statement through the graph mapping Cypher uses ([REQ-351](#REQ-351)): a table is a class and its rows are its subjects, each subject's IRI built from its primary key, only on output; a column linked to a term is a predicate; a declared relationship is an edge predicate; and the meta-domain tables (terms, term edges, term references, tables, columns, domains) are mapped as SKOS and OWL. The statement is governed whole and routed as any query is; there is no separate triple store and no knowledge-graph views. A property path is lowered as a Cypher variable-length path is ([REQ-348](#REQ-348)): WITH RECURSIVE capped at a depth limit, or unrolled to that depth on an engine without recursion, with cycles handled. A result cut at the limit says it was cut. The depth limit is an operator setting with its field in Deployment settings. A variable predicate (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded. (Amended 2026-10-22, ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two steps. First, a refactor makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary no front end owns, with Cypher's parser on one side and select_builder, assembler, path_translator and label_map as the back end both languages share; Cypher's existing tests prove the refactor changes nothing. Second, a SPARQL front end lowers rdflib's SPARQL algebra to that IR and adds what SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib is a new dependency, taken under the dependency rules.
 
 **Use case:** A knowledge-graph team queries the governed model with the language and RDF clients it already uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied into a triple store.
 
@@ -26135,6 +26135,34 @@ The Ontology page's filter controls are shorthand for a SPARQL query ([REQ-2135]
 Later: SPARQL Update is lowered to the governed writes that exist: ontology curation (under its rights, [REQ-1590](#REQ-1590)), mutations and commands. It never writes raw triples or rows past them.
 
 **Use case:** A knowledge-graph team curates the vocabulary and changes data from the language it uses, under the same rights and the same write paths as every other surface.
+
+**Code:** —
+
+**Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2138 · SPARQL {#REQ-2138}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A sparql source ([REQ-1683](#REQ-1683)) may name a reasoner, HermiT first, and an OWL axioms file. At each refresh it pulls the slice of the graph its axioms need from its endpoint by CONSTRUCT, classifies it, and serves the inferred class memberships and properties as tables, such as sanctions_exposed(party) and controls(controller, controlled). How often it reasons is the source's freshness declaration (cache_ttl, replica), as for any source. It works against any SPARQL 1.1 endpoint, Provisa's own among them ([REQ-2135](#REQ-2135)), which it reads as a service identity, so it reasons over only what that identity is granted; what it serves is governed again for every reader, as any table is. A source that would read predicates produced by its own inferred tables is refused, as a view that reads itself is. The reasoner runs in the source's own process or container, never in the server's. HermiT and owlready2 are LGPL: they are used as separate programs and imported libraries, never linked into Provisa, under the dependency rules, and HermiT needs a Java runtime in the source's image.
+
+**Use case:** A compliance team writes once, as OWL axioms, what makes a party sanctions-exposed or one company control another, and every surface reads the inferred answer as a governed table, recomputed as often as the source's freshness says.
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2139 · UI {#REQ-2139}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo "beneficial ownership": KYC parties, companies, owners and their stakes, over a few sources, with an ontology whose terms are linked to the stake and sanctions columns, and an OWL file declaring controls transitive and SanctionsExposed equivalent to being controlled by some SanctionedParty. A sparql source with HermiT ([REQ-2138](#REQ-2138)) reads Provisa's own SPARQL endpoint ([REQ-2135](#REQ-2135)). The answer, which parties are sanctions-exposed and through which chain of control, is queried from SQL, GraphQL and Cypher, and a role without the sanctions rights gets it masked or filtered. Its tour follows the settled demo shape: the scenario, how the pieces fit, then the solution.
+
+**Use case:** A visitor sees an ownership chain several companies deep turn into a governed yes-or-no on sanctions exposure, inferred from rules written once, and readable from the language they already use.
 
 **Code:** —
 
