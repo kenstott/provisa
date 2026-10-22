@@ -9,3 +9,10 @@ and parameters it was given (under `blobs/`), and the SQL, parameter order and g
 kinds it produced, or the refusal it raised. `tests/unit/test_cypher_golden_sql.py` replays each
 one and requires the same result, byte for byte. A difference is a regression unless it is
 approved query by query.
+
+`approved.jsonl` holds the translations whose result was changed on purpose, each approved query by
+query: captured with `capture-approved` from the checkout that makes the change (with `PYTHONPATH`
+set to it), with the approval recorded in the entry.
+
+Capture with `PYTHONPATH` set to the checkout being captured: the shared venv's editable install
+extends `provisa` with another checkout's modules, whose code would otherwise be recorded.

@@ -35,7 +35,8 @@ import cypher_golden  # noqa: E402
 
 _ENTRIES = [
     json.loads(line)
-    for line in (cypher_golden.GOLDEN / "entries.jsonl").read_text().splitlines()
+    for name in ("entries.jsonl", "approved.jsonl")
+    for line in (cypher_golden.GOLDEN / name).read_text().splitlines()
     if line.strip()
 ]
 
@@ -98,7 +99,7 @@ def _structure(value):
 _MODEL_MAPS = {}
 for _entry in _ENTRIES:
     _origin = _entry["origin"].split("#", 1)[0]
-    if not _origin.startswith("test:"):
+    if not _origin.startswith(("test:", "approved:")):
         _MODEL_MAPS.setdefault(_origin, _entry["label_map"])
 
 
