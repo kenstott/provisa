@@ -417,3 +417,25 @@ async def test_export_graph_shape(control_plane):
         assert graph["experts"] == [
             {"term_id": customer["id"], "user_id": "alice", "kind": "expert"}
         ]
+
+
+def test_a_search_is_its_quoted_phrases_and_its_words():
+    assert glossary_repo.search_items('"shift coverage" clinic') == ["shift coverage", "clinic"]
+    assert glossary_repo.search_items("  Shift   CLINIC ") == ["shift", "clinic"]
+    # A stray quote mark is dropped; an empty phrase is nothing.
+    assert glossary_repo.search_items('shift" "" clinic') == ["shift", "clinic"]
+    assert glossary_repo.search_items("") == []
+
+
+@pytest.mark.asyncio
+async def test_a_search_admits_a_term_matching_any_of_its_items(control_plane):
+    async with _conn(control_plane) as conn:
+        for name in ("shift coverage", "shift start", "clinic", "referral"):
+            await glossary_repo.create_abstract_term(conn, name, domains=set())
+
+        async def names(q: str) -> set[str]:
+            return {t["name"] for t in await glossary_repo.list_terms(conn, q=q)}
+
+        assert await names("shift clinic") == {"shift coverage", "shift start", "clinic"}
+        # A quoted phrase is one item, spaces and all, beside a bare word.
+        assert await names('"shift coverage" clinic') == {"shift coverage", "clinic"}

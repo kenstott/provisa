@@ -38,12 +38,11 @@ const ref = (table: number, column: string, product?: string) => ({
 const term = (id: number, name: string, over: Partial<TermRow>): TermRow => ({
   id,
   name,
-  definition: `${name}, defined.`,
+  definition: `${name}, as the business uses it.`,
   is_abstract: false,
   deprecated: false,
   retired: false,
   live: true,
-  grounded: true,
   domains: [{ domain_id: "sales" }],
   refs: [],
   ...over,
@@ -53,7 +52,7 @@ const TERMS: TermRow[] = [
   term(1, "Customer", { refs: [ref(10, "email", "c360")] }),
   term(2, "Party", { is_abstract: true, domains: [{ domain_id: "*" }] }),
   term(3, "Loyalty tier", { definition: null, live: false, refs: [ref(10, "tier")] }),
-  term(4, "Concept", { is_abstract: true, live: false, grounded: false }),
+  term(4, "Concept", { is_abstract: true, live: false }),
   term(5, "Old customer", { deprecated: true, live: false, domains: [{ domain_id: "finance" }] }),
   term(6, "Ancient", { retired: true, live: false }),
 ];
@@ -63,15 +62,14 @@ const EDGES: TermEdgeRow[] = [
   { id: 3, from_term_id: 3, to_term_id: 1, rel_type: "PART_OF" },
 ];
 
-const say = (r: string) => r;
-const G: GraphData = glossaryGraph(TERMS, EDGES, say);
+const G: GraphData = glossaryGraph(TERMS, EDGES);
 const node = (g: GraphData, id: string) => g.nodes.find((n) => n.id === id);
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const defaults: GraphFilters = {
   domains: [],
   tags: [],
   sensitivities: [],
-  focus: null,
+  focus: [],
   edgeTypes: [],
   hiddenStatuses: GLOSSARY_SCOPE.hiddenStatuses,
 };
@@ -84,31 +82,26 @@ const view = (layers: LayerId[], filters: GraphFilters = defaults) =>
   visibleGraph(G, new Set(layers), filters, new Set(), GLOSSARY_SCOPE);
 
 describe("the Ontology View's terms", () => {
-  it("says why a proposal is one: undefined, or ungrounded", () => {
-    expect(node(G, "term:3")).toMatchObject({ status: "proposed", note: "undefined" });
-    expect(node(G, "term:4")).toMatchObject({ status: "proposed", note: "ungrounded" });
-    expect(node(G, "term:1")?.status).toBe("live");
-  });
-
-  it("says ungrounded of a defined proposal even when the grounded column was not read", () => {
-    const g = glossaryGraph([term(9, "X", { live: false, grounded: undefined })], [], say);
-    expect(node(g, "term:9")?.note).toBe("ungrounded");
-    const u = glossaryGraph(
-      [term(9, "X", { live: false, grounded: undefined, definition: "" })],
-      [],
-      say,
-    );
-    expect(node(u, "term:9")?.note).toBe("undefined");
+  it("names a proposed term by its title, its standing marked by style alone", () => {
+    expect(node(G, "term:3")).toMatchObject({ status: "proposed", label: "Loyalty tier" });
+    expect(node(G, "term:4")).toMatchObject({ status: "proposed", label: "Concept" });
+    expect(node(G, "term:1")).toMatchObject({ status: "live", label: "Customer" });
+    expect(G.nodes.some((n) => /undefined|·/.test(n.label))).toBe(false);
+    // The definition rides along for the side panel, never in the label; none, nothing.
+    expect(node(G, "term:1")?.definition).toBe("Customer, as the business uses it.");
+    expect(node(G, "term:3")?.definition).toBeUndefined();
   });
 
   it("draws a term the server answered no domains and no references for (null lists)", () => {
-    const g = glossaryGraph([term(7, "Lone", { domains: null, refs: null })], [], say);
+    const g = glossaryGraph([term(7, "Lone", { domains: null, refs: null })], []);
     expect(node(g, "term:7")?.label).toBe("Lone");
   });
 
-  it("draws abstract terms hollow and concrete ones solid", () => {
-    expect(node(G, "term:2")?.hollow).toBe(true);
-    expect(node(G, "term:1")?.hollow).toBe(false);
+  it("marks abstract terms apart from concrete ones, and columns a product holds", () => {
+    expect(node(G, "term:2")?.abstract).toBe(true);
+    expect(node(G, "term:1")?.abstract).toBe(false);
+    // customers.email's table is c360's; customers.tier's too, so both are in a product.
+    expect(node(G, "c:10:email")?.inProduct).toBe(true);
   });
 
   it("shows proposed and deprecated terms by default and hides retired ones", () => {

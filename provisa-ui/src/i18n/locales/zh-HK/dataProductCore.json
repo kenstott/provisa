@@ -23,6 +23,8 @@
     "copied": "已複製",
     "copyQuery": "複製 {{surface}} 查詢",
     "openQuery": "在瀏覽器中打開 {{surface}} 查詢",
-    "unreadable": "你的角色無法讀取 meta 網域中的數據產品。"
+    "unreadable": "你的角色無法讀取 meta 網域中的數據產品。",
+    "detailExpand": "顯示完整條目",
+    "detailCollapse": "收起"
   }
 }

@@ -62,6 +62,11 @@
     "flagBimodal": "双峰",
     "flagSpike": "{{value}} 处出现尖峰（{{pct}}）",
     "flagBeyond": "{{rows}} 超出 3×IQR",
-    "flagDistinct": "{{count}} 个不同值"
+    "flagDistinct": "{{count}} 个不同值",
+    "includeColumn": "在地形中显示 {{column}}",
+    "includeAll": "全部",
+    "includeNone": "无",
+    "includeAllAria": "在地形中显示所有列",
+    "includeNoneAria": "从地形中移除所有列"
   }
 }

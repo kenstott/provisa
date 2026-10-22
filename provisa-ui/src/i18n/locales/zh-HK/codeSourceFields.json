@@ -47,6 +47,8 @@
     "llmCap": "LLM 每月上限",
     "llmCapHint": "此程式碼對 $PROVISA_SERVICES/llm 的呼叫每月 (UTC) 可花費的金額，單位為美元。設定上限後，它只能使用在 Polly 模型價格中有價格的模型，且當月費用達到上限後其呼叫會被拒絕。留空：無上限。",
     "llmCapPlaceholder": "無上限",
+    "workers": "工作程序",
+    "workersHint": "此資料來源在每個 Provisa 程序中執行的工作程序數目。欄轉換的批次會在它們之間並行執行，因此增加工作程序可提高吞吐量。",
     "settings": "設定",
     "settingsHint": "程式碼透過 settings.get(name) 讀取的值，每行一個 name = value。不用於密鑰：密鑰請放在「密鑰」中。管理員可在此修改，無需更改程式碼。"
   }

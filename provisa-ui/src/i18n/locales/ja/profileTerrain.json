@@ -62,6 +62,11 @@
     "flagBimodal": "二峰性",
     "flagSpike": "{{value}} にスパイク ({{pct}})",
     "flagBeyond": "3×IQR 超が {{rows}} 行",
-    "flagDistinct": "個別値 {{count}} 件"
+    "flagDistinct": "個別値 {{count}} 件",
+    "includeColumn": "{{column}} を地形に表示",
+    "includeAll": "すべて",
+    "includeNone": "なし",
+    "includeAllAria": "すべての列を地形に表示",
+    "includeNoneAria": "すべての列を地形から外す"
   }
 }

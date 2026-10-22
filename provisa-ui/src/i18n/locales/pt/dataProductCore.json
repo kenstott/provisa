@@ -23,6 +23,8 @@
     "copied": "Copiado",
     "copyQuery": "Copiar a consulta {{surface}}",
     "openQuery": "Abrir a consulta {{surface}} em seu explorador",
-    "unreadable": "Sua função não pode ler os produtos de dados no domínio meta."
+    "unreadable": "Sua função não pode ler os produtos de dados no domínio meta.",
+    "detailExpand": "Mostrar a entrada completa",
+    "detailCollapse": "Mostrar menos"
   }
 }

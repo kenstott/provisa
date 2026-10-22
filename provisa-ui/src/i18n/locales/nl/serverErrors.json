@@ -177,7 +177,8 @@
       "unknown_arg_kind": "Onbekende arg_kind '{{arg_kind}}' voor '{{name}}'",
       "unknown_command": "Onbekend commando: '{{name}}'",
       "unknown_impl_kind": "Onbekende functie-impl_kind: '{{impl_kind}}'",
-      "written_table_missing": "opdracht '{{name}}' schrijft '{{table}}', die niet geregistreerd is"
+      "written_table_missing": "opdracht '{{name}}' schrijft '{{table}}', die niet geregistreerd is",
+      "host_code_refused": "Opdracht '{{name}}' is van het type {{impl_kind}}, dat code uitvoert op de host van de server. Hostcode staat uit op deze implementatie; gebruik in plaats daarvan een code-resolver."
     },
     "graphql_remote": {
       "introspection_failed": "Introspectie mislukt: {{error}}",

@@ -245,6 +245,23 @@ Anything else (an aggregate, a `GROUP BY`, a computed or masked column, an order
 
 A search is read per statement under its arguments, its rows kept under those arguments for the table's TTL. A search table is read-only.
 
+**A search fed by a join.** A relationship can feed a search's arguments from another table's columns, as it feeds a code table's: its `parameters` map names each argument and the source column it is given. A statement that joins the search to that table then runs one Qdrant query for each distinct set of the source's values, as the statement's role reads them, with the statement's own arguments for the ones the relationship does not feed. A search's points hold nothing of the query that found them, so the relationship joins on the query's parameter column: each point carries, in that column, the value it was searched for.
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+Each line's words are searched for, with its own sonnet's points left out through the search's `"@sonnet"` filter, and each line gets the three points found for it. A statement that gives one of the fed arguments itself, such as `WHERE s._nf_query = 'the ravages of time'`, reads the search under its own arguments and is not fed.
+
 ### Streaming
 
 | Source Type | Mechanism | Mutations |

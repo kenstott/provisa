@@ -201,45 +201,42 @@ export class RelationsScene extends BaseScene<RelHover> {
       );
       this.nodes.push({ node, mesh, label });
     }
+    const meshOf = new Map(this.nodes.map((n) => [n.node.id, n.mesh]));
+    const HEAD = 0.45; // an arrowhead's length
     for (const e of this.edges) {
       const a = pos.get(e.a) as THREE.Vector3;
       const b = pos.get(e.b) as THREE.Vector3;
       const dir = b.clone().sub(a);
       const len = dir.length();
+      const unit = dir.clone().normalize();
       const radius = 0.02 + 0.07 * e.strength;
       const mat = this.edgeMaterial(e);
+      // A dependence ends at its arrowhead's base, the head's tip on the target sphere's surface
+      // (its radius at its drawn scale), so no line shows past the tip.
+      const directed = e.kind === "dependence";
+      const target = meshOf.get(e.b) as THREE.Mesh;
+      const surface = this.nodeRadius(degree.get(e.b) ?? 0) * target.scale.x;
+      const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
       const rodMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius, radius, len, 8, 1, true),
+        new THREE.CylinderGeometry(radius, radius, rodLen, 8, 1, true),
         mat,
       );
-      rodMesh.position.copy(a.clone().add(b).multiplyScalar(0.5));
-      rodMesh.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+      rodMesh.position.copy(a.clone().add(unit.clone().multiplyScalar(rodLen / 2)));
+      rodMesh.quaternion.setFromUnitVectors(UP, unit);
       rodMesh.userData.edge = e.id;
       world.add(rodMesh);
       const meshes = [rodMesh];
-      if (e.kind === "dependence") {
-        const rb = this.nodeRadius(degree.get(e.b) ?? 0);
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(radius * 3 + 0.05, 0.45, 12), mat);
-        cone.position.copy(
-          b.clone().sub(
-            dir
-              .clone()
-              .normalize()
-              .multiplyScalar(rb + 0.25),
-          ),
-        );
-        cone.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+      if (directed) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(radius * 3 + 0.05, HEAD, 12), mat);
+        cone.position.copy(b.clone().sub(unit.clone().multiplyScalar(surface + HEAD / 2)));
+        cone.quaternion.setFromUnitVectors(UP, unit);
         cone.userData.edge = e.id;
         world.add(cone);
         meshes.push(cone);
       }
       this.edgeMeshes.push({ edge: e, meshes });
     }
-    const grid = new THREE.GridHelper(18, 18, this.theme.grid, this.theme.grid);
-    (grid.material as THREE.Material).dispose();
-    grid.material = this.mats.grid as THREE.LineBasicMaterial;
-    grid.position.y = minY - 1.5;
-    world.add(grid);
+    this.layFloor(world, 18, minY - 1.5, this.mats.grid as THREE.LineBasicMaterial);
     this.fitShadow(10);
     this.paint();
   }

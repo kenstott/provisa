@@ -62,6 +62,11 @@
     "flagBimodal": "דו-שיאי",
     "flagSpike": "שיא ב-{{value}} ({{pct}})",
     "flagBeyond": "{{rows}} מעבר ל-3×IQR",
-    "flagDistinct": "{{count}} ייחודיים"
+    "flagDistinct": "{{count}} ייחודיים",
+    "includeColumn": "הצג את {{column}} בתבליט",
+    "includeAll": "הכול",
+    "includeNone": "אף אחת",
+    "includeAllAria": "הצג את כל העמודות בתבליט",
+    "includeNoneAria": "הסר את כל העמודות מהתבליט"
   }
 }

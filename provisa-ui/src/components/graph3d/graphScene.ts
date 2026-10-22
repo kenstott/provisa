@@ -19,6 +19,7 @@ import {
   type SceneTheme,
 } from "../../pages/tables/profile3d/baseScene";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
+import { labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
 
 export type GraphHover = { kind: "node"; id: string } | { kind: "edge"; id: string };
 
@@ -35,6 +36,18 @@ interface EdgeMesh {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+
+/** The materials edges are drawn with, each with a faded copy for the edges away from a pick. */
+const EDGE_MATERIALS = [
+  "structure",
+  "link",
+  "quality",
+  "tagged",
+  "meaning",
+  "relationship",
+  "outside",
+  "lineage",
+] as const;
 
 /** The edges that run one way, drawn with an arrowhead at the end they point to: lineage
  * downstream, a term edge from its subject (Customer KIND_OF Party), a check and a profile to the
@@ -74,27 +87,27 @@ const SIZE: Record<NodeType, number> = {
   relation: 0.36,
 };
 
-function geometry(type: NodeType, r: number): THREE.BufferGeometry {
-  switch (type) {
-    case "product":
+function geometry(shape: Shape, r: number): THREE.BufferGeometry {
+  switch (shape) {
+    case "icosahedron":
       return new THREE.IcosahedronGeometry(r, 0);
-    case "domain":
-      return new THREE.TorusGeometry(r, r * 0.18, 10, 32);
-    case "table":
-    case "relation":
+    case "sphere":
+      // A domain was sized as a thin ring; solid, it sits at about the size of the other nodes.
+      return new THREE.SphereGeometry(r * 0.55, 20, 14);
+    case "box":
       return new THREE.BoxGeometry(r * 1.6, r * 1.1, r * 1.1);
-    case "command":
+    case "cube":
+      return new THREE.BoxGeometry(r * 1.3, r * 1.3, r * 1.3);
+    case "cone":
       return new THREE.ConeGeometry(r, r * 1.8, 16);
-    case "checker":
+    case "tetrahedron":
       return new THREE.TetrahedronGeometry(r * 1.3, 0);
-    case "profile":
+    case "cylinder":
       return new THREE.CylinderGeometry(r, r, r * 1.4, 16);
-    case "tag":
+    case "dodecahedron":
       return new THREE.DodecahedronGeometry(r, 0);
-    case "term":
+    case "diamond":
       return new THREE.OctahedronGeometry(r * 1.2, 0);
-    case "column":
-      return new THREE.SphereGeometry(r, 16, 12);
   }
 }
 
@@ -103,6 +116,8 @@ export class GraphScene extends BaseScene<GraphHover> {
   private nodes: NodeMesh[] = [];
   private edgeMeshes: EdgeMesh[] = [];
   private mats: Record<string, THREE.Material> = {};
+  /** Each edge material dimmed, for the edges away from what is picked: the same hue, less light. */
+  private faded: Record<string, THREE.Material> = {};
   private graph: GraphData = { nodes: [], edges: [] };
   private at = new Map<string, [number, number, number]>();
   private selected: string | null = null;
@@ -209,6 +224,7 @@ export class GraphScene extends BaseScene<GraphHover> {
   protected disposeContent() {
     this.clearWorld();
     Object.values(this.mats).forEach((m) => m.dispose());
+    Object.values(this.faded).forEach((m) => m.dispose());
   }
 
   protected pickHit(ray: THREE.Raycaster): GraphHover | null {
@@ -227,16 +243,8 @@ export class GraphScene extends BaseScene<GraphHover> {
 
   private buildMaterials() {
     Object.values(this.mats).forEach((m) => m.dispose());
+    Object.values(this.faded).forEach((m) => m.dispose());
     const th = this.theme;
-    // A little light of their own, so a shape's faces turned from the sun still read on the canvas.
-    const solid = (color: string) =>
-      new THREE.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: th.dark ? 0.5 : 0.3,
-        roughness: 0.5,
-        metalness: 0.05,
-      });
     // Lit by their own colour too: an edge is a thin rod, and the sun alone leaves most of it dark.
     const rod = (color: string, opacity = 0.95) =>
       new THREE.MeshStandardMaterial({
@@ -248,16 +256,6 @@ export class GraphScene extends BaseScene<GraphHover> {
         opacity,
       });
     this.mats = {
-      product: solid(th.accent),
-      domain: solid(th.family.temporal),
-      table: solid(th.family.numeric),
-      relation: solid(th.family.foreign),
-      column: solid(th.family.other),
-      command: solid(th.warm),
-      checker: solid(th.qTail),
-      profile: solid(th.qMid),
-      tag: solid(th.family.boolean),
-      term: solid(th.cool),
       structure: rod(th.family.other, 0.8),
       link: rod(th.accent),
       quality: rod(th.qTail),
@@ -266,12 +264,6 @@ export class GraphScene extends BaseScene<GraphHover> {
       relationship: rod(th.family.text),
       outside: rod(th.family.foreign, 0.8),
       lineage: rod(th.hl),
-      dim: new THREE.MeshStandardMaterial({
-        color: th.grid,
-        roughness: 0.8,
-        transparent: true,
-        opacity: 0.2,
-      }),
       halo: new THREE.MeshBasicMaterial({
         color: th.accent,
         transparent: true,
@@ -280,52 +272,99 @@ export class GraphScene extends BaseScene<GraphHover> {
       }),
       grid: new THREE.LineBasicMaterial({ color: th.grid, transparent: true, opacity: 0.9 }),
     };
+    this.faded = {};
+    for (const key of EDGE_MATERIALS) {
+      const lit = this.mats[key] as THREE.MeshStandardMaterial;
+      const dim = lit.clone();
+      dim.emissiveIntensity = lit.emissiveIntensity * 0.45;
+      dim.opacity = lit.opacity * 0.6;
+      this.faded[key] = dim;
+    }
   }
 
-  /** REQ-2130: an abstract term drawn hollow (its outline alone), a deprecated one faded. */
+  /** A node's material: solid and opaque, with a little light of its own so a shape's faces
+   * turned from the sun still read on the canvas. */
+  private solid(color: string): THREE.Material {
+    return new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: this.theme.dark ? 0.5 : 0.3,
+      roughness: 0.5,
+      metalness: 0.05,
+    });
+  }
+
+  /** A node's solid, opaque material in its look's colour (nodeLook): shared by every node of it. */
   private nodeMaterial(node: GraphNode): THREE.Material {
-    if (!node.hollow && node.status !== "deprecated") return this.mats[node.type];
-    const key = `${node.type}:${node.hollow ? "hollow" : "solid"}:${node.status === "deprecated" ? "dim" : "lit"}`;
+    const { colour } = nodeLook(node);
+    const key = `look:${colour}`;
     let m = this.mats[key];
     if (!m) {
-      const base = this.mats[node.type] as THREE.MeshStandardMaterial;
-      const made = base.clone();
-      made.wireframe = node.hollow === true;
-      if (node.status === "deprecated") {
-        made.transparent = true;
-        made.opacity = 0.3;
-      }
-      this.mats[key] = made;
-      m = made;
+      m = this.solid(this.colourOf(colour));
+      this.mats[key] = m;
     }
     return m;
   }
 
-  private edgeMaterial(kind: EdgeKind): THREE.Material {
+  private colourOf(c: Colour): string {
+    const th = this.theme;
+    switch (c) {
+      case "accent":
+        return th.accent;
+      case "fam-temporal":
+        return th.family.temporal;
+      case "fam-numeric":
+        return th.family.numeric;
+      case "fam-foreign":
+        return th.family.foreign;
+      case "fam-other":
+        return th.family.other;
+      case "warm":
+        return th.warm;
+      case "q-tail":
+        return th.qTail;
+      case "q-mid":
+        return th.qMid;
+      case "fam-boolean":
+        return th.family.boolean;
+      case "cool":
+        return th.cool;
+      case "hl":
+        return th.hl;
+    }
+  }
+
+  /** ``kind``'s material; ``faded`` for an edge away from what is picked (same hue, dimmer). */
+  private edgeMaterial(kind: EdgeKind, faded = false): THREE.Material {
+    const key = this.edgeMaterialKey(kind);
+    return (faded ? this.faded : this.mats)[key];
+  }
+
+  private edgeMaterialKey(kind: EdgeKind): string {
     switch (kind) {
       case "in_domain":
       case "member":
       case "has_column":
       case "command":
       case "owns":
-        return this.mats.structure;
+        return "structure";
       case "product_link":
-        return this.mats.link;
+        return "link";
       case "checks":
       case "profiled":
-        return this.mats.quality;
+        return "quality";
       case "tagged":
-        return this.mats.tagged;
+        return "tagged";
       case "term_edge":
       case "term_binding":
-        return this.mats.meaning;
+        return "meaning";
       case "relationship":
-        return this.mats.relationship;
+        return "relationship";
       case "relationship_outside":
-        return this.mats.outside;
+        return "outside";
       case "lineage":
       case "column_lineage":
-        return this.mats.lineage;
+        return "lineage";
     }
   }
 
@@ -360,18 +399,15 @@ export class GraphScene extends BaseScene<GraphHover> {
       extentX = Math.max(extentX, Math.abs(p.x));
       extentY = Math.max(extentY, Math.abs(p.y));
       const r = SIZE[node.type];
-      const mesh = new THREE.Mesh(geometry(node.type, r), this.nodeMaterial(node));
+      const mesh = new THREE.Mesh(geometry(nodeLook(node).shape, r), this.nodeMaterial(node));
       mesh.position.copy(p);
-      if (node.type === "domain") mesh.rotation.x = Math.PI / 2;
       mesh.castShadow = true;
       mesh.userData.node = node.id;
       world.add(mesh);
       // REQ-2130: a proposal says why beside its name; a deprecated term's name is dimmed too.
       const label = this.pin(
-        node.note ? `${node.label} · ${node.note}` : node.label,
-        `p3d-label p3d-node-label g3d-label-${node.type}` +
-          (node.status === "proposed" ? " g3d-label-proposed" : "") +
-          (node.status === "deprecated" ? " g3d-label-dim" : ""),
+        node.label,
+        `p3d-label p3d-node-label g3d-label-${node.type} ${labelClass(node.status)}`.trim(),
         () => mesh.position.clone().add(new THREE.Vector3(0, r + 0.3, 0)),
       );
       this.nodes.push({ node, mesh, radius: r, label });
@@ -379,36 +415,38 @@ export class GraphScene extends BaseScene<GraphHover> {
     this.extent = extent;
     this.extentX = extentX;
     this.extentY = extentY;
-    const radiusOf = new Map(this.nodes.map((n) => [n.node.id, n.radius]));
+    const nodeOf = new Map(this.nodes.map((n) => [n.node.id, n]));
+    const HEAD = 0.4; // an arrowhead's length
     for (const e of this.graph.edges) {
       const a = pos.get(e.a);
       const b = pos.get(e.b);
       if (!a || !b) continue;
       const dir = b.clone().sub(a);
       const len = dir.length();
+      const unit = dir.clone().normalize();
       const thick = 0.045 + 0.02 * Math.min(4, (e.paths ?? 1) - 1);
       const mat = this.edgeMaterial(e.kind);
+      // A directed edge ends at its arrowhead's base, the head's tip on the target's surface (its
+      // radius at its drawn scale), so no line shows past the tip; any other edge runs centre to
+      // centre, inside both nodes.
+      const target = nodeOf.get(e.b);
+      if (!target) throw new Error(`edge ${e.id} ends at ${e.b}, which is not drawn`);
+      const surface = target.radius * target.mesh.scale.x;
+      const directed = DIRECTED.has(e.kind);
+      const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
       const rodMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(thick, thick, len, 6, 1, true),
+        new THREE.CylinderGeometry(thick, thick, rodLen, 6, 1, true),
         mat,
       );
-      rodMesh.position.copy(a.clone().add(b).multiplyScalar(0.5));
-      rodMesh.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+      rodMesh.position.copy(a.clone().add(unit.clone().multiplyScalar(rodLen / 2)));
+      rodMesh.quaternion.setFromUnitVectors(UP, unit);
       rodMesh.userData.edge = e.id;
       world.add(rodMesh);
       const meshes = [rodMesh];
-      if (DIRECTED.has(e.kind)) {
-        const rb = radiusOf.get(e.b) ?? 0.3;
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(thick * 3 + 0.06, 0.4, 10), mat);
-        cone.position.copy(
-          b.clone().sub(
-            dir
-              .clone()
-              .normalize()
-              .multiplyScalar(rb + 0.3),
-          ),
-        );
-        cone.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+      if (directed) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(thick * 3 + 0.06, HEAD, 10), mat);
+        cone.position.copy(b.clone().sub(unit.clone().multiplyScalar(surface + HEAD / 2)));
+        cone.quaternion.setFromUnitVectors(UP, unit);
         cone.userData.edge = e.id;
         world.add(cone);
         meshes.push(cone);
@@ -416,11 +454,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       this.edgeMeshes.push({ edge: e, meshes });
     }
     const size = Math.ceil(extent * 2.4);
-    const grid = new THREE.GridHelper(size, size, this.theme.grid, this.theme.grid);
-    (grid.material as THREE.Material).dispose();
-    grid.material = this.mats.grid as THREE.LineBasicMaterial;
-    grid.position.y = minY - 1.5;
-    world.add(grid);
+    this.layFloor(world, size, minY - 1.5, this.mats.grid as THREE.LineBasicMaterial);
     this.fitShadow(extent + 4);
     this.paint();
   }
@@ -439,8 +473,14 @@ export class GraphScene extends BaseScene<GraphHover> {
         edgeFocus != null
           ? em.edge.id === edgeFocus
           : focus == null || em.edge.a === focus || em.edge.b === focus;
-      for (const m of em.meshes)
-        m.material = touches ? this.edgeMaterial(em.edge.kind) : this.mats.dim;
+      // One hue whether picked or not: the picked node's edges thicker and full bright, the rest
+      // thinner and dimmer but plainly there; with nothing picked, every edge as drawn.
+      const picked = edgeFocus != null || focus != null;
+      const width = !picked ? 1 : touches ? 1.4 : 0.6;
+      for (const m of em.meshes) {
+        m.material = this.edgeMaterial(em.edge.kind, !touches);
+        m.scale.set(width, 1, width);
+      }
     }
     for (const n of this.nodes) {
       n.label.classList.toggle("is-selected", n.node.id === this.selected);

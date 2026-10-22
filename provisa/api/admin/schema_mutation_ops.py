@@ -232,6 +232,9 @@ async def register_table(
         input.source_id,
         input.domain_id,
     )
+    from provisa.api.admin._table_ops import land_transform_view
+
+    land_transform_view(input)  # REQ-2131
     from provisa.api.admin.capabilities import require_capability
 
     if input.view_sql or input.view_metrics is not None:

@@ -128,6 +128,18 @@ describe("TagsTab", () => {
     ];
   });
 
+  it("finds tags matching any word of the search", () => {
+    render(<TagsTab />);
+    fireEvent.click(
+      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
+    );
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii finance" } });
+    expect(screen.getAllByTestId(/^tags-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "tags-row-pii",
+      "tags-row-finance",
+    ]);
+  });
+
   it("filters the registry by the selected scope and counts assignments", () => {
     render(<TagsTab />);
     // Default scope is "source": only the user tag applies.

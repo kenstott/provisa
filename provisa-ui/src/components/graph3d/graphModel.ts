@@ -57,7 +57,8 @@ export type LayerId =
   | "lineage"
   // REQ-2130: the glossary's own layers.
   | "domains"
-  | "data";
+  | "data"
+  | "columns";
 
 /** Force; lineage lanes left to right (REQ-1667); or a top-down tree (REQ-2130's Taxonomy). */
 export type LayoutKind = "force" | "lanes" | "tree";
@@ -80,10 +81,12 @@ export interface GraphNode {
   lane?: number;
   /** REQ-2130: a term's standing; deprecated is drawn dimmed. */
   status?: TermStatus;
-  /** REQ-2130: drawn hollow (an abstract term). */
-  hollow?: boolean;
-  /** REQ-2130: said beside the node's name (why a term is a proposal). */
-  note?: string;
+  /** REQ-2130: an abstract term (coloured apart from a concrete one, nodeLook). */
+  abstract?: boolean;
+  /** A column a data product holds (coloured apart from one it does not, nodeLook). */
+  inProduct?: boolean;
+  /** A term's definition: read in the side panel, never drawn on the graph. */
+  definition?: string;
 }
 
 export interface GraphEdge {
@@ -163,6 +166,8 @@ export interface GraphScope {
   presetOrder: PresetId[];
   /** The statuses hidden until the user shows them. */
   hiddenStatuses: TermStatus[];
+  /** Whether terms left with no relationship can be hidden (the Ontology View's Orphans). */
+  orphans: boolean;
 }
 
 export const PRODUCT_SCOPE: GraphScope = {
@@ -171,34 +176,39 @@ export const PRODUCT_SCOPE: GraphScope = {
   presets: PRESETS,
   presetOrder: PRESET_ORDER,
   hiddenStatuses: [],
+  orphans: false,
 };
 
 /** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
- * (an enterprise-wide term in every one, so it sits at the centre); off by default, the data the
- * terms are bound to -- columns folded into their tables -- and the products owning those tables. */
+ * (an enterprise-wide term in every one, so it sits at the centre); the columns a concrete term
+ * IS (its physical refs, as the viewer may read them), shown by default and toggled beside the
+ * filters; off by default, the tables those columns fold into and the products owning them. */
 export const GLOSSARY_SCOPE: GraphScope = {
   layers: {
     ontology: { nodes: ["term"], edges: ["term_edge"] },
     domains: { nodes: ["domain"], edges: ["in_domain"] },
-    data: { nodes: ["table", "product"], edges: ["term_binding", "has_column", "member"] },
+    data: { nodes: ["table", "product"], edges: ["has_column", "member"] },
+    // Toggled beside the filters (Columns), not in the Layers row.
+    columns: { nodes: ["column"], edges: ["term_binding"] },
   },
-  layerOrder: ["ontology", "domains", "data"],
+  layerOrder: ["ontology", "domains", "data", "columns"],
   presets: {
-    // Every edge type, in a force layout.
-    ontology: { layers: ["ontology", "domains"], layout: "force" },
+    // Every edge type, in a force layout, with the columns each term is.
+    ontology: { layers: ["ontology", "domains", "columns"], layout: "force" },
     // The is-a and part-of hierarchy alone, as a tree from the top down.
     taxonomy: { layers: ["ontology"], layout: "tree", edgeTypes: ["KIND_OF", "PART_OF"] },
   },
   presetOrder: ["ontology", "taxonomy"],
   hiddenStatuses: ["retired"],
+  orphans: true,
 };
 
 export interface GraphFilters {
   domains: string[];
   tags: string[];
   sensitivities: string[];
-  /** A product or term: only what is reached from it is drawn. */
-  focus: string | null;
+  /** Products and terms: only what is reached from one of them is drawn; none, the whole graph. */
+  focus: string[];
   /** REQ-2130: the term edge types drawn; every type when empty. */
   edgeTypes: string[];
   /** REQ-2130: the term statuses not drawn. */
@@ -209,7 +219,7 @@ export const NO_FILTERS: GraphFilters = {
   domains: [],
   tags: [],
   sensitivities: [],
-  focus: null,
+  focus: [],
   edgeTypes: [],
   hiddenStatuses: [],
 };
@@ -349,8 +359,11 @@ export function visibleGraph(
       if (!linked.has(id) && !judged(n)) drawn.delete(id);
     }
   }
-  if (filters.focus !== null && drawn.has(filters.focus)) {
-    const reached = reach(filters.focus, kept, byId);
+  const anchors = filters.focus.filter((f) => drawn.has(f));
+  if (anchors.length > 0) {
+    // The union of each focus's neighbourhood.
+    const reached = new Set<string>();
+    for (const a of anchors) for (const id of reach(a, kept, byId)) reached.add(id);
     for (const id of [...drawn]) if (!reached.has(id)) drawn.delete(id);
     kept = kept.filter((e) => drawn.has(e.a) && drawn.has(e.b));
   }
@@ -453,6 +466,8 @@ export function layoutGraph(
   g: GraphData,
   layout: LayoutKind,
   zero: string[],
+  /** How close a force layout draws the nodes (1 the usual spacing); other layouts are fixed. */
+  attraction = 1,
 ): Map<string, [number, number, number]> {
   const ids = g.nodes.map((n) => n.id);
   const radius = Math.max(6, Math.cbrt(ids.length) * 3);
@@ -462,6 +477,7 @@ export function layoutGraph(
       ids,
       g.edges.map((e) => ({ a: e.a, b: e.b, strength: PULL[e.kind] })),
       radius,
+      attraction,
     );
   }
   const lane = lanesFrom(
@@ -500,7 +516,7 @@ export function panelGraph(data: GraphData, product: string): GraphData {
   const g = visibleGraph(
     data,
     new Set<LayerId>(["tables", "commands", "ontology"]),
-    { ...NO_FILTERS, focus: product },
+    { ...NO_FILTERS, focus: [product] },
     new Set(),
     PRODUCT_SCOPE,
   );

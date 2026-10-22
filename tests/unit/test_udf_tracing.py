@@ -123,6 +123,7 @@ def _kinds(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_every_kind_emits_trace_with_all_fields(monkeypatch):
+    monkeypatch.setenv("PROVISA_COMMANDS_ALLOW_HOST_CODE", "true")  # REQ-2134: python, script
     for impl_kind, (fn, transport) in _kinds(monkeypatch).items():
         st = _state()
         await dispatch_function(fn, {"n": 1}, st, "ops")

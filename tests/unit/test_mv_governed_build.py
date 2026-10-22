@@ -81,6 +81,7 @@ def pipeline(monkeypatch):
             physical_sql="SELECT id, home FROM governed",
             exec_params=None,
             dialect="postgres",
+            columns=None,
         )
 
     async def _residency(_state, plan):

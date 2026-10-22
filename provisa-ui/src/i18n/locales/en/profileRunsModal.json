@@ -42,6 +42,7 @@
     "kind_terrain": "Terrain",
     "kind_relationsMap": "Relationships",
     "kind_jointCloud": "Joint cloud",
-    "kind_driftStrata": "Drift strata"
+    "kind_driftStrata": "Drift strata",
+    "resultsMenu": "Results"
   }
 }

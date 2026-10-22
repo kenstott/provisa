@@ -22,6 +22,8 @@
 //             reference (the names alone when each is the org secret of that name)
 //   llm       REQ-2105: {cap_usd}, the monthly cap on what its calls to the LLM service cost
 //   settings  REQ-2106: its non-secret settings, name -> value, which its code reads
+//   workers   REQ-2131: how many workers it runs in each Provisa process (1 when not written);
+//             a column transform's batches spread across them
 //
 // The content hash of the code is pinned by the server when the source is saved.
 
@@ -117,6 +119,8 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
   const secrets = secretsMapping(declaredSecrets(fields));
   const cap = (fields.code_llm_cap ?? "").trim();
   const settings = settingsOf(fields.code_settings ?? "");
+  // REQ-2131: a mapping that names no workers runs one, so one is not written.
+  const workers = Number((fields.code_workers ?? "").trim() || "1");
   const built =
     fields.code_mode === "built"
       ? {
@@ -133,6 +137,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
     ...(secrets ? { secrets } : {}),
     ...(cap ? { llm: { cap_usd: Number(cap) } } : {}),
     ...(Object.keys(settings).length ? { settings } : {}),
+    ...(workers !== 1 ? { workers } : {}),
     ...built,
   });
 }
@@ -147,6 +152,7 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     secrets?: string[] | Record<string, string | null>;
     llm?: { cap_usd?: number };
     settings?: Record<string, string | number | boolean>;
+    workers?: number;
     mode?: string;
     remote?: Record<string, unknown>;
     content_hash?: string;
@@ -182,6 +188,8 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code_settings: Object.entries(m.settings ?? {})
       .map(([name, value]) => `${name} = ${String(value)}`)
       .join("\n"),
+    // REQ-2131: a mapping that names no workers runs one.
+    code_workers: String(m.workers ?? 1),
     code_mode: m.mode ?? "dev",
     code_remote: m.mode === "built" ? JSON.stringify(m.remote ?? {}) : "",
     code_content_hash: m.content_hash ?? "",

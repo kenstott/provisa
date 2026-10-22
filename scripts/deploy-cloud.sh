@@ -1112,9 +1112,9 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
-    # overlay, demo stores and settings are synced as on every deploy that reaches it).
-    sandbox_on_own_vm || { echo "no sandbox VM ($SANDBOX_NODE): the tier runs on $NODE, which 'reset' resets" >&2; exit 2; }
-    deploy_sandbox_vm ;;
+    # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
+    # the VM; with one, the leading node check is the VM's own (deploy_sandbox_vm), as on every arm.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; sandbox_on_own_vm || { echo "no sandbox VM ($SANDBOX_NODE): the tier runs on $NODE, which 'reset' resets" >&2; exit 2; }; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;

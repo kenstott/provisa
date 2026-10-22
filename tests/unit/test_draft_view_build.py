@@ -48,7 +48,9 @@ def model(control_plane):
     return control_plane.org()
 
 
-async def _save_view(conn, name: str, *, draft: bool, materialize: bool) -> None:
+async def _save_view(
+    conn, name: str, *, draft: bool, materialize: bool, view_sql: str = "SELECT id FROM orders"
+) -> None:
     from sqlalchemy import insert, update
 
     from provisa.core.schema_org import registered_tables
@@ -68,7 +70,7 @@ async def _save_view(conn, name: str, *, draft: bool, materialize: bool) -> None
                 domain_id="sales",
                 schema_name="views",
                 table_name=name,
-                view_sql="SELECT id FROM orders",
+                view_sql=view_sql,
                 draft=draft,
                 materialize=materialize,
             )
@@ -89,13 +91,14 @@ def rebuilt(model, monkeypatch):
     monkeypatch.setattr(state, "mv_registry", MVRegistry(), raising=False)
     monkeypatch.setattr(state, "view_sql_map", {}, raising=False)
     monkeypatch.setattr(state, "bitemporal_view_reads", {}, raising=False)
+    monkeypatch.setattr(state, "stored_view_reads", set(), raising=False)
     monkeypatch.setattr(state, "federation_engine", runtime_engine, raising=False)
     monkeypatch.setattr(state, "view_context", object(), raising=False)
     monkeypatch.setattr(app_rebuild, "compile_view_sql_to_physical", lambda sql, ctx: sql)
 
-    async def _rebuild(name: str, *, draft: bool, materialize: bool = True):
+    async def _rebuild(name: str, *, draft: bool, materialize: bool = True, **saved):
         async with model.acquire() as conn:
-            await _save_view(conn, name, draft=draft, materialize=materialize)
+            await _save_view(conn, name, draft=draft, materialize=materialize, **saved)
             await app_rebuild._register_user_views_in_state(conn, None, [], [])
         return state
 
@@ -240,3 +243,37 @@ async def test_a_bitemporal_draft_view_answers_as_building_until_its_log_exists(
     assert table_read._view_body(state, _draft_view()) == view_read_sql(stored, spec)
     await asyncio.sleep(0)
     assert builds == ["view-big_orders"]  # and not started again
+
+
+async def test_a_view_applying_a_column_transform_is_landed_and_read_from_its_store(rebuilt, model):
+    """REQ-2131: a view applying a column transform is built as a materialized view is, though not
+    declared one, and is read only from its stored table: its outputs exist nowhere else."""
+    from sqlalchemy import insert
+
+    from provisa.core.schema_org import tracked_functions
+
+    async with model.acquire() as conn:
+        await conn.execute_core(
+            insert(tracked_functions).values(
+                name="clean_address",
+                source_id="addresses",
+                function_name="clean_address",
+                kind="query",
+                impl_kind="code_columns",
+                arguments=[{"name": "raw_address", "type": "text"}],
+                output_columns=[{"name": "street", "type": "text"}],
+            )
+        )
+    state = await rebuilt(
+        "clean_suppliers",
+        draft=False,
+        materialize=False,
+        view_sql="SELECT id, clean_address(raw_address) FROM suppliers",
+    )
+    mv = state.mv_registry.get("view-clean_suppliers")
+    assert mv is not None and mv.enabled is True and mv.target_table == "mv_clean_suppliers"
+    assert (
+        state.view_sql_map["clean_suppliers"]
+        == 'SELECT * FROM "store"."views"."mv_clean_suppliers"'
+    )
+    assert state.stored_view_reads == {"clean_suppliers"}

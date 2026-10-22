@@ -177,7 +177,8 @@
       "unknown_arg_kind": "arg_kind לא מוכר '{{arg_kind}}' עבור '{{name}}'",
       "unknown_command": "פקודה לא ידועה: '{{name}}'",
       "unknown_impl_kind": "impl_kind לא מוכר של פונקציה: '{{impl_kind}}'",
-      "written_table_missing": "הפקודה '{{name}}' כותבת אל '{{table}}', שאינה רשומה"
+      "written_table_missing": "הפקודה '{{name}}' כותבת אל '{{table}}', שאינה רשומה",
+      "host_code_refused": "הפקודה '{{name}}' היא מסוג {{impl_kind}}, שמריץ קוד על מארח השרת. קוד מארח כבוי בפריסה זו; השתמשו במקום זאת במפענח קוד."
     },
     "graphql_remote": {
       "introspection_failed": "Introspection נכשל: {{error}}",

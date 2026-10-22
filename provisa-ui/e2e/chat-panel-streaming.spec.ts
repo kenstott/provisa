@@ -138,4 +138,46 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
     const twoAt = texts.findIndex((t) => t.includes("ROUND-TWO") && !t.includes(PROMPT));
     expect(twoAt).toBeGreaterThanOrEqual(beforeAnswer);
   });
+
+  /**
+   * The maintainer's 400 "messages.2: user messages must have non-empty content": Polly asked with
+   * present_choice, the user clicked off the choice without picking, and the NEXT typed message was
+   * refused, the closed choice having been recorded as an empty user message. Closing it is now an
+   * answer of its own, and the conversation goes on.
+   */
+  test("a choice closed without picking leaves the next message answerable", async ({ page }) => {
+    await page.goto("/sources");
+
+    await page.getByTestId("chat-panel-toggle").click();
+    const panel = page.getByTestId("chat-panel");
+    await expect(panel).toBeVisible({ timeout: 30000 });
+
+    const textarea = panel.getByPlaceholder("Ask me a question, or tell me what to do.");
+    await textarea.click();
+    await textarea.fill(
+      'Call the present_choice tool with mode yes_no and the question "Proceed?", and nothing ' +
+        "else. After my answer, reply in one short sentence.",
+    );
+    const sendBtn = page.getByTestId("chat-panel-send");
+    await sendBtn.click();
+
+    const choice = page.getByTestId("chat-panel-choice-modal");
+    await expect(choice).toBeVisible({ timeout: 120000 });
+    // Clicked off the widget, on the overlay itself.
+    await choice.click({ position: { x: 5, y: 5 } });
+    await expect(choice).toBeHidden();
+    await expect(panel.getByText("(closed without choosing)")).toBeVisible();
+    await expect(sendBtn).toHaveText("Send", { timeout: 120000 });
+
+    await textarea.fill('Reply with exactly the word "AFTER-CLOSE" and nothing else.');
+    await sendBtn.click();
+    await expect(sendBtn).toHaveText("Send", { timeout: 120000 });
+    await expect(panel.getByTestId("chat-panel-error")).toHaveCount(0);
+    await expect(
+      panel
+        .locator(".chat-message")
+        .filter({ hasText: "AFTER-CLOSE" })
+        .filter({ hasNotText: "Reply with" }),
+    ).toHaveCount(1);
+  });
 });
