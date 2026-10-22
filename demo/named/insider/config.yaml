@@ -124,6 +124,14 @@ tables:
 - source_id: bank
   domain_id: bank
   schema: bank
+  table: screening
+  description: 'The screening scope: each message and each watch-list deal it is screened against'
+  columns:
+  - {name: message_id, data_type: varchar, description: 'The message', visible_to: [org_admin, control_room], is_primary_key: true}
+  - {name: deal_id, data_type: varchar, description: 'The deal it is screened against', visible_to: [org_admin, control_room], is_primary_key: true}
+- source_id: bank
+  domain_id: bank
+  schema: bank
   table: deal_counterparty
   enable_aggregates: true
   enable_group_by: true
@@ -230,23 +238,22 @@ tables:
   - {name: domain, data_type: varchar, description: 'The address''''s domain', visible_to: [org_admin, control_room]}
   - {name: kind, data_type: varchar, description: 'internal, external or personal', visible_to: [org_admin, control_room]}
 views:
-# Every message against every deal, embedded by the demo's local model and matched by deal_signals;
-# a view that applies a column transform is stored, so match_deals filters on its outputs.
+# Each message against each deal its screening scope names (every deal), embedded by the demo's
+# local model and matched by deal_signals; a view that applies a column transform is stored, so
+# match_deals filters on its outputs.
 - id: message_deal_signals
   domain_id: bank
   materialize: true
-  description: 'Every message against every watch-list deal: its strongest match by name, its match by
-    meaning and the signals that fired'
+  description: 'Each message against each watch-list deal it is screened against: its strongest match by
+    name, its match by meaning and the signals that fired'
   sql: >-
     SELECT m.message_id, d.deal_id, d.legal_name, m.sender_id, m.sent_at, d.announced_on,
-      deal_signals(m.subject, m.body, d.legal_name, d.aliases, d.ticker, d.code_name, m.vector,
-        d.vector)
-    FROM (SELECT message_id, sender_id, sent_at, subject, body,
-        embed('sentence-transformers/all-MiniLM-L6-v2', CONCAT(subject, '. ', body)) AS vector
-      FROM "bank"."message") AS m
-    CROSS JOIN (SELECT deal_id, legal_name, aliases, ticker, code_name, announced_on,
-        embed('sentence-transformers/all-MiniLM-L6-v2', description) AS vector
-      FROM "bank"."deal") AS d
+      deal_signals(m.subject, m.body, d.legal_name, d.aliases, d.ticker, d.code_name,
+        embed('sentence-transformers/all-MiniLM-L6-v2', CONCAT(m.subject, '. ', m.body)),
+        embed('sentence-transformers/all-MiniLM-L6-v2', d.description))
+    FROM "bank"."screening" AS s
+    JOIN "bank"."message" AS m ON m.message_id = s.message_id
+    JOIN "bank"."deal" AS d ON d.deal_id = s.deal_id
   columns:
   - {name: message_id, data_type: varchar, description: The message, visible_to: [org_admin]}
   - {name: deal_id, data_type: varchar, description: The deal, visible_to: [org_admin]}
@@ -396,6 +403,8 @@ tag_assignments:
 - {tag_id: pii, object_type: column, table_ref: bank.bank.customer, column_name: ssn}
 - {tag_id: pii, object_type: column, table_ref: bank.bank.customer, column_name: account_no}
 relationships:
+- {id: screening-message, alias: SCREENS, cardinality: many-to-one, source_table_id: screening, source_column: message_id, target_table_id: message, target_column: message_id}
+- {id: screening-deal, alias: SCREENED_AGAINST, cardinality: many-to-one, source_table_id: screening, source_column: deal_id, target_table_id: deal, target_column: deal_id}
 - {id: match-message, alias: MATCHED_MESSAGE, cardinality: many-to-one, source_table_id: deal_match, source_column: message_id, target_table_id: message, target_column: message_id}
 - {id: match-deal, alias: MATCHED_DEAL, cardinality: many-to-one, source_table_id: deal_match, source_column: deal_id, target_table_id: deal, target_column: deal_id}
 - {id: message-sender, alias: SENT_BY, cardinality: many-to-one, source_table_id: message, source_column: sender_id, target_table_id: employee, target_column: employee_id}

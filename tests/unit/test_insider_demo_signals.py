@@ -107,6 +107,12 @@ def test_deal_signals_is_a_column_transform_of_the_code_resolver():
 def test_the_view_applies_it_and_is_stored_before_match_deals_reads_it():
     view = _VIEWS["message_deal_signals"]
     assert "deal_signals(" in view["sql"]
+    # The pairing is the declared screening scope, joined along its relationships (V002).
+    assert 'FROM "bank"."screening" AS s' in view["sql"]
+    assert "CROSS JOIN" not in view["sql"]
+    relationships = {r["id"]: r for r in _CONFIG["relationships"]}
+    assert relationships["screening-message"]["target_table_id"] == "message"
+    assert relationships["screening-deal"]["target_table_id"] == "deal"
     assert view["materialize"] is True
     assert _FUNCTIONS["match_deals"]["impl_kind"] == "statement"
     assert '"bank"."message_deal_signals"' in _FUNCTIONS["match_deals"]["binding"]["sql"]
