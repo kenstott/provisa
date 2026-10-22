@@ -177,7 +177,8 @@
       "unknown_arg_kind": "Unknown arg_kind '{{arg_kind}}' for '{{name}}'",
       "unknown_command": "Unknown command: '{{name}}'",
       "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
-      "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered"
+      "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
+      "host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead."
     },
     "graphql_remote": {
       "introspection_failed": "Introspection failed: {{error}}",

@@ -177,7 +177,8 @@
       "unknown_arg_kind": "arg_kind « {{arg_kind}} » inconnu pour « {{name}} »",
       "unknown_command": "Commande inconnue : '{{name}}'",
       "unknown_impl_kind": "impl_kind de fonction inconnu : « {{impl_kind}} »",
-      "written_table_missing": "la commande '{{name}}' écrit '{{table}}', qui n'est pas enregistrée"
+      "written_table_missing": "la commande '{{name}}' écrit '{{table}}', qui n'est pas enregistrée",
+      "host_code_refused": "La commande '{{name}}' est de type {{impl_kind}}, qui exécute du code sur l'hôte du serveur. Le code hôte est désactivé sur ce déploiement ; utilisez plutôt un résolveur de code."
     },
     "graphql_remote": {
       "introspection_failed": "Échec de l'introspection : {{error}}",

@@ -26001,3 +26001,17 @@ The Python preflight check ([REQ-1165](#REQ-1165)) can call Provisa's services, 
 **Code:** —
 
 **Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-2134 · Extensible Functions {#REQ-2134}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A deployment setting, commands.allow_host_code (off by default), governs host code: the python command kind (an in-process module:attr callable) and the script command kind (a subprocess on the server's host). Both run with the server's full access to its memory, credentials, files and network, so code that is malicious, buggy or greedy can read anything the server can, starve it or take it down. A model entry holds only a reference to the code (module:attr or a path), so the code does not travel with the model when it is promoted. While the setting is off, registering or updating a command of either kind is refused, from the admin API and from a config file alike, and calling an existing one is refused; one check makes both refusals. The setting is the operator's, never an organization's, and has its field in Deployment settings. Code resolvers are the governed alternative: sandboxed, pinned, and promoted with the model.
+
+**Use case:** An operator runs a server of many organizations without any of them, or a model promoted into it, being able to run code with the server's own access.
+
+**Code:** —
+
+**Tests:** —

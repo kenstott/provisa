@@ -284,6 +284,9 @@ roles:
   id: analyst
   description: "Queries the pet store's and the shelter's data."
 server:
+  # REQ-2134: this config registers python commands (demo/py_functions), host code.
+  commands:
+    allow_host_code: true
   limits:
     default_row_limit: 100
     request_timeout: 60

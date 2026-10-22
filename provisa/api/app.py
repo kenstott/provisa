@@ -4033,6 +4033,16 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.core.host_code import HostCodeRefused as _HostCodeRefused
+
+    @app.exception_handler(_HostCodeRefused)
+    async def _host_code_refused_handler(_req: _Request, exc: _HostCodeRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-2134: a python or script command while the deployment allows no host code.
+        return _JSONResponse(
+            status_code=403,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     @app.exception_handler(_PrivateDestinationRefused)
     async def _private_destination_handler(_req: _Request, exc: _PrivateDestinationRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         # REQ-2006: a sandbox org's source names a destination that is not public; not reached.

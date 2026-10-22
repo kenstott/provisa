@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, update
 
 from provisa.api.errors import ApiError
+from provisa.core.host_code import refuse_host_code
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 from provisa.api.admin.capabilities import require_capability_request
 
@@ -446,6 +447,7 @@ async def update_function(
 ):  # REQ-205, REQ-253, REQ-304
     """Update a tracked DB function by name."""
     require_capability_request(request, "table_registration")
+    refuse_host_code(name, body.implKind)  # REQ-2134
     body.domainId = _saved_domain(request, name, body.domainId)
     await _as_source_operation(body)
     await _as_column_transform(body)  # REQ-2131

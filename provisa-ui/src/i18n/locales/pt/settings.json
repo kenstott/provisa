@@ -862,6 +862,12 @@
         "label": "Limite da taxa de vazamento dos valores fictícios",
         "help": "A fração dos valores amostrados de uma coluna sensível que o valor fictício pode deixar igual ao valor real antes que a verificação da taxa de vazamento o marque como inadequado. 0 reprova um valor fictício que deixa qualquer valor inalterado."
       }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Permitir comandos de código do host",
+        "help": "Ativado: comandos python e script podem ser registrados e chamados. Cada um é executado com o acesso completo do servidor à sua memória, credenciais, arquivos e rede, e seu código não acompanha o modelo. Desativado por padrão; use um resolvedor de código em vez disso."
+      }
     }
   }
 }

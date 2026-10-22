@@ -982,18 +982,18 @@ Return all tracked DB functions and webhooks.
 {
   "functions": [
     {
-      "name": "random_python_set",
-      "implKind": "python",
-      "binding": {"callable": "demo.py_functions:random_dataset"},
+      "name": "random_grpc_set",
+      "implKind": "grpc",
+      "binding": {"target": "localhost:50071", "method": "/provisa.demo.RandomData/GetRandomSet"},
       "returns": "",
       "returnSchema": {
         "type": "array",
         "items": {"type": "object", "properties": {"id": {"type": "integer"}, "region": {"type": "string"}}}
       },
-      "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+      "arguments": [],
       "visibleTo": ["admin"],
       "domainId": "pet-store",
-      "description": "Demo Python command returning random rows",
+      "description": "Demo gRPC command returning random rows",
       "kind": "query"
     }
   ],
@@ -1033,12 +1033,14 @@ Register a tracked function (command).
 | `implKind` | What runs | `binding` fields |
 | --- | --- | --- |
 | `source_procedure` | Stored procedure on a registered source (default) | `sourceId`, `schemaName`, `functionName` |
-| `script` | Server-side script | `script` |
+| `script` | Server-side script (host code) | `script` |
 | `http` | Outbound HTTP call | `url`, `method` |
 | `grpc` | Outbound gRPC call to an external server | `target`, `method` |
-| `python` | Python callable hosted by Provisa | `callable` (e.g. `"demo.py_functions:random_dataset"`) |
+| `python` | Python callable hosted by Provisa (host code) | `callable` (e.g. `"demo.py_functions:random_dataset"`) |
 
-The demo commands `random_python_set` (`implKind: python`) and `random_grpc_set` (`implKind: grpc`) show set-returning commands with `returnSchema` in practice; both are in `config/provisa-install.yaml`.
+`script` and `python` are host code. While the deployment setting `commands.allow_host_code` is off, as it is by default, registering, updating or calling one is refused with HTTP 403 and the code `functions.host_code_refused` (see [Host code](commands.md#host-code)).
+
+The demo command `random_grpc_set` (`implKind: grpc`) shows a set-returning command with `returnSchema` in practice; it is in `config/provisa-install.yaml`.
 
 #### `PUT /admin/actions/functions/{name}`
 

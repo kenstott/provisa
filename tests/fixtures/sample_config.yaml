@@ -141,6 +141,11 @@ rls_rules:
     description: "An analyst reads only the orders of their own region."
     filter: "region = current_setting('provisa.user_region')"
 
+server:
+  # REQ-2134: enrich_orders below is a python command, host code.
+  commands:
+    allow_host_code: true
+
 functions:
   # REQ-1159: python-impl command that ENRICHES orders inline (composed-command E2E). In-process,
   # so no external service; narrow input contract {id, region}, derived-only output.
