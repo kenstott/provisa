@@ -199,6 +199,18 @@ class ReplicaRunner:
         # Set when the process shuts down: no build is claimed or started after it, so nothing
         # rebuilds the engine's runtime after the engine has been closed.
         self._stopped = False
+        # Each hold a requested build is waiting on, said once (_held) until it clears.
+        self._holds: set[tuple[Any, ...]] = set()
+
+    def _held(self, hold: tuple[Any, ...], message: str, *args: Any) -> None:
+        """A requested build waiting on ``hold``, said once at WARNING until the hold clears
+        (``_cleared``): a build held without a word looks like one never asked for."""
+        if hold not in self._holds:
+            self._holds.add(hold)
+            log.warning(message, *args)
+
+    def _cleared(self, *holds: tuple[Any, ...]) -> None:
+        self._holds.difference_update(holds)
 
     def stop(self) -> None:
         """Start no more builds (process shutdown). A build already running ends as it ends; the
@@ -232,7 +244,16 @@ class ReplicaRunner:
         while True:
             slot = self._locks.try_node_slot(self._builds_per_node())
             if slot is None:
+                if started == 0 and await self._has_requests():
+                    self._held(
+                        ("node",),
+                        "replica builds of org %s wait for a build slot on this node: all %d "
+                        "are in use",
+                        self._org_id,
+                        self._builds_per_node(),
+                    )
                 break
+            self._cleared(("node",))
             job = None
             try:
                 job = await self._claim_one()
@@ -303,6 +324,14 @@ class ReplicaRunner:
             if job.slot is not None:
                 job.slot.release()
 
+    async def _has_requests(self) -> bool:
+        async with self._db.acquire() as conn:
+            return bool(
+                await build_state.candidates(
+                    conn, now=datetime.now(UTC), limit=1, retry=self._retry()
+                )
+            )
+
     async def _claim_one(self) -> _Job | None:
         """Claim one build: the engine's slot, a replica's lock and row, its source's permit."""
         now = datetime.now(UTC)
@@ -319,9 +348,19 @@ class ReplicaRunner:
         job: _Job | None = None
         try:
             if not claim.try_engine_slot(self._engine_key(), self._engine_jobs()):
+                self._held(
+                    ("engine",),
+                    "replica builds of org %s wait for a job slot on engine %s: all %d are in "
+                    "use (waiting: %s)",
+                    self._org_id,
+                    self._engine_key(),
+                    self._engine_jobs(),
+                    ", ".join(".".join(k) for k in keys),
+                )
                 async with self._db.acquire() as conn:
                     await build_state.set_waiting(conn, keys, waiting_on=WAITING_ENGINE)
                 return None
+            self._cleared(("engine",))
             for key in keys:
                 job = await self._claim_key(claim, key, now)
                 if job is not None:
@@ -332,11 +371,25 @@ class ReplicaRunner:
                 claim.close()
 
     async def _claim_key(self, claim: BuildClaim, key: ReplicaKey, now: datetime) -> _Job | None:
+        name = ".".join(key)
         if not claim.try_replica(self._org_id, key):
+            self._held(
+                ("lock", key),
+                "replica %s of org %s waits on its build lock: another build of it holds it",
+                name,
+                self._org_id,
+            )
             return None  # another runner is building it
         if self._deferred_until is not None:
             until = await self._deferred_until(key, now)
             if until is not None:
+                self._held(
+                    ("deferred", key),
+                    "replica %s of org %s is deferred to its build window, until %s",
+                    name,
+                    self._org_id,
+                    until.isoformat(timespec="seconds"),
+                )
                 claim.release_replica(self._org_id, key)
                 async with self._db.acquire() as conn:
                     await build_state.defer(conn, key, until=until, waiting_on=WAITING_WINDOW)
@@ -354,10 +407,20 @@ class ReplicaRunner:
                     permit_key = self._permits.key(self._org_id, key[0])
                     token = self._permits.try_acquire(permit_key, cap)
                     if token is None:
+                        self._held(
+                            ("source", key),
+                            "replica %s of org %s waits for a read permit of source %s: all %d "
+                            "are in use",
+                            name,
+                            self._org_id,
+                            key[0],
+                            cap,
+                        )
                         await build_state.unclaim(conn, key, waiting_on=WAITING_SOURCE)
                         return None
                     permit = (permit_key, token)
             started = True
+            self._cleared(("lock", key), ("deferred", key), ("source", key))
             siblings = await self._claim_siblings(claim, key, now)
             return _Job(
                 key=key,
