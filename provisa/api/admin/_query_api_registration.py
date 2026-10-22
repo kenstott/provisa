@@ -43,30 +43,35 @@ async def source_row(conn: "Connection", source_id: str) -> dict[str, Any] | Non
 
 
 async def preview_sparql(conn: "Connection", source_id: str, query: str) -> "QueryPreviewType":
-    """Run the SPARQL SELECT (LIMIT 5) against the source's endpoint and infer the columns —
-    every SPARQL binding is a string, so the columns are ``text``."""
+    """Run the SPARQL SELECT (LIMIT 5) against the source's endpoint and infer the columns: one per
+    variable the answer's head names, typed by its bindings' XSD datatypes (text otherwise)."""
     import httpx
 
     from provisa.api.admin.types import QueryPreviewColumnType, QueryPreviewType
+    from provisa.api_source.normalizers import sparql_bindings
+    from provisa.api_source.persist import data_type_for_api_column
     from provisa.sparql.persist import sparql_config_from_source
-    from provisa.sparql.source import extract_variables, probe_endpoint
+    from provisa.sparql.source import infer_columns, probe_endpoint
 
     row = await source_row(conn, source_id)
     if row is None or row["type"] != "sparql":
         return QueryPreviewType(error=f"{source_id!r} is not a registered sparql source")
     cfg, _ = sparql_config_from_source(source_id=source_id, endpoint_url=row["host"])
     try:
-        rows = await probe_endpoint(cfg, query)
+        results = await probe_endpoint(cfg, query)
     except (httpx.HTTPError, ValueError) as exc:
         return QueryPreviewType(error=f"{type(exc).__name__}: {exc}")
-    names = list(rows[0].keys()) if rows else extract_variables(query)
-    if not names:
+    columns = infer_columns(results)
+    if not columns:
         return QueryPreviewType(
-            error="The query returned no rows and names no SELECT variables; columns cannot be inferred."
+            error="The answer names no SELECT variables; columns cannot be inferred."
         )
     return QueryPreviewType(
-        rows=list(rows),
-        columns=[QueryPreviewColumnType(name=n, data_type="text") for n in names],
+        rows=sparql_bindings(results),
+        columns=[
+            QueryPreviewColumnType(name=c.name, data_type=data_type_for_api_column(c.type))
+            for c in columns
+        ],
     )
 
 

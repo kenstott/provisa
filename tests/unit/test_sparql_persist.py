@@ -126,7 +126,39 @@ async def test_preview_returns_rows_and_text_columns():
 
 
 @pytest.mark.asyncio
-async def test_preview_with_no_rows_falls_back_to_the_select_variables():
+async def test_preview_types_columns_by_their_bindings_datatypes():
+    xsd = "http://www.w3.org/2001/XMLSchema#"
+    answer = {
+        "head": {"vars": ["entity", "employees", "listed", "founded"]},
+        "results": {
+            "bindings": [
+                {
+                    "entity": {"type": "uri", "value": "http://www.wikidata.org/entity/Q1"},
+                    "employees": {"type": "literal", "value": "120", "datatype": xsd + "decimal"},
+                    "listed": {"type": "literal", "value": "false", "datatype": xsd + "boolean"},
+                    "founded": {
+                        "type": "literal",
+                        "value": "1990-05-01T00:00:00Z",
+                        "datatype": xsd + "dateTime",
+                    },
+                }
+            ]
+        },
+    }
+    with respx.mock:
+        respx.post(_EP).mock(return_value=httpx.Response(200, json=answer))
+        out = await qa.preview_sparql(_Conn(_SRC), "graph", "SELECT * WHERE { ?a ?p ?o }")  # type: ignore[arg-type]
+    assert out.error is None
+    assert [(c.name, c.data_type) for c in out.columns] == [
+        ("entity", "text"),
+        ("employees", "double"),
+        ("listed", "boolean"),
+        ("founded", "timestamp"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_preview_with_no_rows_takes_the_columns_from_the_answers_head():
     with respx.mock:
         respx.post(_EP).mock(return_value=httpx.Response(200, json=_bindings(["name"], [])))
         out = await qa.preview_sparql(_Conn(_SRC), "graph", "SELECT ?name WHERE { ?a ?p ?o }")  # type: ignore[arg-type]

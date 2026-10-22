@@ -1639,7 +1639,7 @@ Both connectors use the API source cache pipeline. Results are stored in Postgre
 
 #### Config-file and UI registration
 
-A `sparql` source's `host` is its SPARQL endpoint URL (the Sources form stores it the same way). Each table under it carries `query_template`, a SELECT whose variables are the columns; every binding is `text`.
+A `sparql` source's `host` is its SPARQL endpoint URL (the Sources form stores it the same way). Each table under it carries `query_template`, a SELECT whose variables are the columns. Preview types each column by the XSD datatype its bindings share: the integer types as `integer`, `xsd:decimal`, `xsd:double` and `xsd:float` as `double`, `xsd:boolean` as `boolean`, `xsd:date` as `date`, and `xsd:dateTime` as `timestamp`. An IRI, a blank node, a plain or language-tagged string, or a variable whose bindings differ in type is `text`.
 
 ```yaml
 sources:

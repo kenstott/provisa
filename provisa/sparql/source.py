@@ -30,7 +30,6 @@ from provisa.api_source.models import (
     ApiSource,
     ApiSourceType,
 )
-from provisa.api_source.normalizers import sparql_bindings
 from provisa.core.auth_models import ApiAuth
 from provisa.core.secrets import resolve_secrets
 
@@ -134,10 +133,11 @@ async def probe_endpoint(
     cfg: SparqlSourceConfig,
     sparql_query: str,
     timeout: float = 10.0,
-) -> list[dict]:  # REQ-297, REQ-298
+) -> dict:  # REQ-297, REQ-298
     """Execute a SPARQL probe (LIMIT 5) to validate the endpoint and infer columns.
 
-    Returns flat row dicts via sparql_bindings normalizer.
+    Returns the SPARQL 1.1 JSON results document as answered: its terms keep their datatypes,
+    which type the columns (``infer_columns``).
 
     Raises:
         httpx.HTTPError: on network or HTTP errors
@@ -162,11 +162,48 @@ async def probe_endpoint(
         )
         resp.raise_for_status()
 
-    return sparql_bindings(resp.json())
+    return resp.json()
 
 
-def infer_columns(rows: list[dict]) -> list[ApiColumn]:  # REQ-297
-    """Infer column definitions from SPARQL probe results."""
-    if not rows:
-        return []
-    return [ApiColumn(name=var, type=ApiColumnType.string) for var in rows[0].keys()]
+_XSD = "http://www.w3.org/2001/XMLSchema#"
+
+# A literal's XSD datatype → the column type its values land as. Any other term (an IRI, a blank
+# node, a plain or language-tagged string, a datatype not listed) is text.
+_XSD_TYPES: dict[str, ApiColumnType] = {
+    **{
+        _XSD + name: ApiColumnType.integer
+        for name in (
+            "integer", "int", "long", "short", "byte", "nonNegativeInteger", "positiveInteger",
+            "nonPositiveInteger", "negativeInteger", "unsignedLong", "unsignedInt",
+            "unsignedShort", "unsignedByte",
+        )
+    },
+    _XSD + "decimal": ApiColumnType.number,
+    _XSD + "double": ApiColumnType.number,
+    _XSD + "float": ApiColumnType.number,
+    _XSD + "boolean": ApiColumnType.boolean,
+    _XSD + "date": ApiColumnType.date,
+    _XSD + "dateTime": ApiColumnType.timestamp,
+    _XSD + "dateTimeStamp": ApiColumnType.timestamp,
+}  # fmt: skip
+
+
+def term_type(term: dict) -> ApiColumnType:
+    """The column type one bound term of a SPARQL JSON result lands as."""
+    if term.get("type") in ("literal", "typed-literal"):
+        return _XSD_TYPES.get(term.get("datatype", ""), ApiColumnType.string)
+    return ApiColumnType.string
+
+
+def infer_columns(results: dict) -> list[ApiColumn]:  # REQ-297
+    """The columns of a SPARQL 1.1 JSON results document: one per variable its head names, typed
+    by the datatype its bound terms share; a variable bound to terms of different types, or never
+    bound, is text."""
+    variables = results.get("head", {}).get("vars", [])
+    bindings = results.get("results", {}).get("bindings", [])
+    columns = []
+    for var in variables:
+        kinds = {term_type(b[var]) for b in bindings if var in b}
+        kind = kinds.pop() if len(kinds) == 1 else ApiColumnType.string
+        columns.append(ApiColumn(name=var, type=kind))
+    return columns
