@@ -34,7 +34,7 @@ export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON]);
 export const NODE_RUNTIMES = ["node", "bun", "deno"] as const;
 
 /** Where the code comes from: a package (npm or PyPI), a Git repository, or an upload. */
-export type CodeOrigin = "package" | "git" | "upload";
+export type CodeOrigin = "package" | "git" | "upload" | "directory";
 
 /** The package kind each language's packages come from. */
 export const PACKAGE_KIND: Record<string, string> = { [NODE]: "npm", [PYTHON]: "pypi" };
@@ -109,7 +109,9 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
             commit: (fields.code_commit ?? "").trim(),
             subdirectory: (fields.code_subdirectory ?? "").trim(),
           }
-        : uploadedCode(fields);
+        : origin === "directory"
+          ? { kind: "directory", path: (fields.code_directory ?? "").trim() }
+          : uploadedCode(fields);
   const lockfile = fields.lockfile_upload
     ? { filename: fields.lockfile_filename, upload: fields.lockfile_upload }
     : null;
@@ -160,7 +162,13 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     ? Object.fromEntries(m.secrets.map((n) => [n, null]))
     : (m.secrets ?? {});
   const origin: CodeOrigin =
-    code.kind === "git" ? "git" : code.kind === "upload" ? "upload" : "package";
+    code.kind === "git"
+      ? "git"
+      : code.kind === "upload"
+        ? "upload"
+        : code.kind === "directory"
+          ? "directory"
+          : "package";
   return {
     code_runtime: m.runtime ?? "node",
     code_origin: origin,
@@ -171,6 +179,7 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code_subdirectory: code.subdirectory ?? "",
     code_upload: code.upload ?? "",
     code_upload_filename: code.filename ?? "",
+    code_directory: code.kind === "directory" ? (code.path ?? "") : "",
     lockfile_upload: m.lockfile?.upload ?? "",
     lockfile_filename: m.lockfile?.filename ?? "",
     code_entry: m.entry ?? "",
@@ -195,10 +204,33 @@ export function missingCodeFields(fields: Record<string, string>): string[] {
       ? ["code_package", "code_version"]
       : origin === "git"
         ? ["code_repository", "code_commit"]
-        : ["code_upload"];
+        : origin === "directory"
+          ? ["code_directory"]
+          : ["code_upload"];
   const missing = needed.filter((k) => !(fields[k] ?? "").trim());
   if (origin === "git" && fields.code_commit && !COMMIT.test(fields.code_commit.trim())) {
     missing.push("code_commit");
   }
   return missing;
+}
+
+const GITHUB = /^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
+
+/** REQ-2121: where the source's code opens in VS Code: a server directory in the installed VS
+ * Code (a vscode://file link), a Git repository on vscode.dev at its commit; null for a package,
+ * an upload, or a Git host vscode.dev does not open. */
+export function vscodeLink(fields: Record<string, string>): string | null {
+  const origin = (fields.code_origin ?? "package") as CodeOrigin;
+  if (origin === "directory") {
+    const path = (fields.code_directory ?? "").trim();
+    return path ? `vscode://file/${path.replace(/^\/+/, "")}` : null;
+  }
+  if (origin === "git") {
+    const repo = GITHUB.exec((fields.code_repository ?? "").trim());
+    const commit = (fields.code_commit ?? "").trim();
+    if (!repo || !commit) return null;
+    const sub = (fields.code_subdirectory ?? "").trim().replace(/^\/+|\/+$/g, "");
+    return `https://vscode.dev/github/${repo[1]}/${repo[2]}/tree/${commit}${sub ? `/${sub}` : ""}`;
+  }
+  return null;
 }

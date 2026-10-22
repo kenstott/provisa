@@ -1,5 +1,5 @@
 {
-  "security.md": "438965807a0df3b0e3bc1be1caa289083baa8d5f59039288d9a90667027c3fe2",
+  "security.md": "6725c4bbe0e07c93cf5c3559d1d77e8951d2fe6921d4537b20bf7f8186b239f3",
   "index.md": "4c6791df32af1652467dd1a537440d957042e95dad761c66effa1e692a923412",
   "quickstart.md": "70d5d3868168470098b422e159b2cc6849fa976090ef390dac5282f6d24f3c4c",
   "api-reference.md": "5713969669b099bba3ac6cf311f467b8f7c041d0910f23da6792b8225011091e",
@@ -16,7 +16,7 @@
   "remote-schemas.md": "d07b277d22e5c242c7bc21ad7c955e3850c9e02e70376a77a48a529286b4b17f",
   "domain-principles.md": "ac5ce74bdab4406aa19e12feae69b13fcc403b2a97798875760587d2c08e98d1",
   "migration/hasura-v2.md": "34f9b7024b33ca49ddddb99d6952bbc3e8415f3e63bfca35b5d1fed24eff9c2f",
-  "configuration.md": "f7fa7d407745ffb8ccd873f5bfb4746cf24166a007f51cbc6e89db3e5f77cd6c",
+  "configuration.md": "cb6aadd477f624992c8b0cc1fb849f228c167ef86f651c22de7ba4aa69a8f682",
   "sources.md": "9ee84df8de5c7b93807a1de8d171385909fefc8c98fe1b047d8935b265088a75",
   "python-client.md": "72587a15c990d156e03ee427c950f92fde4eec3d59bd4bab690ef294f7955588",
   "deployment.md": "79b2d1eb7dd8e87fc4693e0d2d730599928f4c591be486f653ddcbe914967b5b",
@@ -32,5 +32,5 @@
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
   "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
-  "code-sources.md": "cc7e437ab9897625b4bdac4ead372ada0022e87a2bf3e1f94010ba10e0b4113c"
+  "code-sources.md": "46e046e30ca7a146d1c0551f2063e64ebd5c2d838e8f3a6c99e9aa679759b8a0"
 }
