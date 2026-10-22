@@ -208,3 +208,107 @@ def test_match_deals_resolves_against_the_demos_own_tables_and_views():
     contract = derive(command["name"], command["binding"], [], tables)
     assert contract.broken is None
     assert (contract.kind, contract.writes) == ("mutation", "bank.deal_match")
+
+
+def _governed_violations(sql: str) -> list:
+    """The V-rule violations of ``sql`` as the pipeline judges it for org_admin, the role the
+    setup runs as: the demo's own tables, views and relationships, each view it reads replaced by
+    its SQL first (provisa.mv.view_read.semantic_statement), then validate_sql."""
+    import copy
+
+    from provisa.compiler import naming
+    from provisa.compiler.context import build_context
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.compiler.sql_validator import validate_sql
+    from provisa.compiler.stage2 import build_governance_context
+    from provisa.compiler.view_expand import expand_view_refs
+    from provisa.core.config_loader import views_as_tables
+    from provisa.core.models import config_table_name
+
+    config = views_as_tables(copy.deepcopy(_CONFIG))
+    tables, column_types = [], {}
+    for i, t in enumerate(config["tables"], start=1):
+        tables.append(
+            {
+                "id": i,
+                "source_id": t["source_id"],
+                "domain_id": t["domain_id"],
+                "schema_name": t.get("schema", "default"),
+                "table_name": config_table_name(t),
+                "alias": t.get("alias"),
+                **({"view_sql": t["view_sql"]} if "view_sql" in t else {}),
+                "enable_aggregates": False,
+                "enable_group_by": False,
+                "columns": [
+                    {
+                        "column_name": c["name"],
+                        "visible_to": c["visible_to"],
+                        "data_type": c["data_type"],
+                        **({"is_primary_key": True} if c.get("is_primary_key") else {}),
+                    }
+                    for c in t["columns"]
+                ],
+                "write_ops": [],
+                "write_returns_rows": False,
+                "write_refused_forms": [],
+            }
+        )
+        column_types[i] = [
+            ColumnMetadata(column_name=c["name"], data_type=c["data_type"], is_nullable=True)
+            for c in t["columns"]
+        ]
+    ids = {t["table_name"]: t["id"] for t in tables}
+    relationships = [
+        {
+            **r,
+            "source_table_id": ids[r["source_table_id"]],
+            "target_table_id": ids[r["target_table_id"]],
+        }
+        for r in _CONFIG["relationships"]
+        if r["source_table_id"] in ids and r["target_table_id"] in ids
+    ]
+    role = {"id": "org_admin", "domain_access": ["*"], "capabilities": []}
+    naming.configure(gql="apollo_graphql")
+    schema_input = SchemaInput(
+        tables=tables,
+        relationships=relationships,
+        column_types=column_types,
+        naming_rules=[],
+        role=role,
+        domains=config["domains"],
+        domain_prefix=config["naming"]["domain_prefix"],
+    )
+    ctx = build_context(schema_input)
+    gov = build_governance_context(
+        "org_admin",
+        None,
+        {},
+        ctx,
+        tables,
+        role=role,
+        relationships=relationships,
+        source_types={s["id"]: s["type"] for s in config["sources"]},
+    )
+    views = {t["table_name"]: t["view_sql"] for t in tables if "view_sql" in t}
+    return validate_sql(
+        expand_view_refs(sql, views, mark=True),
+        ctx,
+        gov,
+        role,
+        tables,
+        bypass_uncovered_relationships=True,
+    )
+
+
+def test_match_deals_joins_only_along_the_demos_relationships():
+    """What match_deals reads, with the view it reads expanded, is governed clean (V002): the
+    team through the sender's employee row, the counterparty along recipient-counterparty."""
+    import sqlglot
+
+    statement = sqlglot.parse_one(_FUNCTIONS["match_deals"]["binding"]["sql"], read="postgres")
+    assert _governed_violations(statement.expression.sql(dialect="postgres")) == []
+
+
+def test_the_view_pairs_messages_and_deals_only_through_the_screening_scope():
+    assert _governed_violations(_VIEWS["message_deal_signals"]["sql"]) == []

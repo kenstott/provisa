@@ -377,7 +377,8 @@ functions:
         CASE WHEN c.deal_id IS NULL THEN 0 ELSE 1 END,
         CASE WHEN s.announced_on IS NULL OR CAST(s.sent_at AS DATE) < s.announced_on THEN 1 ELSE 0 END
       FROM "bank"."view_message_deal_signals" AS s
-      LEFT JOIN "bank"."deal_team" AS t ON t.deal_id = s.deal_id AND t.employee_id = s.sender_id
+      JOIN "bank"."employee" AS e ON e.employee_id = s.sender_id
+      LEFT JOIN "bank"."deal_team" AS t ON t.deal_id = s.deal_id AND t.employee_id = e.employee_id
       LEFT JOIN (SELECT DISTINCT r.message_id, k.deal_id FROM "bank"."recipient" AS r
         JOIN "bank"."deal_counterparty" AS k ON k.domain = r.domain) AS c
         ON c.message_id = s.message_id AND c.deal_id = s.deal_id
@@ -414,6 +415,7 @@ relationships:
 - {id: access-employee, alias: READ_BY, cardinality: many-to-one, source_table_id: customer_access, source_column: employee_id, target_table_id: employee, target_column: employee_id}
 - {id: deal-team, alias: OVER_THE_WALL, cardinality: one-to-many, source_table_id: deal, source_column: deal_id, target_table_id: deal_team, target_column: deal_id}
 - {id: team-employee, alias: TEAM_MEMBER, cardinality: many-to-one, source_table_id: deal_team, source_column: employee_id, target_table_id: employee, target_column: employee_id}
+- {id: recipient-counterparty, alias: AT_COUNTERPARTY, cardinality: one-to-many, source_table_id: recipient, source_column: domain, target_table_id: deal_counterparty, target_column: domain}
 - {id: deal-counterparty, alias: COUNTERPARTY, cardinality: one-to-many, source_table_id: deal, source_column: deal_id, target_table_id: deal_counterparty, target_column: deal_id}
 - {id: queue-message, alias: QUEUED, cardinality: many-to-one, source_table_id: view_review_queue, source_column: message_id, target_table_id: message, target_column: message_id}
 - {id: queue-checks, alias: CASE_MATCH, cardinality: one-to-many, source_table_id: view_review_queue, source_column: message_id, target_table_id: deal_match, target_column: message_id}
