@@ -399,8 +399,11 @@ def _with_member_reads(gov: GovernanceContext, rls_context) -> None:  # REQ-1620
     for tid, reads in member_reads.items():
         for column, treatments in reads.columns.items():
             gov.masking_rules.pop((tid, column), None)
-            if reads.uniform(column):
-                rank, rule, dtype = treatments[0]
+            resolved = reads.resolved(column)
+            if resolved is not None:
+                # Every row reads it one way: masked as that treatment reads it, as a single
+                # role's column is, with no member projection.
+                rank, rule, dtype = resolved
                 if rule is not None:
                     gov.masking_rules[(tid, column)] = (rule, dtype)
                 continue
@@ -800,13 +803,29 @@ def _project_kept(
 
 
 def _differing_members(tid: int, gov_ctx: GovernanceContext) -> list[str] | None:  # REQ-1620
-    """The columns of ``tid`` the acting meta-role's members read differently, or None when there
-    are none (a single role, or members that read every column alike)."""
+    """The columns of ``tid`` the acting meta-role's members read differently row by row, or None
+    when there are none (a single role, or members whose reads of every column are settled for
+    every row: MemberReads.resolved) -- then the table is read as it is, with no member projection."""
     reads = gov_ctx.member_reads.get(tid)
     if reads is None:
         return None
-    differing = [c for c in reads.columns if not reads.uniform(c)]
+    differing = [c for c in reads.columns if reads.resolved(c) is None]
     return differing or None
+
+
+def _member_branches(reads: Any, column: str) -> tuple[list[tuple[list[int], int]], int | None]:
+    """How the member projection reads ``column``: the WHEN branches, each the members whose
+    flags select it and the treatment it reads, in order from the least restrictive; and the
+    treatment the remaining rows read (a group holding a member that admits every row), or None
+    when they read NULL. A group after one admitting every row is never reached."""
+    treatments = reads.columns[column]
+    branches: list[tuple[list[int], int]] = []
+    for rank in sorted({t[0] for t in treatments}):
+        group = [i for i, t in enumerate(treatments) if t[0] == rank]
+        if any(reads.flags[i] == "TRUE" for i in group):
+            return branches, group[0]
+        branches.append((group, group[0]))
+    return branches, None
 
 
 def _member_carried(
@@ -821,14 +840,15 @@ def _member_carried(
     reads = gov_ctx.member_reads[tid]
     column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
     carried: dict[str, tuple[str, str]] = {}
-    for i, flag in enumerate(reads.flags):
+    # Only the flags a WHEN branch reads; a member admitting every row is the branches' ELSE.
+    read = sorted(
+        {i for c in differing for group, _ in _member_branches(reads, c)[0] for i in group}
+    )
+    for i in read:
+        flag = reads.flags[i]
         carried[f"__m_{i}"] = (
-            ("TRUE", "TRUE")
-            if flag == "TRUE"
-            else (
-                f"({_qualify_filter(flag, alias, column_types)})",
-                f"({_qualify_filter(flag, 'l', column_types)})",
-            )
+            f"({_qualify_filter(flag, alias, column_types)})",
+            f"({_qualify_filter(flag, 'l', column_types)})",
         )
     for name in differing:
         sql_name = _quote(apply_sql_name(name))
@@ -890,22 +910,24 @@ def _project_members(
             continue
         real = _quote(f"__real_{sql_name}")
         treatments = reads.columns[name]
-        branches: list[str] = []
-        for rank in sorted({t[0] for t in treatments}):
-            group = [i for i, t in enumerate(treatments) if t[0] == rank]
-            _, rule, dtype = treatments[group[0]]
+
+        def _value(member: int, real: str = real, quoted: str = quoted) -> str:
+            rank, rule, dtype = treatments[member]
             if rank == HIDDEN:
-                value = "NULL"
-            elif rule is None:
-                value = real
-            elif rule.mask_type == MaskType.fake:
-                value = quoted  # the faked projection's value (one fake per column)
-            else:
-                value = build_mask_expression(rule, real, dtype)
-            branches.append(f"WHEN {' OR '.join(flag_names[i] for i in group)} THEN {value}")
-            if any(reads.flags[i] == "TRUE" for i in group):
-                break  # every row is admitted by this group: no later branch is read
-        projections.append(f"CASE {' '.join(branches)} ELSE NULL END AS {quoted}")
+                return "NULL"
+            if rule is None:
+                return real
+            if rule.mask_type == MaskType.fake:
+                return quoted  # the faked projection's value (one fake per column)
+            return build_mask_expression(rule, real, dtype)
+
+        whens, rest = _member_branches(reads, name)
+        branches = [
+            f"WHEN {' OR '.join(flag_names[i] for i in group)} THEN {_value(member)}"
+            for group, member in whens
+        ]
+        otherwise = "NULL" if rest is None else _value(rest)
+        projections.append(f"CASE {' '.join(branches)} ELSE {otherwise} END AS {quoted}")
         if name in keys:
             projections.append(f"{real} AS {real}")
             real_keys[sql_name] = f"__real_{sql_name}"
