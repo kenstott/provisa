@@ -86653,6 +86653,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa/python/services/provisa_services/__init__.py
   tests:
   - tests/unit/test_preflight_dq_services.py
+  - tests/integration/test_hold_on_failing_checks_e2e.py
   - provisa-ui/src/pages/tables/__tests__/TableEditForm.holdOnFailingChecks.test.tsx
   relates_to:
   - REQ-1165
