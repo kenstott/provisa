@@ -190,15 +190,20 @@ def _resolve(table: exp.Table, gov: "GovernanceContext") -> int:
     return table_id
 
 
+def no_grant(role_id: str | None, name: str, operation: str) -> WriteNotAdmitted:
+    """The refusal of ``operation`` on table ``name`` to a role holding no grant for it
+    (REQ-2074), as every surface gives it."""
+    return WriteNotAdmitted(
+        f"{operation.upper()} on {name!r}: role {role_id!r} holds no {operation} grant on this table"
+    )
+
+
 def _grant(gov: "GovernanceContext", table_id: int, name: str, operation: str) -> dict:
     """The role's write grant on the table for ``operation`` (REQ-2074); refused by name when it
     holds none."""
     grant = gov.write_grants.get(table_id, {}).get(operation)
     if grant is None:
-        raise WriteNotAdmitted(
-            f"{operation.upper()} on {name!r}: role {gov.role_id!r} holds no {operation} grant "
-            "on this table"
-        )
+        raise no_grant(gov.role_id, name, operation)
     return grant
 
 

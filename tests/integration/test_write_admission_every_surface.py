@@ -371,8 +371,8 @@ def test_a_column_that_does_not_name_the_role_is_not_written(server, source, sur
     assert (2, "moved") in source()
 
     # REQ-2074: a column outside the grant is refused, and an operation without its grant is
-    # refused naming the table, role and operation. GraphQL offers the role only the mutation
-    # fields and input columns its grants hold, so there the statement does not validate.
+    # refused naming the table, role and operation, on every surface. GraphQL offers the role only
+    # the input columns its grants hold, so there a column outside them does not validate.
     graphql = surface == "graphql"
     column = "Field 'id' is not defined by type" if graphql else "write access to column 'id'"
     for write, refusal in (
@@ -383,9 +383,7 @@ def test_a_column_that_does_not_name_the_role_is_not_written(server, source, sur
         # it holds no delete grant
         (
             lambda: s.delete(server, "region_only", 2),
-            "Cannot query field 's__deleteOrders'"
-            if graphql
-            else "role 'region_only' holds no delete grant on this table",
+            "DELETE on 'orders': role 'region_only' holds no delete grant on this table",
         ),
     ):
         before = source()
