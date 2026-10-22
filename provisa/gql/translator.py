@@ -125,6 +125,18 @@ def cypher_calls_to_sql_list(  # REQ-571
     return results
 
 
+#: An ISO 8601 date-time written as a string (REQ-409).
+_ISO_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?")
+
+
+def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """REQ-409: a WHERE's ISO 8601 date-time string is the timestamp it writes, so it compares with
+    a timestamp column on every engine (Trino refuses a varchar there)."""
+    if isinstance(node, exp.Literal) and node.is_string and _ISO_TIMESTAMP.fullmatch(node.this):
+        return exp.Cast(this=node, to=exp.DataType.build("TIMESTAMP"))
+    return node
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathFunctionsMixin,
     SelectBuilderMixin,
@@ -740,7 +752,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is None:
             return None
-        return self._lower_expr(where.expression)
+        return self._lower_expr(where.expression).transform(_timestamp_literal)
 
     def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """An expression tree as a SQLGlot expression (REQ-913)."""
