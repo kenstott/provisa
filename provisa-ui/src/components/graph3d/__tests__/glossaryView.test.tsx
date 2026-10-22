@@ -67,7 +67,7 @@ const term = (id: number, name: string, over: object = {}) => ({
   live: true,
   grounded: true,
   domains: [{ domain_id: "sales" }],
-  refs: [],
+  refs: [] as { domain_id: string }[],
   ...over,
 });
 const TERMS = [
