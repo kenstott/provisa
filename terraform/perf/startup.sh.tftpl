@@ -48,6 +48,12 @@ fi
 git -C "$REPO_DIR" fetch --quiet origin
 git -C "$REPO_DIR" checkout --quiet --detach "${commit}"
 (cd "$REPO_DIR" && UV_PYTHON_INSTALL_DIR=/opt/uv-python /usr/local/bin/uv sync --frozen --extra dev)
+# py-spy on the server device (pinned): a step's stacks when its stall records point at a process
+# holding the GIL -- sudo py-spy dump --pid <a worker>.
+if [ "$DEVICE" = server ] && ! [ -x /usr/local/bin/py-spy ]; then
+  UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    /usr/local/bin/uv tool install py-spy==0.4.0
+fi
 # The operator's commands run as their own login over SSH: they read the repository and write
 # results under it.
 chmod -R a+rwX "$REPO_DIR"
