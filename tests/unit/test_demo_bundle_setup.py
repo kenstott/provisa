@@ -192,8 +192,10 @@ def test_a_bundled_demo_runs_only_its_environment_steps_where_it_runs():
 def test_the_sonnets_run_time_compose_loads_what_its_build_saves():
     run = yaml.safe_load((_SONNETS / "docker-compose.run.yml").read_text())
     postgres, qdrant = run["services"]["postgres"], run["services"]["qdrant"]
+    # Each database the build dumped (dump/postgres/<database>.sql), loaded by the loader it wrote.
+    assert "./dump/postgres:/dumps:ro" in postgres["volumes"]
     assert (
-        "./dump/postgres.sql:/docker-entrypoint-initdb.d/10-sonnets.sql:ro" in postgres["volumes"]
+        "./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro" in postgres["volumes"]
     )
     assert "./dump/qdrant:/snapshots:ro" in qdrant["volumes"]
     # Recovered at every start from the snapshot the build saved,
@@ -424,6 +426,25 @@ def test_the_answering_config_asks_polly_through_openrouter_on_the_sandbox_model
     assert config["domains"] == [{"id": "bank"}]  # the demo's own config, kept
 
 
+def test_the_answering_config_is_served_beside_what_the_demo_declares(tmp_path):
+    """The build's server reads a demo's declared replica rows and code archives from the
+    directory of the config it serves: an answering config written anywhere else left a demo
+    with both a Polly step and declared rows (cloudpolicy) calling its faked sources' services,
+    and its code source without its upload."""
+    demo = _toured(tmp_path, _ASKING)
+    (demo / "replica_rows" / "crm").mkdir(parents=True)
+    (demo / "replica_rows" / "crm" / "crm.Account.tsv").write_text("Id\n1\n")
+    (demo / "code").mkdir()
+    (demo / "code" / "reader.tar.gz").write_bytes(b"archive")
+    (demo / "secrets.yaml").write_text("{}\n")
+    work = tmp_path / "work"
+    work.mkdir()
+    served = builder.answering_config(work, demo).parent
+    assert (served / "replica_rows" / "crm" / "crm.Account.tsv").read_text() == "Id\n1\n"
+    assert (served / "code" / "reader.tar.gz").read_bytes() == b"archive"
+    assert (served / "secrets.yaml").is_file()
+
+
 _encode = json.dumps  # the stream below takes a json= keyword, as httpx.stream does
 
 
@@ -583,55 +604,254 @@ def test_every_store_loaded_at_its_first_start_is_healthy_only_once_loaded():
     assert checked >= 12, checked
 
 
-def test_a_store_that_never_turns_healthy_has_its_volumes_recreated_once(tmp_path):
-    """scripts/demo_stores_sync.sh: a version whose stores do not come up healthy is taken down
-    with its volumes and started again; a second failure is the demo's, reported as not synced."""
+_VERSION = "202610160000-abc1234"
+
+
+def _sync(
+    tmp_path,
+    *args: str,
+    requested: bool = False,
+    in_use: str | None = None,
+    ask_on_pull=False,
+    wanted: str | None = None,
+    lingering_until: int | None = None,
+):
+    """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
+    that record what they were asked."""
     import os
     import subprocess
 
     bundles = tmp_path / "bundles"
-    version = "202610160000-abc1234"
-    (bundles / "weblogs" / version).mkdir(parents=True)
-    (bundles / "weblogs" / version / "docker-compose.run.yml").write_text("services: {}\n")
+    (bundles / "weblogs" / _VERSION).mkdir(parents=True)
+    (bundles / "weblogs" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+    if requested:
+        (bundles / "weblogs" / "requested").write_text("requested\n")
+    if lingering_until is not None:
+        # Its last sandbox closed (provisa.core.demo_bundles.linger) with its stores up.
+        (bundles / "weblogs" / "requested").write_text(f"until {lingering_until}\n")
+        (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
+        (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    if in_use is not None:
+        (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
+    if wanted is not None:
+        (bundles / "weblogs" / "wanted").write_text(wanted + "\n")
     calls = tmp_path / "calls"
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "docker").write_text(
-        f"""#!/usr/bin/env bash
-echo "$*" >> {calls}
-case "$*" in
-  *"config --format json"*) echo '{{"services": {{}}}}' ;;
-  *" up -d --wait"*) [ "$(grep -c ' up -d --wait' {calls})" -ge 2 ] || exit 1 ;;
-  *"compose ls"*) echo '[]' ;;
-esac
-"""
+    # ask_on_pull: a visitor opens weblogs while the run pulls a second demo, after weblogs was
+    # synced, as the tier asks (provisa.core.demo_bundles.request): its requested file, then
+    # the signal.
+    if ask_on_pull:
+        (bundles / "later" / _VERSION).mkdir(parents=True)
+    ask = (
+        f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f"echo requested > {bundles}/weblogs/requested; touch {bundles}/.wanted; }}\n"
+        if ask_on_pull
+        else ""
     )
-    (fake / "pull").write_text(f"#!/usr/bin/env bash\necho {bundles}/weblogs/{version}\n")
-    for f in fake.iterdir():
-        f.chmod(0o755)
+    # The pull records what it was asked for (tmp_path/pulls), one line per pull.
+    (fake / "pull").write_text(
+        f'#!/usr/bin/env bash\necho "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
+    )
+    (fake / "pull").chmod(0o755)
+    (fake / "demo_stores.py").write_text(
+        f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+    )
     env = {
         **os.environ,
-        "PATH": f"{fake}:{os.environ['PATH']}",
-        "PROVISA_DEMO_BUNDLES": "weblogs",
+        "PROVISA_DEMO_BUNDLES": "weblogs,later" if ask_on_pull else "weblogs",
         "DEMO_BUNDLES_DIR": str(bundles),
         "DEMO_PULL": str(fake / "pull"),
         "DEMO_PULL_INTO": str(bundles),
+        "DEMO_STORES": str(fake / "demo_stores.py"),
+        "DEMO_STORES_SHARED": "/shared.yml",
+        "DEMO_STORES_PROJECT": "provisa-demo-stores",
+        "DEMO_STORES_KAFKA_PORT": "29092",
     }
     run = subprocess.run(
-        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh")],
+        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), *args],
         env=env,
         capture_output=True,
         text=True,
     )
+    asked = calls.read_text().splitlines() if calls.exists() else []
+    return run, bundles / "weblogs", asked
+
+
+def test_a_demo_not_asked_for_is_pulled_and_offered_and_none_of_its_stores_started(tmp_path):
+    """scripts/demo_stores_sync.sh: a demo is offered once pulled; its stores are started only once
+    the tier asks for it (REQ-2049)."""
+    run, demo, asked = _sync(tmp_path)
     assert run.returncode == 0, run.stderr
-    ran = [
-        line.split(" -f ")[1].split(" ", 1)[1]
-        for line in calls.read_text().splitlines()
-        if " -f " in line and ("up" in line or "down" in line)
+    assert (demo / "pulled").read_text().strip() == _VERSION
+    assert not (demo / "ready").exists()
+    assert asked == []
+
+
+def test_a_demo_asked_for_has_its_stores_brought_up_and_its_version_marked_ready(tmp_path):
+    run, demo, asked = _sync(tmp_path, requested=True)
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert (demo / "ready").read_text().strip() == _VERSION
+
+
+def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp_path):
+    """An open during a sync touches <bundles>/.wanted while the service runs, which systemd's
+    path unit drops: the run goes again, so the stores come up now rather than at the timer's
+    next tick (a first open on the sandbox tier waited up to 15 minutes)."""
+    run, demo, asked = _sync(tmp_path, ask_on_pull=True)
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert (demo / "ready").read_text().strip() == _VERSION
+    assert not (demo.parent / ".wanted").exists()
+
+
+def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_path):
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-old0001", "202601020000-old0002"):
+        (bundles / old).mkdir(parents=True)
+        (bundles / old / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    run, demo, asked = _sync(tmp_path, requested=True, in_use="202601020000-old0002")
+    assert run.returncode == 0, run.stderr
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        "drop weblogs 202601010000-old0001",
     ]
-    assert ran == ["up -d --wait", "down -v --remove-orphans", "up -d --wait"], ran
-    assert "recreating their volumes" in run.stderr
-    assert (bundles / "weblogs" / "ready").read_text().strip() == version
+    assert not (demo / "202601010000-old0001").exists()
+    assert (demo / "202601020000-old0002" / "stores.env").exists()
+
+
+def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served_ones_are_kept(
+    tmp_path,
+):
+    """A bundle directory is deleted with its version, whether or not its stores were ever up:
+    reviews held six versions on cloud-dev's sandbox VM. The pulled, ready and in-use ones stay."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-never01", "202601020000-inuse02"):
+        (bundles / old).mkdir(parents=True)
+    run, demo, asked = _sync(tmp_path, requested=True, in_use="202601020000-inuse02")
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / "202601020000-inuse02").is_dir()
+    assert (demo / _VERSION / "docker-compose.run.yml").is_file()
+    assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
+
+
+def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):
+    """sandbox.demo_stores_linger after its last sandbox closed, with none opened since, the
+    demo's stores are taken down as an older version's are; its next open asks for it again."""
+    import time
+
+    run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"stop weblogs {_VERSION}"]
+    assert not (demo / "requested").exists()
+    assert not (demo / "ready").exists()
+    assert not (demo / _VERSION / "stores.env").exists()
+    assert (demo / _VERSION / "docker-compose.run.yml").is_file()
+    assert (demo / "pulled").read_text().strip() == _VERSION
+
+
+def test_a_demo_still_lingering_keeps_its_stores_up(tmp_path):
+    import time
+
+    until = int(time.time()) + 1800
+    run, demo, asked = _sync(tmp_path, lingering_until=until)
+    assert run.returncode == 0, run.stderr
+    assert not [call for call in asked if call.startswith(("drop", "stop"))]
+    assert (demo / "requested").read_text().strip() == f"until {until}"
+    assert (demo / "ready").read_text().strip() == _VERSION
+    assert (demo / _VERSION / "stores.env").exists()
+
+
+def test_a_demo_asked_for_again_inside_its_linger_is_kept(tmp_path, monkeypatch):
+    """An open before the time marks it requested again (provisa.core.demo_bundles.hold), so the
+    next run keeps its stores up, even once the time has passed."""
+    import time
+
+    from provisa.core import demo_bundles
+
+    root = tmp_path / "bundles"
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: root)
+    (root / "weblogs").mkdir(parents=True)
+    (root / "weblogs" / "requested").write_text("requested\n")
+    demo_bundles.linger("weblogs", time.time() - 1)
+    assert (root / "weblogs" / "requested").read_text().startswith("until ")
+    demo_bundles.hold("weblogs")
+    assert (root / "weblogs" / "requested").read_text().strip() == "requested"
+
+
+def test_a_demo_never_asked_for_is_not_marked_to_linger(tmp_path, monkeypatch):
+    """A demo whose stores were never up has nothing to take down: its last sandbox closing leaves
+    it unasked."""
+    from provisa.core import demo_bundles
+
+    root = tmp_path / "bundles"
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: root)
+    demo_bundles.linger("weblogs", 0)
+    demo_bundles.hold("weblogs")
+    assert not (root / "weblogs" / "requested").exists()
+
+
+def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):
+    """Run before docker at the node's start (provisa-demo-stores-boot.service): none of the
+    demos' stores is running, so none is ready or asked for, and none is started at boot."""
+    run, demo, asked = _sync(tmp_path, requested=True)
+    assert (demo / "ready").exists()
+    import os
+    import subprocess
+
+    boot = subprocess.run(
+        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), "--boot"],
+        env={
+            **os.environ,
+            "PROVISA_DEMO_BUNDLES": "weblogs",
+            "DEMO_BUNDLES_DIR": str(demo.parent),
+            "DEMO_PULL": "unused",
+            "DEMO_PULL_INTO": str(demo.parent),
+            "DEMO_STORES": "unused",
+            "DEMO_STORES_SHARED": "unused",
+            "DEMO_STORES_PROJECT": "unused",
+            "DEMO_STORES_KAFKA_PORT": "unused",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert boot.returncode == 0, boot.stderr
+    assert not (demo / "ready").exists() and not (demo / "requested").exists()
+    assert (demo / "pulled").read_text().strip() == _VERSION
+
+
+def test_a_version_an_earlier_release_pinned_is_not_pulled_and_the_start_clears_it(tmp_path):
+    """<name>/wanted pinned a demo to the version written there, ahead of the latest published;
+    stale ones from an earlier release kept datavault, profiling and vulnerabilities on broken
+    bundles. The sync pulls the latest published alone, and the node's start removes the file."""
+    import os
+    import subprocess
+
+    run, demo, _asked = _sync(tmp_path, requested=True, wanted="202601010000-old0001")
+    assert run.returncode == 0, run.stderr
+    assert (tmp_path / "pulls").read_text().split() == ["weblogs"]
+    assert (demo / "ready").read_text().strip() == _VERSION
+    boot = subprocess.run(
+        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), "--boot"],
+        env={
+            **os.environ,
+            "PROVISA_DEMO_BUNDLES": "weblogs",
+            "DEMO_BUNDLES_DIR": str(demo.parent),
+            "DEMO_PULL": "unused",
+            "DEMO_PULL_INTO": str(demo.parent),
+            "DEMO_STORES": "unused",
+            "DEMO_STORES_SHARED": "unused",
+            "DEMO_STORES_PROJECT": "unused",
+            "DEMO_STORES_KAFKA_PORT": "unused",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert boot.returncode == 0, boot.stderr
+    assert not (demo / "wanted").exists()
 
 
 def test_a_demo_in_regions_refuses_an_empty_replica_of_any_region(tmp_path):
@@ -706,3 +926,20 @@ def test_the_build_fetches_the_demos_connector_bundles_before_any_server_starts(
     )
     builder._prefetch_connector_bundles(demo)
     assert fetched == ["pgwire-govdata"]
+
+
+def test_every_demos_relational_store_is_one_the_build_dumps():
+    """The build dumps a demo's relational store (role rdb) with pg_dump: its image is Postgres,
+    or Postgres with pgvector. One it does not know fails the build after the demo is set up
+    (cloudpolicy's pgvector store, at its first bundle build)."""
+    named = Path(__file__).resolve().parents[2] / "demo" / "named"
+    unknown = {
+        f"{compose.parent.name}/{name}": service["image"]
+        for compose in sorted(named.glob("*/docker-compose.yml"))
+        # A published demo's bundle is built; an unpublished one (perf) is not.
+        if yaml.safe_load((compose.parent / "demo.yaml").read_text()).get("published")
+        for name, service in (yaml.safe_load(compose.read_text()).get("services") or {}).items()
+        if (service.get("labels") or {}).get("com.provisa.demo.role") == "rdb"
+        and not str(service.get("image", "")).startswith(builder.POSTGRES_IMAGES)
+    }
+    assert unknown == {}

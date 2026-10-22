@@ -68,8 +68,6 @@ El campo `extensions` admite el protocolo Automatic Persisted Query (APQ):
 
 **Caché de respuestas:** se activa por solicitud con la directiva de operación `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` opcional); la misma directiva se aplica a GraphQL enviado por Arrow Flight. Cypher se activa con una línea `// @provisa cache=true` o `// @provisa cache_ttl=N`, y gRPC con los metadatos de llamada `x-provisa-cache: true` o `x-provisa-cache-ttl: N`. Sin ella, la solicitud no lee ni escribe la caché de respuestas. El encabezado de respuesta `X-Provisa-Cache` indica `HIT` o `MISS`. Consulte [Caché](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### Encabezados de solicitud de la caché de respuestas {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, la Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` y `/data/jsonapi` también aceptan la activación como encabezado de solicitud. Cada forma siguiente se comporta como `@cached(ttl: N)`:
@@ -1627,7 +1625,7 @@ Un producto sin miembros exportados no recibe entrada en la instantánea, porque
 
 ### Soporte de productos de datos por destino de catálogo {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` llega a cada adaptador, pero solo los adaptadores cuya plataforma tiene un concepto nativo de producto de datos lo publican como entidad de primer orden; el resto publica las tablas miembro (ya filtradas arriba) sin agrupación de producto.
+`MetadataSnapshot.data_products` llega a cada adaptador, pero solo los adaptadores cuya plataforma tiene un concepto nativo de producto de datos lo publican como entidad propia; el resto publica las tablas miembro (ya filtradas arriba) sin agrupación de producto.
 
 | Destino | Representación del producto de datos |
 | --- | --- |
@@ -1638,4 +1636,4 @@ Un producto sin miembros exportados no recibe entrada en la instantánea, porque
 | Collibra | Cada producto se convierte en un activo de tipo de comunidad `Data Product`, relacionado con sus tablas miembro mediante una relación `Data Product groups Table`. |
 | Atlan | Publicado como una suposición de typedef personalizado `DataProduct` — Atlan no tiene un nombre de tipo estable documentado para este concepto, por lo que la asignación es con mejor esfuerzo. |
 | Apache Atlas | Publicado como un typedef personalizado `provisa_data_product` con una relación `provisa_data_product_members` — Atlas no tiene tipo de entidad nativo para productos de datos. |
-| OpenLineage | No es una entidad de primer orden — las tablas miembro llevan una faceta personalizada `provisa_data_product` que nombra el producto propietario. |
+| OpenLineage | Sin entidad propia; las tablas miembro llevan una faceta personalizada `provisa_data_product` que nombra el producto propietario. |

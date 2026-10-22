@@ -254,7 +254,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 | --- | --- | --- |
 | `--env` | sim | Nome do novo ambiente |
 | `--from` | não | Ambiente de partida; padrão `prod` |
-| `--data-mode` | sim | `inherit`, `unbound`, `test_fake` ou `test_synthetic`: as conexões da fonte por referência, nenhuma até que vincule as suas, ou dados de teste |
+| `--data-mode` | sim | `inherit`, `unbound`, `test_fake` ou `test_synthetic`: as conexões do ambiente `--from`, copiadas tal como estão escritas lá, nenhuma até que vincule as suas, ou dados de teste |
 | `--mutation-handling` | não | `refused`, `reversible` ou `direct`; padrão `refused` |
 | `--expires-at` | não | Instante ISO-8601 após o qual o ambiente é excluído |
 
@@ -329,7 +329,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | não | Informa o que o deploy faria; não aplica nada |
 | `--message` | não | Nota levada para uma solicitação de aprovação quando o destino está protegido |
 
-Uma carga em um ambiente existente nunca aplica funções. `--seed` não existe mais: a API recusa um seed
+Uma carga em um ambiente existente nunca aplica funções. Não há `--seed`: a API recusa um seed
 com `environments.seed_only_at_creation`.
 
 ```bash

@@ -156,8 +156,8 @@ Saisissez la connexion dans les paramètres de sources de l'import (ou avec `--s
 ### Colonnes génériques {: #wildcard-columns }
 
 Lorsqu'une autorisation accorde `columns: "*"`, le convertisseur crée une seule entrée de colonne
-générique. Après la conversion, vous pouvez souhaiter la remplacer par des listes de colonnes
-explicites en inspectant le schéma réel de la base de données.
+générique. Après la conversion, remplacez-la par une liste de colonnes explicite
+lue dans le schéma de la base de données.
 
 ### Fidélité des event triggers {: #event-trigger-fidelity }
 

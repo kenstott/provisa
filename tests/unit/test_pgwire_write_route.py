@@ -274,6 +274,35 @@ def test_the_write_server_is_started_only_for_a_type_written_through_one(monkeyp
     assert spawned == ["pgwire-write-server:sf-sales"]
 
 
+def test_no_write_server_is_started_for_a_source_its_config_fakes_with_declared_rows(monkeypatch):
+    """REQ-2089: a source whose rows the config declares, landed once (TTL -1) and never
+    contacted, has no service behind it to start a server for (a demo's faked Salesforce or
+    ServiceNow). One that declares no rows, or is read on a TTL, still gets its server."""
+    from provisa.core import connection_loop
+    from provisa.federation import declared_replica_rows
+
+    spawned: list[str] = []
+
+    def _spawn(coro, *, name=None):
+        coro.close()
+        spawned.append(name)
+
+    monkeypatch.setattr(connection_loop, "spawn_background", _spawn)
+    declared = {"sf-sales"}
+    monkeypatch.setattr(
+        declared_replica_rows, "declares_rows", lambda source_id: source_id in declared
+    )
+    faked = _salesforce()
+    faked.cache_ttl = -1
+    pgwire_write.start_write_server(faked)
+    assert spawned == []
+    declared.clear()
+    pgwire_write.start_write_server(faked)  # TTL -1, but its rows are not declared: a real one
+    declared.add("sf-sales")
+    pgwire_write.start_write_server(_salesforce())  # declared, but read on a TTL
+    assert spawned == ["pgwire-write-server:sf-sales"] * 2
+
+
 # -- the writes that reach the pool ----------------------------------------------------------------
 
 

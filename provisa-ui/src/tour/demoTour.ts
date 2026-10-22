@@ -56,6 +56,15 @@ export interface DemoLanding {
   capability: Capability;
 }
 
+/** A graph of View Profile Runs (ProfileRunsModal's 3D views), and its stage's test id. */
+export const PROFILE_GRAPH_STAGES = {
+  terrain: "terrain-stage",
+  relationsMap: "relations-stage",
+  jointCloud: "joint-stage",
+  driftStrata: "strata-stage",
+} as const;
+export type ProfileGraph = keyof typeof PROFILE_GRAPH_STAGES;
+
 /** One step of tour.yaml, as the server sends it: its page, and exactly one target. */
 export interface DemoTourStepDef {
   key: string;
@@ -68,8 +77,14 @@ export interface DemoTourStepDef {
   /** With `table`: its detail panel opened on a section, and in Columns on a tab, as
    *  `<section>[.<tab>]` (`columns.testing`: each column's fake). */
   open?: string;
+  /** With `table` and `open: quality`: one graph of the table's latest profile run, drawn in its
+   *  View Profile Runs window (`terrain`, `relationsMap`, `jointCloud`, `driftStrata`). The tour
+   *  opens the window and picks the graph itself, then explains the graph once it is drawn. */
+  graph?: ProfileGraph;
   /** A relationship, by alias: its row on the Relationships page. */
   relationship?: string;
+  /** A scheduled trigger, by id: its row on the Triggers page. */
+  trigger?: string;
   /** An example query of the demo, by name: opened in a new GraphiQL tab and run. */
   example?: string;
   /** A statement: opened in a new SQL explorer tab and run. */
@@ -119,7 +134,13 @@ export interface DemoTourStepDef {
    *  step before it is on; the server sends it as `image_src`, a data URL. */
   image?: string;
   image_src?: string;
+  /** Beside any target: another named demo, by name, its popover's "Open the <title> demo" button
+   *  going to `/demos/<name>` (a demo that builds on another links back to it, and on to it). */
+  demo?: string;
 }
+
+/** View Profile Runs' close button: a graph step leaves the window as it found it. */
+const PROFILE_RUNS_CLOSE = '[data-testid="profile-runs-modal"] .mantine-Modal-close';
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
 const RESULT_WAIT_MS = 60000;
@@ -133,6 +154,9 @@ const APP_ROLE = '[data-testid="role-selector-trigger"]';
 // The header's environment switcher: what every request after it is served from.
 const ENV_SWITCHER = '[data-testid="env-switcher-trigger"]';
 const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-grid-empty"])';
+// A statement refused, as the explorer shows it: the provisioning close read outside its view's
+// load window is refused by design, and its step shows the refusal rather than ending the tour.
+const SQL_RESULT_ERROR = '[data-testid="sql-results-error"]';
 
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
@@ -151,7 +175,8 @@ export function demoTourSteps(
     if (def.as_of !== undefined) context.asOf = def.as_of;
     if (def.as_recorded !== undefined) context.asRecorded = def.as_recorded;
     if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
-    steps.push(demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran));
+    const step = demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran);
+    steps.push(def.demo !== undefined ? { ...step, demo: def.demo } : step);
   }
   return steps;
 }
@@ -184,6 +209,24 @@ function demoTourStep(
     // describes is shown only there.
     const [section, tab] = def.open.split(".");
     const query = new URLSearchParams({ open: def.table, section, ...(tab ? { tab } : {}) });
+    if (def.graph !== undefined) {
+      // Act, then explain (REQ-2115): the tour opens the table's View Profile Runs, which selects
+      // the latest run, and picks the graph's tab; the popover then explains the graph, once its
+      // scene is drawn (three.js loads on first use). Leaving the step closes the window.
+      const stage = `[data-testid="${PROFILE_GRAPH_STAGES[def.graph]}"][data-ready]`;
+      return {
+        ...page,
+        route: `${def.route ?? "/tables"}?${query.toString()}`,
+        actions: [
+          { do: "press", target: { testId: "table-read-view-profile-runs" } },
+          { do: "press", target: { testId: `profile-tab-${def.graph}` } },
+        ],
+        readySelector: stage,
+        element: stage,
+        waitMs: RESULT_WAIT_MS,
+        clickAfterNext: PROFILE_RUNS_CLOSE,
+      };
+    }
     return {
       ...page,
       route: `${def.route ?? "/tables"}?${query.toString()}`,
@@ -194,7 +237,15 @@ function demoTourStep(
     return { ...page, element: `[data-table-row="${def.table}"]` };
   }
   if (def.relationship !== undefined) {
-    return { ...page, element: `[data-tour-relationship="${def.relationship}"]` };
+    const element = `[data-tour-relationship="${def.relationship}"]`;
+    if (def.route === undefined) return { ...page, element };
+    // The step that opens the page searches it by the alias, so the row is on its first page
+    // whatever else the org holds: a relationship listed past the first fifty mounts no anchor.
+    const query = new URLSearchParams({ search: def.relationship });
+    return { ...page, route: `${def.route}?${query.toString()}`, element };
+  }
+  if (def.trigger !== undefined) {
+    return { ...page, element: `[data-testid="scheduled-task-row-${def.trigger}"]` };
   }
   if (def.example !== undefined) {
     const example = examples.find((e) => e.name === def.example);
@@ -214,9 +265,10 @@ function demoTourStep(
     return {
       ...page,
       openQuery: { stateKey: "sql", text: def.sql },
-      // Its rows, not the table: the grid of an unrun tab is a table that says it has none.
-      readySelector: SQL_RESULT_ROW,
-      element: ".sql-results-table",
+      // Its rows, not the table: the grid of an unrun tab is a table that says it has none. Or
+      // its refusal, which is the answer the page shows then.
+      readySelector: `${SQL_RESULT_ROW}, ${SQL_RESULT_ERROR}`,
+      element: `.sql-results-table, ${SQL_RESULT_ERROR}`,
       waitMs: RESULT_WAIT_MS,
     };
   }
@@ -260,15 +312,16 @@ function demoTourStep(
   }
   if (def.notebook === true) {
     // REQ-2084: the demo's notebook, its cells added to the Notebook tab's open notebook and run;
-    // the step is shown once the last has answered.
+    // the step is shown once the last has answered, on the last cell's outputs (its figure), which
+    // the notebook has scrolled into view.
     if (notebook.length === 0) {
       throw new Error(`Tour: step ${def.key} opens the demo's notebook, and it ships none`);
     }
     return {
       ...page,
       navState: { cells: [...notebook], autoRun: true },
-      readySelector: '[data-testid="notebook-answered"]',
-      element: '[data-testid="notebook-panel"]',
+      readySelector: '[data-testid="notebook-answer"]',
+      element: '[data-testid="notebook-answer"]',
       waitMs: NOTEBOOK_WAIT_MS,
     };
   }

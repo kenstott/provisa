@@ -15,7 +15,7 @@ Provisa תומכת בשישה נתיבי פריסה. בחרו בהתבסס על 
 
 ### VM לעומת Kubernetes {: #vm-vs-kubernetes }
 
-שניהם ברמה ארגונית (enterprise-grade). נתיב ה-VM/AppImage פשוט יותר: אין אשכול לספק, אין מדיניות CNI או RBAC להגדיר, וה-AppImage הוא לגמרי self-contained. הוא משתלב באופן טבעי בכלי ניהול שרתים קיימים (Ansible, Puppet, סוכני Datadog, מעבירי Splunk, וכו').
+שניהם מתאימים לייצור. נתיב ה-VM/AppImage פשוט יותר: אין אשכול לספק, אין מדיניות CNI או RBAC להגדיר, וה-AppImage הוא לגמרי self-contained. הוא משתלב באופן טבעי בכלי ניהול שרתים קיימים (Ansible, Puppet, סוכני Datadog, מעבירי Splunk, וכו').
 
 בחרו ב-Kubernetes רק אם הצוות שלכם כבר מפעיל אשכול K8s ורוצה ש-Provisa ישתלב בדרך התפעול הזו (פריסות מתגלגלות, HPA, ניטור מאוחד). שתי האפשרויות נותנות את אותן יכולות; Kubernetes מוסיף עומס תפעולי.
 
@@ -37,7 +37,7 @@ Provisa תומכת בשישה נתיבי פריסה. בחרו בהתבסס על 
 
 ### מומלץ: `start-ui.sh` {: #recommended-start-uish }
 
-הדרך הקלה ביותר להריץ את Provisa מקוד-מקור. מתחיל את כל התשתית, ה-API של הbackend, ושרת הפיתוח של ה-UI בפקודה אחת. Ctrl+C מכבה הכל בצורה נקייה.
+זו הדרך הקלה ביותר להריץ את Provisa מקוד-מקור. פקודה אחת מפעילה את כל התשתית, את ה-API של ה-backend ואת שרת הפיתוח של ה-UI. Ctrl+C מכבה הכל בצורה נקייה.
 
 **דרישות מוקדמות:** Docker Desktop, Node.js, virtualenv‏ Python ב-`.venv/`
 

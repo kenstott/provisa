@@ -56,7 +56,7 @@ sources:
   type: postgresql
   host: ${env:VULNERABILITIES_PG_HOST:-localhost}
   port: ${env:VULNERABILITIES_PG_PORT:-28332}
-  database: vulnerabilities
+  database: vulnerabilities${env:VULNERABILITIES_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The source-control host's database -- repositories, their dependency manifests and

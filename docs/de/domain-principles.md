@@ -18,7 +18,7 @@
 
 Eine Tabelle und eine Sicht unterscheiden sich nur in ihrer Herkunft: Eine Tabelle wird aus einer Quelle beansprucht, eine Sicht von einem Steward definiert. Sobald eine von beiden ein Domänen-Asset ist, behandelt das Governance-Modell sie gleich:
 
-- Beide sind erstklassige Domänen-Assets, die im Katalog sichtbar sind
+- Beide sind eigenständige Domänen-Assets, die im Katalog sichtbar sind
 - Beide können Ziel einer Beziehung sein
 - Beide können unter Prinzip 6 gewährt werden
 - Beide unterliegen derselben Governance-Pipeline
@@ -80,7 +80,7 @@ Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Dom�
 - Über einen Beziehungsantrag entscheiden die Domänen, die er berührt: die Domäne seiner Quelltabelle und die Domäne seiner Zieltabelle
 - Eine Genehmigung zählt nur von einem Benutzer, dessen Recht, Beziehungen anzulegen, eine dieser Domänen erreicht; ablehnen kann jeder solche Benutzer
 - Der Antrag wird ausgeführt, sobald zwei verschiedene Benutzer, keiner davon der Antragsteller, zugestimmt haben und jede beteiligte Domäne einen Genehmiger hat: Eine Beziehung über zwei Domänen braucht ein Ja von jeder Seite, eine Beziehung innerhalb einer Domäne zwei Genehmiger dieser Domäne
-- Die Genehmigung einer Beziehung baut den Abhängigkeitsgraphen jedes Stewards auf und ermöglicht proaktive Benachrichtigungen über Schemaentwicklung
+- Die Genehmigung einer Beziehung baut den Abhängigkeitsgraphen jedes Stewards auf sodass Stewards von Schemaänderungen erfahren, bevor sie wirksam werden
 
 Beziehungen entstehen, wenn jemand sie braucht, nie auf Vorrat. Das erste Team mit dem fachlichen Bedarf erledigt die Arbeit, spätere Teams erben sie.
 
@@ -112,10 +112,10 @@ Drei Phasen, in dieser Reihenfolge.
 
 **Phase 1 — Shaping (SQL-Discovery, von der Beziehungen-Seite aus):**
 
-- Der Analyst öffnet das Shaping-Werkzeug von der Beziehungen-Seite aus, um potenzielle Join-Pfade in rohem SQL zu erkunden
+- Der Analyst öffnet das Shaping-Werkzeug von der Beziehungen-Seite aus, um Join-Pfade in rohem SQL auszuprobieren
 - SQL wird gegen zugängliche Daten ausgeführt, vorbehaltlich bestehender RLS und Spaltenmaskierung
 - JOINs im SQL werden geparst und als Kandidaten-Beziehungsvorschläge angezeigt
-- Maschinell vorgeschlagene Kandidaten (FK-Inferenz, semantische Inferenz) werden zusammen mit der SQL-Exploration des Analysten in derselben Ansicht angezeigt
+- Maschinell vorgeschlagene Kandidaten (FK-Inferenz, semantische Inferenz) werden zusammen mit dem SQL des Analysten in derselben Ansicht angezeigt
 - Der Analyst wählt Kandidaten aus, um sie zu einer formalen Beziehungsanfrage zu befördern
 
 **Phase 2 — Beziehungsgenehmigung** (folgenreich — strukturell und dauerhaft):
@@ -238,7 +238,7 @@ Es öffnet sich als Dialog auf der Seite Beziehungen. Sein Zweck ist der Aufbau 
 4. Der Analyst befördert ausgewählte Kandidaten zu formalen Beziehungsanfragen
 5. Genehmigte Beziehungen werden dem Katalog hinzugefügt und in Abfragen durchlaufbar
 
-Für die strukturelle Erkundung darf das Modellierungswerkzeug jede registrierte Tabelle zeigen, auch solche, deren Daten der Analyst nicht sehen kann. Die Sichtbarkeit des Schemas ist eine eigene Frage; den Zugriff auf die Daten selbst regelt die Genehmigung des Stewards.
+Während Sie die Struktur ausarbeiten, darf das Modellierungswerkzeug jede registrierte Tabelle zeigen, auch solche, deren Daten der Analyst nicht sehen kann. Die Sichtbarkeit des Schemas ist eine eigene Frage; den Zugriff auf die Daten selbst regelt die Genehmigung des Stewards.
 
 ---
 

@@ -32,7 +32,7 @@ Standardmäßig werden nur einem Produkt zugewiesene Tabellen an externe Katalog
 
 Ein Produkt ohne exportierte Mitglieder wird nicht veröffentlicht. Ein leerer Eintrag würde vortäuschen, dass ein Produkt existiert, ohne dass etwas dahintersteht.
 
-Nur Kataloge mit einem nativen Datenprodukt-Konzept veröffentlichen es als erstklassige Entität; die übrigen veröffentlichen die (bereits gefilterten) Mitgliedstabellen ohne Produktgruppierung:
+Nur Kataloge mit einem nativen Datenprodukt-Konzept veröffentlichen es als eigene Entität; die übrigen veröffentlichen die (bereits gefilterten) Mitgliedstabellen ohne Produktgruppierung:
 
 | Katalog | Veröffentlicht als |
 | --- | --- |

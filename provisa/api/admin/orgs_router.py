@@ -162,6 +162,12 @@ class RenameOrgBody(BaseModel):
     name: str
 
 
+class OrgTierBody(BaseModel):  # REQ-1066
+    """The org's subscription tier: one of the entitlement tiers, or null to clear it."""
+
+    tier: str | None
+
+
 class OrgPolicyBody(BaseModel):
     # REQ-1268/REQ-1269: join policy an org admin may edit after creation.
     email_rule: str | None = None
@@ -368,6 +374,7 @@ async def list_orgs(request: Request):  # REQ-042, REQ-059
                 orgs.c.created_by,
                 orgs.c.created_at,
                 orgs.c.isolated_engine,
+                orgs.c.tier,  # REQ-1066
             ).order_by(orgs.c.id)
         )
         rows = result.fetchall()
@@ -715,6 +722,24 @@ async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ
     return dict(row._mapping)
 
 
+@router.put("/{org_id}/tier")
+async def set_org_tier(org_id: str, body: OrgTierBody, request: Request):  # REQ-1066
+    """Set the org's subscription tier, which every tier-gated feature reads. A platform
+    administrator's act: an org does not entitle itself."""
+    _require_platform_admin(request)
+    from provisa.control_plane.entitlements import UnknownTierError, parse_tier
+    from provisa.core.org_tier import write_org_tier
+
+    if body.tier is not None:
+        try:
+            parse_tier(org_id, body.tier)
+        except UnknownTierError as exc:
+            raise ApiError(400, "orgs.unknown_tier", str(exc)) from exc
+    if not await write_org_tier(org_id, body.tier):
+        raise ApiError(404, "orgs.not_found", "Org not found")
+    return {"id": org_id, "tier": body.tier}
+
+
 @router.get("/{org_id}/settings")
 async def read_org_settings(org_id: str, request: Request):  # REQ-1268, REQ-1269, REQ-1569
     """The org's join policy, for the form that edits it.
@@ -1002,6 +1027,8 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         org_invites,
         personal_access_tokens,
     )
+    from provisa.api.app import state as _app_state
+    from provisa.scheduler.jobs import unschedule_org
 
     async with _admin_pool().acquire() as conn:
         # REQ-1921/REQ-1922: every environment of the org, in every region store its models
@@ -1009,7 +1036,15 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         # naming its region, before anything here is removed.
         envs = [e["name"] for e in await list_envs(_admin_pool(), org_id)]
         try:
-            await purge_org_regions(_pool(), org_id, envs)
+            # REQ-2006: its scheduled jobs (its replica build pass fires every 2 s) stop once the
+            # purge can go ahead and before anything is dropped: none fires against a store or
+            # schema this removes, and a refused delete leaves the org running, whole.
+            await purge_org_regions(
+                _pool(),
+                org_id,
+                envs,
+                before_drop=lambda: unschedule_org(getattr(_app_state, "_scheduler", None), org_id),
+            )
         except RegionStoreUnreachable as refused:
             raise ApiError(
                 409,
@@ -1042,8 +1077,6 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
     await deprovision_org(_pool(), org_id, redis_url=_redis_url())
     # Evict the cached runtime last: an in-flight request must not rebuild it from a registry row
     # that still exists.
-    from provisa.api.app import state as _app_state
-
     # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
     _app_state.org_registry.invalidate_org(org_id)
     # And the connector servers started for its sources (a files source's JVM, hundreds of
@@ -1051,10 +1084,6 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
     from provisa.federation.pgwire_replica import stop_org_servers
 
     await asyncio.to_thread(stop_org_servers, org_id)
-    # REQ-2006: and its scheduled jobs, which would otherwise fire against the org it no longer is.
-    from provisa.scheduler.jobs import unschedule_org
-
-    unschedule_org(getattr(_app_state, "_scheduler", None), org_id)
     # REQ-1301: the registry view names the dropped schema, so it must stop naming it before anyone
     # queries it again.
     await _refresh_root_registry_view()

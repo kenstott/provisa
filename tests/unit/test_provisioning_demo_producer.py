@@ -71,6 +71,8 @@ class _Consumer:
 @pytest.fixture
 def producer(monkeypatch):
     monkeypatch.setenv("FEEDS_BOOTSTRAP", "feeds:9092")
+    # The demo's own broker: its topics carry no suffix (demo_bundles.store_namespaces).
+    monkeypatch.setenv("TOPIC_SUFFIX", "")
     spec = importlib.util.spec_from_file_location("provisioning_producer", _PRODUCER)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

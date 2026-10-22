@@ -295,8 +295,7 @@ def lockfile(root: Path) -> Path | None:
             raise BundleRefused(
                 "no_lockfile",
                 f"the code declares dependencies ({', '.join(declared[:5])}) but carries no "
-                f"{', '.join(LOCKFILES)}; add one beside the package on the source's form (a "
-                "wheel carries none)",
+                f"{', '.join(LOCKFILES)}; add one beside the code on the source's form",
             )
         return None
     if found.name == "uv.lock" and not (root / "pyproject.toml").is_file():
@@ -382,7 +381,7 @@ def ensure_installed(
 ) -> Installed:
     """The source's code, installed and cached by content hash
     (:func:`provisa.codesource.install.ensure_installed`), with ``lockfile`` -- given beside the
-    package reference -- put into it first."""
+    code -- put into it first."""
     return shared.ensure_installed(
         source_id=source_id,
         runtime="python",

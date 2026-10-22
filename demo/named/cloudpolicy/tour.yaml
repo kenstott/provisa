@@ -1,0 +1,105 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The cloudpolicy demo's own tour (REQ-2102): the security lead reviews the cloud security
+# policy's disk-encryption control across three clouds, after the fact, from what is recorded.
+# Step kinds are as demo/named/weblogs/tour.yaml's header describes them.
+#
+# The track: the policy and the review problem; the three sources (the inventory, the incidents,
+# and the policy itself, read from its HTML by a Python package and embedded for search); one
+# model across the clouds, incidents tied to the clauses they cite; the policy as a view; the
+# daily trigger and the history it keeps; Polly on the review; the same list as an application
+# team, fewer rows; the compliance dashboard in Superset; the recap.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: cloudpolicyScenario
+  route: /sources
+  capability: source_registration
+  source: inventory
+- key: cloudpolicyIncidents
+  source: itsm
+- key: cloudpolicyReader
+  source: policy-reader
+- key: cloudpolicyPolicy
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT section, heading, clause, effective_date
+    FROM "cloudpolicy"."policy_sections"
+    ORDER BY section
+- key: cloudpolicySearch
+  sql: >-
+    SELECT section, cosine_similarity(clause_vec, 'how disks must be encrypted') AS similarity
+    FROM "cloudpolicy"."clause_vectors"
+    ORDER BY similarity DESC
+    LIMIT 3
+- key: cloudpolicyModel
+  route: /relationships
+  capability: create_relationship
+  relationship: ATTACHED_TO
+- key: cloudpolicyCites
+  relationship: CITES
+- key: cloudpolicyViolations
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT cloud_provider, application, resource_name, storage_type, encryption_type, instance_name
+    FROM "cloudpolicy"."view_cmek_violations"
+    ORDER BY cloud_provider, application, resource_name
+- key: cloudpolicyReview
+  sql: >-
+    SELECT status, COUNT(*) AS disks
+    FROM "cloudpolicy"."view_daily_review"
+    GROUP BY status
+    ORDER BY disks DESC
+- key: cloudpolicyTrigger
+  route: /admin/scheduled-tasks
+  capability: org_settings
+  trigger: daily-review
+- key: cloudpolicyTrend
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT review_date, COUNT(*) AS violations
+    FROM "cloudpolicy"."review_history"
+    WHERE status <> 'compliant'
+    GROUP BY review_date
+    ORDER BY review_date
+- key: cloudpolicyPollyViolators
+  polly: Which attached disks break the policy's disk encryption control, and which section requires it?
+- key: cloudpolicyPollyExceptions
+  polly: Which disks without a customer-managed key are covered by an exception that is still in date?
+- key: cloudpolicyPollyWrongControl
+  polly: Which incidents cite a policy section other than the control they are about?
+- key: cloudpolicyPollyUnchecked
+  polly: Which controls of the policy does no check enforce?
+- key: cloudpolicyAuditor
+  role: auditor
+- key: cloudpolicyOpen
+  sql: >-
+    SELECT application, resource_name, status, incident_number
+    FROM "cloudpolicy"."view_daily_review"
+    WHERE status <> 'compliant'
+    ORDER BY application, status, resource_name
+- key: cloudpolicyAppTeam
+  role: app_payments
+- key: cloudpolicyAppTeamRows
+  sql: >-
+    SELECT application, resource_name, status, incident_number
+    FROM "cloudpolicy"."view_daily_review"
+    WHERE status <> 'compliant'
+    ORDER BY application, status, resource_name
+- key: cloudpolicyDashboard
+  image: superset.png
+- key: cloudpolicyRecap
+  route: /sources
+  capability: source_registration
+  source: policy-reader

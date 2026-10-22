@@ -73,6 +73,7 @@
     "sandboxExitCreateOrg": "संगठन बनाएँ",
     "sandboxExitLogOut": "केवल लॉग आउट करें",
     "itemPython": "Python",
-    "itemNotebook": "नोटबुक"
+    "itemNotebook": "नोटबुक",
+    "itemContainerRegistries": "कंटेनर रजिस्ट्री"
   }
 }

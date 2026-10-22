@@ -152,7 +152,7 @@ def test_the_first_failure_of_a_run_is_logged_with_its_traceback(caplog):
     record = _logged(caplog, Failure(attempts=1, repeat=False))
     assert record.levelno == logging.ERROR and record.exc_info is not None
     assert record.getMessage() == (
-        "replica build of src.public.orders failed: connection refused; "
+        "replica build of src.public.orders failed: ConnectionError: connection refused; "
         "next attempt at 2026-10-09T12:01:00+00:00"
     )
 
@@ -161,7 +161,8 @@ def test_a_repeat_of_the_same_failure_is_one_line(caplog):
     record = _logged(caplog, Failure(attempts=4, repeat=True))
     assert record.levelno == logging.WARNING and not record.exc_info
     assert record.getMessage() == (
-        "replica build of src.public.orders failed again (4 in a row): connection refused; "
+        "replica build of src.public.orders failed again (4 in a row): ConnectionError: "
+        "connection refused; "
         "next attempt at 2026-10-09T12:08:00+00:00"
     )
 

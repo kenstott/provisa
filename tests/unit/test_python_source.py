@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from provisa.codesource import worker as w
+from provisa.codesource.arrow_rows import row_schema, schema_text
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.manifest import (
     PYTHON_RULES,
@@ -138,6 +139,64 @@ def test_a_typed_dict_and_a_named_tuple_are_row_types(tmp_path):
     )
 
 
+_PYDANTIC_CODE = """
+    from pydantic import BaseModel, Field as Described, PrivateAttr
+
+    class Line(BaseModel):
+        sku: str
+        qty: int
+
+    class Rate(BaseModel):
+        pair: str = Described(description="The currency pair, base first.")
+        mid_rate: float = Described(alias="midRate")
+        note: str | None = None
+        lines: list[Line] = []
+        _seen: int = PrivateAttr(default=0)
+
+    def rates() -> list[Rate]:
+        \"\"\"@table\"\"\"
+        return [Rate(pair="EURUSD", midRate=1.08, lines=[Line(sku="a", qty=2)])]
+    """
+
+
+def test_a_pydantic_model_is_a_row_type_named_as_it_is_sent_and_described(tmp_path):
+    manifest = read_manifest(_read(_code(tmp_path, _PYDANTIC_CODE), "rows"), PYTHON_RULES)
+    assert manifest.types["Rate"].fields == (
+        Field("pair", Scalar("text"), False, "The currency pair, base first."),
+        Field("midRate", Scalar("double"), False),
+        Field("note", Scalar("text"), True),
+        Field("lines", ListOf(Named("Line")), False),
+    )
+    assert manifest.types["Line"].fields == (
+        Field("sku", Scalar("text"), False),
+        Field("qty", Scalar("bigint"), False),
+    )
+
+
+def test_a_pydantic_models_rows_come_back_by_alias_with_nested_models(tmp_path):
+    (tmp_path / "code").mkdir()
+    code = _code(tmp_path / "code", _PYDANTIC_CODE)
+    manifest = read_manifest(_read(code, "rows"), PYTHON_RULES)
+    command = w.HostCommand(
+        argv=lambda address: [sys.executable, "-I", str(HOST), address, str(code), "rows"],
+        env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
+        cwd=code,
+    )
+    started = w.Worker("python-src", "h", command)
+    started.start()
+    try:
+        schema = schema_text(row_schema(manifest, manifest.export("rates")))
+        [[row]] = list(started.rows("rates", "table", [], schema=schema))
+    finally:
+        started.stop()
+    assert row == {
+        "pair": "EURUSD",
+        "midRate": 1.08,
+        "note": None,
+        "lines": [{"sku": "a", "qty": 2}],
+    }
+
+
 def test_code_that_breaks_the_rules_is_refused_with_every_problem(tmp_path):
     code = _code(
         tmp_path,
@@ -241,6 +300,12 @@ def test_more_than_one_module_is_named_by_the_source_or_refused(tmp_path):
 # -- the host -----------------------------------------------------------------------------------
 
 
+def _schema(export: str) -> str:
+    """The Arrow schema of ``export``'s rows, as a call gives it (REQ-2098)."""
+    manifest = read_manifest(_read(FIXTURE, "orders"), PYTHON_RULES)
+    return schema_text(row_schema(manifest, manifest.export(export)))
+
+
 @pytest.fixture
 def worker(tmp_path):
     code = tmp_path / "code"
@@ -265,7 +330,7 @@ def test_the_host_says_which_functions_it_has_and_not_what_it_imported(worker):
 
 def test_rows_and_their_values_come_back_in_their_own_types(worker):
     since = datetime(2025, 12, 1, tzinfo=UTC)
-    [[row]] = list(worker.rows("orders", "table", ["acme", since]))
+    [[row]] = list(worker.rows("orders", "table", ["acme", since], schema=_schema("orders")))
     assert row == {
         "id": 2**60,
         "placed": datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
@@ -278,19 +343,25 @@ def test_rows_and_their_values_come_back_in_their_own_types(worker):
 
 
 def test_a_large_table_comes_in_batches(worker):
-    assert [len(b) for b in worker.rows("many", "table", [2500])] == [1000, 1000, 500]
+    assert [len(b) for b in worker.rows("many", "table", [2500], schema=_schema("many"))] == [
+        1000,
+        1000,
+        500,
+    ]
 
 
 def test_a_commands_value_and_the_codes_own_error(worker):
     assert worker.command("cancel_order", [7]) == {"cancelled": 7}
     with pytest.raises(w.CodeFailed, match="LookupError: no such customer"):
-        list(worker.rows("boom", "table", []))
+        list(worker.rows("boom", "table", [], schema=_schema("boom")))
     assert worker.ping()
 
 
 @pytest.mark.parametrize("export", ["ticks", "placed"])  # a generator, an async generator
 def test_a_stream_its_subscriber_leaves_is_stopped_and_the_worker_serves_on(worker, export):
-    rows = worker.rows(export, "stream", ["eu"] if export == "placed" else [])
+    rows = worker.rows(
+        export, "stream", ["eu"] if export == "placed" else [], schema=_schema(export)
+    )
     first, second = next(rows), next(rows)
     assert len(first) == len(second) == 1
     rows.close()
@@ -301,8 +372,16 @@ def test_a_deadline_stops_a_call_that_never_answers(worker):
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         with request_deadline.within(0.3):
-            list(worker.rows("forever", "stream", []))
+            list(worker.rows("forever", "stream", [], schema=_schema("forever")))
     assert time.monotonic() - started < 10
+    assert worker.ping()
+
+
+def test_a_tables_argument_sets_are_served_in_one_call_in_order(worker):
+    """REQ-2099: the host runs the function once per argument set of the one call, in order."""
+    calls = [(["ada", w.ABSENT, p], ["name", "greeting", "punctuation"]) for p in ("!", "?")]
+    rows = [r for b in worker.rows_each("greet", calls, schema=_schema("greet")) for r in b]
+    assert rows == [{"text": "hello ada!"}, {"text": "hello ada?"}]
     assert worker.ping()
 
 
@@ -310,10 +389,18 @@ def test_an_argument_left_out_takes_the_functions_own_default(worker):
     """An optional parameter the read gives no value for is absent, never None: the function's
     default applies, even for one after a later given argument."""
     rows = worker.rows(
-        "greet", "table", ["ada", w.ABSENT, "?"], ["name", "greeting", "punctuation"]
+        "greet",
+        "table",
+        ["ada", w.ABSENT, "?"],
+        ["name", "greeting", "punctuation"],
+        schema=_schema("greet"),
     )
     assert list(rows) == [[{"text": "hello ada?"}]]
     rows = worker.rows(
-        "greet", "table", ["ada", "hi", w.ABSENT], ["name", "greeting", "punctuation"]
+        "greet",
+        "table",
+        ["ada", "hi", w.ABSENT],
+        ["name", "greeting", "punctuation"],
+        schema=_schema("greet"),
     )
     assert list(rows) == [[{"text": "hi ada!"}]]

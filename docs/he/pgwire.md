@@ -247,7 +247,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET ו-DEALLOCATE �
 
 **דרייברי Python ילידיים (psycopg2, asyncpg).** אלה מנהלים משא-ומתן על פרוטוקול השאילתה-המורחבת כברירת מחדל ומשתמשים בקידוד בינארי עבור רוב הטיפוסים. נאמנות הטיפוסים הגבוהה ביותר כאן: עמודות `NUMERIC` מגיעות כ-`Decimal`, `TIMESTAMP` כ-`datetime`, וכן הלאה. השתמשו באלה עבור ETL מבוסס-Python, סקריפטים, או אינטגרציה ישירה.
 
-**JDBC (דרייבר JDBC של PostgreSQL).** השתמשו בו עבור כלי אקוסיסטם-Java: DBeaver, Tableau, Power BI, Metabase, מפעילי JDBC של Airflow. JDBC ברירת מחדל לפרוטוקול השאילתה-הפשוטה, המונע סיבוכי קידוד בינארי. מחרוזת חיבור:
+**JDBC (דרייבר JDBC של PostgreSQL).** השתמשו בו עבור כלי Java: DBeaver, Tableau, Power BI, Metabase, מפעילי JDBC של Airflow. JDBC ברירת מחדל לפרוטוקול השאילתה-הפשוטה, המונע סיבוכי קידוד בינארי. מחרוזת חיבור:
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>

@@ -288,7 +288,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 ## 註冊遠端資料表的影響 {: #impact-of-registering-a-remote-table }
 
-從任何遠端結構描述來源註冊的資料表，均為一級的 Provisa 資料表。在執行階段，它與本機連接的關聯式資料表在待遇上並無任何分別。
+從任何遠端結構描述來源註冊的資料表，都是普通的 Provisa 資料表。在執行階段，它與本機連接的關聯式資料表在待遇上並無任何分別。
 
 **查詢介面。** 該資料表可立即透過 GraphQL、SQL（pgwire 或直接連線）、Cypher（GQL）、JSON:API 及 Arrow Flight 進行查詢。由於遠端資料表沒有目錄，結構描述生成過程會為其合成 `ColumnMetadata`，類型對應是於結構描述建構時套用的。
 

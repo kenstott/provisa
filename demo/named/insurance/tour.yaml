@@ -13,7 +13,7 @@
 # tour.steps.<key> in the UI's tour.json, in every language.
 #
 # The track: the scenario (the insurer's question, and its two kinds of data); how the pieces fit
-# (its own book, the public risk tables landed once, the join by county, the insurer's terms);
+# (its own book, the public risk tables, the join by county, the insurer's terms);
 # the answer in SQL, over REST and in GraphQL, over the view that joins exposure to risk; a recap.
 # Where the tour's "Look around on my own" leaves the visitor: the SQL page, with its example queries.
 landing:

@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble {: #overview }
 
-Provisa est une plateforme de virtualisation de données pilotée par configuration : fédération, métriques, ontologie et gouvernance à partir d'un seul modèle, pour les petites équipes comme pour les grandes entreprises. Elle fournit une API unifiée sur des sources de données hétérogènes avec gouvernance, sécurité, et optimisation de performance. Les clients interrogent via SQL, GraphQL, ou Cypher ; les trois sont des interfaces de premier ordre avec une gouvernance identique appliquée.
+Provisa est une plateforme de virtualisation de données pilotée par configuration : fédération, métriques, ontologie et gouvernance à partir d'un seul modèle, pour les petites équipes comme pour les grandes entreprises. Elle fournit une API unifiée sur des sources de données hétérogènes avec gouvernance, sécurité, et optimisation de performance. Les clients interrogent via SQL, GraphQL, ou Cypher ; les trois sont soumis à la même gouvernance.
 
 Le modèle est le seul endroit où du sens est ajouté. Pour l'enrichir, vous enregistrez de nouvelles sources de données ou de nouveaux agrégats dans la couche de virtualisation des données. Cela garde une séparation nette, car rien ne peut ajouter de sémantique en dehors de la plateforme, et c'est ce qui rend possible une vraie gouvernance des données. Le compilateur l'impose : le catalogue des relations approuvées fait foi, quel que soit le langage de requête.
 
@@ -162,7 +162,7 @@ Le moteur de fédération ne prend pas nativement en charge le protocole Arrow F
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-Le serveur Flight de Provisa (port 8815) se connecte à Zaychik comme client ADBC, permettant le streaming Arrow de bout en bout sans matérialiser les résultats.
+Le serveur Flight de Provisa (port 8815) se connecte à Zaychik comme client ADBC, si bien qu'Arrow est diffusé de bout en bout et que les résultats ne sont jamais matérialisés.
 
 ### Catalogue de résultats Iceberg {: #iceberg-results-catalog }
 
@@ -338,7 +338,7 @@ Utile quand une source a reçu des données nouvelles significatives depuis son 
 
 ## Vues matérialisées {: #materialized-views }
 
-Les MV optimisent de manière transparente les requêtes coûteuses en pré-calculant et mettant en cache les résultats.
+Les MV accélèrent les requêtes coûteuses en calculant leurs résultats à l'avance. Les requêtes les utilisent sans aucune modification.
 
 ### Relations comme indices de MV {: #relationships-as-mv-hints }
 
@@ -647,7 +647,7 @@ Les `write_grants` d'une table indiquent, par rôle et par opération, quelles c
 
 ## Explorateur de schéma GraphQL Voyager {: #graphql-voyager-schema-explorer }
 
-L'interface d'administration (`provisa-ui/src/pages/SchemaExplorer.tsx`) intègre GraphQL Voyager comme visualisation interactive du schéma. Il dessine le schéma limité au rôle sous forme de diagramme entité-relation navigable, avec les tables comme nœuds et les relations comme arêtes. Le schéma affiché est toujours filtré sur le rôle actuellement sélectionné.
+L'interface d'administration (`provisa-ui/src/pages/SchemaExplorer.tsx`) intègre GraphQL Voyager comme visualisation interactive du schéma. Il dessine le schéma limité au rôle sous forme de diagramme entité-relation que l'on peut déplacer, zoomer et parcourir au clic, avec les tables comme nœuds et les relations comme arêtes. Le schéma affiché est toujours filtré sur le rôle actuellement sélectionné.
 
 ## Ordre d'application de la sécurité {: #security-enforcement-order }
 

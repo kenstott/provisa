@@ -12,6 +12,7 @@ import { useCallback, useRef } from "react";
 import { useLazyQuery } from "@apollo/client/react";
 import type { DataProduct, RegisteredTable, Source } from "../types/admin";
 import type { OrgHas } from "../tour/tourPrerequisites";
+import { fetchMcpChatStatus } from "../api/mcpChat";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
   SourcesQuery as SOURCES_QUERY,
@@ -21,7 +22,7 @@ import {
 /**
  * REQ-2013: a function reading what the current org has that a tour's steps may need -- its
  * sources, its registered tables (`<source>.<table>`) and how many data products -- from the
- * cached catalog, else the server. A read that fails rejects; it is never taken for "none".
+ * cached catalog, else the server, and whether Polly has a model configured. A read that fails rejects; it is never taken for "none".
  *
  * A call made while a read is in flight shares it: a lazy query's execute aborts the call still in
  * flight when it runs again, and two quick starts of the tour (`?tour=1`) left the first rejected
@@ -55,10 +56,11 @@ export function useOrgHas(): () => Promise<OrgHas> {
   const [loadProducts] = useLazyQuery<{ dataProducts: DataProduct[] }>(DATA_PRODUCTS_QUERY);
   const inFlight = useRef<Promise<OrgHas> | null>(null);
   const read = useCallback(async (): Promise<OrgHas> => {
-    const [sources, tables, products] = await Promise.all([
+    const [sources, tables, products, polly] = await Promise.all([
       unlessCutShort(() => loadSources()),
       unlessCutShort(() => loadTables()),
       unlessCutShort(() => loadProducts()),
+      fetchMcpChatStatus(),
     ]);
     if (!sources.data || !tables.data || !products.data) {
       throw new Error("Tour: the org's sources, tables or data products could not be read");
@@ -67,6 +69,7 @@ export function useOrgHas(): () => Promise<OrgHas> {
       sources: new Set(sources.data.sources.map((x) => x.id)),
       tables: new Set(tables.data.tables.map((x) => `${x.sourceId}.${x.tableName}`)),
       dataProducts: products.data.dataProducts.length,
+      pollyConfigured: polly.configured,
     };
   }, [loadSources, loadTables, loadProducts]);
   return useCallback(() => {

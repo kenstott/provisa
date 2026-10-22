@@ -20,4 +20,5 @@ export const STANDARD_DEMO_ORG: OrgHas = {
     "dq-checker.pets_quality_dq_checker_dq",
   ]),
   dataProducts: 2,
+  pollyConfigured: true,
 };

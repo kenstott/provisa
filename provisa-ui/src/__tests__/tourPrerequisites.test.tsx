@@ -63,6 +63,7 @@ const WEBLOGS_ORG: OrgHas = {
   sources: new Set(["shop-db", "shop_access", "shop_db_log"]),
   tables: new Set(["shop-db.customers", "shop_access.shop_access"]),
   dataProducts: 0,
+  pollyConfigured: true,
 };
 
 describe("a tour's prerequisites", () => {
@@ -134,7 +135,7 @@ describe("the Deep Dives menu", () => {
     }
     expect(screen.queryByTestId("tour-menu-core-tour")).toBeNull();
     // Those that need nothing but their pages stay.
-    for (const id of ["connect", "relationships", "govern", "operate"]) {
+    for (const id of ["relationships", "govern", "operate"]) {
       expect(screen.getByTestId(`tour-topic-${id}`)).toBeInTheDocument();
     }
   });

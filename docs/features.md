@@ -45,7 +45,7 @@ Provisa decides every client-facing name in one place. You can alias a table or 
 Registered tables and views are queryable under the user's own rights, with no separate governance mode. You pick which columns to publish, mark primary keys, including composite ones, and declare unique constraints. Columns can pull values out of JSON with a path, and nested fields can be promoted to real columns. Path columns are computed and read-only.
 { #semantic-model-tables-and-columns }
 
-Relationships describe how tables join, and they turn into nested fields in GraphQL and joins elsewhere. Provisa proposes candidates from foreign keys and ranks them by how much evidence backs each one, and a steward confirms or rejects them. Cross-source relationships are declared by hand with a cardinality. Saving a relationship marks the key columns on both sides, and a relationship alias becomes the type name in Cypher.
+Relationships describe how tables join, and they turn into nested fields in GraphQL and joins elsewhere. Provisa proposes candidates from foreign keys and ranks them by how much evidence backs each one, and a steward confirms or rejects them. Cross-source relationships are declared by hand with a cardinality. Saving a relationship marks the key columns on both sides, and a relationship alias becomes the type name in Cypher. A relationship can feed a parameterized table, such as a code source's function, from its source's columns, so a join scores each source row the role reads, with the role's masks applied to the values passed.
 { #semantic-model-relationships }
 
 Domains group tables by business area. Each domain has a steward, can nest under a parent, and decides which other domains may read its tables. Views, relationships and grants that cross a domain boundary are approved by the domain that owns the data, and cross-domain access is enforced in GraphQL and in SQL alike. A deployment that does not want domains can turn them off.
@@ -569,7 +569,7 @@ Polly can do the work as well as describe it. She can search for data sources, r
 
 ### Product tour and named demos
 
-A new user is offered a short core tour: welcome, Polly, connecting a source, and running a query. Every step has a Deep Dives button that jumps to a menu of topic tours. Each step waits until the page it points at is loaded and ready, and the tour is never offered over a sign-in or registration form.
+A new user is offered a short core tour: welcome, Polly, registering a source and a table, and running a query. Every step has a Deep Dives button that jumps to a menu of topic tours. Each step waits until the page it points at is loaded and ready, and the tour is never offered over a sign-in or registration form.
 { #product-tour-and-demos-guided-tour }
 
 You can start Provisa already loaded with a demo. Running the launcher with a demo name picks one of the bundled scenarios, and plain demo mode loads the default. In demo mode a complete configuration is loaded instead of the first-run wizard, and tier restrictions are lifted so every feature can be shown. Each demo, instance and organization keeps what you left in the browser, such as the domain filter, saved query tabs and open panels, so switching demos carries none of it across and coming back restores it. A named demo can also tell its own story, a guided track over its own sources, queries and roles, offered before the product tour, with the Deep Dives after it.

@@ -34,6 +34,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 from tests.integration.serving_wait import await_tables_serving
@@ -70,7 +72,7 @@ class InsuranceStack:
 
     @property
     def env(self) -> dict[str, str]:
-        return {"INSURANCE_PG_PORT": str(self.pg_port)}
+        return {"INSURANCE_PG_PORT": str(self.pg_port), **store_namespaces(_DEMO)}
 
     def _compose(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         return subprocess.run(

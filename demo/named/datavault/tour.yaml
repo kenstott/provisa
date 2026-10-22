@@ -83,7 +83,7 @@ steps:
   api: GET /data/rest/vault/view_dim_customer?limit=10
 - key: datavaultLineage
   route: /lineage
-  capability: table_registration
+  capability: view_governance
   lineage: >-
     SELECT company_name, address, contact_email FROM "vault"."view_dim_customer"
 - key: datavaultAnalyst

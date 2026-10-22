@@ -23,14 +23,16 @@ where the demo runs:
        views (REQ-1162) then has their append logs -- the history its setup's steps gave them --
        written out as ``seeded/views.duckdb`` and ``seeded/views.json``, with the records of the
        refreshes that built it (``seeded/refresh_lineage.parquet``, REQ-862), which its template
-       and each sandbox start from;
+       and each sandbox start from; and a demo whose setup profiles has its profile runs written
+       out as ``seeded/profile_results.json`` (REQ-2052), which its template loads;
     2. a sandbox tier runs on a throwaway embedded control plane in seeding mode
        (``PROVISA_DEMO_SEED_EXPORT=true``): it lands the demo's template from those stores and
        writes the seed -- ``seeded/replicas.duckdb`` and ``seeded/replicas.json``
        (provisa/api/demo_replicas.py);
     3. each data store is dumped by its ``com.provisa.demo.role``, for the demo's run-time compose
-       file (docker-compose.run.yml) to load and restore: a Postgres store (``rdb``) to
-       ``dump/<service>.sql``, a Qdrant store (``vector``) as one snapshot a collection,
+       file (docker-compose.run.yml) to load and restore: a Postgres store (``rdb``) one
+       plain dump a database, ``dump/<service>/<database>.sql`` (with ``dump/load-postgres.sh``),
+       a Qdrant store (``vector``) as one snapshot a collection,
        ``dump/<service>/<collection>.snapshot``, a MongoDB store (``document``) as one archive,
        ``dump/<service>.archive.gz``, an Elasticsearch store (``search``) as a snapshot repository,
        ``dump/<service>/``, and a Neo4j store (``graph``) as ``dump/<service>/neo4j.dump``;
@@ -76,6 +78,11 @@ import httpx
 import yaml
 
 _REPO = Path(__file__).resolve().parents[1]
+#: What a demo's own Postgres container loads the bundle's dumps with (dump/load-postgres.sh).
+LOAD_POSTGRES = _REPO / "scripts" / "demo_run" / "load-postgres.sh"
+#: The images a demo's relational store is Postgres in, dumped with pg_dump: Postgres itself, and
+#: Postgres with pgvector (the cloudpolicy demo's clause embeddings).
+POSTGRES_IMAGES = ("postgres:", "pgvector/pgvector:")
 sys.path.insert(0, str(_REPO))
 
 from provisa.core import demo as demo_module  # noqa: E402
@@ -196,7 +203,11 @@ class Stores:
         # environment -- a server given it would take this process's settings for its own (a test
         # session's PROVISA_MATERIALIZE_URL kept the setup server's views in the session's
         # PostgreSQL instead of its DuckDB file, CI run 39239941042).
-        self.addresses = {"PROVISA_NAMED_DEMO_DIR": str(demo), **self.ports}
+        self.addresses = {
+            "PROVISA_NAMED_DEMO_DIR": str(demo),
+            **self.ports,
+            **bundles.store_namespaces(demo),
+        }
         # What compose and the build's client steps run with: this process's environment, and
         # where the stores are.
         self.env = {**os.environ, **self.addresses}
@@ -228,8 +239,8 @@ class Stores:
             self._compose("run", "--rm", "--no-deps", "seeder")
 
     def dump(self) -> list[str]:
-        """Each data store, by its role: a Postgres database (rdb) to dump/<service>.sql, a Qdrant
-        store (vector) a snapshot a collection, a MongoDB store (document) one archive, an
+        """Each data store, by its role: a Postgres store (rdb) one dump a database in
+        dump/<service>/, a Qdrant store (vector) a snapshot a collection, a MongoDB store (document) one archive, an
         Elasticsearch store (search) one snapshot of its indices, and a Neo4j store (graph) its
         database's dump. A graph store is dumped last: it is stopped to be dumped."""
         if not self.compose_file.exists():
@@ -256,24 +267,47 @@ class Stores:
                 continue
             if role != "rdb":
                 continue
-            if not str(service["image"]).startswith("postgres:"):
+            if not str(service["image"]).startswith(POSTGRES_IMAGES):
                 raise SystemExit(f"{self.demo.name}: data store {name} is not Postgres; no dump")
             env = service["environment"]
-            target = self.demo / "dump" / f"{name}.sql"
-            target.parent.mkdir(exist_ok=True)
-            with target.open("w") as out:
-                self._compose(
-                    "exec",
-                    "-T",
-                    name,
-                    "pg_dump",
-                    "-U",
-                    env["POSTGRES_USER"],
-                    "--no-owner",
-                    "--no-acl",
-                    env["POSTGRES_DB"],
-                    stdout=out,
-                )
+            user = env["POSTGRES_USER"]
+            # One plain dump a database the store holds, each loaded into a database of its own name
+            # where the bundle runs (scripts/demo_stores.py on the node, LOAD_POSTGRES in a demo's
+            # own container): the retail demo keeps its data in three databases of one server.
+            listed = self._compose(
+                "exec",
+                "-T",
+                name,
+                "psql",
+                "-U",
+                user,
+                "-d",
+                env["POSTGRES_DB"],
+                "-Atc",
+                "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname",
+                capture_output=True,
+                text=True,
+            ).stdout.split()
+            databases = [db for db in listed if db != "postgres"]
+            if not databases:
+                raise SystemExit(f"{self.demo.name}: data store {name} holds no database to dump")
+            target = self.demo / "dump" / name
+            target.mkdir(parents=True, exist_ok=True)
+            for database in databases:
+                with (target / f"{database}.sql").open("w") as out:
+                    self._compose(
+                        "exec",
+                        "-T",
+                        name,
+                        "pg_dump",
+                        "-U",
+                        user,
+                        "--no-owner",
+                        "--no-acl",
+                        database,
+                        stdout=out,
+                    )
+            shutil.copy(LOAD_POSTGRES, self.demo / "dump" / LOAD_POSTGRES.name)
             dumped.append(name)
         for name, service in graphs:
             dumped.append(self._neo4j_dump(name, service))
@@ -507,7 +541,14 @@ def answering_config(work: Path, demo: Path) -> Path:
         **(config.get("ai_models") or {}),
         "mcp_chat": {"vendor": "openrouter", "model": setting("sandbox.ai_model").default},
     }
-    path = work / "answering.yaml"
+    # In a directory of its own, beside what the demo declares beside its config.yaml: its
+    # replica rows and code archives are read from the directory of the config served.
+    from provisa.core.demo_bundles import link_declared
+
+    directory = work / "answering"
+    directory.mkdir()
+    link_declared(demo, directory)
+    path = directory / "config.yaml"
     path.write_text(yaml.safe_dump(config))
     return path
 
@@ -621,6 +662,7 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         if asked:
             answers = answer_tour(base, demo, asked)
             Path(demo_module.tour_answers_path(str(demo))).write_text(json.dumps(answers, indent=2))
+        _export_profile_runs(url, demo)
     finally:
         server.terminate()
         server.wait(timeout=60)
@@ -628,6 +670,22 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
             [sys.executable, "-m", "provisa.core.control_plane_pg", "stop", str(work / "setup-cp")],
             check=True,
         )
+
+
+def _export_profile_runs(url: str, demo: Path) -> None:
+    """REQ-2052: the profile runs the setup's ``profile`` steps made, written out beside the seed
+    (provisa.profiler.carry) for the demo's template to load: they measured the data as each step
+    of the setup left it, which the template's sources no longer hold."""
+    from provisa.api.demo_templates import demo_profilers
+    from provisa.core.environments import org_schema
+    from provisa.profiler.carry import export_runs, results_path
+
+    if not demo_profilers(demo):
+        return
+    written = export_runs(url, org_schema(_SETUP_ORG), results_path(demo))
+    if not written:
+        raise SystemExit(f"{demo.name}: its setup profiled, and the setup server holds no run")
+    print(f"{demo.name}: {written} profile result relations carried")
 
 
 def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
@@ -764,11 +822,14 @@ def _seed_node(
 def _demo_config(demo: Path, stores: Stores):
     """The demo's config.yaml, parsed against its running stores."""
     from provisa.core.config_loader import parse_config_dict, read_config_with_includes
+    from provisa.core.demo_secrets import resolving
 
     saved = dict(os.environ)
     os.environ.update(stores.addresses)
     try:
-        return parse_config_dict(read_config_with_includes(demo / "config.yaml"))
+        # REQ-2095: the secrets it names, from its own secrets.yaml.
+        with resolving(demo, demo.name):
+            return parse_config_dict(read_config_with_includes(demo / "config.yaml"))
     finally:
         os.environ.clear()
         os.environ.update(saved)

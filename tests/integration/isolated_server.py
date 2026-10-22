@@ -222,12 +222,11 @@ class IsolatedServer:
             cfg["auth"] = self._auth
         if self._materialize_store_url is not None:
             cfg["materialize_store_url"] = self._materialize_store_url
-        # In a directory of its own, beside what the base config's directory declares beside it:
-        # its declared replica rows (REQ-2089), read from the directory of the config served.
+        # In a directory of its own, beside what the base config's directory declares beside it.
+        from provisa.core.demo_bundles import link_declared
+
         directory = Path(tempfile.mkdtemp(prefix="isolated-server-config-"))
-        rows = base.parent / "replica_rows"
-        if rows.is_dir():
-            (directory / "replica_rows").symlink_to(rows, target_is_directory=True)
+        link_declared(base.parent, directory)
         path = directory / base.name
         with open(path, "w") as f:
             yaml.safe_dump(cfg, f)

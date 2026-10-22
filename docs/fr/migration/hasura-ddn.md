@@ -103,8 +103,8 @@ diffèrent.
    `--domain-map`, chaque nom de sous-graphe devient directement un ID de domaine. Utilisez
    `--domain-map` pour les renommer.
 4. **Vérifiez les règles RLS.** Les prédicats de filtre DDN sont convertis en approximations SQL.
-   La logique booléenne imbriquée (`_and`/`_or`/`_not`) est prise en charge, mais les filtres
-   complexes traversant des relations peuvent nécessiter une revue manuelle.
+   La logique booléenne imbriquée (`_and`/`_or`/`_not`) est convertie ; relisez à la main les filtres
+   qui traversent des relations.
 5. **Passez en revue la configuration d'agrégation.** Les expressions d'agrégation sont écrites
    dans un fichier annexe `provisa-aggregates.yaml` et converties en configuration d'agrégation
    Provisa.
@@ -142,7 +142,7 @@ Model). Si aucun Model n'utilise l'ObjectType donné, la relation est ignorée s
 ### Alias de colonnes partout {: #column-aliases-everywhere }
 
 Si votre projet DDN utilise `fieldMapping` de façon extensive, attendez-vous à ce que la plupart
-des colonnes aient un `alias` dans la sortie. C'est le comportement attendu -- `name` est la
+des colonnes aient un `alias` dans la sortie. C'est le comportement attendu : `name` est la
 colonne physique, `alias` est le nom GraphQL utilisé par votre application.
 
 ### Expressions d'agrégation {: #aggregate-expressions }

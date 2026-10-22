@@ -14,7 +14,7 @@ Every request runs on a thread and event loop of its own, and opening a sandbox 
 demo's ready version (``follow_latest``), replacing its template when a newer one was published.
 The per-demo lock that keeps two openers from replacing it at once was an ``asyncio.Lock``, bound
 to the first loop that waited on it: the second opener, on another loop, failed. Both wait their
-turn; the template is replaced once and the second finds it replaced."""
+turn; the template is replaced (queued to be built) once and the second finds it replaced."""
 
 # Requirements: REQ-2049, REQ-1882
 
@@ -37,29 +37,29 @@ def test_two_openers_on_their_own_loops_replace_the_template_once(monkeypatch):
     replaced: list[str] = []
     replacing = threading.Event()
 
-    async def _retire(name):
+    async def _queue_template(_pool, demo):
+        # Its old template retired and the new one queued (demo_templates._queue_template), long
+        # enough for the other opener to wait on the lock.
         replacing.set()
-        await asyncio.sleep(0.5)  # long enough for the other opener to wait on the lock
-
-    async def _template_row(_pool, demo):
-        return SimpleNamespace(demo=demo)
-
-    async def _prepare(demo, _build):
+        await asyncio.sleep(0.5)
+        templated[demo.name] = "v2"
         replaced.append(demo.name)
+        return "building"
 
     monkeypatch.setattr(demo_templates, "_following", {})
     monkeypatch.setattr(demo_templates, "bundled_demos", lambda: {"alpha": object()})
     monkeypatch.setattr(demo_templates, "latest_published", lambda _name: "v2")
     monkeypatch.setattr("provisa.core.demo_bundles.ready_version", lambda _name: "v2")
-    monkeypatch.setattr("provisa.core.demo_bundles.want", lambda _name, _version: None)
+    monkeypatch.setattr("provisa.core.demo_bundles.request", lambda _name: None)
     monkeypatch.setattr(demo_templates, "_templated", lambda name: templated[name])
-    monkeypatch.setattr(demo_templates, "_retire_template", _retire)
     monkeypatch.setattr(demo_templates, "published_demo", lambda name: SimpleNamespace(name=name))
-    monkeypatch.setattr(demo_templates, "_template_row", _template_row)
+    monkeypatch.setattr(demo_templates, "_queue_template", _queue_template)
+    monkeypatch.setattr(demo_templates, "_start_builds", lambda: None)
     monkeypatch.setattr(
-        demo_templates, "_mark_templated", lambda demo: templated.__setitem__(demo.name, "v2")
+        demo_templates,
+        "template_builds",
+        SimpleNamespace(state_of=lambda name: "queued" if name in replaced else "unknown"),
     )
-    monkeypatch.setattr(demo_templates, "_prepare", _prepare)
     monkeypatch.setattr("provisa.api.admin.orgs_router._admin_pool", lambda: object())
     failures: list[BaseException] = []
 

@@ -210,7 +210,7 @@ Cypher llega al mismo pipeline gobernado a través de dos transportes:
 
 ### Restricciones de diseño {: #design-constraints }
 
-1. **Las escrituras se limitan a `CREATE`, `SET` y `DELETE`.** Se ejecutan como escrituras directas de tabla a través del mismo pipeline que las mutaciones de GraphQL y SQL. Véase §Escrituras más abajo. `MERGE`, `DETACH DELETE` y `REMOVE` se rechazan en tiempo de análisis. Los procedimientos APOC también se rechazan.
+1. **Las escrituras se limitan a `CREATE`, `SET` y `DELETE`.** Se ejecutan como escrituras directas de tabla a través del mismo pipeline que las mutaciones de GraphQL y SQL. Véase §Escrituras más arriba. `MERGE`, `DETACH DELETE` y `REMOVE` se rechazan en tiempo de análisis. Los procedimientos APOC también se rechazan.
 
 2. **Las propiedades de relación solo existen en aristas respaldadas por una tabla de unión.** Una arista declarada sobre un par de columnas de clave foránea existe solo como metadatos de join en el modelo y no guarda atributos, así que `WHERE r.since > 2020` o `RETURN r.weight` no significan nada sobre ella. Una arista declarada sobre una tabla de unión sí los lleva. Las columnas restantes de la tabla asociativa son las propiedades de la relación, y `RETURN r` las devuelve. Un `WHERE` sobre una de ellas se compila como un predicado sobre el alias de la unión, así que restringe el propio recorrido en lugar de filtrar filas ya ensambladas. La tabla de unión se quita del lado de los nodos del esquema del grafo: aquí es una arista y en todo lo demás una tabla.
 

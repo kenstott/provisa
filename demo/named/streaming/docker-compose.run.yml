@@ -8,7 +8,7 @@
 # permission from the copyright holder.
 #
 # The streaming demo where it runs from its bundle (start-ui-install.sh --demo streaming;
-# REQ-2049): the catalog, loaded from the dump the bundle build wrote (dump/postgres.sql), read
+# REQ-2049): the catalog, loaded from the dump the bundle build wrote (dump/postgres/<database>.sql), read
 # only; the broker and the live order feed, as in the build. Every sandbox of the demo lands the
 # orders from the one broker into its own table, under its own consumer group.
 #
@@ -32,6 +32,8 @@ services:
       # Where config.yaml's streaming-db reads it, for the sandbox tier's node (REQ-2049,
       # scripts/demo_stores_sync.sh): it writes these two into the bundle's stores.env.
       com.provisa.demo.host_env: STREAMING_PG_HOST
+      com.provisa.demo.ns_env: STREAMING_PG_NS
+      com.provisa.demo.access: db/reader.sql
       com.provisa.demo.port_env: STREAMING_PG_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -44,7 +46,8 @@ services:
       - "127.0.0.1:${STREAMING_PG_PORT-29032}:5432"
     volumes:
       - streaming_run_pg:/var/lib/postgresql/data
-      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-streaming.sql:ro
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:
@@ -65,6 +68,8 @@ services:
       # scripts/demo_stores_sync.sh). No port_env: a broker advertises the port its clients dial,
       # so its port is never one docker picks (see the header).
       com.provisa.demo.host_env: STREAMING_KAFKA_HOST
+      com.provisa.demo.port_env: STREAMING_KAFKA_PORT
+      com.provisa.demo.ns_env: STREAMING_KAFKA_NS
       com.provisa.demo.port: "${STREAMING_KAFKA_PORT:-29092}"
     environment:
       KAFKA_NODE_ID: 1
@@ -103,7 +108,7 @@ services:
       retries: 60
       start_period: 30s
   producer:
-    image: provisa-demo-streaming-producer:1
+    image: provisa-demo-streaming-producer:2
     build:
       context: .
       dockerfile: Dockerfile.producer
@@ -113,6 +118,7 @@ services:
       com.provisa.demo.role: producer
     environment:
       ORDERS_BOOTSTRAP: kafka:9092
+      TOPIC_SUFFIX: ${STREAMING_KAFKA_NS?the suffix of the demo's Kafka topics, empty on its own broker}
       ORDERS_PER_SECOND: "4"
     depends_on:
       kafka:

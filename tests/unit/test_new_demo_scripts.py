@@ -68,6 +68,7 @@ def test_a_scaffolded_demo_passes_every_check_but_its_authors(scaffolded):
     assert check_demo.check_card(home) == [
         "demo.yaml: published is not true, so the demo has no card",
         "demo.yaml: screenshot card.png is not beside it",
+        "demo.yaml: no video tagline",
     ]
     untranslated = check_demo.check_locales("harbor", home, locales)
     assert len(untranslated) == len(list(locales.iterdir())) - 1  # every locale but English
@@ -81,6 +82,34 @@ def test_the_scaffold_writes_no_template_stamp_and_no_token(scaffolded):
         assert "Canary:" not in text and not re.search(r"__[A-Z]+__", text), path
     words = json.loads((scaffolded[1] / "en" / "tour.json").read_text())["tour"]
     assert words["demos"]["harbor"]["title"] == "Harbor"
+
+
+def test_every_published_demo_names_its_video_s_tagline():
+    published = [
+        spec.parent.name
+        for spec in sorted(_NAMED.glob("*/demo.yaml"))
+        if yaml.safe_load(spec.read_text()).get("published") is True
+    ]
+    assert published
+    for name in published:
+        video = yaml.safe_load((_NAMED / name / "demo.yaml").read_text()).get("video")
+        assert isinstance(video, dict) and isinstance(video.get("tagline"), str), name
+        assert video["tagline"].strip(), name
+
+
+@pytest.mark.parametrize("video", [None, "Logs are Tables", {}, {"tagline": "  "}, {"tagline": 3}])
+def test_a_demo_without_a_video_tagline_is_reported(tmp_path, video):
+    spec = {"title": "T", "description": "D", "screenshot": "card.png", "published": False}
+    if video is not None:
+        spec["video"] = video
+    (tmp_path / "demo.yaml").write_text(yaml.safe_dump(spec))
+    assert "demo.yaml: no video tagline" in check_demo.check_card(tmp_path)
+
+
+def test_a_demo_with_a_video_tagline_is_not_reported_for_it(tmp_path):
+    spec = {"published": False, "video": {"tagline": "Logs are Tables"}}
+    (tmp_path / "demo.yaml").write_text(yaml.safe_dump(spec))
+    assert "demo.yaml: no video tagline" not in check_demo.check_card(tmp_path)
 
 
 def test_a_name_no_demo_can_have_or_one_a_demo_has_is_refused(tmp_path):
@@ -170,6 +199,57 @@ def test_a_run_compose_off_the_loopback_or_unlabelled_is_reported(tmp_path):
         "seeder: not labelled com.provisa.demo: x",
         "seeder: no com.provisa.demo.role label",
     ]
+
+
+def test_a_shared_store_without_its_namespace_or_access_is_reported(tmp_path):
+    """The sandbox tier's node loads a shared store's data under the demo version's suffix, with
+    the demo's own roles and grants: a Postgres store with neither (churnprod as first shipped)
+    fails a visitor's walk before its first step, so check_demo reports it."""
+    (tmp_path / "config.yaml").write_text(
+        "host: ${env:X_PG_HOST:-localhost}\nport: ${env:X_PG_PORT:-1}\ndatabase: x\n"
+    )
+    store = {
+        "image": "postgres:16",
+        "labels": {
+            "com.provisa.demo": "x",
+            "com.provisa.demo.role": "rdb",
+            "com.provisa.demo.host_env": "X_PG_HOST",
+            "com.provisa.demo.port_env": "X_PG_PORT",
+            "com.provisa.demo.port": "5432",
+        },
+        "ports": ["127.0.0.1:1:5432"],
+    }
+    run = tmp_path / "docker-compose.run.yml"
+    run.write_text(yaml.safe_dump({"services": {"postgres": store}}))
+    assert check_demo.check_run_compose(tmp_path, "x") == [
+        "postgres: a shared postgres store with no com.provisa.demo.ns_env label",
+        "postgres: a shared postgres store with no com.provisa.demo.access label",
+    ]
+    store["labels"] |= {
+        "com.provisa.demo.ns_env": "X_PG_NS",
+        "com.provisa.demo.access": "db/reader.sql",
+    }
+    run.write_text(yaml.safe_dump({"services": {"postgres": store}}))
+    assert check_demo.check_run_compose(tmp_path, "x") == [
+        "postgres: config.yaml does not name its data with X_PG_NS",
+        "postgres: its access script db/reader.sql is not in the demo",
+    ]
+    (tmp_path / "config.yaml").write_text(
+        "host: ${env:X_PG_HOST:-localhost}\nport: ${env:X_PG_PORT:-1}\ndatabase: x${env:X_PG_NS}\n"
+    )
+    (tmp_path / "db").mkdir()
+    (tmp_path / "db" / "reader.sql").write_text("CREATE ROLE r;\n")
+    assert check_demo.check_run_compose(tmp_path, "x") == []
+
+
+def test_every_demo_s_run_compose_passes():
+    """Each demo's run compose, as the sandbox tier's node reads it."""
+    found = {
+        home.name: check_demo.check_run_compose(home, home.name)
+        for home in sorted(_NAMED.iterdir())
+        if (home / "docker-compose.run.yml").is_file()
+    }
+    assert {name: problems for name, problems in found.items() if problems} == {}
 
 
 def test_a_demo_with_stores_and_no_run_compose_is_reported(tmp_path):

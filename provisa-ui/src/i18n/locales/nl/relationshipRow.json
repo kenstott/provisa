@@ -38,6 +38,9 @@
     "junctionBadge": "via",
     "junctionBadgeTitle": "Relatie via koppeltabel {{table}}",
     "deleteTitle": "Relatie \"{{id}}\" verwijderen?",
-    "deleteConsequence": "De relatie wordt uit het model verwijderd. Query's kunnen er niet meer via joinen."
+    "deleteConsequence": "De relatie wordt uit het model verwijderd. Query's kunnen er niet meer via joinen.",
+    "parametersFed": "Gevoede parameters",
+    "parametersFedHelp": "Een join over deze relatie geeft het doel deze waarden uit elke bronrij.",
+    "parameterNotFed": "Niet gevoed"
   }
 }

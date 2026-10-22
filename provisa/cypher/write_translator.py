@@ -55,6 +55,8 @@ class WriteAST:
     variable: str  # node variable, e.g. "n"
     props: dict[str, Any] = field(default_factory=dict)  # CREATE props
     where_expr: str = ""  # raw WHERE expression text (for DELETE/UPDATE)
+    # DELETE/UPDATE: the MATCH node's inline property map, each an equality the rows must meet.
+    match_props: dict[str, Any] = field(default_factory=dict)
     set_assignments: list[tuple[str, Any]] = field(default_factory=list)  # UPDATE assignments
 
 
@@ -79,15 +81,22 @@ _CREATE_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-# MATCH (n:Label) WHERE <expr> DELETE n
+# The node a DELETE or SET matches, with an optional inline property map, then an optional WHERE:
+# MATCH (n:Label [{key: val, ...}]) [WHERE <expr>]
+_MATCHED = (
+    rf"MATCH{_WS}\({_OWS}({_IDENT}){_OWS}:({_LABEL}){_OWS}(\{{[^}}]*\}})?{_OWS}\)"
+    rf"(?:{_WS}WHERE{_WS}(.+?))?"
+)
+
+# MATCH (n:Label [{...}]) [WHERE <expr>] DELETE n
 _DELETE_RE = re.compile(
-    rf"MATCH{_WS}\({_OWS}({_IDENT}){_OWS}:({_LABEL}){_OWS}\){_WS}WHERE{_WS}(.+?){_WS}DELETE{_WS}({_IDENT}){_OWS}$",
+    rf"{_MATCHED}{_WS}DELETE{_WS}({_IDENT}){_OWS}$",
     re.IGNORECASE | re.DOTALL,
 )
 
-# MATCH (n:Label) WHERE <expr> SET n.prop = val [, ...]
+# MATCH (n:Label [{...}]) [WHERE <expr>] SET n.prop = val [, ...]
 _UPDATE_RE = re.compile(
-    rf"MATCH{_WS}\({_OWS}({_IDENT}){_OWS}:({_LABEL}){_OWS}\){_WS}WHERE{_WS}(.+?){_WS}SET{_WS}(.+){_OWS}$",
+    rf"{_MATCHED}{_WS}SET{_WS}(.+){_OWS}$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -115,6 +124,17 @@ def _parse_literal(text: str) -> Any:
         return int(text)
     except ValueError:
         return text
+
+
+def _matched_rows(map_text: str | None, where_text: str | None, kind: str) -> tuple[dict, str]:
+    """The MATCH node's inline property map and its WHERE text, of a DELETE or SET: one of them
+    at least, so the write names the rows it changes and never every row of the table."""
+    if map_text is None and where_text is None:
+        raise CypherWriteParseError(
+            f"a {kind} must say which rows it writes: give its MATCH node a property map or a "
+            "WHERE clause"
+        )
+    return (_parse_props(map_text) if map_text else {}), (where_text or "").strip()
 
 
 def _parse_props(props_text: str) -> dict[str, Any]:
@@ -246,22 +266,26 @@ def parse_cypher_write(query: str) -> WriteAST:
 
     m = _DELETE_RE.match(query)
     if m:
-        variable = m.group(1)
-        label = m.group(2)
-        where_expr = m.group(3).strip()
-        del_var = m.group(4)
+        variable, label = m.group(1), m.group(2)
+        match_props, where_expr = _matched_rows(m.group(3), m.group(4), "DELETE")
+        del_var = m.group(5)
         if del_var.lower() != variable.lower():
             raise CypherWriteParseError(
                 f"DELETE variable {del_var!r} does not match MATCH variable {variable!r}"
             )
-        return WriteAST(kind="delete", label=label, variable=variable, where_expr=where_expr)
+        return WriteAST(
+            kind="delete",
+            label=label,
+            variable=variable,
+            where_expr=where_expr,
+            match_props=match_props,
+        )
 
     m = _UPDATE_RE.match(query)
     if m:
-        variable = m.group(1)
-        label = m.group(2)
-        where_expr = m.group(3).strip()
-        set_text = m.group(4).strip()
+        variable, label = m.group(1), m.group(2)
+        match_props, where_expr = _matched_rows(m.group(3), m.group(4), "SET")
+        set_text = m.group(5).strip()
         assignments = _parse_set_assignments(set_text, variable)
         return WriteAST(
             kind="update",
@@ -269,6 +293,7 @@ def parse_cypher_write(query: str) -> WriteAST:
             variable=variable,
             where_expr=where_expr,
             set_assignments=assignments,
+            match_props=match_props,
         )
 
     raise CypherWriteParseError(f"Unrecognised write Cypher pattern: {query!r}")
@@ -423,11 +448,22 @@ class WriteTranslator:
         vals_sql = ", ".join(vals)
         return f"INSERT INTO {table} ({cols_sql}) VALUES ({vals_sql})"
 
+    def _matched_sql(self, ast: WriteAST, mapping: NodeMapping) -> str:
+        """The rows a DELETE or UPDATE writes: each inline property as an equality, as a read
+        matches it, and the WHERE condition."""
+        conditions = [
+            f"{_q(mapping.properties.get(prop, prop))} = {_write_value(val)}"
+            for prop, val in ast.match_props.items()
+        ]
+        if not ast.where_expr:
+            return " AND ".join(conditions)
+        where_sql = _rewrite_where(ast.where_expr, ast.variable, mapping)
+        return " AND ".join([*conditions, f"({where_sql})"]) if conditions else where_sql
+
     def _translate_delete(self, ast: WriteAST) -> str:
         mapping = self._resolve_mapping(ast.label)
         table = self._qualified_table(mapping)
-        where_sql = _rewrite_where(ast.where_expr, ast.variable, mapping)
-        return f"DELETE FROM {table} WHERE {where_sql}"
+        return f"DELETE FROM {table} WHERE {self._matched_sql(ast, mapping)}"
 
     def _translate_update(self, ast: WriteAST) -> str:
         mapping = self._resolve_mapping(ast.label)
@@ -439,8 +475,7 @@ class WriteTranslator:
         if not set_parts:
             raise CypherWriteParseError("UPDATE statement has no SET assignments")
         set_sql = ", ".join(set_parts)
-        where_sql = _rewrite_where(ast.where_expr, ast.variable, mapping)
-        return f"UPDATE {table} SET {set_sql} WHERE {where_sql}"
+        return f"UPDATE {table} SET {set_sql} WHERE {self._matched_sql(ast, mapping)}"
 
 
 def bind_write_params(sql: str, provided: dict[str, Any]) -> tuple[str, list[Any]]:

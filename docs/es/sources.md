@@ -1,4 +1,5 @@
 # Tipos de origen {: #source-types }
+
 ## Modelo de ejecución {: #execution-model }
 
 Toda consulta acaba ejecutándose a través del motor de federación, que es lo que permite unir cualquier origen con cualquier otro. Cómo llega un origen hasta ahí depende de cómo lo alcanza Provisa, y eso coloca cada origen en uno de cinco grupos.
@@ -24,6 +25,7 @@ Los orígenes de **materialización** tampoco tienen conector federado. Provisa 
 ---
 
 ## Todos los orígenes {: #all-sources }
+
 Provisa registra **73** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 73; el índice es el recuento.
 
 | # | Grupo | Tipos de origen |
@@ -72,6 +74,7 @@ Referencia de todos los tipos de origen que soporta Provisa. "Controlador direct
 Las bases de datos compatibles a nivel de protocolo reutilizan el driver JDBC, el driver asíncrono nativo y el dialecto de un protocolo base. CockroachDB, YugabyteDB y Greenplum usan el protocolo de PostgreSQL, y TiDB el de MySQL. Solo necesitan entradas en el registro y ningún código de conector nuevo.
 
 `firebird` (Firebird 3/4/5) y `airport` (servidor Arrow Flight) son tipos de origen registrados a los que las extensiones de la comunidad de DuckDB llegan en su sitio cuando DuckDB es el motor activo. No tienen driver directo ni conector federado.
+
 #### `saphana`
 
 SAP HANA se lee con su propio controlador y se replica en el almacén del motor activo, de modo que es accesible en todos los motores. El formulario pide host, puerto (predeterminado 39015), usuario, contraseña y base de datos; en un sistema multi-tenant la base de datos nombra el tenant. Register Table lista los esquemas que el usuario puede leer, sin los esquemas de sistema de HANA.
@@ -177,6 +180,7 @@ Un origen MotherDuck solo lo sirven los motores DuckDB y Postgres. Ningún otro 
 | `pinot` | — | pinot | — | No | Conector `pinot` de Trino; `pinot.controller-urls` = host:port del controlador de Pinot |
 
 ### Data lake / Formatos de tabla abiertos {: #data-lake-open-table-formats }
+
 Estos tipos de origen son solo de federación. No tienen controlador directo ni dialecto.
 
 | Tipo de origen | Nombre del conector | Viaje en el tiempo | Notas |
@@ -252,17 +256,20 @@ Una búsqueda se lee por instrucción con sus argumentos, y sus filas se conserv
 **Kafka en los motores alojados.** En los motores aprovisionados de la plataforma alojada, una fuente Kafka debe nombrar un registro de esquemas (`schema_registry_url`). Una cuyos tópicos tienen columnas que solo declara el modelo se rechaza por nombre al guardarla o aplicarla (HTTP 422, `sources.kafka_needs_schema_registry`), ya que sus descripciones de tabla necesitarían un directorio que no se puede dar al motor en ejecución. Las credenciales SASL llegan a esos motores en memoria (consulte [Seguridad](security.md#the-federation-engine-trino)).
 
 ### Receptor push {: #push-receiver }
+
 | Tipo de origen | Mecanismo | Mutaciones |
 | ------------ | ----------- | ----------- |
 | `ingest` | Servicios externos envían eventos JSON mediante POST; los resultados se materializan | No |
 
 ### Grafo y semántica {: #graph-semantic }
+
 | Tipo de origen | Mecanismo | Mutaciones |
 | ------------ | ----------- | ----------- |
 | `neo4j` | Cypher mediante API HTTP, resultados almacenados en caché en PostgreSQL | No |
 | `sparql` | SPARQL 1.1 POST, resultados almacenados en caché en PostgreSQL | No |
 
 ### Basados en archivos {: #file-based }
+
 Tres mecanismos cubren los archivos. Los orígenes de un solo archivo y el rastreador de archivos usan el campo `path` en lugar de `host`/`port`. El tercero, [Logs](#logs), nombra sus archivos mediante un glob en su `mapping` y lee solo archivos del servidor de Provisa.
 
 **Orígenes de base de datos en archivo y de un solo archivo.** Un origen `sqlite`, `duckdb`, `csv` o `parquet` apunta `path` a un único archivo. (Un origen `duckdb` guarda su ubicación en el campo `database` del formulario.)
@@ -296,6 +303,14 @@ Una ruta con cualquier otro esquema (`ftp://`, por ejemplo) se rechaza: "DuckDB 
 - **Nombres.** El id del origen y el nombre del archivo solo pueden usar letras, dígitos, `.`, `_` y `-`.
 - **Almacenamiento.** Un archivo subido se guarda como cualquier archivo de la organización: en la carpeta de la organización, cifrado cuando esa carpeta lo está, y visible para todos los nodos en un montaje compartido.
 
+**Descargar un archivo.** Una fuente `csv` o `parquet` puede recibir su archivo por descarga. Elija **Download a copy** en el formulario de la fuente e indique un archivo: una ruta en el servidor, una dirección `https://` o una dirección `s3://` leída con las credenciales que el formulario guarda para el almacén. Provisa transmite el archivo por la ruta de subida a `files/<source id>/<file name>` en la carpeta de la organización, con el mismo límite de tamaño, almacenamiento y reemplazo que una subida, y la fuente lee esa copia.
+
+- **Cuándo se vuelve a descargar.** Lo decide el TTL de caché de la fuente. Una tabla construida a partir de la fuente vuelve a descargar el archivo primero cuando su TTL ha vencido desde que se hizo la copia. Con un TTL de -1 el archivo se descarga una vez y se conserva.
+- **Rutas en el servidor.** Una ruta del servidor debe ser un archivo bajo un directorio listado en el ajuste `sources.download_roots` (entorno `PROVISA_SOURCES_DOWNLOAD_ROOTS`), una vez seguidos sus enlaces simbólicos. Por defecto no hay ninguno. Una ruta fuera de ellos se rechaza por su nombre y no se copia nada.
+- **Muchas organizaciones.** En un servidor de muchas organizaciones (`multitenancy: true`) una ruta del servidor se rechaza por su nombre contenga lo que contenga el ajuste, y solo se ofrecen `https://` y `s3://`. Una dirección cuyo host se resuelve dentro de la red propia del servidor (privada, loopback o link-local) también se rechaza por su nombre, en cada redirección.
+- **Su tabla, como borrador.** Al crear la fuente, el formulario ofrece crear su tabla de inmediato, como borrador, en el dominio que elija. La tabla toma el nombre de la fuente y se tipa a partir del archivo como lo propondría Register Table, y queda fuera de servicio hasta que un steward la saca del borrador. La opción está activada por defecto.
+- **Con Polly.** Dé a Polly una ruta completamente resuelta a un único archivo CSV o Parquet y ella propone la fuente con su descarga y su tabla en borrador, y la crea cuando usted confirma. Un directorio, un glob o varios archivos se convierten en cambio en una fuente de archivos.
+
 **Escrituras en un archivo SQLite o DuckDB local, y bloqueos.** Una escritura toma el bloqueo del archivo y nunca lo espera. Cuando otro proceso o nodo tiene el archivo, la escritura se rechaza, indicando el origen y que su archivo está bloqueado.
 
 - **SQLite.** La escritura establece `PRAGMA busy_timeout = 0`, así que un archivo bloqueado falla de inmediato.
@@ -320,6 +335,7 @@ Una carpeta compartida sin cifrado debe montarse con bloqueos que lleguen a todo
 Cualquier origen `files` también puede declarar un `crawl` en su mapping, con los mismos ajustes que se listan en [Wikipedia](#wikipedia): el origen lee entonces primero páginas web y deja cada tabla de datos HTML y cada archivo de datos enlazado en su directorio como una tabla.
 
 En el motor DuckDB, `files` se lee de forma nativa, con una vista de escaneo `read_csv_auto` por cada `<table>.csv` bajo el directorio resuelto. En un motor sin conector `files` propio, las filas se aterrizan a través del mismo servidor pgwire de Calcite incluido con el conector (`pgwire-file`) que usan sharepoint y splunk. Consulte [Conectores SaaS empresariales](#enterprise-saas-connectors) más abajo.
+
 #### Logs {: #logs }
 
 Un origen `logs` convierte los archivos de registro del servidor de Provisa en una tabla. Usted indica los archivos con una ruta completa o un glob, y elige el formato en que están escritos los registros. Cada registro se convierte en una fila. Un registro que el formato no puede leer se conserva, con su texto sin procesar y el motivo, y nunca se descarta.
@@ -494,6 +510,7 @@ Solo las tablas que los editores marcan como tablas de datos (`table.wikitable`)
 **Actualización.** Un rastreo se conserva durante el período de caché, `1 days` de forma predeterminada (`html_cache_ttl`). Las páginas solo se obtienen de nuevo cuando ha pasado ese tiempo.
 
 ### Observabilidad y otros {: #observability-other }
+
 `prometheus` tiene un conector de Trino (propiedades construidas a partir del DSL de mapeo del tipo). `google_sheets` es un tipo de origen registrado sin conector de Trino y se materializa a través del pipeline de caché de API.
 
 | Tipo de origen | Nombre del conector | Mutaciones |
@@ -504,6 +521,7 @@ Solo las tablas que los editores marcan como tablas de datos (`table.wikitable`)
 ### Conectores SaaS empresariales {: #enterprise-saas-connectors }
 
 Google Workspace y Microsoft 365 se leen con cargadores propios; consulte [Google Workspace y Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, el inventario de nube y Splunk se leen a través de drivers que se ejecutan como proceso propio y hablan el protocolo de PostgreSQL (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`), así que ninguno tiene driver directo. En el motor DuckDB el endpoint del driver se adjunta en vivo mediante la extensión postgres: Register Table lista las tablas del conector desde el catálogo adjunto, las consultas leen el conector en su sitio, y los filtros y proyecciones se le trasladan. Todos los demás motores aterrizan las filas en el almacén de materialización para la federación. Los paquetes de drivers se descargan por sistema operativo y arquitectura de una versión fijada (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64). Un operador puede indicar en su lugar, por conector, una carpeta de paquete compilada para este host en Admin → Configuración → Servidores de conectores (`connectors.<connector>.bundle_dir`); consulte [Admin](admin.md). Los cinco conectores de Trino (Jira no tiene) siempre comparan nombres sin distinguir mayúsculas, igual que cada producto.
+
 #### `sharepoint`
 
 Las listas de SharePoint se enumeran como esquemas y se exponen como tablas consultables. Dos métodos de autenticación: `CLIENT_CREDENTIALS` (predeterminado) y basado en certificado mediante un certificado PFX. Los valores secretos en `mapping` se resuelven a través del motor de secretos antes de llegar al conector.
@@ -811,6 +829,7 @@ Una comprobación que no puede hacerse pide una lectura; nunca informa "sin camb
 **Exclusiones.** El correo es de solo lectura; ninguna sentencia cambia un buzón. `calendars`, `task_lists` y todas las tablas de correo no admiten escrituras. Spam y Papelera de Gmail se dejan fuera salvo que `mail_include_spam_trash` esté activado. La API Tasks de Google guarda solo el día en que vence una tarea y no tiene recordatorio.
 
 ### Orígenes de API {: #api-sources }
+
 Registre cualquier endpoint HTTP como una tabla consultable.
 
 | Tipo de API | Detección | Inferencia de columnas |
@@ -1023,6 +1042,7 @@ Así los motores nativos, que funcionan sin clúster, obtienen la misma extensib
 El archivo viene vacío. Los conectores incorporados cubren lo que funciona de serie, y todo lo que hay en este archivo lo escribe el operador. Para usar otra ruta, por ejemplo en pruebas, defina `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Tipos de descriptor {: #descriptor-kinds }
+
 | Motor | Tipo | Mecanismo | Qué proporciona el descriptor |
 | --- | --- | --- | --- |
 | `postgres` | `pg_fdw` | SQL/MED (estándar ISO) | `extension`, `server_options`, `user_mapping`, `supports_import`, `table_options`, `remote_schema` |
@@ -1039,7 +1059,9 @@ El archivo viene vacío. Los conectores incorporados cubren lo que funciona de s
 **ClickHouse soporta tres mecanismos**, uno por cada forma de motor de integración: un motor DATABASE relacional que expone automáticamente cada tabla remota (`clickhouse_database`, por ejemplo Redis/MySQL), un motor por tabla cuyas columnas provee el registro (`clickhouse_table`, por ejemplo el puente JDBC/ODBC; el `engine_template` puede llevar un marcador `{table}` que el runtime vincula), y un motor de archivo/lake/URL cuyo esquema infiere ClickHouse (`clickhouse_scan`, por ejemplo HDFS/URL). SQLite (motor DATABASE, archivo, sin servidor) y Hudi (lakehouse, sin copia) vienen listos para usar.
 
 Un valor `kind` desconocido falla de forma visible al arrancar, así que una errata en un descriptor nunca deja un tipo de origen inalcanzable sin avisar.
+
 ### Verificación de disponibilidad {: #probe-gating }
+
 La disponibilidad se verifica en el momento del attach contra el catálogo de detección estándar de cada motor:
 
 - **Postgres** — verifica `pg_extension`, luego `pg_available_extensions`.
@@ -1049,6 +1071,7 @@ La disponibilidad se verifica en el momento del attach contra el catálogo de de
 Una extensión declarada que no se puede instalar falla de forma ruidosa. Sin omisión silenciosa, sin valor de respaldo. Un conector cuya verificación falla simplemente no está activo para ese despliegue.
 
 ### Variables de plantilla {: #template-variables }
+
 Todo valor de `server_options`, valor de `user_mapping`, `attach_template` y `scan_template` puede usar marcadores `{field}`. Campos disponibles:
 
 `{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, más cualquier clave de `federation_hints`. Las plantillas de attach de DuckDB reciben además `{alias}`, el alias de catálogo interno que Provisa da a la base de datos adjunta.
@@ -1056,6 +1079,7 @@ Todo valor de `server_options`, valor de `user_mapping`, `attach_template` y `sc
 Una plantilla que referencia un campo desconocido falla de forma ruidosa en el momento del attach, exponiendo un desajuste entre descriptor y origen antes de que un DDL roto llegue al motor.
 
 ### Ejemplos {: #examples }
+
 **Postgres — MongoDB mediante `mongo_fdw` (sin importación de esquema; columnas provistas por tabla)**
 
 ```yaml
@@ -1095,6 +1119,7 @@ Con cualquiera de los dos descriptores en su lugar, registrar un origen con el `
 ---
 
 ## Almacenes de datos como orígenes con nombre {: #warehouses-as-named-sources }
+
 Snowflake, Databricks y ClickHouse se pueden registrar como orígenes con nombre independientemente de cuál motor de federación esté activo.
 
 Una vez registrado, el almacén de datos se lee a través del DirectDriver del origen, que crea una réplica en el almacén de materialización del motor activo, y la consulta se ejecuta contra esa réplica. En la ruta directa habitual (asyncpg, aiomysql) el motor se salta por completo. Aquí el motor sigue ejecutando la consulta, pero contra una réplica local en lugar de ir por la red al almacén de datos en cada petición.
@@ -1151,6 +1176,7 @@ sources:
 ---
 
 ## Campos de configuración de origen {: #source-configuration-fields }
+
 Todos los orígenes comparten un conjunto común de campos.
 
 | Campo | Obligatorio | Predeterminado | Descripción |
@@ -1181,6 +1207,7 @@ Todos los orígenes comparten un conjunto común de campos.
 ---
 
 ## Orígenes Kafka {: #kafka-sources }
+
 Los tópicos de Kafka se configuran por separado bajo `kafka_sources`, indexados por el `id` de origen de un origen `kafka` registrado.
 
 ```yaml
@@ -1215,6 +1242,7 @@ kafka_sources:
 ---
 
 ## Visibilidad de columnas {: #column-visibility }
+
 El campo `visible_to` en cada columna es una lista de ID de rol que pueden ver esa columna.
 
 ```yaml
@@ -1232,6 +1260,7 @@ Las columnas omitidas de la lista `visible_to` de un rol no aparecen en el esque
 ---
 
 ## Relaciones {: #relationships }
+
 Las relaciones conectan dos tablas registradas y aparecen como campos anidados en GraphQL.
 
 ```yaml
@@ -1303,6 +1332,7 @@ Valores de cardinalidad:
 ---
 
 ## Reglas de seguridad de nivel de fila {: #row-level-security-rules }
+
 Las reglas RLS inyectan cláusulas `WHERE` en el momento de la consulta, con alcance a un rol y opcionalmente a una tabla o dominio.
 
 ```yaml
@@ -1332,7 +1362,9 @@ Cuando existen tanto una regla de nivel de dominio como una de nivel de tabla pa
 ---
 
 ## Funciones y webhooks {: #functions-and-webhooks }
+
 ### Funciones de base de datos {: #db-functions }
+
 Registra una función de base de datos y la expone como consulta o mutación GraphQL.
 
 Los orígenes de base de datos también pueden autodescubrir sus procedimientos almacenados y funciones a partir del catálogo del proveedor (`pg_proc`, `information_schema.routines`, o equivalentes del proveedor), eliminando la necesidad de registrar cada uno manualmente. La detección lee `prokind` y `provolatile`: las funciones inmutables/estables se registran como relaciones parametrizadas (los argumentos del procedimiento se convierten en parámetros de consulta, con la misma forma que las tablas OpenAPI GET), y los procedimientos volátiles se registran como mutaciones/funciones rastreadas. Las rutinas descubiertas pasan por el gobierno de Etapa 2 de forma idéntica a las registradas manualmente.
@@ -1406,6 +1438,7 @@ webhooks:
 ---
 
 ## Autenticación {: #authentication }
+
 La autenticación se configura bajo la clave `auth`.
 
 | Proveedor | Descripción |
@@ -1445,11 +1478,13 @@ auth:
 ---
 
 ## Orígenes de grafo y semántica {: #graph-semantic-sources }
+
 ### Neo4j
 
 Registre una base de datos de grafos Neo4j como un origen consultable. Los stewards escriben consultas Cypher que proyectan valores escalares; Provisa almacena en caché los resultados y los expone como tipos GraphQL.
 
 Las consultas Cypher deben usar accesos a propiedades en la cláusula `RETURN` (`RETURN n.id AS id, n.name AS name`). El registro rechaza una consulta que devuelve objetos nodo.
+
 #### Registro por archivo de configuración {: #config-file-registration }
 
 Declare un origen `neo4j` y sus tablas en YAML. Cada tabla requiere un `query_template` (el Cypher que produce sus filas) y columnas tipadas. La clave `query_template` no es válida bajo ningún otro tipo de origen.
@@ -1582,6 +1617,7 @@ Register Table funciona de la misma manera que para Neo4j: elija el origen, escr
 ---
 
 ## Ejemplos de conexión {: #connection-examples }
+
 ### PostgreSQL
 
 ```yaml

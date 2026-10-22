@@ -18,7 +18,7 @@
 
 Une table et une vue ne diffèrent que par leur origine : une table est revendiquée depuis une source, une vue est définie par un intendant. Dès que l'une ou l'autre est un actif de domaine, le modèle de gouvernance les traite de la même façon :
 
-- Les deux sont des actifs de domaine de premier ordre visibles dans le catalogue
+- Les deux sont des actifs de domaine à part entière, visibles dans le catalogue
 - Les deux peuvent être la cible d'une relation
 - Les deux peuvent être accordées selon le principe 6
 - Les deux sont soumises au même pipeline de gouvernance
@@ -80,7 +80,7 @@ Une relation est un chemin de parcours approuvé entre deux actifs. Les frontiè
 - Une demande de relation est tranchée par les domaines qu'elle touche : le domaine de sa table source et le domaine de sa table cible
 - Une approbation ne compte que si elle vient d'un utilisateur dont le droit de créer des relations atteint l'un de ces domaines ; tout utilisateur de ce type peut la rejeter
 - La demande est exécutée dès que deux utilisateurs différents, dont aucun n'est le demandeur, l'ont approuvée et que chaque domaine concerné a un approbateur : une relation entre deux domaines a besoin d'un oui de chaque côté, et une relation à l'intérieur d'un domaine a besoin de deux approbateurs de ce domaine
-- Approuver une relation construit le graphe de dépendances de chaque steward, permettant des notifications proactives d'évolution de schéma
+- Approuver une relation construit le graphe de dépendances de chaque steward, si bien que les stewards apprennent les changements de schéma avant qu'ils ne s'appliquent
 
 Les relations se créent quand quelqu'un en a besoin, jamais par anticipation. La première équipe qui a le besoin métier fait le travail, et les équipes suivantes en héritent.
 
@@ -112,10 +112,10 @@ Trois étapes, dans l'ordre.
 
 **Étape 1 — Modelage (découverte SQL, depuis la page Relations) :**
 
-- L'analyste ouvre l'outil de modelage depuis la page Relations pour explorer les chemins de jointure potentiels en SQL brut
+- L'analyste ouvre l'outil de modelage depuis la page Relations pour essayer des chemins de jointure en SQL brut
 - Le SQL est exécuté sur les données accessibles, soumis à la sécurité au niveau des lignes et au masquage de colonnes existants
 - Les JOIN présents dans le SQL sont analysés et présentés comme des propositions de relation candidates
-- Les candidats suggérés par la machine (inférence par clé étrangère, inférence sémantique) sont affichés aux côtés de l'exploration SQL de l'analyste dans la même vue
+- Les candidats suggérés par la machine (inférence par clé étrangère, inférence sémantique) sont affichés aux côtés du SQL de l'analyste dans la même vue
 - L'analyste sélectionne les candidats à promouvoir vers une demande de relation formelle
 
 **Étape 2 — Approbation de la relation** (déterminante — structurelle et permanente) :
@@ -238,7 +238,7 @@ Il s'ouvre en fenêtre modale depuis la page Relations. Son but est de construir
 4. L'analyste promeut les candidats sélectionnés vers des demandes de relation formelles
 5. Les relations approuvées sont ajoutées au catalogue et deviennent franchissables dans les requêtes
 
-Pour l'exploration structurelle, l'outil de modélisation peut montrer toutes les tables enregistrées, y compris celles dont l'analyste ne peut pas voir les données. La visibilité du schéma est une autre question ; c'est l'approbation de l'intendant qui régit l'accès aux données elles-mêmes.
+Pendant que vous mettez au point la structure, l'outil de modélisation peut montrer toutes les tables enregistrées, y compris celles dont l'analyste ne peut pas voir les données. La visibilité du schéma est une autre question ; c'est l'approbation de l'intendant qui régit l'accès aux données elles-mêmes.
 
 ---
 

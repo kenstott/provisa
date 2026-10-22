@@ -58,6 +58,25 @@ def in_force() -> Any:
     return or_(_t.c.expires_at.is_(None), _t.c.expires_at > func.now())
 
 
+async def holder_emails(conn: Any) -> dict[str, tuple[str, ...]]:
+    """Each role's holders' email addresses, by role id (REQ-2118): the members holding it now,
+    directly, whose directory entry has an address. A data product's owners in a catalog that
+    names owners by address are its owner role's holders, from here."""
+    rows = (
+        await conn.execute_core(
+            select(_t.c.role_id, user_directory.c.email)
+            .join(user_directory, user_directory.c.user_id == _t.c.user_id)
+            .where(in_force(), user_directory.c.email.is_not(None), user_directory.c.email != "")
+            .distinct()
+            .order_by(_t.c.role_id, user_directory.c.email)
+        )
+    ).fetchall()
+    out: dict[str, list[str]] = {}
+    for role_id, email in rows:
+        out.setdefault(role_id, []).append(email)
+    return {role_id: tuple(emails) for role_id, emails in out.items()}
+
+
 def used_roles(role_id: str, table_ids: Iterable[int], state: Any) -> tuple[str, ...]:
     """The roles a served statement depended on. A single acting role served it. A meta-role's
     members are those granted a table the statement read: acting as several roles (or all of

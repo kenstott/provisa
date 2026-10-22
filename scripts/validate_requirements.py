@@ -119,10 +119,16 @@ def main() -> int:
             # a separate distribution with a separate root, not a second-class location. A
             # requirement whose whole surface is billing or entitlements has no test to give under
             # tests/unit/, since the code under test is not in this package.
+            #
+            # The Python client is a distribution of its own too (provisa-client/, published to
+            # PyPI by release-packages.yml, which runs its suite): a requirement on the client's
+            # API is unit-tested in provisa-client/tests/, beside the package it covers.
             unit = [
                 t
                 for t in tests
-                if t.startswith(("tests/unit/", ".claude/commercial/tests/"))
+                if t.startswith(
+                    ("tests/unit/", ".claude/commercial/tests/", "provisa-client/tests/")
+                )
                 or (t.startswith("provisa-ui/src/") and ".test." in t)
             ]
             integration = [t for t in tests if t.startswith("tests/integration/")]

@@ -68,8 +68,6 @@ Das Feld `extensions` unterstützt das Automatic-Persisted-Query-(APQ)-Protokoll
 
 **Antwort-Cache:** opt-in pro Anfrage mit der Operationsdirektive `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` optional); dieselbe Direktive gilt für GraphQL über Arrow Flight. Cypher meldet sich mit einer Zeile `// @provisa cache=true` oder `// @provisa cache_ttl=N` an, gRPC mit den Aufruf-Metadaten `x-provisa-cache: true` oder `x-provisa-cache-ttl: N`. Ohne sie liest und schreibt die Anfrage den Antwort-Cache nicht. Der Antwort-Header `X-Provisa-Cache` meldet `HIT` oder `MISS`. Siehe [Cache](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### Request-Header für den Antwort-Cache {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, die Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` und `/data/jsonapi` nehmen das Opt-in auch als Request-Header entgegen. Jede der folgenden Formen verhält sich wie `@cached(ttl: N)`:
@@ -1627,7 +1625,7 @@ Ein Produkt ohne exportierte Mitglieder bekommt keinen Snapshot-Eintrag, weil ei
 
 ### Datenprodukt-Unterstützung nach Katalogziel {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` erreicht jeden Adapter, aber nur Adapter, deren Plattform ein natives Datenprodukt-Konzept hat, veröffentlichen es als erstklassige Entität; die übrigen veröffentlichen die (bereits oben gefilterten) Mitgliedstabellen ohne Produktgruppierung.
+`MetadataSnapshot.data_products` erreicht jeden Adapter, aber nur Adapter, deren Plattform ein natives Datenprodukt-Konzept hat, veröffentlichen es als eigene Entität; die übrigen veröffentlichen die (bereits oben gefilterten) Mitgliedstabellen ohne Produktgruppierung.
 
 | Ziel | Datenprodukt-Repräsentation |
 | --- | --- |
@@ -1638,4 +1636,4 @@ Ein Produkt ohne exportierte Mitglieder bekommt keinen Snapshot-Eintrag, weil ei
 | Collibra | Jedes Produkt wird zu einem Asset eines `Data Product`-Community-Typs, verknüpft mit seinen Mitgliedstabellen über eine Beziehung `Data Product groups Table`. |
 | Atlan | Veröffentlicht als benutzerdefinierte `DataProduct`-Typedef-Vermutung — Atlan hat keinen dokumentierten stabilen Typnamen für dieses Konzept, daher ist die Abbildung Best-effort. |
 | Apache Atlas | Veröffentlicht als benutzerdefiniertes `provisa_data_product`-Typedef mit einer `provisa_data_product_members`-Beziehung — Atlas hat keinen nativen Datenprodukt-Entitätstyp. |
-| OpenLineage | Keine erstklassige Entität — Mitgliedstabellen tragen eine benutzerdefinierte `provisa_data_product`-Facette, die das besitzende Produkt benennt. |
+| OpenLineage | Keine eigene Entität; Mitgliedstabellen tragen eine benutzerdefinierte `provisa_data_product`-Facette, die das besitzende Produkt benennt. |

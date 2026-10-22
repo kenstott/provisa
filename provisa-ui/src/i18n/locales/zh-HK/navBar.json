@@ -73,6 +73,7 @@
     "sandboxExitCreateOrg": "建立組織",
     "sandboxExitLogOut": "只登出",
     "itemPython": "Python",
-    "itemNotebook": "筆記本"
+    "itemNotebook": "筆記本",
+    "itemContainerRegistries": "容器登錄庫"
   }
 }

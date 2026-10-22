@@ -33,6 +33,7 @@ once at the entrypoint (never silently here).
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar, Token
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
@@ -406,6 +407,20 @@ class OrgRuntime:
         set_part(self, "proto", value)
 
 
+@dataclass
+class _Build:
+    """One runtime being built: the key it will be registered under, and whether it still is."""
+
+    key: str
+    runtime: "OrgRuntime"
+    open: bool = True
+
+
+#: The runtimes the current work is building, by key. Only the build itself (and what it starts)
+#: resolves a key to its runtime while it is built; everyone else is served the registered one.
+_builds: ContextVar[dict[str, _Build]] = ContextVar("org_runtime_builds", default={})
+
+
 class OrgRegistry:
     """Lazily-built ``dict[org_id, OrgRuntime]`` with a per-org build lock.
 
@@ -421,15 +436,34 @@ class OrgRegistry:
         # connection threads' own loops, so the per-org lock must work across loops and threads;
         # setdefault is atomic, so two threads never each install a different lock for one org.
         self._locks: dict[str, CrossLoopLock] = {}
-        # The orgs whose runtime a builder is building now: registered before the build finishes
-        # (see get_or_build), with databases not bound yet, so no background job walks them.
+        # The orgs whose runtime a builder is building now (get_or_build, rebuild).
         self._building: set[str] = set()
 
     def _lock_for(self, org_id: str) -> CrossLoopLock:
         return self._locks.setdefault(org_id, CrossLoopLock())
 
     def get(self, org_id: str) -> OrgRuntime | None:
+        build = _builds.get().get(org_id)
+        if build is not None and build.open:
+            return build.runtime
         return self._runtimes.get(org_id)
+
+    def begin_build(self, org_id: str, runtime: OrgRuntime) -> tuple[_Build, Token]:
+        """Resolve ``org_id`` to ``runtime`` for the work building it, and only for that work: the
+        build routes its writes through the runtime it is building (the AppState shims), while
+        any other work bound to the org -- a scheduled replica pass, a request -- is served the
+        runtime already registered, or none, never one whose stores are not bound yet."""
+        build = _Build(org_id, runtime)
+        return build, _builds.set({**_builds.get(), org_id: build})
+
+    def end_build(self, started: tuple[_Build, Token], *, built: bool) -> None:
+        """End the build ``begin_build`` started; a ``built`` runtime is registered, replacing the
+        one served while it was built. Work the build started resolves the registry after it."""
+        build, token = started
+        if built:
+            self.set(build.key, build.runtime)
+        build.open = False
+        _builds.reset(token)
 
     def set(self, org_id: str, runtime: OrgRuntime) -> None:
         old = self._runtimes.get(org_id)
@@ -468,8 +502,7 @@ class OrgRegistry:
 
     def runtimes(self) -> list["OrgRuntime"]:
         """Every runtime this process holds that is built, each an org environment (REQ-1926: a
-        worker's keeper of temporary tables walks them). One being built is left out: it is
-        registered before its databases are bound."""
+        worker's keeper of temporary tables walks them). One being rebuilt is left out."""
         return [rt for org_id, rt in list(self._runtimes.items()) if org_id not in self._building]
 
     async def _build(
@@ -488,12 +521,9 @@ class OrgRegistry:
     async def get_or_build(
         self, org_id: str, builder: Callable[[str], Awaitable[OrgRuntime]]
     ) -> OrgRuntime:
-        # No lock-free fast path: the builder registers a runtime under this same key BEFORE it
-        # finishes building (build_org_runtime needs the entry early so the AppState property
-        # shims can route build-time writes onto it), so a bare dict.get() here could return a
-        # half-built runtime — schemas still empty — to a concurrent caller. Always taking the
-        # lock serializes against that build; an already-built entry is a cheap uncontended
-        # acquire, not a rebuild.
+        # No lock-free fast path: a caller arriving while the org is built must wait for that
+        # build rather than start a second one. Always taking the lock serializes against it; an
+        # already-built entry is a cheap uncontended acquire, not a rebuild.
         async with self._lock_for(org_id):
             existing = self._runtimes.get(org_id)
             if existing is not None:

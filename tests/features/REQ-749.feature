@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-749 — Security
-  # Domain policy tri-state mode (legacy/single-domain/namespaced) — legacy mode (use_domains absent) stores declared domain…
+  # Domain policy tri-state mode (legacy/single-domain/namespaced). Legacy mode (use_domains absent) stores declared domain_…
 
   Scenario: REQ-749 default behaviour
     Given a config with use_domains mode specified

@@ -69,7 +69,7 @@ sources:
   type: postgresql
   host: ${env:OPIOIDS_PG_HOST:-localhost}
   port: ${env:OPIOIDS_PG_PORT:-28832}
-  database: opioids
+  database: opioids${env:OPIOIDS_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The settlement fund's own database -- the counties it pays and its allocations

@@ -148,7 +148,7 @@ mutation {
 
 ### AI 关联发现 {: #ai-relationship-discovery }
 
-通过 REST 触发由 Claude 提供支持的外键分析：
+通过 REST 请 Claude 给出外键候选：
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -333,7 +333,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-Admin API 在浏览器中的 `GET /admin/graphql` 附带 GraphiQL。可用它以交互方式探索完整的管理员架构。
+Admin API 在浏览器中的 `GET /admin/graphql` 附带 GraphiQL。可用它浏览完整的管理员架构并试用调用。
 
 ## ops 域管理视图 {: #ops-domain-management-views }
 

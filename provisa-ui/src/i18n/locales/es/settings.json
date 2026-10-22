@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "Archivo subido más grande",
         "help": "El archivo más grande que un origen SQLite, DuckDB, CSV o Parquet puede recibir por subida desde el formulario del origen; uno mayor se rechaza indicando este límite. Un archivo mayor conviene leerlo donde está, desde un almacén de objetos."
+      },
+      "download_roots": {
+        "label": "Directorios desde los que se pueden descargar archivos de origen",
+        "help": "Los directorios desde los que se puede descargar el archivo de un origen CSV o Parquet por su ruta en este servidor, una vez seguidos sus enlaces; ninguno de forma predeterminada. Añada uno para que un steward pueda copiar un archivo que esté dentro a la carpeta de la organización. Un servidor de muchas organizaciones no copia ningún archivo propio, diga lo que diga esto."
       }
     },
     "polly": {
@@ -815,6 +819,10 @@
       "idle_ttl": {
         "label": "Límite de inactividad de un sandbox de demostración",
         "help": "Un sandbox de demostración que nadie ha usado durante este tiempo se elimina, con todo lo que contiene."
+      },
+      "demo_stores_linger": {
+        "label": "Almacenes de la demostración tras su uso",
+        "help": "Cuánto tiempo siguen activas las bases de datos de una demostración después de cerrarse su último sandbox. Si se vuelve a abrir antes, se abre al instante; después, se detienen y el siguiente visitante espera mientras se inician."
       },
       "ai_base_url": {
         "label": "Endpoint de IA del sandbox",

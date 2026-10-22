@@ -10,7 +10,8 @@
       "whereNext": "接下來去哪?",
       "exploreDeepDives": "探索 Deep Dives",
       "lookAround": "自己四處看看",
-      "anyTime": "你可以隨時透過導覽按鈕重新開始導覽或開啟 Deep Dives。"
+      "anyTime": "你可以隨時透過導覽按鈕重新開始導覽或開啟 Deep Dives。",
+      "openDemo": "開啟 {{title}} 示範"
     },
     "welcome": {
       "title": "開始導覽？",
@@ -30,10 +31,6 @@
       "thisDemo": "本示範"
     },
     "topics": {
-      "connect": {
-        "title": "連接你的數據",
-        "summary": "數據來源類型、註冊表、副本和即時讀取。"
-      },
       "relationships": {
         "title": "關係",
         "summary": "宣告表之間的關聯,無論在同一數據來源內還是跨數據來源,也無論數據來源本身有否宣告。只需宣告一次,所有介面都遵循。"
@@ -88,6 +85,11 @@
         "title": "73 種數據來源類型，14 個類別",
         "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
+      "stepBuildSource": {
+        "title": "即場加入一個數據源",
+        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（<code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
+        "acting": "正在加入數據源"
+      },
       "step4": {
         "title": "一切都會變成一個表格",
         "description": "無論數據來源是甚麼，是 Mongo 集合、Kafka 主題、REST 端點還是圖數據，Provisa 都會將它分解成一個二維<strong>表格</strong>：以統一的形態，跨所有數據來源進行查詢。<p>📁 將表格分組成<strong>領域</strong>，每個領域由一位數據管家負責，隨著模型演變守護其品質。</p>"
@@ -101,36 +103,44 @@
         "description": "💬 你用已在使用的語言或工具提問（SQL、GraphQL、Cypher、透過 Polly 使用自然語言，或 BI 工具或驅動程式），每一種讀取的都是同一個受治理的模型，因此無論選哪一種，答案和規則都相同。"
       },
       "step6": {
-        "title": "SQL（七種介面之一）",
+        "title": "SQL（九種介面之一）",
         "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢：在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。模型自身的中繼數據，以及每一項活動追蹤，在這裡也是可查詢的表格，所以可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 除了這個探索器，同一套受管治的 SQL 還可透過多種線路協定運作；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>：所有 Postgres 相容的客戶端（psql、DBeaver、Tableau、Power BI）開箱即用。</li><li><strong>JDBC</strong>：可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：為 ADBC 客戶端提供欄式串流，毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>：從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li></ul>"
       },
       "step7": {
-        "title": "GraphQL（七種介面之二）",
+        "title": "GraphQL（九種介面之二）",
         "description": "◈ 同一個查詢，以 GraphQL 表達：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>對你的關係進行分組與彙總：🎯 單一端點，📖 自我描述的結構描述。</p><p>🔌 可從<strong>任何 GraphQL 客戶端</strong>呼叫，例如 Apollo、Relay 或 urql。啟用聯邦功能後，Provisa 會作為子圖加入 <strong>Apollo 超級圖（supergraph）</strong>，讓你的聯邦模型與現有圖譜一併組合。</p>"
       },
       "step8": {
-        "title": "Cypher（七種介面之三）",
+        "title": "Cypher（九種介面之三）",
         "description": "🕸️ 用 Cypher 將聯邦模型當作圖譜來遍歷：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ 這個遍歷可<strong>跨數據來源</strong>執行，毋須單一圖數據庫。</p><p>🔌 任何 <strong>Bolt</strong> 客戶端（例如 Neo4j Browser 或 Bloom）都能透過線路執行同樣的遍歷，毋須更改程式碼。</p>"
       },
       "step9": {
-        "title": "gRPC（七種介面之四）",
+        "title": "gRPC（九種介面之四）",
         "description": "⚙️ 每個已登記的實體同時也是一個 gRPC 服務：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>可從任何 gRPC 客戶端呼叫：📐 強型別，🚀 高吞吐量。</p>"
       },
       "step10": {
-        "title": "JSON:API（七種介面之五）",
+        "title": "JSON:API（九種介面之五）",
         "description": "🧩 一個符合規格的 JSON:API 介面：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 分頁與 🔍 篩選開箱即用。</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST（七種介面之六）",
+        "title": "OpenAPI / REST（九種介面之六）",
         "description": "🌐 還有一個以 OpenAPI 描述的純 REST 端點：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 描述完整，任何 REST 客戶端或程式碼產生器都可以使用。</p>"
       },
       "step12": {
-        "title": "MCP（七種介面之七）",
-        "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具（搜尋目錄、描述表格、執行 SQL、追蹤關係），並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還剩最後一種介面：就是那個能替你寫出其餘七種的介面。→</p>"
+        "title": "MCP（九種介面之七）",
+        "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具（搜尋目錄、描述表格、執行 SQL、追蹤關係），並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還有兩種介面從 Python 讀取同樣受管治的數據。→</p>"
+      },
+      "stepPython": {
+        "title": "Python（九種介面之八）",
+        "description": "🐍 Python 分頁在你的瀏覽器中執行 Python，並以你的身份登入：<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>結果以 pandas DataFrame 傳回，經由同一條受管治的管道讀取，所以你角色的行規則和遮罩同樣適用。</p><p>🔌 同一個 <strong>provisa-client</strong> 套件可以用 pip 安裝到任何桌面 Python，所以在這裏寫的腳本毋須修改就能在你自己的環境中執行。</p>"
+      },
+      "stepNotebook": {
+        "title": "筆記本（九種介面之九）",
+        "description": "📓 筆記本分頁就是 JupyterLite：在你瀏覽器中執行的 Jupyter 筆記本。第一個儲存格負責登入，下一個把同一條查詢讀成 DataFrame，可以畫成圖表或與其他數據合併。<p>⬇️ 下載這本筆記本，它可以在任何桌面 Jupyter 中打開，同樣的儲存格會像在這裏一樣從 Provisa 讀取。</p><p>還剩最後一種介面：替你寫出查詢的那種。→</p>"
       },
       "step13": {
-        "title": "直接問：那個替你寫出全部七種的介面",
-        "description": "💬 <em>「顯示每個物種的寵物數目」</em><p><strong>你根本不必學習前面那七種介面。</strong>用日常英語提問，Provisa 會將你的問題同時編譯成每一種查詢語言：下面每個面板，都是同一句話對應的 SQL、GraphQL、Cypher、gRPC、JSON:API 及 REST 版本。</p><p>用你的工具已經懂的介面，或者全部略過，直接發問。</p><p>🔑 即時的自然語言查詢使用你自己的 LLM 金鑰；此範例為預錄示範。</p><p>✅ 一個模型，<strong>八種介面</strong>：七種用來查詢，還有一種能寫出全部七種。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "直接問：替你寫出查詢的介面",
+        "description": "💬 <em>「顯示每個物種的寵物數目」</em><p><strong>這些查詢語言你一種都不用學。</strong>用日常語言發問，Provisa 會一次過把你的問題編譯成全部七種：下面每個面板都是同一句話寫成的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>它不能直接打開 Python 或筆記本，但你隨時可以叫 Polly 把查詢搬到其中任何一個。</p><p>🔑 即時的自然語言查詢會使用你自己的 LLM 金鑰；這裏是一個預先準備的例子。</p><p>✅ 一個模型支撐全部<strong>九種介面</strong>，日常語言替你寫出查詢。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>筆記本</span></div>"
       },
       "step14": {
         "title": "這就是五分鐘的核心內容",
@@ -217,8 +227,8 @@
         "description": "✨ <strong>根據剖析填入</strong>會依據該表格最新的剖析，為識別性的欄位建議虛構值，為其餘欄位建議合成規則。在你儲存表單之前不會儲存任何內容。"
       },
       "stepEnvKinds": {
-        "title": "環境及其連線",
-        "description": "環境是您模型的一個<strong>分支</strong>，清單會顯示每個環境是從哪個環境建立的。建立時，您可以選擇是否<strong>繼承連線</strong>。開啟時，新環境以參照方式使用父環境的數據來源連線，因此那邊輪換了憑證，這邊也會隨之更新。關閉時（預設），您會得到不含任何連線的完整模型，再把每個數據來源指向您自己的資料庫。"
+        "title": "環境及其數據",
+        "description": "環境是您的模型的一個<strong>分支</strong>，清單顯示每個環境是從哪個環境建立的。建立環境時，您要選擇它的<strong>數據</strong>。<strong>Inherit</strong> 從父環境複製每個數據來源的連線，因此表顯示父環境的數據。預設的 <strong>Unbound</strong> 給您不帶連線的整個模型，由您將每個數據來源指向自己的資料庫。<strong>Test (fake)</strong> 透過每欄的虛構值讀取父環境的列，<strong>Test (synthetic)</strong> 讀取根據父環境的剖析執行生成的列。引用密鑰或環境變數的連線值會按該引用複製，因此輪換憑證會作用到每個使用它的環境。"
       },
       "stepSynthetic": {
         "title": "產生合成數據",
@@ -302,7 +312,7 @@
       },
       "weblogsLogFiles": {
         "title": "三個資料來源",
-        "description": "網店有三個資料來源：<strong>shop-db</strong>，即它的 PostgreSQL 資料庫，以及兩個日誌資料來源 <strong>shop_access</strong> 和 <strong>shop_db_log</strong>。Provisa 在原處讀取每個日誌檔案，一行即一條記錄，並每 30 秒再讀一次；事先不載入也不複製任何內容。"
+        "description": "網店有三個資料來源：<strong>shop-db</strong>，即它的 PostgreSQL 資料庫，以及兩個日誌資料來源 <strong>shop_access</strong> 和 <strong>shop_db_log</strong>。Provisa 在原處讀取每個日誌檔案，一行即一條記錄。"
       },
       "weblogsTables": {
         "title": "資料來源變成表",
@@ -406,7 +416,7 @@
       },
       "reviewsSearchStore": {
         "title": "評論存放在 Elasticsearch",
-        "description": "<strong>reviews</strong> 是 Elasticsearch：客戶撰寫的 5,000 則評論，每則都有對應的產品、星級和文字。Provisa 即時讀取它，事先不複製任何內容。"
+        "description": "<strong>reviews</strong> 是 Elasticsearch：客戶撰寫的 5,000 則評論，每則都有對應的產品、星級和文字。"
       },
       "reviewsGraphStore": {
         "title": "誰買了甚麼，存放在 Neo4j",
@@ -466,15 +476,15 @@
       },
       "insuranceRecap": {
         "title": "你看到了甚麼",
-        "description": "您看到了保險公司自己的數據：即時讀取，並按縣與只落地一次的公共風險數據連接，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答風險承擔與風險在哪裏交匯，每個角色只看到獲准的內容。"
+        "description": "您看到了保險公司自己的數據，按縣與公共風險數據連接，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答風險承擔與風險在哪裏交匯，每個角色只看到獲准的內容。"
       },
       "insuranceGovdata": {
         "title": "公開的風險數據",
-        "description": "政府數據來自 AskAmerica，一個真實帳戶。它的三張縣級表在建立示範時載入一次，此後一直從該副本讀取：它們永不過期，本示範亦從不呼叫該帳戶。"
+        "description": "政府數據來自 AskAmerica。"
       },
       "insuranceBook": {
         "title": "保險公司的保單組合",
-        "description": "每份有效保單，即時讀取自保險公司自己的資料庫：所在縣、險種、總保險價值、保費和自負額。"
+        "description": "每份有效保單：所在縣、險種、總保險價值、保費和自負額。"
       },
       "insuranceRisk": {
         "title": "FEMA 的 National Risk Index",
@@ -498,7 +508,7 @@
       },
       "qualityBronze": {
         "title": "銅層：乾淨之處已定型",
-        "description": "<strong>bronze</strong> 按落入時的原樣保存每個批次，從不修改。乾淨的數據在落入時即定型：銷售 ID、售出時間、數量。雜亂的欄位（分店代碼、產品和價格）保持原始狀態，直到銀層。探針監察著它，因此新批次會更新其後的每個視圖。"
+        "description": "<strong>bronze</strong> 按落入時的原樣保存每個批次，從不修改。乾淨的數據在落入時即定型：銷售 ID、售出時間、數量。雜亂的欄位（分店代碼、產品和價格）保持原始狀態，直到銀層。"
       },
       "qualityRaw": {
         "title": "原始，按數據流的寫法",
@@ -602,11 +612,11 @@
       },
       "vulnerabilitiesGovdata": {
         "title": "公開的漏洞資料",
-        "description": "政府資料來自 AskAmerica，一個真實帳戶：NVD 的 CVE 記錄、MITRE 的軟件弱點目錄以及 CISA 的 Known Exploited Vulnerabilities。這些表在建置示範時載入一次，之後一直從該複本讀取：本示範從不呼叫該帳戶。"
+        "description": "政府資料來自 AskAmerica：NVD 的 CVE 記錄、MITRE 的軟件弱點目錄以及 CISA 的 Known Exploited Vulnerabilities。"
       },
       "vulnerabilitiesAlerts": {
         "title": "Dependabot 警示",
-        "description": "每個有已發佈安全公告的固定套件版本對應一條警示：程式碼庫、套件、CVE、修復它的版本，以及警示是未處理、已修復還是已忽略。它從公司的資料庫即時讀取。"
+        "description": "每個有已發佈安全公告的固定套件版本對應一條警示：程式碼庫、套件、CVE、修復它的版本，以及警示是未處理、已修復還是已忽略。"
       },
       "vulnerabilitiesNvd": {
         "title": "經篩選條件載入的 CVE 記錄",
@@ -614,7 +624,7 @@
       },
       "vulnerabilitiesKev": {
         "title": "CISA 的已知被利用漏洞",
-        "description": "每個已知被攻擊者利用的 CVE，附有聯邦機構必須修復的限期，以及勒索軟件活動是否使用它。整體載入：它很小。"
+        "description": "每個已知被攻擊者利用的 CVE，附有聯邦機構必須修復的限期，以及勒索軟件活動是否使用它。"
       },
       "vulnerabilitiesJoin": {
         "title": "按 CVE 判定被利用",
@@ -642,7 +652,7 @@
       },
       "vulnerabilitiesRecap": {
         "title": "你看到了甚麼",
-        "description": "您看到了公司自己的程式碼數據：即時讀取，並按 CVE 與只落地一次、且只取警示所需部分的公共漏洞數據連接。同一個受治理模型中的一個檢視，以 SQL、GraphQL、Cypher 及 REST 回答程式碼裏有哪些已被利用的漏洞，以及每個逾期了多久。"
+        "description": "您看到了公司自己的程式碼數據，按 CVE 與公共漏洞數據連接，只取警示所需的部分。同一個受治理模型中的一個檢視，以 SQL、GraphQL、Cypher 及 REST 回答程式碼裏有哪些已被利用的漏洞，以及每個逾期了多久。"
       },
       "streamingScenario": {
         "title": "即時訂單",
@@ -658,19 +668,19 @@
       },
       "streamingRecap": {
         "title": "您看到了甚麼",
-        "description": "一個 Kafka 主題作為資料表落地，並與即時目錄連接。一個檢視隨着每個落地的批次保持最新。同樣的答案以 SQL、GraphQL 及 REST 傳回，按需要快取，還有一個訂閱一路跟隨數據流。您可以在查詢頁面上自行再看看。"
+        "description": "一個 Kafka 主題作為資料表落地，並與目錄連接。一個檢視隨着每個落地的批次保持最新。同樣的答案以 SQL、GraphQL 及 REST 傳回，按需要快取，還有一個訂閱一路跟隨數據流。您可以在查詢頁面上自行再看看。"
       },
       "streamingCatalog": {
         "title": "商品目錄",
-        "description": "<strong>catalog</strong> 是咖啡店的 Postgres,即時讀取:每件商品是甚麼、價錢多少,以及咖啡店銷售的地區。"
+        "description": "<strong>catalog</strong> 是咖啡店的 Postgres:每件商品是甚麼、價錢多少,以及咖啡店銷售的地區。"
       },
       "streamingOrders": {
         "title": "主題變成表",
-        "description": "<strong>orders</strong> 是這個主題，訂單到達時就落地到它自己的資料表中，最多每兩秒一個批次，以訂單 ID 為鍵。每個落地的批次都會重新整理讀取它的檢視，並通知這些檢視的訂閱者。"
+        "description": "<strong>orders</strong> 是這個主題，訂單到達時就落地到它自己的資料表中。每個落地的批次都會重新整理讀取它的檢視，並通知這些檢視的訂閱者。"
       },
       "streamingFresh": {
         "title": "載入中的訂單",
-        "description": "表中最新的訂單,比主題晚幾秒。每個沙盒都把整個主題載入自己的表,使用自己的消費者群組。"
+        "description": "表中最新的訂單,比主題晚幾秒。"
       },
       "streamingCached": {
         "title": "GraphQL 中的答案(已快取)",
@@ -700,6 +710,11 @@
         "title": "每次執行都會保留",
         "description": "一次執行的結果寫入各自的表，每種量度一張，每次執行都與之前的執行一起保留。這裏是 customers 表的執行記錄，包括每次讀取的列數和發現的重複列。"
       },
+      "profilingTerrain": {
+        "title": "以地形呈現的執行",
+        "acting": "正在地形視圖中開啟 customers 表的剖析執行",
+        "description": "customers 的最新一次執行，以地形繪製：每欄一道山脊，高度是每個取值區間的列數，每欄前方是它的空值。"
+      },
       "profilingTerms": {
         "title": "詞彙",
         "description": "詞彙表定義了數據剖析、合理類型、值的形態、重複資料列及佔位值，並把每個詞彙關聯到它所描述的量度。"
@@ -724,13 +739,38 @@
         "title": "寫了兩次的列",
         "description": "模型將 customer_id 宣告為鍵，但匯出中沒有約束：150 位客戶出現了兩次，所有欄位都相同。剖析統計重複的列以及出現在多列中的鍵值。"
       },
+      "profilingDrift": {
+        "title": "自上次運行以來有甚麼變化",
+        "description": "設定運行了兩次分析器，在兩次運行之間，CRM 的下一次同步把每個美國郵遞區號都寫成了 ZIP+4。漂移表把每個度量與上一次運行的度量比較：postal_code 的變化所改變的度量被標記為漂移，同步沒有觸及的欄則沒有。"
+      },
+      "profilingStrata": {
+        "title": "postal_code，逐次執行",
+        "acting": "正在開啟漂移層",
+        "description": "每次執行中的 postal_code，最早的在最後方：每個值所佔的列比例。正如漂移表所示，最新一次執行被標記為漂移，之前那次沒有。"
+      },
+      "profilingOriginal": {
+        "title": "真實的客戶",
+        "description": "CRM 中保存的十位客戶。接下來，在從分析結果生成的環境中運行同一條語句。"
+      },
+      "profilingToSynthetic": {
+        "title": "切換到 synthetic",
+        "description": "接下來，切換器切換到 <strong>synthetic</strong>，一個 Test (synthetic) 環境。"
+      },
+      "profilingSynthetic": {
+        "title": "從分析結果生成",
+        "description": "在 synthetic 中運行同一條語句：每一行都從客戶的分析結果生成，欄、取值形態和分佈都相同，卻沒有一位真實客戶。有了分析結果就足以生成測試數據。"
+      },
+      "profilingToProd": {
+        "title": "回到生產",
+        "description": "接下來，切換器回到 prod。"
+      },
       "profilingRest": {
         "title": "透過 REST 取得同樣的答案",
         "description": "該檢視也是一個 REST 端點。資料質素工具或遷移指令碼無需編寫 SQL 即可取得剖析。"
       },
       "profilingRecap": {
         "title": "你看到了甚麼",
-        "description": "您看到了被收購公司的資料表，即時讀取，以及內置剖析器為它們產生並儲存為受治理資料表的剖析。空值、範圍、格式、合理類型及重複項各自以 SQL、GraphQL 及 REST 回答這些數據裏到底有甚麼，每個角色只看到獲准的內容。"
+        "description": "您看到了被收購公司的資料表以及內置剖析器為它們產生並儲存為受治理資料表的剖析。空值、範圍、格式、合理類型及重複項各自以 SQL、GraphQL 及 REST 回答這些數據裏到底有甚麼，每個角色只看到獲准的內容。"
       },
       "opioidsScenario": {
         "title": "這個示範是甚麼",
@@ -746,15 +786,15 @@
       },
       "opioidsRecap": {
         "title": "你看到了甚麼",
-        "description": "基金自己的記錄即時讀取，公共衞生和人口普查數據匯入一次，在一個受管治的模型中按縣關聯。兩個儲存的檢視回答這個問題：讀取基金支出的員工檢視，以及完全不讀取支出的公開儀表板。每個檢視都透過 SQL、GraphQL 和 REST 提供給獲准讀取它的角色。"
+        "description": "基金自己的記錄以及公共衞生和人口普查數據，在一個受管治的模型中按縣關聯。兩個儲存的檢視回答這個問題：讀取基金支出的員工檢視，以及完全不讀取支出的公開儀表板。每個檢視都透過 SQL、GraphQL 和 REST 提供給獲准讀取它的角色。"
       },
       "opioidsGovdata": {
         "title": "公開資料",
-        "description": "政府資料來自 AskAmerica 這個真實帳戶：CDC 的藥物過量死亡人數和死亡率、人口普查局的人口，以及 USAspending 的聯邦開支，均按縣統計。只在建立示範時載入一次俄亥俄州各縣 2023 年的資料，之後一直從這份副本讀取。2023 年是所有資料都涵蓋的年份。"
+        "description": "政府資料來自 AskAmerica：CDC 的藥物過量死亡人數和死亡率、人口普查局的人口，以及 USAspending 的聯邦開支，均按縣統計。"
       },
       "opioidsAllocations": {
         "title": "基金的撥款",
-        "description": "基金的每一筆撥款，從它自己的資料庫即時讀取：縣、財政年度、項目範疇、獲付款的服務機構、批出金額和已支出金額。職員能看到每一行；public 角色一行也看不到。"
+        "description": "基金的每一筆撥款：縣、財政年度、項目範疇、獲付款的服務機構、批出金額和已支出金額。職員能看到每一行；public 角色一行也看不到。"
       },
       "opioidsDeaths": {
         "title": "CDC 的藥物過量死亡率",
@@ -790,7 +830,7 @@
       },
       "datavaultInsertOnly": {
         "title": "每一行都保留",
-        "description": "客戶表是僅插入的，正如 Vault 的暫存區接收它的方式：變更以附有載入日期的新行到達，不會覆蓋任何內容。該表監視其最新載入日期，因此新行會透過檢視串聯重新整理其上的每個檢視。"
+        "description": "客戶表是僅插入的，正如 Vault 的暫存區接收它的方式：變更以附有載入日期的新行到達，不會覆蓋任何內容。"
       },
       "datavaultArrived": {
         "title": "到達了甚麼",
@@ -850,11 +890,11 @@
       },
       "agricultureGovdata": {
         "title": "公開資料",
-        "description": "政府資料來自 AskAmerica,一個運作中的帳戶。它的三張表在建立示範時一次過載入,而且只載入投資組合所需的部分:其 40 個縣、粟米和大豆、2010 年至 2017 年的作物年度。此後一直從這份副本讀取:它們永不過期,本示範也從不呼叫該帳戶。"
+        "description": "政府資料來自 AskAmerica。"
       },
       "agricultureClaims": {
         "title": "保險公司的索償",
-        "description": "保險公司支付的每一筆賠款,即時讀取自它自己的資料庫:農場、作物年度、損失原因、月份和金額。"
+        "description": "保險公司支付的每一筆賠款:農場、作物年度、損失原因、月份和金額。"
       },
       "agricultureMarket": {
         "title": "整個市場的損失",
@@ -862,7 +902,7 @@
       },
       "agricultureWeather": {
         "title": "各縣的每日天氣",
-        "description": "NOAA 提供的每個縣的日最高氣溫和降雨量,取其觀測站的平均值。只載入生長季,即 5 月至 8 月:雨水和高溫決定產量的時期。"
+        "description": "NOAA 提供的每個縣的日最高氣溫和降雨量,取其觀測站的平均值,涵蓋生長季,即 5 月至 8 月:雨水和高溫決定產量的時期。"
       },
       "agricultureJoin": {
         "title": "按縣連接",
@@ -886,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "天氣能解釋多少？",
-        "description": "在瀏覽器中執行示範的筆記簿：以 analyst 身分將每個縣的每一季讀入 pandas，將賠付率與該季的雨量、高於 32 °C 的日數以及市場損失中歸因於乾旱和高溫的份額作相關分析，擬合迴歸並繪圖。天氣解釋了賠付率變動的 54%。每多 10 日高於 32 °C，賠付率增加 20 個百分點；雨量少 100 毫米增加 7 個百分點；市場損失中歸因於乾旱和高溫的份額每多 10 個百分點，增加 9 個百分點。在現時業務上，類似 2012 年的一季預期賠付率為 1.75。"
+        "description": "在瀏覽器中執行示範的筆記簿：以 analyst 身分將每個縣的每一季讀入 pandas，將賠付率與該季的雨量、高於 32 °C 的日數以及市場損失中歸因於乾旱和高溫的份額作相關分析，擬合迴歸並繪圖。"
       },
       "agricultureRest": {
         "title": "以 REST 按年度",
@@ -894,7 +934,7 @@
       },
       "agricultureRecap": {
         "title": "你看到了甚麼",
-        "description": "您看到了保險公司自己的數據：即時讀取，並按縣及作物年份與只落地一次的公共損失、天氣及產量數據配對，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答天氣能否解釋這些損失。 筆記簿對此作出量度：天氣解釋了賠付率變動的 54%，而在現時業務上，類似 2012 年的一季預期賠付率為 1.75。"
+        "description": "您看到了保險公司自己的數據，按縣及作物年份與公共損失、天氣及產量數據配對，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答天氣能否解釋這些損失。 筆記簿對此作出量度：天氣解釋了賠付率變動的 54%，而在現時業務上，類似 2012 年的一季預期賠付率為 1.75。"
       },
       "retailScenario": {
         "title": "一個集團，兩個區域",
@@ -918,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "以集團分析員身份",
-        "description": "接下來，SQL 瀏覽器以 group_analyst 的身份運行，他在 US 負責集團報告。"
+        "description": "接下來，角色選擇器會切換到 <strong>group_analyst</strong>，他在 US 負責集團報告，讓之後的 SQL 和 GraphQL 都以 group_analyst 身份執行。"
       },
       "retailGroupView": {
         "title": "集團報告，EU 客戶已假名化",
@@ -927,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "同樣的內容，用 GraphQL",
         "description": "透過 GraphQL 存取同一個集團視圖：一個模型，所有傳輸方式，相同的規則。"
+      },
+      "retailEveryRole": {
+        "title": "回到所有角色",
+        "description": "接下來，角色選擇器切回 <strong>All</strong>。"
       },
       "retailAsMarketing": {
         "title": "以 EU 市場推廣身份",
@@ -994,7 +1038,7 @@
       },
       "provisioningWarehouse": {
         "title": "倉庫自己的資料庫",
-        "description": "它的產品及每件的成本、數據集就緒時發出的通知，以及各團隊的消費者記錄的拉取。即時讀取。"
+        "description": "它的產品及每件的成本、數據集就緒時發出的通知，以及各團隊的消費者記錄的拉取。"
       },
       "provisioningFeeds": {
         "title": "數據流，到達即載入",
@@ -1010,7 +1054,7 @@
       },
       "provisioningPulls": {
         "title": "拉取",
-        "description": "每個團隊的消費者讀取通知，並透過 Arrow Flight 按版本時間拉取整個數據集，因此拉取期間到達的重新整理不會混入兩個版本。它記錄行數、秒數和每秒行數。它的 ticket 是一個 JSON 物件：查詢、角色和 as-of 時間（consumer.py）。本地啟動會即時執行消費者；託管沙盒顯示建立示範時記錄的拉取。"
+        "description": "每個團隊的消費者讀取通知，並透過 Arrow Flight 按版本時間拉取整個數據集，因此拉取期間到達的重新整理不會混入兩個版本。它記錄行數、秒數和每秒行數。"
       },
       "provisioningAsFinance": {
         "title": "以財務身份執行",
@@ -1034,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "窗口之外的讀取",
-        "description": "close_by_category 是財務的結帳匯總，只能在 02:00 至 02:15 UTC 之間讀取。在此之外，這次讀取會被拒絕，並指出視圖名稱和窗口下次開放的時間；倉庫自身的重新整理任何時候都會執行。"
+        "description": "close_by_category 是財務的結帳匯總，只能在 02:00 至 02:15 UTC 之間讀取。在此之外，這次讀取會被拒絕，並指出視圖名稱和窗口下次開放的時間。"
       },
       "provisioningRest": {
         "title": "透過 REST 查看拉取",
@@ -1046,11 +1090,11 @@
       },
       "pharmaGovdata": {
         "title": "公開的藥品數據",
-        "description": "政府數據來自 AskAmerica，一個真實帳戶。它的三張表在建立示範時載入一次，且只載入示範讀取的部分；此後一直從該副本讀取，本示範從不呼叫該帳戶。"
+        "description": "政府數據來自 AskAmerica。"
       },
       "pharmaFormulary": {
         "title": "藥房的處方集",
-        "description": "藥房所備的每種藥品，即時從其自己的數據庫讀取：NDC、通用名、生產商、治療類別以及是否為關鍵藥品。各院區的庫存列在旁邊。"
+        "description": "藥房所備的每種藥品：NDC、通用名、生產商、治療類別以及是否為關鍵藥品。各院區的庫存列在旁邊。"
       },
       "pharmaShortages": {
         "title": "FDA 的藥品短缺",
@@ -1078,15 +1122,15 @@
       },
       "pharmaRecap": {
         "title": "你看到了甚麼",
-        "description": "您看到了藥房自己的數據：即時讀取，並按 NDC 及廠商與只落地一次的公共藥物數據連接，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答哪些產品存在風險，每個角色只看到獲准的內容。"
+        "description": "您看到了藥房自己的數據，按 NDC 及廠商與公共藥物數據連接，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答哪些產品存在風險，每個角色只看到獲准的內容。"
       },
       "storefrontScenario": {
         "title": "一個模型，一個應用程式和 BI",
-        "description": "一間咖啡零售商用一個模型服務兩個使用方。其應用程式的訂單紀錄頁面向已登入的顧客顯示他自己的訂單，其 BI 工具向分析師展示收入和延遲的送貨。訂單存放在 <strong>PostgreSQL</strong> 中，即時讀取：顧客、訂單以及每張訂單的明細。"
+        "description": "一間咖啡零售商用一個模型服務兩個使用方。其應用程式的訂單紀錄頁面向已登入的顧客顯示他自己的訂單，其 BI 工具向分析師展示收入和延遲的送貨。訂單存放在 <strong>PostgreSQL</strong> 中：顧客、訂單以及每張訂單的明細。"
       },
       "storefrontCatalog": {
         "title": "目錄，在 MongoDB 中",
-        "description": "每件貨品都是一份 <strong>MongoDB</strong> 文件，包含名稱、類別、價錢和圖片。Provisa 將其作為表即時讀取。"
+        "description": "每件貨品都是一份 <strong>MongoDB</strong> 文件，包含名稱、類別、價錢和圖片。Provisa 將其作為表讀取。"
       },
       "storefrontShipping": {
         "title": "送貨，經由 REST",
@@ -1158,7 +1202,7 @@
       },
       "hasuramigrationSalesforce": {
         "title": "Hasura 做不到的：Salesforce",
-        "description": "銷售團隊把帳戶放在 Salesforce 中。Provisa 將該組織登記為數據來源，將其 <strong>Account</strong> 物件登記為表，在建立示範時複製一次。商店中的每個企業顧客都指明其所購買的帳戶。"
+        "description": "銷售團隊把帳戶放在 Salesforce 中。Provisa 將該組織登記為數據來源，將其 <strong>Account</strong> 物件登記為表。商店中的每個企業顧客都指明其所購買的帳戶。"
       },
       "hasuramigrationAccount": {
         "title": "再加一個關係",
@@ -1234,7 +1278,7 @@
       },
       "churnScenario": {
         "title": "這個示範講甚麼",
-        "description": "一間訂閱制企業想知道哪些客戶即將取消訂閱。它的客戶及其一年的每月使用情況從它自己的數據庫即時讀取，數據科學家在瀏覽器中用這些數據訓練模型。"
+        "description": "一間訂閱制企業想知道哪些客戶即將取消訂閱。它的客戶及其一年的每月使用情況在它自己的數據庫中，數據科學家在瀏覽器中用這些數據訓練模型。"
       },
       "churnCustomers": {
         "title": "客戶",
@@ -1246,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "以 analyst 身分讀取",
-        "description": "之後的查詢以 analyst 身分執行，即數據科學家讀取數據所用的角色。"
+        "description": "接下來，角色選擇器會切換到 <strong>analyst</strong>，即數據科學家讀取數據所用的角色，讓之後的每個介面都以 analyst 身分執行。"
       },
       "churnFeatures": {
         "title": "模型學習所用的特徵",
@@ -1260,9 +1304,13 @@
         "title": "在你的瀏覽器中訓練的模型",
         "description": "在 Notebook 分頁中執行示範的筆記簿：以 analyst 身分將特徵讀入 pandas，用它們訓練 scikit-learn 模型，並列出風險最高的客戶。Python 在你的瀏覽器中執行，電郵地址仍然是遮罩的。"
       },
+      "churnEveryRole": {
+        "title": "回到所有角色",
+        "description": "接下來，角色選擇器切回 <strong>All</strong>。"
+      },
       "churnRecap": {
         "title": "你看到了甚麼",
-        "description": "受管治的數據直接進入數據科學家的筆記簿：讀取時即套用 analyst 的遮罩，模型訓練過程中數據不會離開瀏覽器。在桌面版 Jupyter 中，同樣的程式碼經 Arrow Flight 讀取大批量數據。"
+        "description": "受管治的數據直接進入數據科學家的筆記簿：讀取時即套用 analyst 的遮罩，模型訓練過程中數據不會離開瀏覽器。在桌面版 Jupyter 中，同樣的程式碼經 Arrow Flight 讀取大批量數據。churnprod 示範把這個模型投入生產。"
       },
       "dataroomIntro": {
         "title": "沒有匯出的資料室",
@@ -1346,7 +1394,7 @@
       },
       "testdataScenario": {
         "title": "同一生產數據庫上的三個環境",
-        "description": "<strong>shop-db</strong> 是一家商店的生產數據庫：客戶、產品和訂單。團隊需要數據來構建和測試。持有個人資料的公司為預發佈數據付出很多，因為他們缺少好的虛構值，或者要去購買。這裏一個模型服務三個環境。<strong>prod</strong> 是真實的行，是事實來源，沒有人在其上構建。<strong>preprod</strong> 是生產自身的數據，每個敏感欄都已虛構，用於最終測試。<strong>dev</strong> 由生產的概況生成，不含任何真實數據，用於日常構建。Provisa 提供工具；公司需要哪種配置，由公司決定。"
+        "description": "<strong>shop-db</strong> 是一家商店的生產數據庫：客戶、產品和訂單。團隊需要數據來構建和測試。這裏一個模型服務三個環境。<strong>prod</strong> 是真實的行，是事實來源，沒有人在其上構建。<strong>preprod</strong> 是生產自身的數據，每個敏感欄都已虛構，用於最終測試。<strong>dev</strong> 由生產的概況生成，不含任何真實數據，用於日常構建。"
       },
       "testdataTables": {
         "title": "模型聲明哪些欄要虛構",
@@ -1415,6 +1463,190 @@
       "testdataDone": {
         "title": "您看到了甚麼",
         "description": "一個模型，三個環境。Prod 保存真實的行。預發佈讀取這些行，每個敏感欄都已虛構，對所有角色一致。Dev 由生產的概況生成，不含任何真實數據。虛構值按欄聲明一次，而會顯示未虛構敏感欄的環境會拒絕開啟。"
+      },
+      "churnprodScenario": {
+        "title": "這個示範講甚麼",
+        "description": "流失示範中的數據科學家用客戶的使用數據訓練了一個 scikit-learn 模型，用來找出即將取消訂閱的客戶。在這裏，這個模型投入生產。它以 Python 套件的形式交付，並按照與任何表相同的規則，為你可以看到的每位客戶評分。"
+      },
+      "churnprodPackage": {
+        "title": "作為數據來源的模型",
+        "description": "模型的套件是一個數據來源，按其代碼的內容雜湊保存。它包含訓練好的模型，以及固定 scikit-learn 版本的 lockfile。"
+      },
+      "churnprodColumns": {
+        "title": "來自函數類型的欄",
+        "description": "churn_risk 是一個表，因為它的 docstring 寫着 @table。它的欄是它回傳的 RiskRow 的欄位。它的參數就是函數的參數：客戶，以及模型訓練時用到的每個特徵。"
+      },
+      "churnprodJoin": {
+        "title": "為模型提供數據的 join",
+        "description": "此關係將每位客戶與模型的評分連接，因此對客戶進行連接時會為每一位客戶評分。"
+      },
+      "churnprodAtRisk": {
+        "title": "流失風險客戶清單",
+        "description": "每位現有客戶都由模型評分並按風險排序，附帶最能推高其分數的原因。這是基於一個檢視的一條 SQL 語句，模型就在其中被呼叫。"
+      },
+      "churnprodAnalyst": {
+        "title": "現在以 analyst 身份",
+        "description": "analyst 讀取同一份清單，就像流失示範中的 analyst 讀取特徵一樣。"
+      },
+      "churnprodMasked": {
+        "title": "分數不變，電郵已遮罩",
+        "description": "分數相同。電郵地址已遮罩，因為 analyst 的遮罩規則作用於這份清單，就像作用於客戶表一樣。"
+      },
+      "churnprodRegional": {
+        "title": "現在以歐盟客戶團隊身份",
+        "description": "歐盟客戶團隊負責在歐盟開單的客戶。"
+      },
+      "churnprodRegionalRows": {
+        "title": "只有本地區的行",
+        "description": "清單中只有歐盟客戶。行規則就設在 churn_risk 本身上，而代碼表上的規則作用於其代碼回傳的行。"
+      },
+      "churnprodNode": {
+        "title": "Node 版雙胞胎",
+        "description": "這是同一個模型的 JavaScript 版本。它訓練好的係數從 Python 匯出，並作為 Node 數據來源登記在 Python 數據來源旁邊。每位客戶從兩者得到的分數相同。"
+      },
+      "churnprodRecap": {
+        "title": "你看到了甚麼",
+        "description": "數據科學家的模型投入了生產，無需運行自己的服務。它的套件被固定。一個 join 為它的函數提供數據，函數讀起來就像一個表，而每個表都有的遮罩和行規則約束它回傳的內容。SQL、GraphQL 以及其他任何存取方式都以同樣的方式讀取它。"
+      },
+      "worldcupIntro": {
+        "title": "四個公開來源，一屆世界盃",
+        "description": "誰贏過世界盃，來自哪個聯會？答案分散在公開數據中：維基百科的決賽列表和各聯會條目，以及 Kaggle 上收錄每場世界盃比賽和每個國際賽入球的兩個數據集。每個來源對國家的寫法都不同。維基百科寫 West Germany，Kaggle 寫 Germany FR，聯會的會員表寫 Germany。本導覽接入這些數據，用一個簡短的 Python 函數令名稱一致，再把結果作為一張受管治的圖來查詢。"
+      },
+      "worldcupWikipedia": {
+        "title": "維基百科，幾分鐘即可登記",
+        "description": "這是一個維基百科數據來源。它的爬取讀取七個頁面：List of FIFA World Cup finals 和六個聯會的條目。這些頁面上的每張數據表都成為一張表格，以其頁面和標題命名，因此決賽表格是 <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>。公開數據來源和任何內部資料庫一樣受管治，使用相同的角色、授權和遮罩。設定刷新間隔後，這些數據來源會自動保持最新。本示範讀取固定快照，因此每位訪客看到的答案都相同。"
+      },
+      "worldcupFinals": {
+        "title": "維基百科列出的決賽",
+        "description": "1930 年至 2026 年的每場決賽，冠軍和亞軍都使用當時的名稱。維基百科把 1954、1974 和 1990 年的冠軍記在 West Germany 名下，把 2014 年的冠軍記在 Germany 名下。"
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle 數據集以表格形式到達",
+        "description": "這是一個 Kaggle 數據來源：FIFA World Cup 數據集，收錄 1930 年至 2014 年的每屆賽事、每場比賽和每位球員的出場。它的每個檔案都以一張表格的形式到達。第二個 Kaggle 數據來源收錄 1916 年以來的每個國際賽入球。和維基百科的表格一樣，它們是公開數據，幾分鐘即可登記，並像任何內部資料庫一樣受管治。"
+      },
+      "worldcupMatches": {
+        "title": "以當時名稱記錄的比賽",
+        "description": "Kaggle 把西德寫作 Germany FR，把東德寫作 German DR。它的一些名稱帶有檔案殘留的標記，例如 <code>rn\"&gt;Republic of Ireland</code>。檔案中的空行按數據集原樣保留為沒有值的列。"
+      },
+      "worldcupDisagree": {
+        "title": "名稱對不上",
+        "description": "按維基百科寫的名稱計算，Germany 有一個冠軍，West Germany 有三個，就像是兩個國家。Kaggle 把同一支球隊寫作 Germany FR，所以在來源之間按名稱做連接也會漏掉這些冠軍。"
+      },
+      "worldcupFunction": {
+        "title": "函數就是那張表格",
+        "description": "country_alias 是一個 Python 數據來源，這個函數就是每條跨來源關係所經過的那張表格。它接收各來源寫出的每個球隊名稱，用機構密碼庫中的密鑰詢問 LLM 該名稱代表哪個國際足協會員，並傳回該會員的名稱和國際足協代碼。它會按刷新間隔再次執行，因此新名稱一出現就會被配對。<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "每個名稱都已配對並覆核",
+        "description": "這些是與其會員名稱不同的名稱。Germany FR 和 West Germany 是 Germany，Zaire 是 DR Congo，Soviet Union 是 Russia。每一項配對都在本示範凍結前經過覆核，237 項中有 27 項被更正。成績未由任何會員繼承的球隊保留自己的名稱：East Germany 仍是 East Germany，因此它在 1974 年對 West Germany 的比賽不會變成 Germany 對 Germany。"
+      },
+      "worldcupJunction": {
+        "title": "經過函數的關係",
+        "description": "WON 透過 country_alias 把聯會的會員與它贏得的決賽連接起來。會員的國際足協代碼找到它代表的每個名稱，每個名稱再找到它的決賽。RUNNER_UP、PLAYED_HOME、PLAYED_AWAY 和 SCORED 也以同樣方式連接。"
+      },
+      "worldcupGraph": {
+        "title": "所有冠軍匯於一張圖",
+        "description": "每個會員都與它贏得的決賽相連，無論當時用的是哪個名稱。Germany 的節點匯集了 1954、1974、1990 和 2014 年。"
+      },
+      "worldcupByConfederation": {
+        "title": "按聯會分組",
+        "description": "按聯會分組後，歐洲足協會員擁有 13 個冠軍，南美洲足協會員擁有 10 個。沒有其他聯會贏過決賽。"
+      },
+      "worldcupSql": {
+        "title": "SQL 中的同一模型",
+        "description": "SQL 中的同一個連接透過 country_alias 統計每個會員的冠軍數。Brazil 以五個領先，Germany 和 Italy 各有四個。"
+      },
+      "worldcupGraphql": {
+        "title": "以及 GraphQL",
+        "description": "在 GraphQL 中，每場決賽都有一個經過 country_alias 的 <code>winner</code> 欄位，因此 1954、1974 和 1990 年在 West Germany 旁邊顯示它代表的會員：Germany，GER。"
+      },
+      "worldcupRecap": {
+        "title": "回顧",
+        "description": "來自維基百科和 Kaggle 的公開數據，幾分鐘內接入並像任何內部資料庫一樣受管治，用大約十行 Python 令名稱一致，並作為一張圖來查詢。函數的配對都經過覆核，因此這張圖把每個冠軍只計一次，並記在正確的會員名下。"
+      },
+      "cloudpolicyScenario": {
+        "title": "這個示範講甚麼",
+        "description": "你的安全策略規定，掛載到虛擬機的每塊磁碟都使用客戶管理的密鑰。你負責安全，根據已有的記錄在 Azure、AWS 和 Google Cloud 上審查這一點。第一個數據源是雲端資產清單。它列出三個雲端中的每部機器和每塊磁碟，以及加密每塊磁碟的密鑰。"
+      },
+      "cloudpolicyIncidents": {
+        "title": "事件",
+        "description": "第二個數據源是安全團隊的 ServiceNow 事件。每個事件把所涉及的磁碟作為配置項，並引用它所歸屬的策略章節。例外是 Policy exception 類別的事件。"
+      },
+      "cloudpolicyReader": {
+        "title": "由代碼讀取的策略",
+        "description": "策略本身是一個網頁。這個 Python 套件隨網頁一起發佈，把它讀成每項控制一行。它的函數是一張表，因此策略與模型的其餘部分相連。"
+      },
+      "cloudpolicyPolicy": {
+        "title": "以行呈現的策略",
+        "description": "這裏是從 HTML 讀取的策略的每項控制，包括標題、條款和生效日期。第 4.2 節是正在審查的磁碟加密控制。"
+      },
+      "cloudpolicySearch": {
+        "title": "按語義搜尋策略",
+        "description": "按語義搜尋能找到磁碟加密控制，即使你的用詞與條款不同。"
+      },
+      "cloudpolicyModel": {
+        "title": "三個雲端，一個模型",
+        "description": "每塊磁碟都標明它掛載的機器。這個關係以同樣的方式連接 Azure、AWS 和 Google Cloud 中的磁碟和機器。"
+      },
+      "cloudpolicyCites": {
+        "title": "與條款關聯的事件",
+        "description": "每個事件引用策略的一個章節。這個關係把它連接到所引用的條款，因此歸錯章節的事件會顯現出來。"
+      },
+      "cloudpolicyViolations": {
+        "title": "作為視圖的策略",
+        "description": "第 4.2 節寫成了一個視圖。它列出每塊由雲端管理密鑰的已掛載磁碟，以及磁碟所在的機器。"
+      },
+      "cloudpolicyReview": {
+        "title": "每日審查",
+        "description": "每日審查按策略規則為每塊已掛載磁碟分類。沒有客戶管理密鑰的磁碟可能由有效的例外覆蓋。如果沒有，它的事件要麼在期限內，要麼已逾期，要麼在磁碟仍不合規時被關閉，要麼從未登記。"
+      },
+      "cloudpolicyTrigger": {
+        "title": "每日觸發器",
+        "description": "每天早上，一個定時觸發器執行審查，把當天的行寫入審查歷史。它像任何語句一樣經過同一條受治理的管道寫入，使用其角色的寫入授權。"
+      },
+      "cloudpolicyTrend": {
+        "title": "十四天的歷史",
+        "description": "觸發器保留的歷史按天顯示違規。磁碟在其事件修復後退出，新的違規在出現當天顯示。"
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "問 Polly 誰違反了控制",
+        "description": "Polly 讀取與你相同的受治理模型。它列出沒有客戶管理密鑰的磁碟，以及要求使用該密鑰的章節。"
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "仍然有效的例外",
+        "description": "根據第 4.3 節，例外有效期為 90 天。Polly 找出它仍然覆蓋的磁碟。"
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "歸錯章節的事件",
+        "description": "有些事件引用的章節不是它們所涉及的控制，其中一個引用了策略已撤銷的章節。"
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "無人檢查的控制",
+        "description": "策略中有些控制沒有任何檢查來執行。Polly 將策略與團隊執行的檢查比較，並可以起草一個視圖供 steward 加入。"
+      },
+      "cloudpolicyAuditor": {
+        "title": "現在以 auditor 身份",
+        "description": "auditor 讀取每個雲端中的每個帳戶。"
+      },
+      "cloudpolicyOpen": {
+        "title": "審查標記的全部內容",
+        "description": "這裏是審查為每個團隊標記的每塊磁碟。"
+      },
+      "cloudpolicyAppTeam": {
+        "title": "現在以支付團隊身份",
+        "description": "支付團隊只讀取自己的資源和事件。"
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "只有自己的行",
+        "description": "同一條語句只回傳支付團隊的磁碟。行規則設在資產清單和事件上，基於它們建立的每個視圖都會套用這些規則。"
+      },
+      "cloudpolicyDashboard": {
+        "title": "合規儀表板",
+        "description": "Superset 透過 Provisa 的 Postgres 協定讀取相同的視圖。這是它的合規儀表板，按控制顯示違規。"
+      },
+      "cloudpolicyRecap": {
+        "title": "你看到了甚麼",
+        "description": "你根據已有的記錄，在三個雲端上審查了一項策略。策略是一張表，由代碼從它自己的網頁讀取，每個事件都連接到它引用的條款。每日觸發器保留歷史，每個角色只能讀取其規則允許的內容，無論在 SQL、Polly 還是 Superset 中。"
       }
     },
     "status": {
@@ -1515,6 +1747,18 @@
       "dataroom": {
         "title": "用於出售的資料室",
         "summary": "一家出售自身的零售商，為每位競投方的 clean team 提供對其自有系統的受管、限時存取，沒有匯出：彙總、設定檔和遮罩樣本，沒有任何客戶身分離開資料室。"
+      },
+      "churnprod": {
+        "title": "生產環境中的流失風險",
+        "summary": "流失示範中的 scikit-learn 模型投入生產。它的 Python 套件是一個數據來源，它的函數是一個表，在 join 中為每位客戶評分，回傳的結果同樣受遮罩和行規則約束。"
+      },
+      "worldcup": {
+        "title": "World Cup，一張圖",
+        "summary": "維基百科和 Kaggle 的世界盃數據在國家名稱上對不上。一個簡短的 Python 函數用 LLM 配對每個名稱，公開數據來源成為一張受管治的圖。"
+      },
+      "cloudpolicy": {
+        "title": "雲端策略審查",
+        "summary": "在 Azure、AWS 和 Google Cloud 上審查一項安全策略。雲端資產清單、ServiceNow 事件以及由代碼從網頁讀取的策略本身構成一個模型，每日觸發器保留審查歷史。"
       }
     }
   }

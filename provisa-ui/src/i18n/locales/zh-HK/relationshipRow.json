@@ -38,6 +38,9 @@
     "junctionBadge": "經由",
     "junctionBadgeTitle": "經由 {{table}} 的聯結資料表關係",
     "deleteTitle": "刪除關聯「{{id}}」？",
-    "deleteConsequence": "該關聯將從模型中移除。查詢將無法再透過它進行聯結。"
+    "deleteConsequence": "該關聯將從模型中移除。查詢將無法再透過它進行聯結。",
+    "parametersFed": "傳入的參數",
+    "parametersFedHelp": "經此關係的聯結會把每個來源列中的這些值傳給目標。",
+    "parameterNotFed": "不傳入"
   }
 }

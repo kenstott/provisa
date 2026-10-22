@@ -36,6 +36,7 @@ const rel = (id: string, source: string, column: string, target: string) => ({
   computedCypherAlias: null,
   autoSuggested: false,
   disableCypher: false,
+  parameters: [],
   viaTableName: null,
 });
 

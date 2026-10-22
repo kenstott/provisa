@@ -31,7 +31,7 @@ Das Startup-Paket führt einen Benutzernamen und ein einzelnes Geheimnisfeld mit
 | Ein OIDC-/Provider-Bearer-Token | daran, dass der konfigurierte Provider ein Token-Provider ist | die Identität, die das Token behauptet |
 | Ein Passwort | allem anderen | das Konto im konfigurierten Provider (`basic` oder `simple`) |
 
-Die Entscheidung fällt einmal. Ein Credential, das der gewählte Validator ablehnt, wird nicht erneut gegen einen anderen geprüft — aus einer Ablehnung wird also kein zweiter Versuch.
+Die Entscheidung fällt einmal. Ein Credential, das der gewählte Validator ablehnt, wird nicht erneut gegen einen anderen geprüft. Eine Ablehnung führt also zu keinem zweiten Versuch.
 
 Der Trust-Modus (`provider: none` oder inaktive Auth-Middleware) ist die Ausnahme: Der Benutzername wird direkt als `role_id` verwendet und das Geheimnis wird ignoriert. Verwenden Sie ihn nicht über eine unverschlüsselte Verbindung.
 
@@ -41,7 +41,7 @@ Der Trust-Modus (`provider: none` oder inaktive Auth-Middleware) ist die Ausnahm
 
 **Fehlversuche werden gezählt.** Fünf Fehlschläge in fünf Minuten sperren das Konto für fünfzehn Minuten. Der Zähler wird mit HTTP und Bolt geteilt, eine Sperre auf einer Oberfläche gilt also auf allen.
 
-**Auswahl einer Organisation.** In einem Multi-Org-Deployment verbinden Sie sich mit `<org>.<your-domain>`, und pgwire liest die Organisation aus dem Hostnamen im TLS-ClientHello — so, wie HTTP sie aus dem `Host`-Header liest. Der Hostname fordert eine Organisation an; er gewährt sie nicht, und ein Principal ohne Mitgliedschaft dort wird abgewiesen. Eine Verbindung über eine IP-Adresse fordert keine Organisation an.
+**Auswahl einer Organisation.** In einem Multi-Org-Deployment verbinden Sie sich mit `<org>.<your-domain>`, und pgwire liest die Organisation aus dem Hostnamen im TLS-ClientHello, so wie HTTP sie aus dem `Host`-Header liest. Der Hostname fordert eine Organisation an; er gewährt sie nicht, und ein Principal ohne Mitgliedschaft dort wird abgewiesen. Eine Verbindung über eine IP-Adresse fordert keine Organisation an.
 
 ---
 
@@ -247,7 +247,7 @@ Ergebnisspalten werden ebenfalls binär gesendet, wenn der Client dies anfordert
 
 **Native Python-Treiber (psycopg2, asyncpg).** Diese handeln standardmäßig das Extended-Query-Protokoll aus und verwenden für die meisten Typen binäre Kodierung. Die Typtreue ist hier am höchsten: `NUMERIC`-Spalten kommen als `Decimal`, `TIMESTAMP` als `datetime` an, und so weiter. Verwenden Sie diese für Python-basierte ETL, Skripte oder direkte Integration.
 
-**JDBC (PostgreSQL-JDBC-Treiber).** Verwenden Sie diesen für Java-Ökosystem-Tools: DBeaver, Tableau, Power BI, Metabase, JDBC-Operatoren von Airflow. JDBC verwendet standardmäßig das Simple-Query-Protokoll, was Komplikationen durch Binärkodierung vermeidet. Verbindungszeichenfolge:
+**JDBC (PostgreSQL-JDBC-Treiber).** Verwenden Sie diesen für Java-Tools: DBeaver, Tableau, Power BI, Metabase, JDBC-Operatoren von Airflow. JDBC verwendet standardmäßig das Simple-Query-Protokoll, was Komplikationen durch Binärkodierung vermeidet. Verbindungszeichenfolge:
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>

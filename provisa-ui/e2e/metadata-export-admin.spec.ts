@@ -31,23 +31,29 @@ const PREMIUM_STATE = {
   providers: ["openlineage", "openmetadata"],
   config: {
     enabled: true,
-    provider: "openlineage",
-    endpoint: "http://marquez:5000",
-    auth_mode: "api_key",
-    username: "",
-    entra_tenant_id: "",
-    entra_client_id: "",
     reconcile_cron: "0 * * * *",
-    timeout_seconds: 30,
-    api_key_set: true,
-    token_set: false,
-    entra_client_secret_set: false,
+    // REQ-2118: an org's targets, each with its own settings.
+    targets: [
+      {
+        id: "marquez",
+        provider: "openlineage",
+        endpoint: "http://marquez:5000",
+        auth_mode: "api_key",
+        username: "",
+        entra_tenant_id: "",
+        entra_client_id: "",
+        timeout_seconds: 30,
+        api_key_set: true,
+        token_set: false,
+        entra_client_secret_set: false,
+      },
+    ],
   },
   last_publish: null,
 };
 
 /** Capture of the PUT body, so the assertion is on what left the browser. */
-type Sent = { body: Record<string, unknown> | null };
+type Sent = { body: { targets?: Record<string, unknown>[] } | null };
 
 async function stubExport(
   page: Page,
@@ -66,26 +72,34 @@ async function stubExport(
     if (request.method() === "PUT") {
       sent.body = request.postDataJSON();
       return route.fulfill({
-        json: { success: true, provider: "openlineage", enabled: true },
+        json: { success: true, enabled: true, targets: ["marquez"] },
       });
     }
     return route.fulfill({ json: state });
   });
   await page.route("**/admin/metadata-export/health", (route: Route) =>
     route.fulfill({
-      json: extra.health ?? { ok: true, provider: "openlineage" },
+      json: extra.health ?? {
+        ok: true,
+        targets: [{ id: "marquez", provider: "openlineage", ok: true }],
+      },
     }),
   );
   await page.route("**/admin/metadata-export/publish", (route: Route) =>
     route.fulfill({
-      json:
-        extra.publish ?? {
-          provider: "openlineage",
-          ok: true,
-          published: { dataset: 3 },
-          total_published: 3,
-          errors: [],
-        },
+      json: extra.publish ?? {
+        ok: true,
+        targets: [
+          {
+            id: "marquez",
+            provider: "openlineage",
+            ok: true,
+            published: { dataset: 3 },
+            total_published: 3,
+            errors: [],
+          },
+        ],
+      },
     }),
   );
 }
@@ -102,7 +116,7 @@ async function openTab(page: Page) {
   await page.goto("/admin/metadata-export");
   await expect(
     page
-      .getByTestId("metadata-export-endpoint")
+      .getByTestId("metadata-export-endpoint-0")
       .or(page.getByTestId("metadata-export-not-entitled")),
   ).toBeVisible({ timeout: 60000 });
 }
@@ -111,7 +125,7 @@ test("the nav reaches the tab and the tab shows the configured target", async ({
   await stubExport(page, PREMIUM_STATE, { body: null });
   await openTab(page);
 
-  await expect(page.getByTestId("metadata-export-endpoint")).toHaveValue("http://marquez:5000");
+  await expect(page.getByTestId("metadata-export-endpoint-0")).toHaveValue("http://marquez:5000");
   await expect(page.getByTestId("metadata-export-reconcile-cron")).toHaveValue("0 * * * *");
 });
 
@@ -122,13 +136,14 @@ test("editing the endpoint does not send back the stored credential", async ({ p
   await stubExport(page, PREMIUM_STATE, sent);
   await openTab(page);
 
-  await expect(page.getByTestId("metadata-export-api-key")).toHaveValue("");
-  await page.getByTestId("metadata-export-endpoint").fill("http://marquez:5001");
+  await expect(page.getByTestId("metadata-export-api-key-0")).toHaveValue("");
+  await page.getByTestId("metadata-export-endpoint-0").fill("http://marquez:5001");
   await page.getByTestId("metadata-export-save").click();
 
   await expect(page.getByTestId("metadata-export-saved")).toBeVisible();
-  expect(sent.body?.endpoint).toBe("http://marquez:5001");
-  expect(sent.body && "api_key" in sent.body).toBe(false);
+  const [target] = sent.body?.targets ?? [];
+  expect(target?.endpoint).toBe("http://marquez:5001");
+  expect(target && "api_key" in target).toBe(false);
 });
 
 test("a credential the administrator types is sent", async ({ page }) => {
@@ -136,11 +151,11 @@ test("a credential the administrator types is sent", async ({ page }) => {
   await stubExport(page, PREMIUM_STATE, sent);
   await openTab(page);
 
-  await page.getByTestId("metadata-export-api-key").fill("typed-key");
+  await page.getByTestId("metadata-export-api-key-0").fill("typed-key");
   await page.getByTestId("metadata-export-save").click();
 
   await expect(page.getByTestId("metadata-export-saved")).toBeVisible();
-  expect(sent.body?.api_key).toBe("typed-key");
+  expect(sent.body?.targets?.[0]?.api_key).toBe("typed-key");
 });
 
 test("an org below the tier is told which plan opens the feature", async ({ page }) => {
@@ -150,31 +165,57 @@ test("an org below the tier is told which plan opens the feature", async ({ page
   await openTab(page);
 
   await expect(page.getByTestId("metadata-export-not-entitled")).toContainText("premium");
-  await expect(page.getByTestId("metadata-export-endpoint")).toHaveCount(0);
+  await expect(page.getByTestId("metadata-export-endpoint-0")).toHaveCount(0);
 });
 
 test("a refused connection reports the reason the target gave", async ({ page }) => {
-  await stubExport(page, PREMIUM_STATE, { body: null }, {
-    health: { ok: false, provider: "openlineage", error: "ConnectError: Name or service not known" },
-  });
+  await stubExport(
+    page,
+    PREMIUM_STATE,
+    { body: null },
+    {
+      health: {
+        ok: false,
+        targets: [
+          {
+            id: "marquez",
+            provider: "openlineage",
+            ok: false,
+            error: "ConnectError: Name or service not known",
+          },
+        ],
+      },
+    },
+  );
   await openTab(page);
 
   await page.getByTestId("metadata-export-health").click();
-  await expect(page.getByTestId("metadata-export-health-result")).toContainText(
+  await expect(page.getByTestId("metadata-export-health-marquez")).toContainText(
     "Name or service not known",
   );
 });
 
 test("a partial publish lists the assets the catalog rejected", async ({ page }) => {
-  await stubExport(page, PREMIUM_STATE, { body: null }, {
-    publish: {
-      provider: "openlineage",
-      ok: false,
-      published: { dataset: 2 },
-      total_published: 2,
-      errors: [{ asset: "wh.public.orders", message: "422 unknown field type" }],
+  await stubExport(
+    page,
+    PREMIUM_STATE,
+    { body: null },
+    {
+      publish: {
+        ok: false,
+        targets: [
+          {
+            id: "marquez",
+            provider: "openlineage",
+            ok: false,
+            published: { dataset: 2 },
+            total_published: 2,
+            errors: [{ asset: "wh.public.orders", message: "422 unknown field type" }],
+          },
+        ],
+      },
     },
-  });
+  );
   await openTab(page);
 
   await page.getByTestId("metadata-export-publish").click();

@@ -14,7 +14,7 @@
     "version": "Version",
     "versionHint": "Eine exakte Version, etwa 1.2.0.",
     "lockfile": "Lockfile",
-    "lockfileHint": "Ein veröffentlichtes Paket enthält selten sein Lockfile. Geben Sie eines an ({{names}}), wenn das Paket Abhängigkeiten hat.",
+    "lockfileHint": "Optional. Für identische Installationen, die beim Testen zählen, muss der Code ein Lockfile mitbringen, oder Sie geben hier eines an ({{names}}).",
     "lockfilePlaceholder": "Kein Lockfile",
     "repository": "Repository-URL",
     "commit": "Commit",
@@ -25,6 +25,21 @@
     "archivePlaceholder": "Archiv wählen",
     "entry": "Einstiegsmodul",
     "entryHint": "Das Modul, über das die Quelle aufgerufen wird. Leer lassen, wenn der Code genau ein oberstes Modul oder Paket hat.",
-    "kept": "Gespeichert: {{name}}"
+    "kept": "Gespeichert: {{name}}",
+    "keptWithHash": "Gespeichert: {{name}} ({{hash}})",
+    "exports": "Exporte",
+    "exportsLoading": "Code wird gelesen …",
+    "exportsNone": "Der Code exportiert keine Funktionen",
+    "exportKind_table": "Tabelle",
+    "exportKind_command": "Befehl",
+    "exportKind_stream": "Stream",
+    "secrets": "Secrets",
+    "secretsHint": "Die Secrets der Organisation, die dieser Code lesen darf. Er ruft jedes zur Laufzeit von $PROVISA_SERVICES/secrets/<name> ab; nichts anderes im Tresor ist lesbar, und jeder Abruf wird protokolliert.",
+    "secretsPlaceholder": "Keine Secrets",
+    "llmCap": "Monatliches LLM-Limit",
+    "llmCapHint": "Was die Aufrufe dieses Codes an $PROVISA_SERVICES/llm pro Monat (UTC) kosten dürfen, in USD. Mit Limit darf er nur Modelle mit einem Preis in den Polly-Modellpreisen nutzen, und seine Aufrufe werden abgelehnt, sobald der Monat das Limit erreicht. Leer: kein Limit.",
+    "llmCapPlaceholder": "Kein Limit",
+    "settings": "Einstellungen",
+    "settingsHint": "Werte, die der Code mit settings.get(name) liest, eine Zeile name = wert pro Eintrag. Nicht für Secrets: diese gehören unter Secrets. Ein Steward ändert sie hier, ohne den Code zu ändern."
   }
 }

@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "Das Löschen von \"{{id}}\" zerstört jede Quelle, Domäne, Tabelle und Rolle darin — für alle Mitglieder. Dies kann nicht rückgängig gemacht werden. Geben Sie {{id}} zur Bestätigung ein.",
     "colId": "ID",
     "colName": "Name",
+    "colTier": "Tarif",
     "colMembers": "Mitglieder",
     "colActions": "Aktionen",
     "empty": "Keine Organisationen",
@@ -52,6 +53,11 @@
     "revokeInvite": "Einladung für {{org}} widerrufen",
     "invitePagination": "Seitennavigation Einladungslinks",
     "orgIdDesc": "2–40 Zeichen, Kleinbuchstaben und Ziffern, beginnend mit einem Buchstaben. Wird zum Schemanamen und zur Subdomain und kann später nicht geändert werden.",
-    "spentStatus": "Vollständig eingelöst"
+    "spentStatus": "Vollständig eingelöst",
+    "tierFor": "Tarif von {{name}}",
+    "tierNotSet": "Nicht festgelegt",
+    "tier_free": "Kostenlos",
+    "tier_standard": "Standard",
+    "tier_premium": "Premium"
   }
 }

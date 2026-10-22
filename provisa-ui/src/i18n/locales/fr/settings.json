@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "Plus gros fichier téléversé",
         "help": "Le plus gros fichier qu'une source SQLite, DuckDB, CSV ou Parquet peut recevoir par téléversement depuis le formulaire de la source ; un fichier plus gros est refusé, avec mention de cette limite. Mieux vaut lire un fichier plus gros là où il se trouve, depuis un stockage d'objets."
+      },
+      "download_roots": {
+        "label": "Répertoires d'où les fichiers des sources peuvent être téléchargés",
+        "help": "Les répertoires d'où le fichier d'une source CSV ou Parquet peut être téléchargé par son chemin sur ce serveur, une fois ses liens suivis ; aucun par défaut. Ajoutez-en un pour qu'un steward puisse copier un fichier qui s'y trouve dans le dossier de l'organisation. Un serveur de nombreuses organisations ne copie aucun fichier qui lui appartient, quoi que dise ce réglage."
       }
     },
     "polly": {
@@ -815,6 +819,10 @@
       "idle_ttl": {
         "label": "Délai d'inactivité d'un bac à sable de démo",
         "help": "Un bac à sable de démo que personne n'a utilisé depuis ce délai est supprimé, avec tout son contenu."
+      },
+      "demo_stores_linger": {
+        "label": "Stockages d'une démo conservés après usage",
+        "help": "Durée pendant laquelle les bases de données d'une démo restent actives après la fermeture de son dernier bac à sable. Rouverte avant, elle s'ouvre aussitôt ; ensuite, elles sont arrêtées et le visiteur suivant attend qu'elles démarrent."
       },
       "ai_base_url": {
         "label": "Point de terminaison IA du bac à sable",

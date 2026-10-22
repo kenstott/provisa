@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from provisa.api.admin.types import (
     DomainType,
+    RelationshipParameterType,
     RelationshipType,
     RLSRuleType,
     RoleRateLimitType,
@@ -131,6 +132,7 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141
         max_live_concurrency=row.get("max_live_concurrency"),  # REQ-1909
         sentinel_path=row.get("sentinel_path"),  # REQ-1148
+        download_from=row.get("download_from"),  # REQ-2113
         freshness_gate=bool(row.get("freshness_gate", False)),  # REQ-860
         gql_naming_convention=row.get("gql_naming_convention"),
         path=row.get("path") if connection else None,
@@ -254,6 +256,10 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
         via_type_column=row.get("via_type_column"),
         via_type_value=row.get("via_type_value"),
         via_label_source=row.get("via_label_source"),
+        parameters=[
+            RelationshipParameterType(parameter=k, source_column=v)
+            for k, v in row["parameters"].items()
+        ],
     )
 
 

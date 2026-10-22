@@ -51,7 +51,7 @@ sources:
   type: postgresql
   host: ${env:STREAMING_PG_HOST:-localhost}
   port: ${env:STREAMING_PG_PORT:-29032}
-  database: streaming
+  database: streaming${env:STREAMING_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The shop's catalog -- its products and the regions it sells in
@@ -90,7 +90,7 @@ tables:
   live:
     strategy: kafka
     kafka:
-      topic: orders
+      topic: orders${env:STREAMING_KAFKA_NS}
   push_debounce_quiet: 0.5
   push_debounce_max_delay: 2
   enable_aggregates: true

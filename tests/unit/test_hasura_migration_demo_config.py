@@ -50,7 +50,13 @@ def imported():
 
 @pytest.fixture(scope="module")
 def demo():
-    return parse_config_dict(yaml.safe_load((DEMO / "config.yaml").read_text()))
+    from provisa.core.demo_bundles import store_namespaces
+
+    # As a launcher running the demo's own stores sets them (start-ui-install.sh --demo).
+    with pytest.MonkeyPatch.context() as env:
+        for name, value in store_namespaces(DEMO).items():
+            env.setenv(name, value)
+        return parse_config_dict(yaml.safe_load((DEMO / "config.yaml").read_text()))
 
 
 def _tables(config):

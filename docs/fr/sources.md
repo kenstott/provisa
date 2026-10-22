@@ -74,6 +74,7 @@ Référence de chaque type de source pris en charge par Provisa. « Pilote direc
 Les bases compatibles au niveau du protocole réutilisent le pilote JDBC, le pilote asynchrone natif et le dialecte d'un protocole de base. CockroachDB, YugabyteDB et Greenplum passent par le protocole PostgreSQL, et TiDB par celui de MySQL. Il leur suffit d'entrées de registre, sans nouveau code de connecteur.
 
 `firebird` (Firebird 3/4/5) et `airport` (serveur Arrow Flight) sont des types de source enregistrés que les extensions communautaires de DuckDB atteignent sur place quand DuckDB est le moteur actif. Ils n'ont ni pilote direct ni connecteur fédéré.
+
 #### `saphana`
 
 SAP HANA est lu par son propre pilote et répliqué dans le magasin du moteur actif ; il est donc atteignable sur tous les moteurs. Le formulaire demande l'hôte, le port (39015 par défaut), le nom d'utilisateur, le mot de passe et la base ; sur un système multi-tenant, la base désigne le tenant. Register Table liste les schémas que l'utilisateur peut lire, les schémas système de HANA étant exclus.
@@ -302,6 +303,14 @@ Un chemin avec un autre schéma (`ftp://`, par exemple) est refusé : "DuckDB re
 - **Noms.** L'id de la source et le nom du fichier ne peuvent contenir que des lettres, des chiffres, `.`, `_` et `-`.
 - **Stockage.** Un fichier téléversé est stocké comme tout fichier de l'organisation : dans le dossier de l'organisation, chiffré quand ce dossier l'est, et visible par chaque nœud sur un montage partagé.
 
+**Télécharger un fichier.** Une source `csv` ou `parquet` peut plutôt recevoir son fichier par téléchargement. Choisissez **Download a copy** dans le formulaire de la source et nommez un fichier : un chemin sur le serveur, une adresse `https://` ou une adresse `s3://` lue avec les identifiants que le formulaire conserve pour le stockage. Provisa diffuse le fichier par le chemin de téléversement vers `files/<source id>/<file name>` dans le dossier de l'organisation, avec la même limite de taille, le même stockage et le même remplacement qu'un téléversement, et la source lit cette copie.
+
+- **Quand il est récupéré à nouveau.** Le TTL de cache de la source en décide. Une table construite à partir de la source récupère d'abord le fichier à nouveau dès que son TTL est écoulé depuis la copie. Avec un TTL de -1, le fichier est récupéré une fois et conservé.
+- **Chemins sur le serveur.** Un chemin du serveur doit être un fichier sous un répertoire listé dans le paramètre `sources.download_roots` (environnement `PROVISA_SOURCES_DOWNLOAD_ROOTS`), une fois ses liens symboliques suivis. Aucun n'est listé par défaut. Un chemin hors de ces répertoires est refusé en le nommant, et rien n'est copié.
+- **Plusieurs organisations.** Sur un serveur de plusieurs organisations (`multitenancy: true`), un chemin du serveur est refusé en le nommant quel que soit le paramètre, et seuls `https://` et `s3://` sont proposés. Une adresse dont l'hôte se résout dans le propre réseau du serveur (privé, loopback ou link-local) est refusée en la nommant aussi, à chaque redirection.
+- **Sa table, en brouillon.** À la création de la source, le formulaire propose de créer sa table aussitôt, en brouillon, dans le domaine de votre choix. La table prend le nom de la source et est typée d'après le fichier comme Register Table le proposerait, et elle reste hors service jusqu'à ce qu'un steward la sorte du brouillon. L'option est activée par défaut.
+- **Par Polly.** Donnez à Polly un chemin entièrement résolu vers un seul fichier CSV ou Parquet : elle propose la source avec son téléchargement et sa table en brouillon, et la crée une fois que vous confirmez. Un répertoire, un glob ou plusieurs fichiers deviennent plutôt une source de fichiers.
+
 **Écritures dans un fichier SQLite ou DuckDB local, et verrous.** Une écriture prend le verrou du fichier et ne l'attend jamais. Quand un autre processus ou nœud détient le fichier, l'écriture est refusée, en nommant la source et en indiquant que son fichier est verrouillé.
 
 - **SQLite.** L'écriture définit `PRAGMA busy_timeout = 0`, donc un fichier verrouillé échoue immédiatement.
@@ -326,6 +335,7 @@ Un dossier partagé sans chiffrement doit être monté avec des verrous qui atte
 Toute source `files` peut aussi déclarer un `crawl` dans son mapping, avec les mêmes réglages que ceux listés sous [Wikipedia](#wikipedia) : la source lit alors d'abord des pages web et dépose chaque tableau de données HTML et chaque fichier de données lié dans son répertoire sous forme de table.
 
 Sur le moteur DuckDB, `files` est lu nativement, avec une vue de scan `read_csv_auto` par `<table>.csv` sous le répertoire résolu. Sur un moteur sans connecteur `files` propre, les lignes atterrissent via le même serveur pgwire Calcite livré avec le connecteur (`pgwire-file`) qu'utilisent sharepoint et splunk. Voir [Connecteurs SaaS d'entreprise](#enterprise-saas-connectors) ci-dessous.
+
 #### Logs {: #logs }
 
 Une source `logs` transforme des fichiers de journaux du serveur Provisa en une table. Vous désignez les fichiers par un chemin complet ou un glob, et vous choisissez le format dans lequel les enregistrements sont écrits. Chaque enregistrement devient une ligne. Un enregistrement que le format ne sait pas lire est conservé, avec son texte brut et la raison, et n'est jamais écarté.
@@ -511,6 +521,7 @@ Seuls les tableaux que les éditeurs marquent comme tableaux de données (`table
 ### Connecteurs SaaS d'entreprise {: #enterprise-saas-connectors }
 
 Google Workspace et Microsoft 365 sont lus par des chargeurs qui leur sont propres ; voir [Google Workspace et Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, l'inventaire cloud et Splunk sont lus par des pilotes qui tournent dans leur propre processus et parlent le protocole PostgreSQL (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) ; aucun n'a donc de pilote direct. Sur le moteur DuckDB, le point de terminaison du pilote est attaché en direct par l'extension postgres : Register Table liste les tables du connecteur depuis le catalogue attaché, les requêtes lisent le connecteur sur place, et filtres et projections lui sont poussés. Tous les autres moteurs déposent les lignes dans le magasin de matérialisation pour la fédération. Les paquets de pilotes sont récupérés par système et architecture depuis une version épinglée (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz` ; macOS arm64, Linux x86_64, Windows x86_64). Un exploitant peut à la place indiquer, par connecteur, un dossier de paquet compilé pour cet hôte dans Admin → Paramètres → Serveurs des connecteurs (`connectors.<connector>.bundle_dir`) ; voir [Admin](admin.md). Les cinq connecteurs Trino (Jira n'en a pas) comparent toujours les noms sans tenir compte de la casse, comme chaque produit lui-même.
+
 #### `sharepoint`
 
 Les listes SharePoint sont énumérées comme des schémas et exposées comme des tables interrogeables. Deux méthodes d'authentification : `CLIENT_CREDENTIALS` (par défaut) et par certificat via un certificat PFX. Les valeurs secrètes de `mapping` sont résolues par le moteur de secrets avant d'atteindre le connecteur.
@@ -1044,7 +1055,7 @@ Un exploitant peut donner aux moteurs de fédération natifs (Postgres, DuckDB e
 
 Les moteurs natifs, qui tournent sans cluster, obtiennent ainsi la même extensibilité par configuration que le moteur Trino possède à son propre niveau. Là, un connecteur JDBC générique est paramétré par type de source, chaque type reçoit un corps `.properties` de catalogue, et Provisa ajoute ses propres plugins de connecteur Trino (Splunk, SharePoint, Calcite).
 
-Le fichier est livré vide. Les connecteurs intégrés couvrent ce qui fonctionne d'emblée, et tout ce qui se trouve dans ce fichier est écrit par l'exploitant. Pour utiliser un autre chemin, par exemple dans les tests, définissez `PROVISA_CUSTOM_CONNECTORS`.
+Le fichier est livré vide. Les connecteurs intégrés couvrent les sources qui fonctionnent sans configuration supplémentaire, et tout ce qui se trouve dans ce fichier est écrit par l'exploitant. Pour utiliser un autre chemin, par exemple dans les tests, définissez `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Genres de descripteurs {: #descriptor-kinds }
 
@@ -1064,6 +1075,7 @@ Le fichier est livré vide. Les connecteurs intégrés couvrent ce qui fonctionn
 **ClickHouse prend en charge trois mécanismes**, un par forme de moteur d'intégration : un moteur DATABASE relationnel qui expose automatiquement toutes les tables distantes (`clickhouse_database`, par exemple Redis/MySQL), un moteur par table dont le registre fournit les colonnes (`clickhouse_table`, par exemple le pont JDBC/ODBC; le `engine_template` peut porter un caractère de remplacement `{table}` que le runtime lie), et un moteur fichier/lac/URL dont ClickHouse infère le schéma (`clickhouse_scan`, par exemple HDFS/URL). SQLite (moteur DATABASE, fichier, sans serveur) et Hudi (lakehouse, sans copie) sont livrés d'origine.
 
 Une valeur `kind` inconnue échoue bruyamment au démarrage, si bien qu'une coquille dans un descripteur ne laisse jamais un type de source inaccessible en silence.
+
 ### Contrôle par sondage {: #probe-gating }
 
 La disponibilité est vérifiée au moment de l'attachement contre le catalogue de découverte standard de chaque moteur :
@@ -1488,6 +1500,7 @@ auth:
 Enregistrez une base de données graphe Neo4j comme source interrogeable. Les intendants rédigent des requêtes Cypher qui projettent des valeurs scalaires ; Provisa met les résultats en cache et les expose comme types GraphQL.
 
 Les requêtes Cypher doivent utiliser des accès aux propriétés dans la clause `RETURN` (`RETURN n.id AS id, n.name AS name`). L'enregistrement refuse une requête qui renvoie des objets nœuds.
+
 #### Enregistrement par fichier de configuration {: #config-file-registration }
 
 Déclarez une source `neo4j` et ses tables en YAML. Chaque table exige un `query_template` (le Cypher qui produit ses lignes) et des colonnes typées. La clé `query_template` est invalide pour tout autre type de source.

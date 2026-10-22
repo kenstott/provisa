@@ -347,8 +347,10 @@ def launcher_argv(
     python: str, *, read: Sequence[str], proxy_port: int, argv: Sequence[str]
 ) -> list[str]:
     """How a worker is started inside the sandbox: Provisa's Python runs this module, which
-    confines itself and ``exec``s ``argv``."""
-    out = [python, "-I", "-m", "provisa.codesource.linux_sandbox", "--proxy-port", str(proxy_port)]
+    confines itself and ``exec``s ``argv``. Run by its file's path, not ``-m``: isolated (``-I``),
+    the working directory is not on the path, and an image that runs Provisa from its source
+    directory has no package to find (it imports only the standard library)."""
+    out = [python, "-I", os.path.abspath(__file__), "--proxy-port", str(proxy_port)]
     for path in read:
         out += ["--read", path]
     return [*out, "--", *argv]

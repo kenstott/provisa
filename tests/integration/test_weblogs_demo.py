@@ -28,6 +28,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 pytestmark = [pytest.mark.integration]
@@ -56,6 +58,7 @@ class WeblogsStack:
         return {
             "PROVISA_NAMED_DEMO_DIR": str(self.home),
             "WEBLOGS_PG_PORT": str(self.pg_port),
+            **store_namespaces(_DEMO),
             "WEBLOGS_SHOP_PORT": str(self.shop_port),
         }
 

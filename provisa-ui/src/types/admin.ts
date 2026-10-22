@@ -45,6 +45,7 @@ export interface Source {
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" maintenance window
   offPeakTz: string; // REQ-1141: IANA zone for the window
   sentinelPath: string | null; // REQ-1148: freshness sentinel marker URL
+  downloadFrom: string | null; // REQ-2113: where its file is downloaded from
   freshnessGate: boolean; // REQ-860: gate reads on a freshness decision
   maxLiveConcurrency: number | null; // cap on concurrent live reads; null = no cap
   gqlNamingConvention: string | null;
@@ -606,6 +607,13 @@ export interface Relationship {
   viaTypeColumn: string | null;
   viaTypeValue: string | null;
   viaLabelSource: string | null;
+  // REQ-2099: the target's parameters this edge feeds, each from a source column.
+  parameters: RelationshipParameter[];
+}
+
+export interface RelationshipParameter {
+  parameter: string;
+  sourceColumn: string;
 }
 
 export interface RLSRule {

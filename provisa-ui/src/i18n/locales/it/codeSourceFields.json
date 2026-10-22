@@ -14,7 +14,7 @@
     "version": "Versione",
     "versionHint": "Una versione esatta, come 1.2.0.",
     "lockfile": "File di lock",
-    "lockfileHint": "Un pacchetto pubblicato raramente include il suo file di lock. Fornitene uno ({{names}}) quando il pacchetto ha dipendenze.",
+    "lockfileHint": "Facoltativo. Per installazioni identiche, che contano nei test, il codice deve includere un file di lock, oppure ne fornite uno qui ({{names}}).",
     "lockfilePlaceholder": "Nessun file di lock",
     "repository": "URL del repository",
     "commit": "Commit",
@@ -25,6 +25,21 @@
     "archivePlaceholder": "Scegli un archivio",
     "entry": "Modulo di ingresso",
     "entryHint": "Il modulo da cui si entra nella sorgente. Lasciate vuoto se il codice ha un solo modulo o pacchetto di primo livello.",
-    "kept": "Conservato: {{name}}"
+    "kept": "Conservato: {{name}}",
+    "keptWithHash": "Conservato: {{name}} ({{hash}})",
+    "exports": "Esportazioni",
+    "exportsLoading": "Lettura del codice…",
+    "exportsNone": "Il codice non esporta alcuna funzione",
+    "exportKind_table": "tabella",
+    "exportKind_command": "comando",
+    "exportKind_stream": "flusso",
+    "secrets": "Segreti",
+    "secretsHint": "I segreti dell'organizzazione che questo codice può leggere. Li recupera uno per uno durante l'esecuzione, da $PROVISA_SERVICES/secrets/<name>; nient'altro del vault è leggibile e ogni lettura viene registrata.",
+    "secretsPlaceholder": "Nessun segreto",
+    "llmCap": "Limite mensile LLM",
+    "llmCapHint": "Quanto possono costare ogni mese (UTC) le chiamate di questo codice a $PROVISA_SERVICES/llm, in USD. Con un limite, può usare solo modelli con un prezzo in Prezzi dei modelli di Polly, e le sue chiamate vengono rifiutate quando il mese raggiunge il limite. Vuoto: nessun limite.",
+    "llmCapPlaceholder": "Nessun limite",
+    "settings": "Impostazioni",
+    "settingsHint": "Valori che il codice legge con settings.get(name), uno per riga come nome = valore. Non per i segreti: quelli vanno in Segreti. Un responsabile li modifica qui senza cambiare il codice."
   }
 }

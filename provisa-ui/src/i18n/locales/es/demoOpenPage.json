@@ -2,6 +2,7 @@
   "demoOpenPage": {
     "title": "Abriendo su sandbox de demostración",
     "opening": "Estamos preparando una copia de la demostración para usted. Tarda unos segundos.",
+    "starting": "Iniciando esta demostración…",
     "retry": "Intentar de nuevo"
   }
 }

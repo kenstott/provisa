@@ -139,6 +139,103 @@
           </table>
         </div>
 
+        <h2>Your own code</h2>
+        <p>
+          Hasura DDN puts your code behind the API in two ways. A
+          <a href="https://hasura.io/docs/3.0/business-logic/overview/" rel="noopener">lambda connector</a>
+          turns each TypeScript, Python or Go function into a command: a query or a
+          mutation, marked with a <code>@readonly</code> JSDoc tag, a
+          <code>@connector.register_query</code> decorator or a <code>Function</code>
+          name prefix. A <a href="https://hasura.io/docs/3.0/connectors/build-your-own" rel="noopener">connector you build yourself</a>
+          implements the NDC specification's endpoints, and every feature it declares,
+          filtering and relationships included, is code you write.
+        </p>
+        <p>
+          In Provisa you tag a Node or Python function with <code>@table</code>,
+          <code>@command</code> or <code>@stream</code>, with no SDK to import. The command
+          covers what a lambda is for. The table is what a lambda doesn't give you: rows
+          that join, filter and sort with every other table, carry the same grants, masks
+          and row rules, and read the same way over SQL, GraphQL, Cypher and every other
+          way in. The code is pinned to a package version, a Git commit or an upload.
+          It runs in a sandboxed worker while you develop, and <strong>Build image</strong>
+          packages it to run on a remote host of your own.
+        </p>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>&nbsp;</th><th>Hasura DDN lambda</th><th>Provisa code source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>A function becomes</th>
+                <td>A command (query or mutation)</td>
+                <td class="is-us">A table, a command or a live table</td>
+              </tr>
+              <tr>
+                <th>Writing it</th>
+                <td>JSDoc tag, decorator with an SDK import, or a name prefix</td>
+                <td class="is-us">One tag in the docstring; no import</td>
+              </tr>
+              <tr>
+                <th>Permissions</th>
+                <td>Per-role execution and argument presets</td>
+                <td class="is-us">Grants, masks and row rules, as on any table</td>
+              </tr>
+              <tr>
+                <th>Deploying</th>
+                <td>Connector service, introspect, a metadata file per command, supergraph build</td>
+                <td class="is-us">Register the pinned code; sandboxed worker in development, a built image on a remote host</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>How sources are reached</h2>
+        <p>
+          Every DDN connector, the first-party database connectors included, is its own
+          web service. Each
+          <a href="https://hasura.io/docs/3.0/connectors/build-your-own" rel="noopener">connector SDK</a>
+          starts an HTTP server answering the
+          <a href="https://hasura.github.io/ndc-spec/specification/index.html" rel="noopener">NDC specification's</a>
+          endpoints, and the
+          <a href="https://github.com/hasura/ndc-postgres" rel="noopener">Postgres connector</a>
+          is built on the Rust one. The connector reads its source over the source's own
+          protocol; the hop from connector to engine is HTTP, with requests and results
+          sent as JSON in the shapes the spec defines. In Provisa a single-source read goes
+          straight to the source over its native driver, with no connector service in
+          between.
+        </p>
+        <p>
+          A DDN join across two connectors is assembled in the engine from each
+          connector's serialized results: the engine queries the first connector, passes
+          the join-field values to the second as query variables, and
+          <a href="https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs" rel="noopener">joins the two responses itself</a>.
+          In Provisa a cross-source join runs in the chosen federation engine (Trino,
+          DuckDB or Postgres), which reads each source over its native connector. The
+          planner always joins real tables: replicas landed in the engine's store, which
+          carry statistics, or live catalogs the engine attaches directly, which carry the
+          statistics that engine's connector reports. DDN joins two connectors' JSON
+          results.
+        </p>
+        <p>
+          DDN holds a cross-connector join in the engine's memory: the left-hand rows, the
+          join keys collected from them and the second connector's response, with
+          <a href="https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs" rel="noopener">no spill or streaming path</a>.
+          Each hop has a size limit. The engine refuses a connector response over
+          <code>NDC_RESPONSE_SIZE_LIMIT</code> (30 MB by default), and the SDK servers cap
+          the requests they accept. Values travel as JSON, with 64-bit and arbitrary-precision
+          numbers as strings and bytes as base64. In Provisa the join runs in the federation
+          engine, and on DuckDB and Postgres a join that outgrows memory can spill to disk.
+        </p>
+        <p>
+          Self-hosting DDN's engine and connectors on Docker
+          <a href="https://hasura.io/docs/3.0/deployment/overview/" rel="noopener">comes without a control plane</a>.
+          <a href="https://hasura.io/docs/3.0/architecture/private/self-hosted" rel="noopener">Private DDN Self-Hosted</a>,
+          which brings the control plane onto your infrastructure, needs an enterprise
+          license and a Kubernetes cluster. Provisa installs the same product on a laptop,
+          a single VM, a VM cluster or Kubernetes.
+        </p>
+
         <h2>On staying put</h2>
         <p>
           Provisa is a handful of primitives (domains, tables, relationships, masking,

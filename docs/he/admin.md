@@ -148,7 +148,7 @@ mutation {
 
 ### גילוי קשרים בעזרת AI {: #ai-relationship-discovery }
 
-הפעילו ניתוח FK מונע-Claude דרך REST ‏:
+בקשו מ-Claude מועמדי FK דרך REST ‏:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-ה-admin API מגיע עם GraphiQL בכתובת `GET /admin/graphql` בדפדפן. השתמשו בו כדי לחקור את סכמת ה-admin המלאה באופן אינטראקטיבי.
+ה-admin API מגיע עם GraphiQL בכתובת `GET /admin/graphql` בדפדפן. השתמשו בו כדי לעיין בסכמת ה-admin המלאה ולנסות קריאות.
 
 ## תצוגות ניהול בדומיין ops ‏ {: #ops-domain-management-views }
 

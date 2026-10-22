@@ -148,7 +148,7 @@ Você declara uma tabela associativa como aresta; o Provisa nunca descobre uma. 
 
 ### Descoberta de relacionamentos por IA {: #ai-relationship-discovery }
 
-Dispare a análise de FK movida pelo Claude via REST:
+Peça ao Claude candidatos a FK via REST:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-A API de administração acompanha o GraphiQL em `GET /admin/graphql` no navegador. Use-o para explorar o esquema administrativo completo de forma interativa.
+A API de administração acompanha o GraphiQL em `GET /admin/graphql` no navegador. Use-o para percorrer o esquema administrativo completo e testar chamadas.
 
 ## Exibições de gerenciamento do domínio ops {: #ops-domain-management-views }
 

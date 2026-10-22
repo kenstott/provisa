@@ -52,6 +52,16 @@ async def loaded(monkeypatch, tmp_path, control_plane):
         yield
 
     monkeypatch.setattr(secrets_store, "bound_to_request_org", _unbound)
+    from provisa.core import secrets_providers
+
+    # A deployment of one organisation, as the API layer says at import (provisa.api.app): run
+    # alone, nothing here imports it, and storing a source's secret asks.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+    from provisa.core.demo_bundles import store_namespaces
+
+    # As a launcher running the demo's own stores sets them (start-ui-install.sh --demo).
+    for name, value in store_namespaces(CONFIG.parent).items():
+        monkeypatch.setenv(name, value)
     monkeypatch.setenv("PROVISA_NAMED_DEMO_DIR", str(tmp_path))
     plane = control_plane.org()
     async with plane.acquire() as conn:

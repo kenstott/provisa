@@ -12,8 +12,9 @@
 // of the tour runner pointing at the demo's own objects; the tour button runs them before the
 // product tour until they have been walked to their end, and the Deep Dives menu lists them first.
 
+import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { MantineProvider } from "@mantine/core";
@@ -85,6 +86,26 @@ const { TourMenu } = await import("../tour/TourMenu");
 const EXAMPLES = [{ name: "1-slowest-pages-by-path", query: "query SlowestPagesByPath { a }" }];
 
 describe("a demo's steps, as the runner walks them", () => {
+  it("points a trigger step at the trigger's row on the Triggers page", () => {
+    const [trigger] = demoTourSteps(
+      [
+        {
+          key: "t",
+          route: "/admin/scheduled-tasks",
+          capability: "org_settings",
+          trigger: "daily-review",
+        },
+      ],
+      EXAMPLES,
+    );
+    expect(trigger).toEqual({
+      key: "t",
+      route: "/admin/scheduled-tasks",
+      capability: "org_settings",
+      element: '[data-testid="scheduled-task-row-daily-review"]',
+    });
+  });
+
   it("points each target at the demo's object on its page", () => {
     const defs: DemoTourStepDef[] = [
       { key: "a", route: "/sources", capability: "source_registration", source: "shop_access" },
@@ -101,6 +122,25 @@ describe("a demo's steps, as the runner walks them", () => {
       element: '[data-testid="sources-row-shop_access"]',
     });
     expect(relationship).toEqual({ key: "b", element: '[data-tour-relationship="LOGGED_FOR"]' });
+    // The step that opens the Relationships page searches it by the alias, so the row is on the
+    // page's first page however many relationships the org holds.
+    const [opened] = demoTourSteps(
+      [
+        {
+          key: "j",
+          route: "/relationships",
+          capability: "create_relationship",
+          relationship: "SCORED_AS",
+        },
+      ],
+      EXAMPLES,
+    );
+    expect(opened).toEqual({
+      key: "j",
+      route: "/relationships?search=SCORED_AS",
+      capability: "create_relationship",
+      element: '[data-tour-relationship="SCORED_AS"]',
+    });
     expect(example.openQuery).toEqual({ stateKey: "query", text: EXAMPLES[0].query });
     expect(example.element).toBe(".graphiql-response");
     expect(sql.openQuery).toEqual({ stateKey: "sql", text: "SELECT 1" });
@@ -125,6 +165,25 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(picture.element).toBe(sql.element);
     expect(picture.image).toBe("data:image/png;base64,AAAA");
     expect(picture.route).toBeUndefined();
+  });
+
+  it("carries a link to another demo beside the step's own target", () => {
+    const [linked, plain] = demoTourSteps(
+      [
+        {
+          key: "a",
+          route: "/sources",
+          capability: "source_registration",
+          source: "shop_access",
+          demo: "churn",
+        },
+        { key: "b", source: "shop_db_log" },
+      ],
+      EXAMPLES,
+    );
+    expect(linked.element).toBe('[data-testid="sources-row-shop_access"]');
+    expect(linked.demo).toBe("churn");
+    expect(plain.demo).toBeUndefined();
   });
 
   it("refuses a picture with no step before it, or none sent", () => {
@@ -156,8 +215,51 @@ describe("a demo's steps, as the runner walks them", () => {
       open: '[data-testid="role-selector-trigger"]',
       option: '[data-role-option="customer"]',
     });
-    expect(sql.element).toBe(".sql-results-table");
+    expect(sql.element).toBe('.sql-results-table, [data-testid="sql-results-error"]');
     expect(onSql.chooseOnNext?.option).toBe('[data-sql-role-option="analyst"]');
+  });
+
+  it("is ready on a statement's refusal as on its rows, and shows the refusal", () => {
+    // The provisioning close, read outside its view's load window, is refused by design: the tour
+    // waited for rows that never came and ended there.
+    const [sql] = demoTourSteps(
+      [{ key: "close", route: "/sql", capability: "query_development", sql: "SELECT 1" }],
+      EXAMPLES,
+    );
+    document.body.innerHTML =
+      '<pre data-testid="sql-results-error">The view view_close_by_category can be read only within its read window.</pre>';
+    const refusal = document.querySelector('[data-testid="sql-results-error"]');
+    expect(document.querySelector(sql.readySelector ?? "")).toBe(refusal);
+    expect(document.querySelector(sql.element as string)).toBe(refusal);
+    document.body.innerHTML =
+      '<table class="sql-results-table"><tbody><tr data-testid="results-grid-empty"><td></td></tr></tbody></table>';
+    expect(document.querySelector(sql.readySelector ?? "")).toBeNull();
+    document.body.innerHTML = "";
+  });
+
+  it("opens a profiled table's runs and picks a graph itself, then explains it once drawn", () => {
+    const [step] = demoTourSteps(
+      [
+        {
+          key: "g",
+          route: "/tables",
+          capability: "table_registration",
+          table: "crm.customers",
+          open: "quality",
+          graph: "driftStrata",
+        },
+      ],
+      EXAMPLES,
+    );
+    expect(step.route).toBe("/tables?open=crm.customers&section=quality");
+    expect(step.actions).toEqual([
+      { do: "press", target: { testId: "table-read-view-profile-runs" } },
+      { do: "press", target: { testId: "profile-tab-driftStrata" } },
+    ]);
+    // The drawn scene, never the loader: three.js loads on first use.
+    expect(step.element).toBe('[data-testid="strata-stage"][data-ready]');
+    expect(step.readySelector).toBe(step.element);
+    expect(step.clickAfterNext).toBe('[data-testid="profile-runs-modal"] .mantine-Modal-close');
   });
 
   it("hands a set of roles, a derived role among them, to the SQL explorer", () => {
@@ -292,8 +394,8 @@ describe("a demo's steps, as the runner walks them", () => {
     );
     expect(step.navState).toEqual({ cells, autoRun: true });
     expect(step.openQuery).toBeUndefined();
-    expect(step.readySelector).toBe('[data-testid="notebook-answered"]');
-    expect(step.element).toBe('[data-testid="notebook-panel"]');
+    expect(step.readySelector).toBe('[data-testid="notebook-answer"]');
+    expect(step.element).toBe('[data-testid="notebook-answer"]');
   });
 
   it("refuses a notebook step when the demo ships no notebook", () => {
@@ -326,6 +428,7 @@ const WEBLOGS_ORG: OrgHas = {
   sources: new Set(["shop-db", "shop_access", "shop_db_log"]),
   tables: new Set(["shop-db.customers", "shop_access.shop_access"]),
   dataProducts: 0,
+  pollyConfigured: true,
 };
 
 const WEBLOGS: NamedDemo = {
@@ -342,6 +445,7 @@ const WEBLOGS: NamedDemo = {
   ],
   landing: null,
   notebook: [],
+  orgFiles: [],
 };
 
 function Launcher() {
@@ -425,6 +529,38 @@ describe("the tour button in a named demo", () => {
     );
   });
 
+  for (const when of ["waiting", "stuck"] as const) {
+    it(`skips a step whose object never appears, ${when}, to the track's next step`, async () => {
+      const tour = [
+        WEBLOGS.tour[0],
+        // A source of the org the page here never paints (no sources-row-shop-db): its step waits, then is stuck.
+        { key: "weblogsMissing", source: "shop-db" },
+        WEBLOGS.tour[1],
+      ];
+      renderTour({ ...WEBLOGS, tour });
+      fireEvent.click(screen.getByText("launch"));
+      await act(async () => chunksResolve());
+      expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+      fireEvent.click(document.querySelector<HTMLElement>(".driver-popover-next-btn")!);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(when === "waiting" ? 2000 : 62000);
+      });
+      expect(screen.getByText(`tour.status.${when}`)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("tour.status.skip"));
+      expect(await screen.findByText("tour.steps.weblogsDbLog.title")).toBeInTheDocument();
+      expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
+      expect(screen.queryByText("tour.status.stuck")).not.toBeInTheDocument();
+      // Nothing of the skipped step's wait is left to raise its status again.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(62000);
+      });
+      expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
+      expect(screen.queryByText("tour.status.stuck")).not.toBeInTheDocument();
+      expect(screen.getByText("tour.steps.weblogsDbLog.title")).toBeInTheDocument();
+    });
+  }
+
   it("counts its steps as it started, though a role step drops one mid-tour", async () => {
     const tour = [
       WEBLOGS.tour[0],
@@ -455,6 +591,63 @@ describe("the tour button in a named demo", () => {
     fireEvent.click(next());
     expect(await screen.findByText("tour.steps.weblogsDbLogAgain.title")).toBeInTheDocument();
     expect(next().textContent).toBe("tour.nav.next 3/4");
+  });
+
+  it("goes on past a step whose role pick gives back the right the steps after it need", async () => {
+    // As the churn tour: the analyst may open none of the pages after "back to every role", yet that
+    // step is not the end; its Next picks All, which opens them again.
+    const tour = [
+      WEBLOGS.tour[0],
+      {
+        key: "weblogsAsAnalyst",
+        route: "/query",
+        capability: "query_development" as const,
+        role: "analyst",
+      },
+      { key: "weblogsEveryRole", role: "all" },
+      {
+        key: "weblogsLast",
+        route: "/sources",
+        capability: "source_registration" as const,
+        source: "shop_access",
+      },
+    ];
+    const demo = { ...WEBLOGS, tour };
+    // The header's role picker: a pick sets the rights every gate (and the itinerary) reads.
+    function Picking() {
+      const [, repaint] = React.useState(0);
+      const pick = (to: string[]) => () => {
+        rights.current = to;
+        repaint((n) => n + 1);
+      };
+      return (
+        <>
+          {tourTree(demo)}
+          <button type="button" data-testid="role-selector-trigger" />
+          <button type="button" data-role-option="analyst" onClick={pick(["query_development"])} />
+          <button type="button" data-role-option="all" onClick={pick(ALL_RIGHTS)} />
+        </>
+      );
+    }
+    render(<Picking />);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    const next = () => document.querySelector<HTMLElement>(".driver-popover-next-btn")!;
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsAsAnalyst.title")).toBeInTheDocument();
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsEveryRole.title")).toBeInTheDocument();
+    expect(rights.current).toEqual(["query_development"]);
+    expect(next().textContent).toBe("tour.nav.next 3/4");
+    fireEvent.click(next());
+    // The All pick repaints the step's popover as it lands: read the title the popover shows now.
+    await waitFor(() =>
+      expect(document.querySelector(".driver-popover-title")?.textContent).toBe(
+        "tour.steps.weblogsLast.title",
+      ),
+    );
+    expect(rights.current).toEqual(ALL_RIGHTS);
   });
 
   it("offers a revised track again, though the one before it was walked", async () => {
@@ -574,7 +767,14 @@ describe("the tour button in a named demo", () => {
   it("runs the product tour where no named demo has a tour", async () => {
     const { STANDARD_DEMO_ORG } = await import("../test-utils/tourOrg");
     org.current = STANDARD_DEMO_ORG;
-    renderTour({ name: null, exampleQueries: [], tour: [], landing: null, notebook: [] });
+    renderTour({
+      name: null,
+      exampleQueries: [],
+      tour: [],
+      landing: null,
+      notebook: [],
+      orgFiles: [],
+    });
     fireEvent.click(screen.getByText("launch"));
     await act(async () => chunksResolve());
     await act(async () => vi.advanceTimersByTime(2000));
@@ -634,6 +834,45 @@ describe("the end of a named demo's tour: where next?", () => {
   });
 });
 
+describe("a demo step linking another demo", () => {
+  // A demo that builds on another links back to it from its story.
+  const LINKED: NamedDemo = {
+    ...WEBLOGS,
+    tour: [{ ...WEBLOGS.tour[0], demo: "churn" }, WEBLOGS.tour[1]],
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("opens the other demo from its popover, leaving the tour without the menu", async () => {
+    renderTour(LINKED);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    const open = screen.getByTestId("tour-open-demo");
+    expect(open).toHaveTextContent("tour.nav.openDemo");
+    fireEvent.click(open);
+    await act(async () => {});
+    expect(screen.getByTestId("where")).toHaveTextContent("/demos/churn");
+    expect(screen.queryByTestId("tour-menu")).toBeNull();
+    expect(document.querySelector(".driver-popover")).toBeNull();
+  });
+
+  it("offers no link on a step that names no other demo", async () => {
+    renderTour(LINKED);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    fireEvent.click(document.querySelector<HTMLElement>(".driver-popover-next-btn")!);
+    expect(await screen.findByText("tour.steps.weblogsDbLog.title")).toBeInTheDocument();
+    expect(screen.queryByTestId("tour-open-demo")).toBeNull();
+  });
+});
+
 describe("a freshly onboarded org, started as no named demo", () => {
   // The status of a deployment no named demo was started as: the onboard-org flow's.
   const FRESH = {
@@ -642,6 +881,8 @@ describe("a freshly onboarded org, started as no named demo", () => {
     demo_tour: [],
     demo_landing: null,
     demo_notebook: [],
+    demo_org_files: [],
+    orgFiles: [],
   };
 
   beforeEach(() => {
@@ -656,7 +897,7 @@ describe("a freshly onboarded org, started as no named demo", () => {
   });
 
   it("opens the tour without a demo track", async () => {
-    org.current = { sources: new Set(), tables: new Set(), dataProducts: 0 };
+    org.current = { sources: new Set(), tables: new Set(), dataProducts: 0, pollyConfigured: true };
     localStorage.setItem("provisa_tour_seen", "true"); // the tour button opens the menu
     renderTour(namedDemoOf(FRESH));
     fireEvent.click(screen.getByText("launch"));
@@ -724,6 +965,7 @@ describe("a demo step's statement", () => {
               ],
               landing: null,
               notebook: [],
+              orgFiles: [],
             }}
           >
             <TourProvider>
@@ -744,6 +986,69 @@ describe("a demo step's statement", () => {
   });
 });
 
+describe("a demo step's anchor rendered again", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it("is lit again where the page now shows it", async () => {
+    // The SQL explorer renders its results again once its answer is in: the step lit a table no
+    // longer on the page, and its popover sat in the window's corner.
+    function Explorer() {
+      const [n, setN] = React.useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setN((v) => v + 1)}>
+            again
+          </button>
+          <table className="sql-results-table" key={n} data-render={n}>
+            <tbody>
+              <tr>
+                <td>1</td>
+              </tr>
+            </tbody>
+          </table>
+        </>
+      );
+    }
+    render(
+      <MantineProvider>
+        <MemoryRouter initialEntries={["/sql"]}>
+          <NamedDemoContext.Provider
+            value={{
+              name: "weblogs",
+              exampleQueries: [],
+              tour: [
+                { key: "s1", route: "/sql", capability: "query_development", sql: "SELECT 1" },
+              ],
+              landing: null,
+              notebook: [],
+              orgFiles: [],
+            }}
+          >
+            <TourProvider>
+              <Launcher />
+              <Routes>
+                <Route path="/sql" element={<Explorer />} />
+              </Routes>
+            </TourProvider>
+          </NamedDemoContext.Provider>
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    await act(async () => new Promise((r) => setTimeout(r, 300)));
+    expect(document.querySelector(".driver-active-element")?.getAttribute("data-render")).toBe("0");
+    await act(async () => fireEvent.click(screen.getByText("again")));
+    await act(async () => new Promise((r) => setTimeout(r, 100)));
+    const lit = document.querySelector(".driver-active-element");
+    expect(lit?.getAttribute("data-render")).toBe("1");
+    expect(lit?.isConnected).toBe(true);
+  });
+});
+
 describe("the Deep Dives menu in a named demo", () => {
   it("lists the demo's track first, marked done once walked", () => {
     const onDemo = vi.fn();
@@ -751,7 +1056,7 @@ describe("the Deep Dives menu in a named demo", () => {
       <MantineProvider>
         <TourMenu
           opened
-          topics={[{ id: "connect", steps: 4 }]}
+          topics={[{ id: "relationships", steps: 6 }]}
           completed={[]}
           demo={{ name: "weblogs", steps: 10, done: true }}
           onDemo={onDemo}
@@ -762,7 +1067,7 @@ describe("the Deep Dives menu in a named demo", () => {
       </MantineProvider>,
     );
     const track = screen.getByTestId("tour-demo-track");
-    expect(track.compareDocumentPosition(screen.getByTestId("tour-topic-connect"))).toBe(
+    expect(track.compareDocumentPosition(screen.getByTestId("tour-topic-relationships"))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(screen.getByText("tour.demos.weblogs.title")).toBeInTheDocument();

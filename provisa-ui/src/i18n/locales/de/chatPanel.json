@@ -29,6 +29,9 @@
     "no": "Nein",
     "typeSomethingElse": "Etwas anderes eingeben",
     "confirm": "Bestätigen",
+    "confirmed": "Bestätigt — los geht's.",
+    "cancelled": "Abgebrochen.",
+    "chooseFile": "Zu sendende Datei",
     "graphCaption": "Knoten: {{nodes}} · Beziehungen: {{relationships}}",
     "downloadPng": "PNG herunterladen",
     "openOnGraphPage": "Auf der Graph-Seite öffnen"

@@ -35,6 +35,7 @@ import httpx
 import pytest
 import yaml
 
+from provisa.core.demo_bundles import store_namespaces
 from tests.integration.test_demo_sandboxes_e2e import _JWT_SECRET, _deployment_config
 
 pytestmark = [pytest.mark.integration]
@@ -209,6 +210,8 @@ def test_the_cli_pulls_the_bundle_and_walks_the_tour_with_only_its_database(
             env={
                 "PROVISA_NAMED_DEMO_DIR": str(demo),
                 "WEBLOGS_PG_PORT": str(run.pg_port),
+                # Its own database, as start-ui-install.sh --demo runs it: no suffix.
+                **store_namespaces(demo),
                 "PROVISA_LOGS_ALLOWED_ROOTS": str(demo / "logs"),
                 "PROVISA_DATA_DIR": str(home / "provisa"),
             },
@@ -232,18 +235,47 @@ def test_the_cli_pulls_the_bundle_and_walks_the_tour_with_only_its_database(
         run.compose("down", "-v", "--remove-orphans")
 
 
+def _shared(registry, bundles: Path, *args: str) -> subprocess.CompletedProcess:
+    """The node's shared stores (packaging/linux/demo-stores/docker-compose.shared.yml), as the
+    registry's sync runs them."""
+    from tests.integration.demo_registry import _SHARED
+
+    return subprocess.run(
+        ["docker", "compose", "-p", registry.stores_project, "-f", str(_SHARED), *args],
+        env=registry.stores_env(bundles),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=True,
+    )
+
+
+def _shared_running(registry) -> set[str]:
+    """The shared stores running for the registry's sync."""
+    listed = subprocess.run(
+        ["docker", "ps", "--filter", f"label=com.docker.compose.project={registry.stores_project}"]
+        + ["--format", '{{.Label "com.docker.compose.service"}}'],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    return set(listed)
+
+
 def test_a_visitor_sandbox_of_weblogs_reads_the_bundle(published, tmp_path_factory):
     registry, version = published
     work = tmp_path_factory.mktemp("weblogs_tier")
     from tests.integration.isolated_server import IsolatedServer
 
-    # The node's side first: the bundle pulled, its shop database up, its stores.env written.
+    # The node's side first: the bundle pulled and offered, and none of its stores started -- the
+    # node starts a demo's stores only once the tier asks for it.
     bundles = work / "data" / "demo-bundles"
-    synced = registry.sync("weblogs", bundles)
+    synced = registry.sync("weblogs", bundles, requested=False)
     print(synced.stdout, synced.stderr)
     assert synced.returncode == 0, (synced.stdout, synced.stderr)
-    assert (bundles / "weblogs" / "ready").read_text().strip() == version
-    print((bundles / "weblogs" / version / "stores.env").read_text())
+    assert (bundles / "weblogs" / "pulled").read_text().strip() == version
+    assert not (bundles / "weblogs" / "ready").exists()
+    assert _shared_running(registry) == set(), "a store started before the demo was asked for"
     project = f"provisa-demo-weblogs-{version}"
 
     config = work / "config.yaml"
@@ -263,6 +295,27 @@ def test_a_visitor_sandbox_of_weblogs_reads_the_bundle(published, tmp_path_facto
     )
     tier.start(timeout=300)
     try:
+        # The first open asks for the demo: it is being prepared until the node has its stores up.
+        first = httpx.post(f"{tier.base_url}/public/demos/weblogs", timeout=600)
+        assert first.json().get("code") == "sandbox.demo_not_ready", first.text
+        assert (bundles / "weblogs" / "requested").exists()
+        # The node's path unit runs the sync when the tier asks (bundles/.wanted): run it here.
+        synced = registry.sync("weblogs", bundles, requested=False)
+        assert synced.returncode == 0, (synced.stdout, synced.stderr)
+        assert (bundles / "weblogs" / "ready").read_text().strip() == version
+        stores = (bundles / "weblogs" / version / "stores.env").read_text()
+        print(stores)
+        suffix = dict(line.split("=", 1) for line in stores.split())["WEBLOGS_PG_NS"]
+        assert suffix.startswith("_weblogs_"), stores
+        # Its database is the shared Postgres's shop<suffix>, the only store the node started.
+        assert _shared_running(registry) == {"postgres"}
+        listed = _shared(
+            registry,
+            bundles,
+            *("exec", "-T", "postgres", "psql", "-U", "postgres", "-Atc"),
+            "SELECT datname FROM pg_database",
+        ).stdout.split()
+        assert f"shop{suffix}" in listed, listed
         deadline = time.monotonic() + 600
         while True:
             opened = httpx.post(f"{tier.base_url}/public/demos/weblogs", timeout=600)

@@ -62,7 +62,7 @@ sources:
   type: postgresql
   host: ${env:DATAROOM_PG_HOST:-localhost}
   port: ${env:DATAROOM_PG_PORT:-30032}
-  database: dataroom
+  database: dataroom${env:DATAROOM_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: 'Northfield Supply''s order and finance system: its customers, their orders and the invoices,

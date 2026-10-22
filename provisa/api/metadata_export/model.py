@@ -103,6 +103,11 @@ class TableAsset:  # REQ-1070
     # catalog publish, which exports nothing else; the model report builds over every registered
     # table and carries the flag as a column so a reviewer can filter on it in the spreadsheet.
     data_product: bool = False
+    # REQ-2118: how fresh the table is kept -- its cache_ttl, else its source's (seconds; -1 never
+    # expires); None when neither declares one, which a contract states as no freshness promise.
+    cache_ttl: int | None = None
+    # REQ-2118: a view (defined by SQL over other tables) rather than a table read from a source.
+    is_view: bool = False
 
 
 @dataclass
@@ -127,6 +132,58 @@ class DataProductAsset:  # REQ-1634
     publish: bool = False  # REQ-1635: PUBLISH = TRUE on the organization listing instead of DRAFT
     # REQ-1659: the product's page in the org's UI, published as the listing's documentation link.
     documentation_url: str | None = None
+    # REQ-2118: the rest of the product's ODPS fields, carried to every target in its own terms.
+    team_role: str | None = None
+    limitations: str = ""
+    usage: str = ""
+    version: str | None = None
+    status: str | None = None
+    sla: str | None = None  # prose: a product spans several members
+    support: str | None = None
+    custom_properties: dict[str, str] = field(default_factory=dict)
+    # REQ-2118: the owner role's holders' email addresses -- the product's owners in a catalog
+    # that names owners by address (Dataplex), never a role-to-principal setting.
+    owner_emails: tuple[str, ...] = ()
+
+    def odps_fields(self) -> dict[str, str]:
+        """The product's ODPS fields that are set, by their ODPS names, for a target's own
+        property bag (REQ-2118). The purpose is the product's description everywhere."""
+        named = {
+            "purpose": self.description,
+            "ownerRole": self.owner.id if self.owner is not None else None,
+            "teamRole": self.team_role,
+            "limitations": self.limitations,
+            "usage": self.usage,
+            "version": self.version,
+            "status": self.status,
+            "sla": self.sla,
+            "support": self.support,
+            "supportContact": self.support_contact,
+        }
+        fields = {k: v for k, v in named.items() if v}
+        fields.update({f"custom.{k}": v for k, v in sorted(self.custom_properties.items())})
+        return fields
+
+    def described(self) -> str:
+        """The purpose, followed by the product's other ODPS fields as a list, for a target whose
+        data product has a description and no field for them (REQ-2118)."""
+        labels = {
+            "ownerRole": "Owner role",
+            "teamRole": "Team role",
+            "limitations": "Limitations",
+            "usage": "Usage",
+            "version": "Version",
+            "status": "Status",
+            "sla": "SLA",
+            "support": "Support",
+            "supportContact": "Support contact",
+        }
+        fields = self.odps_fields()
+        lines = [f"- {labels[k]}: {v}" for k, v in fields.items() if k in labels]
+        lines += [
+            f"- {k[len('custom.') :]}: {v}" for k, v in fields.items() if k.startswith("custom.")
+        ]
+        return "\n\n".join(part for part in (self.description, "\n".join(lines)) if part)
 
 
 @dataclass
@@ -136,6 +193,8 @@ class SourceAsset:  # REQ-1070
     source_type: str
     description: str
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/sources/<source id>
+    # REQ-2118: the source's database -- a BigQuery source's GCP project, where its tables are.
+    database: str = ""
 
 
 @dataclass

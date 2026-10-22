@@ -20,11 +20,14 @@ import { MantineProvider } from "@mantine/core";
 import { TOUR_STEPS } from "../tour/tourSteps";
 
 const t = (key: string) => key;
-// REQ-2013: the org has every object the product tour's steps show.
+// REQ-2013: the org has every object the product tour's steps show; whether its Polly has a model
+// is the test's.
+const org = vi.hoisted(() => ({ pollyConfigured: true }));
 vi.mock("../hooks/useOrgHas", async () => {
   const { STANDARD_DEMO_ORG } = await import("../test-utils/tourOrg");
   // One function, as the hook's useCallback gives: a new one each render re-runs the tour's step.
-  const read = () => Promise.resolve(STANDARD_DEMO_ORG);
+  const read = () =>
+    Promise.resolve({ ...STANDARD_DEMO_ORG, pollyConfigured: org.pollyConfigured });
   return { useOrgHas: () => read };
 });
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t }) }));
@@ -34,7 +37,9 @@ const fetchMcpChatStatus = vi.fn();
 vi.mock("../api/mcpChat", () => ({ fetchMcpChatStatus: () => fetchMcpChatStatus() }));
 vi.mock("../context/AuthContext", async () => {
   const { TOUR_STEPS } = await import("../tour/tourSteps");
-  const capabilities = [...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : [])))];
+  const capabilities = [
+    ...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : []))),
+  ];
   return { useAuth: () => ({ loading: false, capabilities }) };
 });
 
@@ -64,7 +69,9 @@ function Shell() {
 /** The Next button of the card now on screen for `key`, once that card is the one showing. */
 async function nextButtonOf(key: string): Promise<Element> {
   await waitFor(() =>
-    expect(document.querySelector(".driver-popover-title")?.textContent).toBe(`tour.steps.${key}.title`),
+    expect(document.querySelector(".driver-popover-title")?.textContent).toBe(
+      `tour.steps.${key}.title`,
+    ),
   );
   return document.querySelector(".driver-popover-next-btn")!;
 }
@@ -88,15 +95,18 @@ describe("tour opens Polly", () => {
     localStorage.clear();
     sessionStorage.clear();
     fetchMcpChatStatus.mockReset();
+    org.pollyConfigured = true;
   });
 
-  it("marks exactly the steps whose text refers to Polly", async () => {
-    const { default: en } = await import("../i18n/locales/en/tour.json");
-    const steps = en.tour.steps as unknown as Record<string, { title: string; description: string }>;
-    for (const step of TOUR_STEPS) {
-      const refers = /\bPolly\b/.test(`${steps[step.key].title} ${steps[step.key].description}`);
-      expect(step.pollyOpen === true, `step ${step.key}`).toBe(refers);
-    }
+  it("opens Polly on the steps that show its panel, and on no other", () => {
+    // An explicit flag: a step whose words only name Polly ("Just ask" sends the visitor to it)
+    // leaves the panel shut.
+    expect(TOUR_STEPS.filter((s) => s.pollyOpen).map((s) => s.key)).toEqual([
+      "stepPolly",
+      "stepQuery",
+      "stepRelsAgents",
+    ]);
+    expect(TOUR_STEPS.find((s) => s.key === "step13")?.pollyOpen).toBeUndefined();
   });
 
   it("has Polly open when the Polly step is shown", async () => {
@@ -143,6 +153,24 @@ describe("tour opens Polly", () => {
 
     expect(screen.getByTestId("chat-panel")).toBeInTheDocument();
     expect(fetchMcpChatStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Polly's step out of the tour of an org whose Polly has no model, and moves on", async () => {
+    org.pollyConfigured = false;
+    // step1's anchors: the Sources navigation, on a Sources page painted past its loading state.
+    const page = document.createElement("div");
+    page.innerHTML =
+      '<a data-tour="nav-sources">Sources</a><button data-tour="sources-add">+</button>';
+    document.body.appendChild(page);
+    localStorage.setItem("provisa_tour_progress", String(POLLY_STEP));
+    renderShell();
+    fireEvent.click(screen.getByText("launch"));
+
+    // A tour left at stepPolly resumes past it: the step is not on this org's tour.
+    await nextButtonOf("step1");
+    expect(screen.queryByTestId("chat-panel")).toBeNull();
+    expect(fetchMcpChatStatus).not.toHaveBeenCalled();
+    page.remove();
   });
 
   it("does not open Polly when the launcher would refuse, and the step fails loudly", async () => {

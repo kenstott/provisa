@@ -32,7 +32,7 @@ Seules les tables affectées à un produit sont publiées vers les catalogues ex
 
 Un produit sans membre exporté ne publie pas. Une fiche vide laisserait croire qu'un produit existe sans rien derrière.
 
-Seuls les catalogues disposant d'un concept natif de produit de données le publient comme entité de premier ordre ; les autres publient les tables membres (déjà filtrées ci-dessus) sans regroupement en produit :
+Seuls les catalogues disposant d'un concept natif de produit de données le publient comme entité à part entière ; les autres publient les tables membres (déjà filtrées ci-dessus) sans regroupement en produit :
 
 | Catalogue | Publié comme |
 | --- | --- |

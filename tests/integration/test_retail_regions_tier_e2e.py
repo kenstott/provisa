@@ -36,6 +36,7 @@ import psycopg
 from psycopg import sql
 import pytest
 
+from tests.integration.test_demo_sandboxes_e2e import _JWT_SECRET
 from tests.integration.test_region_read_in_place_e2e import _MASTER_KEY, _Stack
 
 # The setup builds the bundle (up to 2400 s, the build itself bounded at 900 s) and boots the tier
@@ -88,6 +89,9 @@ def tier(tmp_path_factory):
             engine="duckdb",
             config=str(_TIER_CONFIG),
             control_plane="postgres",
+            # A visitor's token is read only by a configured provider: unsecured, every request
+            # is the anonymous principal on the boot org, never the visitor's sandbox.
+            auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
             env={
                 "PLATFORM_DATABASE_URL": control_plane,
                 "TENANT_DATABASE_URL": control_plane,
@@ -148,18 +152,28 @@ def test_a_visitor_reads_eu_customers_served_from_eus_store_with_no_eu_node(tier
     rows = _rows(
         server,
         sandbox,
-        'SELECT subsidiary, customer FROM "retail"."view_group_customers"',
+        # The EU rows: the view lists the US ones first, and the demo answers 100 rows at most.
+        'SELECT subsidiary, customer FROM "retail"."view_group_customers" '
+        "WHERE subsidiary = 'eu'",
         "group_analyst",
     )
     eu = [r["customer"] for r in rows if r["subsidiary"] == "eu"]
     assert eu and all(re.fullmatch(r"[0-9a-f]{32}", c) for c in eu), rows[:5]
-    record = _rows(
-        server,
-        sandbox,
-        'SELECT region FROM "ops"."queries" WHERE domain_id = \'retail\'',
-        "org_admin",
-    )
-    assert any(r["region"] == "eu" for r in record), record
+    # The visitor's own role reads the sandbox's record; a statement is recorded once answered.
+    from provisa.api.demo_sandbox import SANDBOX_ROLE
+
+    deadline = time.monotonic() + 60
+    while True:
+        record = _rows(
+            server,
+            sandbox,
+            'SELECT region FROM "ops"."queries" WHERE domain_id = \'retail\'',
+            SANDBOX_ROLE,
+        )
+        if any(r["region"] == "eu" for r in record):
+            break
+        assert time.monotonic() < deadline, record
+        time.sleep(2)
     # The sandbox's copy of eu's replicas is in eu's own store; us's holds no EU customer.
     with psycopg.connect(stack.url(stack.engine_port, "eu_store")) as conn:
         schemas = {

@@ -10,6 +10,13 @@
 
 import type { NavigateFunction } from "react-router-dom";
 import { awaitRun } from "../dataScience/runReports";
+import { readScreen } from "./screenState";
+import { parseUiActions, runUiActions } from "./uiActions";
+
+/** REQ-2115: how long each of Polly's steps on a screen lets itself be seen, and how long a step
+ * waits for its element while the screen mounts. */
+const UI_STEP_PACE_MS = 700;
+const UI_ELEMENT_WAIT_MS = 10_000;
 
 /** REQ-2071: Explore's Python and Notebook tabs, whose runs report back to the model. */
 const RUN_ROUTES: Record<string, string> = {
@@ -44,10 +51,24 @@ export interface PresentChoiceRequest {
   options?: string[];
 }
 
+/** What a confirmation shows: a question, and optionally the change itself (REQ-2114). */
+export interface ConfirmRequest {
+  title: string;
+  message: string;
+  detail?: string;
+}
+
 export interface ClientToolContext {
   navigate: NavigateFunction;
-  confirm: (opts: { title: string; message: string }) => Promise<boolean>;
+  confirm: (opts: ConfirmRequest) => Promise<boolean>;
   runMutation: (name: string, variables: Record<string, unknown>) => Promise<ClientToolResult>;
+  // REQ-2114: any admin mutation, sent by the user's own Apollo session; and a file the user
+  // chooses for a route that uploads one (null when they cancel).
+  runAdminMutation: (
+    mutation: string,
+    variables: Record<string, unknown>,
+  ) => Promise<ClientToolResult>;
+  chooseFile: (prompt: string) => Promise<File | null>;
   // REQ-1810: renders a multiple-choice / checklist / yes-no widget and resolves with the user's
   // answer — the same pause-the-loop-and-wait pattern `confirm` already uses for refresh_mv.
   presentChoice: (req: PresentChoiceRequest) => Promise<ChoiceAnswer>;
@@ -61,7 +82,71 @@ export interface ClientToolResult {
   selected?: ChoiceAnswer;
 }
 
-export const CLIENT_TOOL_NAMES = new Set(["navigate", "refresh_mv", "present_choice"]);
+export const CLIENT_TOOL_NAMES = new Set([
+  "navigate",
+  "refresh_mv",
+  "present_choice",
+  "admin_mutation",
+  "admin_request",
+  "read_screen",
+]);
+
+/** How much of a REST route's answer, or of the screen, goes back to the model. */
+const ANSWER_LIMIT = 4000;
+
+/** REQ-2114: one of the UI's admin REST routes, called from the user's session -- the global
+ * fetch interceptor attaches their sign-in and acting roles, as for any page's call. */
+async function adminRequest(
+  input: Record<string, unknown>,
+  ctx: ClientToolContext,
+): Promise<ClientToolResult> {
+  const method = String(input.method ?? "GET").toUpperCase();
+  const path = String(input.path ?? "");
+  const summary = String(input.summary ?? "");
+  // The app's own routes only: a path from the root, never another origin ("//host/...").
+  if (!path.startsWith("/") || path.startsWith("//"))
+    return { success: false, message: "admin_request: 'path' must start with /" };
+  const body =
+    input.body && typeof input.body === "object"
+      ? (input.body as Record<string, unknown>)
+      : undefined;
+  const upload = input.upload === true;
+  const init: RequestInit = { method };
+  if (method !== "GET") {
+    const ok = await ctx.confirm({
+      title: "Make this change?",
+      message: summary,
+      detail: [`${method} ${path}`, body ? JSON.stringify(body, null, 2) : ""]
+        .filter(Boolean)
+        .join("\n"),
+    });
+    if (!ok) return { success: false, message: "Cancelled by the user." };
+    if (upload) {
+      // The app's upload routes take the file's own bytes as the body, as the UI's uploads send
+      // them; a route that names the file takes it in the path, where {filename} stands for it.
+      const file = await ctx.chooseFile(summary);
+      if (!file) return { success: false, message: "Cancelled by the user: no file was chosen." };
+      // Typed as the file is, as a page's own upload sends it (an image route reads its kind
+      // from Content-Type); a file the browser cannot type goes as plain bytes.
+      init.headers = { "Content-Type": file.type || "application/octet-stream" };
+      init.body = file;
+      return send(path.replaceAll("{filename}", encodeURIComponent(file.name)), init);
+    } else if (body) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = JSON.stringify(body);
+    }
+  }
+  return send(path, init);
+}
+
+async function send(path: string, init: RequestInit): Promise<ClientToolResult> {
+  const res = await fetch(path, init);
+  const text = await res.text();
+  return {
+    success: res.ok,
+    message: `${res.status} ${res.statusText}\n${text.slice(0, ANSWER_LIMIT)}`,
+  };
+}
 
 export async function executeClientTool(
   name: string,
@@ -96,8 +181,17 @@ export async function executeClientTool(
       ].filter(Boolean);
       return { success: error === null, message: parts.join("\n\n") };
     }
+    // REQ-2115: steps on the screen the route opens, each shown as it is taken.
+    const actions = input.actions === undefined ? [] : parseUiActions(input.actions);
+    if (typeof actions === "string") return { success: false, message: `navigate: ${actions}` };
     ctx.navigate(route, state ? { state } : undefined);
-    return { success: true, message: `Navigated to ${route}` };
+    if (actions.length === 0) return { success: true, message: `Navigated to ${route}` };
+    const { success, steps } = await runUiActions(actions, {
+      confirm: async (question) => (await ctx.presentChoice({ question, mode: "yes_no" })) === true,
+      paceMs: UI_STEP_PACE_MS,
+      waitMs: UI_ELEMENT_WAIT_MS,
+    });
+    return { success, message: [`Navigated to ${route}.`, ...steps].join("\n") };
   }
 
   if (name === "refresh_mv") {
@@ -109,6 +203,34 @@ export async function executeClientTool(
     });
     if (!ok) return { success: false, message: "Cancelled by the user." };
     return ctx.runMutation("refresh_mv", { mvId });
+  }
+
+  if (name === "admin_mutation") {
+    const mutation = String(input.mutation ?? "");
+    const summary = String(input.summary ?? "");
+    if (!mutation) return { success: false, message: "admin_mutation: 'mutation' is required" };
+    const variables =
+      input.variables && typeof input.variables === "object"
+        ? (input.variables as Record<string, unknown>)
+        : {};
+    const ok = await ctx.confirm({
+      title: "Make this change?",
+      message: summary,
+      detail: Object.keys(variables).length
+        ? `${mutation}\n\n${JSON.stringify(variables, null, 2)}`
+        : mutation,
+    });
+    if (!ok) return { success: false, message: "Cancelled by the user." };
+    return ctx.runAdminMutation(mutation, variables);
+  }
+
+  if (name === "admin_request") return adminRequest(input, ctx);
+
+  // REQ-2115: what the user is looking at, read from their own session.
+  if (name === "read_screen") {
+    const screen = await readScreen(UI_ELEMENT_WAIT_MS);
+    if (typeof screen === "string") return { success: false, message: `read_screen: ${screen}` };
+    return { success: true, message: JSON.stringify(screen).slice(0, ANSWER_LIMIT) };
   }
 
   if (name === "present_choice") {

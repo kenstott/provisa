@@ -366,6 +366,44 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
     return None
 
 
+async def download_source_file(input: SourceInput) -> Optional[MutationResult]:  # REQ-2113
+    """A CSV or Parquet source given its file by download: the file at ``download_from`` is
+    copied into the org's folder through the upload path, and ``path`` names the copy
+    ({files}/<id>/<name>) from here on. Refused by name for another source type, and for an
+    address it may not be copied from (source_downloads); None when there is nothing to fetch.
+    Runs inside ``bound_to_request_org()``: the copy goes to the bound org's folder."""
+    import json as _json
+
+    from provisa.core import org_files
+    from provisa.core.source_downloads import DOWNLOAD_TYPES, download
+    from provisa.core.source_uploads import UploadRefused
+
+    if not input.download_from:
+        return None
+    if input.type not in DOWNLOAD_TYPES:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: only a CSV or Parquet source is given its file by download",
+            code="schema.file_download_refused",
+            params={
+                "source": input.id,
+                "reason": f"a {input.type} source reads no downloaded file",
+            },
+        )
+    hints = _json.loads(input.federation_hints_json or "{}")
+    try:
+        path, _size = await download(input.id, input.download_from, hints=hints)
+    except UploadRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.file_download_refused",
+            params={"source": input.id, "reason": str(exc)},
+        )
+    input.path = org_files.token_path(str(path))
+    return None
+
+
 def logs_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1996
     """Why a Logs source's settings cannot be a source, or None: for another source type, and
     for settings that can. Its glob must resolve inside the directories log files may be read
@@ -887,7 +925,9 @@ async def _sync_view_mv(
     # Target the store the ACTIVE engine actually materializes into — a DuckDB engine attaches its
     # store as ``mat_store``, not ``postgresql``. Hardcoding the latter fails the refresh with
     # "Catalog with name postgresql does not exist".
-    target_catalog, target_schema = state.federation_engine.materialize_store_target(state.org_id)
+    target_catalog, target_schema = state.federation_engine.materialize_store_target(
+        state.active_org_id
+    )
     mv = MVDefinition(
         id=mv_id,
         source_tables=[],

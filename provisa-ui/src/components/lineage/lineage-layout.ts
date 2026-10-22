@@ -22,9 +22,12 @@
 //
 // Pure: no cytoscape here. The component turns these into elements and positions.
 
-import type { LineageGraphData, LineageNode } from "../../api/lineage";
+import type { LineageGraphData, LineageNative, LineageNode } from "../../api/lineage";
+import { SOURCE_TYPES } from "../../pages/sources/constants";
+import { shownSourceType, sourceTypeLabel } from "../../pages/sources/sourceHelpers";
+import { sourceLogoImage } from "../sourceLogoMarks";
 
-export type Role = "source" | "intermediate" | "output" | "command" | "dataset";
+export type Role = "source" | "intermediate" | "output" | "command" | "dataset" | "native";
 
 /** How a field of each role is typeset — one definition for the DAG and its legend. */
 export interface RoleStyle {
@@ -44,7 +47,17 @@ export const ROLE_STYLE: Record<Role, RoleStyle> = {
   command: { color: "#9c36b5", fill: "#ffffff", fontStyle: "normal", fontWeight: "normal" },
   // a collapsed relation
   dataset: { color: "#5c7cfa", fill: "#ffffff", fontStyle: "normal", fontWeight: "bold" },
+  // REQ-2116: a raw field as its source reads it
+  native: { color: "#e8590c", fill: "#ffffff", fontStyle: "normal", fontWeight: "normal" },
 };
+
+/** REQ-2116: a native box's source, drawn in a head above its fields: the source's logo and type
+ *  label (brand before carrier, as the Sources page shows it) and the address it is read from. */
+export interface NativeHead {
+  logo: string;
+  typeLabel: string;
+  lines: string[];
+}
 
 export interface LineageRow {
   id: string;
@@ -62,6 +75,8 @@ export interface LineageBox {
   relation: string | null;
   label: string;
   rows: LineageRow[];
+  /** REQ-2116: set on a native box. */
+  native: NativeHead | null;
   collapsed: boolean;
   /** Columns of the relation no edge touches — counted in the header, not drawn. */
   unused: number;
@@ -77,6 +92,8 @@ export interface LineageDrawnEdge {
   target: string;
   label: string;
   command: boolean;
+  /** The command a drawn edge's transform names (a call or a statement command's write). */
+  commandName: string | null;
   count: number;
 }
 
@@ -92,6 +109,8 @@ export const boxId = (relation: string) => `rel:${relation}`;
 // Geometry in canvas units. Monospace at 11px runs about 6.6px per glyph.
 export const HEADER_H = 26;
 export const ROW_H = 20;
+export const NATIVE_LINE_H = 14;
+const NATIVE_LOGO_W = 24;
 export const FOOTER_H = 16;
 export const BOX_MIN_W = 140;
 export const BOX_MAX_W = 320;
@@ -127,14 +146,25 @@ export function buildLineageModel(
 
   const roleOf = (n: LineageNode): Role => {
     if (n.kind === "command") return "command";
+    if (n.kind === "native") return "native";
     if (n.kind === "source") return "source";
     return hasIn.has(n.id) && hasOut.has(n.id) ? "intermediate" : "output";
   };
 
   // Which box each node lives in. A relation names its own box; the final projection's columns
   // share the result box; anything else unresolved stands alone as a one-row box.
+  const natives = graph.natives ?? {};
+  // REQ-2116: the table a native hop lands in says how it is served.
+  const servedOf = new Map(Object.values(natives).map((nt) => [nt.relation, servedText(nt)]));
   const boxOf = (n: LineageNode): { id: string; relation: string | null; label: string } => {
-    if (n.relation) return { id: boxId(n.relation), relation: n.relation, label: n.relation };
+    const native = n.relation ? natives[n.relation] : undefined;
+    if (n.relation && native)
+      return { id: boxId(n.relation), relation: n.relation, label: nativeLabel(native) };
+    if (n.relation) {
+      const served = servedOf.get(n.relation);
+      const label = served ? `${n.relation} · ${served}` : n.relation;
+      return { id: boxId(n.relation), relation: n.relation, label };
+    }
     if (outputs.has(n.id) || n.kind === "derived")
       return { id: boxId(resultLabel), relation: null, label: resultLabel };
     return { id: `lone:${n.id}`, relation: null, label: n.column };
@@ -152,6 +182,7 @@ export function buildLineageModel(
         relation: b.relation,
         label: b.label,
         rows: [],
+        native: b.relation && natives[b.relation] ? nativeHead(natives[b.relation]) : null,
         collapsed: !!b.relation && !!collapsedRelations?.has(b.relation),
         unused: 0,
         lane: null,
@@ -179,6 +210,7 @@ export function buildLineageModel(
   for (const box of boxes.values()) {
     // Stable row order: the order the graph lists them, sources first inside a mixed box.
     const rank: Record<Role, number> = {
+      native: 0,
       source: 0,
       intermediate: 1,
       output: 2,
@@ -192,11 +224,16 @@ export function buildLineageModel(
     const widest = Math.max(
       textWidth(header) + 16,
       ...box.rows.map((r) => textWidth(r.label) + ROW_PAD_X * 2),
+      ...(box.native?.lines ?? []).map((l) => textWidth(l) + NATIVE_LOGO_W + ROW_PAD_X * 2),
     );
     box.width = Math.min(BOX_MAX_W, Math.max(BOX_MIN_W, Math.ceil(widest)));
     box.height = box.collapsed
       ? HEADER_H + 6
-      : HEADER_H + box.rows.length * ROW_H + (box.unused > 0 ? FOOTER_H : 0) + 4;
+      : HEADER_H +
+        (box.native ? nativeHeadHeight(box.native) : 0) +
+        box.rows.length * ROW_H +
+        (box.unused > 0 ? FOOTER_H : 0) +
+        4;
   }
 
   // The end an edge is drawn to: the row, or the whole box when that relation is collapsed.
@@ -216,14 +253,25 @@ export function buildLineageModel(
       .map((o) => (o.args?.length ? `${o.name}(${o.args.join(", ")})` : o.name))
       .join(" ");
     const command = (e.ops ?? []).some((o) => o.kind === "command");
+    const commandName =
+      (e.ops ?? []).find((o) => o.kind === "command" || o.kind === "command_write")?.name ?? null;
     const key = `${source} ${target}`;
     const prior = rolled.get(key);
     if (prior) {
       prior.count += 1;
       prior.command = prior.command || command;
+      prior.commandName = prior.commandName === commandName ? commandName : null;
       prior.label = ""; // several transforms behind one drawn edge: report the count, not one formula
     } else {
-      rolled.set(key, { id: `e${rolled.size}`, source, target, label, command, count: 1 });
+      rolled.set(key, {
+        id: `e${rolled.size}`,
+        source,
+        target,
+        label,
+        command,
+        commandName,
+        count: 1,
+      });
     }
   }
 
@@ -307,18 +355,30 @@ function assignLanes(
   graph: LineageGraphData,
   around: ReadonlySet<string>,
 ): void {
-  const feeders = new Map<string, Set<string>>();
-  const consumers = new Map<string, Set<string>>();
+  const links: [string, string][] = [];
   for (const e of graph.edges) {
     const sb = nodeBox.get(e.source);
     const tb = nodeBox.get(e.target);
-    if (!sb || !tb || sb === tb) continue;
-    (feeders.get(tb) ?? feeders.set(tb, new Set()).get(tb)!).add(sb);
-    (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
+    if (sb && tb) links.push([sb, tb]);
   }
   const zero = [...boxes.values()]
     .filter((b) => b.relation !== null && around.has(b.relation))
     .map((b) => b.id);
+  const lane = lanesFrom(links, zero);
+  for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
+}
+
+/** REQ-1667, REQ-2128: the lane of each node of a directed graph (``[from, to]`` links) by its
+ * distance from ``zero`` (lane 0): upstream nodes by their longest path down to lane 0, negated;
+ * a node a lane-0 node feeds directly, not upstream, +1. A node not so connected has no lane. */
+export function lanesFrom(links: [string, string][], zero: string[]): Map<string, number> {
+  const feeders = new Map<string, Set<string>>();
+  const consumers = new Map<string, Set<string>>();
+  for (const [sb, tb] of links) {
+    if (sb === tb) continue;
+    (feeders.get(tb) ?? feeders.set(tb, new Set()).get(tb)!).add(sb);
+    (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
+  }
   const zeroSet = new Set(zero);
   // Longest path DOWN to lane 0 from each upstream box, memoized; a cycle contributes nothing.
   const depth = new Map<string, number>();
@@ -357,5 +417,39 @@ function assignLanes(
   for (const id of zero) {
     for (const c of consumers.get(id) ?? []) if (!lane.has(c)) lane.set(c, 1);
   }
-  for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
+  return lane;
+}
+
+/** REQ-2116: the height of a native box's head -- one line per address part, the logo beside. */
+export function nativeHeadHeight(head: NativeHead): number {
+  return Math.max(NATIVE_LOGO_W, head.lines.length * NATIVE_LINE_H) + 6;
+}
+
+function nativeHints(native: LineageNative): string {
+  return JSON.stringify(native.hints);
+}
+
+function nativeLabel(native: LineageNative): string {
+  return `${sourceTypeLabel(native.type, nativeHints(native))} · ${native.source}`;
+}
+
+function nativeHead(native: LineageNative): NativeHead {
+  const shown = shownSourceType(native.type, nativeHints(native));
+  const typeLabel = sourceTypeLabel(native.type, nativeHints(native));
+  const category = SOURCE_TYPES.find((st) => st.value === shown)?.category ?? "Other";
+  return {
+    logo: sourceLogoImage(shown, typeLabel, category),
+    typeLabel,
+    lines: native.address.map((a) => `${a.what} ${a.value}`),
+  };
+}
+
+/** How a table is served: virtual, or a replica with its freshness and last load. */
+export function servedText(native: LineageNative): string {
+  const s = native.served;
+  if (s.mode === "virtual") return "virtual";
+  const parts = ["replica"];
+  if (s.cache_ttl !== null) parts.push(s.cache_ttl < 0 ? "never expires" : `TTL ${s.cache_ttl}s`);
+  if (s.last_load) parts.push(`loaded ${new Date(s.last_load).toLocaleString()}`);
+  return parts.join(", ");
 }

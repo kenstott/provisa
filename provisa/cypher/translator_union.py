@@ -23,6 +23,7 @@ import sqlglot.expressions as exp
 from provisa.cypher.translator_helpers import (
     _const_literal,
     _make_junction_joins,
+    edge_properties_column,
     via_alias_for,
     via_column,
 )
@@ -48,12 +49,16 @@ class _UnionMixin:  # mixin for _Translator
         tgt_var: str | None,
         src_domain: str | None = None,
         tgt_domain: str | None = None,
+        *,
+        src_type: str | None = None,
+        tgt_type: str | None = None,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns.
 
         src_domain / tgt_domain constrain the union to only include rels whose
         source / target node belongs to the named domain (PascalCase domain label).
-        Pass None or "__all__" to leave that side unconstrained.
+        Pass None or "__all__" to leave that side unconstrained. src_type / tgt_type constrain it
+        to the rels whose source / target is that node type (an endpoint labeled with a table).
         """
         src_col = src_var or "n"
         rel_col = rel_var or "r"
@@ -98,9 +103,13 @@ class _UnionMixin:  # mixin for _Translator
                 continue
             if tgt_type_set is not None and rm.target_label not in tgt_type_set:
                 continue
+            if src_type is not None and rm.source_label != src_type:
+                continue
+            if tgt_type is not None and rm.target_label != tgt_type:
+                continue
             # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
             # These are not real FK traversals and would pull in unrelated domain nodes.
-            if rm.source_constant is not None:
+            if rm.constant_source:
                 continue
 
             sa = f"_s_{rm.rel_type.lower()[:20]}"
@@ -227,6 +236,13 @@ class _UnionMixin:  # mixin for _Translator
                 exp.alias_(src_json, src_col),
                 exp.alias_(edge_json, rel_col),
                 exp.alias_(tgt_json, tgt_col),
+                # The edge's own properties alone, which r.<prop> reads: the edge's JSON carries
+                # an id built from both endpoints' keys, and a condition on a value of it would
+                # match the two tables by their keys as well as by the relationship (REQ-603).
+                exp.alias_(
+                    exp.Anonymous(this="JSON_OBJECT", expressions=list(edge_props)),
+                    edge_properties_column(rel_col),
+                ),
             ).from_(
                 exp.alias_(
                     exp.Table(

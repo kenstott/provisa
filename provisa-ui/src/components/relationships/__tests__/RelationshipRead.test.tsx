@@ -37,6 +37,7 @@ const base: Relationship = {
   computedCypherAlias: "HAS_BONDED_PAIRS",
   autoSuggested: false,
   disableCypher: false,
+  parameters: [],
   viaTableId: 9,
   viaTableName: "pet_relations",
   viaSourceColumn: "pet_id",
@@ -134,6 +135,25 @@ describe("a relationship's read view", () => {
       "—",
     );
     for (const [, value] of fields("relationship-read-junction")) expect(value).toBe("—");
+  });
+
+  it("lists the parameters the edge feeds, each with its source column (REQ-2099)", () => {
+    show({
+      ...base,
+      parameters: [
+        { parameter: "customer_id", sourceColumn: "id" },
+        { parameter: "plan", sourceColumn: "plan" },
+      ],
+    });
+    expect(fields("relationship-read-parameters")).toEqual([
+      ["customer_id", "id"],
+      ["plan", "plan"],
+    ]);
+  });
+
+  it("shows no parameters section for an edge that feeds none", () => {
+    show(base);
+    expect(screen.queryByTestId("relationship-read-parameters")).toBeNull();
   });
 
   it("shows a computed edge's function and argument as its target", () => {

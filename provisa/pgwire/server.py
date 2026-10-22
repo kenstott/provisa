@@ -1744,10 +1744,55 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             except RedirectSettingInvalid as exc:
                 self._send_pg_error("FATAL", "22023", str(exc))
                 return None
+            if self._trust_mode():
+                # As PostgreSQL's trust: no password is asked for, so a client holding none (a
+                # checker scanning through this endpoint, libpq with an empty password) connects.
+                return ctx if self._authenticate_trusted(ctx, params.get("user", "")) else None
             self.send_auth_request(ctx)
             return ctx
         else:
             raise Exception(f"Unsupported startup message code: {code}")
+
+    def _trust_mode(self) -> bool:
+        """Explicit unsecured mode (provider: none / no auth section): the startup packet's user
+        maps directly to role_id and there is no password to check."""
+        _state = self._app_state()
+        auth_config = _state.auth_config
+        if auth_config is None:
+            if getattr(_state, "auth_middleware_active", False):
+                # A real provider is active but its config is absent — misconfiguration.
+                # Fail closed: never silently degrade a secured server to no-auth/trust.
+                raise RuntimeError("pgwire auth_config not configured")
+            return True
+        return auth_config["provider"] == "none" or not _state.auth_middleware_active
+
+    def _authenticate_trusted(self, ctx: BVContext, username: str) -> bool:
+        """Trust mode's authentication: the startup packet's user is the only principal there is
+        — it is what the audit row records. False when it was refused (and the client told)."""
+        from provisa.security.meta_role import meta_role_id, refuse_named_meta_role
+
+        _state = self._app_state()
+        # REQ-1620: a comma-separated user names a set of roles, which acts as their meta-role —
+        # the trust-mode counterpart of naming them in x-provisa-role.
+        named = sorted({r.strip() for r in username.split(",") if r.strip()})
+        try:
+            if requested_role(ctx.params):
+                raise PermissionError(
+                    "without authentication the connection's user names the roles to act "
+                    "as; name them there, not in provisa.role"
+                )
+            refuse_named_meta_role(named)
+        except PermissionError as exc:
+            self._send_pg_error("FATAL", "28000", str(exc))
+            return False
+        acting = named[0] if len(named) == 1 else meta_role_id(named)
+        ctx.session.act_as(acting, tuple(named))  # type: ignore[attr-defined]
+        ctx.session.user_id = username  # type: ignore[attr-defined]
+        # REQ-1266: an unsecured deployment serves its own org, as the unsecured HTTP path does.
+        ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
+        self.send_authentication_ok()
+        self.handle_post_auth(ctx)
+        return True
 
     def send_auth_request(self, ctx: BVContext) -> None:
         del ctx
@@ -1808,45 +1853,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
         _state = self._app_state()
 
-        auth_config = _state.auth_config
-        if auth_config is None:
-            if getattr(_state, "auth_middleware_active", False):
-                # A real provider is active but its config is absent — misconfiguration.
-                # Fail closed: never silently degrade a secured server to no-auth/trust.
-                raise RuntimeError("pgwire auth_config not configured")
-            # Explicit unsecured mode (provider: none / no auth section) — treat as trust mode.
-            provider = "none"
-        else:
-            provider = auth_config["provider"]
-
-        if provider == "none" or not _state.auth_middleware_active:
-            # Trust mode: username maps directly to role_id, password ignored. The startup
-            # packet's user is the only principal there is — it is what the audit row records.
-            # REQ-1620: a comma-separated user names a set of roles, which acts as their
-            # meta-role — the trust-mode counterpart of naming them in x-provisa-role.
-            from provisa.security.meta_role import meta_role_id, refuse_named_meta_role
-
-            named = sorted({r.strip() for r in username.split(",") if r.strip()})
-            try:
-                if requested_role(ctx.params):
-                    raise PermissionError(
-                        "without authentication the connection's user names the roles to act "
-                        "as; name them there, not in provisa.role"
-                    )
-                refuse_named_meta_role(named)
-            except PermissionError as exc:
-                self._send_pg_error("FATAL", "28000", str(exc))
-                return
-            acting = named[0] if len(named) == 1 else meta_role_id(named)
-            ctx.session.act_as(acting, tuple(named))  # type: ignore[attr-defined]
-            ctx.session.user_id = username  # type: ignore[attr-defined]
-            # REQ-1266: an unsecured deployment serves its own org, as the unsecured HTTP path does.
-            ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
-            self.send_authentication_ok()
-            self.handle_post_auth(ctx)
+        if self._trust_mode():
+            self._authenticate_trusted(ctx, username)
             return
-
-        assert auth_config is not None  # provider != "none" ⇒ auth_config is present
+        auth_config = _state.auth_config
+        assert auth_config is not None  # not trust mode ⇒ a provider is configured
+        provider = auth_config["provider"]
 
         from provisa.auth.throttle import LockedOut
 

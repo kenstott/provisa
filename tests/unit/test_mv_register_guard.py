@@ -36,13 +36,16 @@ def fake_state(monkeypatch):
         unregister=lambda _: None,
         get_enabled=lambda: [],
     )
+    targets: list[str] = []
     fed = types.SimpleNamespace(
-        materialize_store_target=lambda _: ("postgresql", "mv_cache"),
+        materialize_store_target=lambda org: targets.append(org) or ("postgresql", "mv_cache"),
         engine=types.SimpleNamespace(catalog_qualified=True),  # REQ-1730: it names catalogs
     )
     state = RoleState(
         mv_registry=registry,
         org_id="test",
+        # The org the work is bound to (AppState.active_org_id); here the boot org's.
+        active_org_id="test",
         engine=None,
         federation_engine=fed,
         # What a saved view's inputs are checked against (provisa/mv/readable_inputs.py).
@@ -60,6 +63,7 @@ def fake_state(monkeypatch):
     fake_app.state = state  # type: ignore[attr-defined]
     monkeypatch.setitem(__import__("sys").modules, "provisa.api.app", fake_app)
     state.registered = registered
+    state.targets = targets
     return state
 
 
@@ -94,6 +98,24 @@ def test_non_deterministic_mv_rejected(fake_state, sql):
             )
         )
     assert fake_state.registered == []
+
+
+def test_a_view_of_another_org_targets_that_org_s_store(fake_state):
+    """A view registered for an org other than the deployment's boot org (a demo template on the
+    regions sandbox tier) is materialized in that org's store schema, where its readers look --
+    not the boot org's."""
+    fake_state.active_org_id = "sbxtplretail"
+    asyncio.run(
+        schema_common._sync_view_mv(
+            "sales",
+            "SELECT region, sum(amt) AS t FROM o GROUP BY region",
+            300,
+            draft=False,
+            region=None,
+            bitemporal_columns=[],
+        )
+    )
+    assert fake_state.targets == ["sbxtplretail"]
 
 
 # REQ-879: consistency tier flows into the MVDefinition and is a closed set.

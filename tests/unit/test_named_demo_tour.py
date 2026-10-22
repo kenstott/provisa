@@ -29,6 +29,7 @@ _TARGETS = (
     "source",
     "table",
     "relationship",
+    "trigger",
     "example",
     "sql",
     "api",
@@ -80,6 +81,15 @@ _COLUMN_TABS = set(
         ).group(1),
     )
 ) | {"testing"}
+# The graphs of View Profile Runs a step may show (ProfileRunsModal's 3D views).
+_PROFILE_GRAPHS = set(
+    re.findall(
+        r'"([A-Za-z]+)"',
+        re.search(
+            r"const VIEWS_3D = \[([^\]]*)\]", (_UI / "ProfileRunsModal.tsx").read_text()
+        ).group(1),
+    )
+)
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 
@@ -220,6 +230,11 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     terms = {t["name"] for t in config.get("glossary_terms", [])}
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
+    profiled = {
+        f"{t['source_id']}.{config_table_name(t)}"
+        for t in config["tables"]
+        if t.get("profiler_source_id")
+    }
     relations = _relations(config)
     gates = _route_capabilities()
     paths, methods, labels = _surface(config)
@@ -235,7 +250,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         previous, before = before, step
         named = [k for k in _TARGETS if k in step]
         assert len(named) == 1, f"{step['key']}: names {named}, not one target"
-        assert set(step) <= {"key", "route", "capability", "open", *_TARGETS}, step
+        assert set(step) <= {"key", "route", "capability", "open", "graph", "demo", *_TARGETS}, step
         if "route" in step:
             assert gates.get(step["route"]) == step["capability"], step
         else:
@@ -269,12 +284,29 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             section, _, tab = step["open"].partition(".")
             assert section in _TABLE_PANELS, f"{step['key']}: no anchored section {section!r}"
             assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
+        if "graph" in step:
+            # One graph of a profiler member's latest run, in View Profile Runs, which the read
+            # view offers in the table's quality section; the step's caption says what the tour
+            # does before it explains.
+            assert step.get("open") == "quality", f"{step['key']}: a graph opens from quality"
+            assert step["graph"] in _PROFILE_GRAPHS, f"{step['key']}: no graph {step['graph']!r}"
+            assert step["table"] in profiled, f"{step['key']}: {step['table']} has no profiler"
         if "polly" in step:
             # Its answer is stored at the template build and graded by the bake-off.
             assert "route" not in step, f"{step['key']}: Polly opens over the page it is on"
             # A demo with no bake-off questions of its own has none a step may ask.
             asked = {q.text for q in QUESTIONS.get(home.name, ())}
             assert step["polly"] in asked, f"{step['key']}: not one of the demo's own questions"
+        if "demo" in step:
+            # Another named demo, opened from the step's popover: one that is published, its words
+            # in the tour menu.
+            linked = _NAMED / step["demo"]
+            assert step["demo"] != home.name, f"{step['key']}: a demo links another demo"
+            assert (linked / "tour.yaml").is_file(), (
+                f"{step['key']}: no named demo {step['demo']!r}"
+            )
+            published = yaml.safe_load((linked / "demo.yaml").read_text()).get("published")
+            assert published is True, f"{step['key']}: {step['demo']} is not published"
         if "image" in step:
             # A picture beside tour.yaml, shown over the page of the step before it.
             assert previous is not None, f"{step['key']}: an image shows beside a step before it"
@@ -284,6 +316,10 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert picture.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", f"{picture} is not a PNG"
         if "relationship" in step:
             assert step["relationship"] in aliases, step
+        if "trigger" in step:
+            # A scheduled trigger's row is on the Triggers page, under its id.
+            assert step["trigger"] in {t["id"] for t in config.get("scheduled_triggers", [])}, step
+            assert page == "/admin/scheduled-tasks", step
         if "example" in step:
             assert step["example"] in examples, step
             # An example query opens in a new tab of the GraphQL page: a step on any other page
@@ -440,12 +476,16 @@ def test_a_notebook_step_needs_the_demo_to_ship_one():
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
 def test_every_step_has_its_words_in_every_language(path):
-    keys = [s["key"] for s in yaml.safe_load(path.read_text())["steps"]]
+    steps = yaml.safe_load(path.read_text())["steps"]
+    keys = [s["key"] for s in steps]
+    # A step that acts first (a graph it opens) shows its caption while it does.
+    acting = {s["key"] for s in steps if "graph" in s}
     for locale in sorted(p for p in _LOCALES.iterdir() if p.is_dir()):
         words = json.loads((locale / "tour.json").read_text())["tour"]
         for key in keys:
             step = words["steps"].get(key)
             assert step and step["title"] and step["description"], f"{locale.name}: {key}"
+            assert key not in acting or step.get("acting"), f"{locale.name}: {key} caption"
         menu = words["demos"][path.parent.name]
         assert menu["title"] and menu["summary"], locale.name
 

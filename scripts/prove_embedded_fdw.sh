@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Prove whether a CI-style source build of PG 16.2's file_fdw loads into pgserver's
-# embedded PG 16.2 (same major/OS/arch) via CREATE EXTENSION + a real CSV read.
+# Prove whether a CI-style source build of PG 16.11's file_fdw loads into pgserver's
+# embedded PG 16.11 (same major/OS/arch) via CREATE EXTENSION + a real CSV read.
 # Builds ONLY PG-from-source + contrib/file_fdw (no icu/krb5/readline) — the exact
 # thing a CI matrix job would run. No Homebrew, no dev-machine artifact copying.
 set -euo pipefail
@@ -8,12 +8,12 @@ set -euo pipefail
 WORK=/tmp/fdwtest
 mkdir -p "$WORK"
 
-echo "== 1. build PG 16.2 from source (minimal) + contrib/file_fdw =="
-SRC="$WORK/postgresql-16.2"
-PREFIX="$WORK/pg162"
+echo "== 1. build PG 16.11 from source (minimal) + contrib/file_fdw =="
+SRC="$WORK/postgresql-16.11"
+PREFIX="$WORK/pg1611"
 if [ ! -x "$PREFIX/bin/pg_config" ]; then
   if [ ! -d "$SRC" ]; then
-    curl -fsSL https://ftp.postgresql.org/pub/source/v16.2/postgresql-16.2.tar.bz2 \
+    curl -fsSL https://ftp.postgresql.org/pub/source/v16.11/postgresql-16.11.tar.bz2 \
       | tar xj -C "$WORK"
   fi
   cd "$SRC"
@@ -35,15 +35,15 @@ echo "built: $("$PGC" --version)"
 file "$SO"                          # must say: Mach-O ... arm64
 echo "artifacts: $SO / $CTL / $SQL"
 
-echo "== 2. fresh embedded PG (pgserver 16.2) in a 3.12 venv =="
+echo "== 2. fresh embedded PG (pixeltable-pgserver, PG 16.11) in a 3.12 venv =="
 VENV="$WORK/venv"
 [ -x "$VENV/bin/python" ] || python3.12 -m venv "$VENV"
-"$VENV/bin/pip" -q install pgserver asyncpg
+"$VENV/bin/pip" -q install pixeltable-pgserver==0.5.1 asyncpg
 PGROOT="$WORK/pgdata"
 rm -rf "$PGROOT"; mkdir -p "$PGROOT"
-LIBDIR="$("$VENV/bin/python" -c 'import pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","lib","postgresql"))')"
-[ -d "$LIBDIR" ] || LIBDIR="$("$VENV/bin/python" -c 'import pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","lib"))')"
-EXTDIR="$("$VENV/bin/python" -c 'import pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","share","postgresql","extension"))')"
+LIBDIR="$("$VENV/bin/python" -c 'import pixeltable_pgserver as pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","lib","postgresql"))')"
+[ -d "$LIBDIR" ] || LIBDIR="$("$VENV/bin/python" -c 'import pixeltable_pgserver as pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","lib"))')"
+EXTDIR="$("$VENV/bin/python" -c 'import pixeltable_pgserver as pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),"pginstall","share","postgresql","extension"))')"
 # pgserver's server has its own compiled DLSUFFIX — match it (its plpgsql tells us .so vs .dylib).
 PLP=""
 for e in dylib so; do [ -e "$LIBDIR/plpgsql.$e" ] && { PLP="$LIBDIR/plpgsql.$e"; break; }; done
@@ -65,7 +65,8 @@ echo "skipped standalone dlopen; step 4 CREATE EXTENSION is the authoritative ma
 echo "== 4. start embedded PG, CREATE EXTENSION file_fdw, read a real CSV =="
 printf 'id,first_name,state\n1,Alice,NY\n2,Bob,CA\n' > "$WORK/cust.csv"
 "$VENV/bin/python" - "$PGROOT" "$WORK/cust.csv" <<'PY'
-import sys, asyncio, pgserver
+import sys, asyncio
+import pixeltable_pgserver as pgserver
 db = pgserver.get_server(sys.argv[1])
 print("server:", db.psql("SHOW server_version").strip())
 async def main():

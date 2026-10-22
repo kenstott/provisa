@@ -15,7 +15,7 @@ Provisa supporta sei percorsi di deployment. Scegli in base al tuo pubblico e co
 
 ### VM vs Kubernetes
 
-Entrambi sono enterprise-grade. Il percorso VM/AppImage è più semplice: nessun cluster da provisionare, nessuna policy CNI o RBAC da configurare, e l'AppImage è interamente self-contained. Si integra naturalmente negli strumenti di gestione server esistenti (Ansible, Puppet, agenti Datadog, forwarder Splunk, ecc.).
+Entrambi sono adatti alla produzione. Il percorso VM/AppImage è più semplice: nessun cluster da provisionare, nessuna policy CNI o RBAC da configurare, e l'AppImage è interamente self-contained. Si integra naturalmente negli strumenti di gestione server esistenti (Ansible, Puppet, agenti Datadog, forwarder Splunk, ecc.).
 
 Scegliete Kubernetes solo se il vostro team gestisce già un cluster K8s e vuole che Provisa si inserisca in quel modo di operare (rolling deploy, HPA, osservabilità unificata). Entrambi offrono le stesse capacità; Kubernetes aggiunge carico operativo.
 
@@ -37,7 +37,7 @@ Ogni percorso di produzione ha bisogno degli artefatti Provisa prima che qualsia
 
 ### Consigliato: `start-ui.sh` {: #recommended-start-uish }
 
-Il modo più semplice per eseguire Provisa da sorgente. Avvia tutta l'infrastruttura, l'API backend, e il server dev della UI in un unico comando. Ctrl+C spegne tutto in modo pulito.
+È il modo più semplice per eseguire Provisa da sorgente. Un unico comando avvia tutta l'infrastruttura, l'API backend e il server dev della UI. Ctrl+C spegne tutto in modo pulito.
 
 **Prerequisiti:** Docker Desktop, Node.js, virtualenv Python in `.venv/`
 

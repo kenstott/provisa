@@ -45,6 +45,16 @@ describe("branded source types", () => {
     expect(sourceTypeLabel("openapi", "{}")).toBe("REST API (OpenAPI)");
   });
 
+  it("shows a files source staged from a Kaggle dataset as Kaggle", () => {
+    const staged = '{"kaggle_owner":"abecklas","kaggle_ref":"fifa-world-cup"}';
+    expect(sourceTypeLabel("files", staged)).toBe("Kaggle");
+    expect(sourceTypeLabel("files", "{}")).not.toBe("Kaggle");
+    expect(sourceTypeLabel("files", '{"kaggle_owner":"abecklas"}')).not.toBe("Kaggle");
+    // Not a brand carrier: the source stays a files source to register and edit.
+    expect(sourceBrand(staged)).toBeNull();
+    expect(backendType("kaggle")).toBe("kaggle");
+  });
+
   it("still maps the plain remote GraphQL backend type to its own picker entry", () => {
     expect(uiType("graphql_remote")).toBe("graphql");
   });

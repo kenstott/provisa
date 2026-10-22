@@ -9,7 +9,7 @@
 #
 # The provisioning demo where it runs from its bundle (start-ui-install.sh --demo provisioning;
 # REQ-2049, REQ-2067): the warehouse database, loaded from the dump the bundle build wrote
-# (dump/postgres.sql) with the notices and pulls the build recorded; the broker and the feeds, as in
+# (dump/postgres/<database>.sql) with the notices and pulls the build recorded; the broker and the feeds, as in
 # the build. Every sandbox of the demo lands the feeds from the one broker into its own tables,
 # under its own consumer group. The consumers (consumer.py) are not run here: a sandbox shows the
 # pulls the build recorded, and a local start runs them live (docker-compose.yml).
@@ -34,6 +34,8 @@ services:
       # Where config.yaml's warehouse source reads it, for the sandbox tier's node (REQ-2049,
       # scripts/demo_stores_sync.sh): it writes these two into the bundle's stores.env.
       com.provisa.demo.host_env: PROVISIONING_PG_HOST
+      com.provisa.demo.ns_env: PROVISIONING_PG_NS
+      com.provisa.demo.access: db/reader.sql
       com.provisa.demo.port_env: PROVISIONING_PG_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -46,7 +48,8 @@ services:
       - "127.0.0.1:${PROVISIONING_PG_PORT-28032}:5432"
     volumes:
       - provisioning_run_pg:/var/lib/postgresql/data
-      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-provisioning.sql:ro
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:
@@ -67,6 +70,8 @@ services:
       # scripts/demo_stores_sync.sh). No port_env: a broker advertises the port its clients dial,
       # so its port is never one docker picks (see the header).
       com.provisa.demo.host_env: PROVISIONING_KAFKA_HOST
+      com.provisa.demo.port_env: PROVISIONING_KAFKA_PORT
+      com.provisa.demo.ns_env: PROVISIONING_KAFKA_NS
       com.provisa.demo.port: "${PROVISIONING_KAFKA_PORT:-29192}"
     environment:
       KAFKA_NODE_ID: 1
@@ -103,7 +108,7 @@ services:
       retries: 60
       start_period: 30s
   producer:
-    image: provisa-demo-provisioning-producer:1
+    image: provisa-demo-provisioning-producer:2
     build:
       context: .
       dockerfile: Dockerfile.producer
@@ -113,6 +118,7 @@ services:
       com.provisa.demo.role: producer
     environment:
       FEEDS_BOOTSTRAP: kafka:9092
+      TOPIC_SUFFIX: ${PROVISIONING_KAFKA_NS?the suffix of the demo's Kafka topics, empty on its own broker}
       # Each sandbox lands the feeds into its own tables: a shorter history than a local start's.
       ORDERS_HISTORY: "50000"
       ORDERS_PER_SECOND: "5"

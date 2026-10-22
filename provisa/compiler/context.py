@@ -488,7 +488,10 @@ def _register_ops_synthetic_joins(
     for ops_t in tables:
         if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
             continue
-        if not any(c["column_name"] == "table_name" for c in ops_t.visible_columns):
+        # The link matches the registration's (domain_id, table_name) on the ops row's own pair;
+        # a row naming its table otherwise (replica_build_log: source, schema, physical name)
+        # has no such pair to match.
+        if not {"domain_id", "table_name"} <= {c["column_name"] for c in ops_t.visible_columns}:
             continue
         ops_tgt = TableMeta(
             table_id=ops_t.table_id,
@@ -637,8 +640,8 @@ def _register_draft_names(  # REQ-1921
     """Every name a statement could give a draft table this role would otherwise read — its
     field name (named as ``schema_gen._assign_names`` names a table), table name, alias, and the
     qualified names a served table answers to (``domain.semantic``, ``domain.table``,
-    ``schema.table``: the one rule in :mod:`provisa.compiler.naming`) — so a statement naming one
-    is refused as draft, not as unknown. A draft
+    ``schema.table``, ``catalog.schema.table``: the one rule in :mod:`provisa.compiler.naming`)
+    — so a statement naming one is refused as draft, not as unknown. A draft
     table in a domain the role does not reach, or with no column it sees, is not named: to that
     role it does not exist, draft or not."""
     from provisa.compiler.naming import (
@@ -646,6 +649,7 @@ def _register_draft_names(  # REQ-1921
         apply_sql_name,
         domain_to_sql_name,
         generate_name,
+        physical_relation_name,
         semantic_relation_names,
         stored_relation_names,
     )
@@ -682,6 +686,9 @@ def _register_draft_names(  # REQ-1921
             alias,
             *semantic_relation_names(domain, semantic),
             *stored_relation_names(domain, row["schema_name"], name),
+            physical_relation_name(
+                _catalog_of(si, row["source_id"], name), row["schema_name"], name
+            ),
         }:
             if said:
                 ctx.draft_names[said] = name

@@ -30,7 +30,7 @@ from provisa.api.metadata_export.registry import (
     register_provider,
     registered_providers,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportConfig, MetadataExportTarget
 
 
 @pytest.fixture()
@@ -54,10 +54,10 @@ def _stub(name: str) -> type[MetadataExport]:
     return _Stub
 
 
-def _enabled(**overrides) -> MetadataExportConfig:
-    base = {"enabled": True, "provider": "stub", "endpoint": "https://catalog.example.com"}
+def _target(**overrides) -> MetadataExportTarget:
+    base = {"id": "catalog", "provider": "stub", "endpoint": "https://catalog.example.com"}
     base.update(overrides)
-    return MetadataExportConfig(**base)
+    return MetadataExportTarget(**base)
 
 
 # ---------------------------------------------------------------------------
@@ -70,25 +70,22 @@ def test_factory_resolves_each_registered_name(isolated_registry):
         isolated_registry.register_provider(_stub(name))
     assert isolated_registry.registered_providers() == ["atlas", "openlineage", "openmetadata"]
     for name in ("openlineage", "openmetadata", "atlas"):
-        provider = isolated_registry.metadata_export(_enabled(provider=name))
+        provider = isolated_registry.metadata_export(_target(provider=name))
         assert provider.provider_name == name
 
 
 def test_unknown_provider_is_refused_at_construction(isolated_registry):
     isolated_registry.register_provider(_stub("openlineage"))
     with pytest.raises(MetadataExportNotConfiguredError) as exc:
-        isolated_registry.metadata_export(_enabled(provider="nope"))
+        isolated_registry.metadata_export(_target(provider="nope"))
     assert "nope" in str(exc.value)
     assert "openlineage" in str(exc.value)
 
 
-def test_disabled_config_refuses_rather_than_no_opping(isolated_registry):
-    isolated_registry.register_provider(_stub("openlineage"))
-    with pytest.raises(MetadataExportNotConfiguredError) as exc:
-        isolated_registry.metadata_export(
-            MetadataExportConfig(enabled=False, provider="openlineage")
-        )
-    assert "metadata_export.enabled" in str(exc.value)
+def test_an_enabled_export_with_nowhere_to_publish_is_refused():
+    # REQ-1068: refused when saved, naming the setting, rather than publishing to nothing.
+    with pytest.raises(ValidationError, match="no target is configured"):
+        MetadataExportConfig(enabled=True)
 
 
 def test_provider_without_a_name_fails_registration(isolated_registry):
@@ -129,13 +126,31 @@ def test_module_level_factory_is_the_same_function():
 # ---------------------------------------------------------------------------
 
 
-def test_enabled_without_provider_or_endpoint_is_rejected():
-    with pytest.raises(ValidationError, match="provider, endpoint"):
-        MetadataExportConfig(enabled=True)
-    with pytest.raises(ValidationError, match="endpoint"):
-        MetadataExportConfig(enabled=True, provider="atlas")
+def test_a_target_without_provider_or_endpoint_is_rejected():
     with pytest.raises(ValidationError, match="provider"):
-        MetadataExportConfig(enabled=True, endpoint="https://catalog.example.com")
+        MetadataExportTarget(id="catalog", endpoint="https://catalog.example.com")
+    with pytest.raises(ValidationError, match="has no endpoint"):
+        MetadataExportTarget(id="catalog", provider="atlas")
+    # REQ-1635: an engine-native target has no endpoint to give.
+    assert MetadataExportTarget(id="horizon", provider="snowflake_horizon").endpoint == ""
+
+
+def test_several_targets_one_provider_among_them_each_named_once():  # REQ-2118
+    two = MetadataExportConfig(
+        enabled=True,
+        targets=[
+            {"id": "om-prod", "provider": "openmetadata", "endpoint": "https://a.example"},
+            {"id": "om-lab", "provider": "openmetadata", "endpoint": "https://b.example"},
+        ],
+    )
+    assert [t.id for t in two.targets] == ["om-prod", "om-lab"]
+    with pytest.raises(ValidationError, match="named twice: om"):
+        MetadataExportConfig(
+            targets=[
+                {"id": "om", "provider": "openmetadata", "endpoint": "https://a.example"},
+                {"id": "om", "provider": "datahub", "endpoint": "https://b.example"},
+            ]
+        )
 
 
 def test_disabled_config_needs_nothing_else():
@@ -143,7 +158,7 @@ def test_disabled_config_needs_nothing_else():
 
 
 def test_credentials_are_redacted_in_repr_and_logs(caplog):
-    config = _enabled(
+    config = _target(
         api_key="sk-live-do-not-print",
         token="tok-do-not-print",
         entra_client_secret="entra-do-not-print",

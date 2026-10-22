@@ -32,7 +32,7 @@ Solo le tabelle assegnate a un prodotto vengono pubblicate nei cataloghi esterni
 
 Un prodotto senza membri esportati non genera una voce nello snapshot. Un elenco senza membri rappresenterebbe in modo scorretto il prodotto verso il catalogo.
 
-Solo i cataloghi con un concetto nativo di prodotto dati lo pubblicano come entità di prima classe; gli altri pubblicano le tabelle membro (già filtrate) senza un raggruppamento di prodotto:
+Solo i cataloghi con un concetto nativo di prodotto dati lo pubblicano come entità a sé; gli altri pubblicano le tabelle membro (già filtrate) senza un raggruppamento di prodotto:
 
 | Catalogo | Pubblicato come |
 | --- | --- |

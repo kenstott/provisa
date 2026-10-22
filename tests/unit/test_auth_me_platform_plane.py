@@ -116,3 +116,14 @@ async def test_an_org_bound_request_reads_its_own_orgs_roles(state):
     finally:
         reset_current_org(token)
     assert body["assignments"] == [{"role_id": "acme_analyst", "domain_id": "*"}]
+
+
+async def test_a_user_with_no_org_is_sent_every_field_the_ui_reads_empty_where_it_holds_none(state):
+    """REQ-1528, REQ-2057: a member-less user (mid-onboarding) owns no environment and holds no
+    derived role, and is told so: each list is sent, empty, never left out."""
+    from provisa.api.auth_router import me
+
+    body = await me(_request(None, "platform_admin"))
+    assert body["org_memberships"] == []
+    assert body["env_capabilities"] == []
+    assert body["derived_roles"] == []

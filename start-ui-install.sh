@@ -364,6 +364,15 @@ if [ -n "$DEMO_NAME" ]; then
       find "$_NAMED_DIR/logs" -type f ! -name .gitignore -delete
     fi
   fi
+  # The names its stores' data has here. Every name config.yaml gives a store's data (a database,
+  # an index) ends with the variable that store's com.provisa.demo.ns_env label names; here, where
+  # the demo runs its stores alone, each is empty. The sandbox tier's node sets them for its
+  # shared stores (scripts/demo_stores.py).
+  if [ -f "$_NAMED_DIR/docker-compose.run.yml" ]; then
+    for _ns_env in $(sed -n 's/^ *com\.provisa\.demo\.ns_env: *\([A-Z0-9_]*\) *$/\1/p' "$_NAMED_DIR/docker-compose.run.yml"); do
+      export "$_ns_env="
+    done
+  fi
   # Exactly one demo's stores run here: whatever another named demo left up -- a bundle's run-time
   # stores or a checkout-built stack -- is stopped first (its volumes kept), or the next one cannot
   # bind the ports they hold (28432: weblogs' shop database, bundled or not).
@@ -477,6 +486,10 @@ if [ "$DEMO" = true ]; then
   # once the backend has recreated the schema.
   _DEMO_CP_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo/control-pg"
   _DEMO_SETTINGS_BAK="${PROVISA_HOME:-$HOME/.provisa}/demo/org_settings.restore.sql"
+  # The demo's own data directory, beside its control plane: its organisations' folders (their files
+  # and model repositories) are the demo's alone, so its reset never touches a native install's,
+  # which keeps ~/.provisa. Exported, so the backend and every step below read it.
+  export PROVISA_DATA_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo"
   rm -f "$_DEMO_SETTINGS_BAK"
   if [ -d "$_DEMO_CP_DIR" ]; then
     "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg dump-table "$_DEMO_CP_DIR" \
@@ -484,6 +497,8 @@ if [ "$DEMO" = true ]; then
     "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg reset "$_DEMO_CP_DIR"
     echo "Dropped and will rebuild the demo control-plane database — this start reinitializes it."
   fi
+  # Every environment went with the database; their branches go with them (REQ-1554).
+  "$SCRIPT_DIR/scripts/demo_reset_model_history.sh" "$PROVISA_DATA_DIR"
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
     echo "Generating demo files..."
@@ -710,7 +725,8 @@ if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
   # REQ-1535: both self-contained tiers run the embedded PostgreSQL control plane (pgserver). SQLite
   # has no schemas and REQ-1488 makes an environment a schema, so a SQLite plane could hold prod and
   # nothing else — the demo would be unable to show the feature it is demonstrating. Demo keeps its
-  # own data dir so a demo reset never touches the native install's plane.
+  # own control plane here, and its own data dir (PROVISA_DATA_DIR, set at the demo reset), so a
+  # demo reset never touches the native install's.
   if [ "$DEMO" = true ]; then
     CP_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo/control-pg"
   else

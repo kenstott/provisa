@@ -10,7 +10,8 @@
       "whereNext": "¿Y ahora?",
       "exploreDeepDives": "Explorar los Deep Dives",
       "lookAround": "Mirar por mi cuenta",
-      "anyTime": "Puede reiniciar el recorrido o abrir los Deep Dives cuando quiera desde el botón del recorrido."
+      "anyTime": "Puede reiniciar el recorrido o abrir los Deep Dives cuando quiera desde el botón del recorrido.",
+      "openDemo": "Abrir la demo {{title}}"
     },
     "welcome": {
       "title": "¿Hacer la visita guiada?",
@@ -30,10 +31,6 @@
       "thisDemo": "Esta demo"
     },
     "topics": {
-      "connect": {
-        "title": "Conectar los datos",
-        "summary": "Tipos de fuente, registro de tablas, réplicas y lecturas en vivo."
-      },
       "relationships": {
         "title": "Relaciones",
         "summary": "Declare cómo se relacionan las tablas, dentro de una fuente y entre fuentes, las declare o no la fuente. Declaradas una vez, todas las superficies las siguen."
@@ -88,6 +85,11 @@
         "title": "73 tipos de fuente, 14 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
+      "stepBuildSource": {
+        "title": "Un origen, añadido en vivo",
+        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
+        "acting": "Añadiendo un origen"
+      },
       "step4": {
         "title": "Todo se convierte en una tabla",
         "description": "Sea cual sea el origen, ya sea una colección de Mongo, un topic de Kafka, un endpoint REST o un grafo, Provisa lo descompone en una <strong>tabla</strong> 2D: una forma uniforme para consultar en cualquier origen.<p>📁 Agrupa las tablas en <strong>dominios</strong>, cada uno a cargo de un data steward que vela por la calidad del modelo a medida que evoluciona.</p>"
@@ -101,36 +103,44 @@
         "description": "💬 Preguntas en el lenguaje o con la herramienta que ya usas (SQL, GraphQL, Cypher, lenguaje natural a través de Polly, o una herramienta de BI o un controlador), y todas leen el mismo modelo gobernado, así que la respuesta y las reglas son las mismas elijas la que elijas."
       },
       "step6": {
-        "title": "SQL (1 de 7 superficies)",
+        "title": "SQL (1 de 9 superficies)",
         "description": "SQL vive en el explorador de SQL. SQL estándar federado en todos los orígenes: une Postgres con Mongo y con un CSV en una sola sentencia. Los propios metadatos del modelo y cada traza de actividad son también tablas consultables aquí, así que puedes unir tu registro de auditoría o el linaje directamente con datos en vivo.<p>🔌 El mismo SQL gobernado se ejecuta a través de varios protocolos de conexión además de este explorador; tu herramienta elige el que ya conoce:</p><ul><li><strong>pgwire</strong>: todo cliente compatible con Postgres (psql, DBeaver, Tableau, Power BI) se conecta sin configuración adicional.</li><li><strong>JDBC</strong>: encaja en cualquier aplicación Java/JVM, pipeline de ETL o herramienta de BI compatible con JDBC.</li><li><strong>Arrow Flight SQL</strong>: streaming columnar para clientes ADBC, sin recodificar filas, pensado para grandes volúmenes de resultados.</li><li><strong>DuckDB · airport</strong>: haz ATTACH de Provisa desde DuckDB y consulta la federación gobernada in situ.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 de 7 superficies)",
+        "title": "GraphQL (2 de 9 superficies)",
         "description": "◈ La misma consulta, expresada como GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Agrupaciones y agregados sobre tus relaciones: 🎯 un solo endpoint, 📖 un esquema autodocumentado.</p><p>🔌 Llámalo desde <strong>cualquier cliente GraphQL</strong>, como Apollo, Relay o urql. Con la federación activada, Provisa se une a un <strong>Apollo supergraph como subgraph</strong>, de modo que tu modelo federado se compone junto a tus grafos existentes.</p>"
       },
       "step8": {
-        "title": "Cypher (3 de 7 superficies)",
+        "title": "Cypher (3 de 9 superficies)",
         "description": "🕸️ Recorre el modelo federado como un grafo con Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Ese recorrido se ejecuta <strong>a través de varios orígenes</strong>, sin necesidad de una única base de datos de grafos.</p><p>🔌 Cualquier cliente <strong>Bolt</strong>, como Neo4j Browser o Bloom, ejecuta ese mismo recorrido a través del protocolo, sin cambiar el código.</p>"
       },
       "step9": {
-        "title": "gRPC (4 de 7 superficies)",
+        "title": "gRPC (4 de 9 superficies)",
         "description": "⚙️ Cada entidad registrada es también un servicio gRPC:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Llámalo desde cualquier cliente gRPC: 📐 fuertemente tipado, 🚀 de alto rendimiento.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 de 7 superficies)",
+        "title": "JSON:API (5 de 9 superficies)",
         "description": "🧩 Una superficie JSON:API conforme a la especificación:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paginación y 🔍 filtrado sin configuración adicional.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 de 7 superficies)",
+        "title": "OpenAPI / REST (6 de 9 superficies)",
         "description": "🌐 Y un endpoint REST sencillo, descrito mediante OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Totalmente documentado, para que cualquier cliente REST o generador de código pueda consumirlo.</p>"
       },
       "step12": {
-        "title": "MCP (7 de 7 superficies)",
-        "description": "🤖 La séptima superficie permite que un agente <strong>razone con tus datos</strong>. Utiliza esas mismas herramientas gobernadas (buscar en el catálogo, describir tablas, ejecutar SQL, seguir relaciones) y las <em>encadena</em> para responder preguntas que ninguna consulta aislada podría resolver, con cada llamada sujeta a la gobernanza de <strong>tu</strong> rol.<p>🔌 El mismo <strong>servidor MCP</strong> se conecta a Claude Desktop, Claude Code o cualquier cliente MCP, para que los agentes exploren y razonen sobre tu modelo de forma gobernada.</p><p>🔑 Usa tu propia clave de LLM; este intercambio es un ejemplo preconfigurado.</p><p>Queda una superficie: la que escribe las otras siete por ti. →</p>"
+        "title": "MCP (7 de 9 superficies)",
+        "description": "🤖 La séptima superficie permite que un agente <strong>razone con tus datos</strong>. Utiliza esas mismas herramientas gobernadas (buscar en el catálogo, describir tablas, ejecutar SQL, seguir relaciones) y las <em>encadena</em> para responder preguntas que ninguna consulta aislada podría resolver, con cada llamada sujeta a la gobernanza de <strong>tu</strong> rol.<p>🔌 El mismo <strong>servidor MCP</strong> se conecta a Claude Desktop, Claude Code o cualquier cliente MCP, para que los agentes exploren y razonen sobre tu modelo de forma gobernada.</p><p>🔑 Usa tu propia clave de LLM; este intercambio es un ejemplo preconfigurado.</p><p>Dos más leen los mismos datos gobernados desde Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 de 9 superficies)",
+        "description": "🐍 La pestaña Python ejecuta Python en tu navegador, con tu sesión iniciada:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>La respuesta llega como un DataFrame de pandas, leído por la misma canalización gobernada, así que las reglas de filas y las máscaras de tu rol también se aplican.</p><p>🔌 El mismo paquete <strong>provisa-client</strong> se instala con pip en cualquier Python de escritorio, así que un script escrito aquí funciona sin cambios en tu propio entorno.</p>"
+      },
+      "stepNotebook": {
+        "title": "Cuaderno (9 de 9 superficies)",
+        "description": "📓 La pestaña Cuaderno es JupyterLite: un cuaderno de Jupyter que se ejecuta en tu navegador. Su primera celda inicia sesión y la siguiente lee la misma consulta como un DataFrame para graficarlo o unirlo con otros datos.<p>⬇️ Descarga el cuaderno y se abre en cualquier Jupyter de escritorio, donde las mismas celdas leen de Provisa igual que aquí.</p><p>Queda una superficie: la que escribe tus consultas por ti. →</p>"
       },
       "step13": {
-        "title": "Simplemente pregunta: la superficie que escribe las otras siete",
-        "description": "💬 <em>\"cuántas mascotas hay por especie\"</em><p><strong>No necesitas aprender ninguna de esas siete.</strong> Pregunta en español llano y Provisa compila tu pregunta en todos los lenguajes de consulta a la vez: cada panel de abajo es esa misma frase expresada en SQL, GraphQL, Cypher, gRPC, JSON:API y REST.</p><p>Usa la superficie que ya hablan tus herramientas, o sáltatelas todas y simplemente pregunta.</p><p>🔑 Las consultas en lenguaje natural en vivo usan tu propia clave de LLM; esta es un ejemplo preconfigurado.</p><p>✅ Un modelo, <strong>ocho superficies</strong>: siete para consultar y la que las escribe.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Simplemente pregunta: la superficie que escribe tus consultas",
+        "description": "💬 <em>\"cuántas mascotas hay por especie\"</em><p><strong>No necesitas aprender ninguno de esos lenguajes de consulta.</strong> Pregunta en lenguaje natural y Provisa compila tu pregunta en los siete a la vez: cada panel de abajo es esa misma frase como SQL, GraphQL, Cypher, gRPC, JSON:API y REST.</p><p>No puede abrir Python ni el Cuaderno directamente, pero siempre puedes pedirle a Polly que lleve una consulta a cualquiera de los dos.</p><p>🔑 Las consultas en lenguaje natural en vivo usan tu propia clave de LLM; esta es un ejemplo preparado.</p><p>✅ Un modelo detrás de las <strong>nueve superficies</strong>, y el lenguaje natural escribe las consultas por ti.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Cuaderno</span></div>"
       },
       "step14": {
         "title": "Ese es el núcleo de cinco minutos",
@@ -217,8 +227,8 @@
         "description": "✨ <strong>Rellenar desde el perfil</strong> propone, a partir del último perfil de la tabla, valores ficticios para las columnas identificativas y reglas sintéticas para el resto. No se guarda nada hasta que guarde el formulario."
       },
       "stepEnvKinds": {
-        "title": "Entornos y sus conexiones",
-        "description": "Un entorno es una <strong>rama</strong> de su modelo, y la lista muestra de qué entorno salió cada uno. Al crear uno, elige si <strong>hereda las conexiones</strong>. Si lo activa, el nuevo entorno usa por referencia las conexiones de fuente de su padre, de modo que si allí se rota una credencial, aquí también. Si lo deja desactivado, el valor predeterminado, obtiene todo el modelo sin conexiones y apunta cada fuente a su propia base de datos."
+        "title": "Entornos y sus datos",
+        "description": "Un entorno es una <strong>rama</strong> de su modelo, y la lista muestra de qué entorno se creó cada uno. Al crear uno, elige sus <strong>datos</strong>. <strong>Inherit</strong> copia la conexión de cada origen desde el entorno padre, así que las tablas muestran sus datos. <strong>Unbound</strong>, el valor predeterminado, le da el modelo completo sin conexiones, y usted apunta cada origen a su propia base de datos. <strong>Test (fake)</strong> lee las filas del entorno padre a través del valor ficticio de cada columna, y <strong>Test (synthetic)</strong> lee filas generadas a partir de las ejecuciones de perfil del entorno padre. Un valor de conexión que hace referencia a un secreto o a una variable de entorno se copia como esa referencia, de modo que rotar la credencial llega a todos los entornos que la usan."
       },
       "stepSynthetic": {
         "title": "Generar datos sintéticos",
@@ -302,7 +312,7 @@
       },
       "weblogsLogFiles": {
         "title": "Tres fuentes",
-        "description": "La tienda tiene tres fuentes: <strong>shop-db</strong>, su base de datos PostgreSQL, y dos fuentes de registro, <strong>shop_access</strong> y <strong>shop_db_log</strong>. Provisa lee cada archivo de registro donde está, una línea por fila, y de nuevo cada 30 segundos; nada se carga ni se copia antes."
+        "description": "La tienda tiene tres fuentes: <strong>shop-db</strong>, su base de datos PostgreSQL, y dos fuentes de registro, <strong>shop_access</strong> y <strong>shop_db_log</strong>. Provisa lee cada archivo de registro donde está, una línea por fila."
       },
       "weblogsTables": {
         "title": "Las fuentes se vuelven tablas",
@@ -406,7 +416,7 @@
       },
       "reviewsSearchStore": {
         "title": "Las reseñas, en Elasticsearch",
-        "description": "<strong>reviews</strong> es Elasticsearch: las 5000 reseñas que escribieron los clientes, cada una con su producto, sus estrellas y su texto. Provisa lo lee en vivo; nada se copia antes."
+        "description": "<strong>reviews</strong> es Elasticsearch: las 5000 reseñas que escribieron los clientes, cada una con su producto, sus estrellas y su texto."
       },
       "reviewsGraphStore": {
         "title": "Quién compró qué, en Neo4j",
@@ -466,15 +476,15 @@
       },
       "insuranceRecap": {
         "title": "Lo que ha visto",
-        "description": "Ha visto los datos propios de la aseguradora, leídos en vivo y unidos por condado a datos públicos de riesgo que se cargaron una vez, todo en un modelo gobernado. Una vista responde dónde se cruza la exposición con el riesgo, en SQL, GraphQL y REST, y cada rol ve solo lo que puede ver."
+        "description": "Ha visto los datos propios de la aseguradora unidos por condado a datos públicos de riesgo, todo en un modelo gobernado. Una vista responde dónde se cruza la exposición con el riesgo, en SQL, GraphQL y REST, y cada rol ve solo lo que puede ver."
       },
       "insuranceGovdata": {
         "title": "Los datos públicos de riesgo",
-        "description": "Los datos gubernamentales vienen de AskAmerica, una cuenta real. Sus tres tablas por condado se cargan una vez, al construir la demo, y desde entonces se leen de esa copia: nunca caducan y esta demo nunca llama a la cuenta."
+        "description": "Los datos gubernamentales vienen de AskAmerica."
       },
       "insuranceBook": {
         "title": "La cartera de la aseguradora",
-        "description": "Cada póliza en vigor, leída en vivo de la base de datos de la aseguradora: su condado, su ramo, la suma asegurada total, la prima y el deducible."
+        "description": "Cada póliza en vigor: su condado, su ramo, la suma asegurada total, la prima y el deducible."
       },
       "insuranceRisk": {
         "title": "El National Risk Index de FEMA",
@@ -498,7 +508,7 @@
       },
       "qualityBronze": {
         "title": "Bronce: tipado donde está limpio",
-        "description": "<strong>bronze</strong> guarda cada lote tal como se depositó, sin cambios. Los datos limpios se tipan al depositarse: el id de venta, cuándo se vendió, la cantidad. Los campos desordenados, código de tienda, producto y precio, quedan en bruto hasta plata. Un sondeo lo vigila, así que un lote nuevo actualiza cada vista posterior."
+        "description": "<strong>bronze</strong> guarda cada lote tal como se depositó, sin cambios. Los datos limpios se tipan al depositarse: el id de venta, cuándo se vendió, la cantidad. Los campos desordenados, código de tienda, producto y precio, quedan en bruto hasta plata."
       },
       "qualityRaw": {
         "title": "En bruto, como lo escribió el flujo",
@@ -602,11 +612,11 @@
       },
       "vulnerabilitiesGovdata": {
         "title": "Los datos públicos de vulnerabilidades",
-        "description": "Los datos gubernamentales vienen de AskAmerica, una cuenta real: los registros CVE de la NVD, el catálogo de debilidades de software de MITRE y las Known Exploited Vulnerabilities de CISA. Sus tablas se cargan una vez, al construir la demo, y se leen siempre de esa copia: esta demo nunca llama a la cuenta."
+        "description": "Los datos gubernamentales vienen de AskAmerica: los registros CVE de la NVD, el catálogo de debilidades de software de MITRE y las Known Exploited Vulnerabilities de CISA."
       },
       "vulnerabilitiesAlerts": {
         "title": "Las alertas de Dependabot",
-        "description": "Una alerta por cada versión de paquete fijada con un aviso publicado: el repositorio, el paquete, el CVE, la versión que lo corrige y si la alerta está abierta, corregida o descartada. Se lee en vivo de la base de datos de la empresa."
+        "description": "Una alerta por cada versión de paquete fijada con un aviso publicado: el repositorio, el paquete, el CVE, la versión que lo corrige y si la alerta está abierta, corregida o descartada."
       },
       "vulnerabilitiesNvd": {
         "title": "Los registros CVE, cargados con un filtro",
@@ -614,7 +624,7 @@
       },
       "vulnerabilitiesKev": {
         "title": "Las vulnerabilidades explotadas conocidas de CISA",
-        "description": "Cada CVE que se sabe que los atacantes explotan, con la fecha en que las agencias federales deben corregirlo y si lo usan campañas de ransomware. Se carga entero: es pequeño."
+        "description": "Cada CVE que se sabe que los atacantes explotan, con la fecha en que las agencias federales deben corregirlo y si lo usan campañas de ransomware."
       },
       "vulnerabilitiesJoin": {
         "title": "Explotado, por CVE",
@@ -642,7 +652,7 @@
       },
       "vulnerabilitiesRecap": {
         "title": "Lo que ha visto",
-        "description": "Ha visto los datos de código propios de la empresa, leídos en vivo y unidos por CVE a datos públicos de vulnerabilidades que se cargaron una vez, y solo lo que necesitan las alertas. Una vista en un modelo gobernado responde qué vulnerabilidades explotadas hay en el código y cuánto retraso lleva cada una, en SQL, GraphQL, Cypher y REST."
+        "description": "Ha visto los datos de código propios de la empresa unidos por CVE a datos públicos de vulnerabilidades, solo lo que necesitan las alertas. Una vista en un modelo gobernado responde qué vulnerabilidades explotadas hay en el código y cuánto retraso lleva cada una, en SQL, GraphQL, Cypher y REST."
       },
       "streamingScenario": {
         "title": "Pedidos, en vivo",
@@ -658,19 +668,19 @@
       },
       "streamingRecap": {
         "title": "Lo que vio",
-        "description": "Un topic de Kafka se cargó como tabla y se unió a un catálogo en vivo. Una vista se mantuvo al día con cada lote que llegó. La misma respuesta salió en SQL, GraphQL y REST, en caché cuando se pidió, y una suscripción siguió el feed. Explore por su cuenta desde la página de consultas."
+        "description": "Un topic de Kafka se cargó como tabla y se unió al catálogo. Una vista se mantuvo al día con cada lote que llegó. La misma respuesta salió en SQL, GraphQL y REST, en caché cuando se pidió, y una suscripción siguió el feed. Explore por su cuenta desde la página de consultas."
       },
       "streamingCatalog": {
         "title": "El catálogo",
-        "description": "<strong>catalog</strong> es el Postgres de la cafetería, leído en vivo: qué es y cuánto cuesta cada producto, y las regiones en las que vende la cafetería."
+        "description": "<strong>catalog</strong> es el Postgres de la cafetería: qué es y cuánto cuesta cada producto, y las regiones en las que vende la cafetería."
       },
       "streamingOrders": {
         "title": "Un tópico se convierte en tabla",
-        "description": "<strong>orders</strong> es el topic, cargado en su propia tabla a medida que llegan los pedidos, en un lote como mucho cada dos segundos y con el id del pedido como clave. Cada lote que llega actualiza las vistas que lo leen y avisa a sus suscriptores."
+        "description": "<strong>orders</strong> es el topic, cargado en su propia tabla a medida que llegan los pedidos. Cada lote que llega actualiza las vistas que lo leen y avisa a sus suscriptores."
       },
       "streamingFresh": {
         "title": "Los pedidos según se cargan",
-        "description": "Los pedidos más recientes de la tabla, unos segundos por detrás del tópico. Cada sandbox carga el tópico entero en su propia tabla, con su propio grupo de consumidores."
+        "description": "Los pedidos más recientes de la tabla, unos segundos por detrás del tópico."
       },
       "streamingCached": {
         "title": "La respuesta en GraphQL, en caché",
@@ -700,6 +710,11 @@
         "title": "Cada ejecución se conserva",
         "description": "Los resultados de una ejecución se guardan en tablas propias, una por cada tipo de medida, y cada ejecución se conserva junto a las anteriores. Aquí están las ejecuciones de la tabla customers, con las filas que leyó cada una y las filas repetidas que encontró."
       },
+      "profilingTerrain": {
+        "title": "La ejecución, como terreno",
+        "acting": "Abriendo las ejecuciones de perfil de la tabla customers en el terreno",
+        "description": "La última ejecución de customers, dibujada como terreno: una cresta por columna, su altura las filas de cada rango de valores, y delante de cada columna sus nulos."
+      },
       "profilingTerms": {
         "title": "El vocabulario",
         "description": "El glosario define perfil de datos, tipo plausible, forma del valor, fila duplicada y valor de relleno, y vincula cada término a las medidas que describe."
@@ -724,13 +739,38 @@
         "title": "Las filas escritas dos veces",
         "description": "El modelo declara customer_id como clave, pero la exportación no tenía restricción: 150 clientes aparecen dos veces, con todos los campos iguales. El perfil cuenta las filas repetidas y los valores de clave que tienen más de una fila."
       },
+      "profilingDrift": {
+        "title": "Qué cambió desde la última ejecución",
+        "description": "La configuración ejecutó el perfilador dos veces, y entre ambas la siguiente sincronización del CRM escribió cada código postal de EE. UU. como ZIP+4. La tabla de deriva compara cada medida con la de la ejecución anterior: las medidas que movió el cambio de postal_code están marcadas como en deriva, y las columnas que la sincronización no tocó no lo están."
+      },
+      "profilingStrata": {
+        "title": "postal_code, ejecución a ejecución",
+        "acting": "Abriendo los estratos de deriva",
+        "description": "postal_code en cada ejecución, la más antigua al fondo: la proporción de filas que tiene cada valor. La ejecución más reciente está marcada con deriva, como mostró la tabla de deriva, y la anterior no."
+      },
+      "profilingOriginal": {
+        "title": "Los clientes reales",
+        "description": "Diez clientes tal como los guarda el CRM. A continuación, la misma sentencia en un entorno generado a partir del perfil."
+      },
+      "profilingToSynthetic": {
+        "title": "Cambiar a synthetic",
+        "description": "A continuación, el selector cambia a <strong>synthetic</strong>, un entorno Test (synthetic)."
+      },
+      "profilingSynthetic": {
+        "title": "Generado a partir del perfil",
+        "description": "La misma sentencia en synthetic: cada fila se generó a partir del perfil de los clientes, con las mismas columnas, formas de valores y dispersión, y ninguno de los clientes reales. El perfil basta para generar datos de prueba."
+      },
+      "profilingToProd": {
+        "title": "De vuelta a producción",
+        "description": "A continuación, el selector vuelve a prod."
+      },
       "profilingRest": {
         "title": "La misma respuesta por REST",
         "description": "La vista también es un endpoint REST. Una herramienta de calidad de datos o un script de migración obtiene el perfil sin escribir SQL."
       },
       "profilingRecap": {
         "title": "Lo que ha visto",
-        "description": "Ha visto las tablas de la empresa adquirida, leídas en vivo, y un perfil de ellas hecho por el perfilador integrado y guardado como tablas gobernadas. Nulos, rangos, formatos, tipos plausibles y duplicados responden cada uno qué hay realmente en estos datos, en SQL, GraphQL y REST, y cada rol ve solo lo que puede ver."
+        "description": "Ha visto las tablas de la empresa adquirida y un perfil de ellas hecho por el perfilador integrado y guardado como tablas gobernadas. Nulos, rangos, formatos, tipos plausibles y duplicados responden cada uno qué hay realmente en estos datos, en SQL, GraphQL y REST, y cada rol ve solo lo que puede ver."
       },
       "opioidsScenario": {
         "title": "Qué es esta demo",
@@ -746,15 +786,15 @@
       },
       "opioidsRecap": {
         "title": "Lo que ha visto",
-        "description": "Los registros del propio fondo, leídos en vivo, y los datos de salud pública y del censo, incorporados una vez, unidos por condado en un modelo gobernado. Dos vistas almacenadas responden la pregunta: la del personal, que lee el gasto del fondo, y el panel público, que no lee nada de ello. Cada una se sirve en SQL, GraphQL y REST a los roles que pueden leerla."
+        "description": "Los registros del propio fondo y los datos de salud pública y del censo, unidos por condado en un modelo gobernado. Dos vistas almacenadas responden la pregunta: la del personal, que lee el gasto del fondo, y el panel público, que no lee nada de ello. Cada una se sirve en SQL, GraphQL y REST a los roles que pueden leerla."
       },
       "opioidsGovdata": {
         "title": "Los datos públicos",
-        "description": "Los datos del gobierno vienen de AskAmerica, una cuenta real: las muertes y tasas de mortalidad por sobredosis de los CDC, la población de la Oficina del Censo y el gasto federal de USAspending, cada uno por condado. Solo se cargan los condados de Ohio y el año 2023, una vez, al construir la demo, y se leen de esa copia para siempre. 2023 es el año que cubren todos."
+        "description": "Los datos del gobierno vienen de AskAmerica: las muertes y tasas de mortalidad por sobredosis de los CDC, la población de la Oficina del Censo y el gasto federal de USAspending, cada uno por condado."
       },
       "opioidsAllocations": {
         "title": "Las asignaciones del fondo",
-        "description": "Cada asignación que hizo el fondo, leída en vivo de su propia base de datos: el condado, el año fiscal, el área del programa, el proveedor pagado, lo adjudicado y lo gastado. El personal ve todas las filas; el rol public no ve ninguna."
+        "description": "Cada asignación que hizo el fondo: el condado, el año fiscal, el área del programa, el proveedor pagado, lo adjudicado y lo gastado. El personal ve todas las filas; el rol public no ve ninguna."
       },
       "opioidsDeaths": {
         "title": "Las tasas de muerte por sobredosis de los CDC",
@@ -790,7 +830,7 @@
       },
       "datavaultInsertOnly": {
         "title": "Cada fila se conserva",
-        "description": "La tabla de clientes es de solo inserción, tal como la recibe el staging de un vault: un cambio llega como una fila nueva con su fecha de carga, y nada se sobrescribe. La tabla vigila su última fecha de carga, de modo que las filas nuevas actualizan cada vista sobre ella mediante la cascada de vistas."
+        "description": "La tabla de clientes es de solo inserción, tal como la recibe el staging de un vault: un cambio llega como una fila nueva con su fecha de carga, y nada se sobrescribe."
       },
       "datavaultArrived": {
         "title": "Qué llegó",
@@ -850,11 +890,11 @@
       },
       "agricultureGovdata": {
         "title": "Los datos públicos",
-        "description": "Los datos del gobierno vienen de AskAmerica, una cuenta en vivo. Sus tres tablas se cargan una sola vez, al construir la demo, y solo la porción que necesita la cartera: sus 40 condados, maíz y soja, los años agrícolas 2010 a 2017. Se leen de esa copia de forma permanente: nunca caducan y esta demo nunca llama a la cuenta."
+        "description": "Los datos del gobierno vienen de AskAmerica."
       },
       "agricultureClaims": {
         "title": "Los siniestros de la aseguradora",
-        "description": "Cada indemnización que pagó la aseguradora, leída en vivo de su propia base de datos: la finca, el año agrícola, la causa de pérdida, el mes y el importe."
+        "description": "Cada indemnización que pagó la aseguradora: la finca, el año agrícola, la causa de pérdida, el mes y el importe."
       },
       "agricultureMarket": {
         "title": "Las pérdidas de todo el mercado",
@@ -862,7 +902,7 @@
       },
       "agricultureWeather": {
         "title": "Clima diario por condado",
-        "description": "La temperatura máxima diaria y la precipitación de NOAA para cada condado, la media de sus estaciones de medición. Solo se carga la temporada de cultivo, de mayo a agosto: cuando la lluvia y el calor deciden el rendimiento."
+        "description": "La temperatura máxima diaria y la precipitación de NOAA para cada condado, la media de sus estaciones de medición, durante la temporada de cultivo, de mayo a agosto: cuando la lluvia y el calor deciden el rendimiento."
       },
       "agricultureJoin": {
         "title": "Unido por condado",
@@ -886,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "¿Cuánto explica el clima?",
-        "description": "El notebook de la demo, ejecutado en su navegador: cada temporada de condado leída en pandas como analyst, la siniestralidad correlacionada con la lluvia de la temporada, sus días por encima de 32 °C y la parte de las pérdidas del mercado debida a la sequía y el calor, una regresión ajustada sobre ellas y el gráfico. El clima explica el 54 % de la variación de la siniestralidad. Cada 10 días por encima de 32 °C suman 20 puntos de siniestralidad, 100 mm menos de lluvia suman 7, y 10 puntos más de las pérdidas del mercado debidas a sequía y calor suman 9. En la cartera actual, una temporada como la de 2012 tiene una siniestralidad esperada de 1,75."
+        "description": "El notebook de la demo, ejecutado en su navegador: cada temporada de condado leída en pandas como analyst, la siniestralidad correlacionada con la lluvia de la temporada, sus días por encima de 32 °C y la parte de las pérdidas del mercado debida a la sequía y el calor, una regresión ajustada sobre ellas y el gráfico."
       },
       "agricultureRest": {
         "title": "Por año mediante REST",
@@ -894,7 +934,7 @@
       },
       "agricultureRecap": {
         "title": "Lo que ha visto",
-        "description": "Ha visto los datos propios de la aseguradora, leídos en vivo y cruzados por condado y año de cosecha con pérdidas, clima y rendimientos públicos que se cargaron una vez, todo en un modelo gobernado. Una vista responde si el clima explica las pérdidas, en SQL, GraphQL y REST. El notebook lo mide: el clima explica el 54 % de la variación de la siniestralidad y, en la cartera actual, una temporada como la de 2012 tiene una siniestralidad esperada de 1,75."
+        "description": "Ha visto los datos propios de la aseguradora cruzados por condado y año de cosecha con pérdidas, clima y rendimientos públicos, todo en un modelo gobernado. Una vista responde si el clima explica las pérdidas, en SQL, GraphQL y REST. El notebook lo mide: el clima explica el 54 % de la variación de la siniestralidad y, en la cartera actual, una temporada como la de 2012 tiene una siniestralidad esperada de 1,75."
       },
       "retailScenario": {
         "title": "Un grupo, dos regiones",
@@ -918,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "Como analista del grupo",
-        "description": "A continuación, el explorador SQL se ejecuta como group_analyst, que trabaja en los informes del grupo en US."
+        "description": "A continuación, el selector de roles pasa a <strong>group_analyst</strong>, que trabaja en los informes del grupo en US, para que el SQL y el GraphQL que siguen se ejecuten como group_analyst."
       },
       "retailGroupView": {
         "title": "Informes del grupo, clientes de la EU seudonimizados",
@@ -927,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "Lo mismo, en GraphQL",
         "description": "La misma vista del grupo por GraphQL: un modelo, cada transporte, las mismas reglas."
+      },
+      "retailEveryRole": {
+        "title": "De vuelta a todos los roles",
+        "description": "A continuación, el selector de roles vuelve a <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "Como marketing de la EU",
@@ -994,7 +1038,7 @@
       },
       "provisioningWarehouse": {
         "title": "La base de datos del almacén",
-        "description": "Sus productos y lo que cuesta cada uno, los avisos que envía cuando un dataset está listo y las descargas que registran los consumidores de los equipos. Leída en vivo."
+        "description": "Sus productos y lo que cuesta cada uno, los avisos que envía cuando un dataset está listo y las descargas que registran los consumidores de los equipos."
       },
       "provisioningFeeds": {
         "title": "Los feeds, cargados al llegar",
@@ -1010,7 +1054,7 @@
       },
       "provisioningPulls": {
         "title": "Las descargas",
-        "description": "El consumidor de cada equipo lee el aviso y descarga todo el dataset por Arrow Flight a la hora de versión, de modo que una actualización a mitad de la descarga no puede mezclar dos versiones. Registra las filas, los segundos y las filas por segundo. Su ticket es un objeto JSON: la consulta, el rol y la hora as-of (consumer.py). Un arranque local ejecuta los consumidores en vivo; el sandbox alojado muestra las descargas registradas al construir la demo."
+        "description": "El consumidor de cada equipo lee el aviso y descarga todo el dataset por Arrow Flight a la hora de versión, de modo que una actualización a mitad de la descarga no puede mezclar dos versiones. Registra las filas, los segundos y las filas por segundo."
       },
       "provisioningAsFinance": {
         "title": "Ejecutar como finanzas",
@@ -1034,7 +1078,7 @@
       },
       "provisioningClose": {
         "title": "Una lectura fuera de su ventana",
-        "description": "close_by_category, el cierre de finanzas, solo puede leerse de 02:00 a 02:15 UTC. Fuera de ese horario esta lectura se rechaza, nombrando la vista y cuándo vuelve a abrirse su ventana; las actualizaciones propias del almacén se ejecutan a cualquier hora."
+        "description": "close_by_category, el cierre de finanzas, solo puede leerse de 02:00 a 02:15 UTC. Fuera de ese horario esta lectura se rechaza, nombrando la vista y cuándo vuelve a abrirse su ventana."
       },
       "provisioningRest": {
         "title": "Las descargas por REST",
@@ -1046,11 +1090,11 @@
       },
       "pharmaGovdata": {
         "title": "Los datos públicos de medicamentos",
-        "description": "Los datos gubernamentales vienen de AskAmerica, una cuenta real. Sus tres tablas se cargan una vez, cuando se construye la demo, y solo la parte que la demo lee; desde entonces se leen siempre de esa copia, y esta demo nunca llama a la cuenta."
+        "description": "Los datos gubernamentales vienen de AskAmerica."
       },
       "pharmaFormulary": {
         "title": "El formulario terapéutico de la farmacia",
-        "description": "Cada producto que la farmacia tiene, leído en vivo de su propia base de datos: su NDC, su nombre genérico, su fabricante, su clase terapéutica y si es crítico. Sus existencias en cada centro están al lado."
+        "description": "Cada producto que la farmacia tiene: su NDC, su nombre genérico, su fabricante, su clase terapéutica y si es crítico. Sus existencias en cada centro están al lado."
       },
       "pharmaShortages": {
         "title": "Los desabastecimientos de la FDA",
@@ -1078,15 +1122,15 @@
       },
       "pharmaRecap": {
         "title": "Lo que ha visto",
-        "description": "Ha visto los datos propios de la farmacia, leídos en vivo y unidos por NDC y por empresa a datos públicos de medicamentos que se cargaron una vez, todo en un modelo gobernado. Una vista responde qué productos están en riesgo, en SQL, GraphQL y REST, y cada rol ve solo lo que puede ver."
+        "description": "Ha visto los datos propios de la farmacia unidos por NDC y por empresa a datos públicos de medicamentos, todo en un modelo gobernado. Una vista responde qué productos están en riesgo, en SQL, GraphQL y REST, y cada rol ve solo lo que puede ver."
       },
       "storefrontScenario": {
         "title": "Un modelo, una app y BI",
-        "description": "Un minorista de café atiende a dos consumidores desde un modelo. La pantalla de historial de pedidos de su app muestra a un cliente con sesión iniciada sus pedidos, y su herramienta de BI muestra a los analistas los ingresos y los envíos con retraso. Los pedidos están en <strong>PostgreSQL</strong> y se leen en vivo: clientes, pedidos y las líneas de cada pedido."
+        "description": "Un minorista de café atiende a dos consumidores desde un modelo. La pantalla de historial de pedidos de su app muestra a un cliente con sesión iniciada sus pedidos, y su herramienta de BI muestra a los analistas los ingresos y los envíos con retraso. Los pedidos están en <strong>PostgreSQL</strong>: clientes, pedidos y las líneas de cada pedido."
       },
       "storefrontCatalog": {
         "title": "El catálogo, en MongoDB",
-        "description": "Cada producto es un documento de <strong>MongoDB</strong>, con su nombre, categoría, precio e imagen. Provisa lo lee en vivo, como una tabla."
+        "description": "Cada producto es un documento de <strong>MongoDB</strong>, con su nombre, categoría, precio e imagen. Provisa lo lee como una tabla."
       },
       "storefrontShipping": {
         "title": "Envíos, por REST",
@@ -1158,7 +1202,7 @@
       },
       "hasuramigrationSalesforce": {
         "title": "Lo que Hasura no podía hacer: Salesforce",
-        "description": "El equipo de ventas guarda sus cuentas en Salesforce. Provisa registra la organización como un origen y su objeto <strong>Account</strong> como una tabla, copiada una vez al construir la demo. Cada cliente empresarial de la tienda nombra la cuenta para la que compra."
+        "description": "El equipo de ventas guarda sus cuentas en Salesforce. Provisa registra la organización como un origen y su objeto <strong>Account</strong> como una tabla. Cada cliente empresarial de la tienda nombra la cuenta para la que compra."
       },
       "hasuramigrationAccount": {
         "title": "Una relación más",
@@ -1234,7 +1278,7 @@
       },
       "churnScenario": {
         "title": "De qué trata esta demo",
-        "description": "Una empresa de suscripciones quiere saber qué clientes están a punto de darse de baja. Sus clientes y un año de su uso mensual se leen en vivo desde su propia base de datos, y un científico de datos entrena un modelo con ellos en el navegador."
+        "description": "Una empresa de suscripciones quiere saber qué clientes están a punto de darse de baja. Sus clientes y un año de su uso mensual están en su propia base de datos, y un científico de datos entrena un modelo con ellos en el navegador."
       },
       "churnCustomers": {
         "title": "Los clientes",
@@ -1246,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Leído como analyst",
-        "description": "Las consultas que siguen se ejecutan como analyst, el rol con el que lee el científico de datos."
+        "description": "A continuación, el selector de roles pasa a <strong>analyst</strong>, el rol con el que lee el científico de datos, para que todas las superficies que siguen se ejecuten como analyst."
       },
       "churnFeatures": {
         "title": "Las características de las que aprende el modelo",
@@ -1260,9 +1304,13 @@
         "title": "Un modelo, entrenado en su navegador",
         "description": "El notebook de la demo, ejecutado en la pestaña Notebook: las características leídas en pandas como analyst, un modelo de scikit-learn entrenado con ellas y los clientes con más riesgo listados. Python se ejecuta en su navegador, y las direcciones de correo siguen enmascaradas."
       },
+      "churnEveryRole": {
+        "title": "De vuelta a todos los roles",
+        "description": "A continuación, el selector de roles vuelve a <strong>All</strong>."
+      },
       "churnRecap": {
         "title": "Lo que ha visto",
-        "description": "Datos gobernados directamente en el notebook de un científico de datos: el enmascaramiento de analyst aplicado al leerlos, y un modelo entrenado sin que los datos salgan del navegador. En un Jupyter de escritorio, el mismo código lee grandes volúmenes por Arrow Flight."
+        "description": "Datos gobernados directamente en el notebook de un científico de datos: el enmascaramiento de analyst aplicado al leerlos, y un modelo entrenado sin que los datos salgan del navegador. En un Jupyter de escritorio, el mismo código lee grandes volúmenes por Arrow Flight. La demo churnprod lleva este modelo a producción."
       },
       "dataroomIntro": {
         "title": "Una sala de datos sin exportaciones",
@@ -1346,7 +1394,7 @@
       },
       "testdataScenario": {
         "title": "Tres entornos sobre una base de datos de producción",
-        "description": "<strong>shop-db</strong> es la base de datos de producción de una tienda: clientes, productos y pedidos. Los equipos necesitan datos para construir y probar. Las empresas con datos personales pagan mucho por datos de preproducción, porque no tienen buenos valores ficticios o los compran. Aquí un modelo sirve tres entornos. <strong>prod</strong> son las filas reales, la fuente de verdad, y nadie construye sobre ellas. <strong>preprod</strong> son los datos propios de producción con cada columna sensible ficticia, para las pruebas finales. <strong>dev</strong> se genera a partir del perfil de producción y no contiene nada real, para el trabajo diario. Provisa aporta las herramientas; qué configuración necesita una empresa lo decide la empresa."
+        "description": "<strong>shop-db</strong> es la base de datos de producción de una tienda: clientes, productos y pedidos. Los equipos necesitan datos para construir y probar. Aquí un modelo sirve tres entornos. <strong>prod</strong> son las filas reales, la fuente de verdad, y nadie construye sobre ellas. <strong>preprod</strong> son los datos propios de producción con cada columna sensible ficticia, para las pruebas finales. <strong>dev</strong> se genera a partir del perfil de producción y no contiene nada real, para el trabajo diario."
       },
       "testdataTables": {
         "title": "El modelo dice qué columnas son ficticias",
@@ -1415,6 +1463,190 @@
       "testdataDone": {
         "title": "Lo que viste",
         "description": "Un modelo, tres entornos. Prod guarda las filas reales. Preproducción las lee con cada columna sensible ficticia, para todos los roles. Dev se genera a partir del perfil de producción y no contiene nada real. Los valores ficticios se declaran una vez por columna, y un entorno que mostraría una columna sensible sin volverla ficticia se niega a abrirse."
+      },
+      "churnprodScenario": {
+        "title": "De qué trata esta demo",
+        "description": "El científico de datos de la demo de abandono entrenó un modelo de scikit-learn con el uso de los clientes para saber quién está a punto de darse de baja. Aquí ese modelo pasa a producción. Se distribuye como un paquete de Python y puntúa a cada cliente que usted puede ver, con las mismas reglas que cualquier tabla."
+      },
+      "churnprodPackage": {
+        "title": "El modelo, como origen",
+        "description": "El paquete del modelo es un origen. Lleva el modelo entrenado y un lockfile que fija scikit-learn."
+      },
+      "churnprodColumns": {
+        "title": "Columnas a partir de los tipos de la función",
+        "description": "churn_risk es una tabla porque su docstring dice @table. Sus columnas son los campos del RiskRow que devuelve. Sus parámetros son sus argumentos: el cliente y cada característica con la que se entrenó el modelo."
+      },
+      "churnprodJoin": {
+        "title": "El join que alimenta el modelo",
+        "description": "Esta relación une cada cliente con la puntuación del modelo, de modo que un join sobre los clientes puntúa a cada uno de ellos."
+      },
+      "churnprodAtRisk": {
+        "title": "La lista de clientes en riesgo",
+        "description": "Cada cliente actual, puntuado por el modelo y ordenado por riesgo, con los motivos que más elevan cada puntuación. Es una sola sentencia SQL sobre una vista, y el modelo se llama dentro de ella."
+      },
+      "churnprodAnalyst": {
+        "title": "Ahora como analyst",
+        "description": "El analyst lee la misma lista, como el analyst de la demo de abandono lee sus características."
+      },
+      "churnprodMasked": {
+        "title": "Puntuaciones, correos enmascarados",
+        "description": "Las puntuaciones son las mismas. Las direcciones de correo aparecen enmascaradas, porque el enmascaramiento de analyst se aplica a la lista igual que a la tabla de clientes."
+      },
+      "churnprodRegional": {
+        "title": "Ahora como el equipo de cuentas de la UE",
+        "description": "El equipo de cuentas de la UE atiende a los clientes facturados en la UE."
+      },
+      "churnprodRegionalRows": {
+        "title": "Solo las filas de su región",
+        "description": "Solo aparecen clientes de la UE. La regla de fila está en el propio churn_risk, y una regla sobre una tabla de código se aplica a las filas que devuelve su código."
+      },
+      "churnprodNode": {
+        "title": "El gemelo en Node",
+        "description": "Este es el mismo modelo en JavaScript. Sus coeficientes entrenados se exportaron desde Python, y está registrado como origen Node junto al de Python. Cada cliente obtiene la misma puntuación de ambos."
+      },
+      "churnprodRecap": {
+        "title": "Lo que ha visto",
+        "description": "El modelo de un científico de datos llegó a producción sin un servicio propio que mantener. Su paquete está fijado. Un join alimenta su función, que se lee como una tabla, y el enmascaramiento y las reglas de fila que tiene toda tabla gobiernan lo que devuelve. SQL, GraphQL y cualquier otra vía de acceso la leen igual."
+      },
+      "worldcupIntro": {
+        "title": "Cuatro fuentes públicas, un Mundial",
+        "description": "¿Quién ha ganado el Mundial, y de qué confederación? La respuesta está repartida en datos públicos: la lista de finales de Wikipedia y sus artículos de las confederaciones, y dos conjuntos de datos de Kaggle con cada partido del Mundial y cada gol internacional. Cada fuente nombra los países a su manera. Wikipedia escribe West Germany, Kaggle escribe Germany FR y las tablas de miembros de las confederaciones escriben Germany. Este tour obtiene los datos, hace que los nombres coincidan con una breve función de Python y consulta el resultado como un único grafo gobernado."
+      },
+      "worldcupWikipedia": {
+        "title": "Wikipedia, registrada en minutos",
+        "description": "Esta es una fuente de Wikipedia. Su rastreo lee siete páginas: la List of FIFA World Cup finals y los artículos de las seis confederaciones. Cada tabla de datos de esas páginas se convierte en una tabla con el nombre de su página y su título, así que las finales son <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>. Una fuente pública se gobierna como cualquier base de datos interna, con los mismos roles, permisos y máscaras. Defina un intervalo de actualización y estas fuentes se mantienen al día por sí solas. Esta demo lee una instantánea fija, para que cada visitante vea las mismas respuestas."
+      },
+      "worldcupFinals": {
+        "title": "Las finales, tal como las lista Wikipedia",
+        "description": "Cada final de 1930 a 2026, con los campeones y subcampeones por los nombres de su época. Wikipedia lista los títulos de 1954, 1974 y 1990 bajo West Germany y el de 2014 bajo Germany."
+      },
+      "worldcupKaggle": {
+        "title": "Los conjuntos de datos de Kaggle llegan como tablas",
+        "description": "Esta es una fuente de Kaggle: el conjunto de datos FIFA World Cup, con cada torneo, partido y aparición de jugador de 1930 a 2014. Cada uno de sus archivos llega como una tabla. Una segunda fuente de Kaggle contiene cada gol internacional desde 1916. Como las tablas de Wikipedia, son datos públicos, registrados en minutos y gobernados como cualquier base de datos interna."
+      },
+      "worldcupMatches": {
+        "title": "Partidos con los nombres de su época",
+        "description": "Kaggle escribe Alemania Occidental como Germany FR y Alemania Oriental como German DR. Algunos de sus nombres arrastran restos de marcado del archivo, como <code>rn\"&gt;Republic of Ireland</code>. Las líneas en blanco del archivo se conservan como filas sin valores, tal como las tiene el conjunto de datos."
+      },
+      "worldcupDisagree": {
+        "title": "Los nombres no coinciden",
+        "description": "Contados por los nombres que escribe Wikipedia, Germany tiene un título y West Germany tres, como si fueran dos países. Kaggle escribe el mismo equipo como Germany FR, así que un join por nombres entre las fuentes también pierde esos títulos."
+      },
+      "worldcupFunction": {
+        "title": "La función es la tabla",
+        "description": "country_alias es una fuente de Python, y esta función es la tabla a través de la cual se une cada relación entre fuentes. Recibe cada nombre de equipo que escriben las fuentes, pregunta a un LLM, con una clave del almacén de la organización, a qué miembro de la FIFA corresponde el nombre, y devuelve el nombre y el código FIFA del miembro. Se ejecuta de nuevo en su intervalo de actualización, así que un nombre nuevo se empareja en cuanto aparece.<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "Cada nombre, emparejado y revisado",
+        "description": "Estos son los nombres que difieren del nombre de su miembro. Germany FR y West Germany son Germany, Zaire es DR Congo y la Soviet Union es Russia. Cada emparejamiento se revisó antes de que esta demo lo congelara, y se corrigieron 27 de los 237. Un equipo cuyos resultados no pasaron a ningún miembro conserva su propio nombre: East Germany sigue siendo East Germany, así que su partido de 1974 contra West Germany no es Germany contra Germany."
+      },
+      "worldcupJunction": {
+        "title": "Una relación a través de la función",
+        "description": "WON une un miembro de una confederación con las finales que ganó a través de country_alias. El código FIFA del miembro encuentra cada nombre al que corresponde, y cada nombre encuentra sus finales. RUNNER_UP, PLAYED_HOME, PLAYED_AWAY y SCORED se unen de la misma manera."
+      },
+      "worldcupGraph": {
+        "title": "Cada título en un grafo",
+        "description": "Cada miembro se enlaza con las finales que ganó, bajo el nombre con que las ganara. El nodo de Germany reúne 1954, 1974, 1990 y 2014."
+      },
+      "worldcupByConfederation": {
+        "title": "Agrupado por confederación",
+        "description": "Agrupados por confederación, los miembros de la UEFA suman 13 títulos y los de la CONMEBOL 10. Ninguna otra confederación ha ganado una final."
+      },
+      "worldcupSql": {
+        "title": "El mismo modelo en SQL",
+        "description": "El mismo join en SQL cuenta los títulos de cada miembro a través de country_alias. Brazil lidera con cinco, y Germany e Italy tienen cuatro cada uno."
+      },
+      "worldcupGraphql": {
+        "title": "Y en GraphQL",
+        "description": "En GraphQL cada final tiene un campo <code>winner</code> a través de country_alias, así que 1954, 1974 y 1990 muestran West Germany junto al miembro al que corresponde: Germany, GER."
+      },
+      "worldcupRecap": {
+        "title": "Resumen",
+        "description": "Datos públicos de Wikipedia y Kaggle, obtenidos en minutos y gobernados como cualquier base de datos interna, puestos de acuerdo con unas diez líneas de Python y consultados como un único grafo. Los emparejamientos de la función se revisaron, así que el grafo cuenta cada título una vez, en el miembro correcto."
+      },
+      "cloudpolicyScenario": {
+        "title": "De qué trata esta demo",
+        "description": "Su política de seguridad dice que cada disco conectado a una máquina virtual usa una clave administrada por el cliente. Usted dirige la seguridad y lo revisa en Azure, AWS y Google Cloud a partir de lo que ya está registrado. El primer origen es el inventario de nube. Enumera cada máquina y cada disco de las tres nubes, con la clave con la que está cifrado cada disco."
+      },
+      "cloudpolicyIncidents": {
+        "title": "Los incidentes",
+        "description": "El segundo origen son los incidentes de ServiceNow del equipo de seguridad. Cada uno nombra el disco al que se refiere como su elemento de configuración y cita la sección de la política bajo la que se registró. Una excepción es un incidente de la categoría Policy exception."
+      },
+      "cloudpolicyReader": {
+        "title": "La política, leída por código",
+        "description": "La propia política es una página web. Este paquete de Python se distribuye con la página y la lee en una fila por control. Su función es una tabla, así que la política se une al resto del modelo."
+      },
+      "cloudpolicyPolicy": {
+        "title": "La política como filas",
+        "description": "Aquí está cada control de la política, leído de su HTML con su título, su cláusula y el día en que entró en vigor. La sección 4.2 es el control de cifrado de discos que se revisa."
+      },
+      "cloudpolicySearch": {
+        "title": "La política, buscada por significado",
+        "description": "Una búsqueda por significado encuentra el control sobre el cifrado de discos aunque sus palabras no sean las de la cláusula."
+      },
+      "cloudpolicyModel": {
+        "title": "Un modelo para tres nubes",
+        "description": "Cada disco nombra la máquina a la que está conectado. Esta relación une discos y máquinas en Azure, AWS y Google Cloud de la misma manera."
+      },
+      "cloudpolicyCites": {
+        "title": "Incidentes unidos a cláusulas",
+        "description": "Cada incidente cita una sección de la política. Esta relación lo une a la cláusula que cita, de modo que un incidente registrado bajo la sección equivocada salta a la vista."
+      },
+      "cloudpolicyViolations": {
+        "title": "La política como vista",
+        "description": "La sección 4.2 está escrita como una vista. Enumera cada disco conectado cuya clave administra la nube, junto a la máquina en la que está el disco."
+      },
+      "cloudpolicyReview": {
+        "title": "La revisión diaria",
+        "description": "La revisión diaria clasifica cada disco conectado según las reglas de la política. Un disco sin clave administrada por el cliente puede estar cubierto por una excepción vigente. Si no lo está, su incidente está dentro de su plazo o lo ha superado, se cerró con el disco aún sin cumplir, o nunca se registró."
+      },
+      "cloudpolicyTrigger": {
+        "title": "El trigger diario",
+        "description": "Cada mañana un trigger programado ejecuta la revisión y escribe las filas del día en el historial de revisiones. Escribe por el mismo pipeline gobernado que cualquier instrucción, con el permiso de escritura de su rol."
+      },
+      "cloudpolicyTrend": {
+        "title": "Catorce días de historial",
+        "description": "El historial que guarda el trigger muestra las infracciones día a día. Los discos salen a medida que se corrigen sus incidentes, y una infracción nueva aparece el día en que surge."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Pregunte a Polly quién incumple el control",
+        "description": "Polly lee el mismo modelo gobernado que usted. Nombra los discos sin clave administrada por el cliente y la sección que la exige."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Excepciones aún vigentes",
+        "description": "Una excepción dura 90 días según la sección 4.3. Polly encuentra los discos que todavía cubre."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incidentes bajo la sección equivocada",
+        "description": "Algunos incidentes citan una sección distinta del control al que se refieren, y uno cita una sección que la política retiró."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Controles que nada verifica",
+        "description": "La política tiene controles que ninguna verificación hace cumplir. Polly compara la política con las verificaciones que ejecuta el equipo y puede redactar una vista para que un steward la añada."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Ahora como auditor",
+        "description": "El auditor lee todas las cuentas de todas las nubes."
+      },
+      "cloudpolicyOpen": {
+        "title": "Todo lo que señala la revisión",
+        "description": "Aquí está cada disco que señala la revisión, de todos los equipos."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Ahora como el equipo de pagos",
+        "description": "El equipo de pagos solo lee sus propios recursos e incidentes."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Solo sus propias filas",
+        "description": "La misma instrucción devuelve solo los discos del equipo de pagos. Las reglas de fila están en el inventario y en los incidentes, y cada vista construida sobre ellos las aplica."
+      },
+      "cloudpolicyDashboard": {
+        "title": "El panel de cumplimiento",
+        "description": "Superset lee las mismas vistas por el protocolo de Postgres de Provisa. Este es su panel de cumplimiento, con las infracciones por control."
+      },
+      "cloudpolicyRecap": {
+        "title": "Lo que ha visto",
+        "description": "Usted revisó una política en tres nubes a partir de lo que ya estaba registrado. La política es una tabla, leída por código de su propia página, y cada incidente se une a la cláusula que cita. Un trigger diario conserva el historial, y cada rol lee solo lo que sus reglas permiten, en SQL, en Polly y en Superset."
       }
     },
     "status": {
@@ -1515,6 +1747,18 @@
       "dataroom": {
         "title": "Sala de datos para una venta",
         "summary": "Un minorista que se vende da al clean team de cada postor acceso gobernado y limitado en el tiempo a sus propios sistemas, sin exportaciones: agregados, perfiles y muestras enmascaradas, y ninguna identidad de cliente sale de la sala."
+      },
+      "churnprod": {
+        "title": "Riesgo de abandono en producción",
+        "summary": "El modelo de scikit-learn de la demo de abandono, en producción. Su paquete de Python es un origen y su función es una tabla que puntúa a cada cliente en un join, con el enmascaramiento y las reglas de fila aplicados a lo que devuelve."
+      },
+      "worldcup": {
+        "title": "World Cup, un grafo",
+        "summary": "Los datos del Mundial de Wikipedia y de Kaggle no coinciden en los nombres de los países. Una breve función de Python empareja cada nombre con un LLM, y las fuentes públicas se convierten en un único grafo gobernado."
+      },
+      "cloudpolicy": {
+        "title": "Revisión de la política de nube",
+        "summary": "Una política de seguridad revisada en Azure, AWS y Google Cloud. El inventario de nube, los incidentes de ServiceNow y la propia política, leída de su página web por código, forman un solo modelo, y un trigger diario conserva el historial de la revisión."
       }
     }
   }

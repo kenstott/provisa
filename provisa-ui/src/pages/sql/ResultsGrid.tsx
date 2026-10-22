@@ -34,6 +34,7 @@ import { COL_MIN, PAGE_SIZES } from "./types";
 import { formatCell } from "./formatCell";
 import { downloadXlsx, type ProvenanceEntry, type XlsxLabels } from "./exportXlsx";
 import type { ResultsGridState } from "./useResultsGrid";
+import { useScreenGrid } from "../../mcp/screenState";
 import { TraceDetailsModal } from "../../components/telemetry/TraceDetailsModal";
 import {
   TELEMETRY_ID_RE,
@@ -60,6 +61,10 @@ interface ResultsGridProps {
   /** REQ-1937: the rows held are only part of the result (cut at a row limit). A filter then
       applies to the rows loaded, and the grid says so. */
   rowsPartial?: boolean;
+  /** REQ-2123: a row is clicked (the profile runs modal picks a run, or a measure's history). */
+  onRowClick?: (row: Record<string, unknown>) => void;
+  /** REQ-2123: the row drawn as selected. */
+  selectedRow?: (row: Record<string, unknown>) => boolean;
 }
 
 export function ResultsGrid({
@@ -70,8 +75,12 @@ export function ResultsGrid({
   exportName = "results",
   fetchAllRows,
   rowsPartial = false,
+  onRowClick,
+  selectedRow,
 }: ResultsGridProps) {
   const { t } = useTranslation();
+  // REQ-2115: Polly's read_screen reports the grid's columns and row count, never its rows.
+  useScreenGrid({ columns: grid.baseColumns, rows: totalRowCount, partial: rowsPartial });
   // Trace/span ids in any column drill down to the full span record.
   const [detail, setDetail] = useState<{ kind: TelemetryIdKind; id: string } | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -569,7 +578,17 @@ export function ResultsGrid({
                   </td>
                 </tr>
               ) : (
-                <tr key={i}>
+                <tr
+                  key={i}
+                  className={
+                    [onRowClick ? "clickable" : "", selectedRow?.(item.row) ? "row-selected" : ""]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                  aria-selected={selectedRow ? selectedRow(item.row) : undefined}
+                  onClick={onRowClick ? () => onRowClick(item.row) : undefined}
+                  style={onRowClick ? { cursor: "pointer" } : undefined}
+                >
                   {displayColumns.map((c) => {
                     const v = item.row[c];
                     const isNum = typeof v === "number";

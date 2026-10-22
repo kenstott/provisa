@@ -73,6 +73,7 @@
     "sandboxExitCreateOrg": "Organisatie maken",
     "sandboxExitLogOut": "Alleen uitloggen",
     "itemPython": "Python",
-    "itemNotebook": "Notebook"
+    "itemNotebook": "Notebook",
+    "itemContainerRegistries": "Containerregisters"
   }
 }

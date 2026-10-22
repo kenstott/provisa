@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-743 — Security
-  # Masking constant expressions must emit syntactically valid SQL for their type — numeric literals without quotes, string…
+  # Masking constant expressions must emit syntactically valid SQL for their type: numeric literals without quotes, string l…
 
   Scenario: REQ-743 default behaviour
     Given various constant mask values (null, boolean, numeric, string with apostrophe)

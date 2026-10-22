@@ -73,6 +73,7 @@
     "sandboxExitCreateOrg": "יצירת ארגון",
     "sandboxExitLogOut": "רק להתנתק",
     "itemPython": "Python",
-    "itemNotebook": "מחברת"
+    "itemNotebook": "מחברת",
+    "itemContainerRegistries": "מאגרי קונטיינרים"
   }
 }

@@ -200,13 +200,9 @@ def _inside_subquery(node: exp.Expr, stop: exp.Expr) -> bool:
 
 
 def _resolve_table_id(tbl: exp.Table, gov_ctx: GovernanceContext) -> int | None:
-    db = tbl.db
-    name = tbl.name
-    if db:
-        full = f"{db}.{name}"
-        if full in gov_ctx.table_map:
-            return gov_ctx.table_map[full]
-    return gov_ctx.table_map.get(name)
+    from provisa.compiler.naming import table_id_of
+
+    return table_id_of(tbl, gov_ctx.table_map)
 
 
 def _check_domain_access(  # REQ-039, REQ-263

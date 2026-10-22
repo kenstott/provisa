@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "File caricato più grande",
         "help": "Il file più grande che una sorgente SQLite, DuckDB, CSV o Parquet può ricevere per caricamento dal modulo della sorgente; uno più grande viene rifiutato indicando questo limite. Un file più grande è meglio leggerlo dove si trova, da un archivio di oggetti."
+      },
+      "download_roots": {
+        "label": "Directory da cui si possono scaricare i file delle sorgenti",
+        "help": "Le directory da cui il file di una sorgente CSV o Parquet può essere scaricato tramite il suo percorso su questo server, dopo averne seguito i link; nessuna per impostazione predefinita. Aggiungine una per permettere a uno steward di copiare un file al suo interno nella cartella dell'organizzazione. Un server di molte organizzazioni non copia alcun file proprio, qualunque cosa dica questa impostazione."
       }
     },
     "polly": {
@@ -815,6 +819,10 @@
       "idle_ttl": {
         "label": "Limite di inattività di una sandbox demo",
         "help": "Una sandbox demo che nessuno ha usato per questo tempo viene eliminata, con tutto ciò che contiene."
+      },
+      "demo_stores_linger": {
+        "label": "Archivi della demo mantenuti dopo l'uso",
+        "help": "Per quanto tempo i database di una demo restano attivi dopo la chiusura del suo ultimo sandbox. Se viene riaperta prima, si apre subito; dopo, vengono fermati e il visitatore successivo attende che si avviino."
       },
       "ai_base_url": {
         "label": "Endpoint IA della sandbox",

@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "Größte hochgeladene Datei",
         "help": "Die größte Datei, die eine SQLite-, DuckDB-, CSV- oder Parquet-Quelle per Upload im Quellformular erhalten kann; eine größere wird unter Nennung dieses Limits abgelehnt. Eine größere Datei liest man besser dort, wo sie liegt, aus einem Objektspeicher."
+      },
+      "download_roots": {
+        "label": "Verzeichnisse, aus denen Quelldateien heruntergeladen werden dürfen",
+        "help": "Die Verzeichnisse, aus denen die Datei einer CSV- oder Parquet-Quelle über ihren Pfad auf diesem Server heruntergeladen werden darf, nachdem ihre Links aufgelöst sind; standardmäßig keines. Fügen Sie eines hinzu, damit ein Steward eine Datei darunter in den Ordner der Organisation kopieren kann. Ein Server mit vielen Organisationen kopiert keine eigene Datei, was hier auch steht."
       }
     },
     "polly": {
@@ -815,6 +819,10 @@
       "idle_ttl": {
         "label": "Inaktivitätsgrenze einer Demo-Sandbox",
         "help": "Eine Demo-Sandbox, die so lange niemand benutzt hat, wird mit allem darin gelöscht."
+      },
+      "demo_stores_linger": {
+        "label": "Demo-Speicher nach Gebrauch behalten",
+        "help": "Wie lange die Datenbanken einer Demo laufen, nachdem ihre letzte Sandbox geschlossen wurde. Wird sie vorher wieder geöffnet, öffnet sie sofort; danach werden sie gestoppt, und der nächste Besucher wartet, während sie starten."
       },
       "ai_base_url": {
         "label": "KI-Endpunkt der Sandbox",

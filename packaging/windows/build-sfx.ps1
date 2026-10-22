@@ -115,8 +115,8 @@ if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
 if ($LASTEXITCODE -ne 0) { throw "provisa-notebook assets missing from the bundled native runtime" }
 & $RuntimePy -c "import mcp_proxy" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "mcp-proxy missing from the bundled native runtime after install" }
-# Fail the build loudly if the control plane (pgserver) or its driver (psycopg) is missing.
-& $RuntimePy -c "import pgserver, psycopg" 2>&1 | Out-Null
+# Fail the build loudly if the control plane (pixeltable-pgserver) or its driver (psycopg) is missing.
+& $RuntimePy -c "import pixeltable_pgserver, psycopg" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "pgserver/psycopg missing from the bundled native runtime" }
 
 # Place the built UI where ui_server resolves it: <site-packages>\static.

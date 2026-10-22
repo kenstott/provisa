@@ -18,7 +18,8 @@
 # SQL and over GraphQL; then the demo's notebook (notebook.ipynb, REQ-2084) run in the Notebook
 # tab -- the same features read into pandas as the analyst, a model trained and the customers most
 # at risk listed, email addresses still masked; and a recap, with how a desktop notebook reads
-# large pulls over Arrow Flight with the same code.
+# large pulls over Arrow Flight with the same code, and the churnprod demo, where the model runs in
+# production, opened from it.
 landing:
   route: /notebook
   capability: query_development
@@ -37,11 +38,14 @@ steps:
   route: /relationships
   capability: create_relationship
   relationship: USED_BY
+# The header's role: every surface after it (SQL, GraphQL, the notebook) reads as the analyst.
 - key: churnAnalyst
-  route: /sql
+  route: /query
   capability: query_development
   role: analyst
 - key: churnFeatures
+  route: /sql
+  capability: query_development
   sql: >-
     SELECT f.customer_id, f.email, f.plan, f.tenure_months, f.logins_per_month, f.tickets,
       f.churned
@@ -56,7 +60,12 @@ steps:
   route: /notebook
   capability: query_development
   notebook: true
+# Back to every role in the header: the analyst reads no tables page.
+- key: churnEveryRole
+  role: all
 - key: churnRecap
   route: /tables
   capability: table_registration
   table: churn-db.usage
+  # The same model in production: the churnprod demo, opened from the recap.
+  demo: churnprod

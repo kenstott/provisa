@@ -281,6 +281,21 @@ async def test_apply_rejects_an_invalid_config(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_apply_refuses_a_variable_the_deployment_has_not_set_by_its_name(monkeypatch):
+    """A converted handler URL reads a variable the report names to set before applying (REQ-417);
+    applied unset, the import is refused naming it, not answered with a server error."""
+    _grant(monkeypatch, {"org_settings"})
+    _wire_apply(monkeypatch)
+    monkeypatch.delenv("PROVISA_TEST_UNSET_HANDLER", raising=False)
+    config = yaml.safe_load(CONFIG_YAML)
+    config["sources"][0]["host"] = "${env:PROVISA_TEST_UNSET_HANDLER}"
+    with pytest.raises(ApiError) as exc:
+        await ir.apply_import(ir.ImportApplyRequest(config_yaml=yaml.dump(config)), _request())
+    assert exc.value.status_code == 400
+    assert "PROVISA_TEST_UNSET_HANDLER" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_apply_requires_org_settings(monkeypatch):
     _grant(monkeypatch, {"observability"})
     with pytest.raises(ApiError) as exc:

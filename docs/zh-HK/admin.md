@@ -148,7 +148,7 @@ mutation {
 
 ### AI 關係探索 {: #ai-relationship-discovery }
 
-經 REST 觸發由 Claude 驅動的外部索引鍵分析：
+經 REST 請 Claude 提出外部索引鍵候選：
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -333,7 +333,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-管理 API 隨附 GraphiQL，可在瀏覽器中經 `GET /admin/graphql` 開啟。用它可互動式地探索完整的管理結構描述。
+管理 API 隨附 GraphiQL，可在瀏覽器中經 `GET /admin/graphql` 開啟。用它可瀏覽完整的管理結構描述並試用呼叫。
 
 ## ops 網域的管理檢視 {: #ops-domain-management-views }
 

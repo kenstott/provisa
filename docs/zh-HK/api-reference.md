@@ -68,8 +68,6 @@ GET /auth/provider-type
 
 **回應快取：** 透過操作層級指令 `@cached` 按請求選擇啟用（`query @cached(ttl: 60) { ... }`，`ttl` 可選）；同一指令亦適用於經 Arrow Flight 發送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行選擇啟用，gRPC 以呼叫元數據 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 選擇啟用。沒有該指令時，請求既不讀取也不寫入回應快取。回應標頭 `X-Provisa-Cache` 報告 `HIT` 或 `MISS`。請參閱[快取](configuration.md#per-request-opt-in)。
 
-<a id="response-cache-request-headers"></a>
-
 #### 回應快取請求標頭 {: #response-cache-request-headers }
 
 `/data/graphql`、`/data/cypher`、Neo4j Query API（`/db/{database}/query/v2`）、`/data/rest` 和 `/data/jsonapi` 也接受以請求標頭形式選擇啟用。下列每種形式的行為都與 `@cached(ttl: N)` 相同：
@@ -1627,7 +1625,7 @@ mutation {
 
 ### 依目錄目標劃分的數據產品支援 {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` 會抵達每個配接器，但只有其平台具備原生數據產品概念的配接器，才會將其發佈為一級實體；其餘配接器只發佈成員資料表（已依上述篩選），不含產品分組。
+`MetadataSnapshot.data_products` 會抵達每個配接器，但只有其平台具備原生數據產品概念的配接器，才會將其發佈為獨立實體；其餘配接器只發佈成員資料表（已依上述篩選），不含產品分組。
 
 | 目標 | 數據產品呈現方式 |
 | --- | --- |
@@ -1638,4 +1636,4 @@ mutation {
 | Collibra | 每個產品成為 `Data Product` 社群類型的資產，透過 `Data Product groups Table` 關係連結至其成員資料表。 |
 | Atlan | 以自訂 `DataProduct` typedef 猜測方式發佈 —— Atlan 對此概念並無文件化的穩定類型名稱，因此此對映屬盡力而為。 |
 | Apache Atlas | 以自訂 `provisa_data_product` typedef 及 `provisa_data_product_members` 關係發佈 —— Atlas 並無原生數據產品實體類型。 |
-| OpenLineage | 並非一級實體 —— 成員資料表帶有一個指名擁有產品的 `provisa_data_product` 自訂面向。 |
+| OpenLineage | 沒有獨立實體；成員資料表帶有一個指名擁有產品的 `provisa_data_product` 自訂面向。 |

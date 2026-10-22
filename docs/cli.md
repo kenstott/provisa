@@ -253,7 +253,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 | --- | --- | --- |
 | `--env` | yes | Name of the new environment |
 | `--from` | no | Environment to start from; default `prod` |
-| `--data-mode` | yes | `inherit`, `unbound`, `test_fake` or `test_synthetic`: the source's connections by reference, none until it binds its own, or test data |
+| `--data-mode` | yes | `inherit`, `unbound`, `test_fake` or `test_synthetic`: the connections of the `--from` environment, copied as written there, none until it binds its own, or test data |
 | `--mutation-handling` | no | `refused`, `reversible` or `direct`; default `refused` |
 | `--expires-at` | no | ISO-8601 instant after which the environment is deleted |
 

@@ -24,6 +24,7 @@ import secrets
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any
 
 from provisa.cache.values_cte import InlineRows
@@ -137,16 +138,46 @@ def is_native_read(table: dict, types: dict[str, str]) -> bool:
     )
 
 
+def _kept_for_good(state, table: dict) -> bool:
+    """REQ-2031: whether ``table`` never expires and its replica has landed in this engine's store
+    (``ReplicaRoutes.kept_for_good``). Such a table is read only from its replica: nothing reads
+    it in place or runs it, whatever its kind."""
+    key = (table["source_id"], table["schema_name"], table["table_name"])
+    return key in state.replica_routes.kept_for_good
+
+
 def _pipeline_tables(state, table_ids: Iterable[int]) -> dict[str, dict]:
     """The tables the statement reads that Provisa reads itself (``is_native_read``), by their
-    sql names."""
+    sql names. A table kept for good is not one of them: its reads go to its replica, so a frozen
+    code table never starts its worker (REQ-2031)."""
     ids = set(table_ids)
     types = getattr(state, "source_types", None) or {}
     return {
         _sql_name(t["table_name"]): t
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and is_native_read(t, types)
+        if t.get("id") in ids and is_native_read(t, types) and not _kept_for_good(state, t)
     }
+
+
+def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str | None]:
+    """REQ-2031: each parameter of a native-read table the statement reads that is kept for good
+    (``_nf_<name>``), and the landed column its value filters: the table's column of the same
+    name, or None when it has none. Its rows are landed, never fetched under the parameter, so a
+    condition on the parameter filters them instead (``nf_extractor.extract_nf_args``)."""
+    from provisa.core.parameters import NF_PREFIX, is_parameter
+
+    ids = set(table_ids)
+    types = getattr(state, "source_types", None) or {}
+    filters: dict[str, str | None] = {}
+    for t in getattr(state, "tables", None) or []:
+        if t.get("id") not in ids or not is_native_read(t, types) or not _kept_for_good(state, t):
+            continue
+        landed = {c["column_name"] for c in t["columns"] if not is_parameter(c)}
+        for c in t["columns"]:
+            if is_parameter(c):
+                name = c["column_name"].removeprefix(NF_PREFIX)
+                filters[c["column_name"]] = name if name in landed else None
+    return filters
 
 
 #: REQ-1986: the scratch tables landed for the statement being planned -- rows of a table with a
@@ -327,34 +358,126 @@ async def drop_scratch(scratch, state) -> None:  # REQ-1986
 
 
 def _parameter_tables(state, table_ids: Iterable[int]) -> dict[str, list]:
-    """The parameter columns of each registered table the statement reads, by its sql name."""
+    """The parameter columns of each registered table the statement reads, by its sql name. A
+    native-read table kept for good has none to give: its landed rows are read whole, a condition
+    on a parameter filtering them (``frozen_parameter_filters``, REQ-2031)."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.core.parameters import is_parameter
 
     ids = set(table_ids)
+    types = getattr(state, "source_types", None) or {}
     return {
         apply_sql_name(t["table_name"]): [c for c in t["columns"] if is_parameter(c)]
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids
+        if t.get("id") in ids and not (is_native_read(t, types) and _kept_for_good(state, t))
     }
 
 
 def _missing_parameters(
-    params_of: dict[str, list], tn: str, endpoint, nf_args: dict | None, ctx
+    params_of: dict[str, list],
+    tn: str,
+    endpoint,
+    nf_args: dict | None,
+    ctx,
+    feed: "_Feed | None" = None,
 ) -> list[str]:
     """The required parameters of ``tn`` the statement gives no value (REQ-1986). An OpenAPI
-    parameter a model join feeds from its parent's keys is given by the join."""
+    parameter a model join feeds from its parent's keys is given by the join, and so is a
+    parameter the relationship ``feed`` feeds from the parent the statement reads (REQ-2099)."""
     from provisa.api_source.fill_cache import joined_from
     from provisa.compiler.naming import apply_sql_name
-    from provisa.core.parameters import missing_parameters
+    from provisa.core.parameters import NF_PREFIX, missing_parameters
 
     columns = params_of.get(apply_sql_name(tn))
     if not columns:
         return []
+    fed = set() if feed is None else {apply_sql_name(p) for p in feed.parameters}
     return missing_parameters(
         columns,
         nf_args,
-        lambda column: endpoint is not None and joined_from(endpoint, column, ctx) is not None,
+        lambda column: (
+            (endpoint is not None and joined_from(endpoint, column, ctx) is not None)
+            or apply_sql_name(column.removeprefix(NF_PREFIX)) in fed
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class _Feed:
+    """REQ-2099: a relationship that feeds a parameterized table's parameters from its source
+    table, which the statement also reads: ``parameters`` maps each fed parameter to the source
+    column whose value it is given, and ``source`` is the source table as the role sees it."""
+
+    relationship: str
+    parameters: dict[str, str]
+    source: Any  # the source table's TableMeta in the statement's model
+
+
+def _feed_of(state, ctx, table: dict, table_ids: Iterable[int]) -> _Feed | None:
+    """The relationship feeding ``table``'s parameters from a table the statement reads, or None.
+    Only a table of the role's model feeds one: the source is read as the role reads it."""
+    if ctx is None:
+        return None
+    ids = set(table_ids)
+    metas = {m.table_id: m for m in ctx.tables.values()}
+    for rel in getattr(state, "relationships", None) or []:
+        if not rel["parameters"] or rel.get("target_table_id") != table["id"]:
+            continue
+        source = metas.get(rel["source_table_id"])
+        if source is not None and source.table_id in ids:
+            return _Feed(rel["id"], dict(rel["parameters"]), source)
+    return None
+
+
+async def _fed_argument_sets(feed: _Feed, role_id: str) -> list[dict]:
+    """The distinct argument sets ``feed`` gives: its source columns read through the one
+    pipeline as ``role_id`` reads them (REQ-2099), so the role's row rules choose the rows and its
+    masks the values the code is given."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.sql_rewrite import semantic_ref
+    from provisa.core.request_context import current_session_vars
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
+
+    def _q(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    projection = ", ".join(
+        f"{_q(apply_sql_name(column))} AS {_q(parameter)}"
+        for parameter, column in feed.parameters.items()
+    )
+    sql = f"SELECT DISTINCT {projection} FROM {semantic_ref(feed.source)}"
+    plan = await _govern_and_route(sql, role_id, session_vars=current_session_vars.get())
+    result = await _execute_plan(plan)
+    return [dict(zip(result.column_names, row, strict=True)) for row in result.rows]
+
+
+async def _mat_fed_table(
+    tn: str,
+    table: dict,
+    feed: _Feed,
+    role_id: str,
+    state,
+    cache_rewrites: dict,
+    values_cte_entries: dict,
+    nf_args: dict | None,
+) -> None:
+    """A code table joined over a relationship that feeds its parameters (REQ-2099): called once
+    per distinct argument set the source gives the role, with the statement's own arguments for
+    the parameters the relationship does not feed, and landed together for the engine's join,
+    kept under those argument sets for the table's TTL."""
+    from provisa.codesource.table import read_each
+
+    given = dict(nf_args or {})
+    sets = [{**given, **fed} for fed in await _fed_argument_sets(feed, role_id)]
+    key = {"fed_by": feed.relationship, "sets": json.dumps(sets, sort_keys=True, default=str)}
+    await _land_per_statement(
+        tn,
+        table,
+        state,
+        cache_rewrites,
+        values_cte_entries,
+        key,
+        lambda: read_each(state, table, sets),
     )
 
 
@@ -1145,6 +1268,7 @@ async def _materialize_api_to_engine_cache(
     table_ids: Iterable[int],
     ctx=None,
     read_args: dict | None = None,
+    role_id: str | None = None,
 ) -> tuple[dict, dict, dict[str, str]]:
     """Materialize API-backed tables into the engine cache (VARCHAR columns) before the engine SQL runs.
 
@@ -1160,6 +1284,9 @@ async def _materialize_api_to_engine_cache(
     ``table_ids`` are the registered tables the statement reads, as the pipeline resolved them:
     the hot rows substituted are theirs, and rows fetched here are held under them.
 
+    ``role_id``: the role the statement is governed for, as which a relationship that feeds a
+    code table's parameters reads its source (REQ-2099).
+
     ``read_args``: each read the statement names for itself (nf_extractor.separate_parameter_reads
     -- one table read under several sets of arguments), as (the table it reads, its arguments).
     Such a read is answered under its own arguments and put in for itself alone.
@@ -1169,6 +1296,7 @@ async def _materialize_api_to_engine_cache(
         ``nf_extractor.apply_dropped_tables`` raises the reason for it. A remote that fails is
         never dropped: its error fails the query (REQ-1661, amended 2026-09-30).
     """
+    from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
 
     cache_rewrites: dict = {}
@@ -1205,9 +1333,17 @@ async def _materialize_api_to_engine_cache(
         # A read named for itself is its table's, under its own arguments; its rows are put in
         # under its own name, so the statement's other reads of the table keep theirs.
         table, nf_args = (read_args or {}).get(tn, (tn, statement_args))
+        pipeline_table = pipelines.get(_sql_name(table))
+        # REQ-2099: a code table the statement joins to a table whose relationship feeds its
+        # parameters is given them by the join.
+        feed = (
+            _feed_of(state, ctx, pipeline_table, table_ids)
+            if pipeline_table is not None and is_code_table(pipeline_table, state.source_types)
+            else None
+        )
         # REQ-1986: a table read without a value for a required parameter is refused before
         # anything is sent to its source -- every source kind, one rule.
-        missing = _missing_parameters(params_of, table, endpoints.get(table), nf_args, ctx)
+        missing = _missing_parameters(params_of, table, endpoints.get(table), nf_args, ctx, feed)
         if missing:
             _refuse_or_drop(exec_sql, tn, missing, dropped_tables)
             continue
@@ -1215,7 +1351,19 @@ async def _materialize_api_to_engine_cache(
             continue
         # REQ-1980: a MongoDB pipeline table is run by the native reader on every engine; no
         # engine connector runs a pipeline.
-        pipeline_table = pipelines.get(_sql_name(table))
+        if feed is not None:
+            assert pipeline_table is not None and role_id is not None
+            await _mat_fed_table(
+                tn,
+                pipeline_table,
+                feed,
+                role_id,
+                state,
+                cache_rewrites,
+                values_cte_entries,
+                nf_args,
+            )
+            continue
         if pipeline_table is not None:
             await _mat_pipeline_table(
                 tn, pipeline_table, state, cache_rewrites, values_cte_entries, nf_args

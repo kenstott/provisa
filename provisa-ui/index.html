@@ -144,14 +144,14 @@
             spawnR = 0,
             coreR = 0;
 
-          // The P logo's on-screen centre — the halo converges here so the mark sits exactly in it.
-          // Measured from the SVG rect (canvas is inset:0, so client coords == viewport coords);
-          // falls back to the prior fixed anchor if the mark isn't laid out yet.
+          // The centre of the P's loop (viewBox 50,35 of 100) — the halo converges here so the loop
+          // sits exactly in it. Measured from the SVG rect (canvas is inset:0, so client coords ==
+          // viewport coords); falls back to the prior fixed anchor if the mark isn't laid out yet.
           var markSvg = document.querySelector(".provisa-splash-mark svg");
           function markCenter() {
             if (markSvg) {
               var r = markSvg.getBoundingClientRect();
-              if (r.width) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+              if (r.width) return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.35 };
             }
             return { x: W / 2, y: H * 0.45 };
           }
@@ -201,6 +201,9 @@
           }
 
           function frame() {
+            // The status note appears later and reflows the centred column, moving the mark;
+            // follow it every frame so the loop stays centred in the halo.
+            reanchor();
             // Fade the prior frame → flowing streaks. Low alpha = long-lived rivers.
             ctx.fillStyle = "rgba(15,17,23,0.085)";
             ctx.fillRect(0, 0, W, H);

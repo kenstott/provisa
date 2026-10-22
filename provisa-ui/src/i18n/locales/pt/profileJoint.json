@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "Nuvem conjunta de {{table}}",
+    "none": "Esta execução não construiu nenhuma rede de dependências, portanto não contém contagens conjuntas.",
+    "canvasLabel": "Nuvem 3D das linhas de uma coluna em relação às suas colunas pai",
+    "column": "Coluna",
+    "colorBy": "Colorir por",
+    "colorRows": "Linhas",
+    "colorLift": "Lift",
+    "legendRows": "linhas na célula",
+    "legendLift": "menos que sob independência · tantas quanto · mais",
+    "decile": "D{{n}}",
+    "nullSlot": "nulo",
+    "otherSlot": "+{{count}} mais",
+    "tipRows": "{{rows}} linhas · {{pct}} · lift ×{{lift}}",
+    "explainOne": "{{column}} (vertical) em relação ao seu pai {{parent}} (horizontal). Os números são divididos em decis de posto.",
+    "explainTwo": "{{column}} (vertical) em relação aos seus pais {{parent1}} (horizontal) e {{parent2}} (profundidade). Os números são divididos em decis de posto.",
+    "stat_rows": "Linhas",
+    "stat_cells": "Células ocupadas",
+    "stat_mi": "Informação mútua (nats)",
+    "stat_uncertainty": "Incerteza eliminada",
+    "over": "Mais vezes que sob independência",
+    "under": "Menos vezes que sob independência",
+    "noneListed": "Nenhuma com 0,5% das linhas ou mais.",
+    "note": "O lift é a razão entre as linhas de uma célula e as linhas que ela conteria se as colunas fossem independentes. O tamanho da esfera é o número de linhas."
+  }
+}

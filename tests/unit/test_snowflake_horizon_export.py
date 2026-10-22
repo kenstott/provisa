@@ -52,6 +52,11 @@ class _FakeDataProduct:
     publish: bool = False
     documentation_url: str | None = None
 
+    def described(self) -> str:
+        """DataProductAsset.described: the purpose and the other ODPS fields (REQ-2118); this
+        product sets no field but its purpose."""
+        return self.description
+
 
 def _table_ref(source_id: str, schema: str, table: str) -> AssetRef:
     return AssetRef(kind=AssetKind.TABLE, parts=(source_id, schema, table))

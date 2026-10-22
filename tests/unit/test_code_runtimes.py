@@ -74,16 +74,37 @@ class _Fetcher:
 
 
 def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on():
-    assert set(code_runtimes.RUNTIMES) == {"node", "bun", "deno", "python", "uv"}
+    assert set(code_runtimes.RUNTIMES) == {
+        "node",
+        "bun",
+        "deno",
+        "python",
+        "uv",
+        "pyarrow",
+        "apache-arrow",
+    }
     for name, pin in code_runtimes.RUNTIMES.items():
+        # REQ-2098: what goes into an image is pinned for 64-bit ARM Linux too; uv installs on
+        # the server, for any image's platform, and runs nowhere else.
+        image = set() if name == "uv" else {code_runtimes.LINUX_ARM64}
         assert set(pin.assets) == {
             code_runtimes.DARWIN_ARM64,
             code_runtimes.LINUX_X64,
             code_runtimes.WINDOWS_X64,
+            *image,
         }
         for asset in pin.assets.values():
             assert len(asset.sha256) == 64 and int(asset.sha256, 16) >= 0
             assert pin.url(asset).startswith("https://")
+
+
+def test_a_pinned_wheel_is_unpacked_as_the_zip_it_is(tmp_path, monkeypatch):
+    """REQ-2098: the host's pyarrow is a wheel, unpacked onto the host's path."""
+    data = _zip({"pyarrow/__init__.py": b"", "pyarrow/lib.py": b""})
+    _pin(monkeypatch, "pyarrow", "ab/cd/pyarrow-9-cp312.whl", data, "pyarrow/__init__.py")
+    resolver = CodeRuntimeResolver(cache_root=tmp_path, fetcher=_Fetcher(data), host=LINUX_X64)
+    marker = resolver.resolve("pyarrow")
+    assert (marker.parent / "lib.py").is_file()
 
 
 def test_a_runtime_is_fetched_checked_extracted_and_made_executable(tmp_path, monkeypatch):
@@ -153,3 +174,57 @@ def test_an_unknown_runtime_and_an_unpinned_platform_are_refused_by_name(tmp_pat
 def test_only_https_is_fetched():
     with pytest.raises(RuntimeUnavailable, match="non-https"):
         code_runtimes.fetch_https("http://example.test/node.tar.gz")
+
+
+def test_two_resolutions_at_once_in_one_process_each_extract_whole(tmp_path, monkeypatch):
+    """Two code sources prepared at once resolve the host's pyarrow on two threads of one process.
+    Staged under one name (the process id), the second's start cleared what the first had
+    extracted, and the first moved the second's half-written directory into place: the cache
+    held pyarrow without libarrow_acero.so, for good. Here the second is held half-way through its
+    extraction while the first finishes."""
+    import threading
+
+    entries = {f"pyarrow/lib{i}.so": bytes([i]) * 64 for i in range(8)}
+    entries = {"pyarrow/__init__.py": b"", **entries}
+    data = _zip(entries)
+    _pin(monkeypatch, "pyarrow", "ab/cd/pyarrow-9-cp312.whl", data, "pyarrow/__init__.py")
+    names = list(entries)
+    half = _zip({n: entries[n] for n in names[: len(names) // 2]})
+    rest = _zip({n: entries[n] for n in names[len(names) // 2 :]})
+    first_extracted, second_half_way, first_done = (threading.Event() for _ in range(3))
+    extract = code_runtimes._extract
+
+    def interleaved(filename: str, archive: bytes, dest) -> None:
+        if threading.current_thread().name == "first":
+            extract(filename, archive, dest)
+            first_extracted.set()
+            assert second_half_way.wait(10)
+        else:
+            extract(filename, half, dest)
+            second_half_way.set()
+            assert first_done.wait(10)
+            extract(filename, rest, dest)
+
+    monkeypatch.setattr(code_runtimes, "_extract", interleaved)
+    found: dict[str, object] = {}
+
+    def resolve() -> None:
+        resolver = CodeRuntimeResolver(cache_root=tmp_path, fetcher=_Fetcher(data), host=LINUX_X64)
+        try:
+            found[threading.current_thread().name] = resolver.resolve("pyarrow")
+        except Exception as exc:  # recorded for the assertion below
+            found[threading.current_thread().name] = exc
+
+    first = threading.Thread(target=resolve, name="first")
+    second = threading.Thread(target=resolve, name="second")
+    first.start()
+    assert first_extracted.wait(10)
+    second.start()
+    first.join(10)
+    first_done.set()
+    second.join(10)
+    marker = tmp_path / "code" / "pyarrow" / "9.9.9" / "pyarrow" / "__init__.py"
+    assert found == {"first": marker, "second": marker}
+    home = marker.parent.parent
+    assert sorted(str(p.relative_to(home)) for p in home.rglob("*") if p.is_file()) == sorted(names)
+    assert [p.name for p in home.parent.iterdir()] == ["9.9.9"]  # no staging left behind

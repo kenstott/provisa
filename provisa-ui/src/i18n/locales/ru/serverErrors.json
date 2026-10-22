@@ -441,7 +441,9 @@
       "role_session_var_name_invalid": "Имя значения сеанса '{{name}}' может содержать только буквы, цифры и символы подчёркивания и не должно начинаться с цифры",
       "role_session_var_name_repeated": "Значение сеанса '{{name}}' указано дважды",
       "role_description_missing": "Роли '{{role}}' нужно описание её назначения",
-      "rls_rule_description_missing": "Правилу строк нужно описание его назначения"
+      "rls_rule_description_missing": "Правилу строк нужно описание его назначения",
+      "file_download_refused": "Источник {{source}}: {{reason}}",
+      "source_created_without_table": "Источник {{source}} создан; его таблица не настроена: {{reason}}"
     },
     "secrets": {
       "name_refused": "{{name}} не является именем в пределах секретов этой организации в {{service}}: имя задаётся относительно организации и не может выходить за её пределы",

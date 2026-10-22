@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build mongo_fdw + its bundled mongo-c-driver 1.30.2 / json-c against the cached embedded PG 16.2,
+# Build mongo_fdw + its bundled mongo-c-driver 1.30.2 / json-c against the cached embedded PG 16.11,
 # into ~/.cache/provisa-fdw (restart-safe: a second run is a no-op once the artifacts exist).
 #
 # mongo_fdw is REQ-1177's named PG conformance target. This reproduces the artifacts the mongo E2E
@@ -31,7 +31,7 @@ flip_cmp0042() {
 }
 
 CACHE="${PROVISA_FDW_CACHE:-$HOME/.cache/provisa-fdw}"
-PGCONFIG="$CACHE/pg162/bin/pg_config"
+PGCONFIG="$CACHE/pg1611/bin/pg_config"
 PREFIX="$CACHE/mongo_fdw_deps"     # mongo-c-driver + json-c install prefix
 SRC="$CACHE/mongo_fdw_src"
 SHIM="$CACHE/_shim"
@@ -93,14 +93,14 @@ EOF
 
 # Already built? (both driver dylibs + the FDW module + its control file present)
 if [ -f "$PREFIX/lib/$MONGOC_LIB" ] \
-   && [ -f "$CACHE/pg162/lib/postgresql/mongo_fdw.$MODULE_SUFFIX" ] \
-   && [ -f "$CACHE/pg162/share/postgresql/extension/mongo_fdw.control" ]; then
+   && [ -f "$CACHE/pg1611/lib/postgresql/mongo_fdw.$MODULE_SUFFIX" ] \
+   && [ -f "$CACHE/pg1611/share/postgresql/extension/mongo_fdw.control" ]; then
   echo "mongo_fdw artifacts already cached — nothing to build"
   emit_bundle
   exit 0
 fi
 
-[ -x "$PGCONFIG" ] || { echo "FAIL: cached PG 16.2 not built ($PGCONFIG missing); build it first"; exit 1; }
+[ -x "$PGCONFIG" ] || { echo "FAIL: cached PG 16.11 not built ($PGCONFIG missing); build it first"; exit 1; }
 mkdir -p "$CACHE" "$SHIM" "$PREFIX"
 
 # autogen.sh hardcodes wget; provide a curl-backed shim when wget is unavailable.
@@ -134,7 +134,7 @@ if [ ! -f "$PREFIX/lib/$MONGOC_LIB" ]; then
   bash ./autogen.sh
 fi
 
-echo "=== build mongo_fdw against embedded PG 16.2 ==="
+echo "=== build mongo_fdw against embedded PG 16.11 ==="
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 make USE_PGXS=1 PG_CONFIG="$PGCONFIG" clean || true
 make USE_PGXS=1 PG_CONFIG="$PGCONFIG" LDFLAGS_SL="$RPATH_FLAGS"

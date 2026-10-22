@@ -68,8 +68,6 @@ GET /auth/provider-type
 
 **מטמון תגובות:** הצטרפות לפי בקשה באמצעות הנחיית הפעולה `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` אופציונלי); אותה הנחיה חלה על GraphQL הנשלח דרך Arrow Flight. Cypher מצטרף בשורה `// @provisa cache=true` או `// @provisa cache_ttl=N`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache: true` או `x-provisa-cache-ttl: N`. בלעדיה הבקשה אינה קוראת ממטמון התגובות ואינה כותבת אליו. כותרת התגובה `X-Provisa-Cache` מדווחת `HIT` או `MISS`. ראו [מטמון](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### כותרות בקשה למטמון התגובות {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, ה-Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` ו-`/data/jsonapi` מקבלים את ההצטרפות גם ככותרת בקשה. כל אחת מהצורות שלהלן מתנהגת כמו `@cached(ttl: N)`:
@@ -1627,7 +1625,7 @@ mutation {
 
 ### תמיכת מוצר נתונים לפי יעד קטלוג {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` מגיע לכל מתאם, אך רק מתאמים שהפלטפורמה שלהם בעלת מושג מוצר-נתונים ילידי מפרסמים אותו כישות מדרגה ראשונה; השאר מפרסמים את טבלאות החבר (שכבר סוננו כאמור) ללא קיבוץ מוצר.
+`MetadataSnapshot.data_products` מגיע לכל מתאם, אך רק מתאמים שהפלטפורמה שלהם בעלת מושג מוצר-נתונים ילידי מפרסמים אותו כישות בפני עצמה; השאר מפרסמים את טבלאות החבר (שכבר סוננו כאמור) ללא קיבוץ מוצר.
 
 | יעד | ייצוג מוצר נתונים |
 | --- | --- |
@@ -1638,4 +1636,4 @@ mutation {
 | Collibra | כל מוצר הופך לנכס מסוג קהילת `Data Product`, מקושר לטבלאות החבר שלו דרך יחס `Data Product groups Table`. |
 | Atlan | מתפרסם כניחוש typedef מותאם `DataProduct` — ל-Atlan אין שם סוג יציב מתועד למושג זה, כך שהמיפוי הוא במיטב המאמץ. |
 | Apache Atlas | מתפרסם כ-typedef מותאם `provisa_data_product` עם יחס `provisa_data_product_members` — ל-Atlas אין סוג ישות מוצר-נתונים ילידי. |
-| OpenLineage | לא ישות מדרגה ראשונה — טבלאות חבר נושאות Facet מותאם `provisa_data_product` הנוקב במוצר הבעלים. |
+| OpenLineage | אין ישות נפרדת; טבלאות חבר נושאות Facet מותאם `provisa_data_product` הנוקב במוצר הבעלים. |

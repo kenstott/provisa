@@ -65,7 +65,7 @@ sources:
   type: postgresql
   host: ${env:DATAVAULT_ORDERS_HOST:-localhost}
   port: ${env:DATAVAULT_ORDERS_PORT:-29232}
-  database: orders
+  database: orders${env:DATAVAULT_ORDERS_NS}
   username: provisa
   password: provisa
   description: The order system
@@ -73,7 +73,7 @@ sources:
   type: postgresql
   host: ${env:DATAVAULT_CRM_HOST:-localhost}
   port: ${env:DATAVAULT_CRM_PORT:-29233}
-  database: crm
+  database: crm${env:DATAVAULT_CRM_NS}
   username: provisa
   password: provisa
   description: The CRM

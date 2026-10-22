@@ -163,6 +163,22 @@ def check_directory(directory: Path) -> None:
         check_runs_here(BundleManifest.read(json.loads(record.read_text())), running_provisa())
 
 
+def link_declared(directory: Path, beside: Path) -> None:
+    """Link into ``beside`` what the config in ``directory`` declares beside it: its replica rows
+    (REQ-2089), its code archives (REQ-2101) and its secrets (REQ-2095). Each is read from the
+    directory of the config served, so a copy of the config served from elsewhere (the bundle
+    build's answering config, a test server's) is given them where it is."""
+    from provisa.codesource.declared_code import CODE_DIRECTORY
+    from provisa.core.demo_secrets import FILE as SECRETS_FILE
+    from provisa.federation.declared_replica_rows import ROWS_DIR
+
+    for folder in (ROWS_DIR, CODE_DIRECTORY):
+        if (directory / folder).is_dir():
+            (beside / folder).symlink_to((directory / folder).resolve(), target_is_directory=True)
+    if (directory / SECRETS_FILE).is_file():
+        (beside / SECRETS_FILE).symlink_to((directory / SECRETS_FILE).resolve())
+
+
 #: Where the project publishes its demos (demo-bundles.yml): what ``start-ui-install.sh --demo``
 #: and a deployment's sandbox tier pull from unless told another registry (a test's own).
 PUBLISHED_AT = "https://ghcr.io/kenstott"
@@ -402,15 +418,21 @@ def _ok(response: httpx.Response, what: str) -> None:
 # -- where a deployment's demos are (REQ-2049) ----------------------------------------------------
 #
 # A deployment offering demos as bundles (the sandbox tier) names them in PROVISA_DEMO_BUNDLES. The
-# node runs each demo's own stores (scripts/demo_stores_sync.sh): it pulls the version the tier
-# wants, brings up the bundle's docker-compose.run.yml, writes the bundle's stores.env (where the
-# stores are) and marks the version ready. The tier serves the ready version; it asks for a newer
-# one by writing <name>/wanted, and records in <name>/in-use the versions its open sandboxes and
-# template read, which the node keeps running.
+# node pulls each bundle (scripts/demo_stores_sync.sh) and marks its version offered
+# (<name>/pulled); it starts the demo's stores only once the tier has asked for the demo since the
+# node started (<name>/requested, which the node clears when it starts, with <name>/ready): its
+# data is loaded into the node's shared stores, its stores.env written (where its stores are, and
+# the names of its data), and the version marked ready (<name>/ready). The tier asks for a demo at
+# its first open, and again when the registry names a version newer than the ready one (the node
+# always pulls the latest published); it records in <name>/in-use the versions its open sandboxes
+# and template read, which the node keeps. When a demo's last sandbox closes, the tier rewrites
+# <name>/requested as the time its stores are taken down (sandbox.demo_stores_linger after the
+# close); an open before then marks it requested again, and at that time the node takes its stores
+# down and clears <name>/requested and <name>/ready, so the next open asks for it again.
 
 _PKG_NAMED = Path(__file__).resolve().parents[1] / "_config" / "demo" / "named"
 _REPO_NAMED = Path(__file__).resolve().parents[2] / "demo" / "named"
-#: Touched whenever a demo's wanted version is written: the node's path unit watches this one file.
+#: Touched whenever the tier asks for a demo: the node's path unit watches this one file.
 WANTED_SIGNAL = ".wanted"
 
 
@@ -453,22 +475,62 @@ def _write(path: Path, text: str) -> None:
     staged.replace(path)
 
 
+def pulled_version(name: str) -> str | None:
+    """The version of demo ``name`` the node has pulled: the one offered."""
+    return _read(bundles_root() / name / "pulled")
+
+
 def ready_version(name: str) -> str | None:
-    """The version of demo ``name`` whose stores the node has up: the one served."""
+    """The version of demo ``name`` whose stores the node has up: the one served. The node clears
+    it when it starts (scripts/demo_stores_sync.sh --boot), before docker does, as its stores are
+    not running then."""
     return _read(bundles_root() / name / "ready")
 
 
-def want(name: str, version: str) -> None:
-    """Ask the node for ``version`` of demo ``name``: its stores are brought up, and it is served
-    once marked ready."""
-    _write(bundles_root() / name / "wanted", version)
+def request(name: str) -> None:
+    """Ask the node to bring demo ``name``'s stores up: they are started only once it is asked for
+    (its first open since the node started)."""
+    _write(bundles_root() / name / "requested", "requested")
     (bundles_root() / WANTED_SIGNAL).touch()
+
+
+#: ``<name>/requested`` once demo ``name``'s last sandbox has closed: the time its stores are
+#: taken down unless it is asked for again first (``until <epoch seconds>``).
+LINGER_PREFIX = "until "
+
+
+def linger(name: str, until: float) -> None:
+    """Demo ``name``'s last sandbox has closed: the node takes its stores down at ``until`` (epoch
+    seconds) unless it is asked for again first (scripts/demo_stores_sync.sh). A demo not asked
+    for is left as it is: none of its stores is up."""
+    marker = bundles_root() / name / "requested"
+    if marker.is_file():
+        _write(marker, f"{LINGER_PREFIX}{int(until)}")
+
+
+def hold(name: str) -> None:
+    """Demo ``name`` is opened again: one lingering since its last sandbox closed is kept up."""
+    marker = bundles_root() / name / "requested"
+    if (_read(marker) or "").startswith(LINGER_PREFIX):
+        _write(marker, "requested")
 
 
 def record_in_use(name: str, versions: set[str]) -> None:
     """The versions of demo ``name`` something on the tier still reads (its template's, its open
     sandboxes'), so the node keeps their stores up."""
     _write(bundles_root() / name / "in-use", "\n".join(sorted(versions)))
+
+
+def stores_taken_down(org_id: str) -> bool:
+    """Whether ``org_id`` is the template of a bundled demo whose stores the node has not up: none
+    started since the node started, or taken down after the linger (REQ-2049), its ready marker
+    cleared. Its work reads them, so it waits for the next open to bring them back."""
+    from provisa.core.org_ids import TEMPLATE_PREFIX, is_template_org
+
+    if not is_template_org(org_id):
+        return False
+    name = org_id[len(TEMPLATE_PREFIX) :]
+    return name in bundled_demos() and ready_version(name) is None
 
 
 def own_demo_directory(org_id: str | None) -> Path | None:
@@ -505,6 +567,25 @@ def stores_env(directory: Path) -> dict[str, str]:
             key, _, value = line.partition("=")
             values[key.strip()] = value.strip()
     return values
+
+
+def store_namespaces(directory: Path) -> dict[str, str]:
+    """The names of a demo's stores' data where the demo runs its stores itself -- its checkout's
+    or a bundle's own containers (start-ui-install.sh --demo, the bundle build, a test instance):
+    each variable a store of its run compose file names (``com.provisa.demo.ns_env``), empty. The
+    sandbox tier's node sets them for its shared stores in the bundle's stores.env
+    (scripts/demo_stores.py)."""
+    import yaml
+
+    run = directory / "docker-compose.run.yml"
+    if not run.is_file():
+        return {}
+    services = (yaml.safe_load(run.read_text()) or {}).get("services") or {}
+    return {
+        labels["com.provisa.demo.ns_env"]: ""
+        for labels in ((spec.get("labels") or {}) for spec in services.values())
+        if labels.get("com.provisa.demo.ns_env")
+    }
 
 
 def pull_into(spec: str, into: Path, registry_url: str) -> Path:

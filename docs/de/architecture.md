@@ -2,7 +2,7 @@
 
 ## Überblick {: #overview }
 
-Provisa ist eine konfigurationsgesteuerte Datenvirtualisierungsplattform: Föderation, Metriken, Ontologie und Governance aus einem einzigen Modell, für kleine Teams und große Unternehmen. Sie bietet eine einheitliche API über heterogene Datenquellen mit Governance, Sicherheit und Performance-Optimierung. Clients fragen über SQL, GraphQL oder Cypher ab; alle drei sind erstklassige Schnittstellen mit identisch angewendeter Governance.
+Provisa ist eine konfigurationsgesteuerte Datenvirtualisierungsplattform: Föderation, Metriken, Ontologie und Governance aus einem einzigen Modell, für kleine Teams und große Unternehmen. Sie bietet eine einheitliche API über heterogene Datenquellen mit Governance, Sicherheit und Performance-Optimierung. Clients fragen über SQL, GraphQL oder Cypher ab; für alle drei gilt dieselbe Governance.
 
 Das Modell ist der einzige Ort, an dem Bedeutung hinzukommt. Um es zu erweitern, registrieren Sie neue Datenquellen oder Aggregate in der Datenvirtualisierungsschicht. Das hält eine saubere Trennung aufrecht, weil nichts außerhalb der Plattform Semantik hinzufügen kann, und erst das macht echte Data Governance möglich. Der Compiler setzt es durch: Der Katalog genehmigter Beziehungen ist die maßgebliche Quelle, gleich in welcher Abfragesprache.
 
@@ -162,7 +162,7 @@ Die Federation-Engine unterstützt das Arrow-Flight-SQL-Protokoll nicht nativ. [
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-Der Provisa-Flight-Server (Port 8815) verbindet sich als ADBC-Client mit Zaychik und ermöglicht Arrow-Streaming End-to-End, ohne Ergebnisse zu materialisieren.
+Der Provisa-Flight-Server (Port 8815) verbindet sich als ADBC-Client mit Zaychik sodass Arrow durchgehend gestreamt und kein Ergebnis materialisiert wird.
 
 ### Iceberg-Ergebniskatalog {: #iceberg-results-catalog }
 
@@ -338,7 +338,7 @@ Nützlich, wenn eine Quelle seit der Registrierung erhebliche neue Daten erhalte
 
 ## Materialisierte Sichten {: #materialized-views }
 
-Materialisierte Sichten optimieren teure Abfragen transparent, indem sie Ergebnisse vorberechnen und cachen.
+Materialisierte Sichten beschleunigen teure Abfragen, indem sie deren Ergebnisse vorab berechnen. Abfragen nutzen sie, ohne geändert zu werden.
 
 ### Beziehungen als Hinweise für materialisierte Sichten {: #relationships-as-mv-hints }
 
@@ -647,7 +647,7 @@ Die `write_grants` einer Tabelle legen je Rolle und Operation fest, welche Spalt
 
 ## GraphQL-Voyager-Schema-Explorer
 
-Die Admin-UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) bettet GraphQL Voyager als interaktive Schema-Visualisierung ein. Es zeichnet das rollenbezogene Schema als navigierbares Entity-Relationship-Diagramm, mit Tabellen als Knoten und Beziehungen als Kanten. Das gezeigte Schema ist immer auf die gerade gewählte Rolle gefiltert.
+Die Admin-UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) bettet GraphQL Voyager als interaktive Schema-Visualisierung ein. Es zeichnet das rollenbezogene Schema als Entity-Relationship-Diagramm, das sich verschieben, zoomen und anklicken lässt, mit Tabellen als Knoten und Beziehungen als Kanten. Das gezeigte Schema ist immer auf die gerade gewählte Rolle gefiltert.
 
 ## Reihenfolge der Sicherheitsdurchsetzung {: #security-enforcement-order }
 

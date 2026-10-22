@@ -29,6 +29,9 @@
     "no": "नहीं",
     "typeSomethingElse": "कुछ और लिखें",
     "confirm": "पुष्टि करें",
+    "confirmed": "पुष्टि की गई — आगे बढ़ें।",
+    "cancelled": "रद्द किया गया।",
+    "chooseFile": "भेजने के लिए फ़ाइल",
     "graphCaption": "नोड: {{nodes}} · संबंध: {{relationships}}",
     "downloadPng": "PNG डाउनलोड करें",
     "openOnGraphPage": "ग्राफ़ पेज पर खोलें"

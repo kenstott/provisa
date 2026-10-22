@@ -554,14 +554,10 @@ function App() {
                                       <Route
                                         path="/lineage"
                                         element={
-                                          // REQ-1160: lineage reads the view registry and analyzes a
-                                          // statement -- a modeling surface, gated like the rest of the
-                                          // Model group. `admin` is the platform wildcard (rights.py
-                                          // PLATFORM_BYPASS_CAPABILITIES), which no org role holds, so
-                                          // gating it there denied the page to every org_admin while the
-                                          // endpoint itself requires nothing.
+                                          // REQ-1160, REQ-1628: lineage is governance metadata; the page
+                                          // asks what its endpoints ask, view_governance.
                                           <CapabilityGate
-                                            capability="table_registration"
+                                            capability="view_governance"
                                             fallback={<NotAuthorized />}
                                           >
                                             <LineagePage />
@@ -621,6 +617,7 @@ function App() {
                                           ["/admin/orgs", "cross_org"],
                                           ["/admin/ai-models", "org_settings"],
                                           ["/admin/package-registries", "org_settings"], // REQ-1984
+                                          ["/admin/container-registries", "org_settings"], // REQ-2098
                                           ["/admin/metadata-export", "org_settings"],
                                           ["/admin/import", "org_settings"], // REQ-1483
                                           ["/admin/tags", "org_settings"],

@@ -31,6 +31,26 @@ from provisa.core.demo import is_demo as _is_demo
 router = APIRouter(prefix="/setup", tags=["setup"])
 
 
+def _superuser_section() -> dict[str, str]:
+    """The break-glass account (REQ-1264), as references to the two variables the install
+    documents for it: the secret stays in the deployment's environment, never in the config."""
+    return {
+        "username": "${env:PROVISA_SUPERUSER_USERNAME}",  # reference-convention: REQ-1264
+        "password": "${env:PROVISA_SUPERUSER_PASSWORD}",  # reference-convention: REQ-1264
+    }
+
+
+def _firebase_section(project_id: str) -> dict[str, str]:
+    """Firebase's settings (REQ-1182): the project, and the service account key when the
+    deployment sets the variable the install documents for it. With none, the provider verifies
+    ID tokens by the project alone; no empty default is written in its place."""
+    section = {"project_id": project_id}
+    if os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY"):
+        # reference-convention: REQ-1182 -- the variable the Firebase install sets
+        section["service_account_key"] = "${env:FIREBASE_SERVICE_ACCOUNT_KEY}"
+    return section
+
+
 async def _seat_bootstrap_admin(user_id: str) -> None:  # REQ-1913, REQ-1297
     """Record the administrator a SINGLE-TENANT setup creates as holding platform_admin as well
     as org_admin.
@@ -72,10 +92,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
             and os.environ.get("PROVISA_SUPERUSER_USERNAME")
             and os.environ.get("PROVISA_SUPERUSER_PASSWORD")
         ):
-            cfg["auth"]["superuser"] = {
-                "username": "${env:PROVISA_SUPERUSER_USERNAME}",
-                "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
-            }
+            cfg["auth"]["superuser"] = _superuser_section()
             changed = True
         # REQ-1472: the same reconcile for the signing key. A deployment configured under an
         # external IdP before this existed has no jwt_secret, and the break-glass browser
@@ -101,10 +118,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
     if os.environ.get("PROVISA_SUPERUSER_USERNAME") and os.environ.get(
         "PROVISA_SUPERUSER_PASSWORD"
     ):
-        auth_section["superuser"] = {
-            "username": "${env:PROVISA_SUPERUSER_USERNAME}",
-            "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
-        }
+        auth_section["superuser"] = _superuser_section()
 
     # PROVISA_MULTITENANCY promotes the deployment from single-admin bootstrap to multitenant
     # onboarding: the first authenticated user still claims the platform superadmin slot, but later
@@ -122,10 +136,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
         auth_section["default_assignments"] = []
         project_id = os.environ.get("FIREBASE_PROJECT_ID", "")
         if project_id:
-            auth_section["firebase"] = {
-                "project_id": project_id,
-                "service_account_key": "${env:FIREBASE_SERVICE_ACCOUNT_KEY:-}",
-            }
+            auth_section["firebase"] = _firebase_section(project_id)
     else:
         # basic and every other IdP: the configured principal is org_admin (REQ-1297: 'admin' is a
         # retired role id). Single-tenant apply_tenancy_role_grants also grants org_admin
@@ -204,7 +215,20 @@ async def setup_status(request: Request):  # REQ-539
         # Where its tour's "Look around on my own" leaves the visitor.
         "demo_landing": demo_landing(directory),
         "demo_notebook": demo_notebook(directory),
+        # REQ-2101 (amended): the org files the demo ships (org_files/), each in the org's own
+        # folder as {files}/<name>; the core tour builds its live source from one when it is here.
+        "demo_org_files": demo_org_files(directory),
     }
+
+
+def demo_org_files(directory) -> list[str]:
+    """The org files the demo in ``directory`` ships, by their path under {files}/."""
+    from provisa.core.declared_org_files import ORG_FILES_DIRECTORY, declared_org_files
+
+    if directory is None:
+        return []
+    root = directory / ORG_FILES_DIRECTORY
+    return [p.relative_to(root).as_posix() for p in declared_org_files(directory)]
 
 
 async def _demo_directory(request: Request):
@@ -408,10 +432,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         # Drop the blanket admin default (it would admit every Firebase user).
         auth_section["bootstrap_superadmin"] = True
         auth_section["default_assignments"] = []
-        auth_section["firebase"] = {
-            "project_id": project_id,
-            "service_account_key": "${env:FIREBASE_SERVICE_ACCOUNT_KEY:-}",
-        }
+        auth_section["firebase"] = _firebase_section(project_id)
 
     cfg_path = config_path()
     cfg = read_config_for_setup()

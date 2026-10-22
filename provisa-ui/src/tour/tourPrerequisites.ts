@@ -28,6 +28,8 @@ export interface OrgHas {
   sources: ReadonlySet<string>;
   tables: ReadonlySet<string>;
   dataProducts: number;
+  /** Whether Polly has a model to answer with: a step that opens Polly is shown only then. */
+  pollyConfigured: boolean;
 }
 
 export function prerequisitesMet(needs: TourPrerequisites | undefined, has: OrgHas): boolean {

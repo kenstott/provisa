@@ -29,6 +29,14 @@ from urllib.parse import parse_qs, urlparse
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "demo_bundle.py"
 _SYNC = Path(__file__).resolve().parents[2] / "scripts" / "demo_stores_sync.sh"
+_STORES = Path(__file__).resolve().parents[2] / "scripts" / "demo_stores.py"
+_SHARED = (
+    Path(__file__).resolve().parents[2]
+    / "packaging"
+    / "linux"
+    / "demo-stores"
+    / "docker-compose.shared.yml"
+)
 _PREFIX = "/v2/test/provisa-demos/"
 
 
@@ -118,6 +126,11 @@ class DemoRegistry:
         self.store = _Store()
         self._server = ThreadingHTTPServer(("127.0.0.1", self.port), _handler(self.store))
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        # The node's shared stores, a compose project of this registry's own (the node's is
+        # provisa-demo-stores); taken down with their volumes at stop.
+        self.stores_project = f"provisa-demo-stores-{self.port}"
+        (self.kafka_port,) = lease_ports(1)
+        self._bundles: Path | None = None
 
     def start(self) -> None:
         self._thread.start()
@@ -125,6 +138,15 @@ class DemoRegistry:
     def stop(self) -> None:
         self._server.shutdown()
         self._server.server_close()
+        if self._bundles is not None:
+            subprocess.run(
+                ["docker", "compose", "-p", self.stores_project, "-f", str(_SHARED)]
+                + ["down", "-v", "--remove-orphans"],
+                env=self.stores_env(self._bundles),
+                capture_output=True,
+                timeout=300,
+                check=False,
+            )
 
     def push(self, bundle: Path) -> str:
         done = subprocess.run(
@@ -158,10 +180,29 @@ class DemoRegistry:
             timeout=300,
         )
 
-    def sync(self, demos: str, bundles: Path) -> subprocess.CompletedProcess:
+    def stores_env(self, bundles: Path) -> dict[str, str]:
+        """What a compose command on the shared stores is run with, as the node's sync runs it:
+        their compose file names the Qdrant key and the Kafka port (unset, it refuses)."""
+        key = bundles / ".demo-stores" / "qdrant.key"
+        return {
+            **os.environ,
+            "DEMO_BUNDLES_DIR": str(bundles),
+            "DEMO_STORES_QDRANT_KEY": key.read_text().strip() if key.is_file() else "unset",
+            "DEMO_STORES_KAFKA_PORT": str(self.kafka_port),
+        }
+
+    def sync(
+        self, demos: str, bundles: Path, *, requested: bool = True
+    ) -> subprocess.CompletedProcess:
         """The node's sync (scripts/demo_stores_sync.sh) for ``demos`` into ``bundles``, run as
         the node runs it, its stores named by 127.0.0.1 and the port docker picked: the tier is a
-        process on this host."""
+        process on this host. ``requested``: as after the tier has asked for each demo (its first
+        open, demo_bundles.request), so its stores are brought up; else it is only pulled."""
+        self._bundles = bundles
+        if requested:
+            for name in (n.strip() for n in demos.split(",") if n.strip()):
+                (bundles / name).mkdir(parents=True, exist_ok=True)
+                (bundles / name / "requested").write_text("requested\n")
         return subprocess.run(
             ["bash", str(_SYNC)],
             capture_output=True,
@@ -175,5 +216,9 @@ class DemoRegistry:
                 "DEMO_PULL": f"{sys.executable} {_SCRIPT}",
                 "DEMO_PULL_INTO": str(bundles),
                 "DEMO_STORES_NETWORK": "",
+                "DEMO_STORES": str(_STORES),
+                "DEMO_STORES_SHARED": str(_SHARED),
+                "DEMO_STORES_PROJECT": self.stores_project,
+                "DEMO_STORES_KAFKA_PORT": str(self.kafka_port),
             },
         )

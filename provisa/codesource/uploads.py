@@ -102,3 +102,31 @@ async def put_file(
 async def read_file(admin_db: "Database", org_id: str, sha256: str) -> bytes:
     """The bytes of the file ``org_id`` kept with that SHA-256, refused by name when there is none."""
     return (await read(admin_db, org_id, sha256)).data
+
+
+async def copy(admin_db: "Database", from_org: str, to_org: str) -> list[str]:
+    """Every archive and file ``from_org`` keeps, kept for ``to_org`` as well (REQ-1993, REQ-2006): a demo
+    sandbox is a new organisation cloned from its template's, and its code sources name the
+    template's uploads by content hash. One already kept is kept once. Returns the hashes copied."""
+    async with admin_db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(_t.c.content_hash, _t.c.filename, _t.c.archive, _t.c.uploaded_by)
+                .where(_t.c.org_id == from_org)
+                .order_by(_t.c.content_hash)
+            )
+        ).fetchall()
+        for found, filename, archive, actor in rows:
+            await conn.upsert(
+                _t,
+                {
+                    "org_id": to_org,
+                    "content_hash": found,
+                    "filename": filename,
+                    "archive": bytes(archive),
+                    "uploaded_by": actor,
+                },
+                index_elements=["org_id", "content_hash"],
+                update_columns=[],
+            )
+    return [r[0] for r in rows]

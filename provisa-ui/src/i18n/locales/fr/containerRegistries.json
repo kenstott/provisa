@@ -1,0 +1,19 @@
+{
+  "containerRegistries": {
+    "help": "Les registres vers lesquels l'image construite d'une source de code peut être poussée, pour l'exécuter sur un hôte distant. Chaque champ peut contenir une valeur ou une référence de secret comme ${secret:registry_token}. Sans registre, l'image construite est téléchargée à la place.",
+    "add": "Ajouter un registre de conteneurs",
+    "none": "Aucun registre de conteneurs. Les images construites peuvent toujours être téléchargées.",
+    "address": "Registre et espace de noms",
+    "addressHelp": "Le registre, avec son port s'il en a un, et l'espace de noms de dépôt sous lequel les images sont poussées, par exemple ghcr.io/example ou registry.example.com:5000/data.",
+    "username": "Nom d'utilisateur",
+    "credential": "Mot de passe ou jeton",
+    "credentialHelp": "Le mot de passe ou le jeton d'accès avec lequel le nom d'utilisateur se connecte, par exemple un jeton d'accès personnel GitHub avec write:packages.",
+    "caBundle": "Autorité de certification (PEM)",
+    "caBundleHelp": "Uniquement pour un registre dont le certificat est signé par votre propre autorité : son certificat PEM, ou une référence de secret. Elle est approuvée en plus des autorités publiques. Sinon, laissez vide.",
+    "default": "Registre par défaut",
+    "defaultHelp": "Une construction pousse ici sauf si elle nomme un autre registre. Une organisation a un registre par défaut.",
+    "saved": "Enregistré",
+    "removed": "Supprimé",
+    "remove": "Supprimer"
+  }
+}

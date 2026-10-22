@@ -34,7 +34,9 @@ sandbox whose tab said it was closing, and that no request has reached since for
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import time
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -61,6 +63,21 @@ _TOKEN_NAME = "Demo sandbox"
 # request runs on a thread and event loop of its own, so an asyncio lock (bound to one loop) cannot
 # serialize them; the control plane's advisory lock does, across threads and processes alike.
 _OPENING_LOCK_KEY = 7351
+
+
+@contextlib.asynccontextmanager
+async def _stage(org_id: str, demo: str, name: str):
+    """One stage of opening sandbox ``org_id`` of ``demo``, named as it starts and timed as it ends.
+    At WARNING: the hosted demo tier logs at WARNING (as demo_warmup's "tour warmed" line). An open
+    that stalls is named by its last stage started and not ended."""
+    started = time.monotonic()
+    log.warning("demo sandbox %s of %s: %s ...", org_id, demo, name)
+    try:
+        yield
+    finally:
+        log.warning(
+            "demo sandbox %s of %s: %s took %.1fs", org_id, demo, name, time.monotonic() - started
+        )
 
 
 @dataclass(frozen=True)
@@ -92,7 +109,9 @@ async def _template_ready(demo: PublishedDemo) -> None:
     # Still being prepared here: its preparation (its profile runs among it, REQ-2052) is what a
     # sandbox is cloned from. A demo with no replica read as ready from its provisioning alone,
     # and its first sandbox was cloned before the template had profiled anything.
-    ready = building not in ("queued", "building")
+    # One whose preparation failed (TemplateBuilds.run) is refused too: its Test (synthetic)
+    # environments or profile runs are not there to copy, and opening it failed on the copy.
+    ready = building not in ("queued", "building", "failed")
     async with _admin_pool().acquire() as conn:
         row = (
             await conn.execute_core(
@@ -140,7 +159,8 @@ async def demo_status(name: str) -> dict:
         open_now = await _open_count(conn)
     return {
         "demo": demo.name,
-        "ready": state == "ready",
+        # Opened at once only with its stores up too: the node starts a demo's at its first open.
+        "ready": state == "ready" and demo.stores_ready,
         "state": state,
         "places_free": max(cap - open_now, 0),
     }
@@ -172,14 +192,15 @@ async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> O
         raise ValueError(f"unknown sandbox kind {kind!r}")
     if (kind == NAMED) != (user_id is not None):
         raise ValueError("a named sandbox is opened for a signed-in user, a visitor's for none")
-    # REQ-2049: a demo published since is served first, its template rebuilt from it.
-    await follow_latest(name)
-    demo = published_demo(name)
-    await _template_ready(demo)
-    admin = _admin_pool()
     org_id = new_sandbox_org_id()
+    async with _stage(org_id, name, "its demo's readiness"):
+        # REQ-2049: a demo published since is served first, its template rebuilt from it.
+        await follow_latest(name)
+        demo = published_demo(name)
+        await _template_ready(demo)
+    admin = _admin_pool()
     person = user_id if user_id is not None else visitor_user_id(org_id)
-    async with admin.acquire() as conn:
+    async with _stage(org_id, demo.name, "a place"), admin.acquire() as conn:
         async with conn.advisory_lock(_OPENING_LOCK_KEY):
             cap = int(settings_registry.value("sandbox.max_concurrent"))
             if await _open_count(conn) >= cap:
@@ -218,6 +239,7 @@ async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> O
 async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> str | None:
     from provisa.api.admin.orgs_router import _admin_pool, _pool, _refresh_root_registry_view
     from provisa.api.app import _stop_org_servers, build_org_runtime, state
+    from provisa.codesource import uploads
     from provisa.auth.pat import PersonalAccessTokenStore
     from provisa.core import org_files
     from provisa.core.env_copy import clone_model
@@ -231,19 +253,30 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     from provisa.security.rights import DEPLOYMENT_GRANTER
 
     schema_sql = (Path(__file__).parent.parent / "core" / "schema.sql").read_text()
-    await provision_org(
-        _pool(),
-        schema_sql,
-        org_id=org_id,
-        redis_url=redis_url(),
-        redis_password=settings_registry.value("cache.redis_org_password"),
-    )
-    await ensure_prod(_admin_pool(), org_id, person)
+    async with _stage(org_id, demo.name, "its schema"):
+        await provision_org(
+            _pool(),
+            schema_sql,
+            org_id=org_id,
+            redis_url=redis_url(),
+            redis_password=settings_registry.value("cache.redis_org_password"),
+        )
+        await ensure_prod(_admin_pool(), org_id, person)
     # The template's model, then its landed replicas -- both before the sandbox's runtime is built,
     # so its first build finds every replica already recorded as built for its own store and asks
     # for none.
-    await clone_model(_pool(), org_schema(demo.template_org), org_schema(org_id), landing=COPIED)
-    await org_files.prepare(org_id, state.admin_db, _stop_org_servers)
+    async with _stage(org_id, demo.name, "the template's model"):
+        await clone_model(
+            _pool(), org_schema(demo.template_org), org_schema(org_id), landing=COPIED
+        )
+    async with _stage(org_id, demo.name, "its uploads, secrets and files"):
+        # Uploads are the organisation's, outside its schema: its code sources name the template's.
+        await uploads.copy(_admin_pool(), demo.template_org, org_id)
+        # REQ-2095: the secrets its cloned model names, in its own vault before its runtime is built.
+        from provisa.core.demo_secrets import seed as seed_secrets
+
+        await seed_secrets(_admin_pool(), org_id, demo.directory)
+        await org_files.prepare(org_id, state.admin_db, _stop_org_servers)
     # The demo version it is opened from: its examples and tour are that version's, whatever is
     # published after (demo_directory_of).
     from provisa.core.demo_bundles import SANDBOX_DEMO_DIRECTORY
@@ -262,53 +295,68 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     # Only what the demo serves from replicas is copied (REQ-2049): its own sources are read live.
     # A regions demo's other regions' views are copied with them (REQ-2068).
     if replicated_tables(seed) or regional():
-        await copy_to_sandbox(demo.template_org, org_id)
+        async with _stage(org_id, demo.name, "the template's store"):
+            await copy_to_sandbox(demo.template_org, org_id)
     # REQ-1162: and its bitemporal views' history, which no refresh of those sources gives back.
     if views := bitemporal_view_tables(seed):
-        await copy_views_to_sandbox(demo.template_org, org_id, views, demo.directory)
+        async with _stage(org_id, demo.name, "the template's views"):
+            await copy_views_to_sandbox(demo.template_org, org_id, views, demo.directory)
 
-    rt = await state.org_registry.rebuild(org_id, lambda oid: build_org_runtime(oid))
+    async with _stage(org_id, demo.name, "its runtime"):
+        rt = await state.org_registry.rebuild(org_id, lambda oid: build_org_runtime(oid))
     assert rt.model_db is not None
-    if kind == VISITOR:
+    async with _stage(org_id, demo.name, "its person's membership and roles"):
+        if kind == VISITOR:
+            async with _admin_pool().acquire() as conn:
+                await conn.execute_core(
+                    insert(user_profiles).values(
+                        user_id=person, display_name="Demo visitor", provider="sandbox"
+                    )
+                )
+        await grant_membership(_admin_pool(), person, org_id, joined_via=JOINED_VIA_ADMIN)
+        await grant_org_role(
+            rt.model_db, person, SANDBOX_ROLE, granter_capabilities=DEPLOYMENT_GRANTER
+        )
+        # And the demo's own roles (an analyst, say), so its tour can run as each of them; never a
+        # built-in role, which would carry what the sandbox role withholds (REQ-1597).
+        from provisa.api.demo_templates import demo_roles
+
+        for role_id in demo_roles(demo.template_org):
+            await grant_org_role(
+                rt.model_db, person, role_id, granter_capabilities=DEPLOYMENT_GRANTER
+            )
+    async with _stage(org_id, demo.name, "its record, environments and ready mark"):
+        ensure_repo(org_id)
+        async with rt.model_db.acquire() as conn:
+            await write_through(
+                conn,
+                _admin_pool(),
+                org_id,
+                PROD,
+                org_schema(org_id),
+                "opened from its demo",
+                person,
+            )
+        # REQ-2053: the template's environments (a test environment of fakes, say), each created from
+        # the sandbox's prod after its person's roles are granted, so each carries them.
+        from provisa.api.demo_templates import create_environments, template_environments
+
+        wanted = await template_environments(demo.template_org)
+        await create_environments(org_id, wanted, person)
+        # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
+        # at a visitor's request.
+        from provisa.api import demo_synthetic
+
+        await demo_synthetic.copy_to_sandbox(
+            demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
+        )
+        await _refresh_root_registry_view()
         async with _admin_pool().acquire() as conn:
             await conn.execute_core(
-                insert(user_profiles).values(
-                    user_id=person, display_name="Demo visitor", provider="sandbox"
-                )
+                update(orgs)
+                .where(orgs.c.id == org_id)
+                .values(provisioning_state="ready", provisioning_error=None)
             )
-    await grant_membership(_admin_pool(), person, org_id, joined_via=JOINED_VIA_ADMIN)
-    await grant_org_role(rt.model_db, person, SANDBOX_ROLE, granter_capabilities=DEPLOYMENT_GRANTER)
-    # And the demo's own roles (an analyst, say), so its tour can run as each of them; never a
-    # built-in role, which would carry what the sandbox role withholds (REQ-1597).
-    from provisa.api.demo_templates import demo_roles
-
-    for role_id in demo_roles(demo.template_org):
-        await grant_org_role(rt.model_db, person, role_id, granter_capabilities=DEPLOYMENT_GRANTER)
-    ensure_repo(org_id)
-    async with rt.model_db.acquire() as conn:
-        await write_through(
-            conn, _admin_pool(), org_id, PROD, org_schema(org_id), "opened from its demo", person
-        )
-    # REQ-2053: the template's environments (a test environment of fakes, say), each created from
-    # the sandbox's prod after its person's roles are granted, so each carries them.
-    from provisa.api.demo_templates import create_environments, template_environments
-
-    wanted = await template_environments(demo.template_org)
-    await create_environments(org_id, wanted, person)
-    # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
-    # at a visitor's request.
-    from provisa.api import demo_synthetic
-
-    await demo_synthetic.copy_to_sandbox(
-        demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
-    )
-    await _refresh_root_registry_view()
-    async with _admin_pool().acquire() as conn:
-        await conn.execute_core(
-            update(orgs)
-            .where(orgs.c.id == org_id)
-            .values(provisioning_state="ready", provisioning_error=None)
-        )
     if kind != VISITOR:
         return None
     secret, _row = await PersonalAccessTokenStore(_admin_pool()).issue(
@@ -336,10 +384,16 @@ async def demo_directory_of(org_id: str) -> Path | None:
 
 async def note_in_use(name: str) -> None:
     """Tell the node which versions of bundled demo ``name`` are still read: the ready one (its
-    template's) and each its open sandboxes were opened from (REQ-2049)."""
+    template's) and each its open sandboxes were opened from (REQ-2049). With none open, its stores
+    linger ``sandbox.demo_stores_linger`` seconds before the node takes them down; with one open,
+    they stay up."""
+    import time
+
     from provisa.api.admin.orgs_router import _admin_pool
     from provisa.core.demo_bundles import (
         bundled_demos,
+        hold,
+        linger,
         own_demo_directory,
         ready_version,
         record_in_use,
@@ -362,6 +416,11 @@ async def note_in_use(name: str) -> None:
         if directory is not None:
             versions.add(directory.name)
     await asyncio.to_thread(record_in_use, name, versions)  # type: ignore[arg-type]
+    if orgs_open:
+        await asyncio.to_thread(hold, name)
+    else:
+        until = time.time() + int(settings_registry.value("sandbox.demo_stores_linger"))
+        await asyncio.to_thread(linger, name, until)
 
 
 _touched: dict[str, float] = {}
@@ -472,6 +531,50 @@ async def reap(org_id: str) -> None:
     log.info("demo sandbox %s reaped", org_id)
     if row is not None:
         await note_in_use(row[2])
+
+
+def _release_mark() -> Path:
+    """Where this tier records the Provisa release its open sandboxes were provisioned by: one
+    mark for the sandbox tier, one for the regions tier, which reaps its own (REQ-2068)."""
+    from provisa.api.demo_region_seed import regional
+    from provisa.core.org_files import data_dir
+
+    return data_dir() / ("sandbox-release-regions" if regional() else "sandbox-release")
+
+
+async def reap_visitors_of_another_release() -> list[str]:
+    """At the tier's start: once the release has changed since its last start, every open
+    visitor's sandbox has the old release's schema (no migrations), and a column added since fails
+    its reads. Each is reaped; its tab opens a fresh one from the rebuilt template. A named
+    sandbox, a signed-in person's, is kept. This release is then recorded. The sandboxes reaped."""
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.api.demo_region_seed import regional
+    from provisa.core.demo_bundles import running_provisa
+    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
+
+    mark = _release_mark()
+    running = running_provisa()
+    if mark.is_file() and mark.read_text().strip() == running:
+        return []
+    async with _admin_pool().acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(demo_sandboxes.c.org_id).where(demo_sandboxes.c.kind == VISITOR)
+            )
+        ).fetchall()
+    reaped = []
+    for (org_id,) in rows:
+        if org_id.startswith(REGIONS_SANDBOX_PREFIX) != regional():
+            continue  # the other tier's
+        try:
+            await reap(org_id)
+        except Exception:  # allow-ble: one sandbox that cannot be removed must not keep the others; logged with its cause, and its idle expiry reaps it
+            log.exception("demo sandbox %s of an earlier release could not be reaped", org_id)
+            continue
+        reaped.append(org_id)
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(running + "\n")
+    return reaped
 
 
 async def reap_expired() -> list[str]:

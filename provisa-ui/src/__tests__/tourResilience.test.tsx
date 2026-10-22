@@ -207,6 +207,76 @@ describe("tour resilience under load", () => {
   });
 });
 
+describe("skipping a step whose anchor never arrives", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.getElementById("skip-stand-in")?.remove();
+  });
+
+  // step1's anchor (the Sources navigation) is never mounted here; step2's (+ Source) is.
+  function standIn() {
+    const root = document.createElement("div");
+    root.id = "skip-stand-in";
+    const add = document.createElement("button");
+    add.setAttribute("data-tour", "sources-add");
+    add.textContent = "+ Source";
+    root.appendChild(add);
+    document.body.appendChild(root);
+  }
+
+  async function launchStuckAtStep1() {
+    standIn();
+    localStorage.setItem("provisa_tour_progress", String(CORE_STEP));
+    renderTour();
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => {
+      chunksResolve();
+    });
+  }
+
+  it("offers Skip while the step is still waiting, not only once it is stuck", async () => {
+    await launchStuckAtStep1();
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByText("tour.status.waiting")).toBeInTheDocument();
+    expect(screen.getByText("tour.status.skip")).toBeInTheDocument();
+  });
+
+  for (const when of ["waiting", "stuck"] as const) {
+    it(`moves on to the next step the viewer can see, from a step ${when}`, async () => {
+      await launchStuckAtStep1();
+      await act(async () => {
+        vi.advanceTimersByTime(when === "waiting" ? 2000 : 62000);
+      });
+      expect(screen.getByText(`tour.status.${when}`)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("tour.status.skip"));
+      for (let i = 0; i < 10; i++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(200);
+        });
+      }
+      // step2 is on screen, and nothing of step1's wait is left to raise its status again.
+      expect(document.querySelector(".driver-popover-title")?.textContent).toBe(
+        "tour.steps.step2.title",
+      );
+      expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
+      expect(screen.queryByText("tour.status.stuck")).not.toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(62000);
+      });
+      expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
+      expect(screen.queryByText("tour.status.stuck")).not.toBeInTheDocument();
+    });
+  }
+});
+
 describe("demo session reset", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -257,12 +327,14 @@ describe("a step that opens its own starting state", () => {
     });
     root.appendChild(add);
 
-    // step3 belongs to the Connect topic: the core tour has been seen, so the tour button opens the
-    // Deep Dives menu, and picking the topic runs it from its first step.
-    localStorage.setItem("provisa_tour_seen", "true");
+    // step3 is the core's (registering a source before querying it): a core tour left there
+    // resumes at it.
+    localStorage.setItem(
+      "provisa_tour_progress",
+      String(TOUR_STEPS.findIndex((s) => s.key === "step3")),
+    );
     renderTour();
     fireEvent.click(screen.getByText("launch"));
-    fireEvent.click(await screen.findByTestId("tour-topic-connect"));
     await act(async () => {
       chunksResolve();
     });

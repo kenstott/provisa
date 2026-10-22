@@ -15,7 +15,7 @@ Provisa unterstützt sechs Deployment-Pfade. Wählen Sie je nach Zielgruppe und 
 
 ### VM vs. Kubernetes
 
-Beide sind Enterprise-tauglich. Der VM/AppImage-Pfad ist einfacher: kein Cluster zu provisionieren, keine CNI- oder RBAC-Richtlinien zu konfigurieren, und das AppImage ist vollständig eigenständig. Es fügt sich nahtlos in bestehende Server-Management-Tools ein (Ansible, Puppet, Datadog-Agents, Splunk-Forwarder usw.).
+Beide eignen sich für den Produktivbetrieb. Der VM/AppImage-Pfad ist einfacher: kein Cluster zu provisionieren, keine CNI- oder RBAC-Richtlinien zu konfigurieren, und das AppImage ist vollständig eigenständig. Es fügt sich gut in bestehende Server-Management-Tools ein (Ansible, Puppet, Datadog-Agents, Splunk-Forwarder usw.).
 
 Wählen Sie Kubernetes nur, wenn Ihr Team bereits einen K8s-Cluster betreibt und Provisa in diese Betriebsweise einfügen will (Rolling Deploys, HPA, einheitliche Observability). Beide bieten dieselben Fähigkeiten; Kubernetes bringt zusätzlichen Betriebsaufwand.
 
@@ -37,7 +37,7 @@ Jeder Produktionsweg braucht die Provisa-Artefakte, bevor ein Deployment laufen 
 
 ### Empfohlen: `start-ui.sh` {: #recommended-start-uish }
 
-Der einfachste Weg, Provisa aus dem Quellcode heraus auszuführen. Startet die gesamte Infrastruktur, die Backend-API und den UI-Dev-Server mit einem einzigen Befehl. Strg+C fährt alles sauber herunter.
+Das ist der einfachste Weg, Provisa aus dem Quellcode heraus auszuführen. Ein Befehl startet die gesamte Infrastruktur, die Backend-API und den UI-Dev-Server. Strg+C fährt alles sauber herunter.
 
 **Voraussetzungen:** Docker Desktop, Node.js, Python-Virtualenv unter `.venv/`
 
@@ -874,6 +874,5 @@ git pull
 provisa import config.yaml
 ```
 
-</content>
 
-Siehe auch: [Umgebungen](environments.md) erklärt, wie Sie benannte, schemaisolierte Kopien Ihres regierten Modells verwalten.
+Siehe auch: [Umgebungen](environments.md) erklärt, wie Sie benannte, schemaisolierte Kopien Ihres governten Modells verwalten.

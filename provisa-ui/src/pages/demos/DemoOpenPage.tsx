@@ -9,19 +9,30 @@
 // permission from the copyright holder.
 
 // REQ-2006: /demos/<name>, the live demos page's "Open live demo". It opens a visitor's sandbox of
-// the demo -- no sign-in -- and goes to it; a refusal (an unknown demo, every sandbox in use, a
-// demo still being prepared) is shown as the server words it, with a way to try again.
+// the demo -- no sign-in -- and goes to it. A demo whose stores are still starting (the first open
+// asks for them) is waited for: the page asks the demo's status at a steady interval and opens it
+// the moment it is ready. Any other refusal (an unknown demo, every sandbox in use) is shown as the
+// server words it, with a way to try again where it passes with time.
 
 import { Alert, Button, Center, Loader, Stack, Text, Title } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
-import { openDemoSandbox, SandboxRefused, type OpenedSandbox } from "../../api/demoSandbox";
+import {
+  fetchDemoStatus,
+  openDemoSandbox,
+  SandboxRefused,
+  type OpenedSandbox,
+} from "../../api/demoSandbox";
 import { orgOrigin } from "../../lib/authHost";
 import { sandboxDestination } from "../../lib/sandboxSession";
 
+/** A demo whose stores or template are still being prepared: waited for, not refused. */
+const NOT_READY = "sandbox.demo_not_ready";
 /** Refusals that pass with time: the page offers to try again. */
-const TRANSIENT = new Set(["sandbox.at_capacity", "sandbox.demo_not_ready"]);
+const TRANSIENT = new Set(["sandbox.at_capacity"]);
+/** How often a starting demo's status is asked. */
+const STARTING_POLL_MS = 5000;
 
 function go(opened: OpenedSandbox): void {
   window.location.assign(sandboxDestination(opened.org_id, opened.token, orgOrigin(opened.org_id)));
@@ -31,28 +42,54 @@ function asRefusal(e: unknown): SandboxRefused {
   return e instanceof SandboxRefused ? e : new SandboxRefused(String(e), null);
 }
 
+const pause = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
 export function DemoOpenPage() {
   const { t } = useTranslation();
   const { name = "" } = useParams<{ name: string }>();
   const [refusal, setRefusal] = useState<SandboxRefused | null>(null);
+  // What the page is waiting on: the open itself, or the demo's stores starting first.
+  const [phase, setPhase] = useState<"opening" | "starting">("opening");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let current = true;
-    openDemoSandbox(name)
-      .then(go)
-      .catch((e: unknown) => {
-        if (current) setRefusal(asRefusal(e));
-      });
+    (async () => {
+      for (;;) {
+        try {
+          const opened = await openDemoSandbox(name);
+          if (current) go(opened);
+          return;
+        } catch (e: unknown) {
+          const refused = asRefusal(e);
+          if (!current) return;
+          if (refused.code !== NOT_READY) {
+            setRefusal(refused);
+            return;
+          }
+          setPhase("starting");
+        }
+        try {
+          do {
+            await pause(STARTING_POLL_MS);
+            if (!current) return;
+          } while (!(await fetchDemoStatus(name)).ready);
+        } catch (e: unknown) {
+          if (current) setRefusal(asRefusal(e));
+          return;
+        }
+        if (!current) return;
+      }
+    })();
     return () => {
       current = false;
     };
-  }, [name]);
+  }, [name, attempt]);
 
   const retry = () => {
     setRefusal(null);
-    openDemoSandbox(name)
-      .then(go)
-      .catch((e: unknown) => setRefusal(asRefusal(e)));
+    setPhase("opening");
+    setAttempt((n) => n + 1);
   };
 
   return (
@@ -62,8 +99,8 @@ export function DemoOpenPage() {
         {refusal === null ? (
           <>
             <Loader data-testid="demo-open-loading" />
-            <Text c="dimmed" ta="center">
-              {t("demoOpenPage.opening")}
+            <Text c="dimmed" ta="center" data-testid={`demo-open-${phase}`}>
+              {phase === "starting" ? t("demoOpenPage.starting") : t("demoOpenPage.opening")}
             </Text>
           </>
         ) : (

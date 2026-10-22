@@ -3,6 +3,316 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.494
+
+Released 2026-10-20.
+
+### Features
+
+#### Source Connectors
+
+- Provisa's services to a code source's code are a module always present where the code runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls -- secrets.get, settings.get (the source's declared non-secret settings, mapping settings, edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers, JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source's own vector collection, embedded through the org's vector models as routes them; never a governed table's data, which reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress allow-list the worker's own egress is, through the deployment's outbound proxy and CA bundle, recorded in the org's trail), llm and log and metric (attached to the request the call serves).
+    - Provisa's services module in every worker, and code-source telemetry
+
+### Changes
+
+#### auth
+
+- A role set's meta-role is built in the environment the request names
+- An environment the request cannot be served by is refused where its meta-role would be built
+
+#### demo-stores
+
+- The sandbox node sets every store's data names before compose reads them
+- The shared Kafka starts: its KRaft cluster id is a UUID; a store that exits says why
+
+#### demos
+
+- A sandbox's tour warm-up no longer revives it once its tab is closing
+- A failed template is refused as not ready; the walk takes a read-window refusal as its step's answer and keeps the tier's log
+- The bundle build dumps a Postgres with pgvector, and the node names its data unsuffixed
+
+#### polly
+
+- Polly operates the screen when asked to show, demo or teach
+
+#### synthetic
+
+- A generated table and a closeness sample land with their org's vault bound
+
+## v0.1.0-alpha.493
+
+Released 2026-10-20.
+
+### Features
+
+#### Demo Provisioning
+
+- A configuration may declare the code its code sources run: code/<name>.tar.gz (or.tgz or.zip) beside its config.yaml, a source naming it as uploaded code by the content hash of the code it unpacks to (code: {kind: upload, upload: <hash>}).
+    - A demo's declared code archives are kept as its org's uploads
+    - The bundle build's answering config is served beside the demo's declared rows and code
+
+#### Performance
+
+- Request deadlines are watched by one shared watchdog thread per process instead of a threading.Timer per request; a request that passes its deadline is cancelled as before, on every transport that registers a cancel.
+
+#### Relationships
+
+- A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column).
+    - A relationship feeds a code table's parameters from its source rows
+
+#### Source Connectors
+
+- A Node or Python code source declares the names its code may read (secrets in its mapping): a list of names, each the org secret of that name, or a mapping of name to vault reference (${secret:NAME} or ${env:NAME}).
+    - A code source's declared secrets, read at use through Provisa's services
+    - The egress proxy answers Provisa's services through a CONNECT tunnel
+    - A declared secret picked by name stays a name; the product spells no reference
+- Provisa's services to a code source's worker include an OpenAI-compatible LLM service at $PROVISA_SERVICES/llm/v1: POST chat/completions and embeddings, so any SDK works with its base URL there and no key, the worker's scoped token being in the address; the egress proxy answers it for a local worker.
+    - An OpenAI-compatible LLM service for a code source's worker
+
+#### UI
+
+- The named demo churnprod puts the churn demo's model in production.
+    - The churn model as a Python package and its Node twin
+    - churnprod, the churn model in production
+    - churnprod's store names its data per version; check_demo requires it
+- The named demo cloudpolicy reviews a cloud security policy after the fact, read only.
+    - The cloud policy's reader and the cloudpolicy demo's data generator
+    - cloudpolicy, a cloud security policy reviewed across three clouds
+    - cloudpolicy's card, Superset dashboard picture, published
+- A named demo, World Cup: public sources about the World Cup whose country names disagree become one governed graph.
+    - World Cup, public sources made to agree and queried as one graph
+
+### Changes
+
+#### bench
+
+- Each step reports paging beside its CPU per request
+- A masked column is one that is not the primary key; the fake admin answers only what the schema takes
+- An MCP transport, run_sql over Streamable HTTP, in the perf contract
+- The Postgres-only pass leaves out relationships naming a gone table by alias or via table
+- The three-device harness runs a governance pass, its devices sized by one flag
+
+#### cloud
+
+- cloud.provisa.dev's sandboxes run Polly on OpenRouter's Claude Haiku; a tier node without OPENROUTER_API_KEY is refused by name
+
+#### codesource
+
+- Build a code source's image and run it on a remote host
+
+#### cypher
+
+- An inline property map matches as the WHERE it means
+
+#### demo
+
+- The provisioning bundle's setup runs its consumer told its topics' suffix
+
+#### demo-stores
+
+- Shared Qdrant and Kafka, finished: tests to the shared design, no compose default
+
+#### docker
+
+- The image trusts Microsoft's 2025 signing key, which signs its Debian 13 repository
+
+#### environments
+
+- Create with a data mode, not an "Inherit connections" box
+
+#### join guard
+
+- A column a view passes through relates along the view's relationships
+- A union's branches fill its columns by position
+
+#### materialization
+
+- A code table kept for good is read from its replica, never run
+
+#### perf
+
+- Each request stage reports its thread CPU; the bench reads it per step
+
+#### tour
+
+- The core tour registers a source and a table; Skip works while a step waits
+- Query it everywhere covers nine surfaces: Python and the Notebook
+- pollyOpen is an explicit flag on the steps that show Polly's panel; "Just ask" stays shut
+
+#### ui
+
+- The graph renderer type-checks without the app's client: ResultRedirect is its own type
+- No domain picker offers meta or ops as the domain to put something into
+- A source staged from a Kaggle dataset shows as Kaggle in the Sources list
+
+## v0.1.0-alpha.492
+
+Released 2026-10-19.
+
+### Features
+
+#### Column-Level Masking
+
+- A meta-domain view, sensitive_coverage, lists every sensitive column of the org (any tag with the Sensitive data option, pii included), one row each, read through the same statement that decides a Test (fake) environment's uncovered columns (provisa.security.sensitive.sensitive_assignments): its tags; has_fake and has_synthetic_rule; the fake as declared, its kind, that it is deterministic, whether it is stable across engines and whether it is computed from the real value; the synthetic rule as declared; and a status of covered, no_fake or inadequate with the reason.
+    - sensitive_coverage meta view and fake adequacy checks
+    - fake_adequacy_checks is classified, inventoried and in schema.sql
+
+#### Demo Provisioning
+
+- A configuration may declare a replica's rows instead of landing them from its source: replica_rows/<source_id>/<schema>.<table>.tsv beside its config.yaml, its first line the table's columns in their order, tab separated, each line after one row (\N is NULL; \t, \n, \r and \\ a tab, newline, carriage return and backslash; an integer, floating or boolean column's cells read as that type, every other as its text).
+    - A config's declared replica rows land as its replica; its source is never read
+    - A config's declared rows land in its model build, beside the config a test server serves
+    - Declared rows land before the schema build publishes its replica routes
+    - Hasuramigration and provisioning bundles build
+
+#### MCP & AI Integration
+
+- The MCP server offers five statistics tools over a dataset the caller defines in SQL: describe (per column count, missing, distinct, mean, sd, quantiles and top values), correlate (pearson or spearman matrix and n), regress (linear: coefficients, standard errors, p-values, R²; logistic: the same with pseudo R² and AUC), compare (Welch's t-test for two groups, one-way ANOVA for more, with Cohen's d or eta squared) and forecast (exponential smoothing, ETS, with prediction intervals).
+    - describe, correlate, regress, compare and forecast over governed SQL
+    - stats.forecast casts its ETS fit to its results, which pyright refused as a union
+
+#### Security
+
+- Central redaction: one list of rules is applied to text before it leaves Provisa.
+    - Central redaction of spans, logs, audit text and client errors
+    - Redaction rules -- one name column width, monospace values with plain labels
+    - Redaction -- a bearer token is 16+ token characters; names resolve through the backend
+- Judgments under review (docs/arch/judgment-review-design.md, phases 1-3).
+    - Judgments under review -- why, bases, findings, the review and posture
+    - Judgment review -- nullable JSON stores SQL NULL; exports compare without the server's stamps
+    - A profiler member never run gives no evidence instead of failing the seed
+- A named demo declares its secrets in secrets.yaml beside its config.yaml (secrets: a mapping of each name to its value), carried in its bundle with the rest of its directory.
+    - A demo seeds its secrets; testdata reads prod as Provisa's own secret
+
+#### Source Connectors
+
+- Package registries reach a proxy such as Artifactory and the Git servers GitLab, Bitbucket Cloud and Bitbucket Data Center as well as GitHub.
+    - Package registries reach Artifactory, GitLab and Bitbucket, behind a private CA
+
+### Changes
+
+#### bench
+
+- Governance knobs in the benchmark contract, set up in the deployment for each run
+
+#### bundles
+
+- Concurrent fetches of one connector bundle download it once and each finds it whole
+
+#### codesource
+
+- A host's hello names its protocol and code hash, refused by name otherwise
+- A remote host over mutual TLS, paired once, dialled by each Provisa process
+- A Python source's rows travel as Arrow IPC batches, protocol 2
+- A Node source's rows travel as Arrow IPC batches, protocol 2
+
+#### compiler
+
+- A lowered reference names its own source's table, not another of the same name
+- A draft is refused under the catalog-physical name its served table answers to
+
+#### demo
+
+- Cards for provisioning and retail, from their real answers
+- Agriculture -- the notebook measures how much of the portfolio's losses the weather explains
+- Agriculture -- the 2012-like scenario prices the portfolio's latest book, and each empty step says which
+- Agriculture -- the scenario is the data's driest season, priced at each county's latest premium; the answer is captured before the notebook runs
+- Agriculture -- a pull of every county season (320 rows) is not cut at 100
+- Agriculture -- the card is the notebook's plot, and the tour says what the notebook measured
+
+#### demo bundle
+
+- A build's servers are given the stores' addresses, not the build's whole environment
+
+#### demo-stores
+
+- A demo's stores start at its first open, its data in one shared instance of each store type
+
+#### demos
+
+- opioids' public dashboard is a view that reads no allocation
+- Publish provisioning and hasuramigration
+- Publish insurance
+- Start here, the standard demo's objects with every Deep Dive
+- Start here's links to the standard demo's files are tracked
+- Publish Start here, listed first
+- Live tour steps -- profile runs reach every sandbox, the REST step waits for its docs, a table step opens the panel it describes
+- Starthere ships its example query; the card images site/demos.html names are committed
+- The data room, a retailer's own systems shown to each bidder with no exports
+- Testdata over three environments; a demo's Test (synthetic) environment is generated once and carried to every sandbox
+
+#### docs
+
+- Each locale's search reads only that locale's pages
+
+#### events
+
+- A view over a view not built yet is not probed; it awaits that input's first build
+
+#### install
+
+- A rerun of first launch keeps the node's provisa.env settings it did not generate
+
+#### mcp
+
+- The forecast's ETS fit is typed as its results
+
+#### mv
+
+- A view is materialized in its own org's store schema, not the deployment org's
+
+#### pipeline
+
+- A statement waits for no server of a source read from its landed replicas alone
+
+#### push
+
+- A push listener stops with its runtime and its org's next build wires it again
+- A retired runtime's listeners are stopped through a hook the app registers
+
+#### regions tier
+
+- Its auth block is the sandbox tier's
+
+#### runtime
+
+- A background job walks only the org runtimes that are built
+- A runtime being built is resolved only by its own build
+
+#### sandbox
+
+- A bundle ready after the tier started has its template built
+- A demo sandbox keeps its template's code uploads
+
+#### sandboxes
+
+- Opening a sandbox counts places under the control plane's advisory lock, which holds across request threads
+- Two visitors opening one demo while its template is replaced both wait their turn
+- The tier builds its demos' templates a few at a time, an opened demo first
+- A demo's readiness is asked without opening it
+- A restarted sandbox tier serves its unchanged templates as they were built
+
+#### security
+
+- A demo sandbox visitor's token naming a role it does not hold is refused and recorded, not suspended
+
+#### sources
+
+- An engine whose driver library is absent is unavailable, and the Sources page still answers
+
+#### subscriptions
+
+- A sandbox's live subscription reaches the browser frame by frame
+
+#### tour
+
+- An image step's popover is placed again once its picture loads, and the picture fits the window
+
+#### ui
+
+- The splash halo centres on the P's loop, not the logo's box
+
 ## v0.1.0-alpha.491
 
 Released 2026-10-18.

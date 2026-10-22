@@ -32,6 +32,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 pytestmark = [pytest.mark.integration]
@@ -57,6 +59,7 @@ class StreamingStack:
     def env(self) -> dict[str, str]:
         return {
             "STREAMING_PG_PORT": str(self.pg_port),
+            **store_namespaces(_DEMO),
             "STREAMING_KAFKA_PORT": str(self.kafka_port),
         }
 

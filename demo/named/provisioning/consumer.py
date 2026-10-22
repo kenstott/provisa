@@ -48,7 +48,8 @@ BOOTSTRAP = os.environ["FEEDS_BOOTSTRAP"]
 FLIGHT = os.environ["PROVISA_FLIGHT"]
 CONSUMERS = [c.strip() for c in os.environ["CONSUMERS"].split(",") if c.strip()]
 PULLS_DSN = os.environ["PULLS_DSN"]
-TOPIC = "dataset-ready"
+# Its name ends with the demo's suffix where the broker is shared (the sandbox tier's node).
+TOPIC = "dataset-ready" + os.environ["TOPIC_SUFFIX"]
 
 
 def pull(dataset: str, role: str, as_of: str) -> tuple[int, float]:

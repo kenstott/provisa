@@ -65,6 +65,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
+    "data_products": "data_products_meta",  # REQ-2125
 }
 
 
@@ -715,7 +716,9 @@ def _load_mv_and_views_config(
             )
         # Default the target to the store the ACTIVE engine materializes into (DuckDB → mat_store,
         # not postgresql); an explicit config value still wins.
-        _def_cat, _def_schema = state.federation_engine.materialize_store_target(state.org_id)
+        _def_cat, _def_schema = state.federation_engine.materialize_store_target(
+            state.active_org_id
+        )
         # A view with SQL names its inputs in it; a join-pattern view's are bound here — the
         # tables it lists and any its pattern joins that the list leaves out.
         inputs = (
@@ -821,7 +824,9 @@ def _load_mv_and_views_config(
                 source_tables.insert(1, via_table)
             # The store the ACTIVE engine materializes into — never a hardcoded catalog
             # (Trino → provisa_admin, DuckDB → mat_store).
-            _rel_cat, _rel_schema = state.federation_engine.materialize_store_target(state.org_id)
+            _rel_cat, _rel_schema = state.federation_engine.materialize_store_target(
+                state.active_org_id
+            )
             mv = MVDefinition(
                 id=mv_id,
                 source_tables=source_tables,
@@ -1711,8 +1716,11 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     field_numbers=None,  # FieldNumberAllocator | None (REQ-1903) — the caller owns load/persist
     *,
     draft_tables: list[dict],  # REQ-1921: out of service; named only to be refused
-) -> None:
-    """Build and register GraphQL schemas, contexts, and protos for each role."""
+) -> dict[int, int]:
+    """Build and register GraphQL schemas, contexts, and protos for each role.
+
+    Returns each checker table's id with the id of the governed table its contract scans
+    (REQ-2125), resolved here, where the contexts the contract names exist."""
     from provisa.api.app import state
 
     from provisa.graphql_remote.relation_columns import (
@@ -1858,14 +1866,17 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     from provisa.dq.contract import contract_dataset
     from provisa.dq.registration import check_contract_target, is_checker_source_type
 
+    checked: dict[int, int] = {}
     for t in tables:
         checker = state.source_types[t["source_id"]]
         if t.get("dq_contract") and is_checker_source_type(checker):
-            check_contract_target(
+            target = check_contract_target(
                 SimpleNamespace(schema_name=t["schema_name"], table_name=t["table_name"]),
                 contract_dataset(t["dq_contract"], checker),
                 state.contexts,
             )
+            checked[t["id"]] = target.table_id
+    return checked
 
 
 def _setup_approval_hook(st: AppState) -> None:
@@ -1921,6 +1932,9 @@ _META_TABLES = [
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
     "glossary_term_edges",  # REQ-1584
     "glossary_term_experts",  # REQ-1584
+    "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
+    "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
+    "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped

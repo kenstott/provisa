@@ -98,8 +98,8 @@ und `columns[].alias` auf den GraphQL-Feldnamen setzt, wenn diese abweichen.
    abgeleitet (der erste Verzeichnisbestandteil unter dem Projekt-Root). Ohne `--domain-map` wird
    jeder Subgraph-Name direkt zu einer Domain-ID. Verwenden Sie `--domain-map`, um sie umzubenennen.
 4. **Prüfen Sie die RLS-Regeln.** DDN-Filterprädikate werden in SQL-Näherungen umgewandelt.
-   Verschachtelte boolesche Logik (`_and`/`_or`/`_not`) wird unterstützt, aber komplexe,
-   beziehungsübergreifende Filter erfordern möglicherweise eine manuelle Überprüfung.
+   Verschachtelte boolesche Logik (`_and`/`_or`/`_not`) wird konvertiert; prüfen Sie Filter,
+   die Beziehungen durchlaufen, von Hand.
 5. **Überprüfen Sie die Aggregatkonfiguration.** Aggregatausdrücke werden in eine Sidecar-Datei
    `provisa-aggregates.yaml` geschrieben und in die Provisa-Aggregatkonfiguration umgewandelt.
 6. **Überprüfen Sie die Warnungen.** Der Konverter gibt auf stderr eine Zusammenfassung mit
@@ -135,7 +135,7 @@ Wenn kein Model den angegebenen ObjectType verwendet, wird die Beziehung stillsc
 ### Spaltenaliase überall {: #column-aliases-everywhere }
 
 Wenn Ihr DDN-Projekt `fieldMapping` umfangreich verwendet, ist zu erwarten, dass die meisten Spalten
-in der Ausgabe einen `alias` haben. Dies ist korrektes Verhalten -- `name` ist die physische Spalte,
+in der Ausgabe einen `alias` haben. Das ist so vorgesehen: `name` ist die physische Spalte,
 `alias` ist der GraphQL-Name, den Ihre Anwendung verwendet hat.
 
 ### Aggregatausdrücke {: #aggregate-expressions }

@@ -74,6 +74,7 @@ Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" sig
 I database compatibili a livello di protocollo riusano il driver JDBC, il driver asincrono nativo e il dialetto di un protocollo di base. CockroachDB, YugabyteDB e Greenplum usano il protocollo PostgreSQL, e TiDB quello MySQL. Servono solo voci di registro, senza nuovo codice di connettore.
 
 `firebird` (Firebird 3/4/5) e `airport` (server Arrow Flight) sono tipi di origine registrati che le estensioni della community di DuckDB raggiungono sul posto quando DuckDB è il motore attivo. Non hanno driver diretto né connettore federato.
+
 #### `saphana`
 
 SAP HANA viene letto tramite il proprio driver e replicato nello store del motore attivo, quindi è raggiungibile su ogni motore. Il modulo richiede host, porta (predefinita 39015), nome utente, password e database; su un sistema multi-tenant il database indica il tenant. Registra tabella elenca gli schemi che l'utente può leggere, escludendo gli schemi di sistema di HANA.
@@ -302,6 +303,14 @@ Un percorso con qualsiasi altro schema (ad esempio `ftp://`) viene rifiutato: "D
 - **Nomi.** L'id dell'origine e il nome del file possono contenere solo lettere, cifre, `.`, `_` e `-`.
 - **Archiviazione.** Un file caricato viene archiviato come qualsiasi file dell'organizzazione: nella cartella dell'organizzazione, cifrato quando lo è quella cartella, e visibile a ogni nodo su un mount condiviso.
 
+**Scaricare un file.** Una sorgente `csv` o `parquet` può invece ricevere il suo file per download. Scegliete **Download a copy** nel modulo della sorgente e indicate un file: un percorso sul server, un indirizzo `https://` o un indirizzo `s3://` letto con le credenziali che il modulo conserva per lo storage. Provisa trasmette il file lungo il percorso di caricamento in `files/<source id>/<file name>` nella cartella dell'organizzazione, con lo stesso limite di dimensione, archiviazione e sostituzione di un caricamento, e la sorgente legge quella copia.
+
+- **Quando viene riscaricato.** Lo decide il TTL di cache della sorgente. Una tabella costruita dalla sorgente riscarica prima il file appena il suo TTL è scaduto da quando è stata fatta la copia. Con un TTL di -1 il file viene scaricato una volta e conservato.
+- **Percorsi sul server.** Un percorso del server deve essere un file sotto una directory elencata nell'impostazione `sources.download_roots` (ambiente `PROVISA_SOURCES_DOWNLOAD_ROOTS`), dopo averne seguito i link simbolici. Per impostazione predefinita non ne è elencata nessuna. Un percorso fuori da esse viene rifiutato per nome e non si copia nulla.
+- **Molte organizzazioni.** Su un server di molte organizzazioni (`multitenancy: true`) un percorso del server viene rifiutato per nome qualunque cosa contenga l'impostazione, e sono offerti solo `https://` e `s3://`. Anche un indirizzo il cui host si risolve dentro la rete propria del server (privata, loopback o link-local) viene rifiutato per nome, a ogni reindirizzamento.
+- **La sua tabella, come bozza.** Quando la sorgente viene creata, il modulo propone di impostare subito la sua tabella, come bozza, nel dominio che scegliete. La tabella prende il nome della sorgente ed è tipizzata dal file come la proporrebbe Register Table, e resta fuori servizio finché uno steward non la toglie dalla bozza. L'opzione è attiva per impostazione predefinita.
+- **Tramite Polly.** Date a Polly un percorso completamente risolto di un singolo file CSV o Parquet e lei propone la sorgente con il suo download e la tabella in bozza, e la crea quando confermate. Una directory, un glob o più file diventano invece una sorgente di file.
+
 **Scritture su un file SQLite o DuckDB locale, e lock.** Una scrittura prende il lock del file e non lo attende mai. Quando un altro processo o nodo detiene il file, la scrittura viene rifiutata, indicando l'origine e che il suo file è bloccato.
 
 - **SQLite.** La scrittura imposta `PRAGMA busy_timeout = 0`, quindi un file bloccato fallisce subito.
@@ -326,6 +335,7 @@ Una cartella condivisa senza cifratura deve essere montata con lock che raggiung
 Qualsiasi origine `files` può anche dichiarare un `crawl` nel proprio mapping, con le stesse impostazioni elencate sotto [Wikipedia](#wikipedia): l'origine legge prima le pagine web e atterra ogni tabella di dati HTML e ogni file di dati collegato nella propria directory come tabella.
 
 Sul motore DuckDB, `files` viene letto nativamente, con una vista di scansione `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite fornito con il connettore (`pgwire-file`) che usano sharepoint e splunk. Vedi [Connettori SaaS enterprise](#enterprise-saas-connectors) più avanti.
+
 #### Logs {: #logs }
 
 Un'origine `logs` trasforma i file di log sul server Provisa in una tabella. I file si indicano con un percorso completo o con un glob, e si sceglie il formato in cui sono scritti i loro record. Ogni record diventa una riga. Un record che il formato non sa leggere viene conservato, con il testo grezzo e il motivo, mai scartato.
@@ -511,6 +521,7 @@ Solo le tabelle che i redattori contrassegnano come tabelle di dati (`table.wiki
 ### Connettori SaaS enterprise {: #enterprise-saas-connectors }
 
 Google Workspace e Microsoft 365 vengono letti da loader propri; vedi [Google Workspace e Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, l'inventario cloud e Splunk vengono letti tramite driver che girano come processo a sé e parlano il protocollo PostgreSQL (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`), quindi nessuno ha un driver diretto. Sul motore DuckDB l'endpoint del driver viene collegato live tramite l'estensione postgres: Register Table elenca le tabelle del connettore dal catalogo collegato, le query leggono il connettore sul posto, e filtri e proiezioni gli vengono spinti. Ogni altro motore atterra le righe nello store di materializzazione per la federazione. I pacchetti dei driver vengono scaricati per sistema operativo e architettura da una release fissata (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64). Un operatore può invece indicare, per connettore, una cartella di pacchetto compilata per questo host in Admin → Impostazioni → Server dei connettori (`connectors.<connector>.bundle_dir`); vedi [Admin](admin.md). Tutti e cinque i connettori Trino (Jira non ne ha) confrontano sempre i nomi senza distinguere maiuscole e minuscole, come fa ciascun prodotto.
+
 #### `sharepoint`
 
 Le liste SharePoint vengono enumerate come schemi ed esposte come tabelle interrogabili. Due metodi di autenticazione: `CLIENT_CREDENTIALS` (default) e basato su certificato tramite un certificato PFX. I valori segreti in `mapping` vengono risolti attraverso il motore dei secret prima di raggiungere il connettore.
@@ -1064,6 +1075,7 @@ Il file viene fornito vuoto. I connettori integrati coprono ciò che funziona su
 **ClickHouse supporta tre meccanismi**, uno per ciascuna forma di motore di integrazione: un motore DATABASE relazionale che espone automaticamente ogni tabella remota (`clickhouse_database`, es. Redis/MySQL), un motore per tabella le cui colonne sono fornite dal registro (`clickhouse_table`, es. il bridge JDBC/ODBC; l'`engine_template` può portare un placeholder `{table}` che il runtime lega), e un motore file/lake/URL il cui schema ClickHouse inferisce (`clickhouse_scan`, es. HDFS/URL). SQLite (motore DATABASE, file, nessun server) e Hudi (lakehouse, zero-copy) sono forniti out-of-the-box.
 
 Un valore `kind` sconosciuto fallisce in modo evidente all'avvio, così un refuso in un descrittore non lascia mai un tipo di origine irraggiungibile senza dirlo.
+
 ### Gating della sonda (probe) {: #probe-gating }
 
 La disponibilità viene verificata al momento dell'attach contro il catalogo di discovery standard di ciascun motore:
@@ -1488,6 +1500,7 @@ auth:
 Registra un database a grafo Neo4j come origine interrogabile. Gli steward scrivono query Cypher che proiettano valori scalari; Provisa mette in cache i risultati e li espone come tipi GraphQL.
 
 Le query Cypher devono usare accessi alle proprietà nella clausola `RETURN` (`RETURN n.id AS id, n.name AS name`). La registrazione rifiuta una query che restituisce oggetti nodo.
+
 #### Registrazione da file di configurazione {: #config-file-registration }
 
 Dichiara un'origine `neo4j` e le sue tabelle in YAML. Ogni tabella richiede un `query_template` (il Cypher che produce le sue righe) e colonne tipizzate. La chiave `query_template` non è valida sotto nessun altro tipo di origine.
@@ -1618,8 +1631,6 @@ tables:
 ```
 
 Registra tabella funziona allo stesso modo di Neo4j: scegli l'origine, digita un nome tabella e il SELECT, premi Anteprima (la query `sparqlPreview` lo esegue con `LIMIT 5` e compila l'elenco delle colonne), poi registra. La registrazione persiste una riga `api_sources` e una riga `api_endpoints` (POST form-encoded al percorso dell'endpoint, normalizzatore `sparql_bindings`), le stesse righe che scrive una registrazione da file di configurazione, e il motore nativo atterra le righe tramite la stessa catena di fetch di Neo4j.
-
----
 
 ## Esempi di connessione {: #connection-examples }
 

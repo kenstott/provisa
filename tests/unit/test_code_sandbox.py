@@ -93,6 +93,31 @@ def test_another_architectures_calls_and_x32_calls_are_refused():
     assert _judge(program, arch=lx._AUDIT_ARCH["x86_64"], nr=0x40000000 | 41) == REFUSE
 
 
+def test_the_launcher_starts_from_anywhere_with_no_provisa_package_on_the_path(tmp_path):
+    """Isolated (-I), from a directory outside the source, with no site-packages (-S, so no
+    installed or editable provisa): as an image that runs Provisa from /app does. As a module (-m)
+    it was not found there ("Error while finding module specification for
+    'provisa.codesource.linux_sandbox'", churnprod on the sandbox tier); by its path it starts,
+    then runs the host or says the sandbox is unavailable where the kernel has no Landlock."""
+    import subprocess
+
+    argv = lx.launcher_argv(sys.executable, read=[], proxy_port=1, argv=["/bin/true"])
+    bare = [argv[0], "-I", "-S"]
+    started = subprocess.run(
+        [*bare, *argv[2:]], cwd=tmp_path, capture_output=True, text=True, env={}
+    )
+    assert started.returncode in (0, 3), started.stderr
+    assert started.returncode == 0 or "code-source sandbox unavailable" in started.stderr
+    as_module = subprocess.run(
+        [*bare, "-m", "provisa.codesource.linux_sandbox", "--probe"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={},
+    )
+    assert "provisa" in as_module.stderr and as_module.returncode != 0
+
+
 def test_the_launcher_confines_then_runs_the_host():
     argv = lx.launcher_argv(
         "/opt/provisa/bin/python",
@@ -103,8 +128,7 @@ def test_the_launcher_confines_then_runs_the_host():
     assert argv == [
         "/opt/provisa/bin/python",
         "-I",
-        "-m",
-        "provisa.codesource.linux_sandbox",
+        lx.__file__,
         "--proxy-port",
         "40123",
         "--read",
@@ -165,7 +189,7 @@ def test_on_linux_the_host_inherits_its_socket_and_starts_through_the_launcher(
     )
     assert command.inherit_socket
     argv = command.argv_for("fd:5")
-    assert argv[:4] == [sys.executable, "-I", "-m", "provisa.codesource.linux_sandbox"]
+    assert argv[:3] == [sys.executable, "-I", lx.__file__]
     assert argv[argv.index("--") + 1 :] == _host("fd:5")
     assert command.env["HTTPS_PROXY"].startswith("http://127.0.0.1:")
 

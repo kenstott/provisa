@@ -54,7 +54,7 @@ sources:
   type: postgresql
   host: ${env:INSURANCE_PG_HOST:-localhost}
   port: ${env:INSURANCE_PG_PORT:-28132}
-  database: insurance
+  database: insurance${env:INSURANCE_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The insurer's own database -- the counties it writes in and its policies

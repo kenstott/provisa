@@ -44,7 +44,7 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from provisa.api.mcp import model_tool_specs, polly_usage
+from provisa.api.mcp import admin_api, model_tool_specs, polly_usage
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.sql_quoting import quote_identifiers
 
@@ -117,8 +117,9 @@ _TOOLS: list[Any] = [
     {
         "name": "generate_explore_queries",
         "description": (
-            "Generate ready-to-run queries for ALL SIX Explore surfaces (sql, "
-            "graphql, cypher, grpc, jsonapi, openapi) from one natural-language question — the "
+            "Generate ready-to-run queries for ALL NINE Explore surfaces (sql, graphql, cypher, "
+            "grpc, jsonapi, openapi, nl, python, notebook) from one natural-language question -- "
+            "the "
             "SAME pipeline the NL Explore page runs, with its own LLM call resolving table "
             "selection, joins, and aggregation shape. Use this instead of graphql_field_names/"
             "cypher_field_names plus hand-built SQL for anything beyond a flat single-table "
@@ -130,7 +131,8 @@ _TOOLS: list[Any] = [
             "query for it. Every other target's `query` is the exact, complete value to "
             "navigate with verbatim (for jsonapi/openapi it IS the full deep-link path/method, "
             "for grpc it IS the exact rpc call signature) — never rewrite, simplify, or "
-            "re-derive it."
+            "re-derive it. nl's query is the question for /nl, python's is the script for "
+            "/python (state.code), and notebook has `cells` for /notebook (state.cells)."
         ),
         "input_schema": {
             "type": "object",
@@ -202,117 +204,78 @@ _TOOLS: list[Any] = [
             "required": ["sql"],
         },
     },
+    # REQ-2114: the admin API the UI uses, read and run as the user.
     {
-        "name": "propose_source",
+        "name": "admin_schema",
         "description": (
-            "Propose a newly-discovered data source for a human to review and register"
-            ". Normally queues a pending creation request a rights-holder must execute "
-            "or reject on the admin UI's Requests page — NEVER creates a live source directly. "
-            "EXCEPTION: if the caller's own role already holds source_registration, "
-            "this instead returns status 'confirm_required' without queuing anything — see the "
-            "system prompt for what to do then. Use this when asked to find/add/connect a new "
-            "data source: propose it here rather than just describing it in prose."
+            "Read the admin GraphQL schema the UI uses: with kind 'query' or 'mutation', its root "
+            "fields as SDL signatures and descriptions, narrowed by `search` (a word in the name "
+            "or description); with `type`, one input, object or enum type in full. Read this "
+            "before admin_query or admin_mutation, so the operation you write is one the schema "
+            "has, with its real argument and input names."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "source": {
-                    "type": "object",
-                    "description": (
-                        "SourceInput-shaped: at minimum {id, type}, plus whatever of "
-                        "host/port/database/username/password/path/description/allowed_domains "
-                        "is known."
-                    ),
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Why this source is being proposed.",
-                },
+                "kind": {"type": "string", "enum": ["query", "mutation"]},
+                "search": {"type": "string"},
+                "type": {"type": "string", "description": "A type name, e.g. SourceInput."},
             },
-            "required": ["source", "reason"],
         },
     },
     {
-        "name": "propose_table",
+        "name": "admin_query",
         "description": (
-            "Propose registering a table from an already-registered source, for a human to "
-            "approve. Normally queues a pending creation request the same way "
-            "propose_source does. EXCEPTION: if the caller's own role already holds "
-            "table_registration, this instead returns status 'confirm_required' without queuing "
-            "anything — see the system prompt for what to do then."
+            "Run an admin GraphQL query as the user, through the UI's own API, to find what "
+            "exists: sources, tables, relationships, roles, settings, anything the admin pages "
+            "show. Queries only; a change is an admin_mutation, which the user confirms."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "table": {
-                    "type": "object",
-                    "description": (
-                        "TableInput-shaped: at minimum {source_id, domain_id, schema_name, "
-                        "table_name, columns} where each column is at least "
-                        "{name, visible_to}. Never set `alias` yourself — omit it entirely. "
-                        "The server generates the correct snake_case SQL alias automatically "
-                        "when it's left out; a model-supplied alias bypasses that and tends to "
-                        "come out camelCase (ordinary JSON/API habit), which is wrong for this "
-                        "app's SQL-plane naming convention."
-                    ),
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Why this table is being proposed.",
-                },
+                "query": {"type": "string", "description": "A GraphQL query document."},
+                "variables": {"type": "object"},
             },
-            "required": ["table", "reason"],
+            "required": ["query"],
         },
     },
     {
-        "name": "create_source_now",
+        "name": "admin_rest_routes",
         "description": (
-            "Create a live Source immediately, bypassing the Requests-page review queue"
-            ". ONLY call this after propose_source returned 'confirm_required' AND the "
-            "user has explicitly confirmed in THIS conversation that they want it created now — "
-            "never call it speculatively or without that confirmation. Takes the exact same "
-            "source/reason propose_source was called with."
+            "List the REST routes the UI's admin screens call for what is not a GraphQL mutation "
+            "-- a file upload, a settings change, the organization folder's encryption, a code "
+            "archive, relationship candidates, glossary edits and the like -- each with its "
+            "method, path, what it does and its body. Narrow it with `search`. Reach one with "
+            "admin_request."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {
-                "source": {
-                    "type": "object",
-                    "description": "Same shape as propose_source's `source`.",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "Same reason passed to propose_source.",
-                },
-            },
-            "required": ["source", "reason"],
+            "properties": {"search": {"type": "string"}},
         },
     },
     {
-        "name": "register_table_now",
+        "name": "discover_relationships",
         "description": (
-            "Register a live Table immediately, bypassing the Requests-page review queue"
-            ". ONLY call this after propose_table returned 'confirm_required' AND the "
-            "user has explicitly confirmed in THIS conversation that they want it registered now. "
-            "Takes the exact same table/reason propose_table was called with."
+            "Run the Relationships page's discovery for one registered table, as the user, and "
+            "list the relationship candidates it found (each with its id, the columns it would "
+            "join, its confidence and why). Use it for 'create any relationships to <table>'; "
+            "accept the candidates the user picks with admin_request POST "
+            "/admin/discover/candidates/{id}/accept."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "table": {
-                    "type": "object",
-                    "description": "Same shape as propose_table's `table`.",
-                },
-                "reason": {"type": "string", "description": "Same reason passed to propose_table."},
+                "schema": {"type": "string", "description": "The table's domain or schema."},
+                "table": {"type": "string"},
             },
-            "required": ["table", "reason"],
+            "required": ["schema", "table"],
         },
     },
     {
         "name": "search_govdata_subjects",
         "description": (
             "Check GovData (askamerica) FIRST for a topic-matching source, before web_search or "
-            "propose_source — GovData and Kaggle are this org's subscription "
+            "proposing a createSource — GovData and Kaggle are this org's subscription "
             "sources. Matches a free-text topic (e.g. 'inflation', 'unemployment', 'crime "
             "rates') against GovData's real schema/table catalog and reports whether each match's "
             "subject is already subscribed for this org."
@@ -327,7 +290,7 @@ _TOOLS: list[Any] = [
         "name": "search_kaggle_datasets",
         "description": (
             "Check Kaggle SECOND (after search_govdata_subjects) for a topic-matching "
-            "public dataset, before web_search or propose_source. Reads the Kaggle API "
+            "public dataset, before web_search or proposing a createSource. Reads the Kaggle API "
             "token from the operator setting 'Kaggle API token' — never a raw token argument and "
             "never a secret name you choose or ask the user to choose. If this tool errors "
             "because the token cannot be read, tell the user to enter it in that setting (Admin "
@@ -346,9 +309,8 @@ _TOOLS: list[Any] = [
             "The REAL table names of a source, introspected directly from it — NOT "
             "the governed catalog list_tables/search_catalog read, which is EMPTY for a source "
             "with nothing registered on it yet (a source you just created, most commonly). "
-            "REQUIRED before propose_table/register_table_now for such a source: guessing a "
-            "table_name instead means register_table_now's own validation will refuse it "
-            "outright once you call it. schema_name is source-type-specific (e.g. a 'files' "
+            "REQUIRED before a registerTable for such a source: guessing a table_name instead "
+            "means registerTable's own validation refuses it. schema_name is source-type-specific (e.g. a 'files' "
             "source's schema is its own id with hyphens turned to underscores) — if unsure, "
             "call with schema_name='public' first; the tool tells you the real one either way."
         ),
@@ -366,7 +328,7 @@ _TOOLS: list[Any] = [
         "description": (
             "The REAL columns (name, data_type) of one table of a source, introspected "
             "directly from it. Call list_native_tables first if you don't already have the exact "
-            "table_name from it. Building propose_table/register_table_now's columns list from "
+            "table_name from it. Building registerTable's columns list from "
             "this result is what makes registration actually succeed — a guessed columns list "
             "gets refused by the server's own validation, every time."
         ),
@@ -574,7 +536,7 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables, /relationships, /admin/glossary, /schema. Explore's seven query surfaces "
+            "/tables, /relationships, /admin/glossary, /schema. Explore's query surfaces "
             "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sql, "
             "/grpc, /jsonapi, /openapi, /nl (Natural Language). When you have already prepared a "
@@ -632,6 +594,44 @@ _CLIENT_TOOLS: list[Any] = [
                         '"autoRun": true alongside whichever key applies.'
                     ),
                 },
+                # REQ-2115: steps taken on the screen the route opens, in order, each shown.
+                "actions": {
+                    "type": "array",
+                    "description": (
+                        "Optional: steps on the screen the route opens, taken in order and shown "
+                        "to the user as each happens -- only when the user asked to be shown, "
+                        "demoed or taught. Each names its element by `target`: "
+                        '{"testId": "<data-testid>"} or {"role": "button"|"textbox"|"combobox"|'
+                        '"checkbox"|"radio"|"switch"|"option"|"tab"|"link", "name": "<its '
+                        'accessible name>"}. Steps: {"do": "fill", "target": ..., "value": '
+                        '"<text>"} types into a field; {"do": "choose", "target": ..., "option": '
+                        '"<option name>"} picks an option in a select or dropdown; {"do": '
+                        '"press", "target": ...} presses a button (add "changes": true when '
+                        "pressing it changes something the screen does not mark; a form's Save "
+                        'or action always waits for the user\'s yes); {"do": "show", '
+                        '"target": ...} shows an element, a list scrolled through end to end. '
+                        "The steps stop at the first that cannot be done, and the result says "
+                        "which, naming an element the screen does not have."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "do": {"type": "string", "enum": ["fill", "choose", "press", "show"]},
+                            "target": {
+                                "type": "object",
+                                "properties": {
+                                    "testId": {"type": "string"},
+                                    "role": {"type": "string"},
+                                    "name": {"type": "string"},
+                                },
+                            },
+                            "value": {"type": "string"},
+                            "option": {"type": "string"},
+                            "changes": {"type": "boolean"},
+                        },
+                        "required": ["do", "target"],
+                    },
+                },
             },
             "required": ["route"],
         },
@@ -674,6 +674,72 @@ _CLIENT_TOOLS: list[Any] = [
             },
             "required": ["question", "mode"],
         },
+    },
+    # REQ-2114: a change through the admin API, as the user, once the user confirms in the chat.
+    {
+        "name": "admin_mutation",
+        "description": (
+            "Make a change through the admin GraphQL API the UI uses, as the user: the mutation "
+            "is shown to the user in the chat with `summary`, and only when they confirm there is "
+            "it sent, by their own browser session, so it meets every capability check the UI "
+            "meets and is refused where the UI would refuse it. Any admin mutation the schema "
+            "has (read it with admin_schema first): createSource, registerTable, "
+            "createRelationship and every other. The result is the mutation's own answer, or "
+            "'Cancelled by the user.'"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mutation": {"type": "string", "description": "A GraphQL mutation document."},
+                "variables": {"type": "object"},
+                "summary": {
+                    "type": "string",
+                    "description": "One plain sentence: what this change does, for the user.",
+                },
+            },
+            "required": ["mutation", "summary"],
+        },
+    },
+    {
+        "name": "admin_request",
+        "description": (
+            "Call one of the UI's admin REST routes (see admin_rest_routes) as the user, from "
+            "their own browser session. A GET runs at once; any other method is shown to the "
+            "user with `summary` and sent only when they confirm in the chat. For a route that "
+            "uploads a file, set `upload` true: the user chooses the file in the chat and its "
+            "bytes are the body, and {filename} in the path stands for its name (e.g. "
+            "/admin/orgs/<org>/code-uploads/archive?filename={filename})."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]},
+                "path": {
+                    "type": "string",
+                    "description": "e.g. /admin/discover/candidates/7/accept",
+                },
+                "body": {
+                    "type": "object",
+                    "description": "The JSON body, or a form's other fields.",
+                },
+                "upload": {"type": "boolean"},
+                "summary": {"type": "string"},
+            },
+            "required": ["method", "path", "summary"],
+        },
+    },
+    # REQ-2115: what the user is looking at, read in their own browser session.
+    {
+        "name": "read_screen",
+        "description": (
+            "Read the screen the user is looking at, from their own browser session: the current "
+            "route; the open query editor's text (SQL, GraphQL, Cypher or Python) with its "
+            "language and the query tab open; the visible labelled form fields with their values "
+            "(a password shows as dots, as on screen); and each result grid's columns and row "
+            "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
+            "anything on the screen, before you answer or act on it."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
     },
 ]
 _CLIENT_TOOL_NAMES = frozenset(t["name"] for t in _CLIENT_TOOLS)
@@ -730,7 +796,9 @@ _SYSTEM = (
     "own machinery -- an engine, binder, planner or compiler error ('Execution failed', "
     "'Binder Error', an internal column such as _nf_query) -- is a Provisa error: say so, quote "
     "it, and offer a working way to the same answer (e.g. the same question in SQL over a "
-    "registered view), never a step for the user to fix it. When you're offering the user a decision among a handful of concrete options — which "
+    "registered view), never a step for the user to fix it. When the user refers to 'this', "
+    "'the query', 'these results' or anything else on their screen, call read_screen first and "
+    "work from what it returns; never say you cannot see the screen. When you're offering the user a decision among a handful of concrete options — which "
     "source, which table, proceed or not, pick some of these — call present_choice rather than "
     "listing options in prose and waiting for a typed reply; it's a real UI widget (multiple "
     "choice, checklist, or yes/no) and reads better than typing a number or a name back. Its "
@@ -759,51 +827,63 @@ _SYSTEM = (
     "details (API base URL, auth scheme, official docs) for a brand-new external source. If more "
     "than one candidate was found (multiple GovData subjects, multiple Kaggle datasets, or a mix "
     "of both), you do not yet know which one the user wants — ask via present_choice (mode="
-    "'single') listing each candidate, and WAIT for their answer. Their pick IS the go-ahead: "
-    "call propose_source or propose_table for that ONE chosen candidate immediately after, with "
-    "no separate 'would you like me to propose it?' question first — that would just be asking "
-    "the same thing twice in different words. If exactly one candidate was found, skip present_"
-    "choice entirely at this point too and call propose_source/propose_table right away: it only "
-    "ever queues a low-stakes, reversible pending request at this stage (see the confirm_required "
-    "exception below for the one moment a REAL confirmation is actually needed, right before an "
-    "irreversible direct creation) — asking permission to merely propose something is asking "
-    "permission to ask permission. Never call propose_source or propose_table for a MULTI-"
-    "candidate result the user has not yet picked from — asking 'which one?' in plain text and "
-    "then proposing one anyway without an actual answer is wrong. "
+    "'single') listing each candidate, and WAIT for their answer. Then propose that ONE chosen "
+    "candidate with admin_mutation (createSource; registerTable for a table). admin_mutation "
+    "itself shows the user the change and waits for them to confirm it, so never ask a separate "
+    "'shall I?' question first: that is asking the same thing twice. If exactly one candidate was "
+    "found, propose it with admin_mutation right away. Never propose a candidate from a "
+    "multi-candidate result the user has not picked from. "
     "For a GovData match, the 'source' is the subject/schema itself (say what subscribing would "
     "require if the org isn't subscribed yet); for a Kaggle match, propose type='files' with "
     'federation_hints_json set to \'{"kaggle_owner": "<owner>", "kaggle_ref": "<ref>"}\' '
     "(split the dataset's ref on its '/') and any placeholder for path — the server downloads the "
     "real files and overwrites path itself when the source is actually created, so "
     "there is no separate staging/download step to call here or anywhere else. ALWAYS use the "
-    "tool rather than only describing the source in prose. If none of these tools can find "
+    "tool rather than only describing the source in prose. "
+    "A request naming ONE file by a fully resolved path -- a file mount path, an https:// URL or "
+    "an s3:// URL to a single .csv or .parquet file -- is a CSV or Parquet source given its file "
+    "by download: work out csv or parquet from the file's name (ask if it says neither), and "
+    "propose type='csv' or 'parquet' with download_from set to that path, path left out, an id "
+    "from the file's name, register_table_draft true and table_domain_id the domain the user "
+    "named (ask which one if they named none) -- the server copies the file into the "
+    "organization's folder and sets up its table as a draft when the source is created. A server "
+    "of many organizations refuses a file mount path by name: offer an https:// or s3:// address "
+    "there. A directory, a glob or several files is a files source instead (type='files', path "
+    "set to that directory or glob), proposed and confirmed the same way, its tables registered "
+    "from what the source offers (list_native_tables, then registerTable). "
+    "If none of these tools can find "
     "something (an API key, "
     "a customer-specific hostname), say what's still needed rather than inventing it.\n\n"
-    "propose_source/propose_table normally queue a pending request a human approves on the "
-    "Requests page and never create anything directly. EXCEPTION: if the result's status "
-    "is 'confirm_required' instead of 'pending', nothing was queued — the caller's own role "
-    "already holds the needed capability, so a review queue is irrelevant here and must never be "
-    "mentioned. In that case — and ONLY this case, this is the one real confirmation in the whole "
-    "flow, not a second one — ask via present_choice (mode='yes_no') a plain, simple question — "
-    "'Create the <name> source now?' / 'Register the <name> table now?' — nothing about queuing, "
-    "review, or 'instead of'; wait for their answer. Only if they answer yes, call "
-    "create_source_now/register_table_now with the exact same source/table and reason. If they "
-    "answer no, do nothing further — do not queue it as a fallback and do not create it. Never "
-    "call create_source_now or register_table_now without that explicit confirmation in the same "
-    "conversation.\n\n"
-    "After create_source_now/register_table_now actually completes (success or failure) — and "
-    "after propose_source/propose_table's 'pending' path queues a request — ALWAYS say so in a "
-    "short final message; never end the turn silently right after a tool call with no text at "
-    "all, leaving the user unsure whether anything happened. On a successful create_source_now, "
-    "also proactively suggest the natural next step — e.g. 'Would you like me to register a "
-    "table from this new source now?' — rather than just stopping and waiting to be asked.\n\n"
+    "THE ADMIN API: you act as the user through the same admin API the UI calls. "
+    "Read what exists with admin_query (and the schema with admin_schema, before writing any "
+    "operation, so its fields, arguments and input names are real). Make every change with "
+    "admin_mutation: it shows the user the change and its one-sentence summary in the chat and "
+    "sends it from their own session only when they confirm there, so it meets exactly the "
+    "capability checks the UI meets. Where the user's roles do not allow it, the mutation is "
+    "refused, or queued as a request for approval, exactly as on the admin page -- report its "
+    "answer as it came. A UI action that is a REST route and not a mutation (a file upload, a "
+    "setting, the organization folder's encryption, a code archive) is found with "
+    "admin_rest_routes and reached with admin_request. 'Create any relationships to <table>': "
+    "run discover_relationships for it, show the candidates with present_choice (mode 'multi'), "
+    "and accept each the user picks with admin_request POST "
+    "/admin/discover/candidates/{id}/accept. A source's createSource input: at minimum id and "
+    "type; a CSV or Parquet source given its file by download sets download_from and leaves path "
+    "out, and register_table_draft with table_domain_id sets its table up as a draft. A "
+    "registerTable input: source_id, domain_id, schema_name, table_name and columns (each at "
+    "least name and visible_to); never set alias -- the server derives the right SQL name. When "
+    "the user asks to be shown, demoed or taught how something is done, use the screen instead "
+    "(navigate with actions), never these tools.\n\n"
+    "After an admin_mutation or admin_request completes (success, refusal or cancel), ALWAYS say "
+    "so in a short final message; never end the turn silently right after a tool call. After a "
+    "source is created, suggest the natural next step -- e.g. 'Would you like me to register a "
+    "table from this new source now?' -- rather than waiting to be asked.\n\n"
     "search_catalog/list_tables/describe_table only ever see the already-registered GOVERNED "
     "catalog — for a source that has no tables registered on it yet (most commonly one you or the "
     "user just created), that catalog is empty and those tools will never find anything on it, no "
-    "matter how you search. For propose_table/register_table_now on such a source, call "
+    "matter how you search. For a registerTable on such a source, call "
     "list_native_tables (then describe_native_table for the chosen table) instead — these read the "
     "source's own real, native schema directly. Never guess a table_name or columns list from the "
-    "source's name/description alone; register_table_now's own validation will refuse a guessed "
+    "source's name/description alone; registerTable's own validation will refuse a guessed "
     "columns list outright, and the tool call will fail. "
     "THE PAGE-FIRST RULE: before performing an action that corresponds to a specific admin page (creating or "
     "registering a source/table, editing a glossary term, upserting/deleting a relationship, "
@@ -822,7 +902,7 @@ _SYSTEM = (
     "Manage the glossary with list_glossary_terms/create_glossary_term/update_glossary_"
     "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge directly — these "
     "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
-    "don't go through the propose/confirm_required flow above. Still always confirm with the user "
+    "need no admin_mutation. Still always confirm with the user "
     "(present_choice, mode='yes_no') before delete_glossary_term specifically, since it's "
     "irreversible; create/update/edge actions are safe to do directly once asked. Check list_"
     "glossary_terms first to avoid creating a duplicate term, and remember 'finalizing' a term "
@@ -832,7 +912,7 @@ _SYSTEM = (
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/create_data_product/"
     "delete_data_product, and governed metrics with upsert_metric/delete_metric, directly — no "
-    "propose/confirm_required flow, they carry their own capability check and fail loud if the "
+    "admin_mutation needed, they carry their own capability check and fail loud if the "
     "caller lacks it (data_product_rw / table_registration). create_data_product and upsert_metric "
     "are both upserts by id/name — an existing one is silently overwritten in full, so call "
     "list_data_products or check the metric first if you mean to change only some fields, not "
@@ -842,7 +922,7 @@ _SYSTEM = (
     "confirm with the user (present_choice, mode='yes_no') before delete_data_product/delete_"
     "metric specifically, since they're irreversible. Per the page-first rule: navigate to /data-products or "
     "/metrics before calling any of these.\n\n" + model_tool_specs.SYSTEM_SECTION + "\n\n"
-    "THE QUERY SURFACES: Provisa has SEVEN query surfaces under Explore, each its "
+    "THE QUERY SURFACES: Provisa has NINE query surfaces under Explore, each its "
     "own route and each with its own exact deep-link format — never assume one surface's names or "
     "state shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
     "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
@@ -910,7 +990,19 @@ _SYSTEM = (
     "For any of these, do the lookup (if needed) once per table, build the query, navigate with "
     "state once, then stop — report the outcome; never re-run the naming lookup, search_catalog, "
     "or navigate again for the same table in the same turn just to double-check work that already "
-    "succeeded."
+    "succeeded.\n"
+    # REQ-2115: the screen when asked to be shown; the admin API otherwise.
+    "Asked to show, demo or teach something -- 'show me each step', 'show me how to add a "
+    "source', 'teach me relationships' -- do it on the user's screen with navigate's actions, "
+    "never by the admin API: open its page, fill in its form, choose its options and press its "
+    "buttons, so the user watches each step happen there. Any other request to make a change you "
+    "make through the admin API as usual. On the screen, name each element by its test id, or "
+    "by its role and accessible name as the screen labels it; never guess one. An element the "
+    "screen does not have is answered back by name: report it, and never carry on as if the step "
+    "were done. A press of a button that changes something waits for the user's yes in the chat. "
+    "Showing how to add a source, open the source picker (press sources-add-toggle), then show its "
+    "whole list of source types (show source-type-picker-body) before pressing the one chosen "
+    "(source-type-option-<type>), as a user would."
 )
 
 
@@ -1127,10 +1219,9 @@ async def _execute_tool(
 ) -> Any:
     """Dispatch one tool call to the governed MCP tool, with the role pinned by the endpoint.
 
-    `request` is the real, AuthMiddleware-verified HTTP request behind this chat turn (REQ-1799)
-    — passed through to the handful of tools (propose_source/propose_table's confirm_required
-    check, create_source_now, register_table_now) that need the caller's verified identity to
-    safely bypass the REQ-434 review queue. Every other tool ignores it."""
+    `request` is the real, AuthMiddleware-verified HTTP request behind this chat turn -- passed
+    to the tools that act as the user through the admin API (REQ-2114). Every other tool ignores
+    it."""
     if name == "list_schemas":
         return await mcp_tools.list_schemas(state, role)
     if name == "list_tables":
@@ -1157,25 +1248,24 @@ async def _execute_tool(
         return await _render_graph(state, role, args["cypher"], args.get("layout", "force"))
     if name == "explain_sql":
         return await mcp_tools.explain_sql(state, role, args["sql"])
-    if name == "propose_source":
-        return await mcp_tools.propose_source(
-            state, role, args["source"], args["reason"], request=request
-        )
-    if name == "propose_table":
-        return await mcp_tools.propose_table(
-            state, role, args["table"], args["reason"], request=request
-        )
-    if name == "create_source_now":
+    # REQ-2114: the admin API the UI uses, read and run as the user behind this chat.
+    if name == "admin_schema":
+        if args.get("type"):
+            return admin_api.schema_type(args["type"])
+        return admin_api.schema_fields(args.get("kind") or "mutation", args.get("search"))
+    if name == "admin_query":
         if request is None:
-            raise ValueError("create_source_now requires a verified request context")
-        return await mcp_tools.create_source_now(
-            state, role, args["source"], args["reason"], request=request
-        )
-    if name == "register_table_now":
+            raise ValueError("admin_query runs as the user, and this chat carries no request")
+        return await admin_api.run_query(args["query"], args.get("variables"), request=request)
+    if name == "admin_rest_routes":
         if request is None:
-            raise ValueError("register_table_now requires a verified request context")
-        return await mcp_tools.register_table_now(
-            state, role, args["table"], args["reason"], request=request
+            raise ValueError("admin_rest_routes reads the app, and this chat carries no request")
+        return admin_api.rest_routes(request.app, args.get("search"))
+    if name == "discover_relationships":
+        if request is None:
+            raise ValueError("discovery runs as the user, and this chat carries no request")
+        return await admin_api.discover_relationships(
+            state, args["schema"], args["table"], request=request
         )
     if name == "search_govdata_subjects":
         return await mcp_tools.search_govdata_subjects(state, role, args["query"])
@@ -2081,10 +2171,9 @@ async def run_chat(
     ai_models.mcp_chat's configured vendor; both speak the identical wire format, so the caller
     (and the frontend) never need to know which one is active.
 
-    ``request`` is the real, AuthMiddleware-verified HTTP request behind this call (REQ-1799) —
-    threaded through to create_source_now/register_table_now and propose_source/propose_table's
-    confirm_required check, which need the caller's verified identity to safely bypass the
-    REQ-434 review queue. Optional so existing/test callers that don't need that path keep working.
+    ``request`` is the real, AuthMiddleware-verified HTTP request behind this call -- threaded
+    through to the tools that act as the user through the admin API (REQ-2114). Optional so
+    callers that use none of them keep working.
 
     ``current_route`` is the frontend's own current URL (REQ-1800), sent with every turn — this
     answers "what page am I on" without a tool round-trip, since the browser already knows its

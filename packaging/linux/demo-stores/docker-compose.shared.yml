@@ -1,0 +1,156 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The sandbox tier node's shared demo stores (REQ-2049, scripts/demo_stores.py): one instance of
+# each store type every demo bundle's stores load into, each demo version's data under names of
+# its own. A service is started the first time a demo version that needs it is wanted, and left
+# running until the node stops: none restarts when docker does, so the node's next start starts
+# none (scripts/demo_stores_sync.sh starts what the tier asks for). Ports are published on the
+# loopback only, at ports docker picks: a tier on another network reaches them by container name
+# (DEMO_STORES_NETWORK).
+#
+# DEMO_BUNDLES_DIR: the bundles directory on this host, read by Elasticsearch as its snapshot
+# repositories' root (each bundle's dump/<service>/). DEMO_STORES_QDRANT_KEY: the shared Qdrant's
+# key, which scripts/demo_stores.py generates and keeps. DEMO_STORES_KAFKA_PORT: the port the
+# shared Kafka is published and advertised at, the same inside its container and on this host.
+
+name: provisa-demo-stores
+
+x-labels: &labels
+  com.provisa.demo.shared: "true"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: "no"
+    labels: *labels
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1::5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      # By the container's own address: the image first initializes with a server on its socket
+      # alone, then restarts it; a socket check passes before the real one is up.
+      test: ["CMD-SHELL", "pg_isready -U postgres -h \"$$(hostname -i | cut -d' ' -f1)\""]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  mongo:
+    image: mongo:7
+    restart: "no"
+    labels: *labels
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    ports:
+      - "127.0.0.1::27017"
+    volumes:
+      - mongo:/data/db
+    healthcheck:
+      # By the container's own address, not the loopback: with a root user to create, the image
+      # first runs a mongod bound to 127.0.0.1 alone, then stops it and starts the real one. A
+      # loopback ping passed against the first, the wait returned, and the first load's mongosh
+      # found no server (storefront's sync on the sandbox tier).
+      test: ["CMD-SHELL", "mongosh --quiet --host \"$$(hostname -i | cut -d' ' -f1)\" --eval \"db.adminCommand('ping').ok\""]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    restart: "no"
+    labels: *labels
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      path.repo: /bundles
+      # A demo version's indices are dropped by its suffix (*_<demo>_<hex>).
+      action.destructive_requires_name: "false"
+    ports:
+      - "127.0.0.1::9200"
+    volumes:
+      - elasticsearch:/usr/share/elasticsearch/data
+      - ${DEMO_BUNDLES_DIR:?the bundles directory on this host}:/bundles:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    restart: "no"
+    labels: *labels
+    environment:
+      # The node's own key (scripts/demo_stores.py keeps it beside the bundles); each demo version
+      # reads with a token it signs, scoped to that version's collections, read only.
+      QDRANT__SERVICE__API_KEY: ${DEMO_STORES_QDRANT_KEY:?the key of the shared Qdrant}
+      QDRANT__SERVICE__JWT_RBAC: "true"
+    ports:
+      - "127.0.0.1::6333"
+    volumes:
+      - qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    restart: "no"
+    labels: *labels
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # INTERNAL: a demo's producers, joined to this project's network (as "kafka"). HOST: Provisa,
+      # by this container's name on the tier's network, else on the loopback.
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,HOST://0.0.0.0:${DEMO_STORES_KAFKA_PORT:?the port of the shared Kafka},CONTROLLER://0.0.0.0:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # KRaft formats its storage with this: a UUID in base64, 16 bytes ("provisa-stores-1").
+      CLUSTER_ID: cHJvdmlzYS1zdG9yZXMtMQ
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # A demo version's topics are deleted by their suffix.
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_LOG_RETENTION_MS: 3600000
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
+      DEMO_STORES_NETWORK: ${DEMO_STORES_NETWORK:-}
+    command:
+      - bash
+      - -c
+      - >-
+        if [ -n "$$DEMO_STORES_NETWORK" ]; then host="$$(hostname)"; else host=127.0.0.1; fi;
+        export KAFKA_ADVERTISED_LISTENERS="INTERNAL://kafka:9092,HOST://$$host:${DEMO_STORES_KAFKA_PORT}";
+        exec /etc/confluent/docker/run
+    ports:
+      - "127.0.0.1:${DEMO_STORES_KAFKA_PORT}:${DEMO_STORES_KAFKA_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+
+volumes:
+  postgres:
+  mongo:
+  elasticsearch:
+  qdrant:

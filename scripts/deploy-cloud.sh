@@ -435,6 +435,12 @@ services:
       # The SQLite sample data of the deployment's demo config, which this tier also builds at
       # startup (first-launch.sh writes the same on a node set up since).
       PROVISA_DEMO_DIR: "/app/config/demo/files"
+      # REQ-2006: Polly and every AI role in a sandbox, through OpenRouter (provisa/core/sandbox_ai.py;
+      # the model is sandbox.ai_model's, a Claude Haiku). The key is the node's own
+      # OPENROUTER_API_KEY (provisa.env, preflight_sandbox_ai), named here, never written here.
+      PROVISA_SANDBOX_AI_BASE_URL: "https://openrouter.ai/api/v1"
+      PROVISA_SANDBOX_AI_API_KEY: "\$\${env:OPENROUTER_API_KEY}"
+      OPENROUTER_API_KEY: "\${OPENROUTER_API_KEY:-}"
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"
@@ -582,10 +588,15 @@ push_demo_stores() {
     echo "== demo stores: on $SANDBOX_NODE, not $NODE"
     return
   fi
-  for f in "$REPO/scripts/demo_stores_sync.sh" "$REPO"/packaging/linux/demo-stores/provisa-demo-stores.*; do
+  for f in "$REPO/scripts/demo_stores_sync.sh" "$REPO/scripts/demo_stores.py" \
+      "$REPO/packaging/linux/demo-stores/docker-compose.shared.yml" \
+      "$REPO"/packaging/linux/demo-stores/provisa-demo-stores.* \
+      "$REPO/packaging/linux/demo-stores/provisa-demo-stores-boot.service"; do
     name="$(basename "$f")"
     case "$name" in
       demo_stores_sync.sh) dest="$DEMO_STORES_BIN" ;;
+      demo_stores.py) dest="$(dirname "$DEMO_STORES_BIN")/demo_stores.py" ;;
+      docker-compose.shared.yml) dest="$(dirname "$DEMO_STORES_BIN")/demo-stores-shared.yml" ;;
       *) dest="$DEMO_STORES_UNITS/$name" ;;
     esac
     want="$(shasum -a 256 "$f" | cut -d' ' -f1)"
@@ -600,13 +611,28 @@ push_demo_stores() {
     echo "== demo stores: up to date"
     return
   fi
-  ssh_node "sudo systemctl daemon-reload && sudo systemctl start --no-block provisa-demo-stores.service"
+  ssh_node "sudo systemctl daemon-reload && sudo systemctl enable provisa-demo-stores-boot.service && sudo systemctl start --no-block provisa-demo-stores.service"
 }
 
 # The app overlay itself. ${PROVISA_HOME}/compose/docker-compose.app.yml is whatever the release
 # installer wrote, and nothing in this script ever refreshed it — so an env passthrough added to the
 # repo's overlay (the PROVISA_OTEL_S3_* block the OTLP compactor needs, say) reaches the image but
 # never the container, and the fix looks deployed while the node still runs the old environment.
+# REQ-2006: the sandbox tier's AI (push_overlay) reads the key from OPENROUTER_API_KEY in the
+# provisa.env of the node the tier runs on. The key is the maintainer's to put there; this only
+# refuses, by name, a node without it, before anything is pushed to it. No value is printed.
+preflight_sandbox_ai() {
+  echo "== sandbox AI preflight ($NODE)"
+  if ! ssh_node "sudo grep -q '^OPENROUTER_API_KEY=.' $ENV_FILE"; then
+    echo "$NODE's $ENV_FILE has no OPENROUTER_API_KEY: Polly in its sandboxes would have no key." >&2
+    echo "Add it from the repo .env (the value goes over stdin, never on a command line):" >&2
+    echo "  printf 'OPENROUTER_API_KEY=%s\\n' \"\$(sed -n 's/^OPENROUTER_API_KEY=//p' .env | tail -1)\" | gcloud compute ssh $NODE --zone $ZONE --project $PROJECT --command \"sudo sed -i '/^OPENROUTER_API_KEY=/d' $ENV_FILE && sudo tee -a $ENV_FILE >/dev/null\"" >&2
+    echo "then re-run." >&2
+    exit 1
+  fi
+  echo "   OPENROUTER_API_KEY=<set>"
+}
+
 # Same ordering rule as the extensions: it recreates the stack, so it runs BEFORE the pushes.
 APP_YML="/root/.provisa/compose/docker-compose.app.yml"
 # The systemd EnvironmentFile first-launch.sh writes; the containers' environment comes from it.
@@ -932,6 +958,7 @@ deploy_sandbox_vm() {
     sleep 15
   done
   echo "== sandbox VM: $SANDBOX_NODE"
+  preflight_sandbox_ai
   push_demo_stores; push_demo_stores_env; push_overlay
   # What this deploy built: the api arm has no configs, the cfg arm no package.
   [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
@@ -941,22 +968,22 @@ deploy_sandbox_vm() {
 
 case "$TARGET" in
   ui)
-    push_overlay; build_ui; push_ui; verify ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify ;;
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   all)
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

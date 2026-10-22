@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "{{table}} 的漂移層",
+    "none": "這些執行中都沒有層可以繪製的值。",
+    "canvasLabel": "一個欄位在每次執行中的分佈的 3D 堆疊，最早的在最後",
+    "column": "欄位",
+    "legendShare": "佔該次執行行數的比例",
+    "legendMedian": "各次執行的中位數",
+    "legendDrift": "發生漂移的執行",
+    "tipShare": "佔該次執行非空行的 {{pct}}",
+    "tipNullShare": "佔該次執行行數的 {{pct}}",
+    "drifted": "已漂移（{{reason}}）",
+    "steady": "未標記漂移",
+    "noValues": "本次執行中沒有值",
+    "runs": "執行，最新的在前",
+    "columnsNote": "每次執行的中位數和空值佔比。所選執行是所顯示執行中最新的一次。",
+    "binning_sketch": "每次執行使用相同的分箱，由各次執行的分位數草圖得出；高度為各次執行佔其非空行的比例。",
+    "binning_categories": "每次執行的值按相同的類別統計。",
+    "binning_none": "這些執行中沒有您的角色可見的此欄位的值。"
+  }
+}

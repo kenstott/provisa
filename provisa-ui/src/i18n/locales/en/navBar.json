@@ -73,6 +73,7 @@
     "sandboxExitCreateOrg": "Create Organization",
     "sandboxExitLogOut": "Just Log Out",
     "itemPython": "Python",
-    "itemNotebook": "Notebook"
+    "itemNotebook": "Notebook",
+    "itemContainerRegistries": "Container registries"
   }
 }

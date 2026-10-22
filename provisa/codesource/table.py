@@ -22,6 +22,7 @@ value for is passed as absent, so the function's own default applies.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from typing import Any
 
 from provisa.codesource.source import CODE_SOURCE_TYPES
@@ -134,6 +135,14 @@ def call_arguments(table: dict, export: Any, given: dict | None) -> tuple[list, 
 
 async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app state
     """Call ``table``'s function with the arguments ``given`` and return its checked rows."""
+    return await read_each(state, table, [given])
+
+
+async def read_each(state: Any, table: dict, argument_sets: Sequence[dict | None]) -> Any:
+    """Call ``table``'s function once for each of ``argument_sets`` and return their checked rows
+    together (REQ-2099: a join over a relationship that feeds the table's parameters calls it
+    once per distinct set of the parent's values) -- every set in one request to the worker,
+    which calls the function per set in its own process."""
     from provisa.codesource.source import context_for, prepare
     from provisa.core.ir_types import to_ir
     from provisa.federation.registry_view import registered_sources
@@ -152,18 +161,21 @@ async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app s
     )
     if export is None:
         raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
-    args, names = call_arguments(table, export, given)
+    calls = [call_arguments(table, export, given) for given in argument_sets]
     outputs = [
         OutputColumn(c["column_name"], c["data_type"], c.get("path"))
         for c in table["columns"]
         if c["native_filter_type"] is None
     ]
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+
     worker = prepared.worker()
+    schema = schema_text(row_schema(prepared.manifest, export))
 
     def _run() -> list[dict]:
         return [
             project(name, row, outputs)
-            for batch in worker.rows(function, "table", args, names)
+            for batch in worker.rows_each(function, calls, schema=schema)
             for row in batch
         ]
 
@@ -187,7 +199,10 @@ async def whole_rows(state: Any, source: Any, table: Any) -> list[dict]:  # the 
         )
     prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
     function = export_of(table)
-    if not any(e.name == function and e.kind == "table" for e in prepared.manifest.exports):
+    export = next(
+        (e for e in prepared.manifest.exports if e.name == function and e.kind == "table"), None
+    )
+    if export is None:
         raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
     outputs = [
         OutputColumn(
@@ -195,12 +210,15 @@ async def whole_rows(state: Any, source: Any, table: Any) -> list[dict]:  # the 
         )
         for c in columns
     ]
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+
     worker = prepared.worker()
+    schema = schema_text(row_schema(prepared.manifest, export))
 
     def _run() -> list[dict]:
         return [
             project(name, row, outputs)
-            for batch in worker.rows(function, "table", [], [])
+            for batch in worker.rows(function, "table", [], [], schema=schema)
             for row in batch
         ]
 

@@ -14,7 +14,7 @@
     "version": "バージョン",
     "versionHint": "1.2.0 のような正確なバージョン。",
     "lockfile": "ロックファイル",
-    "lockfileHint": "公開されたパッケージにロックファイルが含まれることはまれです。パッケージに依存関係がある場合は指定してください ({{names}})。",
+    "lockfileHint": "任意。テストで重要になる同一のインストールには、コードにロックファイルが含まれているか、ここで指定する必要があります ({{names}})。",
     "lockfilePlaceholder": "ロックファイルなし",
     "repository": "リポジトリ URL",
     "commit": "コミット",
@@ -25,6 +25,21 @@
     "archivePlaceholder": "アーカイブを選択",
     "entry": "エントリモジュール",
     "entryHint": "ソースの入口となるモジュール。コードの最上位モジュールまたはパッケージが 1 つだけなら空欄にします。",
-    "kept": "保存済み: {{name}}"
+    "kept": "保存済み: {{name}}",
+    "keptWithHash": "保存済み: {{name}} ({{hash}})",
+    "exports": "エクスポート",
+    "exportsLoading": "コードを読み込んでいます…",
+    "exportsNone": "コードはどの関数もエクスポートしていません",
+    "exportKind_table": "テーブル",
+    "exportKind_command": "コマンド",
+    "exportKind_stream": "ストリーム",
+    "secrets": "シークレット",
+    "secretsHint": "このコードが読み取れる組織のシークレット。実行時に $PROVISA_SERVICES/secrets/<name> から一つずつ取得します。ボールト内のほかのものは読み取れず、すべての読み取りが監査されます。",
+    "secretsPlaceholder": "シークレットなし",
+    "llmCap": "LLM 月額上限",
+    "llmCapHint": "このコードによる $PROVISA_SERVICES/llm への呼び出しが毎月 (UTC) かけられる費用 (USD)。上限がある場合、Polly のモデル価格に価格のあるモデルのみ使用でき、その月の費用が上限に達すると呼び出しは拒否されます。空欄: 上限なし。",
+    "llmCapPlaceholder": "上限なし",
+    "settings": "設定",
+    "settingsHint": "コードが settings.get(name) で読み取る値。1 行に 1 つ name = value の形式で入力します。シークレットには使わず、シークレットに設定してください。管理者はコードを変更せずにここで変更できます。"
   }
 }

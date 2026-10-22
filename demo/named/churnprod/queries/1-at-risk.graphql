@@ -1,0 +1,12 @@
+# The at-risk list over GraphQL: every current customer with the churn model's score and what raises
+# it, riskiest first.
+query AtRisk {
+  c__viewAtRisk(order_by: [{ score: desc }], limit: 20) {
+    customerId
+    email
+    region
+    plan
+    score
+    reasons
+  }
+}

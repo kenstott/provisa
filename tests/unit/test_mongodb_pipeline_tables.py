@@ -25,6 +25,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from provisa.federation.replica_address import ReplicaRoutes
 from bson import Binary, Decimal128, Int64, ObjectId
 
 from provisa.core.models import Column, Table
@@ -357,6 +359,7 @@ def _state(table: dict) -> SimpleNamespace:
         api_endpoints={},
         graphql_remote_sources={},
         source_types={"atlas": "mongodb"},
+        replica_routes=ReplicaRoutes(),
         tables=[table],
         federation_engine=engine,
         source_cache={},

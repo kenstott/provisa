@@ -22,7 +22,8 @@ import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { runSql, explainSql } from "../api/admin";
-import type { ExplainResponse, ResultRedirect } from "../api/admin";
+import type { ExplainResponse } from "../api/admin";
+import type { ResultRedirect } from "../types/resultRedirect";
 import {
   useRoles,
   useDomains,
@@ -37,6 +38,7 @@ import { DERIVED_SOURCE_ID } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
+import { useScreenEditor } from "../mcp/screenState";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
 import {
@@ -53,6 +55,7 @@ import { ResultsPanel } from "./sql/ResultsPanel";
 import { ViewModal } from "./sql/ViewModal";
 import { domainToSqlName } from "../naming";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { isInternalDomain } from "../lib/internalDomains";
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -105,6 +108,12 @@ export function SqlPage() {
   const [activeTabId, setActiveTabId] = useState<string>(initialTabs.activeId);
 
   const [sqlText, setSqlText] = useState(active0.sqlText);
+  // REQ-2115: Polly's read_screen reads the statement and the open tab from here.
+  useScreenEditor("/sql", {
+    language: "sql",
+    text: sqlText,
+    tab: tabs.find((t) => t.id === activeTabId)!.title,
+  });
   const [role, setRole] = useState("org_admin");
   // REQ-1163: the time travel statements run with over bitemporal views -- as of a time on each
   // view's clock, as recorded at a time -- each an ISO 8601 time, or none.
@@ -363,8 +372,9 @@ export function SqlPage() {
   // panel while its facts, dimensions, and derived metrics keep showing in the other.
   const isDomainVisible = useCallback(
     (domainId: string) => {
-      const isImplicitDomain = domainId === "meta" || domainId === "ops";
-      return isImplicitDomain || checkedDomains.size === 0 || checkedDomains.has(domainId);
+      return (
+        isInternalDomain(domainId) || checkedDomains.size === 0 || checkedDomains.has(domainId)
+      );
     },
     [checkedDomains],
   );

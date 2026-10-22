@@ -18,5 +18,8 @@ description: >-
 screenshot: card.png
 published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
-# by name. The first release carrying the demo, its setup's environment step and the tour's env step.
-requires_provisa: 0.1.0a490
+# by name. The first release that writes the demo's secrets.yaml to its org's vault.
+requires_provisa: 0.1.0a492
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Environments in Git"

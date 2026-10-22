@@ -2,6 +2,7 @@
   "demoOpenPage": {
     "title": "Uw demo-sandbox wordt geopend",
     "opening": "We maken een kopie van de demo voor u klaar. Dat duurt een paar seconden.",
+    "starting": "Deze demo wordt gestart…",
     "retry": "Opnieuw proberen"
   }
 }

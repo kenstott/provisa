@@ -42,7 +42,6 @@
 - **输入（仅 result_set）：** 物化之后，Provisa 会依据所声明的列校验这些行。多出的字段、缺失的字段和类型不符都会引发 HTTP 422。
 
 - **输出：** 命令返回的行在到达调用方之前，会依据 `output_columns` 校验。
-
 - **窄投影：** 声明了输入契约后，物化查询**只投影那些列**（`SELECT "id", "region" FROM ...`），而不是 `SELECT *`。
 
 ### IR 类型词汇表 {: #the-ir-type-vocabulary }

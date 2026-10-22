@@ -34,6 +34,23 @@
   border-radius: 4px;
   padding: 0.05em 0.4em;
 }
+/* A step that shows code: the popover widens for it, and a line still too long scrolls inside its
+ * block instead of running past the popover's edge. */
+.driver-popover:has(pre) {
+  max-width: 720px;
+}
+.driver-popover-description pre {
+  margin: 10px 0 2px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 6px;
+}
+.driver-popover-description pre code {
+  font-size: 0.78em;
+  background: none;
+  padding: 0;
+}
 .driver-popover-description kbd {
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-bottom-width: 2px;
@@ -131,6 +148,13 @@
   justify-content: center;
   background: rgba(10, 12, 20, 0.45);
 }
+/* driver.js turns pointer events off for everything on the page but its popover and the step's
+   element (.driver-active *) while a tour runs, the card's buttons with them: Retry, Skip, Exit and
+   Cancel showed but took no click. */
+.driver-active .tour-status-overlay,
+.driver-active .tour-status-overlay * {
+  pointer-events: auto;
+}
 .tour-status-card {
   background: var(--mantine-color-body, #fff);
   color: var(--mantine-color-text, #1a1b1e);
@@ -202,6 +226,23 @@
   background: rgba(99, 102, 241, 0.12);
 }
 
+/* A named demo's step linking another demo: "Open the <title> demo", below the step's words. */
+.driver-popover-demo-btn {
+  display: block;
+  margin-top: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  text-shadow: none;
+}
+.driver-popover-demo-btn:hover {
+  filter: brightness(1.08);
+}
+
 /* A named demo's last card: "Where next?", its two ways on, and how to come back. */
 .tour-where-next {
   margin-top: 10px;
@@ -253,4 +294,30 @@
   margin-top: 10px;
   border: 1px solid var(--mantine-color-default-border);
   border-radius: 6px;
+}
+
+/* REQ-2115: a step acting before it explains. driver.js's overlay and the step being left's
+   popover are hidden, and the page takes its pointer events back, so what the actions open (the
+   source picker, a form) is seen whole; a caption names the step meanwhile. */
+body.tour-acting .driver-overlay,
+body.tour-acting .driver-popover {
+  display: none !important;
+}
+body.tour-acting.driver-active * {
+  pointer-events: auto;
+}
+.tour-acting-caption {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000000002;
+  pointer-events: none;
+  background: var(--mantine-color-violet-6, #7950f2);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
 }

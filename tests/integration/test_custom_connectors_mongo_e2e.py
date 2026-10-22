@@ -8,7 +8,7 @@
 
 mongo_fdw is REQ-1177's named PG conformance target. This proves the config-only path end to end — no
 skip, no substitution: scripts/build_mongo_fdw.sh builds mongo_fdw + its bundled mongo-c-driver against
-PG 16.2 into the test platform's private pginstall (tests/embedded_pg.py), an operator declares a `mongo_custom` source_type in config/custom_connectors.yaml (via
+PG 16.11 into the test platform's private pginstall (tests/embedded_pg.py), an operator declares a `mongo_custom` source_type in config/custom_connectors.yaml (via
 PROVISA_CUSTOM_CONNECTORS) on the GENERIC pg_fdw descriptor, and PgFederationRuntime drives the
 no-IMPORT branch — CREATE SERVER … mongo_fdw + a bare USER MAPPING + CREATE FOREIGN TABLE with per-table
 OPTIONS(database/collection) — to read the docker-seeded provisa.product_reviews collection. No engine

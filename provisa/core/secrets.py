@@ -224,6 +224,17 @@ async def resolve_api_key_field(value: str | None) -> str | None:  # REQ-1827
     return await _resolve_reference(raw) if "${" in raw else raw
 
 
+def resolve_secret_name(name: str) -> str:  # REQ-2104
+    """The organisation secret ``name``, from the vault bound to this context, as a reference to it
+    resolves: for a value that names a secret rather than holding a reference to one (a code
+    source's declared secrets, listed by name). Matched by central redaction from its first use."""
+    from provisa.security.redaction import note_secret_value
+
+    value = _provider_for("secret").resolve(name)
+    note_secret_value(name, value)
+    return value
+
+
 def resolve_secrets_in_dict(data: dict) -> dict:  # REQ-251, REQ-320
     """Recursively resolve secret references in a dict."""
     result = {}

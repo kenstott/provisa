@@ -64,7 +64,7 @@ export function useMcpChat(
   roleId: string,
   toolCtx: ClientToolContext,
   currentRoute?: string,
-  // REQ-1820: server tools (create_source_now, register_table_now, ...) run entirely on the
+  // REQ-1820: server tools (admin_query, discover_relationships, ...) run entirely on the
   // backend — this is the ONLY signal the frontend gets that one succeeded, since the actual
   // mutation never went through Apollo. Callers use it to refetch whatever page is showing the
   // thing that just changed (e.g. the Sources admin page's own query), which nothing did before.

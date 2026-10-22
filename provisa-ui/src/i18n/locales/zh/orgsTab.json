@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "删除“{{id}}”将销毁其中的所有数据源、域、表和角色，并影响其中的每个成员。此操作无法撤销。输入 {{id}} 以确认。",
     "colId": "ID",
     "colName": "名称",
+    "colTier": "套餐",
     "colMembers": "成员",
     "colActions": "操作",
     "empty": "暂无组织",
@@ -52,6 +53,11 @@
     "revokeInvite": "撤销 {{org}} 的邀请",
     "invitePagination": "邀请链接分页",
     "orgIdDesc": "2-40 个字符，仅限小写字母和数字，且以字母开头。它将成为架构名称和子域名，之后无法更改。",
-    "spentStatus": "已全部兑换"
+    "spentStatus": "已全部兑换",
+    "tierFor": "{{name}} 的套餐",
+    "tierNotSet": "未设置",
+    "tier_free": "免费版",
+    "tier_standard": "标准版",
+    "tier_premium": "高级版"
   }
 }

@@ -45,10 +45,16 @@ def _sql(client: httpx.Client, sql: str) -> list[dict]:
 
 
 def _dataset_built(client: httpx.Client) -> bool:
-    response = client.post("/admin/graphql", json={"query": "{ mvList { id status rowCount } }"})
+    """Whether order_margins is built and holds the month's history. It is refreshed by deltas, and
+    a delta refresh does not know the view's whole count (mvList's rowCount stays empty), so the
+    rows are counted by reading the view once it is fresh."""
+    response = client.post("/admin/graphql", json={"query": "{ mvList { id status } }"})
     response.raise_for_status()
     [view] = [m for m in response.json()["data"]["mvList"] if m["id"] == "view-view_order_margins"]
-    return view["status"] == "fresh" and (view["rowCount"] or 0) >= READY_ROWS
+    if view["status"] != "fresh":
+        return False
+    [held] = _sql(client, 'SELECT COUNT(*) AS n FROM "provisioning"."view_order_margins"')
+    return held["n"] >= READY_ROWS
 
 
 def main() -> None:
@@ -75,6 +81,9 @@ def main() -> None:
         "FEEDS_BOOTSTRAP": f"{kafka_host}:{kafka_port}",
         "CONSUMERS": "finance,data_science",
         "PULLS_DSN": f"postgresql://consumer:consumer@{pg_host}:{pg_port}/provisioning",
+        # The topics' suffix, as the run compose hands it the consumer: its broker's namespace,
+        # which every runner sets (store_namespaces; empty on the demo's own broker).
+        "TOPIC_SUFFIX": os.environ["PROVISIONING_KAFKA_NS"],
     }
     consumer = Path(__file__).with_name("consumer.py")
     subprocess.run(

@@ -43,7 +43,7 @@ as an equality on any other column of it does.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import product
 from typing import Any
 
@@ -58,6 +58,14 @@ class _Base:
     instance: int  # id() of the exp.Table node reading it
     table_id: int
     column: str
+    #: The same column as each marked view it is read through gives it, outermost last: a column
+    #: a view passes through is that view's column too, related along the view's relationships as
+    #: well as its table's.
+    views: tuple["_Base", ...] = ()
+
+    def as_read(self) -> tuple["_Base", ...]:
+        """The column, and the same column of each view it is read through."""
+        return (self, *self.views)
 
 
 #: Why two tables are related outside the registered relationships.
@@ -121,6 +129,27 @@ def _bodies(scope: Scope) -> list[Scope]:
     for branch in scope.set_operation_scopes:
         found += _bodies(branch)
     return found
+
+
+def _by_position(scope: Scope, name: str) -> list[tuple[Scope, str]]:
+    """Each branch of ``scope`` with the name its own column gives the column ``name``: in a
+    UNION / INTERSECT / EXCEPT the first branch names the columns and every branch fills them by
+    position (``SELECT winners AS name ... UNION ALL SELECT team ...``). A scope with no set
+    operation is itself, with ``name``."""
+    leaves = [b for b in _bodies(scope) if not b.set_operation_scopes]
+    first = _selects(leaves[0])
+    names = [s.alias_or_name for s in first]
+    if name not in names or any(s.is_star for s in first):
+        return [(b, name) for b in leaves]
+    at = names.index(name)
+    out: list[tuple[Scope, str]] = []
+    for branch in leaves:
+        selects = _selects(branch)
+        if at < len(selects) and not any(s.is_star for s in selects):
+            out.append((branch, selects[at].alias_or_name))
+        else:
+            out.append((branch, name))
+    return out
 
 
 class _Resolver:
@@ -259,8 +288,7 @@ class _Resolver:
                 if base is not None:
                     out.add(_Base(base.instance, base.table_id, column.name))
             elif isinstance(source, Scope):
-                for branch in source.set_operation_scopes or [source]:
-                    out |= self._projection(branch, column.name, seen)
+                out |= self._projection(source, column.name, seen)
         return out
 
     def touched(self, scope: Scope, column: exp.Column, seen: frozenset = frozenset()) -> set[int]:
@@ -288,9 +316,9 @@ class _Resolver:
         for source in sources:
             if not isinstance(source, Scope):
                 continue
-            for branch in source.set_operation_scopes or [source]:
+            for branch, name in _by_position(source, column.name):
                 for select in _selects(branch):
-                    if select.alias_or_name != column.name:
+                    if select.alias_or_name != name:
                         continue
                     for inner in select.find_all(exp.Column):
                         out |= self.touched(branch, inner, seen)
@@ -299,7 +327,7 @@ class _Resolver:
     def _projection(self, scope: Scope, name: str, seen: frozenset) -> set[_Base]:
         if scope.set_operation_scopes:
             return set().union(
-                *(self._projection(b, name, seen) for b in scope.set_operation_scopes)
+                *(self._projection(b, n, seen) for b, n in _by_position(scope, name))
             )
         out: set[_Base] = set()
         named = False  # the scope projects a column of this name
@@ -310,7 +338,13 @@ class _Resolver:
                 out |= self.resolve(scope, exp.column(name, table=table or None), seen)
             elif select.alias_or_name == name and isinstance(inner, exp.Column):
                 named = True
-                out |= self.resolve(scope, inner, seen)
+                passed = self.resolve(scope, inner, seen)
+                if id(scope) in self._view_scopes:
+                    # A column a view passes through is also a column of the view.
+                    instance, view_id = self._view_scopes[id(scope)]
+                    own = _Base(instance, view_id, name)
+                    passed = {replace(b, views=(*b.views, own)) for b in passed}
+                out |= passed
             elif select.alias_or_name == name and id(scope) in self._view_scopes:
                 # A constant or an expression a view gives: a column of the view itself.
                 instance, view_id = self._view_scopes[id(scope)]
@@ -470,6 +504,21 @@ def _unrelated_in(
         for a in left:
             for b in right:
                 if a.instance == b.instance or exempt(a.instance) or exempt(b.instance):
+                    continue
+                through = next(
+                    (
+                        (x, y)
+                        for x in a.as_read()
+                        for y in b.as_read()
+                        if (a.views or b.views)
+                        and x.instance != y.instance
+                        and (x.table_id, y.table_id, x.column, y.column) in registered
+                    ),
+                    None,
+                )
+                if through is not None:
+                    # Related along a relationship of a view one side is read through.
+                    edges.add(frozenset({through[0].instance, through[1].instance}))
                     continue
                 if a.table_id == b.table_id and filters_only(a.instance, b.instance):
                     edges.add(frozenset({a.instance, b.instance}))

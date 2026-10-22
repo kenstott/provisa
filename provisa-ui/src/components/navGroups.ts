@@ -82,7 +82,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/commands", labelKey: "navBar.itemCommands", capability: "table_registration" },
       // REQ-1160/1161: gated with the rest of the Model group. `admin` is the platform wildcard, so
       // naming it here hid Lineage from every org role while the endpoint required nothing.
-      { to: "/lineage", labelKey: "navBar.itemLineage", capability: "table_registration" },
+      { to: "/lineage", labelKey: "navBar.itemLineage", capability: "view_governance" },
     ],
   },
   {
@@ -217,6 +217,12 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         to: "/admin/package-registries",
         labelKey: "navBar.itemPackageRegistries",
+        capability: "org_settings",
+      },
+      // REQ-2098: the registries a code source's built image is pushed to.
+      {
+        to: "/admin/container-registries",
+        labelKey: "navBar.itemContainerRegistries",
         capability: "org_settings",
       },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.

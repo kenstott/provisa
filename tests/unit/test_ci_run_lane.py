@@ -555,6 +555,7 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
         assert at_restore < tests_at[0] < at_save, f"{workflow}:{job}"
     assert sorted(collecting) == [
         "amd64-engines.yml:exasol",
+        "demo-bundles.yml:bundle",
         "integration-suite-lanes.yml:athena",
         "integration-suite-lanes.yml:cluster",
         "integration-suite-lanes.yml:salesforce",

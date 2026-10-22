@@ -288,7 +288,7 @@ Prioridad de clasificación: `operation_overrides` (payload) tiene prioridad sob
 
 ## Impacto de registrar una tabla remota {: #impact-of-registering-a-remote-table }
 
-Una tabla registrada desde cualquier origen de esquema remoto es una tabla de Provisa de primera clase. Nada en ella se trata de forma diferente a una tabla relacional conectada localmente en tiempo de ejecución.
+Una tabla registrada desde cualquier origen de esquema remoto es una tabla de Provisa corriente. Nada en ella se trata de forma diferente a una tabla relacional conectada localmente en tiempo de ejecución.
 
 **Interfaces de consulta.** La tabla es consultable de inmediato vía GraphQL, SQL (pgwire o directo), Cypher (GQL), JSON:API y Arrow Flight. La generación de esquema sintetiza `ColumnMetadata` para las tablas remotas, ya que no tienen catálogo; el mapeo de tipos se aplica al momento de construir el esquema.
 

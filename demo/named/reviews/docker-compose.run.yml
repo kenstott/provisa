@@ -32,6 +32,8 @@ services:
       <<: *demo-labels
       com.provisa.demo.role: document
       com.provisa.demo.host_env: REVIEWS_MONGO_HOST
+      com.provisa.demo.ns_env: REVIEWS_MONGO_NS
+      com.provisa.demo.access: db/mongo-reader.js
       com.provisa.demo.port_env: REVIEWS_MONGO_PORT
       com.provisa.demo.port: "27017"
     environment:
@@ -63,6 +65,7 @@ services:
       <<: *demo-labels
       com.provisa.demo.role: search
       com.provisa.demo.host_env: REVIEWS_ES_HOST
+      com.provisa.demo.ns_env: REVIEWS_ES_NS
       com.provisa.demo.port_env: REVIEWS_ES_PORT
       com.provisa.demo.port: "9200"
     entrypoint: ["/bin/tini", "--", "bash", "/restore.sh"]

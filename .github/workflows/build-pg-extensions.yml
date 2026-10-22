@@ -21,12 +21,12 @@ jobs:
   unix:
     name: pg-ext ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    # Matrix tracks the platforms pgserver actually ships an embedded-PG wheel for:
-    #   macosx arm64 + x86_64, manylinux_2_17_x86_64, win_amd64.  NO Linux arm64 wheel exists, so
-    #   Linux arm64 is intentionally absent (there is no embedded PG to load into there yet).
-    # NOTE (glibc floor): pgserver's Linux wheel is manylinux_2_17 (glibc 2.17). For maximum
-    #   compatibility the Linux .so should be built in a manylinux_2_17/2014 container; ubuntu-22.04
-    #   (glibc 2.35) is a simpler start that only loads on 2.35+ hosts — tighten before GA.
+    # Matrix tracks the platforms the embedded PG (pixeltable-pgserver 0.5.1, PostgreSQL 16.11) is
+    #   installed on: macosx arm64 + x86_64, manylinux_2_28_x86_64, win_amd64. Linux arm64 is
+    #   intentionally absent: provisa keeps the embedded plane off linux/aarch64 (pyproject marker).
+    # NOTE (glibc floor): pixeltable-pgserver's Linux wheel is manylinux_2_28 (glibc 2.28). For
+    #   maximum compatibility the Linux .so should be built in a manylinux_2_28 container;
+    #   ubuntu-22.04 (glibc 2.35) is a simpler start that only loads on 2.35+ hosts — tighten before GA.
     strategy:
       fail-fast: false
       matrix:
@@ -72,12 +72,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/provisa-fdw
-          key: pgext-${{ matrix.os }}-${{ matrix.arch }}-pg16.2-pgduckdb-v1.0.0
+          key: pgext-${{ matrix.os }}-${{ matrix.arch }}-pg16.11-pgduckdb-v1.1.1
 
       - name: Build the PG extension bundle
         env:
-          PG_VERSION: '16.2'
-          PG_DUCKDB_TAG: 'v1.0.0'
+          PG_VERSION: '16.11'
+          PG_DUCKDB_TAG: 'v1.1.1'
           VCPKG_TARGET_TRIPLET: ${{ matrix.arch == 'arm64' && (matrix.os == 'darwin' && 'arm64-osx' || 'arm64-linux') || (matrix.os == 'darwin' && 'x64-osx' || 'x64-linux') }}
         run: bash scripts/ci/build_pg_extensions.sh
 
@@ -85,15 +85,15 @@ jobs:
         run: |
           # The build's own PG install (and its libpq) is moved away first: the bundle must load
           # with nothing from the build tree present, as it does on a user's machine.
-          mv "$HOME/.cache/provisa-fdw/pg162" "$HOME/.cache/provisa-fdw/pg162.moved-aside"
-          pip install pgserver asyncpg pyyaml faker==40.41.0  # faker: the fake functions (REQ-1494), as uv.lock pins it
+          mv "$HOME/.cache/provisa-fdw/pg1611" "$HOME/.cache/provisa-fdw/pg1611.moved-aside"
+          pip install pixeltable-pgserver==0.5.1 asyncpg pyyaml faker==40.41.0  # faker: the fake functions (REQ-1494), as uv.lock pins it
           python scripts/ci/smoke_pg_extensions.py "dist/pg-ext/${{ matrix.os }}-${{ matrix.arch }}"
 
       - name: Put the build tree back (the cache saves it)
         if: always()
         run: |
           d="$HOME/.cache/provisa-fdw"
-          [ ! -d "$d/pg162.moved-aside" ] || mv "$d/pg162.moved-aside" "$d/pg162"
+          [ ! -d "$d/pg1611.moved-aside" ] || mv "$d/pg1611.moved-aside" "$d/pg1611"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -120,7 +120,7 @@ jobs:
             "dist/provisa-pg-ext-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256" \
             --clobber
 
-  # ---- Windows: VIABLE (pgserver ships win_amd64), but a DIFFERENT toolchain — MSVC + .dll, no
+  # ---- Windows: VIABLE (pixeltable-pgserver ships win_amd64), but a DIFFERENT toolchain — MSVC + .dll, no
   # PGXS/make. Core contrib + pg_duckdb build with MSVC + vcpkg (x64-windows triplet); sqlite_fdw/
   # mysql_fdw have no first-class MSVC build (would need bespoke .vcxproj or a MinGW build). This is a
   # native path in scripts/ci/build_pg_extensions.ps1 + smoke_pg_extensions.py (already OS-agnostic).
@@ -137,8 +137,8 @@ jobs:
           python-version: '3.12'
       - name: Install native Windows PostgreSQL 16 (source of the built-in FDW DLLs)
         run: choco install postgresql16 --params "/Password:Passw0rd1" -y --no-progress
-      - name: pip install pgserver
-        run: python -m pip install pgserver
+      - name: pip install pixeltable-pgserver
+        run: python -m pip install pixeltable-pgserver==0.5.1
       - name: Probe — (Q1) does embedded pgserver boot? (Q2) acquire+load built-in FDW DLLs
         env:
           PGDATA_DIR: 'C:/pgd'
@@ -269,7 +269,7 @@ jobs:
           # PyPI serves a new upload within a minute or two; ask until it does, bounded.
           for i in $(seq 1 20); do
             "$RUNNER_TEMP/v/bin/pip" install -q --no-cache-dir "provisa-pg-ext==$version" \
-              pgserver==0.1.4 "psycopg[binary]" faker==40.41.0 pyyaml==6.0.3 && break
+              pixeltable-pgserver==0.5.1 "psycopg[binary]" faker==40.41.0 pyyaml==6.0.3 && break
             [ "$i" = 20 ] && { echo "::error::provisa-pg-ext==$version not installable from PyPI"; exit 1; }
             sleep 15
           done

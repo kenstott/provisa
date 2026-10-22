@@ -38,6 +38,10 @@
     "kind_dependencies": "Dépendances",
     "kind_joint_counts": "Effectifs conjoints",
     "kind_constraints": "Contraintes proposées",
-    "kind_constraint_checks": "Contrôles des contraintes"
+    "kind_constraint_checks": "Contrôles des contraintes",
+    "kind_terrain": "Terrain",
+    "kind_relationsMap": "Relations",
+    "kind_jointCloud": "Nuage conjoint",
+    "kind_driftStrata": "Strates de dérive"
   }
 }

@@ -1540,7 +1540,11 @@ async def _load_and_build(
     bind_auth_config(state, raw_config.get("auth"))
 
     # Load config into PG (and create the engine catalogs)
-    config = parse_config_dict(raw_config)
+    from provisa.core.demo_secrets import launched_directory, resolving
+
+    # REQ-2095: a ${secret:NAME} its demo declares, before the org's vault is bound.
+    with resolving(launched_directory(_launch_config), state.org_id):
+        config = parse_config_dict(raw_config)
     state.config = config
     state.multitenancy = config.multitenancy
     # REQ-1337: org_admin holds the platform_settings right only in a single-tenant deployment.
@@ -1636,6 +1640,13 @@ async def _load_and_build(
         from provisa.core.demo import is_demo
 
         _seed_engine = None if engine_deferred else state.federation_engine
+        if apply:
+            # REQ-2095: the secrets the file names, in the org's vault before the model is read.
+            from provisa.core.demo_secrets import launched_directory
+            from provisa.core.demo_secrets import seed as seed_secrets
+
+            assert state.admin_db is not None, "the platform plane is up before the model is read"
+            await seed_secrets(state.admin_db, state.org_id, launched_directory(_launch_config))
         if apply and is_demo():
             _populate_source_catalog_names(_seed_file)
             async with bound_to_request_org():
@@ -2426,7 +2437,8 @@ async def _build_org_runtime(
     # REQ-1048: recorded before anything below can materialize, since materialize_store() reads it
     # off the bound runtime to decide whose disk the org's bytes land on.
     rt.storage_url = storage_url
-    state.org_registry.set(key, rt)
+    # Resolved to this runtime by this build alone until it is complete (OrgRegistry.begin_build).
+    build = state.org_registry.begin_build(key, rt)
     token = set_current_org(org_id)
     env_token = set_current_env(env)
     try:
@@ -2591,16 +2603,25 @@ async def _build_org_runtime(
             from provisa.core.secrets_store import bound_to_request_org
 
             seed = state.seed_config
+            from provisa.core.demo_secrets import launched_directory
+
+            seed_directory = launched_directory(Path(config_path))
             from provisa.api.sandbox_tier import is_template_org
 
             if is_template_org(org_id):
                 # REQ-2006: a demo's template org is the demo organisation of that demo, rebuilt
                 # from the named demo's own configuration rather than the deployment's file.
-                from provisa.api.demo_templates import template_seed
+                from provisa.api.demo_templates import demo_of_template, template_seed
 
                 seed = template_seed(org_id)
+                seed_directory = demo_of_template(org_id).directory
             domain_policy.configure(seed.naming.use_domains, seed.naming.default_domain)
             if include_demo:
+                # REQ-2095: the secrets the configuration names, in the org's vault before it loads.
+                from provisa.core.demo_secrets import seed as seed_secrets
+
+                assert state.admin_db is not None, "the platform plane is up before any org runtime"
+                await seed_secrets(state.admin_db, org_id, seed_directory)
                 await _bind_region_stores_before_reset(org_id, env)
             async with state.model_db.acquire() as conn:
                 if include_demo:
@@ -2746,17 +2767,17 @@ async def _build_org_runtime(
                     )
 
         await run_lifecycle_work(_wire_org_lifecycle(), name=f"org-lifecycle:{key}")
-    except Exception:
-        # The runtime was registered before this body ran (materialize_store() and the catalog-name
-        # map are read off the registry while it builds), so a failure part-way leaves a runtime
-        # whose catalogs, schemas or pools are incomplete cached under the org — and every later
-        # query reads it as healthy. Drop it: the next request rebuilds from scratch, which is also
-        # what makes a failed wake retry instead of sticking.
+    except BaseException:
+        # A failed (or cancelled) build registers nothing, and the runtime it was to replace is
+        # dropped too: the next request rebuilds from scratch, which is also what makes a failed
+        # wake retry instead of sticking.
+        state.org_registry.end_build(build, built=False)
         state.org_registry.invalidate(key)
         raise
     finally:
         reset_current_env(env_token)
         reset_current_org(token)
+    state.org_registry.end_build(build, built=True)
     return rt
 
 
@@ -3120,6 +3141,17 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         from provisa.api.model_reload import publish_routes_over_declared_rows
 
         await publish_routes_over_declared_rows(_stamped_runtime)
+        # REQ-2098: a code source its configuration declared is pinned as a save pins it, so its
+        # image can be built -- in the background, after its code archives are kept (above).
+        from provisa.api.admin._code_source_registration import pin_in_background
+
+        assert _stamped_runtime.model_db is not None, "an environment's sources are its model"
+        pin_in_background(
+            _stamped_runtime.org_id,
+            _stamped_runtime.env,
+            _stamped_runtime.model_db,
+            _connection_rows,
+        )
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:
@@ -3256,7 +3288,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                 )
             )
 
-        _build_and_register_schemas(
+        _checked = _build_and_register_schemas(
             roles=roles,
             tables=tables,
             relationships=relationships,
@@ -3275,6 +3307,16 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         )
 
         await persist_field_numbers(conn, _field_numbers)
+
+        # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.
+        from provisa.api.admin.lineage_router import write_lineage_edges
+
+        await write_lineage_edges(conn, state)
+
+        # REQ-2125: the table each checker checks, as this build resolved it, for the meta domain.
+        from provisa.dq.registration import write_checker_targets
+
+        await write_checker_targets(conn, _checked)
 
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
     # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive
@@ -4326,8 +4368,11 @@ def create_app() -> FastAPI:
             await ensure_serving_runtime(env_org, selected_env)
             from provisa.api.sandbox_tier import is_sandbox_tier_org, is_template_org
 
-            if is_sandbox_tier_org(env_org) and not is_template_org(env_org):
-                # REQ-2006, REQ-1600: a request to a demo sandbox restarts its idle expiry.
+            from provisa.api.demo_warmup import WARMING
+
+            if is_sandbox_tier_org(env_org) and not is_template_org(env_org) and not WARMING.get():
+                # REQ-2006, REQ-1600: a request to a demo sandbox restarts its idle expiry -- the
+                # visitor's, not its tour warm-up's (REQ-2065: a closing sandbox stays closing).
                 from provisa.api.demo_sandbox import touch
 
                 await touch(env_org)
@@ -4581,6 +4626,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(metadata_export_router)
+    from provisa.api.admin.data_product_documents_router import (  # REQ-2118
+        router as data_product_documents_router,
+    )
+
+    app.include_router(data_product_documents_router)
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
@@ -4637,6 +4687,14 @@ def create_app() -> FastAPI:
     from provisa.api.admin.package_registries_router import router as package_registries_router
 
     app.include_router(package_registries_router)  # REQ-1984
+    from provisa.api.admin.container_registries_router import (
+        router as container_registries_router,
+    )
+
+    app.include_router(container_registries_router)  # REQ-2098
+    from provisa.api.admin.code_hosts_router import router as code_hosts_router
+
+    app.include_router(code_hosts_router)  # REQ-2098
     from provisa.api.admin.code_uploads_router import router as code_uploads_router
 
     app.include_router(code_uploads_router)  # REQ-1984, REQ-1993

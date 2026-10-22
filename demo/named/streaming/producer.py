@@ -25,7 +25,8 @@ from datetime import datetime, timezone
 from aiokafka import AIOKafkaProducer
 
 BOOTSTRAP = os.environ["ORDERS_BOOTSTRAP"]
-TOPIC = "orders"
+# Its name ends with the demo's suffix where the broker is shared (the sandbox tier's node).
+TOPIC = "orders" + os.environ["TOPIC_SUFFIX"]
 PER_SECOND = float(os.environ.get("ORDERS_PER_SECOND", "4"))
 
 # How often each region orders, relative to the others; drifted a little every minute.

@@ -33,6 +33,9 @@ function json(method: string, body: unknown): RequestInit {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
+/** REQ-1942: where a non-production environment's data comes from. */
+export type DataMode = "inherit" | "unbound" | "test_fake" | "test_synthetic";
+
 export interface Environment {
   name: string;
   created_at: string | null;
@@ -43,7 +46,7 @@ export interface Environment {
   // REQ-1942: the environment this one was created from (null for prod alone), where its data
   // comes from, and what a mutation in it does. Prod has no data mode: it is always real.
   parent: string | null;
-  data_mode: "inherit" | "unbound" | "test_fake" | "test_synthetic" | null;
+  data_mode: DataMode | null;
   mutation_handling: "refused" | "reversible" | "direct";
   // REQ-1553: which way the history is open from where this environment stands. The cursor lives
   // in the control plane and the line lives in git, so neither end is derivable in the browser --
@@ -59,7 +62,7 @@ export interface Environment {
   expired_kept_by: Record<string, number>;
 }
 
-/** REQ-1529, REQ-1942: an environment that does not read its parent's connections -- prod, or one
+/** REQ-1529, REQ-1942: an environment that did not copy its parent's connections -- prod, or one
  * whose data mode is not Inherit. */
 export function isBase(env: Environment): boolean {
   return env.data_mode !== "inherit";
@@ -154,15 +157,16 @@ export async function fetchEnvironments(orgId: string): Promise<Environment[]> {
  * Create an environment (REQ-1488, REQ-1528).
  *
  * `from_env` is the environment whose model the new one starts from, copied whole.
- * `data_mode` is where its data comes from (REQ-1942): `inherit` resolves that one's connection
- * coordinates by reference; `unbound` carries none until the environment binds its own.
+ * `data_mode` is where its data comes from (REQ-1942): `inherit` copies that one's connections as
+ * written there; `unbound` carries none until the environment binds its own; `test_fake` reads its
+ * rows through each column's fake; `test_synthetic` reads rows generated from its profile runs.
  */
 export async function createEnvironment(
   orgId: string,
   body: {
     name: string;
     from_env: string;
-    data_mode: "inherit" | "unbound" | "test_fake" | "test_synthetic";
+    data_mode: DataMode;
     expires_at?: string | null;
     // REQ-1939: start the environment on a synthetic dataset of these tables.
     synthetic?: {

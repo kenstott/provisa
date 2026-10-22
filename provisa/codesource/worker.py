@@ -17,16 +17,38 @@ over a Unix domain socket in a private directory: Provisa listens, the host conn
 not the process's output, so nothing the code prints reaches the protocol; what it prints to
 stderr is kept (the last lines) to name a crash.
 
-Frames are a 4-byte big-endian length and that many bytes of UTF-8 JSON. A timestamp travels as
+A frame is a 4-byte big-endian length, then that many bytes: a kind byte and its body. ``J`` is
+a control message, UTF-8 JSON. ``A`` is rows: the call's id (8 bytes, big-endian) and an Arrow IPC
+stream of them, built against the schema the call gave (:mod:`provisa.codesource.arrow_rows`).
+Arrow is the only form rows take (REQ-2098). In a JSON message a timestamp travels as
 ``{"$date": iso}``, an integer outside JSON's exact range as ``{"$bigint": digits}``, a decimal as
 ``{"$decimal": digits}``, a calendar date with no time as ``{"$day": iso}``. An argument the read
 does not give is ``{"$absent": true}`` (:data:`ABSENT`), and ``names`` are the parameters' names in
 the order ``args`` gives them, for a host whose language passes arguments by name.
 
-    Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names}
+    Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names,
+                      schema,  -- the rows' Arrow schema, base64 IPC; null for a single value
+                      traceparent}  -- the request's trace (W3C), or null (REQ-2106)
+                     {op: "call", id, export, kind: "table", calls: [{args, names}, ...], schema,
+                      traceparent}  -- REQ-2099: a table called once per argument set, in
+                                       order, in the host, its rows sent under the one call id
                      {op: "cancel", id}      {op: "ping", id}
-    host -> Provisa  {op: "hello", exports}  {op: "rows", id, rows}  {op: "value", id, value}
-                     {op: "end", id}         {op: "error", id, message, stack}  {op: "pong", id}
+    host -> Provisa  {op: "hello", protocol, code_hash, exports}
+                     rows (an Arrow frame)   {op: "value", id, value}
+                     {op: "end", id, cpu_ms}  {op: "error", id, message, stack}  {op: "pong", id}
+    Provisa -> host  {op: "refused", message}, in place of any call, before the socket closes
+
+REQ-2106: every call is a stage of its request (otel_compat.stage, REQ-1910) -- its function,
+kind, argument count (never a value), rows, batches, duration, the worker's CPU (the host's
+``cpu_ms``), local or remote, and the code's hash -- and the request's traceparent goes with it,
+so the code's own tracing joins the request's trace. While a call runs, Provisa's services
+(provisa/codesource/services.py) answer the worker's requests naming it (``X-Provisa-Call``) in
+the request's scope: their stages report to the same request.
+
+The hello names the protocol the host speaks (:data:`PROTOCOL`) and the content hash of the code
+it runs (``PROVISA_CODE_HASH`` in its environment: the worker gives it, an image built for a
+remote host carries it). A host that speaks another protocol, or runs other code than the source
+registered, is refused by name (REQ-2098).
 
 A call blocks its request's thread, as every driver call does (REQ-1882), and is cancelled through
 the request's deadline (:func:`provisa.core.request_deadline.cancel_on_deadline`): the host is
@@ -34,7 +56,7 @@ told to stop the call, and the waiting thread is released at once. A crash fails
 flight, naming the source and the export; the next call starts a new process.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-1882
+# Requirements: REQ-1984, REQ-1993, REQ-1882, REQ-2104
 from __future__ import annotations
 
 import collections
@@ -54,9 +76,19 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from provisa.core import request_deadline
+from provisa.otel_compat import CarriedScope, carried_scope, current_traceparent, get_tracer, stage
+
+if TYPE_CHECKING:
+    from provisa.codesource.services import ServiceGrant
+
+#: The protocol the hosts speak; a host built for another one is refused by name (REQ-2098).
+PROTOCOL = 3
+
+#: The variable a host reads the content hash of its code from, which its hello names.
+CODE_HASH_ENV = "PROVISA_CODE_HASH"
 
 #: How long a started host has to connect and say hello.
 START_TIMEOUT_S = 30.0
@@ -64,10 +96,31 @@ START_TIMEOUT_S = 30.0
 #: How often a start checks that its host is still coming while it waits for it to connect.
 _ACCEPT_POLL_S = 0.05
 
+#: REQ-2098: a remote host that failed is dialled again after this, doubling to the most.
+_REMOTE_BACKOFF_S = 1.0
+_REMOTE_BACKOFF_MAX_S = 60.0
+
 #: How many of the host's last stderr lines a crash names.
 STDERR_LINES = 40
 
+_tracer = get_tracer(__name__)
+
+#: REQ-2106: the call a worker's services request names, by its worker's services token and the
+#: call's id: the request's tracing scope, which the services' stages report into.
+_scopes: dict[tuple[str, int], CarriedScope] = {}
+_scopes_lock = threading.Lock()
+
+
+def call_scope(token: str, call_id: int) -> CarriedScope | None:
+    """The tracing scope of the call ``call_id`` of the worker holding ``token``, while it runs."""
+    with _scopes_lock:
+        return _scopes.get((token, call_id))
+
+
 _HEAD = struct.Struct(">I")
+_ID = struct.Struct(">Q")
+JSON_FRAME = b"J"
+ARROW_FRAME = b"A"
 _EXACT = 2**53 - 1
 
 
@@ -77,12 +130,15 @@ class HostCommand:
     which the host reads as its first argument: a path (inside a private directory the worker
     makes for it, which a sandbox names), or with ``inherit_socket`` ``fd:N``, a socket already
     connected and inherited as descriptor N (the Linux sandbox refuses the host any new socket but
-    TCP, so it cannot connect one). The process gets exactly ``env``, in ``cwd``."""
+    TCP, so it cannot connect one). The process gets exactly ``env``, in ``cwd``, and with
+    ``services`` the address of Provisa's services to code, under a token issued as the process
+    starts and revoked when it stops (REQ-2104)."""
 
     argv: Callable[[str], Sequence[str]]
     env: dict[str, str]
     cwd: Path
     inherit_socket: bool = False
+    services: "ServiceGrant | None" = None
 
     def argv_for(self, address: str) -> list[str]:
         return list(self.argv(address))
@@ -164,7 +220,7 @@ def decode(value: Any) -> Any:
 
 
 def _frame(message: dict) -> bytes:
-    body = json.dumps(message, separators=(",", ":")).encode()
+    body = JSON_FRAME + json.dumps(message, separators=(",", ":")).encode()
     return _HEAD.pack(len(body)) + body
 
 
@@ -180,11 +236,34 @@ def _read_exact(conn: socket.socket, size: int) -> bytes | None:
 
 
 def _read_frame(conn: socket.socket) -> dict | None:
+    """The next message: a control message as sent, rows as ``{op: "rows", id, arrow}``."""
     head = _read_exact(conn, _HEAD.size)
     if head is None:
         return None
     body = _read_exact(conn, _HEAD.unpack(head)[0])
-    return None if body is None else json.loads(body)
+    if body is None:
+        return None
+    kind, rest = body[:1], body[1:]
+    if kind == ARROW_FRAME:
+        return {"op": "rows", "id": _ID.unpack(rest[: _ID.size])[0], "arrow": rest[_ID.size :]}
+    if kind != JSON_FRAME:
+        raise ValueError(f"a frame of unknown kind {kind!r}")
+    return json.loads(rest)
+
+
+def refusal(hello: dict, content_hash: str) -> str | None:
+    """Why a host's hello is refused, or None: another protocol, or other code than the source
+    registered (REQ-2098)."""
+    spoken = hello.get("protocol")
+    if spoken != PROTOCOL:
+        return (
+            f"its host speaks protocol {spoken}, and this Provisa speaks {PROTOCOL}: "
+            "run a host built for this Provisa version"
+        )
+    held = hello.get("code_hash")
+    if held != content_hash:
+        return f"its host runs code {held}, not the {content_hash} the source registered"
+    return None
 
 
 # -- one worker -------------------------------------------------------------------------------------
@@ -218,6 +297,7 @@ class Worker:
         self._conn: socket.socket | None = None
         self._process: subprocess.Popen | None = None
         self._stderr_thread: threading.Thread | None = None
+        self._services_token: str | None = None
         self.exports: list[str] = []
 
     # -- lifecycle ------------------------------------------------------------------------------
@@ -257,6 +337,15 @@ class Worker:
             conn.close()
             self.stop()
             raise WorkerFailed(self.source_id, f"its host ended before it was ready{self._said()}")
+        refused = refusal(hello, self.content_hash)
+        if refused is not None:
+            try:
+                conn.sendall(_frame({"op": "refused", "message": refused}))
+            except OSError:
+                pass  # the host has gone already: the refusal is still raised by name below
+            conn.close()
+            self.stop()
+            raise WorkerFailed(self.source_id, refused)
         conn.settimeout(None)
         self._conn = conn
         self.exports = list(hello.get("exports") or [])
@@ -265,10 +354,16 @@ class Worker:
         ).start()
 
     def _spawn(self, address: str, pass_fds: tuple[int, ...]) -> None:
+        env = {**self._command.env, CODE_HASH_ENV: self.content_hash}
+        if self._command.services is not None:
+            from provisa.codesource import services
+
+            self._services_token = services.issue(self._command.services)
+            env[services.SERVICES_ENV] = services.address(self._services_token)
         self._process = subprocess.Popen(  # nosec B603 - the pinned runtime and Provisa's host
             self._command.argv_for(address),
             cwd=self._command.cwd,
-            env=self._command.env,
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
@@ -341,6 +436,10 @@ class Worker:
         return ""
 
     def _end(self, message: str) -> None:
+        if self._services_token is not None:
+            from provisa.codesource import services
+
+            services.revoke(self._services_token)  # an ended worker's token reads nothing
         with self._calls_lock:
             if self._ended is None:
                 self._ended = message
@@ -387,6 +486,9 @@ class Worker:
     def _close(self, call_id: int) -> None:
         with self._calls_lock:
             self._calls.pop(call_id, None)
+        if self._services_token is not None:
+            with _scopes_lock:
+                _scopes.pop((self._services_token, call_id), None)
 
     def _cancel(self, call_id: int, waiting: queue.SimpleQueue) -> None:
         """Tell the host to stop the call, and release the thread waiting for it. Called from the
@@ -411,65 +513,164 @@ class Worker:
         return message
 
     def rows(
-        self, export: str, kind: str, args: Sequence[Any], names: Sequence[str] = ()
+        self,
+        export: str,
+        kind: str,
+        args: Sequence[Any],
+        names: Sequence[str] = (),
+        *,
+        schema: str,
     ) -> Iterator[list[dict]]:
-        """A table's or a stream's rows, batch by batch, as the host sends them. Closing the
-        iterator before its end cancels the call in the host."""
+        """A table's or a stream's rows, batch by batch, as the host sends them against
+        ``schema`` (arrow_rows.schema_text). Closing the iterator before its end cancels the
+        call in the host."""
+        from provisa.codesource.arrow_rows import rows_of
+
         if kind not in ("table", "stream"):
             raise ValueError(f"rows() serves a table or a stream, not a {kind}")
-        call_id, waiting = self._open()
-        finished = False
-        try:
-            self._send(
-                {
-                    "op": "call",
-                    "id": call_id,
-                    "export": export,
-                    "kind": kind,
-                    "args": encode(list(args)),
-                    "names": list(names),
-                }
-            )
-            while True:
-                message = self._next(call_id, waiting, export)
-                if message["op"] == "end":
-                    finished = True
-                    return
-                if message["op"] == "rows":
-                    yield decode(message["rows"])
-        finally:
-            if not finished:
-                try:
-                    self._send({"op": "cancel", "id": call_id})
-                except (OSError, WorkerFailed):
-                    pass  # the worker has ended: there is no call left to stop
-            self._close(call_id)
+        with stage(_tracer, "codesource.call") as span:
+            self._describe(span, export, kind, args)
+            call_id, waiting = self._open()
+            finished = False
+            rows = batches = 0
+            try:
+                self._send(self._call_frame(call_id, export, kind, args, names, schema))
+                while True:
+                    message = self._next(call_id, waiting, export)
+                    if message["op"] == "end":
+                        finished = True
+                        span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
+                        return
+                    if message["op"] == "rows":
+                        batch = rows_of(message["arrow"])
+                        rows, batches = rows + len(batch), batches + 1
+                        yield batch
+            finally:
+                span.set_attribute("codesource.rows", rows)
+                span.set_attribute("codesource.batches", batches)
+                if not finished:
+                    try:
+                        self._send({"op": "cancel", "id": call_id})
+                    except (OSError, WorkerFailed):
+                        pass  # the worker has ended: there is no call left to stop
+                self._close(call_id)
 
-    def command(self, export: str, args: Sequence[Any], names: Sequence[str] = ()) -> Any:
-        """A command's result: its single value, or the rows it returned as a list."""
-        call_id, waiting = self._open()
-        try:
-            self._send(
-                {
-                    "op": "call",
-                    "id": call_id,
-                    "export": export,
-                    "kind": "command",
-                    "args": encode(list(args)),
-                    "names": list(names),
-                }
-            )
-            collected: list[dict] = []
-            value: Any = None
-            while (message := self._next(call_id, waiting, export))["op"] != "end":
-                if message["op"] == "value":
-                    value = decode(message["value"])
-                elif message["op"] == "rows":
-                    collected.extend(decode(message["rows"]))
-                    value = collected
-            return value
-        finally:
-            self._close(call_id)
+    def rows_each(
+        self,
+        export: str,
+        calls: Sequence[tuple[Sequence[Any], Sequence[str]]],
+        *,
+        schema: str,
+    ) -> Iterator[list[dict]]:
+        """A table's rows for each of ``calls`` (its arguments and their names), in order, from
+        one call to the host (REQ-2099): the host calls the function once per argument set
+        in-process, so a join that feeds a table many argument sets pays one round trip, not one
+        per set. Closing the iterator before its end cancels the call in the host."""
+        from provisa.codesource.arrow_rows import rows_of
+
+        with stage(_tracer, "codesource.call") as span:
+            self._describe(span, export, "table", calls[0][0] if calls else ())
+            span.set_attribute("codesource.argument_sets", len(calls))
+            call_id, waiting = self._open()
+            finished = False
+            rows = batches = 0
+            try:
+                frame = self._call_frame(call_id, export, "table", (), (), schema)
+                del frame["args"], frame["names"]
+                frame["calls"] = [
+                    {"args": encode(list(args)), "names": list(names)} for args, names in calls
+                ]
+                self._send(frame)
+                while True:
+                    message = self._next(call_id, waiting, export)
+                    if message["op"] == "end":
+                        finished = True
+                        span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
+                        return
+                    if message["op"] == "rows":
+                        batch = rows_of(message["arrow"])
+                        rows, batches = rows + len(batch), batches + 1
+                        yield batch
+            finally:
+                span.set_attribute("codesource.rows", rows)
+                span.set_attribute("codesource.batches", batches)
+                if not finished:
+                    try:
+                        self._send({"op": "cancel", "id": call_id})
+                    except (OSError, WorkerFailed):
+                        pass  # the worker has ended: there is no call left to stop
+                self._close(call_id)
+
+    def command(
+        self,
+        export: str,
+        args: Sequence[Any],
+        names: Sequence[str] = (),
+        *,
+        schema: str | None = None,
+    ) -> Any:
+        """A command's result: its single value, or -- given its rows' ``schema`` -- the rows it
+        returned, as a list."""
+        from provisa.codesource.arrow_rows import rows_of
+
+        with stage(_tracer, "codesource.call") as span:
+            self._describe(span, export, "command", args)
+            call_id, waiting = self._open()
+            batches = 0
+            try:
+                self._send(self._call_frame(call_id, export, "command", args, names, schema))
+                collected: list[dict] = []
+                value: Any = None
+                while (message := self._next(call_id, waiting, export))["op"] != "end":
+                    if message["op"] == "value":
+                        value = decode(message["value"])
+                    elif message["op"] == "rows":
+                        collected.extend(rows_of(message["arrow"]))
+                        batches += 1
+                        value = collected
+                span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
+                span.set_attribute("codesource.rows", len(collected))
+                span.set_attribute("codesource.batches", batches)
+                return value
+            finally:
+                self._close(call_id)
+
+    def _describe(self, span: Any, export: str, kind: str, args: Sequence[Any]) -> None:
+        """What a call is, on its stage: never an argument's value."""
+        span.set_attribute("codesource.source", self.source_id)
+        span.set_attribute("codesource.function", export)
+        span.set_attribute("codesource.kind", kind)
+        span.set_attribute("codesource.arg_count", sum(1 for a in args if a is not ABSENT))
+        span.set_attribute("codesource.host", self.where_kind)
+        span.set_attribute("codesource.code_hash", self.content_hash)
+
+    #: Where the worker runs: a local process, or a remote host (provisa/codesource/remote.py).
+    where_kind = "local"
+
+    def _call_frame(
+        self,
+        call_id: int,
+        export: str,
+        kind: str,
+        args: Sequence[Any],
+        names: Sequence[str],
+        schema: str | None,
+    ) -> dict:
+        """The call's frame, with the request's trace; the call's scope held for the services
+        requests that name it, until the call closes."""
+        if self._services_token is not None:
+            with _scopes_lock:
+                _scopes[(self._services_token, call_id)] = carried_scope()
+        return {
+            "op": "call",
+            "id": call_id,
+            "export": export,
+            "kind": kind,
+            "args": encode(list(args)),
+            "names": list(names),
+            "schema": schema,
+            "traceparent": current_traceparent(),
+        }
 
     def ping(self, timeout: float = 5.0) -> bool:
         """Whether the host answers."""
@@ -495,11 +696,22 @@ class WorkerPool:
     whose process has ended is dropped and the next call starts another."""
 
     def __init__(self) -> None:
-        self._workers: dict[tuple[str, str], Worker] = {}
+        self._workers: dict[tuple[str | None, str, str], Worker] = {}
+        #: REQ-2098: a remote host's failed dials: (count, next try, why).
+        self._failures: dict[tuple[str | None, str, str], tuple[int, float, str]] = {}
         self._lock = threading.Lock()
 
-    def get(self, source_id: str, content_hash: str, command: Callable[[], HostCommand]) -> Worker:
-        key = (source_id, content_hash)
+    def get(
+        self,
+        source_id: str,
+        content_hash: str,
+        command: Callable[[], HostCommand],
+        *,
+        org: str | None = None,
+    ) -> Worker:
+        """``org``: the org the worker serves; one org's worker never serves another's calls,
+        since it holds that org's services grant (REQ-2104)."""
+        key = (org, source_id, content_hash)
         with self._lock:
             worker = self._workers.get(key)
             if worker is not None and worker.alive():
@@ -511,10 +723,68 @@ class WorkerPool:
             self._workers[key] = worker
             return worker
 
+    def remote(
+        self, source_id: str, content_hash: str, org: str, make: Callable[[], "Worker"]
+    ) -> "Worker":
+        """REQ-2098: a built source's worker, its remote host dialled on first use and again
+        after it stops answering -- with backoff: a host that failed is not dialled again until
+        its wait (1 s, doubling to a minute) has passed, and a call meanwhile fails naming it."""
+        key = (org, source_id, content_hash)
+        with self._lock:
+            worker = self._workers.get(key)
+            if worker is not None and worker.alive():
+                return worker
+            if worker is not None:
+                worker.stop()
+                self._workers.pop(key, None)
+            failed = self._failures.get(key)
+            if failed is not None and time.monotonic() < failed[1]:
+                raise WorkerFailed(
+                    source_id,
+                    f"{failed[2]} (next try in {failed[1] - time.monotonic():.0f}s)",
+                )
+            worker = make()
+            try:
+                worker.start()
+            except WorkerFailed as exc:
+                count = 1 if failed is None else failed[0] + 1
+                wait = min(_REMOTE_BACKOFF_MAX_S, _REMOTE_BACKOFF_S * 2 ** (count - 1))
+                self._failures[key] = (count, time.monotonic() + wait, str(exc))
+                raise
+            self._failures.pop(key, None)
+            self._workers[key] = worker
+            return worker
+
+    def remote_status(self, org: str, source_id: str) -> dict:
+        """What this process's pool holds for a built source: a live connection, or the last
+        failure and its next try."""
+        with self._lock:
+            live = [
+                k
+                for k, w in self._workers.items()
+                if k[0] == org and k[1] == source_id and w.alive()
+            ]
+            failures = [
+                (k, f) for k, f in self._failures.items() if k[0] == org and k[1] == source_id
+            ]
+        if live:
+            return {"connected": True}
+        if failures:
+            (_key, (count, at, message)) = failures[-1]
+            return {
+                "connected": False,
+                "error": message,
+                "failures": count,
+                "next_try_s": max(0.0, at - time.monotonic()),
+            }
+        return {"connected": False}
+
     def stop_source(self, source_id: str) -> None:
         """Stop every worker of ``source_id``: its source was edited or deleted."""
         with self._lock:
-            ending = [k for k in self._workers if k[0] == source_id]
+            ending = [k for k in self._workers if k[1] == source_id]
+            for key in [k for k in self._failures if k[1] == source_id]:
+                del self._failures[key]
             workers = [self._workers.pop(k) for k in ending]
         for worker in workers:
             worker.stop()

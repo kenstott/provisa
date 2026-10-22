@@ -44,6 +44,13 @@ _TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)$")
 _NONE = type(None)
 
 
+def _pydantic_fields(cls: type) -> dict | None:  # name -> pydantic FieldInfo
+    """A Pydantic (v2) model's fields, by attribute name; None for any other class. Read from
+    the class, so pydantic itself is never imported here: it is the code's, when it has it."""
+    fields = getattr(cls, "__pydantic_fields__", None)
+    return fields if isinstance(fields, dict) else None
+
+
 class _Reader:
     def __init__(self) -> None:
         self.types: dict[str, dict] = {}
@@ -118,7 +125,8 @@ class _Reader:
 
     @staticmethod
     def _is_record_type(kind: type) -> bool:
-        """A dataclass, a TypedDict, a NamedTuple, or a class with annotated fields."""
+        """A dataclass, a TypedDict, a NamedTuple, a Pydantic model, or a class with annotated
+        fields."""
         if dataclasses.is_dataclass(kind) or typing.is_typeddict(kind):
             return True
         if issubclass(kind, tuple) and hasattr(kind, "_fields"):
@@ -131,17 +139,33 @@ class _Reader:
             return
         self._reading.add(name)
         hints = typing.get_type_hints(cls, include_extras=True)
+        model_fields = _pydantic_fields(cls)
         optional_keys = getattr(cls, "__optional_keys__", frozenset())
         fields = []
         for field, hint in hints.items():
             if typing.get_origin(hint) is typing.ClassVar:
                 continue
+            description = ""
+            if model_fields is not None:
+                if field not in model_fields:
+                    continue  # a private attribute: not one of the model's fields
+                info = model_fields[field]
+                # A model's row is its dump by alias (host.py), so a column is named as it is sent.
+                field = info.serialization_alias or info.alias or field
+                description = info.description or ""
             optional = field in optional_keys
             origin = typing.get_origin(hint)
             if origin in (typing.NotRequired, typing.Required):
                 optional = origin is typing.NotRequired
                 hint = typing.get_args(hint)[0]
-            fields.append({"name": field, "optional": optional, "type": self.tree(hint)})
+            fields.append(
+                {
+                    "name": field,
+                    "optional": optional,
+                    "type": self.tree(hint),
+                    "description": description,
+                }
+            )
         self.types[name] = {"name": name, "fields": fields}
         self._reading.discard(name)
 
@@ -217,6 +241,9 @@ def read(entry: str) -> dict:
 def main(argv: list[str]) -> int:
     code, entry = argv
     sys.path.insert(0, code)
+    # REQ-2106: Provisa's services module, always present where the code runs, so code that
+    # imports it is read as it runs (services/ beside this reader, readable in its sandbox).
+    sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), "services"))
     # What the code prints while it is imported goes to stderr; the document is stdout's alone.
     out = os.dup(1)
     os.dup2(2, 1)

@@ -148,7 +148,7 @@ Vous déclarez une table associative comme une arête ; Provisa n'en découvre j
 
 ### Découverte de relations par l'IA {: #ai-relationship-discovery }
 
-Déclenchez l'analyse des clés étrangères assistée par Claude via REST :
+Demandez à Claude des candidats de clés étrangères via REST :
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-L'API d'administration embarque GraphiQL à `GET /admin/graphql` dans le navigateur. Utilisez-le pour explorer interactivement l'ensemble du schéma d'administration.
+L'API d'administration embarque GraphiQL à `GET /admin/graphql` dans le navigateur. Utilisez-le pour parcourir l'ensemble du schéma d'administration et essayer des appels.
 
 ## Vues de gestion du domaine ops {: #ops-domain-management-views }
 

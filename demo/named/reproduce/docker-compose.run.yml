@@ -8,7 +8,7 @@
 # permission from the copyright holder.
 #
 # The reproduce demo where it runs from its bundle (start-ui-install.sh --demo reproduce; REQ-2049):
-# the database, loaded from the dump the bundle build wrote (dump/postgres.sql), read only but
+# the database, loaded from the dump the bundle build wrote (dump/postgres/<database>.sql), read only but
 # for the rate a correction writes (db/reader.sql).
 
 x-demo-labels: &demo-labels
@@ -26,6 +26,8 @@ services:
       # Where config.yaml's reproduce-db reads it, for the sandbox tier's node (REQ-2049,
       # scripts/demo_stores_sync.sh): it writes these two into the bundle's stores.env.
       com.provisa.demo.host_env: REPRODUCE_PG_HOST
+      com.provisa.demo.ns_env: REPRODUCE_PG_NS
+      com.provisa.demo.access: db/reader.sql
       com.provisa.demo.port_env: REPRODUCE_PG_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -38,7 +40,8 @@ services:
       - "127.0.0.1:${REPRODUCE_PG_PORT-29832}:5432"
     volumes:
       - reproduce_run_pg:/var/lib/postgresql/data
-      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-reproduce.sql:ro
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:

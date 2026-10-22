@@ -36,7 +36,17 @@ from provisa.codesource import table as code_table
 from provisa.codesource import worker as w
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.discovery import declared_columns
-from provisa.codesource.manifest import PYTHON_RULES, read_manifest
+from provisa.codesource.manifest import (
+    PYTHON_RULES,
+    Export,
+    Field,
+    Manifest,
+    Named,
+    ObjectType,
+    Parameter,
+    Scalar,
+    read_manifest,
+)
 from provisa.codesource.table import CodeTableRefused, check_table
 from provisa.python.source import HOST, READER
 
@@ -104,6 +114,20 @@ def test_a_code_sources_configuration_is_its_mapping():
 
 
 @pytest.mark.parametrize(
+    "code",
+    [
+        {"kind": "git", "repository": "https://g/r", "commit": "c"},
+        {"kind": "upload", "upload": "h"},
+        {"kind": "pypi", "package": "p", "version": "1"},
+    ],
+)
+def test_a_lockfile_may_be_given_beside_any_code(code):
+    lockfile = {"filename": "uv.lock", "upload": "x"}
+    config = code_source.config_of("python", {"code": code, "lockfile": lockfile})
+    assert config.lockfile == lockfile
+
+
+@pytest.mark.parametrize(
     ("source_type", "mapping", "code"),
     [
         (
@@ -117,14 +141,6 @@ def test_a_code_sources_configuration_is_its_mapping():
             "codesource.code_kind",
         ),
         ("python", {"code": {"kind": "pypi", "package": "p"}}, "codesource.code_incomplete"),
-        (
-            "python",
-            {
-                "code": {"kind": "upload", "upload": "h"},
-                "lockfile": {"filename": "uv.lock", "upload": "x"},
-            },
-            "codesource.lockfile_beside_kept_code",
-        ),
     ],
 )
 def test_a_configuration_that_cannot_be_used_is_refused_by_name(source_type, mapping, code):
@@ -186,6 +202,35 @@ def test_register_table_suggests_the_declared_columns_and_the_parameters(manifes
     check_table(_orders_table(), manifest)
 
 
+def test_a_suggested_column_is_described_as_its_field_is_documented():
+    documented = Manifest(
+        exports=(
+            Export(
+                "rates",
+                "table",
+                "",
+                (Parameter("pair", Scalar("text"), False, True),),
+                Named("Rate"),
+            ),
+        ),
+        types={
+            "Rate": ObjectType(
+                "Rate",
+                (
+                    Field("pair", Scalar("text"), False, "The currency pair, base first."),
+                    Field("mid", Scalar("double"), False),
+                ),
+            )
+        },
+    )
+    suggested = declared_columns(documented, documented.export("rates"))
+    assert [(c["name"], c["comment"]) for c in suggested] == [
+        ("pair", "The currency pair, base first."),
+        ("mid", None),
+        ("_nf_pair", None),
+    ]
+
+
 # -- reading ------------------------------------------------------------------------------------
 
 
@@ -218,7 +263,7 @@ def prepared(tmp_path, manifest, monkeypatch):
         env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
         cwd=code,
     )
-    ready = code_source.Prepared("orders-src", "h1", manifest, command)
+    ready = code_source.Prepared("orders-src", "h1", manifest, command, "acme")
     source = SimpleNamespace(id="orders-src", type=SimpleNamespace(value="python"), mapping={})
 
     async def _registered(_state):
@@ -277,6 +322,143 @@ async def test_saving_a_code_source_records_the_content_hash_of_its_code(monkeyp
     assert "content_hash" not in seen["mapping"]  # pinned afresh, not checked against the old
     assert mapping["content_hash"] == "fresh-hash"
     assert await registration.record_code("pg", "postgresql", {}) is None
+
+
+class _Model:
+    """An environment's model: what is written to it."""
+
+    def __init__(self) -> None:
+        self.written: list = []
+
+    def acquire(self):
+        model = self
+
+        class _Conn:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_exc):
+                return False
+
+            async def execute_core(self, statement):
+                model.written.append(statement.compile().params)
+
+        return _Conn()
+
+
+def _no_change_record(monkeypatch) -> None:
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _scope(_text, *_args):
+        yield None
+
+    monkeypatch.setattr("provisa.core.model_change.scope", _scope)
+
+
+async def test_a_source_its_config_declared_with_no_hash_is_pinned_once_its_model_is_built(
+    monkeypatch,
+):
+    """REQ-2098: a code source written to the model from a configuration had no content hash, so
+    it was never 'saved' and its image could not be built. Its code is pinned as a save pins it."""
+    from provisa.api.admin import _code_source_registration as registration
+
+    async def _prepare(source_id, source_type, mapping, ctx):
+        return SimpleNamespace(content_hash=f"hash-of-{source_id}")
+
+    async def _context(_state):
+        return None
+
+    monkeypatch.setattr(code_source, "prepare", _prepare)
+    monkeypatch.setattr(code_source, "context_for", _context)
+    _no_change_record(monkeypatch)
+    rows = {
+        "churn-model": {
+            "type": "python",
+            "mapping": {
+                "runtime": "python",
+                "code": {"kind": "upload", "upload": "u1", "filename": "m.tar.gz"},
+            },
+        },
+        "saved": {
+            "type": "node",
+            "mapping": {"code": {"kind": "upload", "upload": "u2"}, "content_hash": "h2"},
+        },
+        "pg": {"type": "postgresql", "mapping": {}},
+    }
+    found = registration.unpinned(rows)
+    assert [f[0] for f in found] == ["churn-model"]
+    model = _Model()
+    assert await registration.pin_declared_code("acme", "prod", model, found) == ["churn-model"]
+    [written] = model.written
+    assert written["mapping"]["content_hash"] == "hash-of-churn-model"
+    assert written["mapping"]["code"]["filename"] == "m.tar.gz"
+
+
+async def test_declared_code_that_is_refused_is_not_tried_again_until_it_changes(monkeypatch):
+    from provisa.api.admin import _code_source_registration as registration
+
+    tried: list[str] = []
+
+    async def _prepare(source_id, source_type, mapping, ctx):
+        tried.append(mapping["code"]["upload"])
+        raise BundleRefused("no_lockfile", "the code declares dependencies but carries no uv.lock")
+
+    async def _context(_state):
+        return None
+
+    monkeypatch.setattr(code_source, "prepare", _prepare)
+    monkeypatch.setattr(code_source, "context_for", _context)
+    monkeypatch.setattr(registration, "_refused", {})
+    _no_change_record(monkeypatch)
+    model = _Model()
+
+    def found(upload: str):
+        return [("bad", "python", {"code": {"kind": "upload", "upload": upload}})]
+
+    assert await registration.pin_declared_code("acme", "prod", model, found("u1")) == []
+    assert await registration.pin_declared_code("acme", "prod", model, found("u1")) == []
+    assert await registration.pin_declared_code("acme", "prod", model, found("u2")) == []
+    assert tried == ["u1", "u2"]
+    assert model.written == []
+
+
+async def test_a_code_sources_form_lists_every_function_its_code_exports_with_its_kind(
+    monkeypatch,
+):
+    """Its tables, commands and streams, as the manifest reads them; None for no such source."""
+    from provisa.codesource import discovery
+
+    manifest = SimpleNamespace(
+        exports=[
+            SimpleNamespace(name="scores", kind="table"),
+            SimpleNamespace(name="retrain", kind="command"),
+            SimpleNamespace(name="ticks", kind="stream"),
+        ]
+    )
+
+    async def _found(_state, source_id):
+        return (
+            SimpleNamespace(id=source_id, type=SimpleNamespace(value="python"), mapping={})
+            if source_id == "churn-model"
+            else None
+        )
+
+    async def _prepare(*_args):
+        return SimpleNamespace(manifest=manifest)
+
+    async def _context(_state):
+        return None
+
+    monkeypatch.setattr(discovery, "_source", _found)
+    monkeypatch.setattr(code_source, "prepare", _prepare)
+    monkeypatch.setattr(code_source, "context_for", _context)
+    assert await discovery.exports(None, "churn-model") == [
+        ("scores", "table"),
+        ("retrain", "command"),
+        ("ticks", "stream"),
+    ]
+    assert await discovery.exports(None, "absent") is None
 
 
 async def test_code_that_cannot_be_used_refuses_the_save_by_name(monkeypatch):

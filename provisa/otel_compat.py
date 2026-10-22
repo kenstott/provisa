@@ -101,6 +101,33 @@ def get_tracer(name: str) -> TracerProtocol:  # REQ-302, REQ-303
         return _NoopTracer()
 
 
+class _NoopInstrument:
+    def add(self, *_: Any, **__: Any) -> None: ...
+    def set(self, *_: Any, **__: Any) -> None: ...
+    def record(self, *_: Any, **__: Any) -> None: ...
+
+
+class _NoopMeter:
+    def create_counter(self, *_: Any, **__: Any) -> _NoopInstrument:
+        return _NoopInstrument()
+
+    def create_gauge(self, *_: Any, **__: Any) -> _NoopInstrument:
+        return _NoopInstrument()
+
+    def create_histogram(self, *_: Any, **__: Any) -> _NoopInstrument:
+        return _NoopInstrument()
+
+
+def get_meter(name: str) -> Any:  # REQ-2106
+    """Return the OTel meter for *name*, or a no-op meter if OTel is absent (as get_tracer)."""
+    try:
+        from opentelemetry import metrics as _metrics
+
+        return _metrics.get_meter(name)
+    except ImportError:
+        return _NoopMeter()
+
+
 # ---------------------------------------------------------------------------
 # REQ-1910: trace detail. Every request is traced; ``normal`` detail gives it ONE span — the
 # request span — carrying each pipeline stage's duration and facts as attributes, and ``debug``
@@ -564,6 +591,73 @@ def request_fact(attr: str) -> Any:
     or there is no request."""
     request = _live_request_span()
     return None if request is None else request.attributes.get(attr)
+
+
+@dataclass(frozen=True)
+class CarriedScope:  # REQ-2106
+    """A request's tracing scope -- its request span, detail, transport and OpenTelemetry context --
+    taken on its own thread to be entered on another that does work for it (a code source's call to
+    Provisa's services, answered on the egress proxy's thread)."""
+
+    span: Any
+    detail: "TraceDetail | None"
+    transport: str | None
+    context: Any
+
+
+def carried_scope() -> CarriedScope:
+    """This context's tracing scope, to carry to another thread."""
+    return CarriedScope(
+        _live_request_span(),
+        _request_detail.get(),
+        _request_transport.get(),
+        current_trace_context(),
+    )
+
+
+@contextmanager
+def in_carried_scope(scope: CarriedScope) -> "Iterator[None]":
+    """Run the block in ``scope``: its stages report onto that request span at normal detail, and
+    open child spans under it at debug detail, as on the request's own thread."""
+    tokens = (
+        _request_span.set(scope.span),
+        _request_detail.set(scope.detail),
+        _request_transport.set(scope.transport),
+    )
+    attached = None
+    if scope.context is not None:
+        from opentelemetry import context as _context
+
+        attached = _context.attach(scope.context)
+    try:
+        yield
+    finally:
+        if attached is not None:
+            from opentelemetry import context as _context
+
+            _context.detach(attached)
+        _request_transport.reset(tokens[2])
+        _request_detail.reset(tokens[1])
+        _request_span.reset(tokens[0])
+
+
+def current_traceparent() -> str | None:
+    """The W3C traceparent of the span current in this context, for a process that joins its trace
+    (a code source's worker, REQ-2106); None without the SDK or with no span."""
+    try:
+        from opentelemetry import propagate
+    except ImportError:
+        return None
+    carrier: dict[str, str] = {}
+    propagate.inject(carrier)
+    return carrier.get("traceparent")
+
+
+def request_event(name: str, **attributes: Any) -> None:
+    """An event on the request span (a code source's log line, REQ-2106); a no-op outside one."""
+    request = _live_request_span()
+    if request is not None:
+        request.add_event(name, {k: v for k, v in attributes.items() if v is not None})
 
 
 def annotate_request(**facts: Any) -> None:

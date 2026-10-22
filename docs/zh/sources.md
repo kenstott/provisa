@@ -74,6 +74,7 @@ Provisa 支持的每种数据源类型的参考。"Direct driver"（直连驱动
 协议兼容的数据库复用某个基础协议的 JDBC 驱动、原生异步驱动和方言。CockroachDB、YugabyteDB 和 Greenplum 使用 PostgreSQL 协议，TiDB 使用 MySQL 协议。它们只需要注册表条目，不需要新的连接器代码。
 
 `firebird`（Firebird 3/4/5）和 `airport`（Arrow Flight 服务器）是已登记的数据源类型，当 DuckDB 是活动引擎时，由 DuckDB 社区扩展就地访问。它们没有直连驱动，也没有联邦连接器。
+
 #### `saphana`
 
 SAP HANA 通过其自有驱动读取，并复制到活动引擎的存储中，因此在每个引擎上都可访问。表单需要主机、端口（默认 39015）、用户名、密码和数据库；在多租户系统中，数据库指定租户。Register Table 列出用户可读取的 schema，不包括 HANA 的系统 schema。
@@ -302,6 +303,14 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 - **名称。** 数据源 id 和文件名只能使用字母、数字、`.`、`_` 和 `-`。
 - **存储。** 上传的文件与任何组织文件一样存储：位于组织文件夹下，组织文件夹加密时随之加密，并在共享挂载上对每个节点可见。
 
+**下载文件。** `csv` 或 `parquet` 数据源也可以通过下载获得它的文件。在数据源表单上选择 **Download a copy** 并指定一个文件：服务器上的路径、`https://` 地址，或用表单为该存储保存的凭据读取的 `s3://` 地址。Provisa 通过上传路径把文件流式写入组织文件夹中的 `files/<source id>/<file name>`，大小限制、存储和替换方式都与上传相同，数据源读取这份副本。
+
+- **何时重新获取。** 由数据源的缓存 TTL 决定。从该数据源构建的表在副本生成后其 TTL 到期时，会先重新获取文件。TTL 为 -1 时，文件只获取一次并保留。
+- **服务器上的路径。** 服务器路径在解析其符号链接后，必须是设置 `sources.download_roots`（环境变量 `PROVISA_SOURCES_DOWNLOAD_ROOTS`）所列某个目录下的文件。默认不列出任何目录。目录之外的路径会按名称被拒绝，且不复制任何内容。
+- **多个组织。** 在多组织服务器（`multitenancy: true`）上，无论该设置为何，服务器路径都会按名称被拒绝，只提供 `https://` 和 `s3://`。主机解析到服务器自身网络内部（私有、回环或链路本地）的地址也会按名称被拒绝，每次重定向都会检查。
+- **它的表，作为草稿。** 创建数据源时，表单会提议立即在您选择的域中把它的表建为草稿。表以数据源命名，并按 Register Table 会给出的建议从文件推断类型；在 steward 将其移出草稿之前，它不对外提供服务。该选项默认开启。
+- **通过 Polly。** 给 Polly 一个指向单个 CSV 或 Parquet 文件的完整解析路径，她会提议带有下载和草稿表的数据源，并在您确认后创建它。目录、glob 或多个文件则会成为文件数据源。
+
 **写入本地 SQLite 或 DuckDB 文件，以及锁。** 写入会获取文件锁，且从不等待。当另一个进程或节点持有该文件时，写入会被拒绝，并注明数据源及其文件已被锁定。
 
 - **SQLite。** 写入设置 `PRAGMA busy_timeout = 0`，因此被锁定的文件会立即失败。
@@ -326,6 +335,7 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 任何 `files` 数据源也可以在其 mapping 中声明 `crawl`，设置与 [Wikipedia](#wikipedia) 下列出的相同：此时数据源会先读取网页，并将每个 HTML 数据表和每个链接的数据文件作为表落地到其目录中。
 
 在 DuckDB 引擎上，`files` 以原生方式读取，解析出的目录下每个 `<table>.csv` 对应一个 `read_csv_auto` 扫描视图。在没有自带 `files` 连接器的引擎上，数据行通过 sharepoint 和 splunk 所用的、随连接器提供的同一个 Calcite pgwire 服务器（`pgwire-file`）落地。参见下方的[企业级 SaaS 连接器](#enterprise-saas-connectors)。
+
 #### Logs {: #logs }
 
 `logs` 数据源将 Provisa 服务器上的日志文件变成一张表。你用完整路径或通配符（glob）指定文件，并选择其记录所用的格式。每条记录成为一行。格式无法读取的记录会连同原始文本和原因一并保留，绝不丢弃。
@@ -511,6 +521,7 @@ Provisa 知道这些语言版本的"See also"标题：`en`、`de`、`es`、`it`�
 ### Enterprise SaaS Connectors {: #enterprise-saas-connectors }
 
 Google Workspace 和 Microsoft 365 由各自的加载器读取；参见 [Google Workspace 和 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、云资源清单和 Splunk 通过以独立进程运行、使用 PostgreSQL 协议通信的驱动读取（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），所以它们都没有直连驱动。在 DuckDB 引擎上，驱动的端点通过 postgres 扩展实时挂载：Register Table 从已挂载的目录中列出连接器的表，查询就地读取连接器，过滤和投影会下推给它。其他所有引擎都把数据行落地到物化存储中用于联邦。驱动包按操作系统和架构从固定版本的 release 中获取（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）。运营方也可以在 Admin → 设置 → 连接器服务器中，按连接器指定一个为本主机构建的包文件夹（`connectors.<connector>.bundle_dir`）；参见 [Admin](admin.md)。五个 Trino 连接器（Jira 没有）始终按不区分大小写的方式匹配名称，与各产品自身一致。
+
 #### `sharepoint`
 
 SharePoint 列表被枚举为 schema 并暴露为可查询的表。两种身份验证方式：`CLIENT_CREDENTIALS`（默认）和基于证书的 PFX 证书方式。`mapping` 中的密钥值在到达连接器之前会通过密钥引擎解析。
@@ -1039,7 +1050,7 @@ tables:
 
 这让无需集群即可运行的原生引擎，获得与 Trino 引擎在其自身层面相同的基于配置的可扩展性。在 Trino 那里，一个通用 JDBC 连接器按数据源类型参数化，每种类型有一个目录 `.properties` 主体，Provisa 还提供自己的 Trino 连接器插件（Splunk、SharePoint、Calcite）。
 
-该文件出厂为空。内置连接器覆盖开箱即用的部分，此文件中的一切都由运营方编写。如需使用其他路径（例如在测试中），请设置 `PROVISA_CUSTOM_CONNECTORS`。
+该文件出厂为空。内置连接器覆盖无需额外设置即可使用的数据源，此文件中的一切都由运营方编写。如需使用其他路径（例如在测试中），请设置 `PROVISA_CUSTOM_CONNECTORS`。
 
 ### 描述符类型 {: #descriptor-kinds }
 
@@ -1059,6 +1070,7 @@ tables:
 **ClickHouse 支持三种机制**，各对应一种集成引擎（integration-engine）形态：自动暴露每张远程表的关系型 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、列由注册表提供的按表引擎（`clickhouse_table`，例如 JDBC/ODBC 桥接；`engine_template` 可携带一个由运行时绑定的 `{table}` 占位符），以及由 ClickHouse 推断 schema 的文件/湖/URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、文件、无服务器）和 Hudi（湖仓一体、零拷贝）开箱即用。
 
 未知的 `kind` 值会在启动时明确报错，所以描述符里的拼写错误永远不会让某种数据源类型悄悄变得不可达。
+
 ### 探测把关 {: #probe-gating }
 
 可用性在 attach 时针对每个引擎的标准发现目录进行验证：
@@ -1483,6 +1495,7 @@ auth:
 将一个 Neo4j 图数据库注册为一个可查询的数据源。数据管家编写投影标量值的 Cypher 查询；Provisa 缓存结果并将其暴露为 GraphQL 类型。
 
 Cypher 查询必须在 `RETURN` 子句中使用属性访问（`RETURN n.id AS id, n.name AS name`）。返回节点对象的查询会在注册时被拒绝。
+
 #### 通过配置文件注册 {: #config-file-registration }
 
 在 YAML 中声明一个 `neo4j` 数据源及其表。每张表都需要一个 `query_template`（产生其行数据的 Cypher）以及有类型的列。`query_template` 键在任何其他数据源类型下都是非法的。

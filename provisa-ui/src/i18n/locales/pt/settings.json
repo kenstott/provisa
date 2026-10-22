@@ -774,6 +774,10 @@
       "max_upload_bytes": {
         "label": "Maior arquivo enviado",
         "help": "O maior arquivo que uma fonte SQLite, DuckDB, CSV ou Parquet pode receber por envio no formulário da fonte; um maior é recusado, citando este limite. É melhor ler um arquivo maior onde ele está, em um armazenamento de objetos."
+      },
+      "download_roots": {
+        "label": "Diretórios dos quais arquivos de fontes podem ser baixados",
+        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os seus links; nenhum por padrão. Adicione um para que um steward possa copiar um arquivo dentro dele para a pasta da organização. Um servidor de muitas organizações não copia nenhum arquivo próprio, diga o que disser esta configuração."
       }
     },
     "polly": {
@@ -815,6 +819,10 @@
       "idle_ttl": {
         "label": "Limite de inatividade de um sandbox de demonstração",
         "help": "Um sandbox de demonstração que ninguém usou por esse tempo é excluído, com tudo o que contém."
+      },
+      "demo_stores_linger": {
+        "label": "Armazenamentos da demonstração mantidos após o uso",
+        "help": "Por quanto tempo os bancos de dados de uma demonstração continuam ativos depois que seu último sandbox é fechado. Se for aberta de novo antes disso, abre na hora; depois, eles são parados e o próximo visitante espera enquanto iniciam."
       },
       "ai_base_url": {
         "label": "Endpoint de IA do sandbox",

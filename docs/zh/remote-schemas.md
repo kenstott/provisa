@@ -288,7 +288,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 ## 注册远程数据表的影响 {: #impact-of-registering-a-remote-table }
 
-从任何远程模式来源注册的数据表，均为一级的 Provisa 数据表。在运行时，它与本地连接的关系型数据表在待遇上并无任何区别。
+从任何远程模式来源注册的数据表，都是普通的 Provisa 数据表。在运行时，它与本地连接的关系型数据表在待遇上并无任何区别。
 
 **查询接口。** 该数据表可立即通过 GraphQL、SQL（pgwire 或直接连接）、Cypher（GQL）、JSON:API 及 Arrow Flight 进行查询。由于远程数据表没有目录，模式生成过程会为其合成 `ColumnMetadata`，类型映射是于模式构建时应用的。
 

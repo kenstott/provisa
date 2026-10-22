@@ -11,7 +11,7 @@
 # store, inquiries, quality checker and data product, the objects every Deep Dive is told with.
 title: Start here
 description: >-
-  The whole product on one small dataset, with every Deep Dive: connect, relationships, model,
+  The whole product on one small dataset, with every Deep Dive: relationships, model,
   govern, quality, query, test data, publish, operate.
 screenshot: card.png
 published: true
@@ -21,3 +21,6 @@ order: 1
 tour: core
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release carrying the demo.
 requires_provisa: 0.1.0a492
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "It Really Is That Easy"

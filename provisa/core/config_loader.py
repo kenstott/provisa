@@ -303,7 +303,11 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     from provisa.core.secrets import resolve_secrets_in_dict
 
     config = ProvisaConfig.model_validate(
-        kafka_topics_as_tables(commit_time_columns(views_as_tables(resolve_secrets_in_dict(data)))),
+        kafka_topics_as_tables(
+            commit_time_columns(
+                views_as_tables(_code_secrets_as_written(data, resolve_secrets_in_dict))
+            )
+        ),
         context={STORED_MODEL: stored},
     )
     # What is STORED is the config as written: a credential stays the reference the file gave,
@@ -314,7 +318,49 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     return config
 
 
+def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
+    """``resolve(data)``, but the mapping values resolved at use kept as the references written:
+    a code source's declared secrets (REQ-2104), each resolved only when the code reads it,
+    through Provisa's services (provisa/codesource/services.py), so a config naming a secret not
+    yet in the vault loads; and a data-quality checker's whole connection (REQ-1443), resolved at
+    each scan from the stored mapping (dq.scan.checker_connection), so a password the deployment
+    has not set fails that scan by its name rather than every load of the org's model."""
+    from provisa.codesource.source import CODE_SOURCE_TYPES
+    from provisa.dq.contract import CHECKERS
+
+    held: dict[int, dict[str, Any]] = {}
+    sources = data.get("sources")
+    if isinstance(sources, list):
+        for i, source in enumerate(sources):
+            mapping = source.get("mapping") if isinstance(source, dict) else None
+            if not isinstance(mapping, dict):
+                continue
+            if source.get("type") in CHECKERS:
+                held[i] = dict(mapping)
+            elif source.get("type") in CODE_SOURCE_TYPES and "secrets" in mapping:
+                held[i] = {"secrets": mapping["secrets"]}
+    if not held:
+        return resolve(data)
+    resolved = resolve(
+        {
+            **data,
+            "sources": [
+                {**s, "mapping": {k: v for k, v in s["mapping"].items() if k not in held[i]}}
+                if i in held
+                else s
+                for i, s in enumerate(sources)  # type: ignore[arg-type]
+            ],
+        }
+    )
+    for i, written in held.items():
+        resolved["sources"][i]["mapping"].update(written)
+    return resolved
+
+
 _REFERENCE = "${"
+#: A table's fields that name its data where it is: stored resolved (_as_written). Its live
+#: block names the Kafka topic it follows, and the broker a change is published to.
+_TABLE_NAMES = frozenset({"schema_name", "table_name", "alias", "query_template", "live"})
 
 
 def _raw_of(raw: dict, model: BaseModel, name: str) -> Any:
@@ -345,9 +391,14 @@ def _as_written(resolved: Any, raw: Any) -> Any:
     if isinstance(resolved, BaseModel):
         if not isinstance(raw, dict):
             return resolved
+        # What names a table's data is no credential: stored as resolved, it is read wherever the
+        # table is, as its source's fields are not (resolved_source). A demo's shared stores name
+        # its data by a variable its launcher sets (``catalog${env:REVIEWS_MONGO_NS}``).
+        named = _TABLE_NAMES if isinstance(resolved, Table) else frozenset()
         update = {
             name: _as_written(getattr(resolved, name), _raw_of(raw, resolved, name))
             for name in type(resolved).model_fields
+            if name not in named
         }
         return resolved.model_copy(update=update)
     if isinstance(resolved, dict):

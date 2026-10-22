@@ -612,6 +612,18 @@ def _start_scheduler(_log: logging.Logger) -> None:
                 max_instances=1,
                 coalesce=True,
             )
+            from provisa.scheduler.jobs import queue_late_demo_templates
+
+            # REQ-2049: a bundle the node marks ready after the start has its template built.
+            scheduler.add_job(
+                queue_late_demo_templates,
+                trigger=CronTrigger.from_crontab("* * * * *"),
+                id="sandbox_late_templates",
+                name="sandboxes:queue_late_templates",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
             from provisa import sandbox_wake
 
             if sandbox_wake.SANDBOX_INSTANCE is not None:
@@ -786,6 +798,11 @@ async def _seed_demo_templates(_log: logging.Logger) -> None:  # REQ-2006
     threading.Thread(
         target=load_embedding_models, daemon=True, name="demo-embedding-models"
     ).start()
+    # A release changed since the tier last started: its visitors' sandboxes have the old schema.
+    from provisa.api.demo_sandbox import reap_visitors_of_another_release
+
+    for org_id in await reap_visitors_of_another_release():
+        _log.info("demo sandbox %s reaped: opened under an earlier release", org_id)
     for demo, outcome in (await ensure_demo_templates(state.admin_db)).items():
         _log.info("demo template %s: %s", demo, outcome)
 

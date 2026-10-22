@@ -33,7 +33,6 @@ orders.region ─╯
 - `orders.id`, `orders.region` und `orders.geo` sind **source**-Knoten (der schmale
   Eingabe-Contract von `enrich_grpc_set` deklariert `id` und `region`; die vollständige
   Taint-Closure verbindet alle deklarierten Eingaben mit allen Ausgaben).
-
 - `e.embedding` und `e.geo` sind **command**-Knoten an der Grenze von `enrich_grpc_set`.
 - `geo_u` ist ein **derived**-Knoten, erzeugt durch die SQL-Funktion `UPPER`.
 
@@ -49,6 +48,7 @@ zu jeder Ausgabe.
 | `source` | Grün | Eine Basistabellenspalte |
 | `derived` | Blau | Erzeugt durch einen SQL-Ausdruck (Funktion, Operator, CTE) |
 | `command` | Violett | Eine Ausgabespalte eines registrierten Commands |
+| `native` | Orange | Das rohe Feld, das eine Quelle liest, unter der Spalte einer registrierten Tabelle |
 
 Zusätzliche Ringe an einem Knoten:
 
@@ -64,6 +64,27 @@ Operationen: SQL-Funktionen (`sql_function`), arithmetische/logische Operatoren 
 registrierte Commands (`command`), reine Spaltenreferenzen (`identity`) und Literale (`constant`).
 
 Eine Kante aus einem Command-Aufruf wird in der UI als gestrichelte violette Linie dargestellt.
+
+### Unter der registrierten Tabelle
+
+Ein Benutzer mit Quellenregistrierung sieht unter jeder Quellspalte einen weiteren Schritt: das Feld, wie die Quelle es liest, in einem Kasten für den Ort, von dem es gelesen wird. Der Kasten trägt das Logo und die Typbezeichnung der Quelle, wie die Seite Sources sie zeigt, und die Adresse je nach Art der Quelle:
+
+| Quelle | Adresse |
+| --- | --- |
+| OpenAPI | Die Operation (`GET /v2/customers`), ihre festen Parameter und die Position der Zeilen |
+| Remote GraphQL | Das Wurzelfeld, seine Pflichtargumente und die Position der Zeilen |
+| MongoDB, Cosmos DB | Die Datenbank und die Collection oder der Container |
+| Elasticsearch, Qdrant | Der Index oder die Collection |
+| CSV, Parquet, Dateien, Logs | Der Pfad und das Dateimuster einer Tabelle, die viele Dateien liest |
+| Kafka | Das Topic |
+| Code-Quelle | Die Funktion |
+| Jede andere | Das native Schema und die native Tabelle |
+
+Das rohe Feld ist der Feldpfad der Spalte, wenn sie einen hat, sonst ihr eigener Name. Die Kante davon zur registrierten Spalte nennt die Umbenennung: `path`, `alias` oder `naming` (die Namenskonvention). Der Kasten der registrierten Tabelle sagt, wie sie bereitgestellt wird: `virtual`, bei jeder Anweisung gelesen, oder `replica`, mit ihrem TTL und dem Zeitpunkt des letzten Ladens. Zugangsdaten, Secret-Referenzen sowie Benutzer, Passwort und Query einer URL werden nie gezeigt. Ein Benutzer ohne Quellenregistrierung sieht die Lineage ab der registrierten Tabelle aufwärts.
+
+### Links
+
+Jedes Element öffnet sich dort, wo es definiert ist, wenn die Rechte des Benutzers diese Seite öffnen. Ein Klick auf ein Feld öffnet seine Tabelle, Sicht oder Quelle; ein Doppelklick auf einen Kasten öffnet seine Relation; ein Klick auf die Kante eines Commands öffnet den Command. Eine eingebaute SQL-Funktion hat keine Seite und keinen Link.
 
 ## Föderationsweiter Graph {: #federation-wide-graph }
 
@@ -119,6 +140,26 @@ Form der Antwort:
   "outputs": ["id", "embedding"]
 }
 ```
+
+Für einen Aufrufer mit Quellenregistrierung fügen beide Endpunkte den nativen Schritt hinzu: Knoten der Art `native` und ein Objekt `natives`, nach der Relation jedes nativen Kastens geschlüsselt (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+Das `served` einer Replica ist `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Für jeden anderen Aufrufer ist `natives` leer.
 
 Liefert HTTP 422, wenn das SQL nicht geparst werden kann.
 

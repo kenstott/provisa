@@ -197,8 +197,8 @@ Cypher 通过 `/data/cypher` 端点支持三种写入模式，由 `provisa/cyphe
 
 Cypher 通过两种传输方式访问同一个受治理的流水线：
 
-- **HTTP** —— `POST /data/cypher`，携带一个 JSON 请求体（`{"query": "...", "params": {...}}`）。返回类型化的行数据，写入操作则返回 `affected_rows`。`RETURN` 子句中的图变量序列化为 JSON：节点携带 `id`、`label`、`tableLabel` 和 `properties`；边携带 `identity`、`start`、`end`、`type`、`properties`、`startNode` 和 `endNode`；路径携带 `nodes`、`edges` 和 `length`/`hops`。已注册的命令也可以在这里通过 `CALL fn(args) YIELD col1, col2` 调用——位置参数按顺序映射到该命令声明的参数名称。
-- **Bolt** —— 一个与 Neo4j 兼容的二进制协议服务器（PackStream 编解码、分块成帧），使 Neo4j Browser、Bloom 以及各类 Bolt 驱动能够对联邦图运行 Cypher。当 `PROVISA_BOLT_PORT` 被设置为非零值时启动，默认禁用；设置 `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` 以启用 TLS。 Bolt 认证将主体映射到用户，将数据库映射到角色：`SHOW DATABASES` 为每个（视图 × 角色）组合列出一个条目，命名为 `provisa_<role>`（业务域）或 `provisa_ops_<role>`（带 system/meta/ops 域）；`:use` 选择活动的角色和视图。关系通过 `rel_ids` 表获得持久的整数 ID，与 `node_ids` 的设计相仿。已注册的命令可以通过 `CALL command(args)` 调用——位置参数按顺序映射到声明的参数名称；`CALL dbms.*` / `CALL db.*` 过程优先。
+- **HTTP** —— `POST /data/cypher`，携带一个 JSON 请求体（`{"query": "...", "params": {...}}`）。返回类型化的行数据，写入操作则返回 `affected_rows`。`RETURN` 子句中的图变量序列化为 JSON：节点携带 `id`、`label`、`tableLabel` 和 `properties`；边携带 `identity`、`start`、`end`、`type`、`properties`、`startNode` 和 `endNode`；路径携带 `nodes`、`edges` 和 `length`/`hops`。已注册的命令也可以在这里通过 `CALL fn(args) YIELD col1, col2` 调用，位置参数按顺序映射到该命令声明的参数名称。
+- **Bolt** —— 一个与 Neo4j 兼容的二进制协议服务器（PackStream 编解码、分块成帧），使 Neo4j Browser、Bloom 以及各类 Bolt 驱动能够对联邦图运行 Cypher。当 `PROVISA_BOLT_PORT` 被设置为非零值时启动，默认禁用；设置 `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` 以启用 TLS。 Bolt 认证将主体映射到用户，将数据库映射到角色：`SHOW DATABASES` 为每个（视图 × 角色）组合列出一个条目，命名为 `provisa_<role>`（业务域）或 `provisa_ops_<role>`（带 system/meta/ops 域）；`:use` 选择活动的角色和视图。关系通过 `rel_ids` 表获得持久的整数 ID，与 `node_ids` 的设计相仿。已注册的命令可以通过 `CALL command(args)` 调用，位置参数按顺序映射到声明的参数名称；`CALL dbms.*` / `CALL db.*` 过程优先。
 
 ### 图分析 {: #graph-analytics }
 
@@ -210,7 +210,7 @@ Cypher 通过两种传输方式访问同一个受治理的流水线：
 
 ### 设计约束 {: #design-constraints }
 
-1. **写入仅限于 `CREATE`、`SET` 和 `DELETE`。** 它们通过与 GraphQL 和 SQL 变更操作相同的流水线执行为直接的表写入。参见下文 §写入。`MERGE`、`DETACH DELETE` 和 `REMOVE` 会在解析时被拒绝。APOC 过程同样会被拒绝。
+1. **写入仅限于 `CREATE`、`SET` 和 `DELETE`。** 它们通过与 GraphQL 和 SQL 变更操作相同的流水线执行为直接的表写入。参见上文 §写入。`MERGE`、`DETACH DELETE` 和 `REMOVE` 会在解析时被拒绝。APOC 过程同样会被拒绝。
 
 2. **关系属性只存在于由联结表支撑的边上。** 基于一对外键列声明的边，在模型中只作为连接元数据存在，不存储任何属性，所以 `WHERE r.since > 2020` 或 `RETURN r.weight` 对它没有意义。基于联结表声明的边则带有属性。关联表的其余列就是该关系的属性，`RETURN r` 会返回它们。对其中某个属性的 `WHERE` 会编译为联结表别名上的谓词，因此它约束的是遍历本身，而不是在组装后过滤行。联结表会从图模式的节点一侧去掉：它在这里是边，在其他地方都是表。
 

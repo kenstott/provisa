@@ -22,7 +22,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { driver, type Driver } from "driver.js";
+import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
 import {
@@ -32,6 +32,8 @@ import {
   TOPIC_IDS,
   stepRoute,
   tourItinerary,
+  stepsTheOrgCanShow,
+  PET_STORE_DEMO_SQL,
   LINEAGE_DEMO_SQL,
   type RunScope,
   type TopicId,
@@ -65,6 +67,7 @@ import {
   TOUR_TOPICS_DONE_KEY,
 } from "./tourKeys";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { runUiActions } from "../mcp/uiActions";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -80,6 +83,32 @@ function nextPaint(): Promise<void> {
   return new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
+}
+
+// How long a step waits for its anchor to stop moving (a smooth scroll bringing it into view).
+const SETTLE_MS = 1000;
+
+/** Resolves once ``element`` holds still for a few frames, or after SETTLE_MS: its popover is
+ * placed against where it stops, not where a smooth scroll found it (View Profile Runs' graph,
+ * scrolled into view inside the window, had its popover drawn over it). */
+function stopped(element: HTMLElement): Promise<void> {
+  const until = performance.now() + SETTLE_MS;
+  const at = () => {
+    const r = element.getBoundingClientRect();
+    return `${r.left},${r.top},${r.width},${r.height}`;
+  };
+  return new Promise((resolve) => {
+    let last = at();
+    let still = 0;
+    const tick = () => {
+      const now = at();
+      still = now === last ? still + 1 : 0;
+      last = now;
+      if (still >= 3 || performance.now() > until) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
 
 // localStorage keys owned by NlPage — mirrored here so the tour can seed a
@@ -98,8 +127,7 @@ const NL_BACKUP_KEY = "provisa_tour_nl_backup";
 const NL_DEMO_QUESTION = "how many pets per species";
 const NL_DEMO_BRANCHES = {
   sql: {
-    query:
-      'SELECT species, COUNT(*) AS pet_count FROM "pet_store"."pets" GROUP BY species LIMIT 100',
+    query: PET_STORE_DEMO_SQL,
     result: {
       columns: ["species", "pet_count"],
       rows: [
@@ -380,6 +408,8 @@ export type TourStatus =
   | { kind: "preparing"; resuming: boolean }
   | { kind: "waiting"; step: number }
   | { kind: "stuck"; step: number }
+  // REQ-2115: the step's own actions running, under its caption, before its popover.
+  | { kind: "acting"; step: number; key: string }
   | null;
 
 interface TourContextValue {
@@ -418,10 +448,17 @@ const TourContext = createContext<TourContextValue | null>(null);
  * nothing but a spinner.
  */
 const ANCHOR_WAIT_MS = 45000;
+type DriverPopover = NonNullable<DriveStep["popover"]>;
 
 // How long an advance may take before the visitor is told the tour is waiting. Short enough that a
 // stall never reads as a dead click, long enough that a normal advance shows no spinner at all.
 const WAITING_HINT_MS = 1200;
+
+// REQ-2115: how long each of a step's actions lets itself be seen, and the body class under which
+// they run: driver.js's overlay and the previous popover are hidden then (tour.css), so what the
+// actions open (a modal, a form) is seen whole.
+const ACTION_PACE_MS = 700;
+const ACTING_CLASS = "tour-acting";
 
 function waitForElement(
   selector: string,
@@ -430,6 +467,9 @@ function waitForElement(
 ): Promise<HTMLElement> {
   const existing = document.querySelector<HTMLElement>(selector);
   if (existing) return Promise.resolve(existing);
+  // An abort raised before this wait began never fires its event again: without this the observer
+  // would run its whole window against a document the provider has already left.
+  if (signal?.aborted) return Promise.reject(new Error(`Tour: wait for ${selector} abandoned`));
   return new Promise((resolve, reject) => {
     const stop = () => {
       observer.disconnect();
@@ -505,9 +545,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const trackDone = trackStamp !== null && demoTrackDone(trackStamp);
   const allStepsRef = useRef(allSteps);
   // Where the demo's last card's "Look around on my own" leads; read by the runner's closure.
+  // REQ-2101 (amended): the org files the demo ships, read by a step's actions as it runs; held in a
+  // ref, as the landing is, so a step is not run again when the status is read.
+  const orgFilesRef = useRef(namedDemo.orgFiles);
   const landingRef = useRef(namedDemo.landing);
   useEffect(() => {
     landingRef.current = namedDemo.landing;
+    orgFilesRef.current = namedDemo.orgFiles;
   }, [namedDemo]);
   useEffect(() => {
     allStepsRef.current = allSteps;
@@ -539,8 +583,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
     out.demo = tourItinerary(meets, "demo", allSteps);
     return out;
   }, [capabilities, allSteps]);
-  // The active tour's steps. Everything below that walked "the tour" walks this.
-  const itinerary = itineraries[activeScope ?? "core"];
+  // The active tour's steps. Everything below that walked "the tour" walks this. A tour starts only
+  // once what the org has is read (startTour sets orgHas before the scope), so a running tour always
+  // walks the steps its org can show; with no read yet, no tour runs and nothing walks this.
+  const itinerary = useMemo(() => {
+    const rights = itineraries[activeScope ?? "core"];
+    return orgHas === null ? rights : stepsTheOrgCanShow(rights, orgHas, allSteps);
+  }, [itineraries, activeScope, orgHas, allSteps]);
   // Read inside handlers whose closure predates a capability refresh. Effects only: startTour reads
   // the memo itself, because a child's effect runs before its parent's — `?tour=1` (TourAutoStart,
   // a child of this provider) called startTour on the very render the rights landed, when this ref
@@ -550,12 +599,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // its steps show.
   const offered = useCallback(
     (scope: RunScope, has: OrgHas) =>
-      itineraries[scope].length > 0 &&
+      stepsTheOrgCanShow(itineraries[scope], has, allSteps).length > 0 &&
       prerequisitesMet(
         scope === "demo" ? demoTourPrerequisites(namedDemo.tour) : TOUR_PREREQUISITES[scope],
         has,
       ),
-    [itineraries, namedDemo],
+    [itineraries, namedDemo, allSteps],
   );
   // The Deep Dives menu, opened once the org's prerequisites have been checked.
   const openMenu = useCallback(() => {
@@ -594,7 +643,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // and so does every topic however it ends; only a dismissed core tour saves a position instead.
   const endTour = useCallback(
     // "landed": a named demo's track walked to its end, left with "Look around on my own" -- done,
-    // and no menu: the visitor is taken to the demo's landing page instead.
+    // and no menu: the visitor is taken to the demo's landing page instead -- or left for another
+    // demo a step links.
     (how: "completed" | "dismissed" | "deepdives" | "landed") => {
       setStatus(null);
       setStored(TOUR_SEEN_KEY, "true", { global: true });
@@ -712,7 +762,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
           }
           await nextPaint();
           if (cancelled) return;
-        } else if (route && route !== currentPathRef.current) {
+        } else if (
+          route &&
+          // The page actually shown, as well as the one the tour last sent the visitor to: a
+          // record of the last navigation goes stale when the page changes under the tour, and
+          // a step that trusted it would wait on its own page's anchor from another page.
+          (route !== currentPathRef.current ||
+            route !== `${window.location.pathname}${window.location.search}`)
+        ) {
           currentPathRef.current = route;
           if (step.openBranch) {
             // Land on the explorer with the branch's demo query pre-filled + auto-run,
@@ -757,6 +814,36 @@ export function TourProvider({ children }: { children: ReactNode }) {
           const trigger = await waitForElement(step.clickBefore, undefined, abort.signal);
           trigger.click();
         }
+        // REQ-2115: act, then explain. A step entered again finds what it built and only explains.
+        if (step.actions && !document.querySelector(step.element)) {
+          // The route just taken re-renders the provider, which supersedes this run: what a step
+          // does is done once, by the run that stays, so it waits a paint and acts only if current.
+          await nextPaint();
+          if (cancelled) return;
+          if (!document.querySelector(step.element)) {
+            settle();
+            setStatus({ kind: "acting", step: i, key: step.key });
+            document.body.classList.add(ACTING_CLASS);
+            let acted;
+            try {
+              const actions =
+                typeof step.actions === "function"
+                  ? step.actions({ orgFiles: orgFilesRef.current })
+                  : step.actions;
+              acted = await runUiActions(actions, {
+                // The visitor started this tour: what it does is theirs, and asks nothing more.
+                confirm: async () => true,
+                paceMs: ACTION_PACE_MS,
+                waitMs: ANCHOR_WAIT_MS,
+                signal: abort.signal,
+              });
+            } finally {
+              document.body.classList.remove(ACTING_CLASS);
+            }
+            if (cancelled) return;
+            if (!acted.success) throw new Error(`Tour: ${acted.steps[acted.steps.length - 1]}`);
+          }
+        }
         // Gate on the destination page's own content, not just `step.element` — that selector
         // is sometimes a persistent-shell anchor (navbar/subnav) that exists before the page has
         // finished loading its data, which would otherwise show the popover over a page still
@@ -777,6 +864,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
           element.size = Math.min(12, element.options.length);
         }
         element.scrollIntoView({ block: "center", behavior: "smooth" });
+        await stopped(element);
+        if (cancelled || !driverRef.current) return;
 
         // Position within the itinerary, not within TOUR_STEPS: a viewer whose rights drop a
         // chapter gets "4 of 22", and the step before the dropped one is the one Next skips over.
@@ -784,142 +873,175 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const pos = steps.indexOf(i);
         const counted = [...new Set([...countedRef.current, ...steps])].sort((a, b) => a - b);
         const isFirst = pos === 0;
-        const isLast = pos === steps.length - 1;
+        // A step whose Next picks a role (or environment) changes the rights the itinerary follows,
+        // so what comes after it is not the current rights' to say: "back to every role" is not the
+        // end because the analyst may open nothing after it. It goes on through the steps counted,
+        // and the runner moves past any the picked rights still deny.
+        const onward = step.chooseOnNext ? counted : steps;
+        const isLast = onward.indexOf(i) === onward.length - 1;
         // REQ-2010: a named demo's track ends on a choice -- the Deep Dives menu, or the demo's own
         // landing page -- not on a Done that rolls into another tour.
         const landing = scopeRef.current === "demo" && isLast ? landingRef.current : null;
         const ends = landing !== null;
-        driverRef.current.highlight({
-          element,
-          popover: {
-            title: t(`tour.steps.${step.key}.title`),
-            description: step.image
-              ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
-              : t(`tour.steps.${step.key}.description`),
-            ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
-            showButtons: ends
-              ? isFirst
-                ? ["close"]
-                : ["previous", "close"]
-              : isFirst
-                ? ["next", "close"]
-                : ["previous", "next", "close"],
-            nextBtnText: isLast
-              ? t("tour.nav.done")
-              : t("tour.nav.next", { current: counted.indexOf(i) + 1, total: counted.length }),
-            prevBtnText: t("tour.nav.back"),
-            onNextClick: () => {
-              clickIfPresent(step.clickAfterNext);
-              const advance = () => {
-                if (isLast) endTour("completed");
-                else setActiveStep(steps[pos + 1]);
-              };
-              const choose = step.chooseOnNext;
-              if (!choose) return advance();
-              // The option is painted only once the picker is open; a picker that never offers it
-              // is the stuck step's to report, like any anchor that never arrives.
-              document.querySelector<HTMLElement>(choose.open)?.click();
-              waitForElement(choose.option, undefined, abort.signal).then(
-                (option) => {
-                  option.click();
-                  advance();
-                },
-                () => setStatus({ kind: "stuck", step: i }),
-              );
-            },
-            onPrevClick: () => {
-              clickIfPresent(step.clickAfterNext);
-              setActiveStep(steps[pos - 1]);
-            },
-            onCloseClick: () => {
-              clickIfPresent(step.clickAfterNext);
-              endTour("dismissed");
-            },
-            // Inject a "Start" button that jumps back to the opening step, so a
-            // visitor can restart the core tour from any popover. Omitted on step 0,
-            // where it would be a no-op, and on a topic, whose card carries Deep Dives
-            // instead: the way back to the core tour's start is the catalog's control.
-            onPopoverRender: (popover) => {
-              // An image step's popover is placed before its picture loads; once it has, its
-              // height is known and the popover is placed again, inside the window.
-              const image =
-                popover.description.querySelector<HTMLImageElement>("img.tour-step-image");
-              if (image && !image.complete) {
-                image.addEventListener("load", () => driverRef.current?.refresh(), { once: true });
-              }
-              if (!isFirst && scopeRef.current === "core") {
-                const startBtn = document.createElement("button");
-                startBtn.type = "button";
-                startBtn.className = "driver-popover-start-btn";
-                startBtn.textContent = t("tour.nav.start");
-                startBtn.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  setActiveStep(steps[0]);
-                });
-                popover.footerButtons.prepend(startBtn);
-              }
-              if (landing !== null) {
-                const choice = document.createElement("div");
-                choice.className = "tour-where-next";
-                choice.dataset.testid = "tour-where-next";
-                const heading = document.createElement("p");
-                heading.className = "tour-where-next-heading";
-                heading.textContent = t("tour.nav.whereNext");
-                const buttons = document.createElement("div");
-                buttons.className = "tour-where-next-buttons";
-                const deep = document.createElement("button");
-                deep.type = "button";
-                deep.dataset.testid = "tour-where-next-deep-dives";
-                deep.textContent = t("tour.nav.exploreDeepDives");
-                deep.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  endTour("completed"); // done, and the Deep Dives menu opens
-                });
-                const own = document.createElement("button");
-                own.type = "button";
-                own.dataset.testid = "tour-where-next-own";
-                own.textContent = t("tour.nav.lookAround");
-                own.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  endTour("landed");
-                  navigate(landing.route);
-                });
-                buttons.append(deep, own);
-                const note = document.createElement("p");
-                note.className = "tour-where-next-note";
-                note.textContent = t("tour.nav.anyTime");
-                choice.append(heading, buttons, note);
-                popover.footer.before(choice);
-                return; // the choice is the card's way on: no Deep Dives button beside it
-              }
-              // REQ-1945: every card, core or topic, can leave for the Deep Dives menu at once.
-              {
-                const deepBtn = document.createElement("button");
-                deepBtn.type = "button";
-                deepBtn.className = "driver-popover-deepdives-btn";
-                deepBtn.dataset.testid = "tour-deep-dives";
-                deepBtn.textContent = t("tour.nav.deepDives");
-                deepBtn.addEventListener("click", () => {
-                  clickIfPresent(step.clickAfterNext);
-                  endTour("deepdives");
-                });
-                popover.footerButtons.prepend(deepBtn);
-              }
-              // On the closing step of the last topic, offer a shortcut straight to the Docs tab.
-              if (isLast && scopeRef.current === "operate") {
-                const docsBtn = document.createElement("button");
-                docsBtn.type = "button";
-                docsBtn.className = "driver-popover-docs-btn";
-                docsBtn.textContent = t("tour.nav.docs");
-                docsBtn.addEventListener("click", () => {
-                  endTour("completed");
-                  navigate("/docs");
-                });
-                popover.footerButtons.prepend(docsBtn);
-              }
-            },
+        const popover: DriverPopover = {
+          title: t(`tour.steps.${step.key}.title`),
+          description: step.image
+            ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
+            : t(`tour.steps.${step.key}.description`),
+          ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
+          showButtons: ends
+            ? isFirst
+              ? ["close"]
+              : ["previous", "close"]
+            : isFirst
+              ? ["next", "close"]
+              : ["previous", "next", "close"],
+          nextBtnText: isLast
+            ? t("tour.nav.done")
+            : t("tour.nav.next", { current: counted.indexOf(i) + 1, total: counted.length }),
+          prevBtnText: t("tour.nav.back"),
+          onNextClick: () => {
+            clickIfPresent(step.clickAfterNext);
+            const advance = () => {
+              if (isLast) endTour("completed");
+              else setActiveStep(onward[onward.indexOf(i) + 1]);
+            };
+            const choose = step.chooseOnNext;
+            if (!choose) return advance();
+            // The option is painted only once the picker is open; a picker that never offers it
+            // is the stuck step's to report, like any anchor that never arrives.
+            document.querySelector<HTMLElement>(choose.open)?.click();
+            waitForElement(choose.option, undefined, abort.signal).then(
+              (option) => {
+                option.click();
+                advance();
+              },
+              () => setStatus({ kind: "stuck", step: i }),
+            );
           },
+          onPrevClick: () => {
+            clickIfPresent(step.clickAfterNext);
+            setActiveStep(steps[pos - 1]);
+          },
+          onCloseClick: () => {
+            clickIfPresent(step.clickAfterNext);
+            endTour("dismissed");
+          },
+          // Inject a "Start" button that jumps back to the opening step, so a
+          // visitor can restart the core tour from any popover. Omitted on step 0,
+          // where it would be a no-op, and on a topic, whose card carries Deep Dives
+          // instead: the way back to the core tour's start is the catalog's control.
+          onPopoverRender: (popover) => {
+            // An image step's popover is placed before its picture loads; once it has, its
+            // height is known and the popover is placed again, inside the window.
+            const image =
+              popover.description.querySelector<HTMLImageElement>("img.tour-step-image");
+            if (image && !image.complete) {
+              image.addEventListener("load", () => driverRef.current?.refresh(), { once: true });
+            }
+            // A named demo's step linking another demo: a button that leaves the tour for it.
+            if (step.demo !== undefined) {
+              const demo = step.demo;
+              const open = document.createElement("button");
+              open.type = "button";
+              open.className = "driver-popover-demo-btn";
+              open.dataset.testid = "tour-open-demo";
+              open.textContent = t("tour.nav.openDemo", {
+                title: t(`tour.demos.${demo}.title`),
+              });
+              open.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("landed");
+                navigate(`/demos/${demo}`);
+              });
+              popover.description.after(open);
+            }
+            if (!isFirst && scopeRef.current === "core") {
+              const startBtn = document.createElement("button");
+              startBtn.type = "button";
+              startBtn.className = "driver-popover-start-btn";
+              startBtn.textContent = t("tour.nav.start");
+              startBtn.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                setActiveStep(steps[0]);
+              });
+              popover.footerButtons.prepend(startBtn);
+            }
+            if (landing !== null) {
+              const choice = document.createElement("div");
+              choice.className = "tour-where-next";
+              choice.dataset.testid = "tour-where-next";
+              const heading = document.createElement("p");
+              heading.className = "tour-where-next-heading";
+              heading.textContent = t("tour.nav.whereNext");
+              const buttons = document.createElement("div");
+              buttons.className = "tour-where-next-buttons";
+              const deep = document.createElement("button");
+              deep.type = "button";
+              deep.dataset.testid = "tour-where-next-deep-dives";
+              deep.textContent = t("tour.nav.exploreDeepDives");
+              deep.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("completed"); // done, and the Deep Dives menu opens
+              });
+              const own = document.createElement("button");
+              own.type = "button";
+              own.dataset.testid = "tour-where-next-own";
+              own.textContent = t("tour.nav.lookAround");
+              own.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("landed");
+                navigate(landing.route);
+              });
+              buttons.append(deep, own);
+              const note = document.createElement("p");
+              note.className = "tour-where-next-note";
+              note.textContent = t("tour.nav.anyTime");
+              choice.append(heading, buttons, note);
+              popover.footer.before(choice);
+              return; // the choice is the card's way on: no Deep Dives button beside it
+            }
+            // REQ-1945: every card, core or topic, can leave for the Deep Dives menu at once.
+            {
+              const deepBtn = document.createElement("button");
+              deepBtn.type = "button";
+              deepBtn.className = "driver-popover-deepdives-btn";
+              deepBtn.dataset.testid = "tour-deep-dives";
+              deepBtn.textContent = t("tour.nav.deepDives");
+              deepBtn.addEventListener("click", () => {
+                clickIfPresent(step.clickAfterNext);
+                endTour("deepdives");
+              });
+              popover.footerButtons.prepend(deepBtn);
+            }
+            // On the closing step of the last topic, offer a shortcut straight to the Docs tab.
+            if (isLast && scopeRef.current === "operate") {
+              const docsBtn = document.createElement("button");
+              docsBtn.type = "button";
+              docsBtn.className = "driver-popover-docs-btn";
+              docsBtn.textContent = t("tour.nav.docs");
+              docsBtn.addEventListener("click", () => {
+                endTour("completed");
+                navigate("/docs");
+              });
+              popover.footerButtons.prepend(docsBtn);
+            }
+          },
+        };
+        driverRef.current.highlight({ element, popover });
+        // A page that renders its anchor again (the SQL explorer's results, once its answer is in)
+        // leaves the step lighting a node no longer on the page, its popover in a corner: the
+        // step's anchor as it is now is lit again.
+        let lit = element;
+        const relight = new MutationObserver(() => {
+          if (lit.isConnected) return;
+          const now = document.querySelector<HTMLElement>(step.element);
+          if (!now || !driverRef.current) return;
+          lit = now;
+          driverRef.current.highlight({ element: now, popover });
         });
+        relight.observe(document.body, { childList: true, subtree: true });
+        abort.signal.addEventListener("abort", () => relight.disconnect(), { once: true });
         // The popover is on screen and the visitor is reading it — the idle window in which the
         // next step's backend work can run for free. Without this the request only starts when
         // Next is clicked, which is the delay that makes an advance feel dead on a loaded machine.
@@ -1039,7 +1161,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             return;
           }
           running = picked.scope;
-          const steps = itineraries[picked.scope];
+          const steps = stepsTheOrgCanShow(itineraries[picked.scope], has, allStepsRef.current);
           void ready.then(() => {
             if (!driverRef.current) {
               setStatus(null);
@@ -1093,10 +1215,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
     [launch, offered, trackDone],
   );
 
-  const menuTopics = TOPIC_IDS.filter((id) => orgHas !== null && offered(id, orgHas)).map((id) => ({
-    id,
-    steps: itineraries[id].length,
-  }));
+  const menuTopics =
+    orgHas === null
+      ? []
+      : TOPIC_IDS.filter((id) => offered(id, orgHas)).map((id) => ({
+          id,
+          steps: stepsTheOrgCanShow(itineraries[id], orgHas, allSteps).length,
+        }));
 
   return (
     <TourContext.Provider
@@ -1119,7 +1244,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
         completed={completedTopics()}
         demo={
           namedDemo.name !== null && orgHas !== null && offered("demo", orgHas)
-            ? { name: namedDemo.name, steps: itineraries.demo.length, done: trackDone }
+            ? {
+                name: namedDemo.name,
+                steps: stepsTheOrgCanShow(itineraries.demo, orgHas, allSteps).length,
+                done: trackDone,
+              }
             : null
         }
         onDemo={() => launch("demo", true)}
@@ -1170,6 +1299,14 @@ function TourStatusOverlay({
 }) {
   const { t } = useTranslation();
   if (!status) return null;
+  if (status.kind === "acting") {
+    // A caption, not a card: the screen is what the visitor watches while the step acts.
+    return (
+      <div className="tour-acting-caption" role="status" aria-live="polite">
+        {t(`tour.steps.${status.key}.acting`)}
+      </div>
+    );
+  }
   const stuck = status.kind === "stuck";
   const message =
     status.kind === "preparing"
@@ -1198,6 +1335,14 @@ function TourStatusOverlay({
           </div>
         ) : (
           <div className="tour-status-actions">
+            {/* A step still waiting can be passed over too: its page may never paint what the
+                step points at, and a step that waits on an answer waits a minute before it is
+                called stuck. */}
+            {status.kind === "waiting" && (
+              <button type="button" className="tour-status-btn" onClick={onSkip}>
+                {t("tour.status.skip")}
+              </button>
+            )}
             <button type="button" className="tour-status-btn" onClick={onExit}>
               {t("tour.status.cancel")}
             </button>

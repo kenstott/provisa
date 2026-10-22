@@ -203,6 +203,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # meta domain is governed by the tiered rule below.
     from provisa.security.rights import (
         GOVERNANCE_META_COLUMNS,
+        GOVERNANCE_META_ROWS,
         META_DOMAIN_ID,
         META_ROW_SCOPED_VIEWS,
         Capability,
@@ -300,12 +301,26 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     gov.public_tables = frozenset(_public)
 
     # table_map from compilation context — semantic refs only
-    from provisa.compiler.naming import semantic_relation_names, stored_relation_names
+    from provisa.compiler.naming import (
+        physical_relation_name,
+        semantic_relation_names,
+        stored_relation_names,
+    )
     from provisa.compiler.sql_rewrite import semantic_table_name
 
     for meta in ctx.tables.values():
         for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
             gov.table_map[said] = meta.table_id
+        # And its catalog-physical name: a view's body is read into a statement lowered to it,
+        # and two sources may hold tables of one schema.table (naming.table_id_of).
+        gov.table_map[
+            physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)
+        ] = meta.table_id
+        # And its physical schema.table, which a statement lowered without a catalog names it by.
+        # For most tables that is also the stored name below; for one read through a physical
+        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
+        # such a read is refused as unregistered.
+        gov.table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")
@@ -327,12 +342,26 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
-            scope_col = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
-            if scope_col is None:
+            scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
+            if scope_cols is None:
                 continue
-            predicate = f"{scope_col} IN ({id_list})"
+            predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
             existing = gov.rls_rules.get(tm.table_id)
             # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
+            gov.rls_rules[tm.table_id] = (
+                f"({existing}) AND ({predicate})" if existing else predicate
+            )
+
+    # REQ-2126: the governance rows of a meta view are read only with view_governance, under the
+    # same WHERE-injection as the row scope above.
+    if not _has_view_gov:
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+                continue
+            predicate = GOVERNANCE_META_ROWS.get(getattr(tm, "table_name", ""))
+            if predicate is None:
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
@@ -428,14 +457,10 @@ def _bind_fakes(gov: GovernanceContext) -> None:  # REQ-1494
 
 
 def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int | None:
-    """Resolve a SQLGlot Table node to a table_id."""
-    db = table_node.db
-    name = table_node.name
-    if db:
-        full = f"{db}.{name}"
-        if full in gov_ctx.table_map:
-            return gov_ctx.table_map[full]
-    return gov_ctx.table_map.get(name)
+    """Resolve a SQLGlot Table node to a table_id (``naming.table_id_of``)."""
+    from provisa.compiler.naming import table_id_of
+
+    return table_id_of(table_node, gov_ctx.table_map)
 
 
 def _get_tables_from_select(
@@ -1425,11 +1450,7 @@ def extract_sources(
 
     sources: set[str] = set()
     for tbl in physical_tables(tree):
-        name = tbl.name
-        db = tbl.db
-        full = f"{db}.{name}" if db else name
-
-        tid = gov_ctx.table_map.get(full) or gov_ctx.table_map.get(name)
+        tid = _table_id_for_node(tbl, gov_ctx)
         if tid is None:
             continue
         for meta in ctx.tables.values():
@@ -1477,10 +1498,7 @@ def reduce_sources_for_routing(  # REQ-863
 
     live: set[str] = set()
     for tbl in physical_tables(tree):
-        name = tbl.name
-        db = tbl.db
-        full = f"{db}.{name}" if db else name
-        tid = gov_ctx.table_map.get(full) or gov_ctx.table_map.get(name)
+        tid = _table_id_for_node(tbl, gov_ctx)
         if tid is None or tid in inlined_tids:
             continue
         for meta in ctx.tables.values():

@@ -38,6 +38,9 @@ class NodePattern:
     labels: list[str]
     properties: dict[str, Any]
     label_alternation: bool = False
+    #: Each inline property's value as the statement writes it (``'x'``, ``42``, ``$p``), which a
+    #: read matches on as ``WHERE var.prop = <value>`` (:func:`with_inline_conditions`).
+    property_text: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -48,6 +51,9 @@ class RelPattern:
     max_hops: int | None
     direction: str  # "right" | "left" | "none"
     variable_length: bool = False
+    #: An inline property map on the relationship, as its node's is (``property_text``).
+    properties: dict[str, Any] = field(default_factory=dict)
+    property_text: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -223,12 +229,40 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
 # ---------------------------------------------------------------------------
 
 
+#: The prefix of the name an anonymous pattern with an inline property map is given.
+INLINE_PREFIX = "__inline"
+
+
+def with_inline_conditions(
+    matches: list[MatchClause], where: WhereClause | None
+) -> WhereClause | None:
+    """``where`` with each inline property map of ``matches``' patterns as the equality it means
+    in a read: ``(n {k: v})`` is ``WHERE n.k = v``, its value written as the statement wrote it,
+    a ``$param`` included. A condition on a variable that only an OPTIONAL MATCH binds is moved
+    into that match's join as any of its WHERE conditions is, so the map constrains the optional
+    pattern and drops no row of the required ones."""
+    conditions: list[str] = []
+    for clause in matches:
+        pattern = (
+            clause.pattern.pattern if isinstance(clause.pattern, PathFunction) else clause.pattern
+        )
+        for part in [*pattern.nodes, *pattern.rels]:
+            for key, value in part.property_text.items():
+                conditions.append(f"{part.variable}.{key} = {value}")
+    if not conditions:
+        return where
+    if where is not None:
+        conditions.append(f"({where.expression})")
+    return WhereClause(expression=" AND ".join(conditions))
+
+
 class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
     def __init__(self, tokens: list[Token], raw: str, comments: list[str] | None = None) -> None:
         self._tokens = tokens
         self._pos = 0
         self._raw = raw
         self._comments: list[str] = comments or []
+        self._inline = 0  # anonymous patterns named for their inline property maps
 
     # --- helpers ---
 
@@ -292,7 +326,8 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         def _flush_match_step() -> None:
             nonlocal current_matches, current_where
             if current_matches:
-                pipeline.append(MatchStep(matches=list(current_matches), where=current_where))
+                where = with_inline_conditions(current_matches, current_where)
+                pipeline.append(MatchStep(matches=list(current_matches), where=where))
                 current_matches = []
                 current_where = None
 
@@ -484,12 +519,19 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                 labels.append(self._expect("IDENT").value)
                 label_alternation = True
 
+        text: dict[str, str] = {}
         if (_tnlb := self._peek()) and _tnlb.type == "LBRACE":
-            props = self._parse_map_literal()
+            props, text = self._parse_map_literal()
+            if variable is None:
+                variable = self._inline_variable()
 
         self._expect("RPAREN")
         return NodePattern(
-            variable=variable, labels=labels, properties=props, label_alternation=label_alternation
+            variable=variable,
+            labels=labels,
+            properties=props,
+            label_alternation=label_alternation,
+            property_text=text,
         )
 
     def _parse_rel_and_node(self) -> tuple[RelPattern, NodePattern]:
@@ -587,6 +629,17 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                     "Specify a depth limit, e.g. [*..5]."
                 )
 
+        props: dict[str, Any] = {}
+        text: dict[str, str] = {}
+        if (_trm := self._peek()) and _trm.type == "LBRACE":
+            if variable_length:
+                raise CypherParseError(
+                    "an inline property map on a variable-length relationship is not supported: "
+                    "state the condition in WHERE"
+                )
+            props, text = self._parse_map_literal()
+            if variable is None:
+                variable = self._inline_variable()
         self._expect("RBRACKET")
         return RelPattern(
             variable=variable,
@@ -595,19 +648,32 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             max_hops=max_hops,
             direction="none",
             variable_length=variable_length,
+            properties=props,
+            property_text=text,
         )
 
-    def _parse_map_literal(self) -> dict[str, Any]:
+    def _parse_map_literal(self) -> tuple[dict[str, Any], dict[str, str]]:
+        """A ``{key: value, ...}`` map: each value, and its text as the statement writes it."""
         self._expect("LBRACE")
         props: dict[str, Any] = {}
+        text: dict[str, str] = {}
         while (_tmp := self._peek()) and _tmp.type != "RBRACE":
             key = self._expect("IDENT").value
             self._expect("COLON")
+            written = self._peek()
             props[key] = self._parse_value()
+            if written is not None:
+                text[key] = written.value
             if (_tmpc := self._peek()) and _tmpc.type == "COMMA":
                 self._advance()
         self._expect("RBRACE")
-        return props
+        return props, text
+
+    def _inline_variable(self) -> str:
+        """A name for an anonymous pattern that carries an inline property map, so its conditions
+        can name it. No statement writes it: the tokenizer gives no identifier this prefix."""
+        self._inline += 1
+        return f"{INLINE_PREFIX}{self._inline}"
 
     def _parse_value(self) -> Any:
         t = self._peek()

@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
-    from provisa.core.models import MetadataExportConfig
+    from provisa.core.models import MetadataExportTarget
 
 
 class MetadataExportNotConfiguredError(RuntimeError):  # REQ-1068
@@ -94,7 +94,7 @@ class MetadataExport(ABC):  # REQ-1068
     # provider that leaves it unset is a wiring fault, caught by the registry.
     provider_name: str
 
-    def __init__(self, config: MetadataExportConfig) -> None:
+    def __init__(self, config: MetadataExportTarget) -> None:
         self._config = config
         # REQ-1389: bindings captured by prior publishes, keyed by the canonical Provisa URN.
         # Loaded by the publish path before ``publish``; a provider that can rebind reads

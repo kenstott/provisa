@@ -68,13 +68,15 @@ def _parameter_columns(export: Export) -> list[dict]:
             "path": None,
             "native_filter_type": QUERY_ARG,
             "native_filter_required": p.required,
+            "comment": None,
         }
         for p in export.parameters
     ]
 
 
 def declared_columns(manifest: Manifest, export: Export) -> list[dict]:
-    """The columns ``export``'s row type declares, its parameters after them."""
+    """The columns ``export``'s row type declares, each described as its field is documented,
+    its parameters after them."""
     data = [
         {
             "name": f.name,
@@ -82,6 +84,7 @@ def declared_columns(manifest: Manifest, export: Export) -> list[dict]:
             "path": None,
             "native_filter_type": None,
             "native_filter_required": None,
+            "comment": f.description or None,
         }
         for f in _row_fields(manifest, export)
     ]
@@ -106,9 +109,21 @@ async def tables(state: Any, source_id: str) -> list[tuple[str, str]] | None:
     return [(e.name, e.description) for e in prepared.manifest.exports if e.kind == "table"]
 
 
+async def exports(state: Any, source_id: str) -> list[tuple[str, str]] | None:
+    """Every function the source's code exports, ``(name, kind)``: its tables, commands and
+    streams, as its manifest reads them; None when the source is not there (REQ-2098, its form)."""
+    from provisa.codesource.source import context_for, prepare
+
+    source = await _source(state, source_id)
+    if source is None:
+        return None
+    prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
+    return [(e.name, e.kind) for e in prepared.manifest.exports]
+
+
 async def columns(state: Any, source_id: str, function: str) -> list[dict] | None:
     """The suggested columns of the table ``function`` reads: ``{name, data_type, path,
-    native_filter_type, native_filter_required}``, its parameters last."""
+    native_filter_type, native_filter_required, comment}``, its parameters last."""
     from provisa.codesource.source import context_for, prepare
     from provisa.mongodb.pipeline_rows import infer_columns
 
@@ -128,12 +143,15 @@ async def columns(state: Any, source_id: str, function: str) -> list[dict] | Non
         return _parameter_columns(export)
     from provisa.codesource.worker import ABSENT
 
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+
     worker = prepared.worker()
     names = [p.name for p in export.parameters]
+    schema = schema_text(row_schema(prepared.manifest, export))
 
     def _sample() -> list[dict]:
         rows: list[dict] = []
-        for batch in worker.rows(function, "table", [ABSENT] * len(names), names):
+        for batch in worker.rows(function, "table", [ABSENT] * len(names), names, schema=schema):
             rows.extend(batch)
             if len(rows) >= PREVIEW_ROWS:
                 break
@@ -147,6 +165,7 @@ async def columns(state: Any, source_id: str, function: str) -> list[dict] | Non
             "path": c.path,
             "native_filter_type": None,
             "native_filter_required": None,
+            "comment": None,
         }
         for c in infer_columns(sample)
     ]

@@ -29,6 +29,9 @@
     "no": "Nee",
     "typeSomethingElse": "Iets anders typen",
     "confirm": "Bevestigen",
+    "confirmed": "Bevestigd — ga je gang.",
+    "cancelled": "Geannuleerd.",
+    "chooseFile": "Te verzenden bestand",
     "graphCaption": "Knopen: {{nodes}} · Relaties: {{relationships}}",
     "downloadPng": "PNG downloaden",
     "openOnGraphPage": "Openen op de Graaf-pagina"

@@ -28,7 +28,9 @@ vi.mock("../pageChunks", () => ({ prefetchAllPageChunks: () => Promise.resolve()
 vi.mock("../hooks/useAdminQueries", () => ({ useTourPrefetch: () => () => Promise.resolve() }));
 vi.mock("../context/AuthContext", async () => {
   const { TOUR_STEPS } = await import("../tour/tourSteps");
-  const capabilities = [...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : [])))];
+  const capabilities = [
+    ...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : []))),
+  ];
   return { useAuth: () => ({ loading: false, capabilities }) };
 });
 
@@ -56,7 +58,7 @@ describe("TourMenu", () => {
     for (const id of TOPIC_IDS) {
       expect(screen.getByTestId(`tour-topic-${id}`)).toBeInTheDocument();
     }
-    expect(screen.getByText("Connect your data")).toBeInTheDocument();
+    expect(screen.getByText("Govern it")).toBeInTheDocument();
     expect(screen.getByText("Model it")).toBeInTheDocument();
     expect(screen.getByTestId("tour-topic-done-govern")).toBeInTheDocument();
     expect(screen.queryByTestId("tour-topic-done-query")).not.toBeInTheDocument();
@@ -131,13 +133,14 @@ describe("tour button routing", () => {
     );
     fireEvent.click(screen.getByText("launch"));
     await act(async () => {});
-    expect(screen.queryByTestId("tour-topic-connect")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tour-topic-relationships")).not.toBeInTheDocument();
   });
 
   it("leaves the core tour for the menu from its Deep Dives button", async () => {
     // Stand-ins for the first core step's route content and anchor.
     const root = document.createElement("div");
-    root.innerHTML = '<button class="navbar-tour-btn"></button><button data-tour="sources-add"></button>';
+    root.innerHTML =
+      '<button class="navbar-tour-btn"></button><button data-tour="sources-add"></button>';
     document.body.appendChild(root);
     try {
       render(
@@ -189,10 +192,13 @@ describe("tour button routing", () => {
       fireEvent.click(deep);
       fireEvent.click(await screen.findByTestId("tour-menu-core-tour"));
       await waitFor(
-        () => expect(document.querySelector(".driver-popover-title")?.textContent).toBe("Welcome, let's take the tour"),
+        () =>
+          expect(document.querySelector(".driver-popover-title")?.textContent).toBe(
+            "Welcome, let's take the tour",
+          ),
         { timeout: 5000 },
       );
-      expect(screen.queryByTestId("tour-topic-connect")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("tour-topic-relationships")).not.toBeInTheDocument();
     } finally {
       root.remove();
     }

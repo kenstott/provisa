@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ResultRedirect } from "../../api/admin";
+import type { ResultRedirect } from "../../types/resultRedirect";
 import { ResultRedirectNotice } from "../../components/ResultRedirectNotice";
 import React from "react";
 import { useTranslation } from "react-i18next";
@@ -152,6 +152,7 @@ export function ResultsPanel({
             <ResultRedirectNotice redirect={resultRedirect} />
           ) : resultError ? (
             <pre
+              data-testid="sql-results-error"
               style={{
                 margin: "0.75rem",
                 fontSize: "0.8rem",

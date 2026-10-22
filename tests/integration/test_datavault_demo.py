@@ -34,6 +34,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 pytestmark = [pytest.mark.integration]
@@ -63,6 +65,7 @@ class VaultStack:
     def env(self) -> dict[str, str]:
         return {
             "DATAVAULT_ORDERS_PORT": str(self.orders_port),
+            **store_namespaces(_DEMO),
             "DATAVAULT_CRM_PORT": str(self.crm_port),
         }
 
