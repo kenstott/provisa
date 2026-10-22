@@ -179,6 +179,18 @@ def test_an_agent_without_a_pid_has_no_cpu() -> None:
         server.server_close()
 
 
+def test_a_peers_round_trip_probe_is_never_dropped_by_the_agents_backlog() -> None:
+    """A peer's probe is RTT_CONNECTS back-to-back connects; with the agent's accepting thread
+    busy (here: not accepting at all), every one of them is queued by the kernel, so none waits on
+    a dropped SYN's 1 s retransmit."""
+    server = host_agent.serve(("127.0.0.1", 0), pid=None, facts={}, rtt_targets={})
+    try:
+        rtt = host_agent.tcp_rtt(*server.server_address[:2], connects=host_agent.RTT_CONNECTS)
+        assert rtt["p99_ms"] < 500
+    finally:
+        server.server_close()
+
+
 def test_the_agent_needs_an_explicit_listen_address(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["host_agent.py", "--fact", "device=backends"])
     with pytest.raises(SystemExit):
