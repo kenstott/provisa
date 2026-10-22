@@ -87126,8 +87126,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     IR: each borrows its namesake's shape, each is our own representation, and neither claims
     conformance to the standard. The GQL+ IR borrows GQL's pattern concepts (quantified path patterns,
     the path modes WALK, TRAIL, ACYCLIC and SIMPLE, label expressions) and adds only variable predicates,
-    a triples output for CONSTRUCT, and IRI and datatype values. Cypher maps straight in, its
-    depth-capped cycle-free paths being ACYCLIC with a bound; SPARQL's path sequences, alternatives and
+    a triples output for CONSTRUCT, and IRI and datatype values. [SUPERSEDED by REQ-2135, 2026-10-22
+    -- Cypher's variable-length paths are bounded WALK, not ACYCLIC (PATH MODES below). Kept here
+    for history; do not implement against it.] Cypher maps straight in, its
+    depth-capped cycle-free paths being ACYCLIC with a bound; [END SUPERSEDED BLOCK] SPARQL's path sequences, alternatives and
     inverses map onto those same concepts; a GQL or SQL/PGQ front end would be a parser only. The tiers
     are unchanged, and GraphQL still lowers straight to semantic SQL. Both IR names are internal: no
     user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:) Built in five phases.
@@ -87155,6 +87157,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     pill adds a triple pattern to the current query rather than replacing it. IRIs are shown compacted
     by prefix, with the full IRI on hover; literals are drawn distinct from resources; and CONSTRUCT
     results are drawn as a graph.
+    (Amended 2026-10-22, PATH MODES:) Cypher's variable-length paths map in as WALK with a bound:
+    the depth limit ends the walk, and a path may repeat nodes and edges within it, as the compiled
+    SQL has always done. Phase 2 lowers WALK, and REACH for SPARQL's property paths: SPARQL's
+    set semantics, distinct endpoint pairs, which ends on cycles without tracking the path. TRAIL,
+    ACYCLIC and SIMPLE are in the IR and refused by name until a front end needs them. The depth
+    limit is an operator setting, default 10, with its field in Deployment settings, and a result cut
+    at the limit carries a flag saying so. The variable-predicate union is bounded by a second
+    operator setting, the graph union limit, default 64 branches, with its own field; a union past it
+    is refused, naming the limit. A subject's IRI is {public URL}/id/{domain}/{table}/{primary key},
+    built only on output. The prefixes are one per domain, plus skos:, owl:, rdf:, rdfs: and xsd:.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
