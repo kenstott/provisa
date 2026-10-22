@@ -173,6 +173,8 @@ def _openapi_state() -> SimpleNamespace:
         ttl=60,
         promotions=[],
         default_params={},
+        response_normalizer=None,
+        query_template=None,
         columns=[
             ApiColumn(name="id", type=ApiColumnType.string),
             ApiColumn(name="petId", type=ApiColumnType.string, param_type=ParamType.path),

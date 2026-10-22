@@ -1661,6 +1661,13 @@ tables:
 
 Register Table works the same way as for Neo4j: pick the source, type a table name and the SELECT, press Preview (the `sparqlPreview` query runs it with `LIMIT 5` and fills the column list), then register. The registration persists an `api_sources` row and an `api_endpoints` row (form-encoded POST to the endpoint path, `sparql_bindings` normalizer), the same rows a config-file registration writes, and the native engine lands the rows through the same fetch chain as Neo4j.
 
+**Pushdown.** When a statement reads a SPARQL table alone (no join), its conditions on the table's columns go into the query sent to the endpoint. The registered SELECT becomes a subquery, `SELECT * WHERE { { <the SELECT> } FILTER(...) }`, with its `PREFIX` and `BASE` lines kept in front.
+- Pushed: equality and `IN` on a `text` column (compared as `STR(?var)`, so an IRI matches its text); any comparison on an `integer` or `double` column; equality on a `boolean`.
+- Not pushed: other conditions, such as an ordering comparison on text, a date, a function of a column, or a bound parameter. They are applied to the rows Provisa receives.
+- Every condition is applied again to the rows, so pushing one only narrows what is fetched.
+- The statement's `LIMIT` is pushed only when every condition was pushed and the statement does not group, aggregate, use `DISTINCT`, `ORDER BY` or `OFFSET`.
+- A narrowed answer is cached under its own query, apart from the whole table's.
+
 ## Connection Examples
 
 ### PostgreSQL
