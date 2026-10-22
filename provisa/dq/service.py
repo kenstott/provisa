@@ -95,29 +95,41 @@ async def _read(sql: str, role: str) -> list[dict]:
     return [dict(zip(names, row, strict=True)) for row in result.rows]
 
 
-def _meta(row: dict) -> Any:
-    """The model's table for a registered table's row of the meta domain."""
-    from provisa.live.governed import table_meta
+def _meta(row: dict, role: str) -> Any:
+    """The table a registered table's row of the meta domain names, as ``role``'s surface serves
+    it; None when the role reaches no such table (the meta domain lists tables in domains the role
+    cannot read)."""
+    from provisa.api.app import state
+    from provisa.api.role_surface import role_surface
 
-    return table_meta(int(row["id"]))
+    surface = role_surface(state, role)
+    if surface is None:
+        return None
+    table_id = int(row["id"])
+    return next((m for m in surface.context.tables.values() if m.table_id == table_id), None)
 
 
-def _name(row: dict) -> str:
+def _reached(rows: list[dict], role: str) -> list[dict]:
+    """Of the meta domain's ``rows``, those naming a table ``role`` reaches."""
+    return [row for row in rows if _meta(row, role) is not None]
+
+
+def _name(row: dict, role: str) -> str:
     """A registered table's name as the model shows it: ``<domain>.<table>``, its alias where it
     has one -- never the physical schema and table its rows are kept in."""
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
 
-    meta = _meta(row)
+    meta = _meta(row, role)
     return f"{domain_to_sql_name(meta.domain_id)}.{semantic_table_name(meta)}"
 
 
-def _relation(row: dict) -> str:
+def _relation(row: dict, role: str) -> str:
     """A registered table's reference in the role's SQL: its semantic name, which governance
     admits (a physical name is refused)."""
     from provisa.compiler.sql_rewrite import semantic_ref
 
-    return semantic_ref(_meta(row))
+    return semantic_ref(_meta(row, role))
 
 
 async def _dataset_row(name: str, role: str) -> dict | None:
@@ -143,7 +155,7 @@ async def _latest_run(checker: dict, role: str) -> dict | None:
     domain), and the checks of that scan that did not pass. None when it has never run."""
     if checker["latest_run_at"] is None:
         return None
-    relation = _relation(checker)
+    relation = _relation(checker, role)
     failing = await _read(
         f"SELECT * FROM {relation} WHERE outcome <> 'pass' "
         f"AND scan_time = (SELECT MAX(scan_time) FROM {relation})",
@@ -158,7 +170,7 @@ async def _latest_run(checker: dict, role: str) -> dict | None:
 
 async def _checker(row: dict, role: str) -> dict:
     return {
-        "checker_table": _name(row),
+        "checker_table": _name(row, role),
         "checker_table_id": row["id"],
         "description": row["description"],
         "contract": row["dq_contract"],
@@ -170,21 +182,24 @@ async def _checker(row: dict, role: str) -> dict:
 async def _profiles(dataset_id: int, role: str) -> list[dict]:
     """The profile result tables registered for the dataset (REQ-1934), each with its latest run's
     rows: every run is kept, keyed by run_id with run_time as the watermark."""
-    tables = await _read(
-        "SELECT id, domain_id, schema_name, table_name, alias FROM meta.registered_tables "
-        f"WHERE profiled_table_id = {dataset_id} ORDER BY table_name",
+    tables = _reached(
+        await _read(
+            "SELECT id, domain_id, schema_name, table_name, alias FROM meta.registered_tables "
+            f"WHERE profiled_table_id = {dataset_id} ORDER BY table_name",
+            role,
+        ),
         role,
     )
     out = []
     for table in tables:
-        relation = _relation(table)
+        relation = _relation(table, role)
         rows = await _read(
             f"SELECT * FROM {relation} WHERE run_time = (SELECT MAX(run_time) FROM {relation})",
             role,
         )
         out.append(
             {
-                "profile_table": _name(table),
+                "profile_table": _name(table, role),
                 "profile_table_id": table["id"],
                 "latest_run": rows or None,
             }
@@ -196,12 +211,17 @@ async def dataset(name: str, role: str, view_product: str | None = None) -> dict
     """Everything about the data quality of the dataset ``name`` (``domain.table`` or a table id)
     that ``role`` can see; None when it can see no such dataset."""
     found = await _dataset_row(name, role)
-    if found is None:
+    if found is None or _meta(found, role) is None:
         return None
     dataset_id = int(found["id"])
-    checkers = await _read(
-        f"SELECT {_CHECKER_COLUMNS} FROM meta.registered_tables "
-        f"WHERE checked_table_id = {dataset_id} ORDER BY table_name",
+    # Only the checkers whose results the role reaches: another domain's checker on this dataset
+    # is none of the role's (it reads no rows of it), never a refused read.
+    checkers = _reached(
+        await _read(
+            f"SELECT {_CHECKER_COLUMNS} FROM meta.registered_tables "
+            f"WHERE checked_table_id = {dataset_id} ORDER BY table_name",
+            role,
+        ),
         role,
     )
     related: dict[int, str] = {}
@@ -222,7 +242,7 @@ async def dataset(name: str, role: str, view_product: str | None = None) -> dict
             check["relation_to_view_product"] = related.get(int(row["id"]))
         checks.append(check)
     return {
-        "dataset": _name(found),
+        "dataset": _name(found, role),
         "dataset_id": dataset_id,
         "checker_tables": checks,
         "profiles": await _profiles(dataset_id, role),
@@ -249,8 +269,11 @@ async def product(product_id: str, role: str) -> dict | None:
         listed = ", ".join(str(i) for i in ids)
         rows = {
             int(r["id"]): r
-            for r in await _read(
-                f"SELECT {_CHECKER_COLUMNS} FROM meta.registered_tables WHERE id IN ({listed})",
+            for r in _reached(
+                await _read(
+                    f"SELECT {_CHECKER_COLUMNS} FROM meta.registered_tables WHERE id IN ({listed})",
+                    role,
+                ),
                 role,
             )
         }
