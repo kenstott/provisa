@@ -862,3 +862,12 @@ def test_an_unready_backend_gets_the_waking_page_not_the_broken_site(proxy, monk
 
 def test_a_ready_backend_is_spliced_straight_through(proxy, monkeypatch):
     assert _routing(proxy, monkeypatch, ready=True) == ["spliced"]
+
+
+def test_a_quiet_connection_outlasts_the_ui_servers_own_proxy_timeout(proxy):
+    """The splice drops a connection quiet for SPLICE_IDLE_SECONDS. It cut a demo sandbox's open
+    at 300 s, before the UI server's own proxy timeout (ui.proxy_timeout) gave the app its answer:
+    the front door must never be the shorter of the two."""
+    from provisa.core.settings_registry import setting
+
+    assert proxy.SPLICE_IDLE_SECONDS > setting("ui.proxy_timeout").default
