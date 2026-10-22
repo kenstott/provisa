@@ -189,6 +189,35 @@ describe("the product graph's data", () => {
     expect(kinds.get("profiled:r:9>t:1")).toBe("profiled");
   });
 
+  it("reads a one-to-many the server answered null (no rows) as empty", () => {
+    const rows = [
+      {
+        id: "lone",
+        name: "lone",
+        domain_id: "sales",
+        tags: null,
+        commands: null,
+        edges: null,
+        member_tables: [
+          {
+            id: 6,
+            domain_id: "sales",
+            table_name: "solo",
+            dq_contract: null,
+            tags: null,
+            table_columns: null,
+            profile_results: null,
+            source_relationships: null,
+          },
+        ],
+      },
+    ] as ProductRow[];
+    const g = toGraphData(rows, null, null);
+    const byId = new Map(g.nodes.map((n) => [n.id, n]));
+    expect(byId.get("p:lone")?.tags).toEqual([]);
+    expect(byId.get("t:6")?.tags).toEqual([]);
+  });
+
   it("judges nothing by sensitivity when the role cannot read the sensitive columns", () => {
     const g = toGraphData(ROWS, null, null);
     expect(g.nodes.find((n) => n.id === "t:1")?.sensitivities).toBeUndefined();

@@ -457,6 +457,7 @@ tables:
     \    kwargs:\n      column: name\n  - type: expect_column_values_to_be_between\n    kwargs:\n    \
     \  column: price\n      min_value: 0\n  - type: expect_column_values_to_not_be_null\n    kwargs:\n\
     \      column: species\n"
+  product_id: pet_health
   source_id: dq-checker
   table: pets_quality
 - columns:
@@ -473,6 +474,7 @@ tables:
   dq_contract: "dataset: provisa/pet_store/vets\ncolumns:\n  - name: name\n    checks:\n      - missing:\n\
     \      - duplicate:\n  - name: clinic\n    checks:\n      - missing:\n  - name: specialty\n    checks:\n\
     \      - missing:\nchecks:\n  - row_count:\n      must_be_greater_than: 0\n"
+  product_id: pet_health
   source_id: dq-soda
   table: vets_quality
 - columns:

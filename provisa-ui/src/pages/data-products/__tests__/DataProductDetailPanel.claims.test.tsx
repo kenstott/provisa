@@ -184,6 +184,31 @@ describe("a data product's quality claims (REQ-2132)", () => {
     );
   });
 
+  it("shows an unassigned checker scanning a member as partner DQ, not as a member", () => {
+    const partner = check(16, "partner_dq", [1, "customers"], {}, null);
+    render(
+      <DataProductDetailPanel
+        p={P}
+        core={{ ...CORE, checks: [...CHECKS, partner] }}
+        coreError={null}
+        reader={null}
+        sources={[]}
+        internalRelationships={[]}
+        canEdit={false}
+        canSeeLineage={true}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("data-product-detail-dq-c360-partners")).toHaveTextContent(
+      "Claim 16",
+    );
+    expect(screen.getByTestId("data-product-detail-dq-tables-c360")).not.toHaveTextContent(
+      "check_16",
+    );
+    expect(screen.getByTestId("data-product-detail-tables-c360")).not.toHaveTextContent("check_16");
+  });
+
   it("headlines a checker's claim in the Data Quality section", () => {
     panel();
     expect(screen.getByTestId("data-product-detail-dq-claim-11")).toHaveTextContent(

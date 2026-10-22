@@ -164,6 +164,15 @@ describe("the panel's meta reads", () => {
                     },
                   ],
                   commands: [{ name: "refresh", description: null, domain_id: "sales" }],
+                  product_checks: [
+                    {
+                      id: "c360:4",
+                      state: "partner_dq",
+                      checker_table_id: 4,
+                      checked_table_id: 1,
+                      assigned_product_id: null,
+                    },
+                  ],
                 },
               ],
             },
@@ -184,7 +193,9 @@ describe("the panel's meta reads", () => {
       ownerRole: "steward",
       customProperties: { tier: "gold" },
     });
+    // REQ-1443: an unassigned checker scanning a member is partner DQ, never a member.
     expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers"]);
+    expect(core?.checks?.map((c) => [c.checker_table_id, c.state])).toEqual([[4, "partner_dq"]]);
     expect(core?.commands?.map((c) => c.name)).toEqual(["refresh"]);
     // The bound term and the abstract term its edge reaches.
     expect(core?.terms?.map((t) => t.name)).toEqual(["Customer", "Party"]);
