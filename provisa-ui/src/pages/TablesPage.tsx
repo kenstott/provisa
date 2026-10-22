@@ -103,6 +103,7 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
+import { matchesQuery } from "../lib/searchItems";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -210,10 +211,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         if (viewsOnly && !t.viewSql) return false;
         if (governedDomains !== null && !governedDomains.has(t.domainId ?? "")) return false;
         if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
-        const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
-        if (terms.length === 0) return true;
-        const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
-        return terms.every((term) => haystack.includes(term));
+        return matchesQuery([t.sourceId, t.tableName, t.domainId], tableSearch);
       }),
     [tables, viewsOnly, checkedDomains, tableSearch, governedDomains],
   );

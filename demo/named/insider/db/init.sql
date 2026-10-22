@@ -15,6 +15,8 @@
 --   the bank          employee, desk_reviewer (whose first-level review a desk's mail is)
 --   its customers     customer, and customer_access: the bank's own log of who read their records
 --   the mailbox       message, recipient (internal, external or personal)
+--   screening         the control room's screening scope: which watch-list deals each message is
+--                     screened against -- every message against every deal
 --   deal_match        per message and deal it speaks of: the flagged entity (the deal's company), how
 --                     strongly it names the deal, how close it reads to it, whether its sender is on
 --                     the deal's team, whether it went to one of the deal's counterparties and whether
@@ -45,6 +47,8 @@ CREATE TABLE message (message_id text PRIMARY KEY, sender_id text NOT NULL REFER
 CREATE TABLE recipient (message_id text NOT NULL REFERENCES message, address text NOT NULL,
                         domain text NOT NULL, kind text NOT NULL CHECK (kind IN ('internal', 'external', 'personal')),
                         PRIMARY KEY (message_id, address));
+CREATE TABLE screening (message_id text NOT NULL REFERENCES message, deal_id text NOT NULL REFERENCES deal,
+                        PRIMARY KEY (message_id, deal_id));
 CREATE TABLE deal_match (message_id text NOT NULL REFERENCES message, deal_id text NOT NULL REFERENCES deal,
                          flagged_entity text NOT NULL,
                          name_match double precision NOT NULL, meaning_match double precision NOT NULL,
@@ -61,6 +65,7 @@ COPY customer FROM '/docker-entrypoint-initdb.d/data/customer.tsv';
 COPY customer_access FROM '/docker-entrypoint-initdb.d/data/customer_access.tsv';
 COPY message FROM '/docker-entrypoint-initdb.d/data/message.tsv';
 COPY recipient FROM '/docker-entrypoint-initdb.d/data/recipient.tsv';
+INSERT INTO screening (message_id, deal_id) SELECT m.message_id, d.deal_id FROM message AS m, deal AS d;
 
 ALTER TABLE employee OWNER TO provisa;
 ALTER TABLE desk_reviewer OWNER TO provisa;
@@ -71,4 +76,5 @@ ALTER TABLE customer OWNER TO provisa;
 ALTER TABLE customer_access OWNER TO provisa;
 ALTER TABLE message OWNER TO provisa;
 ALTER TABLE recipient OWNER TO provisa;
+ALTER TABLE screening OWNER TO provisa;
 ALTER TABLE deal_match OWNER TO provisa;

@@ -42,6 +42,7 @@
     "kind_terrain": "地形",
     "kind_relationsMap": "关系",
     "kind_jointCloud": "联合云",
-    "kind_driftStrata": "漂移层"
+    "kind_driftStrata": "漂移层",
+    "resultsMenu": "结果"
   }
 }

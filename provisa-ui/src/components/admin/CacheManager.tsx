@@ -55,6 +55,7 @@ import { SortGroupTable } from "../list/SortGroupTable";
 import { FormFooter } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { Power, PowerOff, RefreshCw } from "lucide-react";
+import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
@@ -183,15 +184,12 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
       ? ` / ${((stats.usedMemoryBytes / stats.maxMemoryBytes) * 100).toFixed(0)}%`
       : "";
 
-  const q = tableSearch.toLowerCase();
   // Hide Provisa's own internal catalog (meta/ops system views) — matches TablesPage.
   const userTables = tables.filter(
     (tbl) => tbl.sourceId !== "provisa-admin" && tbl.sourceId !== "provisa-otel",
   );
-  const filtered = userTables.filter(
-    (tbl) =>
-      (tbl.alias || tbl.tableName).toLowerCase().includes(q) ||
-      (tbl.domainId ?? "").toLowerCase().includes(q),
+  const filtered = userTables.filter((tbl) =>
+    matchesQuery([tbl.alias || tbl.tableName, tbl.domainId], tableSearch),
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(tablePage, totalPages - 1);

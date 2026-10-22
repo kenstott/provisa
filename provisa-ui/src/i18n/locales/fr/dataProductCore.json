@@ -23,6 +23,8 @@
     "copied": "Copié",
     "copyQuery": "Copier la requête {{surface}}",
     "openQuery": "Ouvrir la requête {{surface}} dans son explorateur",
-    "unreadable": "Votre rôle ne peut pas lire les produits de données du domaine meta."
+    "unreadable": "Votre rôle ne peut pas lire les produits de données du domaine meta.",
+    "detailExpand": "Afficher l’entrée complète",
+    "detailCollapse": "Afficher moins"
   }
 }

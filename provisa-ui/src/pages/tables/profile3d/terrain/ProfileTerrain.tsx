@@ -12,6 +12,7 @@
 // beside the selected column's flat histogram. The expand button opens the same view at 95%.
 
 import { useMemo, useState } from "react";
+import { getStored, setStored } from "../../../../lib/browserStorage";
 import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
 import type { ProfileRunResults } from "../../../../api/profiler";
@@ -42,6 +43,10 @@ interface SharedState {
   setRotate: (on: boolean) => void;
   selected: string | null;
   setSelected: (c: string) => void;
+  excluded: ReadonlySet<string>;
+  /** ``order`` without the excluded columns: what the terrain draws, side by side. */
+  drawn: string[];
+  include: (names: string[], included: boolean) => void;
   hover: TerrainHover | null;
   setHover: (h: TerrainHover | null) => void;
 }
@@ -119,7 +124,7 @@ function TerrainView({
       <div className="p3d-body">
         <TerrainStage
           columns={s.columns}
-          order={s.order}
+          order={s.drawn}
           options={s.options}
           rotate={s.rotate}
           selected={s.selected}
@@ -140,17 +145,43 @@ function TerrainView({
             s.setRotate(false);
             move("focus", c);
           }}
+          excluded={s.excluded}
+          onInclude={s.include}
         />
       </div>
     </div>
   );
 }
 
+/** Where a table's left-out columns are kept: this tab, until it closes; never the model. */
+const excludedKey = (tableId: number) => `profileTerrain.excluded.${tableId}`;
+
+function readExcluded(tableId: number): Set<string> {
+  try {
+    const raw = getStored(excludedKey(tableId), { session: true });
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : []);
+  } catch {
+    // A per-viewer convenience only: blocked or cleared storage means every column is drawn.
+    return new Set();
+  }
+}
+
+function writeExcluded(tableId: number, excluded: ReadonlySet<string>): void {
+  try {
+    setStored(excludedKey(tableId), JSON.stringify([...excluded]), { session: true });
+  } catch {
+    // Blocked storage: the choice holds while the view is open and is not kept.
+  }
+}
+
 export function ProfileTerrain({
   results,
+  tableId,
   tableName,
 }: {
   results: ProfileRunResults;
+  tableId: number;
   tableName: string;
 }) {
   const { t } = useTranslation();
@@ -164,7 +195,18 @@ export function ProfileTerrain({
   const [rotate, setRotate] = useState(true);
   const [picked, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<TerrainHover | null>(null);
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(() => readExcluded(tableId));
+  const include = (names: string[], included: boolean) => {
+    const next = new Set(excluded);
+    for (const n of names) {
+      if (included) next.delete(n);
+      else next.add(n);
+    }
+    setExcluded(next);
+    writeExcluded(tableId, next);
+  };
   const order = useMemo(() => orderColumns(columns, orderBy), [columns, orderBy]);
+  const drawn = useMemo(() => order.filter((n) => !excluded.has(n)), [order, excluded]);
   // A pick from an earlier run that this run did not profile falls back to the first column.
   const selected = columns.some((c) => c.name === picked) ? picked : (columns[0]?.name ?? null);
 
@@ -186,6 +228,9 @@ export function ProfileTerrain({
     setRotate,
     selected,
     setSelected,
+    excluded,
+    drawn,
+    include,
     hover,
     setHover,
   };

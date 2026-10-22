@@ -89,6 +89,7 @@ import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources
 import { profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceMappingJson } from "./sources/salesforce";
 import { cloudopsMappingJson } from "./sources/cloudops";
+import { sparqlMappingJson } from "./sources/sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
 import { MICROSOFT_365, m365Mapping } from "./sources/microsoft365";
 import { LOGS, logsMapping } from "./sources/logs";
@@ -128,6 +129,7 @@ import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
 import { SourceTypePicker } from "../components/SourceTypePicker";
 import { athenaHints } from "./sources/athena";
+import { matchesQuery } from "../lib/searchItems";
 
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -191,13 +193,7 @@ export function SourcesPage() {
     () =>
       sources.filter((s) => {
         if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-        if (!sourceSearch.trim()) return true;
-        const q = sourceSearch.toLowerCase();
-        return (
-          s.id.toLowerCase().includes(q) ||
-          s.type.toLowerCase().includes(q) ||
-          (s.description ?? "").toLowerCase().includes(q)
-        );
+        return matchesQuery([s.id, s.type, s.description], sourceSearch);
       }),
     [sources, sourceSearch],
   );
@@ -761,6 +757,8 @@ export function SourcesPage() {
             ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
             : form.type === "cloudops"
               ? cloudopsMappingJson(authFields) // REQ-1947
+              : form.type === "sparql"
+              ? sparqlMappingJson(authFields) // REQ-2138
               : form.type === GOOGLE_WORKSPACE
                 ? JSON.stringify(gwMapping(authFields)) // REQ-1923
                 : form.type === MICROSOFT_365

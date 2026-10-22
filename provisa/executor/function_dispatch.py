@@ -33,6 +33,7 @@ import grpc
 from fastapi import HTTPException
 
 from provisa.api.errors import ApiError
+from provisa.core.host_code import refuse_host_code
 from provisa.grpc_remote.executor import open_channel
 from provisa.otel_compat import (
     TRANSPORT_BY_KIND,
@@ -563,6 +564,7 @@ async def dispatch_function(  # REQ-885, REQ-886
             f"Unknown function impl_kind: {impl_kind!r}",
             impl_kind=str(impl_kind),
         )
+    refuse_host_code(fn.get("name", fn.get("function_name", "")), impl_kind)  # REQ-2134
     transport = TRANSPORT_BY_KIND[impl_kind]
     identity = "definer" if fn.get("materialize") else "invoker"
     _reject_rowwise_external(fn)

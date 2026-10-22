@@ -16,16 +16,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Loader,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Alert, Button, Loader, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -40,6 +31,7 @@ import { FieldGroup, FormField, FormLayout } from "../../components/form/FormLay
 import { serverMessage } from "../../i18n/serverMessage";
 import { Tip } from "../../components/Tip";
 import { ServiceNowApiList, type InstanceApi } from "./ServiceNowApiList";
+import { matchesQuery } from "../../lib/searchItems";
 
 interface CompanionImportSet {
   staging: string;
@@ -70,11 +62,9 @@ export function ServiceNowApisSection({ sourceId }: { sourceId: string }) {
   );
 
   const byNamespace = useMemo(() => {
-    const wanted = filter.trim().toLowerCase();
     const groups = new Map<string, InstanceApi[]>();
     for (const api of data?.servicenowApis ?? []) {
-      const text = `${api.namespace} ${api.name} ${api.route}`.toLowerCase();
-      if (wanted && !text.includes(wanted)) continue;
+      if (!matchesQuery([api.namespace, api.name, api.route], filter)) continue;
       groups.set(api.namespace, [...(groups.get(api.namespace) ?? []), api]);
     }
     return [...groups];

@@ -2,6 +2,8 @@
 
 指令是一個已登錄、受治理的函數，它把外部運算納入 Provisa 的治理、稽核與血緣之中。聯邦引擎原生處理 SQL。指令涵蓋 SQL 無法表達的運算，例如資料增強微服務、Python 模型、shell 指令碼或資料庫原生預存程序。你只需登錄一次，每個用戶端介面（GraphQL、pgwire SQL、REST、Arrow Flight、gRPC、Bolt/Cypher）都能在完全相同的治理下呼叫它。
 
+指令是在 Provisa 中編寫業務邏輯的方式之一。見 [Provisa 中的業務邏輯](business-logic.md)。
+
 指令是一次**受治理的 RPC**。它的輸入及輸出都經過宣告、定型、驗證、追蹤，並接入血緣。臨時拼湊的 ETL 步驟、不受治理的 curl 呼叫或子程序，這些都不具備。
 
 ## 實作種類 {: #implementation-kinds }

@@ -177,7 +177,8 @@
       "unknown_arg_kind": "Неизвестный arg_kind '{{arg_kind}}' для '{{name}}'",
       "unknown_command": "Неизвестная команда: '{{name}}'",
       "unknown_impl_kind": "Неизвестный impl_kind функции: '{{impl_kind}}'",
-      "written_table_missing": "команда '{{name}}' записывает в '{{table}}', которая не зарегистрирована"
+      "written_table_missing": "команда '{{name}}' записывает в '{{table}}', которая не зарегистрирована",
+      "host_code_refused": "Команда '{{name}}' имеет тип {{impl_kind}}, который выполняет код на хосте сервера. Код хоста в этом развёртывании выключен; используйте вместо этого резолвер кода."
     },
     "graphql_remote": {
       "introspection_failed": "Сбой интроспекции: {{error}}",

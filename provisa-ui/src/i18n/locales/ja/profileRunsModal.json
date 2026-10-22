@@ -42,6 +42,7 @@
     "kind_terrain": "地形",
     "kind_relationsMap": "関係",
     "kind_jointCloud": "同時度数クラウド",
-    "kind_driftStrata": "ドリフト層"
+    "kind_driftStrata": "ドリフト層",
+    "resultsMenu": "結果"
   }
 }

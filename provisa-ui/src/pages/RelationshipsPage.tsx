@@ -61,6 +61,7 @@ import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { domainToSqlName } from "../naming";
 import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
+import { matchesQuery } from "../lib/searchItems";
 
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -339,7 +340,10 @@ export function RelationshipsPage() {
         viaTypeColumn: rel.viaTypeColumn ?? "",
         viaTypeValue: rel.viaTypeValue ?? "",
         viaLabelSource: rel.viaLabelSource ?? "",
-        parameters: rel.parameters.map(({ parameter, sourceColumn }) => ({ parameter, sourceColumn })),
+        parameters: rel.parameters.map(({ parameter, sourceColumn }) => ({
+          parameter,
+          sourceColumn,
+        })),
         // The panel opens for a row that already declares a junction; the checkbox only has to
         // hold it open for a row that does not yet name a table.
         junctionDeclared: Boolean(rel.viaTableName),
@@ -440,14 +444,8 @@ export function RelationshipsPage() {
     const srcDomain = r.sourceDomainId ? domainToSqlName(r.sourceDomainId) : undefined;
     const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
     if (!relationshipInCheckedDomains(narrowTo, srcDomain, tgtDomain)) return false;
-    if (!relSearch.trim()) return true;
-    const q = relSearch.toLowerCase();
-    return (
-      r.sourceTableName.toLowerCase().includes(q) ||
-      r.targetTableName.toLowerCase().includes(q) ||
-      // A relationship is also found by its alias: a tour step names it so (demoTour.ts).
-      (r.alias ?? "").toLowerCase().includes(q)
-    );
+    // A relationship is also found by its alias: a tour step names it so (demoTour.ts).
+    return matchesQuery([r.sourceTableName, r.targetTableName, r.alias], relSearch);
   };
 
   // REQ-1940: sort and group are the shared list mechanism.

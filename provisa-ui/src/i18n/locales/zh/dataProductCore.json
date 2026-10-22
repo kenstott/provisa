@@ -23,6 +23,8 @@
     "copied": "已复制",
     "copyQuery": "复制 {{surface}} 查询",
     "openQuery": "在浏览器中打开 {{surface}} 查询",
-    "unreadable": "你的角色无法读取 meta 域中的数据产品。"
+    "unreadable": "你的角色无法读取 meta 域中的数据产品。",
+    "detailExpand": "显示完整条目",
+    "detailCollapse": "收起"
   }
 }

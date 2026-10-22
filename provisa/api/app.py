@@ -550,6 +550,15 @@ class AppState:
         self._active_runtime().tracked_functions = value
 
     @property
+    def column_transforms(self) -> dict[str, dict]:
+        """The active environment's column transforms, by name (REQ-2131)."""
+        return self._active_runtime().column_transforms
+
+    @column_transforms.setter
+    def column_transforms(self, value: dict[str, dict]) -> None:
+        self._active_runtime().column_transforms = value
+
+    @property
     def tracked_webhooks(self) -> dict[str, dict]:
         """The active environment's webhooks, by the names every surface calls them by."""
         return self._active_runtime().tracked_webhooks
@@ -771,6 +780,16 @@ class AppState:
     @bitemporal_view_reads.setter
     def bitemporal_view_reads(self, value: dict) -> None:
         self._active_runtime().bitemporal_view_reads = value
+
+    @property
+    def stored_view_reads(self) -> set[str]:
+        """REQ-2131: the views read only from their stored tables (each applies a column
+        transform, whose outputs are computed when the view is built)."""
+        return self._active_runtime().stored_view_reads
+
+    @stored_view_reads.setter
+    def stored_view_reads(self, value: set[str]) -> None:
+        self._active_runtime().stored_view_reads = value
 
     @property
     def table_cache(self) -> dict[int, int | None]:
@@ -4011,6 +4030,16 @@ def create_app() -> FastAPI:
         # REQ-2073: a saved or applied source the org's engine shard cannot read; not saved.
         return _JSONResponse(
             status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
+    from provisa.core.host_code import HostCodeRefused as _HostCodeRefused
+
+    @app.exception_handler(_HostCodeRefused)
+    async def _host_code_refused_handler(_req: _Request, exc: _HostCodeRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-2134: a python or script command while the deployment allows no host code.
+        return _JSONResponse(
+            status_code=403,
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 

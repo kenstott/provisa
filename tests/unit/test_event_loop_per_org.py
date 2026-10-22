@@ -97,11 +97,13 @@ def two_orgs(monkeypatch):
         rt.tenant_db = _Db(org)
         rt.federation_engine = shared
         rt.api_endpoints = {("crm", "orders"): SimpleNamespace(default_params={})}
-        rt.api_sources = {"crm": SimpleNamespace(base_url=f"https://{org}.example", auth=org)}
+        rt.api_sources = {
+            "crm": SimpleNamespace(base_url=f"https://{org}.example", auth=org, headers={})
+        }
         state.org_registry.set(org, rt)
     monkeypatch.setattr(app, "state", state)
 
-    async def _call_api(endpoint, params, *, base_url, auth):
+    async def _call_api(endpoint, params, *, base_url, auth, source_headers):
         return (base_url, auth)
 
     monkeypatch.setattr(caller, "call_api", _call_api)

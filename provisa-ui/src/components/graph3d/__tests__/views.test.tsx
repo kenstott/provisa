@@ -26,6 +26,7 @@ vi.mock("../graphScene", () => ({
       for (const m of [
         "setTheme",
         "setRotate",
+        "setGrid",
         "dispose",
         "resetView",
         "setHover",
@@ -114,7 +115,8 @@ describe("the Knowledge Graph panel", () => {
       "data product",
       "member table",
       "command",
-      "glossary term",
+      // A term's entry names its variant (nodeLook).
+      "concrete term",
     ]);
   });
 

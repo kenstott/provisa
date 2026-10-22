@@ -29,7 +29,7 @@ function recorder(kind: string, methods: string[]) {
     }
   };
 }
-const common = ["setTheme", "setRotate", "dispose", "resetView", "setHover"];
+const common = ["setTheme", "setRotate", "setGrid", "dispose", "resetView", "setHover"];
 vi.mock("../relations/relationsScene", () => ({
   RelationsScene: recorder("relations", [...common, "setData", "setEdges", "setSelected", "focus"]),
 }));

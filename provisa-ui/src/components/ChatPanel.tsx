@@ -237,6 +237,7 @@ export function ChatPanel() {
   // REQ-1813: record what was picked as an ordinary chat message, so the choice has a visible,
   // scrollable trace in the conversation instead of vanishing once the widget closes.
   const describeChoice = (answer: ChoiceAnswer): string => {
+    if (answer === null) return t("chatPanel.choiceClosed");
     if (typeof answer === "boolean") return answer ? "Yes" : "No";
     if (Array.isArray(answer)) return answer.length > 0 ? answer.join(", ") : "(none selected)";
     return answer;
@@ -553,7 +554,7 @@ export function ChatPanel() {
         )}
 
         {error && (
-          <Alert color="red" mb="xs">
+          <Alert color="red" mb="xs" data-testid="chat-panel-error">
             {error.message}
             {error.action && (
               <Button
@@ -716,8 +717,8 @@ export function ChatPanel() {
               zIndex: 20,
             }}
             onClick={(e) => {
-              if (e.target === e.currentTarget)
-                resolveChoice(choiceState.mode === "multi" ? [] : "");
+              // Closed without choosing: an answer of its own, recorded and sent as such.
+              if (e.target === e.currentTarget) resolveChoice(null);
             }}
           >
             <Paper

@@ -46,6 +46,7 @@ import { inviteUrl } from "../../lib/authHost";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
@@ -180,20 +181,13 @@ export function OrgsTab() {
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
-  const q = orgSearch.toLowerCase();
-  const filteredOrgs = orgs.filter(
-    (o) => o.id.toLowerCase().includes(q) || o.name.toLowerCase().includes(q),
-  );
+  const filteredOrgs = orgs.filter((o) => matchesQuery([o.id, o.name], orgSearch));
   const orgTotalPages = Math.max(1, Math.ceil(filteredOrgs.length / PAGE_SIZE));
   const orgSafePage = Math.min(orgPage, orgTotalPages);
   const [orgsGrouped, setOrgsGrouped] = useState(false);
 
-  const iq = inviteSearch.toLowerCase();
-  const filteredInvites = orgInvites.filter(
-    (i) =>
-      (i.org_name ?? "").toLowerCase().includes(iq) ||
-      i.token.toLowerCase().includes(iq) ||
-      (i.created_by ?? "").toLowerCase().includes(iq),
+  const filteredInvites = orgInvites.filter((i) =>
+    matchesQuery([i.org_name, i.token, i.created_by], inviteSearch),
   );
   const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
   const invSafePage = Math.min(invitePage, invTotalPages);

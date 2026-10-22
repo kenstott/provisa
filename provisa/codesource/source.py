@@ -87,6 +87,19 @@ class CodeConfig:
     remote: dict | None = None
     #: REQ-2106: its non-secret settings, which its code reads through Provisa's services.
     settings: dict[str, Any] = field(default_factory=dict)
+    #: REQ-2131: how many workers it runs in each Provisa process; a @columns transform's batches
+    #: spread across them.
+    workers: int = 1
+
+
+def _workers(mapping: dict) -> int:
+    # REQ-2131: one worker unless the source names more -- the form's default, written or not.
+    given = mapping.get("workers", 1)
+    if isinstance(given, bool) or not isinstance(given, int) or given < 1:
+        raise BundleRefused(
+            "workers", f"a code source runs one or more workers, not {given!r}", workers=str(given)
+        )
+    return given
 
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
@@ -133,6 +146,7 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         if remote_sources.mode_of(mapping) == remote_sources.BUILT
         else None,
         settings=services.declared_settings(mapping.get("settings")),
+        workers=_workers(mapping),
     )
 
 
@@ -186,8 +200,16 @@ class Prepared:
     #: REQ-2098: a built source's remote host, and the identity Provisa presents to it.
     remote: dict | None = None
     identity: Any = None
+    #: REQ-2131: how many workers it runs in this process (``CodeConfig.workers``).
+    workers: int = 1
 
-    def worker(self) -> Worker:
+    def worker(self, slot: int = 0) -> Worker:
+        """Its worker number ``slot`` of :attr:`workers` (REQ-2131); one call that needs one
+        worker takes the first."""
+        if not 0 <= slot < self.workers:
+            raise ValueError(
+                f"source {self.source_id!r} runs {self.workers} workers, not {slot + 1}"
+            )
         remote = self.remote
         if remote is not None:
             return pool.remote(
@@ -197,8 +219,11 @@ class Prepared:
                 lambda: remote_sources.worker_for(
                     self.org_id, self.source_id, self.content_hash, remote, self.identity
                 ),
+                slot=slot,
             )
-        return pool.get(self.source_id, self.content_hash, lambda: self.command, org=self.org_id)
+        return pool.get(
+            self.source_id, self.content_hash, lambda: self.command, org=self.org_id, slot=slot
+        )
 
 
 @dataclass(frozen=True)
@@ -284,6 +309,7 @@ def _prepare_node(
         manifest,
         _granted(command, source_id, config, ctx),
         ctx.org_id,
+        workers=config.workers,
     )
 
 
@@ -343,6 +369,7 @@ def _prepare_python(
         manifest,
         _granted(command, source_id, config, ctx),
         ctx.org_id,
+        workers=config.workers,
     )
 
 
@@ -378,6 +405,7 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
             ctx.org_id,
             remote=config.remote,
             identity=await remote_sources.identity(ctx.org_id),
+            workers=config.workers,
         )
         with _lock:
             _prepared[(ctx.org_id, source_id, config.content_hash)] = ready

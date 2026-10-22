@@ -288,6 +288,37 @@ RUNTIMES: dict[str, RuntimePin] = {
             ),
         },
     ),
+    # REQ-2138: the Java a sparql source's reasoner (provisa/sparql/reasoner) runs on, as a
+    # separate program: a JDK, since the reasoner is run from its source by java's source
+    # launcher, which needs the compiler. Eclipse Temurin; each sum is Adoptium's published one.
+    "temurin": RuntimePin(
+        "temurin",
+        "21.0.12.1+1",
+        "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/"
+        "{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+                "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998",
+                "jdk-21.0.12.1+1/Contents/Home/bin/java",
+            ),
+            LINUX_X64: Asset(
+                "OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+                "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94",
+                "jdk-21.0.12.1+1/bin/java",
+            ),
+            LINUX_ARM64: Asset(
+                "OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.12.1_1.tar.gz",
+                "23e37e026f12f3e706f18938ff611db3032d075b09d0879a25d06718c773e223",
+                "jdk-21.0.12.1+1/bin/java",
+            ),
+            WINDOWS_X64: Asset(
+                "OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+                "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+                "jdk-21.0.12.1+1/bin/java.exe",
+            ),
+        },
+    ),
 }
 
 #: Fetch an archive's bytes. Injected so tests never touch the network.

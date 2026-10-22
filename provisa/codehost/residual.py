@@ -87,13 +87,13 @@ def _value(node: exp.Expr) -> Any:
     raise _NotLiteral
 
 
-def _conjuncts(node: exp.Expr | None) -> list[exp.Expr]:
+def conjuncts(node: exp.Expr | None) -> list[exp.Expr]:
     if node is None:
         return []
     if isinstance(node, exp.Paren):
-        return _conjuncts(node.this)
+        return conjuncts(node.this)
     if isinstance(node, exp.And):
-        return _conjuncts(node.left) + _conjuncts(node.right)
+        return conjuncts(node.left) + conjuncts(node.right)
     return [node]
 
 
@@ -101,7 +101,7 @@ def _reading(tree: exp.Expr, table: str) -> list[exp.Table]:
     return [t for t in tree.find_all(exp.Table) if t.name == table]
 
 
-def _predicate(node: exp.Expr, names: set[str]) -> tuple[str, str, Any] | None:
+def predicate(node: exp.Expr, names: set[str]) -> tuple[str, str, Any] | None:
     """``(column, op, value)`` for a conjunct comparing one of the table's columns to a literal."""
 
     def column(side: exp.Expr) -> str | None:
@@ -148,8 +148,8 @@ def pushed(
         if select is None or select.args.get("joins"):
             continue
         names = {read.alias_or_name, read.name}
-        for conjunct in _conjuncts(select.args["where"].this if select.args.get("where") else None):
-            found = _predicate(conjunct, names)
+        for conjunct in conjuncts(select.args["where"].this if select.args.get("where") else None):
+            found = predicate(conjunct, names)
             if found is None:
                 continue
             column, op, value = found
@@ -167,7 +167,7 @@ def nf_given(sql: str, dialect: str, table: str) -> dict[str, Any]:
     for read in _reading(tree, table):
         select = read.parent_select
         where = select.args.get("where") if select is not None else None
-        for conjunct in _conjuncts(where.this if where is not None else None):
+        for conjunct in conjuncts(where.this if where is not None else None):
             if not isinstance(conjunct, exp.EQ):
                 continue
             for column, value in ((conjunct.left, conjunct.right), (conjunct.right, conjunct.left)):

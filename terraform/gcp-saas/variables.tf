@@ -236,21 +236,22 @@ variable "front_door_status_port" {
 # its regional autoscaler are gone with the GCE engine tier.
 
 # ── TLS / auth (parity with the enterprise module) ──────────────────────────────
-variable "tls_cert_pem" {
-  description = <<-EOT
-    PEM-encoded wildcard *.provisa.dev TLS certificate served by every listener so
-    every {org}.provisa.dev terminates on one cert (REQ-1239, subdomain-per-org).
-    When set with tls_key_pem, first-launch adopts it and skips self-signed generation.
-  EOT
+# The certificate itself is in Secret Manager (secrets.tf), never a variable: a VM's metadata
+# copy was rewritten at every boot, so an expired one came back with the next wake.
+variable "tls_domain" {
+  description = "The zone the wildcard certificate covers: *.<tls_domain> and <tls_domain> (REQ-1239, subdomain-per-org)."
   type        = string
-  default     = ""
 }
 
-variable "tls_key_pem" {
-  description = "PEM-encoded private key matching tls_cert_pem. Required when tls_cert_pem is set."
+variable "acme_email" {
+  description = "The Let's Encrypt account contact the front door renews the certificate under."
   type        = string
-  default     = ""
-  sensitive   = true
+}
+
+variable "tls_renew_days" {
+  description = "The front door renews the certificate once fewer than this many days remain on it (Let's Encrypt issues 90)."
+  type        = number
+  default     = 30
 }
 
 variable "auth_provider" {

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -262,23 +263,41 @@ def _bound(value: Any, values: dict[str, Any]) -> Any:
     return value
 
 
+def _query_column(table: dict) -> tuple[QdrantSearch, dict]:
+    """``table``'s search and its query's parameter column."""
+    search = check_table(table)
+    assert search is not None  # only a search is read per statement
+    query_arg = _ARG.match(search.request["query"]).group(1)  # type: ignore[union-attr]
+    [column] = [
+        c
+        for c in table["columns"]
+        if c["native_filter_type"] == QUERY_ARG and parameter_name(c) == query_arg
+    ]
+    return search, column
+
+
 async def plan(state: Any, table: dict, given: dict | None) -> dict:
     """What a search of ``table`` sends: its collection, query vector, named vector, filter, limit
     and score threshold, every argument converted and bound."""
+    search, column = _query_column(table)
+    raw = _given(table, given)
+    vector = await _vector(
+        state, table, column, raw[parameter_name(column)], search.request.get("model")
+    )
+    return _bound_request(table, given, vector)
+
+
+def _bound_request(table: dict, given: dict | None, vector: list[float]) -> dict:
+    """:func:`plan`'s request with its query vector ``vector`` already worked out."""
     from provisa.core.parameter_values import convert
 
-    search = check_table(table)
-    assert search is not None  # only a search is read per statement
+    search, query_column = _query_column(table)
+    query_arg = parameter_name(query_column)
     columns = {
         parameter_name(c): c for c in table["columns"] if c["native_filter_type"] == QUERY_ARG
     }
     raw = _given(table, given)
-    query_arg = _ARG.match(search.request["query"]).group(1)  # type: ignore[union-attr]
-    values: dict[str, Any] = {
-        query_arg: await _vector(
-            state, table, columns[query_arg], raw[query_arg], search.request.get("model")
-        )
-    }
+    values: dict[str, Any] = {query_arg: vector}
     for name, value in raw.items():
         if name == query_arg:
             continue
@@ -363,6 +382,98 @@ async def read(state: Any, table: dict, given: dict | None) -> Any:
 
     rows = await asyncio.to_thread(_run)
     return PipelineRead(rows=rows, columns=[(c.name, to_ir(c.data_type)) for c in outputs])
+
+
+#: The searches one Query API batch request carries.
+_SEARCH_BATCH = 256
+
+
+async def _query_vectors(state: Any, table: dict, queries: Sequence[Any]) -> list[list[float]]:
+    """The query vector of each of ``queries``, as :func:`_vector` works one out -- the texts
+    among them embedded by the search's model in one call, each distinct text once."""
+    from provisa.vector.providers import get_provider
+    from provisa.vector.query import validate_vector_dimensions
+
+    search, column = _query_column(table)
+    model_id = search.request.get("model")
+    texts = list(dict.fromkeys(q for q in queries if _is_text(q)))
+    embedded: dict[str, list[float]] = {}
+    if texts:
+        if not model_id:
+            raise QdrantTableRefused(
+                table["table_name"],
+                f"{parameter_name(column)!r} was given a text; a text query needs the search's "
+                "embedding model",
+            )
+        model = await registered_model(state, model_id)
+        vectors = await get_provider(model.provider).embed(texts, model)
+        for text, vector in zip(texts, vectors, strict=True):
+            validate_vector_dimensions(vector, model)
+            embedded[text] = vector
+    return [
+        embedded[q] if _is_text(q) else await _vector(state, table, column, q, model_id)
+        for q in queries
+    ]
+
+
+async def read_each(
+    state: Any,
+    table: dict,
+    argument_sets: Sequence[dict],
+    carried: Mapping[str, tuple[str, str]],
+) -> Any:
+    """REQ-2099: ``table`` searched once for each of ``argument_sets`` -- a join's distinct sets of
+    the values a relationship feeds it -- live, and their rows together. The sets' text queries are
+    embedded in one call and their searches sent to Qdrant in batches (:data:`_SEARCH_BATCH`), so
+    a join's thousand searches are a few requests, not a thousand. Each row carries, in each
+    column of ``carried`` (``{column: (parameter, IR type)}``), the value its set gave that
+    parameter: a search's points hold nothing of the query that found them, and the join matches
+    them to the row they were searched for by that value."""
+    import asyncio
+
+    from provisa.core.ir_types import to_ir
+    from provisa.federation.registry_view import registered_sources
+    from provisa.mongodb.pipeline_rows import OutputColumn, project
+    from provisa.mongodb.pipeline_table import PipelineRead
+    from provisa.qdrant.fetch import QdrantConnection, search_each, vectors_read
+
+    name = table["table_name"]
+    outputs = [
+        OutputColumn(c["column_name"], c["data_type"], c.get("path"))
+        for c in table["columns"]
+        if c["native_filter_type"] is None
+    ]
+    columns = [(c.name, to_ir(c.data_type)) for c in outputs] + [
+        (column, to_ir(data_type)) for column, (_parameter, data_type) in carried.items()
+    ]
+    if not argument_sets:
+        return PipelineRead(rows=[], columns=columns)
+    _search, query_column = _query_column(table)
+    queries = [_given(table, given)[parameter_name(query_column)] for given in argument_sets]
+    vectors = await _query_vectors(state, table, queries)
+    requests = [
+        _bound_request(table, given, vector)
+        for given, vector in zip(argument_sets, vectors, strict=True)
+    ]
+    found = [s for s in await registered_sources(state) if s.id == table["source_id"]]
+    if not found:
+        raise ValueError(f"Table {name!r}: its source {table['source_id']!r} is not registered")
+    conn = QdrantConnection.from_source(found[0])
+    with_vectors = vectors_read([o.path or o.name for o in outputs])
+
+    def _run() -> list[list[dict]]:
+        return [
+            docs
+            for at in range(0, len(requests), _SEARCH_BATCH)
+            for docs in search_each(conn, requests[at : at + _SEARCH_BATCH], vectors=with_vectors)
+        ]
+
+    answered = await asyncio.to_thread(_run)
+    rows: list[dict] = []
+    for given, docs in zip(argument_sets, answered, strict=True):
+        stamp = {column: given[parameter] for column, (parameter, _t) in carried.items()}
+        rows.extend({**project(name, doc, outputs, dates_as_text=True), **stamp} for doc in docs)
+    return PipelineRead(rows=rows, columns=columns)
 
 
 async def preview_search(

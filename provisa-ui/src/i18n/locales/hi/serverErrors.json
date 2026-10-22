@@ -177,7 +177,8 @@
       "unknown_arg_kind": "'{{name}}' के लिए अज्ञात arg_kind '{{arg_kind}}'",
       "unknown_command": "अज्ञात कमांड: '{{name}}'",
       "unknown_impl_kind": "अज्ञात फ़ंक्शन impl_kind: '{{impl_kind}}'",
-      "written_table_missing": "कमांड '{{name}}' '{{table}}' में लिखता है, जो पंजीकृत नहीं है"
+      "written_table_missing": "कमांड '{{name}}' '{{table}}' में लिखता है, जो पंजीकृत नहीं है",
+      "host_code_refused": "कमांड '{{name}}' {{impl_kind}} प्रकार की है, जो सर्वर के होस्ट पर कोड चलाती है। इस डिप्लॉयमेंट पर होस्ट कोड बंद है; इसके बजाय कोड रिज़ॉल्वर का उपयोग करें।"
     },
     "graphql_remote": {
       "introspection_failed": "इंट्रोस्पेक्शन विफल हुआ: {{error}}",

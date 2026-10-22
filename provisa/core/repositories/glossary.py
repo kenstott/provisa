@@ -28,7 +28,9 @@ in service, defined, and grounded in a physical column.
 from provisa.core import model_change
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete, select, update
+import re
+
+from sqlalchemy import delete as _delete, or_, select, update
 
 from provisa.core.glossary import (
     TERM_EDGE_TYPES,
@@ -435,6 +437,21 @@ def _dangling_grows(graph: _TermGraph, term_id: int) -> bool:
 # ---------------------------------------------------------------------------
 
 
+_SEARCH_ITEM = re.compile(r'"([^"]*)"|(\S+)')
+
+
+def search_items(q: str) -> list[str]:
+    """The items a glossary search is made of: a phrase in double quotes is one item, spaces and
+    all; every other word is one item; stray quote marks are dropped. A term matches the search
+    when any item is in it -- the same rule the Ontology View's graph applies (searchItems.ts)."""
+    out: list[str] = []
+    for phrase, word in _SEARCH_ITEM.findall(q):
+        item = (phrase if phrase else word.replace('"', "")).strip().lower()
+        if item:
+            out.append(item)
+    return out
+
+
 async def list_terms(
     conn: "Connection",
     *,
@@ -454,10 +471,17 @@ async def list_terms(
     org's shared vocabulary and is listed for everyone, whatever the caller's domains.
     """
     stmt = select(glossary_terms)
-    if q:
-        pattern = f"%{q.lower()}%"
+    items = search_items(q or "")
+    if items:
+        # Any item matching the name or the definition admits the term (the search is an OR).
         stmt = stmt.where(
-            glossary_terms.c.name.ilike(pattern) | glossary_terms.c.definition.ilike(pattern)
+            or_(
+                *(
+                    glossary_terms.c.name.ilike(f"%{i}%")
+                    | glossary_terms.c.definition.ilike(f"%{i}%")
+                    for i in items
+                )
+            )
         )
     if not include_deprecated:
         stmt = stmt.where(~glossary_terms.c.deprecated)

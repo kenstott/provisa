@@ -102,6 +102,19 @@ describe("ServiceNowApisSection", () => {
     );
   });
 
+  it("the filter keeps the APIs matching any word of it", async () => {
+    renderInForm(
+      <MockedProvider mocks={[listed(false)]}>
+        <ServiceNowApisSection sourceId="helpdesk" />
+      </MockedProvider>,
+    );
+    fireEvent.change(await screen.findByTestId("servicenow-apis-filter"), {
+      target: { value: "catalog import" },
+    });
+    expect(screen.getByTestId("servicenow-api-now/import")).toBeInTheDocument();
+    expect(screen.getByTestId("servicenow-api-sn_sc/servicecatalog")).toBeInTheDocument();
+  });
+
   it("the filter keeps the APIs whose namespace, name or route holds it", async () => {
     renderInForm(
       <MockedProvider mocks={[listed(false)]}>

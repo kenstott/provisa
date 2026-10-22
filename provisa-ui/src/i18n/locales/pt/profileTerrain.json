@@ -62,6 +62,11 @@
     "flagBimodal": "Bimodal",
     "flagSpike": "Pico em {{value}} ({{pct}})",
     "flagBeyond": "{{rows}} além de 3×IQR",
-    "flagDistinct": "{{count}} distintos"
+    "flagDistinct": "{{count}} distintos",
+    "includeColumn": "Mostrar {{column}} no relevo",
+    "includeAll": "Todas",
+    "includeNone": "Nenhuma",
+    "includeAllAria": "Mostrar todas as colunas no relevo",
+    "includeNoneAria": "Tirar todas as colunas do relevo"
   }
 }

@@ -2,6 +2,8 @@
 
 命令是一个已注册、受治理的函数，它把外部计算纳入 Provisa 的治理、审计与血缘之中。联邦引擎原生处理 SQL。命令涵盖 SQL 无法表达的计算，例如数据增强微服务、Python 模型、shell 脚本或数据库原生存储过程。你只需注册一次，每个客户端接口（GraphQL、pgwire SQL、REST、Arrow Flight、gRPC、Bolt/Cypher）都能在完全相同的治理下调用它。
 
+命令是在 Provisa 中编写业务逻辑的方式之一。见 [Provisa 中的业务逻辑](business-logic.md)。
+
 命令是一次**受治理的 RPC**。它的输入和输出都经过声明、定型、校验、追踪，并接入血缘。临时拼凑的 ETL 步骤、不受治理的 curl 调用或子进程，这些都不具备。
 
 ## 实现种类 {: #implementation-kinds }

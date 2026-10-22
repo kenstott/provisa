@@ -862,6 +862,12 @@
         "label": "Seuil de taux de fuite des valeurs fictives",
         "help": "La part des valeurs échantillonnées d'une colonne sensible que sa valeur fictive peut laisser égales à la valeur réelle avant que la vérification du taux de fuite ne la marque comme inadéquate. 0 fait échouer une valeur fictive qui laisse une valeur inchangée."
       }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Autoriser les commandes de code hôte",
+        "help": "Activé : les commandes python et script peuvent être enregistrées et appelées. Chacune s'exécute avec l'accès complet du serveur à sa mémoire, ses identifiants, ses fichiers et son réseau, et son code ne suit pas le modèle. Désactivé par défaut ; utilisez plutôt un résolveur de code."
+      }
     }
   }
 }

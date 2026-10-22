@@ -11,6 +11,8 @@
 - **下推。** 在你要求時，欄上的篩選條件會作為參數傳給你的函數。
 - **隨處可用。** 同一個函數回答 GraphQL、SQL（透過 HTTP、pgwire 和 Arrow Flight）、Cypher（透過 HTTP 和 Bolt）、gRPC、REST、JSON:API 和 MCP。
 
+代碼解析器是在 Provisa 中編寫業務邏輯的三種方式之一。見 [Provisa 中的業務邏輯](business-logic.md)。
+
 ## 第一個 resolver {: #an-example }
 
 ```python

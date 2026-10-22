@@ -575,6 +575,9 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
                     f"sparql source {src.id!r}: host must be the SPARQL endpoint URL "
                     "(e.g. http://fuseki:3030/ds/query)"
                 )
+            from provisa.sparql.reasoning import source_reasoner
+
+            source_reasoner(src.id, src.mapping)  # REQ-2138
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
         stype = src.type.value if src is not None else None
@@ -584,6 +587,14 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
                 f"table {tbl.table_name!r}: a table under {stype} source {tbl.source_id!r} requires "
                 "query_template (the query that produces its rows)"
             )
+        if stype == "sparql" and src is not None:
+            from provisa.sparql.reasoning import inferred_iri, source_reasoner
+
+            if inferred_iri(tbl.query_template) and source_reasoner(src.id, src.mapping) is None:
+                raise ValueError(
+                    f"table {tbl.table_name!r}: its query names one IRI, an inferred class or "
+                    f"property, and sparql source {src.id!r} names no reasoner"
+                )
         if stype == "cosmosdb":
             # REQ-1982: a container table, or a query table; its parameters checked either way.
             from provisa.cosmosdb.table import check_table as check_cosmos_table
@@ -667,6 +678,7 @@ async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> No
 async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> None:  # REQ-1683
     """Persist the config table's SPARQL as an api_endpoints row (plus its api_sources row)."""
     from provisa.sparql.persist import persist_sparql_table
+    from provisa.sparql.reasoning import source_reasoner
 
     assert tbl.query_template is not None  # _validate_neo4j_sources
     await persist_sparql_table(
@@ -678,6 +690,7 @@ async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> N
         columns=tbl.columns,
         ttl=tbl.cache_ttl or src.cache_ttl or 300,
         default_graph_uri=src.federation_hints.get("default_graph_uri"),  # REQ-1740
+        reasoner=source_reasoner(src.id, src.mapping),  # REQ-2138
     )
 
 

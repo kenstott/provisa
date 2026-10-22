@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, update
 
 from provisa.api.errors import ApiError
+from provisa.core.host_code import refuse_host_code
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 from provisa.api.admin.capabilities import require_capability_request
 
@@ -205,6 +206,44 @@ async def _as_source_operation(body: FunctionInput) -> None:
         body.outputColumns = [dict(c) for c in BINARY_ANSWER]
 
 
+async def _as_column_transform(body: FunctionInput) -> None:  # REQ-2131
+    """A command registered on a code source is one of its ``@columns`` functions, a batch column
+    transform. What it is follows from the function's declaration -- its input columns as its
+    arguments, its output columns as its output contract, a read -- and not from what the form
+    sent. A function that is not one of the source's ``@columns`` functions is refused naming it."""
+    from provisa.api.app import state
+    from provisa.codesource.columns import (
+        COLUMN_TRANSFORM,
+        SCHEMA,
+        ColumnTransformRefused,
+        registration,
+    )
+    from provisa.codesource.source import CODE_SOURCE_TYPES
+
+    source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
+    if source_type not in CODE_SOURCE_TYPES:
+        return
+    try:
+        arguments, outputs = await registration(state, body.sourceId, body.functionName)
+    except ColumnTransformRefused as refused:
+        raise ApiError(
+            422,
+            refused.code,
+            str(refused),
+            function=refused.params["function"],
+            reason=refused.params["reason"],
+        ) from refused
+    body.implKind = COLUMN_TRANSFORM
+    body.kind = "query"
+    body.schemaName = SCHEMA
+    body.returns = ""
+    body.binding = {}
+    body.materialize = False
+    body.writesTable = None
+    body.arguments = arguments
+    body.outputColumns = outputs
+
+
 def _as_statement(body: FunctionInput) -> None:  # REQ-2001
     """A statement command's kind and written table are what its statement declares: a kind or
     written table the caller sent that contradicts the statement is refused naming both."""
@@ -351,6 +390,7 @@ async def create_function(
     require_capability_request(request, "table_registration")
     body.domainId = _saved_domain(request, body.name, body.domainId)
     await _as_source_operation(body)
+    await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
     _check_written_table(body)
     from provisa.api.app import state
@@ -407,8 +447,10 @@ async def update_function(
 ):  # REQ-205, REQ-253, REQ-304
     """Update a tracked DB function by name."""
     require_capability_request(request, "table_registration")
+    refuse_host_code(name, body.implKind)  # REQ-2134
     body.domainId = _saved_domain(request, name, body.domainId)
     await _as_source_operation(body)
+    await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
     _check_written_table(body)
     from provisa.api.app import state

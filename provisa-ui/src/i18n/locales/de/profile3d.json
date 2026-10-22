@@ -5,6 +5,10 @@
     "hint": "Ziehen zum Orbit-Drehen · Scrollen zum Zoomen · Rechts ziehen zum Verschieben",
     "rotate": "Drehen",
     "resetView": "Ansicht zurücksetzen",
-    "zoomTo": "Auf diese Spalte zoomen"
+    "zoomTo": "Auf diese Spalte zoomen",
+    "attraction": "Anziehung",
+    "attractionLoose": "Locker",
+    "attractionTight": "Eng",
+    "grid": "Raster"
   }
 }

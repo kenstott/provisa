@@ -2561,30 +2561,42 @@ main {
   min-height: 0;
   display: flex;
 }
-.admin-rail {
-  flex: 0 0 12.5rem;
+/* The one vertical menu (components/VerticalNav.tsx; the Admin rail is the same over route links):
+   items left-aligned down a column that scrolls on its own, the chosen one filled. */
+.vertical-nav {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
-  padding: 0.75rem 0.5rem;
-  background: var(--bg);
-  border-right: 1px solid var(--border);
   overflow-y: auto;
 }
-.admin-rail a {
+.vertical-nav a,
+.vertical-nav button {
   color: var(--text-muted);
   text-decoration: none;
+  font: inherit;
   font-size: 0.8125rem;
+  text-align: start;
   padding: 0.3rem 0.625rem;
+  border: 0;
   border-radius: 4px;
+  background: none;
+  cursor: pointer;
 }
-.admin-rail a:hover {
+.vertical-nav a:hover,
+.vertical-nav button:hover {
   color: var(--text);
   background: var(--border);
 }
-.admin-rail a.active {
+.vertical-nav a.active,
+.vertical-nav button.active {
   color: #fff;
   background: var(--primary-strong);
+}
+.admin-rail {
+  flex: 0 0 12.5rem;
+  padding: 0.75rem 0.5rem;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
 }
 .admin-rail-coming-soon {
   color: var(--text-muted);

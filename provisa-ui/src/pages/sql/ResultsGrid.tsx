@@ -196,7 +196,9 @@ export function ResultsGrid({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    // minHeight 0: in a box only capped in height (a list that grows to its rows), the grid shrinks
+    // to the cap and its rows scroll.
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div
         style={{
           display: "flex",

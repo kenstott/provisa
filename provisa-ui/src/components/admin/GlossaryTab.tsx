@@ -558,7 +558,7 @@ export function GlossaryTab() {
 
       {/* REQ-2130: the Ontology View in place of the list, read and drawn once it is opened. */}
       {ontology ? (
-        <GlossaryOntologyView />
+        <GlossaryOntologyView search={query} />
       ) : (
         <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>
           <div

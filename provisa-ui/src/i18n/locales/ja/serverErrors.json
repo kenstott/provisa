@@ -177,7 +177,8 @@
       "unknown_arg_kind": "「{{name}}」の arg_kind「{{arg_kind}}」は不明です",
       "unknown_command": "不明なコマンド: '{{name}}'",
       "unknown_impl_kind": "不明な関数 impl_kind：「{{impl_kind}}」",
-      "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます"
+      "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます",
+      "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。"
     },
     "graphql_remote": {
       "introspection_failed": "イントロスペクションに失敗しました：{{error}}",

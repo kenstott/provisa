@@ -17,7 +17,14 @@ import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/
 vi.mock("../../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/admin")>()),
   fetchOrgs: vi.fn().mockResolvedValue([
-    { id: "acme", name: "Acme", created_by: null, created_at: "", isolated_engine: false, tier: null },
+    {
+      id: "acme",
+      name: "Acme",
+      created_by: null,
+      created_at: "",
+      isolated_engine: false,
+      tier: null,
+    },
     {
       id: "globex",
       name: "Globex",
@@ -35,6 +42,17 @@ import { setOrgTier } from "../../../api/admin";
 import { OrgsTab } from "../OrgsTab";
 
 describe("an org's tier in Admin > Orgs", () => {
+  it("lists the orgs matching any word of the search", async () => {
+    render(<OrgsTab />);
+    await screen.findByTestId("org-tier-globex");
+    // The first search bar is the orgs'; the second, the invites'.
+    fireEvent.change(screen.getAllByTestId("filter-input")[0], {
+      target: { value: "acme initech" },
+    });
+    expect(screen.getByTestId("org-tier-acme")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-tier-globex")).toBeNull();
+  });
+
   it("shows each org's stored tier, and none as not set", async () => {
     render(<OrgsTab />);
     await waitFor(() => expect(screen.getByTestId("org-tier-globex")).toHaveValue("Premium"));

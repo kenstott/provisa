@@ -46656,7 +46656,7 @@
     anchors), admin REST router (/admin/glossary, org_settings-gated, every mutation queues a REQ-1072
     publish), MCP search_terms tool, term graph in the export snapshot (data_product/technical filters
     extend to refs; terms with no published refs withheld unless abstract; edges need both endpoints),
-    and the admin UI Glossary tab with 13-locale i18n; Glossary is a TOP-LEVEL nav item (route stays /admin/glossary,
+    and the admin UI Glossary tab with 13-locale i18n; Glossary is a TOP-LEVEL nav item ([SUPERSEDED by REQ-2130, 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not implement against it.] route stays /admin/glossary, [END SUPERSEDED BLOCK]
     org_settings) and Team moved into the Admin group. Verified: unit, PG integration (real config-load
     lifecycle), BDD (feature + implemented steps), Playwright e2e (curation flows against the core lane)
     and MCP protocol-level tests all pass; docs section added to api-reference.md. ADAPTERS (implemented):
@@ -57758,7 +57758,7 @@
   priority: MUST
   type: behavioral
   description: 'THE BUSINESS GLOSSARY IS GOVERNED BY TWO RIGHTS, AND READING IT IS NOT ADMINISTERING THE
-    ORG. ``glossary_read`` opens the surface: the /admin/glossary route, its top-level nav link, and
+    ORG. ``glossary_read`` opens the surface: [SUPERSEDED by REQ-2130, 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not implement against it.] the /admin/glossary route, [END SUPERSEDED BLOCK] its top-level nav link, and
     the read endpoints GET /glossary/terms and GET /glossary/terms/{id}. ``glossary_rw`` is curation on
     top of that: create, rename, definition, retire, delete, export exclusion, ref moves, edges (add/retype/remove),
     experts, and the AI generation endpoints that PERSIST what they draft (generate-definition, generate-definitions,
@@ -83721,7 +83721,6 @@
   related_reqs: [REQ-1858, REQ-2010, REQ-2012, REQ-2001, REQ-2002, REQ-1983, REQ-2000, REQ-1586]
   code:
   - demo/named/sonnets/config.yaml
-  - demo/named/sonnets/echoes.py
   - demo/named/sonnets/setup.yaml
   - scripts/run_demo_setup.py
   - scripts/demo_extras.py
@@ -83730,6 +83729,7 @@
   tests:
   - tests/unit/test_demo_setup.py
   - tests/unit/test_named_demo_tour.py
+  - tests/unit/test_sonnets_demo_echoes.py
   notes: 'Lead, 2026-10-14: the demo (Postgres sonnets, embed_lines, lines_like, theme MVs, link_echoes, the
     three relationships, 4-6 example queries with a Cypher of cross-sonnet echoes); no governance or role angle.
     Offline check: the Fair Youth / Dark Lady split does not show in unsupervised clusters, so the tour makes no
@@ -84204,12 +84204,13 @@
     emails for a match score. One demo, framed as investment-bank compliance. Built 2026-10-15: the matching of mail to the watch list (names fuzzily, aliases, ticker, code name, and meaning through the local model) runs in the match_deals command and writes deal_match with the flagged entity, because a text or similarity match is no join along a relationship and the SQL guard refuses it; the review queue reads deal_match, the mail and the staff along declared relationships and weights the match by context in SQL. A read of a view is governed against the tables it reads, so the queue reads no row of the watch list: a first-level reviewer is granted no column of it, row rules keep the mail and its matches to the desks they review, and the queue masks the deal id.'
   code:
   - demo/named/insider/config.yaml
-  - demo/named/insider/matching.py
+  - demo/named/insider/insider_signals/insider_signals.py
   - demo/named/insider/generate.py
   - demo/named/insider/db/init.sql
   - demo/named/insider/tour.yaml
   tests:
   - tests/integration/test_insider_demo.py
+  - tests/unit/test_insider_demo_signals.py
   - tests/unit/test_named_demo_tour.py
   - tests/unit/test_polly_bakeoff_questions.py
 - id: REQ-2060
@@ -86094,7 +86095,7 @@ And a second build keeps it once, and an archive that is not a usable bundle is 
   feature: semantic-model-relationships
   priority: MUST
   type: behavioral
-  description: "A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them. (Amended 2026-10-20, ONE CALL:) The distinct argument sets go to the code's host in one call, and the host calls the function once per set in its own process, every set's rows coming back under that call in the sets' order: no round trip per set. Functions are unchanged."
+  description: "A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them. (Amended 2026-10-20, ONE CALL:) The distinct argument sets go to the code's host in one call, and the host calls the function once per set in its own process, every set's rows coming back under that call in the sets' order: no round trip per set. Functions are unchanged. (Amended 2026-10-22, QDRANT SEARCH:) A relationship may feed a Qdrant search table's parameters (REQ-1983), its query among them, by the same feed: the search is read live once per distinct set, one Qdrant query a set. A search's points hold nothing of the query that found them, so a relationship may join on the target's parameter column: each row read for a set then carries, in that column, the value the set gave the parameter, typed as the source column it was read from, and the join matches each source row to the rows read for it. A relationship that joins on a parameter it does not feed is refused. A statement that gives one of the parameters a relationship feeds reads the target under its own arguments and is not fed by it, so a search for a phrase of its own still joins its points back to the source's rows."
   use_case: "A churn model packaged as a Python code table, churn_risk(customer_id, plan, tenure_months, ...), is joined to the customers' features view: each customer the analyst may read is scored with that customer's features, emails masked, and a regional role's join scores only its region's customers."
   scenario: "Given a relationship from customers to churn_risk with parameters {customer_id: id, email: email, plan: plan, tenure_months: tenure_months}, a row rule region = 'EU' and a regex mask on email for the analyst
 
@@ -86116,8 +86117,12 @@ And SELECT score FROM churn_risk is refused for its required parameters before t
   - provisa/codesource/worker.py
   - provisa/python/host.py
   - provisa/node/host-core.mjs
+  - provisa/qdrant/table.py
+  - demo/named/sonnets/config.yaml
   tests:
   - tests/unit/test_relationship_fed_code_table.py
+  - tests/unit/test_relationship_fed_qdrant_search.py
+  - tests/integration/test_sonnets_demo.py
   - tests/unit/test_code_worker.py
   - tests/unit/test_python_source.py
   - tests/unit/test_node_host_argument_sets.py
@@ -86861,7 +86866,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   priority: SHOULD
   type: ui
   description: >-
-    The Glossary page has an Ontology View: the REQ-2128 3D graph engine scoped to the whole glossary
+    [SUPERSEDED by REQ-2130, 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not implement against it.] The Glossary page has an Ontology View: [END SUPERSEDED BLOCK] the REQ-2128 3D graph engine scoped to the whole glossary
     rather than one data product, with the same layer, filter and preset controls and the same expand
     button. Nodes are glossary terms, and edges are term-to-term edges. Edge type (KIND_OF, PART_OF,
     SYNONYM_OF, REPLACES and the other term edge types) is a filter. The dimensions are as follows.
@@ -86879,7 +86884,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     force layout. Taxonomy shows only KIND_OF and PART_OF edges as a top-down tree. All graph data
     comes from meta-domain queries run as the signed-in user (glossary_terms_meta and its live column,
     glossary_term_edges_meta, glossary_term_refs_meta, and REQ-2125 for products), so a term the user
-    cannot read is absent. three.js loads only when the view is opened.
+    cannot read is absent. three.js loads only when the view is opened. (Amended 2026-10-22, NAMED
+    ONTOLOGY:) The page is named Ontology in the UI: its navigation item, its title, its route,
+    /admin/ontology, and the docs. The view described here is that page's graph. The API path
+    /admin/glossary and the identifiers in code (glossary_read, glossary_rw, the glossary tables and
+    meta tables) keep their names for now.
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -86918,7 +86927,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     or enrich a whole batch, metered and capped as any code-source LLM call. In a materialized view,
     @columns outputs are recomputed when the view is refreshed, as the view's freshness declares; they
     have no schedule of their own. A function that returns a different number of results than rows it
-    was given is refused naming the function.
+    was given is refused naming the function. (Amended 2026-10-21, LANDED:) A view that applies a column transform is landed, whether or not its steward declares it materialized, as API and code tables are landed: it is built through the materialized views' governed build (its inputs read, the function called in batches, the result stored), refreshed as the view's freshness declares, and read by the engine from its stored table.
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
@@ -87027,4 +87036,244 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1443
   - REQ-2106
   - REQ-2126
+  target: "2027-Q1"
+- id: REQ-2134
+  status: proposed
+  since: 2026-10
+  group: 5. Query Languages, Compilation & Operations
+  category: Extensible Functions
+  feature: commands-and-functions-tracked-functions
+  priority: MUST
+  type: behavioral
+  description: >-
+    A deployment setting, commands.allow_host_code (off by default), governs host code: the python
+    command kind (an in-process module:attr callable) and the script command kind (a subprocess on
+    the server's host). Both run with the server's full access to its memory, credentials, files and
+    network, so code that is malicious, buggy or greedy can read anything the server can, starve it
+    or take it down. A model entry holds only a reference to the code (module:attr or a path), so the
+    code does not travel with the model when it is promoted. While the setting is off, registering or
+    updating a command of either kind is refused, from the admin API and from a config file alike, and
+    calling an existing one is refused; one check makes both refusals. The setting is the operator's,
+    never an organization's, and has its field in Deployment settings. Code resolvers are the governed
+    alternative: sandboxed, pinned, and promoted with the model.
+  use_case: >-
+    An operator runs a server of many organizations without any of them, or a model promoted into
+    it, being able to run code with the server's own access.
+  scenario: |
+    Given commands.allow_host_code is off, as it is by default
+    When a steward registers or updates a command of kind python or script
+    Then it is refused, naming the kind and the setting
+    When an existing command of kind python or script is called
+    Then the call is refused, naming the kind and the setting
+    Given commands.allow_host_code is on
+    Then commands of either kind are registered, updated and called
+  relates_to:
+  - REQ-885
+  - REQ-1913
+  - REQ-2104
+  target: "2027-Q1"
+- id: REQ-2135
+  status: proposed
+  since: 2026-10
+  group: 5. Query Languages, Compilation & Operations
+  category: SPARQL Query Frontend
+  feature: sparql-query
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is a full
+    surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same
+    editor, results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients
+    query; and a "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic
+    SQL statement through the graph mapping Cypher uses (REQ-351): a table is a class and its rows
+    are its subjects, each subject's IRI built from its primary key, only on output; a column linked
+    to a term is a predicate; a declared relationship is an edge predicate; and the meta-domain
+    tables (terms, term edges, term references, tables, columns, domains) are mapped as SKOS and OWL.
+    The statement is governed whole and routed as any query is; there is no separate triple store
+    and no knowledge-graph views. A property path is lowered as a Cypher variable-length path is
+    (REQ-348): WITH RECURSIVE capped at a depth limit, or unrolled to that depth on an engine
+    without recursion, with cycles handled. A result cut at the limit says it was cut. The depth
+    limit is an operator setting with its field in Deployment settings. A variable predicate
+    (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded. (Amended
+    2026-10-22, ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two steps.
+    First, a refactor makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary
+    no front end owns, with Cypher's parser on one side and select_builder, assembler, path_translator
+    and label_map as the back end both languages share; Cypher's existing tests prove the refactor
+    changes nothing. Second, a SPARQL front end lowers rdflib's SPARQL algebra to that IR and adds what
+    SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded
+    variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib
+    is a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:)
+    [SUPERSEDED by REQ-2135, 2026-10-22 -- the IR is the GQL+ IR, a GQL-inspired IR (GQL+ IR amendment
+    below); the tiers and the symmetry stand, read with GQL+ IR for Cypher+ IR. Kept here for history;
+    do not implement against it.] The canonical graph
+    form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher's pattern IR extended with what
+    SPARQL needs, which is path expressions (sequence, alternative and inverse among them), variable
+    predicates, a triples output for CONSTRUCT, and IRI and datatype values. [END SUPERSEDED BLOCK] It stands
+    to graph languages as semantic SQL stands to every language, and semantic SQL is likewise a
+    superset IR, not SQL: SQL extended with the model (model names, views and metrics resolved,
+    governance attached), lowered per engine at routing and never run as written. Neither is the
+    language it is named after. The tiers are: a graph language, parsed into the Cypher+ IR, which
+    holds the graph meaning (patterns, paths, variable predicates, triples out); the graph mapping
+    lowers that, in one back end, into semantic SQL, which holds the data meaning (views expanded,
+    governed whole, optimized, routed). Every graph language front end parses into the Cypher+ IR:
+    Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing below it is
+    duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within what
+    Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric:
+    Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no
+    language is its IR, the namesake included. So the refactor makes Cypher's parser a front end like
+    SPARQL's, and nothing below the IR is specific to Cypher. (Amended 2026-10-22, GQL+ IR:) The
+    graph-side IR is the GQL+ IR. As semantic SQL is a SQL-inspired IR, the GQL+ IR is a GQL-inspired
+    IR: each borrows its namesake's shape, each is our own representation, and neither claims
+    conformance to the standard. The GQL+ IR borrows GQL's pattern concepts (quantified path patterns,
+    the path modes WALK, TRAIL, ACYCLIC and SIMPLE, label expressions) and adds only variable predicates,
+    a triples output for CONSTRUCT, and IRI and datatype values. Cypher maps straight in, its
+    depth-capped cycle-free paths being ACYCLIC with a bound; SPARQL's path sequences, alternatives and
+    inverses map onto those same concepts; a GQL or SQL/PGQ front end would be a parser only. The tiers
+    are unchanged, and GraphQL still lowers straight to semantic SQL. Both IR names are internal: no
+    user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:) Built in five phases.
+    1: the GQL IR starts as today's Cypher compiler; its Cypher AST and precompile (the parser and the
+    Cypher-specific front end) are split out, and what remains is the GQL IR back end, proven by
+    Cypher's existing tests. 2: that back end gains the GQL-inspired features SPARQL needs: quantified
+    paths, path modes, label expressions, variable predicates, CONSTRUCT triples, IRI and datatype
+    values. 3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol
+    endpoint. 5: the UI, the SPARQL tab and the Ontology page's SPARQL button (REQ-2136); it comes last
+    and can wait.
+  use_case: >-
+    A knowledge-graph team queries the governed model with the language and RDF clients it already
+    uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
+    into a triple store.
+  scenario: |
+    Given a table customers with a primary key, a column linked to the term email, and a relationship to orders
+    When a role runs SELECT ?c ?e WHERE { ?c a :Customer ; :email ?e } over the SPARQL endpoint
+    Then it is lowered to one SQL statement over customers, governed as that role (its row rules and masks apply), and each ?c is an IRI built from the customer's key
+    When it runs a property path over the relationship deeper than the depth limit
+    Then the result stops at the limit and says it was cut
+  relates_to:
+  - REQ-345
+  - REQ-347
+  - REQ-348
+  - REQ-351
+  - REQ-863
+  - REQ-1387
+  - REQ-1913
+  target: "2027-Q1"
+- id: REQ-2136
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Glossary Admin
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The Ontology page's filter controls are shorthand for a SPARQL query (REQ-2135) that scopes the
+    graph. The page has a SPARQL button: it builds the SPARQL query equivalent to the current filter
+    (search focus, edge types, domains, status, Orphans, Columns) and opens it in the SPARQL query
+    surface, ready to edit and run. An export of the graph is that query as CONSTRUCT, serialized as
+    Turtle, JSON-LD or N-Triples, and streamed. Terms only exports SKOS and OWL, with DCAT and DPROD
+    for the links to columns, tables and data products. With instances extends the slice to the rows
+    behind the grounded columns, read as the viewer. The server estimates the export's size first;
+    past a limit it narrows the export or runs it as a background job. (Amended 2026-10-22, PHASING:)
+    The SPARQL button is phase 5 of REQ-2135's phasing, with the SPARQL tab: it comes after the SPARQL
+    front end and endpoint, and can wait.
+  use_case: >-
+    A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog
+    tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope
+    into SPARQL to refine it.
+  scenario: |
+    Given the Ontology page filtered to one domain and the KIND_OF edge type
+    When the curator clicks SPARQL
+    Then the SPARQL surface opens with the query for that filter, and running it returns that graph
+    When the curator exports Terms only as Turtle
+    Then the file holds that slice as SKOS and OWL, streamed
+    When the curator exports With instances and the estimate is past the limit
+    Then the export is narrowed or runs as a background job
+  relates_to:
+  - REQ-2135
+  - REQ-2130
+  - REQ-1387
+  - REQ-2125
+  target: "2027-Q1"
+- id: REQ-2137
+  status: proposed
+  since: 2026-10
+  group: 5. Query Languages, Compilation & Operations
+  category: SPARQL Query Frontend
+  feature: sparql-update
+  priority: MAY
+  type: behavioral
+  description: >-
+    Later: SPARQL Update is lowered to the governed writes that exist: ontology curation (under its
+    rights, REQ-1590), mutations and commands. It never writes raw triples or rows past them.
+  use_case: >-
+    A knowledge-graph team curates the vocabulary and changes data from the language it uses,
+    under the same rights and the same write paths as every other surface.
+  relates_to:
+  - REQ-2135
+  - REQ-1590
+  - REQ-885
+  target: "2027-Q2"
+- id: REQ-2138
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: SPARQL
+  feature: connector-catalog-nosql-search-and-graph
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A sparql source (REQ-1683) may name a reasoner, HermiT first, and an OWL axioms file. At each
+    refresh it pulls the slice of the graph its axioms need from its endpoint by CONSTRUCT, classifies
+    it, and serves the inferred class memberships and properties as tables, such as
+    sanctions_exposed(party) and controls(controller, controlled). How often it reasons is the source's
+    freshness declaration (cache_ttl, replica), as for any source. It works against any SPARQL 1.1
+    endpoint, Provisa's own among them (REQ-2135), which it reads as a service identity, so it reasons
+    over only what that identity is granted; what it serves is governed again for every reader, as any
+    table is. A source that would read predicates produced by its own inferred tables is refused, as a
+    view that reads itself is. The reasoner runs in the source's own process or container, never in
+    the server's. HermiT and owlready2 are LGPL: they are used as separate programs and imported
+    libraries, never linked into Provisa, under the dependency rules, and HermiT needs a Java runtime in
+    the source's image.
+  use_case: >-
+    A compliance team writes once, as OWL axioms, what makes a party sanctions-exposed or one company
+    control another, and every surface reads the inferred answer as a governed table, recomputed as
+    often as the source's freshness says.
+  scenario: |
+    Given a sparql source naming HermiT and an axioms file declaring controls transitive and SanctionsExposed as controlled by some SanctionedParty, its endpoint Provisa's own SPARQL endpoint read as a service identity
+    When the source refreshes
+    Then it reads the slice by CONSTRUCT, classifies it, and its tables sanctions_exposed and controls hold the inferred rows
+    When a role reads sanctions_exposed
+    Then the rows are governed for that role as any table's are
+    When the source is declared to read a predicate its own controls table produces
+    Then it is refused
+  relates_to:
+  - REQ-1683
+  - REQ-2135
+  - REQ-1387
+  target: "2027-Q1"
+- id: REQ-2139
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The named demo "beneficial ownership": KYC parties, companies, owners and their stakes, over a few
+    sources, with an ontology whose terms are linked to the stake and sanctions columns, and an OWL
+    file declaring controls transitive and SanctionsExposed equivalent to being controlled by some
+    SanctionedParty. A sparql source with HermiT (REQ-2138) reads Provisa's own SPARQL endpoint
+    (REQ-2135). The answer, which parties are sanctions-exposed and through which chain of control, is
+    queried from SQL, GraphQL and Cypher, and a role without the sanctions rights gets it masked or
+    filtered. Its tour follows the settled demo shape: the scenario, how the pieces fit, then the
+    solution.
+  use_case: >-
+    A visitor sees an ownership chain several companies deep turn into a governed yes-or-no on
+    sanctions exposure, inferred from rules written once, and readable from the language they already
+    use.
+  relates_to:
+  - REQ-2135
+  - REQ-2138
+  - REQ-2056
   target: "2027-Q1"

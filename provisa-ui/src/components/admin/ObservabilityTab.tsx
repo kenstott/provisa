@@ -36,6 +36,7 @@ import { DebugTracePanel } from "./DebugTracePanel";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { FilterInput } from "./FilterInput";
 import { Tip } from "../Tip";
+import { matchesQuery } from "../../lib/searchItems";
 
 interface ObsTabProps {
   settings: PlatformSettings;
@@ -71,15 +72,7 @@ function TraceList({
   const statusColor = (s: string) =>
     s === "OK" ? "var(--success)" : s === "ERROR" ? "var(--error, #e55)" : "var(--text-muted)";
 
-  const needle = filter.toLowerCase();
-  const visible = needle
-    ? traces.filter(
-        (t) =>
-          t.name.toLowerCase().includes(needle) ||
-          t.status.toLowerCase().includes(needle) ||
-          t.trace_id.toLowerCase().includes(needle),
-      )
-    : traces;
+  const visible = traces.filter((t) => matchesQuery([t.name, t.status, t.trace_id], filter));
 
   return (
     <div className="trace-feed-list" ref={listRef}>
