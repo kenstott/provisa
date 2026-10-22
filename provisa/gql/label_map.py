@@ -865,7 +865,9 @@ def _resolve_id_column(  # REQ-392, REQ-394
     3. Single column ending in _id / _pk / _oid (unambiguous).
     4. Single column starting with id_.
     5. First column in the column list.
-    6. Fallback: "id".
+
+    A table with no column to resolve one from is refused, naming it: its node has no identity,
+    and none is invented for it.
     """
     # 0. User-designated PK
     if user_pks:
@@ -895,8 +897,7 @@ def _resolve_id_column(  # REQ-392, REQ-394
     if col_names:
         return col_names[0]
 
-    # 6. Hard fallback
-    return "id"
+    raise ValueError(f"{type_name!r} has no column to identify its rows by: it is no graph node")
 
 
 def _to_rel_type(field_name: str, cardinality: str | None = None) -> str:
