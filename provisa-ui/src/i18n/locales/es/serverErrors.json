@@ -599,6 +599,7 @@
       "wrong_tier": "Este sandbox se sirve en otro lugar; ábralo desde su propia dirección.",
       "unknown_demo": "No hay ninguna demostración publicada llamada {{demo}}.",
       "demo_not_ready": "Esta demostración todavía se está preparando. Inténtelo de nuevo en breve.",
+      "demo_stores_failed": "No se pudo iniciar esta demostración. Inténtelo de nuevo en unos minutos.",
       "at_capacity": "Todos los sandboxes de demostración están en uso. Inténtelo de nuevo en breve.",
       "starting": "El servidor de demostración se está iniciando. Vuelve a intentarlo en uno o dos minutos.",
       "disk_full": "Este sandbox ha agotado su límite de disco de {{limit}} bytes; no se puede escribir nada más en él.",

@@ -809,6 +809,56 @@ def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
     assert "the cluster id is not a valid UUID" in str(failed.value)
 
 
+class _NetworkGone(FakeRunner):
+    """Docker refusing to start a stopped container whose network was removed and created again
+    since, as cloud-dev's daemon said it after the node's stack restarted."""
+
+    def __init__(self, kind: str, *, recreated_starts: bool = True) -> None:
+        super().__init__({"ps -a -q": f"{kind}cid"})
+        self.kind, self.recreated_starts = kind, recreated_starts
+
+    def run(self, cmd, *, stdin=None):
+        line = " ".join(cmd)
+        if line.endswith(f"up -d --wait {self.kind}"):
+            self.calls.append((line, None))
+            raise ds.StoreError(
+                f"{line} failed (1): Error response from daemon: failed to set up container "
+                "networking: network b11f5609e4c3 not found"
+            )
+        if "--force-recreate" in line and not self.recreated_starts:
+            self.calls.append((line, None))
+            raise ds.StoreError(f"{line} failed (1): unhealthy")
+        return super().run(cmd, stdin=stdin)
+
+
+@pytest.mark.parametrize("kind", ["postgres", "mongo", "elasticsearch", "qdrant", "kafka"])
+def test_a_shared_store_whose_network_was_recreated_is_recreated_not_started(kind):
+    """A stopped shared store attached to the tier's network cannot start once that network was
+    recreated (the node's stack restarted): it is recreated, its named volume -- its data -- kept,
+    so every demo naming it is not left starting forever (cloud-dev, 2026-10-22)."""
+    runner = _NetworkGone(kind)
+    _shared(runner).start(kind)
+    lines = runner.lines()
+    assert lines[-1].endswith(f"up -d --wait --force-recreate {kind}")
+    assert not any(" down" in x or "volume rm" in x for x in lines)  # its data is kept
+
+
+def test_a_recreated_shared_store_that_still_fails_says_why_from_its_own_log():
+    runner = _NetworkGone("mongo", recreated_starts=False)
+    runner.answers["docker logs --tail"] = "mongod: data directory not writable"
+    with pytest.raises(ds.StoreError) as failed:
+        _shared(runner).start("mongo")
+    assert "unhealthy" in str(failed.value)
+    assert "mongod: data directory not writable" in str(failed.value)
+
+
+def test_a_shared_store_that_fails_for_another_reason_is_not_recreated():
+    runner = FakeRunner({"ps -a -q mongo": "mcid"}, fail={"up -d --wait mongo"})
+    with pytest.raises(ds.StoreError):
+        _shared(runner).start("mongo")
+    assert not any("--force-recreate" in x for x in runner.lines())
+
+
 def test_a_superseded_versions_own_kafka_on_the_shared_port_is_taken_down_before_it_starts():
     """A version an earlier release ran with a Kafka of its own keeps the shared Kafka's port
     after a newer version took over: the shared Kafka could not bind it, and no demo naming Kafka

@@ -599,6 +599,7 @@
       "wrong_tier": "Questa sandbox è servita altrove; aprila dal suo indirizzo.",
       "unknown_demo": "Non esiste una demo pubblicata di nome {{demo}}.",
       "demo_not_ready": "Questa demo è ancora in preparazione. Riprova a breve.",
+      "demo_stores_failed": "Non è stato possibile avviare questa demo. Riprova tra qualche minuto.",
       "at_capacity": "Tutte le sandbox demo sono in uso. Riprova a breve.",
       "starting": "Il server demo si sta avviando. Riprova tra un paio di minuti.",
       "disk_full": "Questa sandbox ha esaurito il suo limite di disco di {{limit}} byte; non vi si può scrivere altro.",
