@@ -34,6 +34,7 @@
     "chooseFile": "קובץ לשליחה",
     "graphCaption": "צמתים: {{nodes}} · קשרים: {{relationships}}",
     "downloadPng": "הורדת PNG",
-    "openOnGraphPage": "פתיחה בדף הגרף"
+    "openOnGraphPage": "פתיחה בדף הגרף",
+    "choiceClosed": "(נסגר ללא בחירה)"
   }
 }

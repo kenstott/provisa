@@ -34,6 +34,7 @@
     "chooseFile": "要傳送的檔案",
     "graphCaption": "節點：{{nodes}} · 關係：{{relationships}}",
     "downloadPng": "下載 PNG",
-    "openOnGraphPage": "在圖形頁面開啟"
+    "openOnGraphPage": "在圖形頁面開啟",
+    "choiceClosed": "（未選擇就關閉了）"
   }
 }

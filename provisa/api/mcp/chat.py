@@ -659,7 +659,8 @@ _CLIENT_TOOLS: list[Any] = [
             "mode='single' renders radio buttons and returns the one option string picked; "
             "mode='multi' renders checkboxes and returns an array of the options picked (zero or "
             "more); mode='yes_no' renders Yes/No buttons and returns a boolean, no 'options' "
-            "needed. The tool result names exactly which option(s) — or true/false — were picked."
+            "needed. The tool result names exactly which option(s) — or true/false — were picked, or "
+            "says the user closed the choice without picking (selected null)."
         ),
         "input_schema": {
             "type": "object",
