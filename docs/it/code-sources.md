@@ -310,7 +310,7 @@ Al primo avvio il container stampa nel suo log una riga che inizia con `pairing 
 
 **Se il codice cambia.**
 
-- Un container che torna eseguendo altro codice viene rifiutato, nominando l'hash a cui l'origine è fissata e quello che l'host riporta, finché uno steward non esamina il codice e lo rifissa dal modulo.
+- Un container che torna eseguendo altro codice viene rifiutato finché uno steward non esamina il codice e lo rifissa dal modulo.
 - Per cambiare il codice stesso, riporta l'origine in modalità dev, salva il nuovo codice e costruisci di nuovo.
 
 ### I servizi di Provisa {: #provisas-services }

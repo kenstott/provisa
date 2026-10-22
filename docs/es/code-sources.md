@@ -310,7 +310,7 @@ En su primer arranque el contenedor imprime en su log una línea que empieza por
 
 **Si el código cambia.**
 
-- Un contenedor que vuelve ejecutando otro código se rechaza, nombrando el hash al que está fijado el origen y el que informa el host, hasta que un steward revisa el código y lo vuelve a fijar desde el formulario.
+- Un contenedor que vuelve ejecutando otro código se rechaza hasta que un steward revisa el código y lo vuelve a fijar desde el formulario.
 - Para cambiar el código en sí, vuelva el origen al modo dev, guarde el código nuevo y construya de nuevo.
 
 ### Los servicios de Provisa {: #provisas-services }

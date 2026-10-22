@@ -310,7 +310,7 @@ On its first start the container prints a line beginning `pairing code:` in its 
 
 **If the code changes.**
 
-- A container that comes back running other code is refused, naming the hash the source is pinned to and the one the host reports, until a steward reviews the code and re-pins it from the form.
+- A container that comes back running other code is refused until a steward reviews the code and re-pins it from the form.
 - To change the code itself, switch the source back to dev, save the new code, and build again.
 
 ### Provisa's services {: #provisas-services }

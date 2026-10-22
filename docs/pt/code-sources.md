@@ -310,7 +310,7 @@ Na primeira inicialização o contêiner imprime no log uma linha começando com
 
 **Se o código mudar.**
 
-- Um contêiner que volta executando outro código é recusado, nomeando o hash ao qual a fonte está fixada e o que o host informa, até que um steward revise o código e o fixe de novo pelo formulário.
+- Um contêiner que volta executando outro código é recusado até que um steward revise o código e o fixe de novo pelo formulário.
 - Para mudar o próprio código, volte a fonte ao modo dev, salve o código novo e construa de novo.
 
 ### Os serviços do Provisa {: #provisas-services }

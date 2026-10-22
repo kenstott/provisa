@@ -310,7 +310,7 @@ Bei seinem ersten Start gibt der Container in seinem Log eine Zeile aus, die mit
 
 **Wenn sich der Code ändert.**
 
-- Ein Container, der mit anderem Code zurückkommt, wird abgelehnt, mit dem Hash, an den die Quelle fixiert ist, und dem, den der Host meldet, bis ein Steward den Code prüft und ihn im Formular neu fixiert.
+- Ein Container, der mit anderem Code zurückkommt, wird abgelehnt, bis ein Steward den Code prüft und ihn im Formular neu fixiert.
 - Um den Code selbst zu ändern, schalten Sie die Quelle zurück in den Dev-Modus, speichern den neuen Code und bauen erneut.
 
 ### Die Dienste von Provisa {: #provisas-services }

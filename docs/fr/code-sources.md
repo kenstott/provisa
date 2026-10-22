@@ -310,7 +310,7 @@ volumes:
 
 **Si le code change.**
 
-- Un conteneur qui revient avec un autre code est refusé, en nommant le hash auquel la source est figée et celui que l'hôte annonce, jusqu'à ce qu'un intendant examine le code et le refige depuis le formulaire.
+- Un conteneur qui revient avec un autre code est refusé jusqu'à ce qu'un intendant examine le code et le refige depuis le formulaire.
 - Pour changer le code lui-même, repassez la source en mode dev, enregistrez le nouveau code et reconstruisez.
 
 ### Les services de Provisa {: #provisas-services }
