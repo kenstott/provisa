@@ -36,6 +36,13 @@ export const INTROSPECTION_QUERY = `query RoleSchema {
   }
 }`;
 
+/** A one-to-many field as answered: undefined when the role cannot select it, else its rows. The
+ * schema types the list as nullable and the server answers one with no rows with null (json_agg
+ * over nothing), so null here means none. */
+export function rowsOf<T>(v: T[] | null | undefined): T[] | undefined {
+  return v === undefined ? undefined : (v ?? []);
+}
+
 /** POST a GraphQL query to /data/graphql as ``role``. A refusal or a GraphQL error is thrown. */
 export async function dataGraphql<T>(
   query: string,

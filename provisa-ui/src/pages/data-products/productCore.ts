@@ -15,7 +15,14 @@
 // product's row by SQL and by JSON:API.
 
 import { runSql } from "../../api/admin";
-import { dataGraphql, rootQuery, type MetaReader, type Selection } from "../../api/metaGraph";
+import {
+  dataGraphql,
+  rootQuery,
+  rowsOf,
+  type MetaReader,
+  type Selection,
+} from "../../api/metaGraph";
+import { withCheckers } from "../../components/graph3d/productGraphData";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
 
@@ -59,6 +66,23 @@ const PANEL: Selection = {
         ],
         rels: {
           checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
+          checked_by: {
+            alias: "checkedBy",
+            sel: {
+              fields: [
+                "id",
+                "source_id",
+                "domain_id",
+                "schema_name",
+                "table_name",
+                "description",
+                "dq_contract",
+              ],
+              rels: {
+                checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
+              },
+            },
+          },
           table_columns: {
             to: "table_columns",
             sel: {
@@ -125,11 +149,14 @@ export interface CoreTable {
   description: string | null;
   dq_contract: string | null;
   checks?: { id: number; domain_id: string; table_name: string } | null;
-  table_columns?: {
-    column_name: string;
-    glossary_ref?: { term_id: number; term?: CoreTerm | null }[];
-  }[];
-  profile_results?: { id: number; domain_id: string; table_name: string }[];
+  checked_by?: CoreTable[] | null;
+  table_columns?:
+    | {
+        column_name: string;
+        glossary_ref?: { term_id: number; term?: CoreTerm | null }[] | null;
+      }[]
+    | null;
+  profile_results?: { id: number; domain_id: string; table_name: string }[] | null;
 }
 
 export interface CoreEdge {
@@ -155,17 +182,17 @@ export interface CoreEdge {
 
 interface PanelRow {
   id: string;
-  member_tables?: CoreTable[];
-  commands?: { name: string; description: string | null; domain_id: string }[];
-  tags?: { tag_id: string }[];
-  edges?: CoreEdge[];
+  member_tables?: CoreTable[] | null;
+  commands?: { name: string; description: string | null; domain_id: string }[] | null;
+  tags?: { tag_id: string }[] | null;
+  edges?: CoreEdge[] | null;
 }
 
 /** What the panel shows of one product; a part the role cannot read is undefined. */
 export interface ProductCore {
   product: DataProduct;
   tables?: CoreTable[];
-  commands?: PanelRow["commands"];
+  commands?: NonNullable<PanelRow["commands"]>;
   tags?: string[];
   terms?: CoreTerm[];
   edges?: CoreEdge[];
@@ -281,20 +308,20 @@ export async function loadProductCore(
   // JSON, not a string.
   if (!doc) throw new Error(`No data product ${product} over JSON:API`);
   productRow.custom_properties = doc.attributes.custom_properties;
+  const members = rowsOf(row.member_tables);
   const bound = new Map<number, CoreTerm>();
-  for (const t of row.member_tables ?? [])
+  for (const t of members ?? [])
     for (const c of t.table_columns ?? [])
       for (const r of c.glossary_ref ?? []) if (r.term) bound.set(r.term.id, r.term);
   return {
     product: asProduct(productRow),
-    tables: row.member_tables,
-    commands: row.commands,
-    tags: row.tags?.map((t) => t.tag_id),
-    terms:
-      row.member_tables && row.member_tables.some((t) => t.table_columns !== undefined)
-        ? await termClosure(m, role, [...bound.values()])
-        : undefined,
-    edges: row.edges,
+    tables: members && withCheckers(members),
+    commands: rowsOf(row.commands),
+    tags: rowsOf(row.tags)?.map((t) => t.tag_id),
+    terms: (members ?? []).some((t) => t.table_columns !== undefined)
+      ? await termClosure(m, role, [...bound.values()])
+      : undefined,
+    edges: rowsOf(row.edges),
     queries,
   };
 }

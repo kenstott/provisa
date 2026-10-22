@@ -59,6 +59,10 @@ test("member-less user onboards a new org with demo data and is routed into the 
         active_org_id: created ? ORG_ID : null,
         org_memberships: created ? [{ org_id: ORG_ID, org_name: "Carol Co" }] : [],
         assignments: created ? [{ role_id: "org_admin", domain_id: "*" }] : [],
+        // As /auth/me answers (auth_router.me): every list sent, empty where nothing is held.
+        billing: false,
+        env_capabilities: [],
+        derived_roles: [],
       },
     }),
   );
@@ -143,6 +147,10 @@ test("member-less user joins an existing org with an invite code and is routed i
         active_org_id: joined ? ORG_ID : null,
         org_memberships: joined ? [{ org_id: ORG_ID, org_name: "Carol Co" }] : [],
         assignments: joined ? [{ role_id: "org_admin", domain_id: "*" }] : [],
+        // As /auth/me answers (auth_router.me): every list sent, empty where nothing is held.
+        billing: false,
+        env_capabilities: [],
+        derived_roles: [],
       },
     }),
   );

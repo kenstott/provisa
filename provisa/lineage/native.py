@@ -143,7 +143,11 @@ def native_address(
     elif graphql is not None:
         out = [
             ("field", graphql.get("field_name") or graphql.get("name") or name),
-            ("arguments", ", ".join(graphql.get("required_args") or []) or None),
+            # The mapped spec's required arguments are {name, gql_type} (graphql_remote.mapper).
+            (
+                "arguments",
+                ", ".join(a["name"] for a in graphql.get("required_args") or []) or None,
+            ),
             ("rows", graphql.get("rows_path")),
         ]
     elif topic is not None:
