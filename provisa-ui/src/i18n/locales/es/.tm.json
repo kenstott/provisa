@@ -7690,5 +7690,6 @@
   "es/serverErrors.json::serverErrors.schema.mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build",
   "es/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaLandingTimeLabel": "Landing time column",
   "es/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaLandingTimeHint": "Provisa fills it with the time it lands each message.",
-  "es/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaLandingTimeNone": "None"
+  "es/liveDeliveryFieldset.json::liveDeliveryFieldset.kafkaLandingTimeNone": "None",
+  "es/serverErrors.json::serverErrors.schema.landing_time_pipeline": "Table '{{table}}' keeps its landing time in {{column}}, but its store lands the topic through its own pipeline, where Provisa does not see each message land."
 }

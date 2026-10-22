@@ -24629,6 +24629,9 @@
   - provisa/api/admin/_row_mappers.py
   - provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx
   - provisa-ui/src/pages/tables/loadReadFields.tsx
+  - provisa/api/admin/_table_settings.py
+  - provisa/api/mcp/table_edit.py
+  - demo/named/perf/bench/governance.py
   tests:
   - tests/unit/test_live_delivery_config.py
   - tests/unit/test_kafka_landing_time.py

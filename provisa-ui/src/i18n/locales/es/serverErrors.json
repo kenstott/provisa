@@ -447,7 +447,8 @@
       "mv_window_needs_calendar": "La MV '{{mv}}' no nombra ningún calendario: una compilación sellada al cierre de un día hábil necesita uno",
       "version_log_updated": "Registro de versiones '{{mv}}' actualizado",
       "mv_window_held": "La MV '{{mv}}' no se selló al cierre del {{day}}: otra compilación suya tiene la reserva",
-      "mv_window_unchanged": "La MV '{{mv}}' no se selló al cierre del {{day}}: nada de lo que lee cambió desde su última compilación"
+      "mv_window_unchanged": "La MV '{{mv}}' no se selló al cierre del {{day}}: nada de lo que lee cambió desde su última compilación",
+      "landing_time_pipeline": "La tabla '{{table}}' guarda su hora de llegada en {{column}}, pero su almacén carga el topic por su propia canalización, donde Provisa no ve llegar cada mensaje."
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",

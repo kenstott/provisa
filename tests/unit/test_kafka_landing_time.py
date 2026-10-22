@@ -135,3 +135,45 @@ async def test_the_landing_time_column_is_a_timestamp_column_of_the_table():
         _table("arrived_at")
     with pytest.raises(ValueError, match="not a timestamp"):
         _table("landed_at", data_type="varchar")
+
+
+# -- a store that lands the topic through its own pipeline is refused ---------------------------
+
+_SOURCE = SimpleNamespace(id="feeds", type="kafka", path=None)
+
+
+def _declaring(landing: str | None) -> Table:
+    table = _table("landed_at")
+    table.live.kafka.landing_time_column = landing
+    return table
+
+
+async def test_a_pipeline_landed_table_cannot_declare_a_landing_time(monkeypatch):
+    """No listener fills the column where the store lands the topic itself (REQ-848
+    PIPELINE_LAND): the declaration is refused by name, never kept and left unfilled."""
+    import provisa.events.push_wiring as wiring
+
+    monkeypatch.setattr(wiring, "_lands_by_pipeline", lambda engine, src, tbl: True)
+    refused = wiring.landing_time_refusal(object(), _SOURCE, _declaring("landed_at"))
+    assert refused is not None and "'orders'" in refused and "'landed_at'" in refused
+    # A table declaring none, or one the listener lands, is not refused.
+    assert wiring.landing_time_refusal(object(), _SOURCE, _declaring(None)) is None
+    monkeypatch.setattr(wiring, "_lands_by_pipeline", lambda engine, src, tbl: False)
+    assert wiring.landing_time_refusal(object(), _SOURCE, _declaring("landed_at")) is None
+
+
+async def test_the_admin_save_refuses_it_with_its_code(monkeypatch):
+    import provisa.events.push_wiring as wiring
+    from provisa.api.admin._table_settings import landing_time_refusal
+
+    monkeypatch.setattr(wiring, "_lands_by_pipeline", lambda engine, src, tbl: True)
+    monkeypatch.setattr(
+        "provisa.federation.registry_view.registered_sources",
+        AsyncMock(return_value=[_SOURCE]),
+    )
+    monkeypatch.setattr("provisa.api.app.state.federation_engine", object(), raising=False)
+    refused = await landing_time_refusal(None, _declaring("landed_at"))
+    assert refused is not None and refused.success is False
+    assert refused.code == "schema.landing_time_pipeline"
+    assert refused.params == {"table": "orders", "column": "landed_at"}
+    assert await landing_time_refusal(None, _declaring(None)) is None

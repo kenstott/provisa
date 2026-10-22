@@ -8190,7 +8190,7 @@ The `live` block (LiveDeliveryConfig on Table) is a unified change-feed / CDC ab
 
 **Use case:** A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY, MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll vs CDC" where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution. Optional query_id and outputs enable both low-level table subscriptions and high-level live persisted-query delivery.
 
-**Code:** `provisa/core/models.py`, `provisa/events/push_wiring.py`, `provisa/api/admin/types.py`, `provisa/api/admin/_live_mappers.py`, `provisa/api/admin/_row_mappers.py`, `provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx`, `provisa-ui/src/pages/tables/loadReadFields.tsx`
+**Code:** `provisa/core/models.py`, `provisa/events/push_wiring.py`, `provisa/api/admin/types.py`, `provisa/api/admin/_live_mappers.py`, `provisa/api/admin/_row_mappers.py`, `provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx`, `provisa-ui/src/pages/tables/loadReadFields.tsx`, `provisa/api/admin/_table_settings.py`, `provisa/api/mcp/table_edit.py`, `demo/named/perf/bench/governance.py`
 
 **Tests:** `tests/unit/test_live_delivery_config.py`, `tests/unit/test_kafka_landing_time.py`, `tests/integration/test_provisioning_demo.py`
 

@@ -260,6 +260,8 @@ async def with_carried_settings(
     if carried(inp.cache_ttl):
         updates["cache_ttl"] = cache_ttl_checked(model, inp.cache_ttl)
     staged = model.model_copy(update=updates)
+    if (refusal := await landing_time_refusal(conn, staged)) is not None:
+        raise TableSaveRefused(refusal)
     if "write_grants" in updates:
         try:
             # The table's own rules for its grants: one per role and operation, its columns --
@@ -277,6 +279,30 @@ async def with_carried_settings(
                 write_grant_invalid("; ".join(e["msg"] for e in refused.errors()))
             ) from refused
     return staged
+
+
+async def landing_time_refusal(conn: "Connection", model: "Table") -> MutationResult | None:
+    """REQ-813: a landing-time column is declared only where Provisa's listener lands the topic,
+    the one place it is filled; a table its store lands through its own pipeline is refused."""
+    from provisa.events.push_wiring import landing_time_column_of
+    from provisa.events.push_wiring import landing_time_refusal as refusal_of
+
+    column = landing_time_column_of(model)
+    if column is None:
+        return None
+    from provisa.api.app import state
+    from provisa.federation.registry_view import registered_sources
+
+    [source] = [s for s in await registered_sources(state, conn) if s.id == model.source_id]
+    message = refusal_of(getattr(state, "federation_engine", None), source, model)
+    if message is None:
+        return None
+    return MutationResult(
+        success=False,
+        message=message,
+        code="schema.landing_time_pipeline",
+        params={"table": model.table_name, "column": column},
+    )
 
 
 async def save_carried_after_store(

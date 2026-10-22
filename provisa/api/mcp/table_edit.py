@@ -74,7 +74,10 @@ def _live_input(live: Any) -> Any:
         return None
     kafka = (
         LiveKafkaParamsInput(
-            topic=live.kafka.topic, format=live.kafka.format, key_column=live.kafka.key_column
+            topic=live.kafka.topic,
+            format=live.kafka.format,
+            key_column=live.kafka.key_column,
+            landing_time_column=live.kafka.landing_time_column,  # REQ-813
         )
         if live.strategy == "kafka" and live.kafka is not None
         else None

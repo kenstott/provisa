@@ -447,7 +447,8 @@
       "mv_window_needs_calendar": "MV '{{mv}}' nennt keinen Kalender: Ein zum Geschäftsschluss eines Geschäftstags versiegelter Build braucht einen",
       "version_log_updated": "Versionsprotokoll '{{mv}}' aktualisiert",
       "mv_window_held": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Ein anderer Build davon hält den Anspruch",
-      "mv_window_unchanged": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Nichts, was sie liest, hat sich seit ihrem letzten Build geändert"
+      "mv_window_unchanged": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Nichts, was sie liest, hat sich seit ihrem letzten Build geändert",
+      "landing_time_pipeline": "Tabelle '{{table}}' hält ihre Ankunftszeit in {{column}}, aber ihr Speicher lädt das Topic über seine eigene Pipeline, in der Provisa nicht sieht, wann jede Nachricht ankommt."
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

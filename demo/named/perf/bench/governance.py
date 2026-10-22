@@ -86,7 +86,7 @@ TABLE_FIELDS = (
     "recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
     "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
-    "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn } "
+    "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn landingTimeColumn } "
     "outputs { type topic keyColumn bootstrapServers role } } "
     f"columns {{ {COLUMN_FIELDS} }}"
 )

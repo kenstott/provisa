@@ -447,7 +447,8 @@
       "mv_window_needs_calendar": "物化视图 '{{mv}}' 未指定日历：在营业日结束时封存的构建需要一个日历",
       "version_log_updated": "版本日志 '{{mv}}' 已更新",
       "mv_window_held": "MV '{{mv}}' 未在 {{day}} 的收盘时封存：它的另一次构建持有认领",
-      "mv_window_unchanged": "MV '{{mv}}' 未在 {{day}} 的收盘时封存：自上次构建以来，它读取的内容没有任何变化"
+      "mv_window_unchanged": "MV '{{mv}}' 未在 {{day}} 的收盘时封存：自上次构建以来，它读取的内容没有任何变化",
+      "landing_time_pipeline": "表 '{{table}}' 将到达时间保存在 {{column}} 中，但它的存储通过自己的管道载入该主题，Provisa 看不到每条消息何时到达。"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
