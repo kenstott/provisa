@@ -126,7 +126,7 @@ def source_pg():
 def test_a_landed_never_expiring_source_is_never_contacted_again(source_pg):
     from tests.integration.isolated_server import IsolatedServer
 
-    store = start_local_postgres()
+    store = start_local_postgres(fdws=True)
     try:
         with tempfile.TemporaryDirectory() as workdir:
             path = Path(workdir) / "config.yaml"

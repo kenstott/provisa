@@ -77,7 +77,7 @@ def source_pg():
 def server(source_pg):
     from tests.integration.isolated_server import IsolatedServer
 
-    store = start_local_postgres()
+    store = start_local_postgres(fdws=True)
     try:
         with tempfile.TemporaryDirectory() as workdir:
             path = Path(workdir) / "config.yaml"
@@ -230,7 +230,7 @@ def _boot(workdir: str, config: dict, store) -> object:
 def test_a_slot_left_by_a_config_edited_while_stopped_is_dropped_at_the_next_start(source_pg):
     """The file sets the source off the native signal while no server runs: the next server's
     first wiring finds the slot no native table follows and drops it with its publication."""
-    store = start_local_postgres()
+    store = start_local_postgres(fdws=True)
     try:
         with tempfile.TemporaryDirectory() as workdir:
             first = _boot(workdir, _file_config(source_pg, "native"), store)
