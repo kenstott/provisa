@@ -28,3 +28,15 @@ export function matchesSearch(texts: (string | undefined)[], items: string[]): b
   const hay = texts.filter((t): t is string => !!t).map((t) => t.toLowerCase());
   return items.some((i) => hay.some((h) => h.includes(i)));
 }
+
+/** A page's search over a row's ``texts``: an empty search keeps every row; otherwise a row is kept
+ * when any of the search's items is in any of its texts. The one rule every page-level search bar
+ * follows (FilterInput's pages, the glossary's list and graph). */
+export function matchesQuery(texts: (string | null | undefined)[], query: string): boolean {
+  const items = searchItems(query);
+  if (items.length === 0) return true;
+  return matchesSearch(
+    texts.map((t) => t ?? undefined),
+    items,
+  );
+}

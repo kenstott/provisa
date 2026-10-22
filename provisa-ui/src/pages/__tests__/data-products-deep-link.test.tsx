@@ -103,6 +103,18 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 import { DataProductsPage, EXPANDED_STORAGE_KEY } from "../DataProductsPage";
 import { storageKey as scopedKey } from "../../lib/browserStorage";
 
+describe("the Data Products list's search", () => {
+  it("lists the products matching any word of the search", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
+    await waitFor(() =>
+      expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pet invoices" } });
+    expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument();
+    expect(screen.queryByTestId("data-products-row-workforce_ops")).toBeNull();
+  });
+});
+
 describe("Data Products deep link (REQ-1659)", () => {
   beforeEach(() => {
     localStorage.clear();

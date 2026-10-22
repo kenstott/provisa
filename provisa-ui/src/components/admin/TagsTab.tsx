@@ -43,6 +43,7 @@ import { SortGroupTable } from "../list/SortGroupTable";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
+import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
@@ -103,10 +104,9 @@ export function TagsTab() {
     return counts;
   }, [tagAssignments]);
 
-  const q = search.toLowerCase();
   const filtered = tags
     .filter((tag) => tag.appliesTo.includes(scope))
-    .filter((tag) => tag.id.toLowerCase().includes(q) || tag.description.toLowerCase().includes(q))
+    .filter((tag) => matchesQuery([tag.id, tag.description], search))
     .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);

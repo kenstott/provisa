@@ -66,6 +66,7 @@ import { PageLoading } from "../components/PageLoading";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
+import { matchesQuery } from "../lib/searchItems";
 
 export function CommandsPage() {
   const { t } = useTranslation();
@@ -338,16 +339,12 @@ export function CommandsPage() {
     !domainId || checkedDomains.size === 0 || checkedDomains.has(domainId);
 
   const filteredFunctions = functions.filter(
-    (fn) =>
-      inCheckedDomain(fn.domainId) &&
-      (!cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase())),
+    (fn) => inCheckedDomain(fn.domainId) && matchesQuery([fn.name], cmdSearch),
   );
   const fnTotalPages = Math.max(1, Math.ceil(filteredFunctions.length / PAGE_SIZE));
 
   const filteredWebhooks = webhooks.filter(
-    (wh) =>
-      inCheckedDomain(wh.domainId) &&
-      (!cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase())),
+    (wh) => inCheckedDomain(wh.domainId) && matchesQuery([wh.name], cmdSearch),
   );
   const whTotalPages = Math.max(1, Math.ceil(filteredWebhooks.length / PAGE_SIZE));
 
