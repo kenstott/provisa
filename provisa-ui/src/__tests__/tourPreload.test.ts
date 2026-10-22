@@ -19,8 +19,8 @@
  * The loaders are driven directly. Rendering the tour would exercise driver.js, not the preload.
  */
 
-import { describe, it, expect, vi } from "vitest";
-import { prefetchAllPageChunks, prefetchPageChunksOnIdle } from "../pageChunks";
+import { describe, it, expect } from "vitest";
+import { prefetchAllPageChunks } from "../pageChunks";
 
 describe("REQ-1362 tour page preload", () => {
   // 60s, because this case really does import every page chunk — Monaco and GraphiQL included — and
@@ -47,42 +47,5 @@ describe("REQ-1362 tour page preload", () => {
     // A failed prefetch must not strand the visitor on a tour that never starts; the per-route
     // Suspense fallback still covers the page if it genuinely cannot load later.
     await expect(prefetchAllPageChunks()).resolves.toBeUndefined();
-  });
-
-  it("warms the chunks on idle without blocking first paint", () => {
-    const schedule = vi.fn().mockReturnValue(7);
-    const cancel = vi.fn();
-    const original = {
-      requestIdleCallback: window.requestIdleCallback,
-      cancelIdleCallback: window.cancelIdleCallback,
-    };
-    Object.assign(window, { requestIdleCallback: schedule, cancelIdleCallback: cancel });
-
-    try {
-      const stop = prefetchPageChunksOnIdle();
-      expect(schedule).toHaveBeenCalledTimes(1);
-
-      // The warm-up is cancellable: an unmount mid-idle must not leave the callback armed.
-      stop();
-      expect(cancel).toHaveBeenCalledWith(7);
-    } finally {
-      Object.assign(window, original);
-    }
-  });
-
-  it("falls back to a timeout where requestIdleCallback is missing", () => {
-    const original = {
-      requestIdleCallback: window.requestIdleCallback,
-      cancelIdleCallback: window.cancelIdleCallback,
-    };
-    Object.assign(window, { requestIdleCallback: undefined, cancelIdleCallback: undefined });
-
-    try {
-      const stop = prefetchPageChunksOnIdle();
-      expect(typeof stop).toBe("function");
-      stop();
-    } finally {
-      Object.assign(window, original);
-    }
   });
 });

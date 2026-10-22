@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { lazy, Suspense, useState, useCallback, useEffect } from "react";
+import { Suspense, useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ApolloProvider } from "@apollo/client/react";
@@ -43,73 +43,83 @@ import { fetchSetupStatus } from "./api/setup";
 import { PollyProvider } from "./context/PollyContext";
 import { TourProvider } from "./tour/useTour";
 import { TourAutoStart } from "./tour/TourAutoStart";
-import { prefetchPageChunksOnIdle } from "./pageChunks";
+import { lazyPage, prefetchPageChunksOnIdle } from "./pageChunks";
 import { storedToken } from "./lib/sessionToken";
 import "./App.css";
 
-const SourcesPage = lazy(() =>
+const SourcesPage = lazyPage(() =>
   import("./pages/SourcesPage").then((m) => ({ default: m.SourcesPage })),
 );
-const TablesPage = lazy(() =>
+const TablesPage = lazyPage(() =>
   import("./pages/TablesPage").then((m) => ({ default: m.TablesPage })),
 );
-const RelationshipsPage = lazy(() =>
+const RelationshipsPage = lazyPage(() =>
   import("./pages/RelationshipsPage").then((m) => ({ default: m.RelationshipsPage })),
 );
-const SecurityRolesPage = lazy(() =>
+const SecurityRolesPage = lazyPage(() =>
   import("./pages/SecurityPage").then((m) => ({ default: m.SecurityRolesPage })),
 );
-const SecurityRlsPage = lazy(() =>
+const SecurityRlsPage = lazyPage(() =>
   import("./pages/security/SecurityRlsPage").then((m) => ({ default: m.SecurityRlsPage })),
 );
-const QueryPage = lazy(() => import("./pages/QueryPage").then((m) => ({ default: m.QueryPage })));
-const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })));
-const CommandsPage = lazy(() =>
+const QueryPage = lazyPage(() =>
+  import("./pages/QueryPage").then((m) => ({ default: m.QueryPage })),
+);
+const AdminPage = lazyPage(() =>
+  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })),
+);
+const CommandsPage = lazyPage(() =>
   import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })),
 );
-const LineagePage = lazy(() =>
+const LineagePage = lazyPage(() =>
   import("./pages/LineagePage").then((m) => ({ default: m.LineagePage })),
 ); // REQ-1160/1161
-const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })));
-const MetricsPage = lazy(() =>
+const ViewsPage = lazyPage(() =>
+  import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })),
+);
+const MetricsPage = lazyPage(() =>
   import("./pages/MetricsPage").then((m) => ({ default: m.MetricsPage })),
 );
-const DataProductsPage = lazy(() =>
+const DataProductsPage = lazyPage(() =>
   import("./pages/DataProductsPage").then((m) => ({ default: m.DataProductsPage })),
 ); // REQ-1634
-const RequestsPage = lazy(() =>
+const RequestsPage = lazyPage(() =>
   import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })),
 );
-const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
-const OrgWelcomePage = lazy(() =>
+const DocsPage = lazyPage(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
+const OrgWelcomePage = lazyPage(() =>
   import("./pages/OrgWelcomePage").then((m) => ({ default: m.OrgWelcomePage })),
 );
 // REQ-2006: the live demos page's "Open live demo", served signed in or not.
-const DemoOpenPage = lazy(() =>
+const DemoOpenPage = lazyPage(() =>
   import("./pages/demos/DemoOpenPage").then((m) => ({ default: m.DemoOpenPage })),
 );
-const LandingPage = lazy(() =>
+const LandingPage = lazyPage(() =>
   import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })),
 );
-const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })));
-const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
-const SetupPage = lazy(() => import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })));
-const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
-const SchemaExplorer = lazy(() =>
+const GraphPage = lazyPage(() =>
+  import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })),
+);
+const SqlPage = lazyPage(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
+const SetupPage = lazyPage(() =>
+  import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })),
+);
+const TeamPage = lazyPage(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
+const SchemaExplorer = lazyPage(() =>
   import("./pages/SchemaExplorer").then((m) => ({ default: m.SchemaExplorer })),
 );
-const NlPage = lazy(() => import("./pages/NlPage").then((m) => ({ default: m.NlPage })));
-const GrpcPage = lazy(() => import("./pages/GrpcPage").then((m) => ({ default: m.GrpcPage })));
-const JsonApiPage = lazy(() =>
+const NlPage = lazyPage(() => import("./pages/NlPage").then((m) => ({ default: m.NlPage })));
+const GrpcPage = lazyPage(() => import("./pages/GrpcPage").then((m) => ({ default: m.GrpcPage })));
+const JsonApiPage = lazyPage(() =>
   import("./pages/JsonApiPage").then((m) => ({ default: m.JsonApiPage })),
 );
-const OpenApiPage = lazy(() =>
+const OpenApiPage = lazyPage(() =>
   import("./pages/OpenApiPage").then((m) => ({ default: m.OpenApiPage })),
 );
-const DataScienceHost = lazy(() =>
+const DataScienceHost = lazyPage(() =>
   import("./pages/DataSciencePage").then((m) => ({ default: m.DataScienceHost })),
 );
-const McpExplorePage = lazy(() =>
+const McpExplorePage = lazyPage(() =>
   import("./pages/McpExplorePage").then((m) => ({ default: m.McpExplorePage })),
 );
 
@@ -201,8 +211,9 @@ function App() {
       });
   }, []);
 
-  // Prewarm all route chunks (incl. Monaco) once the app is idle, so the first navigation to
-  // each Explore surface is instant instead of blocking on a lazy chunk load.
+  // Prewarm all route chunks (incl. Monaco) once the opened route's page has arrived and the app is
+  // idle, so the first navigation to each Explore surface is instant instead of blocking on a lazy
+  // chunk load -- and never ahead of the page the visitor opened (pageChunks.ts).
   useEffect(() => prefetchPageChunksOnIdle(), []);
 
   // Read on every render (handleLoginSuccess bumps authVersion → re-render → re-read) so the
