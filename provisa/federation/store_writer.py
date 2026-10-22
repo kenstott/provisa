@@ -97,6 +97,7 @@ async def reconcile_table(
     table: str,
     columns: list[tuple[str, str]],
     pk_columns: list[str] | None = None,
+    key_after_landing: bool = False,
 ) -> str:
     """Converge the store's landing table to the config schema (REQ-846) — a reconcile, not a blind
     create, so the store SURVIVES a restart:
@@ -105,6 +106,10 @@ async def reconcile_table(
     - schema matches     -> KEEP (landed data intact — the restart case).
     - schema drifted      -> RECREATE (drop+create; a table/engine config change is authoritative,
       landed data is re-landed on the next refresh).
+
+    ``key_after_landing``: the table is a replica, built with no key and keyed once it has landed
+    (REQ-2015, ``replica_target.PostgresIndexer``), so a replica with the columns and no key yet
+    is kept: dropping it would empty a landed replica its record still calls built.
 
     Drift is a change to the column SET/order or the PRIMARY KEY vs config (design-driven). Upstream *source* drift
     (the live source's schema moving) is a separate land-time concern (best-effort name-map). Returns
@@ -133,6 +138,8 @@ async def reconcile_table(
         have_pk = [c["column_name"] for c in existing if c["is_primary_key"]]
         if have == want and sorted(have_pk) == sorted(pk_columns or ()):
             return "kept"
+        if have == want and key_after_landing and not have_pk:
+            return "kept"  # its key is built after it lands (REQ-2015)
         # A landing table this old can have picked up a dependent object over its lifetime (a FK
         # from another landed table, a view) that a plain DROP refuses ("... because other objects
         # depend on it") — verified live via a real DependentObjectsStillExistError reconciling

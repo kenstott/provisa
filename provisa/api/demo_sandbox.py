@@ -123,7 +123,7 @@ async def _template_ready(demo: PublishedDemo) -> None:
         from provisa.api.demo_templates import _replica_progress
 
         rt = await ensure_org_runtime(demo.template_org)
-        landed, failed, declared = await _replica_progress(rt)
+        landed, failed, declared, _waiting = await _replica_progress(rt)
         ready = landed >= declared and not failed
     if not ready:
         from provisa.api.demo_templates import template_builds

@@ -1011,8 +1011,9 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     from provisa.api.demo_replicas import export_seed
 
     exporting = seeding_release()
+    said = None
     while True:
-        landed, failed, declared = await _replica_progress(rt)
+        landed, failed, declared, waiting = await _replica_progress(rt)
         if failed:
             log.error("demo template %s: replicas failed to land: %s", demo.name, failed)
             return False
@@ -1020,6 +1021,15 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         # each one has a landed replica, whether or not convergence has asked for all yet.
         if landed >= declared:
             break
+        if waiting != said:
+            said = waiting
+            log.warning(
+                "demo template %s: %d of %d replicas landed, waiting on %s",
+                demo.name,
+                landed,
+                declared,
+                waiting,
+            )
         await asyncio.sleep(_LANDED_POLL_S)
     log.info("demo template %s: every replica landed", demo.name)
     # REQ-1942, REQ-2053: its Test (synthetic) environments, generated once here (or adopted from
@@ -1036,11 +1046,29 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         )
     finally:
         reset_current_org(token)
-    from provisa.api.demo_region_seed import regional, views_built_here, views_kept_here
+    from provisa.api.demo_region_seed import (
+        regional,
+        views_built_here,
+        views_kept_here,
+        views_waiting_here,
+    )
 
     if exporting and regional():
         # REQ-2068: a region's seed carries its views too; no node of it builds them after.
-        while await views_built_here(org_id) < views_kept_here(template_seed(org_id)):
+        said = None
+        while (built := await views_built_here(org_id)) < (
+            kept := views_kept_here(template_seed(org_id))
+        ):
+            waiting = await views_waiting_here(org_id)
+            if waiting != said:
+                said = waiting
+                log.warning(
+                    "demo template %s: %d of %d views built in this region, waiting on %s",
+                    demo.name,
+                    built,
+                    kept,
+                    waiting,
+                )
             await asyncio.sleep(_LANDED_POLL_S)
         await export_seed(org_id, demo.directory)
         log.info("demo template %s: region seed written to %s", demo.name, demo.directory)
@@ -1073,22 +1101,39 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     return True
 
 
-async def _replica_progress(rt) -> tuple[int, list[str], int]:
-    """How many of the template's replicas have landed, the tables whose last build failed, and
-    how many replicated tables its demo's configuration declares (replicated_tables: not its
-    views, and not the built-in tables every org registers)."""
+async def _replica_progress(rt) -> tuple[int, list[str], int, str]:
+    """How many of the template's replicas have landed, the tables whose last build failed, how
+    many replicated tables its demo's configuration declares (replicated_tables: not its views,
+    and not the built-in tables every org registers), and what it waits on, table by table."""
     from provisa.federation import replica_state
 
-    from provisa.api.demo_replicas import landed_here
+    from provisa.api.demo_replicas import LANDED, landing_here
 
     from provisa.api.demo_region_seed import kept_here
 
-    declared = len(kept_here(replicated_tables(template_seed(rt.org_id))))
+    tables = kept_here(replicated_tables(template_seed(rt.org_id)))
     async with rt.tenant_db.acquire() as conn:
         _recorded, failed = await replica_state.progress(conn)
     # Landed: recorded as built for this store AND held by it, rows and all.
-    landed = await landed_here(rt.org_id)
-    return landed, failed, declared
+    landing = await landing_here(rt.org_id)
+    landed = sum(1 for state in landing.values() if state == LANDED)
+    return landed, failed, len(tables), waiting_on(tables, landing)
+
+
+def waiting_on(tables: list[Any], landing: dict[str, str]) -> str:
+    """What a template's replicas of ``tables`` wait on, by table: each one's landing
+    (demo_replicas.landing) that is not landed, or that no build of it is recorded."""
+    from provisa.api.demo_replicas import LANDED
+    from provisa.federation.replica_address import replica_table_name
+
+    out = []
+    for t in tables:
+        state = landing.get(
+            replica_table_name(t.source_id, t.schema_name, t.table_name), "no build recorded"
+        )
+        if state != LANDED:
+            out.append(f"{t.source_id}.{t.schema_name}.{t.table_name}: {state}")
+    return "; ".join(out)
 
 
 _build_tasks: set = set()

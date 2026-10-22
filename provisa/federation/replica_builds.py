@@ -52,6 +52,8 @@ _PASS_SECONDS = 2
 #: pass at once. Each environment's replicas have their own build state (its tenant schema), so
 #: each has its own runner; one keyed by org alone was replaced by the next environment built (#273).
 _runners: dict[tuple[str | None, str], ReplicaRunner] = {}
+#: The orgs a build was asked of with no runner here, said once each (kick).
+_no_runner_said: set[tuple[str | None, str]] = set()
 
 
 class ReplicaTableGone(BuildFailure, LookupError):
@@ -1152,6 +1154,16 @@ def kick(org_id: str | None, env: str | None = None) -> None:
     from provisa.core.connection_loop import spawn_background
     from provisa.core.request_context import active_env
 
-    runner = _runners.get((org_id, env or active_env()))
-    if runner is not None:
-        spawn_background(runner.run_pass(), name="replica-builds:kick")
+    scope = (org_id, env or active_env())
+    runner = _runners.get(scope)
+    if runner is None:
+        if scope not in _no_runner_said:
+            _no_runner_said.add(scope)
+            log.warning(
+                "replica builds of org %s (environment %s) requested with no build runner in this "
+                "process: another node's pass builds them",
+                *scope,
+            )
+        return
+    _no_runner_said.discard(scope)
+    spawn_background(runner.run_pass(), name="replica-builds:kick")

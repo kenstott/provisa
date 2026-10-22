@@ -618,7 +618,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             return "created"
         have_cols = self._existing_columns(cur, schema, table)
         have_pk = self._existing_pk(cur, schema, table)
-        if have_cols == want_cols and sorted(have_pk) == sorted(want_pk):
+        if have_cols == want_cols and sorted(have_pk) in (sorted(want_pk), []):
+            # A replica is built with no key and keyed once it has landed (REQ-2015): one with
+            # the columns and no key yet is a landed replica, never one to empty.
             return "kept"
         cur.execute(f'DROP TABLE "{schema}"."{table}"')
         cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
