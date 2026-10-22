@@ -146,12 +146,31 @@ def test_outside_provisa_the_client_still_needs_its_address(monkeypatch):
 # -- dq's answers ---------------------------------------------------------------------------------
 
 
+#: Where the org keeps every registered table's rows: never a name the role's SQL may use.
+_PHYSICAL = "org_acme"
+
+
+def _model_table(domain, name, alias=None):
+    """A table of the model as compiler.context builds it: its domain, its alias as its display
+    name, and its field name ``<domain>__<table>``."""
+    return SimpleNamespace(
+        domain_id=domain, display_name=alias or "", field_name=f"{domain}__{name}"
+    )
+
+
 @pytest.fixture
 def meta(monkeypatch):
     """The meta domain as a role reads it: each governed read answered by the first entry whose
-    text is in its SQL."""
+    text is in its SQL; each registered table's row (in its physical schema) found in the model
+    by its id."""
     reads: list[tuple[str, str]] = []
     tables: list[tuple[str, list[dict]]] = []
+    model = {
+        7: _model_table("sales", "orders"),
+        11: _model_table("dq", "orders_soda_dq", "orders_soda"),
+        12: _model_table("dq", "orders_gx_dq", "orders_gx"),
+        21: _model_table("p", "orders_7_profile_columns"),
+    }
 
     async def read(sql, role):
         reads.append((sql, role))
@@ -161,15 +180,16 @@ def meta(monkeypatch):
         return []
 
     monkeypatch.setattr(dq, "_read", read)
-    return SimpleNamespace(reads=reads, tables=tables)
+    monkeypatch.setattr(dq, "_meta", lambda row: model[int(row["id"])])
+    return SimpleNamespace(reads=reads, tables=tables, model=model)
 
 
 def _checker(id_, name, *, ran=True, product=None):
     return {
         "id": id_,
         "domain_id": "dq",
-        "schema_name": "dq",
-        "table_name": name,
+        "schema_name": _PHYSICAL,
+        "table_name": f"{name}_dq",
         "alias": name,
         "description": f"{name} checks",
         "dq_contract": "checks for orders: []",
@@ -183,19 +203,26 @@ def _checker(id_, name, *, ran=True, product=None):
 async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles(meta):
     meta.tables += [
         ("WHERE domain_id = 'sales'", [
-            {"id": 7, "domain_id": "sales", "schema_name": "sales", "table_name": "orders", "alias": "orders"}
+            {"id": 7, "domain_id": "sales", "schema_name": _PHYSICAL, "table_name": "orders", "alias": None}
         ]),
         ("FROM meta.product_checks", [{"checker_table_id": 11, "state": "expectation"}]),
         ("checked_table_id = 7", [_checker(11, "orders_soda"), _checker(12, "orders_gx", ran=False)]),
-        ("dq.orders_soda WHERE outcome <> 'pass'", [{"check_name": "row_count > 0", "outcome": "fail"}]),
+        ('"dq"."orders_soda" WHERE outcome <> \'pass\'', [{"check_name": "row_count > 0", "outcome": "fail"}]),
         ("profiled_table_id = 7", [
-            {"id": 21, "domain_id": "p", "schema_name": "p", "table_name": "orders_7_profile_columns", "alias": None}
+            {"id": 21, "domain_id": "p", "schema_name": _PHYSICAL, "table_name": "orders_7_profile_columns", "alias": None}
         ]),
-        ("p.orders_7_profile_columns WHERE run_time", [{"run_id": "r9", "column": "amount", "null_share": 0.0}]),
+        ('"p"."orders_7_profile_columns" WHERE run_time', [{"run_id": "r9", "column": "amount", "null_share": 0.0}]),
     ]  # fmt: skip
     found = await dq.dataset("sales.orders", "analyst", view_product="p1")
     assert found["dataset"] == "sales.orders" and found["dataset_id"] == 7
     soda, gx = found["checker_tables"]
+    # Named as the model names them -- domain and alias -- in what dq answers and in what it reads:
+    # a physical name is refused to a role whose domain access is not every domain.
+    assert [c["checker_table"] for c in found["checker_tables"]] == [
+        "dq.orders_soda",
+        "dq.orders_gx",
+    ]
+    assert not [sql for sql, _role in meta.reads if _PHYSICAL in sql]
     assert soda["latest_run"]["outcome"] == "fail"
     assert soda["latest_run"]["failing_checks"] == [
         {"check_name": "row_count > 0", "outcome": "fail"}
@@ -215,6 +242,8 @@ async def test_a_dataset_the_role_cannot_see_is_none(meta):
 
 @pytest.mark.asyncio
 async def test_a_product_answers_each_check_by_how_it_shows_it(meta):
+    meta.model[11] = _model_table("dq", "out_soda_dq", "out_soda")
+    meta.model[12] = _model_table("dq", "stale_soda_dq", "stale_soda")
     meta.tables += [
         ("FROM meta.data_products", [{"id": "p1"}]),
         ("FROM meta.product_checks", [
