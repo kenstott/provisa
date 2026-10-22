@@ -91,7 +91,9 @@ export abstract class BaseScene<H> {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    // The theme's colours are sRGB (CSS tokens), which three.js takes into linear space; the output
+    // is converted back, or every colour lands far darker than its token and the stage reads black.
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
@@ -222,8 +224,8 @@ export abstract class BaseScene<H> {
     this.renderer.setClearColor(th.canvas);
     this.hemi.color.set(th.dark ? 0xcfe0ff : 0xffffff);
     this.hemi.groundColor.set(th.ground);
-    this.hemi.intensity = th.dark ? 0.55 : 0.75;
-    this.sun.intensity = th.dark ? 0.95 : 0.8;
+    this.hemi.intensity = th.dark ? 0.85 : 0.8;
+    this.sun.intensity = th.dark ? 1.1 : 0.85;
   }
 
   private pick(cx: number, cy: number): H | null {
