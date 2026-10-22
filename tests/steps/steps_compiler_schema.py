@@ -897,7 +897,6 @@ from provisa.security.row_filters import resolve_table_rules  # noqa: E402
 from tests.helpers import governed_for_role  # noqa: E402
 from provisa.compiler.sql_gen import compile_query  # noqa: E402
 from provisa.compiler.context import build_context  # noqa: E402
-from provisa.cypher.rewrites import _coerce_ts_literals  # noqa: E402
 from provisa.grpc.proto_gen import generate_proto  # noqa: E402
 
 scenarios("../features/REQ-008.feature")
@@ -1062,30 +1061,36 @@ def req403_assert(shared_data):
 # ---------------------------------------------------------------------------
 
 
+def _translated_where(query: str) -> str:
+    """The Trino WHERE ``query`` over the Event node translates to."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.translator import cypher_to_sql
+
+    sql, _params, _vars = cypher_to_sql(
+        parse_cypher(query), _build_cypher_label_map_for_event(), {}
+    )
+    return sql.sql(dialect="trino").split(" WHERE ", 1)[1]
+
+
 @given("a Cypher WHERE clause with an ISO 8601 datetime string literal")
 def req409_where(shared_data):
-    shared_data["req409_where"] = "e.created_at = '2024-01-15T00:00:00'"
+    shared_data["req409_query"] = _build_cypher_where_with_datetime("2024-01-15T00:00:00")
 
 
 @when("the translator processes it")
 def req409_process(shared_data):
-    shared_data["req409_out"] = _coerce_ts_literals(shared_data["req409_where"])
+    shared_data["req409_out"] = _translated_where(shared_data["req409_query"])
 
 
 @then("it wraps the literal as TIMESTAMP '...' before SQLGlot parsing")
 def req409_assert(shared_data):
-    out = shared_data["req409_out"]
-    assert out == "e.created_at = TIMESTAMP '2024-01-15T00:00:00'"
-    assert "TIMESTAMP '2024-01-15T00:00:00'" in out
-
-    # The coerced literal must be parseable by SQLGlot as a real TIMESTAMP.
-    import sqlglot
-
-    parsed = sqlglot.parse_one(f"SELECT * FROM t WHERE {out}", read="trino")
-    assert "TIMESTAMP" in parsed.sql(dialect="trino").upper()
-
+    # The literal compares as the timestamp it writes, on the engine too.
+    assert (
+        shared_data["req409_out"] == "e.\"created_at\" = CAST('2024-01-15T00:00:00' AS TIMESTAMP)"
+    )
     # A plain non-datetime string literal is left untouched.
-    assert _coerce_ts_literals("e.name = 'alice'") == "e.name = 'alice'"
+    plain = _translated_where("MATCH (e:Event) WHERE e.name = 'alice' RETURN e.name")
+    assert plain == "e.\"name\" = 'alice'"
 
 
 # ---------------------------------------------------------------------------
