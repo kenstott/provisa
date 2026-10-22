@@ -29,6 +29,9 @@ class _Cursor:
     def __exit__(self, *exc):
         return False
 
+    def parse(self, _sql):  # a statement is described before it runs; this one answers no rows
+        pass
+
     def execute(self, sql, params, **kwargs):
         self._seen.append(kwargs)
 

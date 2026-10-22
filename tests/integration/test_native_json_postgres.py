@@ -61,7 +61,8 @@ _COLUMNS = [
         "seen_tz",
         "timestamptz[]",
         "ARRAY[TIMESTAMPTZ '2026-10-09 12:34:56.123456+02']",
-        (1, "timestamp", "timestamp with time zone[]"),
+        # REQ-2050: an instant's element is timestamptz, written in the timestamp form, in UTC.
+        (1, "timestamptz", "timestamp with time zone[]"),
         ["2026-10-09T10:34:56.123456"],  # the same instant, in UTC
     ),
     ("blobs", "bytea[]", "ARRAY['\\x00ff'::bytea]", (1, "bytea", "bytea[]"), ["\\x00ff"]),

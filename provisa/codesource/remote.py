@@ -10,8 +10,8 @@
 
 """A code source that runs on a remote host (REQ-2098): Provisa's side of the connection.
 
-The host is a container serving the source's code on one port over mutual TLS
-(provisa/python/remote_host.py). Provisa dials it -- each Provisa process its own connection, held
+The host is a container serving the source's code on one port over mutual TLS, through the front
+end every built image runs (provisa/codehost/front.py). Provisa dials it -- each Provisa process its own connection, held
 in its worker pool as a local worker is -- and checks its hello as it checks a local host's.
 
 Trust both ways is set up once, by pairing: the operator gives the source the code the container
@@ -151,6 +151,17 @@ def _dial(
     return conn
 
 
+def host_certificate(
+    address: str, port: int, pin: str, identity: Identity, timeout: float = 10.0
+) -> str:
+    """REQ-2100: the paired host's certificate (PEM), checked against its ``pin``: what an engine
+    attaching the host verifies it by (sslmode=verify-ca), as Provisa's own dials do by the pin."""
+    with _dial(address, port, pin, identity, timeout) as conn:
+        der = conn.getpeercert(binary_form=True)
+    assert der is not None  # _dial checked it against the pin
+    return ssl.DER_cert_to_PEM_cert(der)
+
+
 def pair(address: str, port: int, code: str, identity: Identity, timeout: float = 10.0) -> str:
     """Pair with the remote host at ``address:port`` using its pairing ``code``: it keeps
     ``identity``'s certificate as Provisa's. The host's fingerprint, to pin."""
@@ -221,6 +232,8 @@ class RemoteWorker(Worker):
         conn.settimeout(None)
         self._conn = conn
         self.exports = list(hello.get("exports") or [])
+        #: REQ-2100: the code's name tables, as the image carries them (provisa/codesource/names.py).
+        self.names = dict(hello.get("names") or {})
         threading.Thread(
             target=self._read, name=f"code-remote-{self.source_id}", daemon=True
         ).start()

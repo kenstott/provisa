@@ -920,7 +920,7 @@ def test_a_role_sets_meta_role_is_built_in_the_environment_the_request_names(mon
     async def runtime(org_id, env=None):
         runtimes.append((org_id, env))
 
-    async def caps(_identity, _org):
+    async def caps(_identity, _org, _claims=None):
         return set()
 
     def meta_role(acting_set, org_binding, qualifiers=()):
@@ -976,7 +976,7 @@ def test_an_environment_the_request_cannot_be_served_by_is_refused_before_any_ro
             raise getattr(env_routing, refusal)(f"org 'acme' cannot serve {requested!r}")
         return "prod"
 
-    async def caps(_identity, _org):
+    async def caps(_identity, _org, _claims=None):
         return set()
 
     monkeypatch.setattr("provisa.api.env_routing.resolve_selected_env", selected)
@@ -1006,3 +1006,48 @@ def test_an_environment_the_request_cannot_be_served_by_is_refused_before_any_ro
     assert resp.json()["error"]["code"] == code
     assert "'gone'" in resp.json()["error"]["message"]
     assert built == []
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "status"), [(["environment_switch"], 200), (["query_development"], 403)]
+)
+def test_the_right_to_a_named_environment_is_judged_by_the_roles_the_org_assigns(
+    monkeypatch, capabilities, status
+):
+    """REQ-1573: a bearer token carries no roles; the member's rights come from their assignments
+    in the org. The environment the request names is judged by those, once read: a member whose
+    role carries environment_switch is served it, one whose role does not is refused by name, and
+    nothing is built in it then."""
+    from provisa.api import env_routing
+
+    runtimes: list[tuple] = []
+
+    async def selected(_admin, _org, _identity, requested, caps):
+        if requested is not None and caps is not None and "environment_switch" not in caps:
+            raise env_routing.EnvironmentRightError(
+                f"being served by environment {requested!r} requires the 'environment_switch' "
+                "capability"
+            )
+        return requested or "prod"
+
+    async def runtime(org_id, env=None):
+        runtimes.append((org_id, env))
+
+    async def org_roles(_org):
+        return {"member": {"id": "member", "capabilities": capabilities}}
+
+    monkeypatch.setattr("provisa.api.env_routing.resolve_selected_env", selected)
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", runtime, raising=False)
+    monkeypatch.setattr("provisa.auth.middleware._org_roles", org_roles)
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "member", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
+        "/test", headers={**_auth_in("u1", "acme"), "x-provisa-env": "qa"}
+    )
+    assert resp.status_code == status, resp.text
+    if status == 403:
+        assert resp.json()["error"]["code"] == "env.switch_forbidden"
+        assert ("acme", "qa") not in runtimes
+    else:
+        assert ("acme", "qa") in runtimes

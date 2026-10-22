@@ -55,3 +55,14 @@ def test_each_control_plane_is_its_own(embedded_postgres, control_plane_template
 async def _add_domain(db, domain_id: str) -> None:
     async with db.acquire() as conn:
         await conn.execute_core(domains.insert().values(id=domain_id, description=""))
+
+
+def test_the_template_is_built_from_inside_a_running_event_loop(embedded_postgres):
+    """An async fixture that starts a server with a control plane of its own builds the template
+    on its loop (test_dq_scan_history_e2e[duckdb]): the build runs on a thread of its own."""
+    from tests.pg_control_plane import TEMPLATE, build_template
+
+    async def _inside_a_loop() -> str:
+        return build_template(embedded_postgres)
+
+    assert asyncio.run(_inside_a_loop()) == TEMPLATE

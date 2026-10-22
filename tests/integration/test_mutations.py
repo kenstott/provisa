@@ -77,7 +77,12 @@ def _build_schema_and_ctx():
             _col("status", "varchar(20)", nullable=True),
         ],
     }
-    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ALL_DATA_CAPABILITIES,
+        "domain_access": ["*"],
+    }
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,
