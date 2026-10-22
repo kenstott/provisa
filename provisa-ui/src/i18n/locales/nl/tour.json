@@ -83,7 +83,7 @@
       },
       "step3": {
         "title": "73 brontypen, 14 categorieën",
-        "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
+        "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Abonnementen, RDBMS, Cloud-datawarehouse, Analytics, Data lake, NoSQL, Code-resolvers, Grafen, Bestanden, API, Streaming, Enterprise, Datakwaliteit, Overig</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
       "stepBuildSource": {
         "title": "Een bron, live toegevoegd",

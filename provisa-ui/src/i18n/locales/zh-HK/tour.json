@@ -83,7 +83,7 @@
       },
       "step3": {
         "title": "73 種數據來源類型，14 個類別",
-        "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
+        "description": "一個選擇器按類別列出所有類型：<strong>訂閱、RDBMS、雲端數據倉庫、分析、數據湖、NoSQL、代碼解析器、圖、檔案、API、串流、企業、數據質素、其他</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
       "stepBuildSource": {
         "title": "即場加入一個數據源",
