@@ -1652,6 +1652,8 @@ Für Google-Cloud-Quellen setzen Sie `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `PROVISA_DATA_DIR` | `~/.provisa` | Datenverzeichnis für den eingebetteten DuckDB-Store |
 | `TRINO_HOST` | `localhost` | Trino-Coordinator-Host |
 | `TRINO_PORT` | `8080` | Trino-Coordinator-HTTP-Port |
+| `PROVISA_ENGINE_FILES_GID` | `1000` | Gruppe, als die Trino seine geheimen Dateien liest (die SASL-Einstellungen einer Kafka-Quelle, den Client-Schlüssel eines Code-Hosts), wenn Provisa weder als root noch als Benutzer von Trino läuft, wie eine native App neben dem Container von Trino. Der Benutzer von Provisa muss ihr angehören, sonst wird die Datei mit Namen abgelehnt. |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | Dasselbe für den Server einer Postgres-Engine, der den Client-Schlüssel eines Code-Hosts liest |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Pfad zur GCP-Service-Account-Schlüssel-JSON (BigQuery-Engine/-Quelle) |
 | `GOOGLE_CLOUD_PROJECT` | — | Standard-GCP-Projekt (BigQuery; wird von der URL überschrieben) |
 | `FABRIC_SQL_SERVER` | — | Fabric-Warehouse-SQL-Endpunkt (Alternative zu `PROVISA_ENGINE_URL`) |
