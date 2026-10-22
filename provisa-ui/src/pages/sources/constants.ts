@@ -232,14 +232,6 @@ export const KAFKA_AUTH_TYPES = [
   { value: "sasl_scram_512", label: "SASL/SCRAM-SHA-512" },
 ];
 
-export const NAMING_CONVENTIONS = [
-  { value: "", label: "Inherit (global)" },
-  { value: "none", label: "none" },
-  { value: "snake_case", label: "snake_case" },
-  { value: "camelCase", label: "camelCase" },
-  { value: "PascalCase", label: "PascalCase" },
-];
-
 export const CATEGORIES = [...new Set(SOURCE_TYPES.map((s) => s.category))];
 
 // File-based source types (path only, no host/port/auth)

@@ -24631,7 +24631,7 @@
     Reconciled with REQ-824: Debezium/Kafka delta-transport (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id)
     is inherited from Source.cdc, entered once per source and NOT repeated in per-table debezium params.
     query_id and outputs are optional so `live` covers both raw table change-feeds and live persisted-query
-    output fan-out. Debezium topic names are derived from the source transport: {topic_prefix}.{schema}.{table}.'
+    output fan-out. Debezium topic names are derived from the source transport: {topic_prefix}.{schema}.{table}. (Amended 2026-10-21, LANDING TIME:) A live Kafka table may declare a landing-time column (kafka.landing_time_column), one of its timestamp columns. Provisa fills it with the time it lands each message, stamped as mail landing stamps its rows: one stamp per landed batch, each later than the last. It is when the row was recorded in Provisa, whatever time the message carries, so a view over the table can declare it as its recorded_time (REQ-2109). The table form offers it among the topic''s settings.'
   use_case: A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY,
     MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll
     vs CDC" where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution.
@@ -24639,8 +24639,19 @@
     delivery.
   code:
   - provisa/core/models.py
+  - provisa/events/push_wiring.py
+  - provisa/api/admin/types.py
+  - provisa/api/admin/_live_mappers.py
+  - provisa/api/admin/_row_mappers.py
+  - provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx
+  - provisa-ui/src/pages/tables/loadReadFields.tsx
+  - provisa/api/admin/_table_settings.py
+  - provisa/api/mcp/table_edit.py
+  - demo/named/perf/bench/governance.py
   tests:
   - tests/unit/test_live_delivery_config.py
+  - tests/unit/test_kafka_landing_time.py
+  - tests/integration/test_provisioning_demo.py
   since: 2026-07
   related_reqs:
   - REQ-565
@@ -36838,25 +36849,7 @@
   feature: lineage-and-provenance-point-in-time
   priority: SHOULD
   type: behavioral
-  description: 'A materialized view''s time-travel capability is a property of its DEFINITION, guaranteed
-    on any materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY: a version, once written, is never updated or deleted (no valid_to write-back), so it works on engines
-    that cannot cheaply UPDATE a federated store. Each refresh appends one of two ways: `snapshot` appends
-    the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes
-    as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys, never folded row-by-row in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest batch for
-    snapshot; a ROW_NUMBER window per entity key for delta), so consumer-facing `as_of` semantics are
-    identical across every substrate. On Iceberg each append is exactly one snapshot (REQ-844). Declared
-    end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal
-    -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of` as a query-language argument
-    that routes bitemporal-MV reads through reconstruction is tracked as REQ-1163 (the consumer query
-    surface, analogous to REQ-372 for sources). (Amended 2026-10-16, DECLARED IN CONFIG AND CARRIED
-    BY A DEMO BUNDLE:) a config.yaml view declares it as bitemporal_mode and bitemporal_key. A view''s
-    history is its append log and no rebuild from its sources gives it back, so a named demo''s
-    bundle carries it: the build writes each bitemporal view''s append log, as its setup left it,
-    beside the seed (seeded/views.duckdb, seeded/views.json); the demo''s template copies it into
-    its own store when its runtime is built, before any refresh of it; and each sandbox is given the
-    template''s. A refresh over sources unchanged since appends nothing, so the history is the
-    view''s own wherever the demo runs. A bitemporal view the setup never built fails the build by
-    name.'
+  description: "A materialized view's time-travel capability is a property of its DEFINITION, guaranteed on any materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY: a version, once written, is never updated or deleted (no valid_to write-back), so it works on engines that cannot cheaply UPDATE a federated store. [SUPERSEDED by REQ-2109, 2026-10-20 -- no mode is declared; Provisa picks the mechanism from business_key, valid_time and recorded_time. Kept here for history; do not implement against it.] Each refresh appends one of two ways: `snapshot` appends the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys, never folded row-by-row in Provisa. [END SUPERSEDED BLOCK] \"As of\" history is DERIVED at read time from the immutable append log (latest batch for snapshot; a ROW_NUMBER window per entity key for delta), so consumer-facing `as_of` semantics are identical across every substrate. On Iceberg each append is exactly one snapshot (REQ-844). [SUPERSEDED by REQ-2109, 2026-10-20 -- declared as business_key, valid_time and recorded_time. Kept here for history; do not implement against it.] Declared end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal -> refresh_mv) with a UI control in TableEditForm. [END SUPERSEDED BLOCK] NOTE: exposing `as_of` as a query-language argument that routes bitemporal-MV reads through reconstruction is tracked as REQ-1163 (the consumer query surface, analogous to REQ-372 for sources). (Amended 2026-10-16, DECLARED IN CONFIG AND CARRIED BY A DEMO BUNDLE:) [SUPERSEDED by REQ-2109, 2026-10-20 -- a config.yaml table or view declares business_key, valid_time and recorded_time. Kept here for history; do not implement against it.] a config.yaml view declares it as bitemporal_mode and bitemporal_key. [END SUPERSEDED BLOCK] A view's history is its append log and no rebuild from its sources gives it back, so a named demo's bundle carries it: the build writes each bitemporal view's append log, as its setup left it, beside the seed (seeded/views.duckdb, seeded/views.json); the demo's template copies it into its own store when its runtime is built, before any refresh of it; and each sandbox is given the template's. A refresh over sources unchanged since appends nothing, so the history is the view's own wherever the demo runs. A bitemporal view the setup never built fails the build by name. (Amended 2026-10-20, THREE DECLARATIONS, REQ-2109:) a view or a table keeps its history by declaring exactly three columns, business_key, valid_time and recorded_time; no mode is declared, and Provisa picks the mechanism."
   use_case: Time-travel previously existed only on Iceberg; when Iceberg was unreachable the substrate
     degraded to replace/append/upsert, losing history. Append-only bitemporal materialization makes time-travel available on any substrate, and the same definition retargets across engines without remodeling.
   code:
@@ -36907,16 +36900,7 @@
   priority: SHOULD
   type: behavioral
   since: 2026-07
-  description: 'A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers
-    get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view''s inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction
-    over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed
-    state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta),
-    never the raw log. (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe
-    SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to the whole query: _prepare_compiled
-    overlays each bitemporal view''s expansion entry with an as-of reconstruction over its append log
-    (as_of_view_map + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every
-    substrate. A whole-query as-of context (like a bitemporal system time) rather than a per-field arg
-    keeps it out of the GraphQL schema. Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES). Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE''s time, not Provisa''s load time. A bitemporal table or view declares its source-time column (the source''s own change timestamp such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range (REQ-2064) measure against that time, so "as of last Tuesday" means as of last Tuesday in the source. Provisa''s own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a view that declares none uses Provisa''s load time as its clock (maintainer 2026-10-16), and the docs and the view''s editor state the implication: versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing, not when it happened in the source. Amended 2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time before any version span is drawn, then the as-of picks the version in force at its time. So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints'' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded).'
+  description: "A bitemporal materialized view (REQ-1162) is READABLE through the query languages: consumers get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view's inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta), never the raw log. (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to the whole query: _prepare_compiled overlays each bitemporal view's expansion entry with an as-of reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every substrate. A whole-query as-of context (like a bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema. Analogous to REQ-372 (`as_of` for Iceberg/Delta SOURCES). [SUPERSEDED by REQ-2109, 2026-10-20 -- as_of filters valid time and as_recorded filters recorded time; all three declarations are required. Kept here for history; do not implement against it.] Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE's time, not Provisa's load time. A bitemporal table or view declares its source-time column (the source's own change timestamp such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range (REQ-2064) measure against that time, so \"as of last Tuesday\" means as of last Tuesday in the source. Provisa's own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a view that declares none uses Provisa's load time as its clock (maintainer 2026-10-16), and the docs and the view's editor state the implication: versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing, not when it happened in the source. [END SUPERSEDED BLOCK] Amended 2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time before any version span is drawn, then the as-of picks the version in force at its time. So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded). (Amended 2026-10-20, VALID TIME AND RECORDED TIME, REQ-2109:) as_of means valid_time <= X: the latest version per business_key among rows whose valid time is at or before X. as_recorded means what was known at Y: only versions whose recorded_time is at or before Y. Every surface that takes them (the GraphQL and SQL headers, Flight options, the gRPC and MCP resolve arguments, and a pgwire session's SET provisa.as_of / provisa.as_recorded, REQ-2110) applies the same meaning."
   use_case: Without routing reads through reconstruction a bitemporal MV read would surface all historical
     versions instead of current state. Current-by-default makes bitemporal MVs usable; the X-Provisa-As-Of
     header adds opt-in, whole-query time travel.
@@ -84412,7 +84396,7 @@ And every tour step shows its real object and every predesigned query returns ro
   feature: lineage-and-provenance-point-in-time
   priority: SHOULD
   type: behavioral
-  description: 'The as-of header (X-Provisa-As-Of, REQ-1163) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every version of each row that was in force at any time within the range, one row per version, each with the time it was recorded from and to, so a client sees what changed and when in one read instead of one as-of read per moment. A single time keeps today''s meaning. The range applies to the same tables and views as a single time, with the same rights, masks and row rules. The range is measured on the source''s time (REQ-1163 as amended): each version is in force from its source time to the next version''s, and the answer also carries each version''s source time and Provisa''s recorded time.'
+  description: "The as-of header (X-Provisa-As-Of, REQ-1163) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every version of each row that was in force at any time within the range, one row per version, each with the time it was recorded from and to, so a client sees what changed and when in one read instead of one as-of read per moment. A single time keeps today's meaning. The range applies to the same tables and views as a single time, with the same rights, masks and row rules. [SUPERSEDED by REQ-2109, 2026-10-20 -- a range is measured on valid time. Kept here for history; do not implement against it.] The range is measured on the source's time (REQ-1163 as amended): each version is in force from its source time to the next version's, and the answer also carries each version's source time and Provisa's recorded time. [END SUPERSEDED BLOCK] (Amended 2026-10-20, VALID TIME, REQ-2109:) the range is measured on valid time: a read with a range answers every version whose valid time falls within it, with its valid time and recorded time."
   use_case: 'An analyst reads a customer with an as-of range covering last quarter and sees each version of the record with when it was recorded, in one answer.'
   scenario: 'Given a bitemporal table whose row changed twice last quarter
 
@@ -85387,6 +85371,190 @@ And a correlate over a result larger than mcp.stats_max_rows reports row_cap and
 When the benchmark runs locally
 
 Then the report gives per-request server CPU for the governed run beside the run with every knob at zero"
+  stakeholders:
+  - ops
+- id: REQ-2109
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Materialization Store
+  feature: lineage-and-provenance-point-in-time
+  priority: MUST
+  type: behavioral
+  description: "A table or a view is bitemporal by mapping three values to its columns: business_key (what identifies the same thing across versions), valid_time (the date the business gives the record: when it was agreed, booked or took effect) and recorded_time (when this version was entered or changed). Recorded time is called transaction time in the temporal-database literature and system time in SQL:2011; valid time is called application time in SQL:2011 or effective date. All three or none; each names a column. as_of filters valid time (valid_time <= X, latest version per business key) and as_recorded filters recorded time (recorded_time <= Y). Provisa picks the mechanism: a table whose business key is not its primary key keeps every version as a row, so a read filters and keeps the latest version per key, pushed down with the query; a table whose business key is its primary key is updated in place, so Provisa keeps its version log in the table's home region's store, captured incrementally on recorded time (re-reading a window of allowed_lateness so a late commit is not missed). A plain read returns the latest version per business key. A materialized view over a bitemporal input inherits its temporality with no settings of its own: each refresh reads the input rows recorded since the last refresh, recomputes only the valid-time dates they touch, appends versions for those dates (removals confined to them) and advances its watermark only after the append. A row moved between valid-time dates, or a source that deletes rows, needs a full refresh, which is offered on demand."
+  use_case: "A bank's end-of-day report shows a past day as reported then and as restated now, from a ledger whose corrections keep their business date."
+  scenario: "Given a payment of 100 for 3 October, corrected to 120 on 5 October
+
+When it is read as of 3 October as recorded 4 October
+
+Then the payment is 100
+
+And read as of 3 October with no as_recorded it is 120"
+  code:
+  - provisa/core/models.py
+  - provisa/mv/bitemporal.py
+  - provisa-ui/src/pages/tables/BitemporalFields.tsx
+  tests:
+  - tests/unit/test_bitemporal_declaration.py
+  - provisa-ui/src/pages/tables/__tests__/TableEditForm.bitemporal.test.tsx
+  stakeholders:
+  - data-engineer
+- id: REQ-2111
+  status: complete
+  since: 2026-10
+  group: 9. Live Data & Events
+  category: Derived / MV Processor
+  feature: change-events-and-streams-calendars
+  priority: MUST
+  type: behavioral
+  description: "A calendar can declare the local time its day closes at, in its time zone (an 18:00 close of business in Europe/London); a day then runs from the previous day's close to its own, every grain's boundary moves with it, and a daily view refreshes at the close. With no close declared a day ends at local midnight."
+  use_case: "A bank's end-of-day aggregate is recorded at its 18:00 close, and a transaction booked after the close belongs to the next business day."
+  scenario: "Given a calendar in Europe/London whose day closes at 18:00
+
+When a daily window is taken at 17:59 London time on 6 October
+
+Then it is business day 6 October, running from 5 October 18:00 to 6 October 18:00
+
+And at 18:00 the window is 7 October's"
+  code:
+  - provisa/events/calendars.py
+  - provisa/core/repositories/calendar.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa-ui/src/pages/tables/CalendarCreateModal.tsx
+  tests:
+  - tests/unit/test_live_temporal.py
+  - tests/unit/test_calendar_repo.py
+  - provisa-ui/src/pages/tables/__tests__/CalendarCreateModal.test.tsx
+  stakeholders:
+  - data-engineer
+- id: REQ-2120
+  status: complete
+  since: 2026-10
+  group: 9. Live Data & Events
+  category: Derived / MV Processor
+  feature: change-events-and-streams-calendars
+  priority: MUST
+  type: behavioral
+  description: "A config declares its calendars in a calendars: section (name and version required, then base_system, tz, fiscal_anchor_month, fiscal_anchor_day, retail_anchor, week_start, holidays, weekend and day_close), stored before the tables whose views name one and refused for exactly what the createCalendar mutation refuses; the model export writes them back. A views: entry takes a view's snapshot schedule as calendar, grain, business_day_grain, allowed_lateness and expected_events. The refreshMv mutation takes an optional window, a date: it builds a view that names a calendar sealed at that business day's close, its append stamped by the end of the calendar's window for that date (its day_close in its time zone), as the event loop's build at the close stamps it, through the same refresh. A view that names no calendar is refused by name."
+  use_case: "A bank declares its 18:00 New York close in its config and rebuilds the end-of-day report for a past business day, stamped at that day's close."
+  scenario: "Given a config declaring calendar bank, closing at 18:00 America/New_York, and a daily view naming it
+
+When the view is refreshed with window 2026-10-02 and then with window 2026-10-05
+
+Then each version is stamped at its day's close, 2026-10-02 22:00 UTC and 2026-10-05 22:00 UTC
+
+And read as recorded at 2026-10-02 22:00 UTC the view answers the first version"
+  related_reqs:
+  - REQ-962
+  - REQ-2109
+  - REQ-2111
+  code:
+  - provisa/core/models.py
+  - provisa/core/config_loader.py
+  - provisa/core/store_config.py
+  - provisa/events/calendars.py
+  - provisa/mv/refresh.py
+  - provisa/api/admin/schema_mutation.py
+  tests:
+  - tests/unit/test_config_calendars.py
+  - tests/unit/test_sealed_build.py
+  - tests/unit/test_refresh_mv_mutation.py
+  stakeholders:
+  - data-engineer
+- id: REQ-2107
+  status: in-progress
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A named demo, banking: end-of-day reporting without copying the ledger. Its business question: "Can the warehouse report each day''s close, and every restatement since, without a copy of the ledger?" Two regions on one node, as the retail demo runs them (visitor warehouse, headless ledger), each with its own store. The ledger region homes a Postgres ledger of accounts and an append-only transactions table (business key transaction_id, valid time business_date, recorded time updated_at; a correction is a new row with the same transaction_id, the primary key a row id) that is never replicated (replicate -1), so no posting is ever copied into the warehouse. The warehouse region materializes in its own store the end-of-day totals by business date, branch, product and currency, with one group_key column: a single-source GROUP BY over the ledger table, built whole at the ledger''s Postgres so only grouped rows land, on a declared calendar whose business day closes at 18:00 Europe/London, inheriting the ledger''s versions with no history settings of its own. Faked accounts and postings over 30 business days are loaded a day at a time by the demo''s setup, each day''s totals built sealed at that day''s close, so 30 end-of-day versions exist; two restatements (a reversed payment and a late trade) arrive on later days and become new versions of their past dates, the versions reported at the close kept. A relationship from a total''s group_key to a thin live view of the postings computing the same key is the drill-down. Roles: the reporting analyst reads the totals; operations drills into postings under the ledger''s row rules and masks. Its tour follows the settled demo tour shape and names four focuses in its opening and recap: compute cost, data footprint and so governance surface, the same answer over GraphQL, SQL and MCP, and the cost of change. The solution is predesigned queries: a GraphQL dashboard with the postings nested, SQL as a BI tool runs it over pgwire with SET provisa.as_recorded at a close and as restated since, the postings under the ledger''s rules, and a stored agent answer. A step before the recap shows moving the ledger to a warehouse replica as a two-line placement change (region and replicate) under which the same queries answer. Plain words, no figures.'
+  use_case: 'A bank''s data lead opens the banking demo and sees each day''s end-of-day totals built in the warehouse from a ledger that is never copied there, read as reported at each close and as restated since, with the same numbers on the dashboard, in BI and from an agent.'
+  scenario: 'Given the banking demo started with its setup run
+
+
+    When a visitor walks its tour to the end
+
+
+    Then 1 October''s London corporate GBP total read as recorded at 1 October''s close carries the payment reversed later, and read as recorded at 12 October''s close it does not
+
+
+    And the warehouse region''s stores hold the end-of-day totals and no posting of the ledger
+
+
+    And operations reads the postings behind a total with counterparties withheld and no posting to a staff account'
+  related_reqs:
+  - REQ-2035
+  - REQ-2056
+  - REQ-2108
+  - REQ-2109
+  - REQ-2110
+  - REQ-2111
+  - REQ-2120
+  notes: 'Lead 2026-10-20/21: cost framing, not residency; regions as retail (visitor warehouse, headless [ledger]) on one node; 30 sealed builds through setup.yaml client steps calling refreshMv(window); the placement change is worded as a two-line reviewed diff. Built 2026-10-21: the totals are daily movements (credits, debits, net) rather than running balances, because a restated date rebuilds only its own date. A reader of a view is governed against the tables it reads, so the reporting analyst is served the five ledger columns the totals read (business date, branch, product, currency, amount) and no account, counterparty or transaction id.'
+  code:
+  - demo/named/banking/config.yaml
+  - demo/named/banking/db/init.sql
+  - demo/named/banking/load_days.py
+  - demo/named/banking/setup.yaml
+  - demo/named/banking/tour.yaml
+  tests:
+  - tests/integration/test_banking_demo.py
+  - tests/unit/test_named_demo_tour.py
+  - tests/unit/test_polly_bakeoff_questions.py
+- id: REQ-2110
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Materialization Store
+  feature: lineage-and-provenance-point-in-time
+  priority: MUST
+  type: behavioral
+  description: "A pgwire session sets its time travel with SET provisa.as_of and SET provisa.as_recorded (RESET either, or set it TO DEFAULT); every statement the session then runs, COPY included, reads as a request carrying the matching X-Provisa-As-Of / X-Provisa-As-Recorded headers does. A value that cannot be read is refused naming the setting; a statement prepared under other settings is governed again."
+  use_case: "A BI tool connected over pgwire shows a report as it was reported on a past date, with no HTTP headers to send."
+  scenario: "Given a pgwire session that ran SET provisa.as_recorded = '2026-10-03T18:00:00'
+
+When it runs a query over a bitemporal view
+
+Then the query reads the versions recorded by 3 Oct 18:00
+
+And after RESET provisa.as_recorded the next query reads the current versions"
+  code:
+  - provisa/pgwire/server.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/pgwire/copy_handler.py
+  tests:
+  - tests/unit/pgwire/test_wire_protocol.py
+  - tests/unit/pgwire/test_statement_stages.py
+  stakeholders:
+  - app-developer
+- id: REQ-2108
+  status: complete
+  since: 2026-10
+  group: 9. Live Data & Events
+  category: Derived / MV Processor
+  feature: change-events-and-streams-calendars
+  priority: MUST
+  type: behavioral
+  description: "A materialized view's build takes the same route decision a query with its definition takes: a definition one source reads whole runs at that source, on any engine kind, and only its result rows come back; they are staged beside the view's table and every build step reads them there. The size guard counts the staged rows, so the source is read once."
+  use_case: "An end-of-day aggregate over a large transaction table is computed where the table lives, and only the grouped rows reach the store, whatever engine the region runs."
+  scenario: "Given a view whose definition aggregates one Postgres table, in a region whose engine is DuckDB
+
+When the view is refreshed
+
+Then the aggregate runs whole in Postgres
+
+And only the grouped rows are landed in the view's store
+
+And the source is read once"
+  code:
+  - provisa/mv/governed_build.py
+  - provisa/mv/refresh.py
+  - provisa/events/app_wiring.py
+  tests:
+  - tests/unit/test_mv_governed_build.py
+  - tests/unit/test_mv_lifecycle.py
   stakeholders:
   - ops
 - id: REQ-2093

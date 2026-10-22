@@ -12,6 +12,7 @@ Provisa даёт вам два декларативных примитива, `e
 даёте ей имя, указываете источник, объявляете ключ сущности и атрибуты, которые хотите перенести,
 и выбираете режим истории. Provisa пишет SQL представления и регистрирует MV. Когда история
 включена, MV становится битемпоральным.
+Тогда MV объявляет ключ сущности как `business_key` вместе со столбцами действительного времени и времени записи, которые вы указали.
 
 **Факт** представляет собой соединение с ключами сущностей, сведённое к объявленному зерну, с агрегированными показателями. Provisa пишет запрос агрегатного MV (`GROUP BY` зерно + столбцы FK) и регистрирует связь для каждой объявленной ссылки на измерение. Факт без показателей является чистым набором ключей, то есть шаблоном link из Data Vault.
 
@@ -21,15 +22,13 @@ Provisa даёт вам два декларативных примитива, `e
 
 Для сущности доступны три режима:
 
-| Режим | Значение | Битемпоральный режим |
-| --- | --- | --- |
-| `none` | Только текущее состояние. Без истории. | — |
-| `scd2` | Отслеживать каждое изменение. Добавлять только изменённые строки (дельта) по ключу сущности. | `delta` |
-| `snapshot` | Отслеживать каждое обновление. Добавлять полный результирующий набор при каждом обновлении, помеченный системным временем. | `snapshot` |
+| Режим | Значение |
+| --- | --- |
+| `none` | Только текущее состояние. Без истории. |
+| `scd2` | Отслеживает каждое изменение по ключу сущности. |
+| `snapshot` | Отслеживает каждое обновление по ключу сущности. |
 
-`scd2` требует ключ сущности для вычисления дельты. `snapshot` работает на любом движке, но хранилище растёт
-на полную копию при каждом обновлении. Выбирайте `scd2` для больших, медленно меняющихся источников; выбирайте `snapshot`, когда
-нужна полная история, а источник не может предоставить ключ.
+`scd2` и `snapshot` оба хранят каждую версию, а Provisa выбирает, как их хранить. Каждому нужен столбец действительного времени и столбец времени записи (`validTime`, `recordedTime`): дата, которую ваш бизнес даёт записи, и момент, когда эта версия была введена или изменена. [Представления с историей](configuration.md#views-with-history-time-travel) объясняет эти два времени.
 
 У фактов нет собственного режима истории; их покрытие во времени берётся из истории сущностей под ними.
 
@@ -45,7 +44,7 @@ Provisa даёт вам два декларативных примитива, `e
 
 ### Исходные таблицы {: #the-source-tables }
 
-- `raw.customers` — id, name, region, tier
+- `raw.customers` — id, name, region, tier, effective_date, updated_at
 - `raw.orders` — order_id, customer_id, amount, quantity
 
 ### Регистрация сущности Customer {: #register-the-customer-entity }
@@ -58,9 +57,11 @@ Provisa даёт вам два декларативных примитива, `e
        - **Name:** `Customer`
        - **Source relation:** `raw.customers`
        - **Domain:** *(ваш домен)*
-       - **Entity key:** `id`
+       - **Business key:** `id`
        - **Attributes:** `name, region, tier`
-       - **History:** `SCD2 (track changes — delta bitemporal)`
+       - **Keep history:** `Bitemporal`
+       - **Valid time:** `effective_date`
+       - **Recorded time:** `updated_at`
     4. Нажмите **Create**.
 
 === "GraphQL API"
@@ -74,6 +75,8 @@ Provisa даёт вам два декларативных примитива, `e
         key: ["id"]
         attributes: ["name", "region", "tier"]
         history: "scd2"
+        validTime: "effective_date"
+        recordedTime: "updated_at"
       }) {
         success
         message
@@ -84,8 +87,9 @@ Provisa даёт вам два декларативных примитива, `e
 Provisa генерирует и регистрирует этот битемпоральный MV:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- registered as a bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- registered as a bitemporal MV: business_key ["id"], valid_time effective_date,
+-- recorded_time updated_at
 ```
 
 ### Регистрация факта Sales {: #register-the-sales-fact }
@@ -155,6 +159,8 @@ schema / Data Vault)").
 | Entity key | да | Столбец(ы) ключа через запятую, например `id` |
 | Attributes | нет | Столбцы атрибутов через запятую, например `name, region, tier` |
 | History | нет | `none` / `scd2` / `snapshot`; по умолчанию `none` |
+| Valid time | с историей | Столбец с датой, которую ваш бизнес даёт записи |
+| Recorded time | с историей | Столбец с моментом, когда эта версия была введена или изменена |
 
 ### Поля факта {: #fact-fields }
 
@@ -194,6 +200,8 @@ mutation RegisterEntity($input: EntityInput!) {
 | `key` | [String] | — | Столбец(ы) ключа сущности |
 | `attributes` | [String] | `[]` | Столбцы атрибутов для проекции |
 | `history` | String | `"none"` | `"none"` \| `"scd2"` \| `"snapshot"` |
+| `validTime` | String | `null` | Столбец действительного времени; обязателен, если `history` не `"none"` |
+| `recordedTime` | String | `null` | Столбец времени записи; обязателен, если `history` не `"none"` |
 | `visibleTo` | [String] | `["public"]` | Список видимости по ролям |
 
 ### `registerFact`
@@ -246,7 +254,7 @@ mutation RegisterFact($input: FactInput!) {
 | Тип SCD | Режим истории | Эффект |
 | --- | --- | --- |
 | Type 1 (только текущее) | `none` | MV пересобирается при обновлении; без истории строк |
-| Type 2 (версионированный) | `scd2` | Битемпоральный дельта-MV; каждое изменение добавляет новую строку по ключу сущности |
+| Type 2 (версионированный) | `scd2` | Битемпоральный MV; каждое изменение добавляет новую версию по ключу сущности |
 
 Используйте `scd2`, когда последующим запросам нужно соединять измерение таким, каким оно было в момент транзакции, например уровень клиента на момент покупки, а не текущий. Используйте `none` для стабильных справочников. Шкала дат никогда не меняется, а каталог товаров, где важна только текущая цена, можно перестраивать при каждом обновлении.
 
@@ -267,15 +275,17 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
 
-Генерирует битемпоральный дельта-MV по ключу `id`:
+Генерирует битемпоральный MV по ключу `id`:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 **Product** (SCD Type 1 — текущий каталог, история версий не нужна):
@@ -450,8 +460,7 @@ SELECT "order_id" FROM "raw"."orders"
 
 #### Satellite
 
-Satellite находится рядом с ключом hub и несёт полную историю атрибутов. Используйте `scd2`, чтобы добавлять
-только изменённые строки; используйте `snapshot`, чтобы фиксировать каждое полное обновление.
+Satellite находится рядом с ключом hub и несёт полную историю атрибутов. Используйте `scd2`, чтобы отслеживать каждое изменение, или `snapshot`, чтобы отслеживать каждое обновление.
 
 ```graphql
 mutation {
@@ -462,6 +471,8 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
@@ -469,8 +480,8 @@ mutation {
 Генерирует:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 `CustomerSat` и `CustomerHub` оба ключуются по `id`. Hub — это стабильная цель соединения; satellite
@@ -658,4 +669,4 @@ GROUP BY orders.region, orders.month
 
 ## Выигрыш от IR {: #the-ir-payoff }
 
-Каждый вызов регистрации проходит тот же путь, что и написанное вручную MV. Спецификация entity и fact является промежуточным представлением, а не шаблоном или макросом. Целевое хранилище определяется развёртыванием, и модель его не называет. Смените целевой движок, и те же объявления `entity` / `fact` материализуются там, потому что сгенерированный SQL и битемпоральные режимы по своему устройству не зависят от движка.
+Каждый вызов регистрации проходит тот же путь, что и написанное вручную MV. Спецификация entity и fact является промежуточным представлением, а не шаблоном или макросом. Целевое хранилище определяется развёртыванием, и модель его не называет. Смените целевой движок, и те же объявления `entity` / `fact` материализуются там, потому что сгенерированный SQL и битемпоральная история по своему устройству не зависят от движка.

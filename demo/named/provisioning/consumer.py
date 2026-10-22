@@ -52,13 +52,14 @@ PULLS_DSN = os.environ["PULLS_DSN"]
 TOPIC = "dataset-ready" + os.environ["TOPIC_SUFFIX"]
 
 
-def pull(dataset: str, role: str, as_of: str) -> tuple[int, float]:
-    """Pull the whole dataset as ``role``, as of ``as_of``: the rows it read and the seconds it
-    took, from the request to the last batch."""
+def pull(dataset: str, role: str, version_time: str) -> tuple[int, float]:
+    """Pull the whole dataset as ``role``, as recorded at a notice's ``version_time``: the rows
+    that had landed by then, though more land after; the rows it read and the seconds it took,
+    from the request to the last batch."""
     ticket = {
         "query": f'SELECT * FROM "provisioning"."view_{dataset}"',
         "role": role,
-        "as_of": as_of,
+        "as_recorded": version_time,
     }
     started = time.perf_counter()
     reader = flight.connect(FLIGHT).do_get(flight.Ticket(json.dumps(ticket).encode()))

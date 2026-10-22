@@ -135,6 +135,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "{{collection}} のベクトル",
     "qdrantVector": "{{name}}: {{size}} 次元、{{distance}} でスコア付け",
-    "qdrantUnnamedVector": "(名前なし)"
+    "qdrantUnnamedVector": "(名前なし)",
+    "continue": "次へ"
   }
 }

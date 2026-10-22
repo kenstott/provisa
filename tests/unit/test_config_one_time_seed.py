@@ -401,14 +401,14 @@ async def test_every_setting_a_file_gives_a_source_is_held_by_the_store(db):
             "cache_catalog": "cache_cat",
             "approval_hook": True,
             "allowed_domains": ["sales"],
-            "gql_naming_convention": "snake_case",
+            "gql_naming_convention": "hasura_graphql",
         }
     )
     _seeded, config = await _boot(db, raw)
     (cfg,) = config.sources
     assert (cfg.pool_min, cfg.pool_max, cfg.use_pgbouncer, cfg.pgbouncer_port) == (2, 7, True, 6543)
     assert (cfg.cache_schema, cfg.cache_catalog, cfg.approval_hook) == ("cached", "cache_cat", True)
-    assert (cfg.allowed_domains, cfg.gql_naming_convention) == (["sales"], "snake_case")
+    assert (cfg.allowed_domains, cfg.gql_naming_convention) == (["sales"], "hasura_graphql")
 
 
 async def test_every_setting_a_file_gives_a_table_and_a_role_is_held_by_the_store(db):
@@ -689,6 +689,17 @@ def _everything() -> dict:
         webhooks=[{"name": "notify", "url": "http://x", "domain_id": "sales"}],
         data_products=[{"id": "core", "domain_id": "sales", "name": "Core"}],
         tags=[{"id": "finance", "description": "money"}],
+        # REQ-2120: two versions of one calendar, a retail anchor kept as a date.
+        calendars=[
+            {"name": "bank", "version": "v1", "tz": "America/New_York", "day_close": "18:00"},
+            {
+                "name": "bank",
+                "version": "v2",
+                "base_system": "retail_445",
+                "retail_anchor": "2026-02-02",
+                "holidays": ["2026-12-25"],
+            },
+        ],
         tag_assignments=[
             {"tag_id": "pii", "object_type": "table", "table_ref": "cfg.public.orders"}
         ],

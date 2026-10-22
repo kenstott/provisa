@@ -31,29 +31,33 @@ from provisa.mv.bitemporal import (
 )
 
 COLS = ["id", "region", "amount"]
-SELECT = "SELECT id, region, amount FROM base"
 TARGET = "mv_t"
 
 
 class Driver:
     """Drives a bitemporal MV over an in-memory DuckDB, mirroring refresh_mv's create-then-append."""
 
-    def __init__(self, spec: BitemporalSpec):
+    def __init__(self, spec: BitemporalSpec, valid: bool = False):
         self.spec = spec
         self.con = duckdb.connect(":memory:")
-        self.con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
+        # ``valid``: each row also carries when it took effect (eff), the view's valid time.
+        self.cols = COLS + (["eff"] if valid else [])
+        eff = ", eff TIMESTAMP" if valid else ""
+        self.con.execute(f"CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER{eff})")
+        self.select = f"SELECT {', '.join(self.cols)} FROM base"
         self.exists = False
 
     def refresh(self, rows: list[tuple], ts: str) -> None:
         self.con.execute("DELETE FROM base")
+        marks = ", ".join("?" for _ in self.cols)
         for r in rows:
-            self.con.execute("INSERT INTO base VALUES (?, ?, ?)", r)
+            self.con.execute(f"INSERT INTO base VALUES ({marks})", r)
         now = f"TIMESTAMP '{ts}'"
         if not self.exists:
-            self.con.execute(create_sql(TARGET, SELECT, self.spec, now))
+            self.con.execute(create_sql(TARGET, self.select, self.spec, now))
             self.exists = True
         else:
-            for stmt in append_sql(TARGET, SELECT, self.spec, COLS, now, "duckdb"):
+            for stmt in append_sql(TARGET, self.select, self.spec, self.cols, now, "duckdb"):
                 self.con.execute(stmt)
 
     def state(self, ts: str | None = None) -> set[tuple]:
@@ -172,6 +176,24 @@ def test_before_first_refresh_is_empty(mode):
 
 
 # ── view_read_sql: the read-substitution form (SELECT *), used for inline expansion (REQ-1163) ──
+# REQ-1163 as amended 2026-10-20: a read travels on the view's valid time, so the story's rows
+# carry when each version took effect (eff); id=2's delete takes effect when it was recorded.
+VSTEP1 = [(1, "west", 10, T1), (2, "east", 20, T1)]
+VSTEP2 = [(1, "west", 15, T2), (2, "east", 20, T1), (3, "north", 30, T2)]
+VSTEP3 = [(1, "west", 15, T2), (3, "north", 30, T2)]
+VSTEP4 = [(1, "west", 15, T2), (2, "east", 99, T4), (3, "north", 30, T2)]
+
+
+def _run_valid_story(mode: str) -> Driver:
+    d = Driver(
+        BitemporalSpec(
+            key=("id",), mode=mode, valid_column="eff", columns=("id", "region", "amount", "eff")
+        ),
+        valid=True,
+    )
+    for rows, ts in [(VSTEP1, T1), (VSTEP2, T2), (VSTEP3, T3), (VSTEP4, T4)]:
+        d.refresh(rows, ts)
+    return d
 
 
 def _project(con, inner: str) -> set:
@@ -181,7 +203,7 @@ def _project(con, inner: str) -> set:
 
 @pytest.mark.parametrize("mode", [MODE_SNAPSHOT, MODE_DELTA])
 def test_view_read_sql_current_matches_full_story(mode):
-    d = _run_story(mode)
+    d = _run_valid_story(mode)
     assert _project(d.con, view_read_sql(TARGET, d.spec)) == {
         (1, "west", 15),
         (2, "east", 99),
@@ -191,7 +213,7 @@ def test_view_read_sql_current_matches_full_story(mode):
 
 @pytest.mark.parametrize("mode", [MODE_SNAPSHOT, MODE_DELTA])
 def test_view_read_sql_as_of(mode):
-    d = _run_story(mode)
+    d = _run_valid_story(mode)
     inner = view_read_sql(TARGET, d.spec, AsOf(f"TIMESTAMP '{T2}'"))
     assert _project(d.con, inner) == {(1, "west", 15), (2, "east", 20), (3, "north", 30)}
 
@@ -211,7 +233,7 @@ def test_parse_as_of_rejects_malformed_no_injection():
 
 
 def test_as_of_view_map_overlays_only_bitemporal_views():
-    spec = BitemporalSpec(key=("id",), mode=MODE_DELTA)
+    spec = BitemporalSpec(key=("id",), mode=MODE_DELTA, valid_column="eff")
     base = {"orders": "SELECT * FROM current_recon", "plain_view": "SELECT * FROM live"}
     reads = {"orders": ('"c"."s"."mv_orders"', spec)}
     ts = "TIMESTAMP '2026-01-01 00:00:00.000000'"

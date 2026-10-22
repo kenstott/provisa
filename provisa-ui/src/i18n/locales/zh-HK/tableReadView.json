@@ -50,6 +50,8 @@
     "draftLabel": "草稿",
     "draftTooltip": "草稿：已停用——不在任何結構描述中，亦無人可讀取。取消勾選即發佈該資料表；勾選則將其停用。",
     "draftNoRightTooltip": "發佈資料表或將其退回草稿，需要在該資料表所屬網域中擁有「資料表註冊」權限。",
-    "draftPreviewNote": "草稿預覽：讀者目前仍看不到此資料表。"
+    "draftPreviewNote": "草稿預覽：讀者目前仍看不到此資料表。",
+    "keepsHistory": "保留歷史：每個版本，包括何時發生和何時記錄。",
+    "keepsHistoryQuery": "按截至某日或按記錄時查詢"
   }
 }

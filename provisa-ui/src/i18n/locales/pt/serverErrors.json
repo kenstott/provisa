@@ -443,7 +443,12 @@
       "role_description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
       "rls_rule_description_missing": "Uma regra de linha precisa de uma descrição da sua finalidade",
       "file_download_refused": "Fonte {{source}}: {{reason}}",
-      "source_created_without_table": "Fonte {{source}} criada; sua tabela não foi configurada: {{reason}}"
+      "source_created_without_table": "Fonte {{source}} criada; sua tabela não foi configurada: {{reason}}",
+      "mv_window_needs_calendar": "A MV '{{mv}}' não indica nenhum calendário: uma compilação selada no fechamento de um dia útil precisa de um",
+      "version_log_updated": "Registro de versões '{{mv}}' atualizado",
+      "mv_window_held": "A MV '{{mv}}' não foi selada no fecho de {{day}}: outra compilação dela detém a reserva",
+      "mv_window_unchanged": "A MV '{{mv}}' não foi selada no fecho de {{day}}: nada do que lê mudou desde a sua última compilação",
+      "landing_time_pipeline": "A tabela '{{table}}' guarda a hora de chegada em {{column}}, mas seu armazenamento carrega o tópico pelo próprio pipeline, onde o Provisa não vê cada mensagem chegar."
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",

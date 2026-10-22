@@ -50,6 +50,8 @@
     "draftLabel": "Entwurf",
     "draftTooltip": "Entwurf: außer Betrieb – in keinem Schema und von niemandem lesbar. Haken entfernen, um die Tabelle freizugeben; Haken setzen, um sie außer Betrieb zu nehmen.",
     "draftNoRightTooltip": "Eine Tabelle freizugeben oder wieder zum Entwurf zu machen erfordert das Recht „Tabellenregistrierung“ in der Domäne der Tabelle.",
-    "draftPreviewNote": "Entwurfsvorschau: Leser können diese Tabelle noch nicht sehen."
+    "draftPreviewNote": "Entwurfsvorschau: Leser können diese Tabelle noch nicht sehen.",
+    "keepsHistory": "Führt Historie: jede Version, mit dem Zeitpunkt des Geschehens und dem Zeitpunkt der Erfassung.",
+    "keepsHistoryQuery": "Zum Stand eines Datums oder wie erfasst abfragen"
   }
 }

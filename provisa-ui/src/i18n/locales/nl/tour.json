@@ -1054,7 +1054,7 @@
       },
       "provisioningPulls": {
         "title": "De downloads",
-        "description": "De consumer van elk team leest de melding en downloadt de hele dataset via Arrow Flight op het versietijdstip, zodat een verversing halverwege geen twee versies kan mengen. Hij legt de rijen, de seconden en de rijen per seconde vast."
+        "description": "De consumer van elk team leest de melding en haalt de hele dataset via Arrow Flight op zoals die op zijn versietijd was vastgelegd: de bestellingen die tot dan waren binnengekomen, zodat noch een verversing die halverwege binnenkomt noch een later binnengekomen bestelling kan veranderen wat hij leest. Hij legt de rijen, de seconden en de rijen per seconde vast."
       },
       "provisioningAsFinance": {
         "title": "Uitvoeren als finance",
@@ -1262,7 +1262,7 @@
       },
       "reproduceAsFiled": {
         "title": "Vastgelegd op het moment van indienen",
-        "description": "Dit is het moment waarop de herbouw voor de correctie begon, overgenomen uit het antwoord van de stap over verversingen. Het valt na de vastlegging van de ingediende cijfers en vóór die van de correctie. Het rapport wordt nu gelezen zoals Provisa het op dat moment had vastgelegd, dus niets wat later is vastgelegd kan het veranderen."
+        "description": "Dit is het moment waarop het rapport voor het eerst is gebouwd en ingediend, overgenomen uit het antwoord in de stap met de verversingen. Het valt na de invoer van de ingediende cijfers en vóór die van de correctie. Het rapport wordt nu gelezen zoals Provisa het op dat moment had vastgelegd, zodat niets dat later is vastgelegd het kan veranderen."
       },
       "reproduceFiled": {
         "title": "Het rapport zoals ingediend",
@@ -1647,6 +1647,86 @@
       "cloudpolicyRecap": {
         "title": "Wat u hebt gezien",
         "description": "U hebt een beleid over drie clouds beoordeeld aan de hand van wat al was vastgelegd. Het beleid is een tabel, door code uit de eigen pagina gelezen, en elk incident is gekoppeld aan de bepaling waarnaar het verwijst. Een dagelijkse trigger bewaart de geschiedenis, en elke rol leest alleen wat de regels toestaan, in SQL, in Polly en in Superset."
+      },
+      "bankingScenario": {
+        "title": "Dagafsluitingsrapportage, grootboek blijft waar het is",
+        "description": "Een bank rapporteert haar totalen bij elke afsluiting van de werkdag om 18:00 en corrigeert een eerdere dag als er later een correctie binnenkomt. Meestal wordt daarvoor eerst het grootboek naar het warehouse gekopieerd. Deze demo doet dat niet. Let onderweg op vier dingen. Wat de rapportage aan rekenkracht kost. Hoeveel data het warehouse bewaart, en dus hoeveel het moet beheren. Of dashboard, BI en een agent hetzelfde antwoord geven. En wat het kost om de beslissing later te herzien."
+      },
+      "bankingJoin": {
+        "title": "Van een totaal naar zijn boekingen",
+        "description": "Elk totaal draagt één sleutel uit dag, vestiging, product en valuta. Deze relatie volgt die sleutel naar de boekingen die hem dragen, live uit het grootboek gelezen. Ook de drill-down heeft geen kopie nodig."
+      },
+      "bankingRecap": {
+        "title": "Wat u zag",
+        "description": "De dagafsluitingstotalen werden in het grootboek berekend, en het warehouse betaalde alleen voor wat het bewaart. Het warehouse bewaart totalen en nooit boekingen, dus er is geen tweede kopie van het grootboek om te beheren. Dashboard, BI en de agent lazen één gedeclareerde relatie en gaven dezelfde cijfers. En blijkt het grootboek thuis houden verkeerd, dan verplaatst een plaatsingswijziging van twee regels het, terwijl niets wat het leest verandert. Kies nu voor licht: een vergissing kost twee regels, geen project."
+      },
+      "bankingLedger": {
+        "title": "Het grootboek blijft thuis",
+        "description": "De transactietabel is ondergebracht in de regio ledger en wordt nooit gerepliceerd. Geen kopie van een boeking komt ooit in het warehouse terecht, en elke query op de tabel draait in het grootboek. De dagafsluitingstotalen en de drill-downs gaan van de rekening van het warehouse af, tegen bescheiden rekenkracht in het grootboek. Alleen de totalen bereiken het warehouse, plus terloops de boekingen die een drill-down toont. De kosten zijn lager en de voetafdruk kleiner."
+      },
+      "bankingVersions": {
+        "title": "Een correctie is een nieuwe rij",
+        "description": "Het grootboek wijzigt nooit een boeking. Een correctie is een nieuwe rij met hetzelfde transactie-id, en ze behoudt de boekdatum. Drie koppelingen vertellen Provisa dat. De bedrijfssleutel is transaction_id, de geldigheidstijd is business_date en de vastleggingstijd is updated_at. Alles wat op de tabel voortbouwt, is dan te lezen per een datum, of zoals het op een tijdstip was vastgelegd."
+      },
+      "bankingCompute": {
+        "title": "Wat het grootboek nodig heeft",
+        "description": "Dit werkt als de kant van het grootboek de rekenkracht heeft voor de GROUP BY van de dagafsluiting. Repliceren is ook voor die kant niet gratis. Elke gewijzigde rij moet worden gevonden, volledig gelezen en verstuurd, en ter plekke aggregeren is vaak lichter. Bij hoge volumes, rapporten die totalen lezen en af en toe een drill-down wint het grootboek thuis meestal. De declaratie laat u beide kanten op kiezen."
+      },
+      "bankingCloses": {
+        "title": "Bij elke afsluiting opgebouwd",
+        "description": "De dagafsluitingstotalen zijn een view die in het warehouse wordt gematerialiseerd volgens de kalender van de bank, die om 18:00 Londense tijd sluit. De view is één GROUP BY over de ene tabel van het grootboek, dus de opbouw draait volledig in het grootboek en alleen de gegroepeerde rijen komen terug. Ze erft de versies van het grootboek en heeft geen eigen historie-instellingen nodig. Elke dag is bij zijn eigen afsluiting vastgelegd. 1 en 2 oktober zijn later opnieuw vastgelegd, toen hun correcties binnenkwamen."
+      },
+      "bankingAsOps": {
+        "title": "Als operations",
+        "description": "De volgende query draait als operations, dat volgens de eigen regels van het grootboek in boekingen kijkt. Het ziet geen boeking op een personeelsrekening, en elke tegenpartij blijft verborgen."
+      },
+      "bankingDashboard": {
+        "title": "Het dashboard, via GraphQL",
+        "description": "De totalen van Londen voor 1 oktober, elk met de boekingen erachter genest. Eén verzoek leest de totalen uit het warehouse en de boekingen uit het grootboek, verbonden via de relatie die u net zag."
+      },
+      "bankingAsAnalyst": {
+        "title": "Als rapportageanalist",
+        "description": "De SQL hierna draait als de rapportage-analisten van de bank. Zij lezen de eindedagtotalen en de vijf grootboekkolommen waaruit die totalen worden opgebouwd: boekdatum, filiaal, product, valuta en bedrag. Een rekening, een tegenpartij of een houder zien zij nooit."
+      },
+      "bankingDay": {
+        "title": "De totalen van één dag",
+        "description": "1 oktober zoals het er nu voor staat. Per vestiging, product en valuta ziet u wat er binnenkwam, wat er uitging en het saldo. Een BI-tool die via pgwire verbonden is, voert precies deze SQL uit."
+      },
+      "bankingAsReported": {
+        "title": "Zoals gerapporteerd bij de afsluiting",
+        "description": "Vastgelegd op staat nu op de afsluiting van 1 oktober. Een BI-tool doet hetzelfde met SET provisa.as_recorded in zijn pgwire-sessie. Vastgelegd op filtert de transacties op updated_at en de dagtotalen op de afsluiting van elke dag, zodat u de cijfers ziet die de bank die avond rapporteerde."
+      },
+      "bankingReported": {
+        "title": "Wat er gerapporteerd werd",
+        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
+      },
+      "bankingAsRestated": {
+        "title": "Zoals sindsdien gecorrigeerd",
+        "description": "Vastgelegd op schuift naar de afsluiting van 12 oktober, de laatste van de dertig dagen. Tegen die tijd zijn de terugboeking van 6 oktober en de laat ingevoerde handel van 7 oktober allebei vastgelegd."
+      },
+      "bankingRestated": {
+        "title": "Wat het nu zegt",
+        "description": "Dezelfde SQL. Het totaal van Londen voor 1 oktober bevat de teruggedraaide betaling niet meer, en het USD-totaal van Edinburgh voor 2 oktober bevat nu de late handel. De versies die bij elke afsluiting zijn gerapporteerd, blijven naast de gecorrigeerde bewaard, en recorded_at toont wanneer elke versie is vastgelegd."
+      },
+      "bankingAsOpsSql": {
+        "title": "Terug naar operations",
+        "description": "De explorer draait nu als operations, nog steeds vastgelegd op de afsluiting van 12 oktober."
+      },
+      "bankingPostings": {
+        "title": "De boekingen achter een totaal",
+        "description": "De zakelijke GBP-boekingen van Londen voor 1 oktober, live uit het grootboek gelezen. De teruggeroepen betaling verschijnt in haar laatste versie, teruggedraaid. Haar tegenpartij is verborgen, zoals elke andere, en een boeking op een personeelsrekening zou niet verschijnen. De regels van het grootboek gelden voor de drill-down, waar die ook gelezen wordt."
+      },
+      "bankingAgent": {
+        "title": "Het antwoord van de agent",
+        "description": "Een agent die via MCP verbonden is, leest hetzelfde model. Polly beantwoordt deze vraag uit dezelfde dagafsluitingstotalen die het dashboard en BI lezen, en noemt dus dezelfde vestiging."
+      },
+      "bankingChange": {
+        "title": "Van gedachten veranderen kost twee regels",
+        "description": "Stel dat de volumes de rekenkracht van het grootboek ontgroeien. Zet de regio van deze tabel op warehouse en de replicatie op Altijd, en het grootboek wordt naar het warehouse gerepliceerd. Dat is een plaatsingswijziging van twee regels, en elke query, elk dashboard, elke BI-weergave en elke agent antwoordt als voorheen. Met de hand gebouwd betekent dezelfde stap nieuwe pipelines, een backfill, herschreven aggregatie en versiebeheer, omgezette rapporten en een tweede set toegangsregels. Daarna volgen afstemmingstests, audit- en lineagecontroles, een architectuur- en beveiligingsreview en een change board. Hier is de wijziging een beoordeelde diff van twee regels, dus testen, audit en architectuurreview beoordelen een diff, geen migratie."
+      },
+      "bankingAsAdmin": {
+        "title": "Weer als beheerder",
+        "description": "Het dashboard is wat operations ziet. De rest van de rondleiding is weer als beheerder, en elke volgende instructie noemt de rol waarmee ze draait."
       }
     },
     "status": {
@@ -1759,6 +1839,10 @@
       "cloudpolicy": {
         "title": "Beoordeling van het cloudbeleid",
         "summary": "Een beveiligingsbeleid beoordeeld over Azure, AWS en Google Cloud. De cloudinventaris, de ServiceNow-incidenten en het beleid zelf, door code uit de webpagina gelezen, vormen één model, en een dagelijkse trigger bewaart de geschiedenis van de beoordeling."
+      },
+      "banking": {
+        "title": "Dagafsluitingsrapportage zonder het grootboek te kopiëren",
+        "summary": "De dagafsluitingstotalen van een bank, bij elke afsluiting rechtstreeks berekend uit een grootboek dat nooit naar het warehouse wordt gekopieerd, gelezen zoals gerapporteerd en zoals sindsdien gecorrigeerd, met hetzelfde antwoord via GraphQL, SQL en een agent."
       }
     }
   }

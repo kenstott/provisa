@@ -1054,7 +1054,7 @@
       },
       "provisioningPulls": {
         "title": "I prelievi",
-        "description": "Il consumer di ogni team legge l'avviso e preleva l'intero dataset tramite Arrow Flight all'ora di versione, così un aggiornamento a metà prelievo non può mescolare due versioni. Registra le righe, i secondi e le righe al secondo."
+        "description": "Il consumer di ogni team legge l'avviso e preleva l'intero dataset via Arrow Flight così come era registrato alla sua ora di versione: gli ordini arrivati fino ad allora, così né un aggiornamento che arriva a metà prelievo né un ordine arrivato dopo possono cambiare ciò che legge. Registra le righe, i secondi e le righe al secondo."
       },
       "provisioningAsFinance": {
         "title": "Esegui come finanza",
@@ -1262,7 +1262,7 @@
       },
       "reproduceAsFiled": {
         "title": "Registrato al momento della presentazione",
-        "description": "È l'ora in cui è iniziata la ricostruzione per la correzione, presa dalla risposta del passo sugli aggiornamenti. Cade dopo la registrazione dei valori depositati e prima di quella della correzione. Il report ora si legge come Provisa lo aveva registrato in quel momento, quindi nulla di registrato dopo può cambiarlo."
+        "description": "Questo è il momento in cui il report è stato costruito e depositato per la prima volta, preso dalla risposta del passaggio degli aggiornamenti. Cade dopo l'inserimento delle cifre depositate e prima di quello della correzione. Il report viene ora letto così come Provisa lo aveva registrato in quel momento, quindi nulla di registrato dopo può cambiarlo."
       },
       "reproduceFiled": {
         "title": "Il report come presentato",
@@ -1647,6 +1647,86 @@
       "cloudpolicyRecap": {
         "title": "Cosa hai visto",
         "description": "Hai rivisto una policy su tre cloud a partire da ciò che era già registrato. La policy è una tabella, letta dal codice dalla sua stessa pagina, e ogni incident è unito alla clausola che cita. Un trigger giornaliero conserva lo storico, e ogni ruolo legge solo ciò che le sue regole consentono, in SQL, in Polly e in Superset."
+      },
+      "bankingScenario": {
+        "title": "Reporting di chiusura, libro mastro lasciato al suo posto",
+        "description": "Una banca comunica i suoi totali a ogni chiusura del giorno lavorativo, alle 18:00, e rettifica un giorno passato quando arriva una correzione più tardi. Di solito prima si copia il libro mastro nel data warehouse. Questa demo non lo fa. Lungo il percorso tenga d'occhio quattro cose. Quanto costa calcolare il reporting. Quanti dati tiene il warehouse, e quindi quanto deve governare. Se dashboard, BI e un agente danno la stessa risposta. E quanto costa cambiare la decisione in seguito."
+      },
+      "bankingJoin": {
+        "title": "Da un totale alle sue registrazioni",
+        "description": "Ogni totale porta una chiave composta da giorno, filiale, prodotto e valuta. Questa relazione segue la chiave fino alle registrazioni che la portano, lette dal vivo dal libro mastro. Neanche il drill-down ha bisogno di una copia."
+      },
+      "bankingRecap": {
+        "title": "Che cosa ha visto",
+        "description": "I totali di chiusura sono stati calcolati nel libro mastro, e il warehouse ha pagato solo per ciò che tiene. Il warehouse tiene totali e mai registrazioni, quindi non c'è una seconda copia del libro mastro da governare. Dashboard, BI e agente hanno letto una relazione dichiarata e dato le stesse cifre. E se tenere il libro mastro a casa si rivela sbagliato, un cambio di collocazione di due righe lo sposta senza che cambi nulla di ciò che lo legge. Scelga la via snella ora: sbagliare costa due righe, non un progetto."
+      },
+      "bankingLedger": {
+        "title": "Il libro mastro resta a casa",
+        "description": "La tabella delle transazioni ha sede nella regione ledger e non viene mai replicata. Nessuna copia di una registrazione arriva nel warehouse, e ogni query sulla tabella viene eseguita nel libro mastro. I totali di chiusura e i drill-down escono dalla bolletta del warehouse in cambio di un calcolo modesto nel libro mastro. Nel warehouse arrivano solo i totali, più, di passaggio, le registrazioni che un drill-down mostra. Il costo è più basso e l'impronta più piccola."
+      },
+      "bankingVersions": {
+        "title": "Una correzione è una riga nuova",
+        "description": "Il libro mastro non modifica mai una registrazione. Una correzione è una riga nuova con lo stesso id di transazione, e mantiene la data contabile. Tre mappature lo dicono a Provisa. La chiave di business è transaction_id, il tempo di validità è business_date e il tempo di registrazione è updated_at. Tutto ciò che si basa sulla tabella può allora essere letto a una data, oppure come era registrato in un dato momento."
+      },
+      "bankingCompute": {
+        "title": "Che cosa serve al libro mastro",
+        "description": "Funziona quando il lato del libro mastro ha la capacità di calcolo per eseguire il GROUP BY di chiusura. Anche per lui replicare non è gratis. Ogni riga modificata va trovata, letta per intero e spedita, e aggregare sul posto è spesso più leggero. Con volumi alti, report che leggono totali e un drill-down occasionale, tenere il libro mastro a casa di solito vince. La dichiarazione le lascia scegliere in entrambi i sensi."
+      },
+      "bankingCloses": {
+        "title": "Calcolato a ogni chiusura",
+        "description": "I totali di chiusura sono una vista materializzata nel warehouse secondo il calendario della banca, che chiude alle 18:00 ora di Londra. La vista è un GROUP BY sull'unica tabella del libro mastro, quindi la sua costruzione viene eseguita interamente nel libro mastro e tornano solo le righe raggruppate. Eredita le versioni del libro mastro e non ha bisogno di impostazioni di storico proprie. Ogni giorno è stato registrato alla propria chiusura. Il 1° e il 2 ottobre sono stati registrati di nuovo più tardi, quando sono arrivate le loro rettifiche."
+      },
+      "bankingAsOps": {
+        "title": "Come operations",
+        "description": "La prossima query viene eseguita come operations, che scende nelle registrazioni secondo le regole proprie del libro mastro. Non vede alcuna registrazione su un conto del personale, e ogni controparte è oscurata."
+      },
+      "bankingDashboard": {
+        "title": "La dashboard, via GraphQL",
+        "description": "I totali di Londra del 1° ottobre, ciascuno con le registrazioni che lo compongono annidate all'interno. Una sola richiesta legge i totali dal warehouse e le registrazioni dal libro mastro, unite lungo la relazione che ha appena visto."
+      },
+      "bankingAsAnalyst": {
+        "title": "Come analista di reporting",
+        "description": "L'SQL che segue viene eseguito come analisti di reporting della banca. Leggono i totali di fine giornata e le cinque colonne del libro mastro da cui sono calcolati: data contabile, filiale, prodotto, valuta e importo. Non vedono mai un conto, una controparte o un titolare."
+      },
+      "bankingDay": {
+        "title": "I totali di un giorno",
+        "description": "Il 1° ottobre come risulta ora. Per ogni filiale, prodotto e valuta vede che cosa è entrato, che cosa è uscito e il netto. Uno strumento di BI collegato via pgwire esegue questo stesso SQL."
+      },
+      "bankingAsReported": {
+        "title": "Come comunicato alla chiusura",
+        "description": "Registrato al è ora impostato sulla chiusura del 1° ottobre. Uno strumento di BI fa lo stesso con SET provisa.as_recorded nella sua sessione pgwire. Registrato al filtra le transazioni su updated_at e i totali giornalieri sulla chiusura di ogni giorno, così vede le cifre che la banca ha comunicato quella sera."
+      },
+      "bankingReported": {
+        "title": "Che cosa è stato comunicato",
+        "description": "I totali corporate del 1° e del 2 ottobre, come comunicati alla chiusura del 1° ottobre. Il totale in GBP di Londra contiene ancora il pagamento poi stornato. Il 2 ottobre non era ancora chiuso, quindi non ha cifre."
+      },
+      "bankingAsRestated": {
+        "title": "Come rettificato in seguito",
+        "description": "Registrato al passa alla chiusura del 12 ottobre, l'ultima dei trenta giorni. A quel punto lo storno inserito il 6 ottobre e l'operazione tardiva inserita il 7 ottobre sono entrambi registrati."
+      },
+      "bankingRestated": {
+        "title": "Che cosa dice ora",
+        "description": "Lo stesso SQL. Il totale del 1° ottobre di Londra non contiene più il pagamento stornato, e il totale in USD del 2 ottobre di Edimburgo ora include l'operazione tardiva. Le versioni comunicate a ogni chiusura restano accanto a quelle rettificate, e recorded_at mostra quando ciascuna è stata registrata."
+      },
+      "bankingAsOpsSql": {
+        "title": "Di nuovo operations",
+        "description": "L'explorer ora viene eseguito come operations, sempre registrato alla chiusura del 12 ottobre."
+      },
+      "bankingPostings": {
+        "title": "Le registrazioni dietro un totale",
+        "description": "Le registrazioni corporate in GBP di Londra del 1° ottobre, lette dal vivo dal libro mastro. Il pagamento richiamato compare nella sua ultima versione, stornato. La sua controparte è oscurata come ogni altra, e una registrazione su un conto del personale non comparirebbe. Le regole del libro mastro si applicano al drill-down ovunque venga letto."
+      },
+      "bankingAgent": {
+        "title": "La risposta dell'agente",
+        "description": "Un agente collegato via MCP legge lo stesso modello. Polly risponde a questa domanda dagli stessi totali di chiusura che leggono la dashboard e la BI, quindi indica la stessa filiale."
+      },
+      "bankingChange": {
+        "title": "Cambiare idea costa due righe",
+        "description": "Supponiamo che i volumi superino la capacità di calcolo del libro mastro. Imposti la regione di questa tabella su warehouse e la sua replica su Sempre, e il libro mastro viene replicato nel warehouse. È un cambio di collocazione di due righe, e ogni query, dashboard, vista di BI e agente risponde come prima. Fatto a mano, lo stesso spostamento significa nuove pipeline, un caricamento storico, aggregazione e versionamento riscritti, report ripuntati e un secondo insieme di regole di accesso. Poi vengono i test di riconciliazione, i controlli di audit e lineage, la revisione di architettura e sicurezza e un change board. Qui la modifica è un diff revisionato di due righe, quindi test, audit e revisione di architettura esaminano un diff, non una migrazione."
+      },
+      "bankingAsAdmin": {
+        "title": "Di nuovo come amministratore",
+        "description": "La dashboard è ciò che vedono le operazioni. Il resto del tour torna come amministratore, e ogni istruzione che segue indica il ruolo con cui viene eseguita."
       }
     },
     "status": {
@@ -1759,6 +1839,10 @@
       "cloudpolicy": {
         "title": "Revisione della policy cloud",
         "summary": "Una policy di sicurezza rivista su Azure, AWS e Google Cloud. L'inventario cloud, gli incident di ServiceNow e la policy stessa, letta dalla sua pagina web dal codice, sono un unico modello, e un trigger giornaliero conserva lo storico della revisione."
+      },
+      "banking": {
+        "title": "Reporting di chiusura senza copiare il libro mastro",
+        "summary": "I totali di fine giornata di una banca, calcolati a ogni chiusura direttamente da un libro mastro che non viene mai copiato nel data warehouse, letti come comunicati e come rettificati in seguito, con la stessa risposta via GraphQL, SQL e un agente."
       }
     }
   }

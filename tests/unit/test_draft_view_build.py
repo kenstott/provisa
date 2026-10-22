@@ -96,7 +96,7 @@ def rebuilt(model, monkeypatch):
     async def _rebuild(name: str, *, draft: bool, materialize: bool = True):
         async with model.acquire() as conn:
             await _save_view(conn, name, draft=draft, materialize=materialize)
-            await app_rebuild._register_user_views_in_state(conn, None)
+            await app_rebuild._register_user_views_in_state(conn, None, [], [])
         return state
 
     return _rebuild
@@ -225,7 +225,8 @@ async def test_a_bitemporal_draft_view_answers_as_building_until_its_log_exists(
     from provisa.federation.replica_state import ReplicaBuilding
     from provisa.mv.bitemporal import BitemporalSpec, view_read_sql
 
-    spec = BitemporalSpec(key=("id",), columns=("id",))
+    # REQ-2109: a bitemporal view's reads travel on its valid time.
+    spec = BitemporalSpec(key=("id",), columns=("id", "day"), valid_column="day")
     mv = _registered(bitemporal=spec)
     state = _state(mv)
     with pytest.raises(ReplicaBuilding) as building:

@@ -1054,7 +1054,7 @@
       },
       "provisioningPulls": {
         "title": "The pulls",
-        "description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as of its version time, so a refresh landing mid-pull cannot mix two versions. It records the rows, the seconds and the rows a second."
+        "description": "Each team's consumer reads the notice and pulls the whole dataset over Arrow Flight as recorded at its version time: the orders that had landed by then, so neither a refresh landing mid-pull nor an order landed later can change what it reads. It records the rows, the seconds and the rows a second."
       },
       "provisioningAsFinance": {
         "title": "Run as finance",
@@ -1262,7 +1262,7 @@
       },
       "reproduceAsFiled": {
         "title": "As recorded when it was filed",
-        "description": "This is the time the correction's rebuild began, taken from the answer in the refreshes step. It falls after the filed figures were recorded and before the correction was. The report is now read as Provisa had it recorded at that time, so nothing recorded later can change it."
+        "description": "This is the time the report was first built and filed, taken from the answer in the refreshes step. It falls after the filed figures were entered and before the correction was. The report is now read as Provisa had it recorded at that time, so nothing recorded later can change it."
       },
       "reproduceFiled": {
         "title": "The report as filed",
@@ -1647,6 +1647,86 @@
       "cloudpolicyRecap": {
         "title": "What you saw",
         "description": "You reviewed one policy across three clouds from what was already recorded. The policy is a table, read by code from its own page, and each incident joins the clause it cites. A daily trigger keeps the history, and each role reads only what its rules allow, in SQL, in Polly and in Superset."
+      },
+      "bankingScenario": {
+        "title": "End-of-day reporting, ledger left in place",
+        "description": "A bank reports its totals at every business day's 18:00 close, and restates a past day when a correction arrives later. The usual way first copies the ledger into the warehouse. This demo does not. Watch four things as you go. What the reporting costs to compute. How much data the warehouse holds, and so how much it must govern. Whether the dashboard, BI and an agent give the same answer. And what it costs to change the decision later."
+      },
+      "bankingJoin": {
+        "title": "From a total to its postings",
+        "description": "Each total carries one key made of its day, branch, product and currency. This relationship follows that key to the postings that carry it, read live from the ledger. The drill-down needs no copy either."
+      },
+      "bankingRecap": {
+        "title": "What you saw",
+        "description": "The end-of-day totals were computed at the ledger, and the warehouse paid only for what it keeps. The warehouse holds totals and never postings, so there is no second copy of the ledger to govern. The dashboard, BI and the agent read one declared relationship and gave the same numbers. And if keeping the ledger home turns out wrong, a two-line placement change moves it while nothing that reads it changes. Choose lean now: being wrong costs two lines, not a project."
+      },
+      "bankingLedger": {
+        "title": "The ledger stays home",
+        "description": "The transaction table is homed in the ledger region and never replicated. No copy of a posting ever lands in the warehouse, and every query over the table runs in the ledger. The end-of-day totals and the drill-downs come off the warehouse's bill, for modest compute in the ledger. Only the totals reach the warehouse, plus the postings a drill-down shows, in passing. The cost is lower and the footprint smaller."
+      },
+      "bankingVersions": {
+        "title": "A correction is a new row",
+        "description": "The ledger never changes a posting. A correction is a new row with the same transaction id, and it keeps the business date. Three mappings tell Provisa so. The business key is transaction_id, the valid time is business_date and the recorded time is updated_at. Anything built on the table can then be read as of a day, or as it was recorded at a time."
+      },
+      "bankingCompute": {
+        "title": "What the ledger needs",
+        "description": "This works when the ledger's side has the compute to run the end-of-day GROUP BY. Replicating is not free for it either. Every changed row has to be found, read in full and shipped, and aggregating in place is often lighter. With high volumes, reports that read totals and an occasional drill-down, keeping the ledger home tends to win. The declaration lets you choose either way."
+      },
+      "bankingCloses": {
+        "title": "Built at each close",
+        "description": "The end-of-day totals are a view materialized in the warehouse on the bank's calendar, which closes at 18:00 London time. The view is one GROUP BY over the ledger's one table, so its build runs whole at the ledger and only the grouped rows come back. It inherits the ledger's versions and needs no history settings of its own. Each day was recorded at its own close. 1 and 2 October were recorded again later, when their restatements arrived."
+      },
+      "bankingAsOps": {
+        "title": "As operations",
+        "description": "The next query runs as operations, who drill into postings under the ledger's own rules. They see no posting to a staff account, and every counterparty is withheld."
+      },
+      "bankingDashboard": {
+        "title": "The dashboard, over GraphQL",
+        "description": "London's totals for 1 October, each with the postings behind it nested inside. One request reads the totals from the warehouse and the postings from the ledger, joined along the relationship you just saw."
+      },
+      "bankingAsAnalyst": {
+        "title": "As a reporting analyst",
+        "description": "The SQL that follows runs as the bank's reporting analysts. They read the end-of-day totals and the five ledger columns the totals are built from: business date, branch, product, currency and amount. They never see an account, a counterparty or a holder."
+      },
+      "bankingDay": {
+        "title": "One day's totals",
+        "description": "1 October as it stands now. For each branch, product and currency you see what came in, what went out and the net. A BI tool connected over pgwire runs this same SQL."
+      },
+      "bankingAsReported": {
+        "title": "As reported at the close",
+        "description": "As recorded is now set to 1 October's close. A BI tool does the same with SET provisa.as_recorded on its pgwire session. As recorded filters the transactions on updated_at and the daily totals on each day's close, so you see the figures the bank reported that evening."
+      },
+      "bankingReported": {
+        "title": "What was reported",
+        "description": "The corporate totals for 1 and 2 October, as reported at 1 October's close. London's GBP total still carries the payment that was later reversed. 2 October had not closed yet, so it has no figures."
+      },
+      "bankingAsRestated": {
+        "title": "As restated since",
+        "description": "As recorded moves to 12 October's close, the last of the thirty days. By then the reversal entered on 6 October and the late trade entered on 7 October have both been recorded."
+      },
+      "bankingRestated": {
+        "title": "What it says now",
+        "description": "The same SQL. London's 1 October total no longer carries the reversed payment, and Edinburgh's 2 October USD total now includes the late trade. The versions reported at each close are kept beside the restated ones, and recorded_at shows when each was recorded."
+      },
+      "bankingAsOpsSql": {
+        "title": "Back to operations",
+        "description": "The explorer now runs as operations, still as recorded at 12 October's close."
+      },
+      "bankingPostings": {
+        "title": "The postings behind a total",
+        "description": "London's corporate GBP postings for 1 October, read live from the ledger. The recalled payment appears as its latest version, reversed. Its counterparty is withheld, like every other, and a posting to a staff account would not appear. The ledger's rules apply to the drill-down wherever it is read from."
+      },
+      "bankingAgent": {
+        "title": "The agent's answer",
+        "description": "An agent connected over MCP reads the same model. Polly answers this question from the same end-of-day totals the dashboard and BI read, so it names the same branch."
+      },
+      "bankingChange": {
+        "title": "Changing your mind costs two lines",
+        "description": "Suppose volumes outgrow the ledger's compute. Set this table's region to warehouse and its replicate setting to Always, and the ledger is replicated into the warehouse. That is a two-line placement change, and every query, dashboard, BI view and agent answers as before. Built by hand, the same move means new pipelines, a backfill, rewritten aggregation and versioning, repointed reports and a second set of access rules. Then come reconciliation testing, audit and lineage checks, architecture and security review, and a change board. Here the change is a two-line reviewed diff, so testing, audit and architecture review a diff, not a migration."
+      },
+      "bankingAsAdmin": {
+        "title": "Back as the administrator",
+        "description": "The dashboard is what operations sees. The rest of the tour is back as the administrator, and each statement that follows names the role it runs as."
       }
     },
     "status": {
@@ -1759,6 +1839,10 @@
       "cloudpolicy": {
         "title": "Cloud policy review",
         "summary": "A security policy reviewed across Azure, AWS and Google Cloud. The cloud inventory, the ServiceNow incidents and the policy itself, read from its web page by code, are one model, and a daily trigger keeps the review's history."
+      },
+      "banking": {
+        "title": "EOD reporting without copying the ledger",
+        "summary": "A bank's end-of-day totals, built at each close straight from a ledger that is never copied to the warehouse, read as reported and as restated, with the same answer over GraphQL, SQL and an agent."
       }
     }
   }

@@ -21,20 +21,20 @@ from provisa.api.admin.schema_mutation import _snapshot_load_protection_conflict
 
 class TestSnapshotLoadProtectionConflict:
     def test_both_load_protected_and_snapshot_conflict(self):
-        assert _snapshot_load_protection_conflict(True, None, "snapshot") is True
+        assert _snapshot_load_protection_conflict(True, None, ["id"]) is True
 
     def test_off_peak_window_alone_with_snapshot_conflicts(self):
         # An off-peak window implies load protection timing even when load_protected is None.
-        assert _snapshot_load_protection_conflict(None, "22:00-06:00", "delta") is True
+        assert _snapshot_load_protection_conflict(None, "22:00-06:00", ["id"]) is True
 
     def test_snapshot_without_protection_no_conflict(self):
-        assert _snapshot_load_protection_conflict(False, None, "snapshot") is False
-        assert _snapshot_load_protection_conflict(None, None, "snapshot") is False
+        assert _snapshot_load_protection_conflict(False, None, ["id"]) is False
+        assert _snapshot_load_protection_conflict(None, None, ["id"]) is False
 
     def test_protection_without_snapshot_no_conflict(self):
         assert _snapshot_load_protection_conflict(True, "22:00-06:00", None) is False
-        assert _snapshot_load_protection_conflict(True, None, "") is False
+        assert _snapshot_load_protection_conflict(True, None, []) is False
 
-    @pytest.mark.parametrize("mode", ["snapshot", "delta"])
-    def test_each_bitemporal_mode_conflicts_under_protection(self, mode):
-        assert _snapshot_load_protection_conflict(True, "22:00-06:00", mode) is True
+    @pytest.mark.parametrize("key", [["id"], ["desk", "book"]])
+    def test_each_declared_business_key_conflicts_under_protection(self, key):
+        assert _snapshot_load_protection_conflict(True, "22:00-06:00", key) is True

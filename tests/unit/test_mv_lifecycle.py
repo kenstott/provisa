@@ -219,6 +219,17 @@ class TestOrphanDetection:
         orphans = await detect_orphans(engine, registry, "mv_cache", catalog="mat_store")
         assert orphans == []
 
+    async def test_a_views_staged_direct_build_is_not_an_orphan(self):
+        """REQ-2108: a DIRECT build's rows staged beside a view belong to that view."""
+        registry = MVRegistry()
+        registry.register(_mv(mv_id="known", target_table="mv_known"))
+        engine = _FakeEngine(
+            show_tables=[("mv_known",), ("mv_known__direct",), ("mv_gone__direct",)]
+        )
+
+        orphans = await detect_orphans(engine, registry, "mv_cache", catalog="mat_store")
+        assert orphans == ["mv_gone__direct"]
+
 
 class TestOrphanGracePeriod:
     async def test_grace_period_prevents_premature_deletion(self):
