@@ -97,6 +97,9 @@ async function stubDeployment(
         email: "carol@example.com",
         dev_mode: false,
         control_plane_id: "e2e-control-plane",
+        // As /auth/me answers them (pseudo-roles, environment ownership): none for these members.
+        env_capabilities: [],
+        derived_roles: [],
       },
     });
   });

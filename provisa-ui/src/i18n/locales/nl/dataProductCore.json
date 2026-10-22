@@ -23,6 +23,8 @@
     "copied": "Gekopieerd",
     "copyQuery": "De {{surface}}-query kopiëren",
     "openQuery": "De {{surface}}-query in zijn explorer openen",
-    "unreadable": "Uw rol kan de dataproducten in het meta-domein niet lezen."
+    "unreadable": "Uw rol kan de dataproducten in het meta-domein niet lezen.",
+    "detailExpand": "Volledige vermelding tonen",
+    "detailCollapse": "Minder tonen"
   }
 }

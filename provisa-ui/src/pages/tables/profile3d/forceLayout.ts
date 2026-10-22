@@ -21,11 +21,14 @@ export interface Spring {
 }
 
 /** Fruchterman–Reingold in three dimensions from a golden-spiral start; deterministic, so the same
- * graph always lands the same way. Positions are scaled to fit ``radius``. */
+ * graph always lands the same way. Positions are scaled to fit ``radius``. ``attraction`` (1 the
+ * usual spacing) draws the nodes together above 1 and apart below: it shortens the springs' rest
+ * length and the charge's reach, and the whole lands within ``radius / attraction``. */
 export function forceLayout(
   ids: string[],
   springs: Spring[],
   radius = LAYOUT_RADIUS,
+  attraction = 1,
 ): Map<string, [number, number, number]> {
   const n = ids.length;
   const index = new Map(ids.map((id, i) => [id, i]));
@@ -35,7 +38,7 @@ export function forceLayout(
     const phi = i * Math.PI * (3 - Math.sqrt(5));
     return [Math.cos(phi) * r * radius, y * radius, Math.sin(phi) * r * radius];
   });
-  const k = Math.cbrt((4 * radius ** 3) / Math.max(1, n));
+  const k = Math.cbrt((4 * radius ** 3) / Math.max(1, n)) / attraction;
   const links = springs.map(
     (e) => [index.get(e.a) as number, index.get(e.b) as number, e.strength] as const,
   );
@@ -85,6 +88,6 @@ export function forceLayout(
   }
   let maxR = 0;
   for (const q of p) maxR = Math.max(maxR, Math.hypot(q[0], q[1], q[2]));
-  const scale = maxR > 0 ? radius / maxR : 1;
+  const scale = maxR > 0 ? radius / attraction / maxR : 1;
   return new Map(ids.map((id, i) => [id, [p[i][0] * scale, p[i][1] * scale, p[i][2] * scale]]));
 }

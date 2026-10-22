@@ -23,6 +23,8 @@
     "copied": "コピーしました",
     "copyQuery": "{{surface}} クエリをコピー",
     "openQuery": "{{surface}} クエリをエクスプローラーで開く",
-    "unreadable": "あなたのロールは meta ドメインのデータプロダクトを読み取れません。"
+    "unreadable": "あなたのロールは meta ドメインのデータプロダクトを読み取れません。",
+    "detailExpand": "項目全体を表示",
+    "detailCollapse": "表示を減らす"
   }
 }

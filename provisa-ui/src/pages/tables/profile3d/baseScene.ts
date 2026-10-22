@@ -75,6 +75,9 @@ export abstract class BaseScene<H> {
   private dragging = false;
   private resizeObserver: ResizeObserver;
   private disposers: (() => void)[] = [];
+  /** The floor grid under the content, as last laid, and whether it is drawn (setGrid). */
+  private floor: THREE.GridHelper | null = null;
+  private floorShown = true;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -187,6 +190,17 @@ export abstract class BaseScene<H> {
     return this.camera.aspect;
   }
 
+  /** Lays a size×size floor grid at height ``y`` in ``world``, drawn or not as setGrid last said. */
+  protected layFloor(world: THREE.Object3D, size: number, y: number, mat: THREE.LineBasicMaterial) {
+    const grid = new THREE.GridHelper(size, size, this.theme.grid, this.theme.grid);
+    (grid.material as THREE.Material).dispose();
+    grid.material = mat;
+    grid.position.y = y;
+    grid.visible = this.floorShown;
+    world.add(grid);
+    this.floor = grid;
+  }
+
   protected disposeTree(root: THREE.Object3D) {
     root.traverse((n) => {
       const mesh = n as THREE.Mesh;
@@ -200,6 +214,12 @@ export abstract class BaseScene<H> {
     this.theme = theme;
     this.applyBaseTheme();
     this.applyTheme();
+  }
+
+  /** Draws the floor grid, or leaves it out. */
+  setGrid(shown: boolean) {
+    this.floorShown = shown;
+    if (this.floor) this.floor.visible = shown;
   }
 
   setRotate(on: boolean) {

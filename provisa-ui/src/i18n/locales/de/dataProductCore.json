@@ -23,6 +23,8 @@
     "copied": "Kopiert",
     "copyQuery": "Die {{surface}}-Abfrage kopieren",
     "openQuery": "Die {{surface}}-Abfrage in ihrem Explorer öffnen",
-    "unreadable": "Ihre Rolle kann die Datenprodukte in der Meta-Domäne nicht lesen."
+    "unreadable": "Ihre Rolle kann die Datenprodukte in der Meta-Domäne nicht lesen.",
+    "detailExpand": "Ganzen Eintrag anzeigen",
+    "detailCollapse": "Weniger anzeigen"
   }
 }

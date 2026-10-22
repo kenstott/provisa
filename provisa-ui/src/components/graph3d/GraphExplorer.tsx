@@ -14,8 +14,14 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
+import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
+import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
+import { useAttraction } from "../../pages/tables/profile3d/attractionState";
+import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
+import { useGrid } from "../../pages/tables/profile3d/gridState";
+import { matchesSearch, searchItems } from "../../lib/searchItems";
+import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
 import {
@@ -27,6 +33,7 @@ import {
   visibleGraph,
   type GraphData,
   type GraphFilters,
+  type GraphEdge,
   type GraphScope,
   type LayerId,
   type Preset,
@@ -41,6 +48,9 @@ import "./graph3d.css";
 /** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
 const STATUSES: TermStatus[] = ["proposed", "deprecated", "retired"];
 
+/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns. */
+const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns"]);
+
 export function GraphExplorer({
   data,
   scope,
@@ -48,6 +58,7 @@ export function GraphExplorer({
   focus: initialFocus = null,
   zero,
   onExpand,
+  search,
   testId = "graph3d",
 }: {
   data: GraphData;
@@ -58,6 +69,9 @@ export function GraphExplorer({
   zero: string[];
   /** Drawn in place: its expand button opens it at 95% of the viewport. */
   onExpand?: () => void;
+  /** The page's search, focusing the graph in place of its own focus field: the terms and
+   * products it matches (searchItems' rule) and their neighbourhoods; empty, the whole graph. */
+  search?: string;
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -76,12 +90,18 @@ export function GraphExplorer({
     [data],
   );
   const hasStatus = useMemo(() => data.nodes.some((n) => n.status !== undefined), [data]);
+  const hasTerms = useMemo(() => data.nodes.some((n) => n.type === "term"), [data]);
+  // Terms left with no relationship under the chosen edge types and domains: drawn until unchecked.
+  const [orphans, setOrphans] = useState(true);
   const [preset, setPreset] = useState<PresetId>(initialPreset);
   const [layers, setLayers] = useState<Set<LayerId>>(new Set(presetOf(initialPreset).layers));
+  // The first render is the whole graph: every edge type (unless the preset picks its own) and
+  // every domain chosen, and the reader narrows from there.
   const [filters, setFilters] = useState<GraphFilters>({
     ...NO_FILTERS,
-    focus: initialFocus,
-    edgeTypes: presetOf(initialPreset).edgeTypes ?? [],
+    focus: initialFocus ? [initialFocus] : [],
+    domains: choices.domains,
+    edgeTypes: presetOf(initialPreset).edgeTypes ?? edgeTypes,
     hiddenStatuses: scope.hiddenStatuses,
   });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -95,10 +115,46 @@ export function GraphExplorer({
 
   const shown = useMemo(() => {
     const on = new Set([...layers].filter((l) => offered.has(l)));
-    return visibleGraph(data, on, filters, expanded, scope);
-  }, [data, layers, offered, filters, expanded, scope]);
+    // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
+    // carry no domain included.
+    const all = (chosen: string[], every: string[]) =>
+      every.length > 0 && every.every((v) => chosen.includes(v)) ? [] : chosen;
+    // The page's search, when it drives the focus: what it matches, by title or definition.
+    const items = search === undefined ? null : searchItems(search);
+    const matched =
+      items === null || items.length === 0
+        ? null
+        : data.nodes
+            .filter((n) => n.type === "term" || n.type === "product")
+            .filter((n) => matchesSearch([n.label, n.definition], items))
+            .map((n) => n.id);
+    // A search that matches nothing draws nothing.
+    if (items !== null && items.length > 0 && matched?.length === 0)
+      return { nodes: [], edges: [] };
+    const narrowing = {
+      ...filters,
+      focus: matched ?? filters.focus,
+      domains: all(filters.domains, choices.domains),
+      edgeTypes: all(filters.edgeTypes, edgeTypes),
+    };
+    const g = visibleGraph(data, on, narrowing, expanded, scope);
+    if (orphans) return g;
+    // An orphan has no term relationship drawn, and no column it IS while Columns is on; its
+    // domain does not count.
+    const related = (e: GraphEdge) => e.kind === "term_edge" || e.kind === "term_binding";
+    const joined = new Set(g.edges.filter(related).flatMap((e) => [e.a, e.b]));
+    const nodes = g.nodes.filter((n) => n.type !== "term" || joined.has(n.id));
+    const kept = new Set(nodes.map((n) => n.id));
+    // With an orphan go the edges that only placed it (its domain).
+    return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
+  }, [data, layers, offered, filters, expanded, scope, choices, edgeTypes, orphans, search]);
   const layout = presetOf(preset).layout;
-  const at = useMemo(() => layoutGraph(shown, layout, zero), [shown, layout, zero]);
+  const [attraction, setAttraction] = useAttraction(testId);
+  const [grid, setGrid] = useGrid(testId);
+  const at = useMemo(
+    () => layoutGraph(shown, layout, zero, attraction),
+    [shown, layout, zero, attraction],
+  );
   const focusable = useMemo(
     () =>
       data.nodes
@@ -111,7 +167,7 @@ export function GraphExplorer({
   const choosePreset = (p: PresetId) => {
     setPreset(p);
     setLayers(new Set(presetOf(p).layers));
-    setFilters((f) => ({ ...f, edgeTypes: presetOf(p).edgeTypes ?? [] }));
+    setFilters((f) => ({ ...f, edgeTypes: presetOf(p).edgeTypes ?? edgeTypes }));
     setFrame((f) => f + 1);
   };
   const toggleLayer = (l: LayerId, on: boolean) =>
@@ -134,6 +190,7 @@ export function GraphExplorer({
     setHover,
     rotate,
     setRotate,
+    grid,
   };
 
   return (
@@ -150,6 +207,7 @@ export function GraphExplorer({
         <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
           {t("profile3d.rotate")}
         </Chip>
+        <GridToggle value={grid} onChange={setGrid} testId={testId} />
         <Button
           size="xs"
           variant="default"
@@ -158,6 +216,9 @@ export function GraphExplorer({
         >
           {t("profile3d.resetView")}
         </Button>
+        {layout === "force" && (
+          <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
+        )}
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
       <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>
@@ -165,7 +226,7 @@ export function GraphExplorer({
           {t("graph3d.layers")}
         </Text>
         {scope.layerOrder
-          .filter((l) => offered.has(l))
+          .filter((l) => offered.has(l) && !BESIDE_FILTERS.has(l))
           .map((l) => (
             <Chip
               key={l}
@@ -210,6 +271,8 @@ export function GraphExplorer({
             data={edgeTypes}
             value={filters.edgeTypes}
             onChange={(types) => setFilters((f) => ({ ...f, edgeTypes: types }))}
+            allText={t("graph3d.allEdgeTypes")}
+            someText={(count, total) => t("graph3d.someEdgeTypes", { count, total })}
             testId={`${testId}-filter-edge-type`}
           />
         )}
@@ -218,8 +281,25 @@ export function GraphExplorer({
           data={choices.domains}
           value={filters.domains}
           onChange={(domains) => setFilters((f) => ({ ...f, domains }))}
+          allText={t("graph3d.allDomains")}
+          someText={(count, total) => t("graph3d.someDomains", { count, total })}
           testId={`${testId}-filter-domain`}
         />
+        {offered.has("columns") && (
+          <Chip
+            size="xs"
+            checked={layers.has("columns")}
+            onChange={(on) => toggleLayer("columns", on)}
+            data-testid={`${testId}-columns`}
+          >
+            {t("graph3d.columnsToggle")}
+          </Chip>
+        )}
+        {scope.orphans && hasTerms && (
+          <Chip size="xs" checked={orphans} onChange={setOrphans} data-testid={`${testId}-orphans`}>
+            {t("graph3d.orphans")}
+          </Chip>
+        )}
         {/* A filter with nothing to choose from is not offered. */}
         {choices.tags.length > 0 && (
           <SummaryMultiSelect
@@ -227,6 +307,8 @@ export function GraphExplorer({
             data={choices.tags}
             value={filters.tags}
             onChange={(tags) => setFilters((f) => ({ ...f, tags }))}
+            allText={t("graph3d.allTags")}
+            someText={(count, total) => t("graph3d.someTags", { count, total })}
             testId={`${testId}-filter-tag`}
           />
         )}
@@ -236,20 +318,23 @@ export function GraphExplorer({
             data={choices.sensitivities}
             value={filters.sensitivities}
             onChange={(sensitivities) => setFilters((f) => ({ ...f, sensitivities }))}
+            allText={t("graph3d.allSensitivities")}
+            someText={(count, total) => t("graph3d.someSensitivities", { count, total })}
             testId={`${testId}-filter-sensitivity`}
           />
         )}
-        <Select
-          size="xs"
-          placeholder={t("graph3d.filterFocus")}
-          aria-label={t("graph3d.filterFocus")}
-          data={focusable}
-          value={filters.focus}
-          onChange={(focus) => setFilters((f) => ({ ...f, focus }))}
-          searchable
-          clearable
-          data-testid={`${testId}-filter-focus`}
-        />
+        {search === undefined && (
+          <SummaryMultiSelect
+            label={t("graph3d.filterFocus")}
+            data={focusable}
+            value={filters.focus}
+            onChange={(focus) => setFilters((f) => ({ ...f, focus }))}
+            allText={t("graph3d.allFocus")}
+            someText={(count, total) => t("graph3d.someFocus", { count, total })}
+            searchable
+            testId={`${testId}-filter-focus`}
+          />
+        )}
       </Group>
       <div className="p3d-body">
         {shown.nodes.length === 0 ? (
@@ -326,6 +411,13 @@ function GraphDetail({
             <h4>{node.label}</h4>
             <span className="p3d-kind">{t(`graph3d.type_${node.type}`)}</span>
           </div>
+          {node.definition && (
+            <ClampedDetail testId={`${testId}-definition`}>
+              <Text size="xs" c="dimmed">
+                {node.definition}
+              </Text>
+            </ClampedDetail>
+          )}
           <div className="p3d-list">
             {links.map((e) => {
               const other = e.a === node.id ? e.b : e.a;

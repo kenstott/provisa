@@ -477,6 +477,9 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${E2E_UI_PORT}`,
     headless: true,
+    // In CI a failed test keeps its trace (network, console, DOM at each step) in the report
+    // artifact, for a failure whose error alone does not say which request it waited on.
+    trace: process.env.CI ? "retain-on-failure" : "off",
     // The 3D views (three.js) need a WebGL context. CI runners have no GPU, and Chromium no longer
     // falls back to its software renderer unasked, so SwiftShader is requested by name.
     launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },

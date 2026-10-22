@@ -12,7 +12,7 @@
 // values) with its figures, and every column as a row. Hovering a bar lights the same slice in 3D.
 
 import { useTranslation } from "react-i18next";
-import { Button } from "@mantine/core";
+import { Button, Checkbox, Group } from "@mantine/core";
 import { formatValue, pctText, tOfValue, type TerrainColumn } from "./terrainModel";
 import type { TerrainHover } from "./terrainScene";
 
@@ -115,9 +115,15 @@ export function TerrainDetail({
   onSelect,
   onHover,
   onFocus,
+  excluded,
+  onInclude,
 }: {
   columns: TerrainColumn[];
   order: string[];
+  /** The columns left out of the terrain; still listed here, and still inspected when picked. */
+  excluded: ReadonlySet<string>;
+  /** Puts ``names`` in the terrain (``true``) or leaves them out. */
+  onInclude: (names: string[], included: boolean) => void;
   selected: string | null;
   hover: TerrainHover | null;
   onSelect: (column: string) => void;
@@ -238,30 +244,61 @@ export function TerrainDetail({
         </section>
       )}
       <section>
-        <h5 className="p3d-section-title">{t("profileTerrain.columns")}</h5>
+        <Group justify="space-between" gap={4} wrap="nowrap">
+          <h5 className="p3d-section-title">{t("profileTerrain.columns")}</h5>
+          <Group gap={2} wrap="nowrap">
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              aria-label={t("profileTerrain.includeAllAria")}
+              onClick={() => onInclude(order, true)}
+              data-testid="terrain-include-all"
+            >
+              {t("profileTerrain.includeAll")}
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              aria-label={t("profileTerrain.includeNoneAria")}
+              onClick={() => onInclude(order, false)}
+              data-testid="terrain-include-none"
+            >
+              {t("profileTerrain.includeNone")}
+            </Button>
+          </Group>
+        </Group>
         <div className="p3d-list">
           {order.map((name) => {
             const col = columns.find((x) => x.name === name) as TerrainColumn;
             const flags = flagText(col);
             const warn = col.flags.some((f) => f.kind === "warn");
+            const shown = !excluded.has(name);
             return (
-              <button
-                type="button"
-                key={name}
-                className="p3d-row"
-                aria-pressed={name === selected}
-                onClick={() => onSelect(name)}
-                data-testid={`terrain-row-${name}`}
-              >
-                <span className="p3d-row-name">
-                  {name}
-                  <small className={warn ? "is-warn" : undefined}>
-                    {flags.length ? flags.join(" · ") : t("profileTerrain.noFlags")}
-                  </small>
-                </span>
-                <Spark c={col} />
-                <span className="p3d-num">{col.nullShare ? pctText(col.nullShare) : "—"}</span>
-              </button>
+              <div key={name} className={shown ? "p3d-row-line" : "p3d-row-line is-excluded"}>
+                <Checkbox
+                  size="xs"
+                  checked={shown}
+                  onChange={(e) => onInclude([name], e.currentTarget.checked)}
+                  aria-label={t("profileTerrain.includeColumn", { column: name })}
+                  data-testid={`terrain-include-${name}`}
+                />
+                <button
+                  type="button"
+                  className="p3d-row"
+                  aria-pressed={name === selected}
+                  onClick={() => onSelect(name)}
+                  data-testid={`terrain-row-${name}`}
+                >
+                  <span className="p3d-row-name">
+                    {name}
+                    <small className={warn ? "is-warn" : undefined}>
+                      {flags.length ? flags.join(" · ") : t("profileTerrain.noFlags")}
+                    </small>
+                  </span>
+                  <Spark c={col} />
+                  <span className="p3d-num">{col.nullShare ? pctText(col.nullShare) : "—"}</span>
+                </button>
+              </div>
             );
           })}
         </div>

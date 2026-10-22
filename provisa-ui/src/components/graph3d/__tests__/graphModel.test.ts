@@ -139,7 +139,7 @@ describe("the data product graph's filters", () => {
     const g = visibleGraph(
       DATA,
       preset("knowledge"),
-      { ...NO_FILTERS, focus: "p:billing" },
+      { ...NO_FILTERS, focus: ["p:billing"] },
       new Set(),
       PRODUCT_SCOPE,
     );

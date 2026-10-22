@@ -46,7 +46,8 @@ export interface RelationsModel {
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-export function buildRelations(results: ProfileRunResults): RelationsModel {
+/** ``attraction``: how close the force layout draws the columns (1 the usual spacing). */
+export function buildRelations(results: ProfileRunResults, attraction = 1): RelationsModel {
   const family = new Map<string, NodeFamily>();
   for (const c of results.columns ?? [])
     family.set(String(c.column_name), String(c.family) as TerrainFamily);
@@ -105,7 +106,7 @@ export function buildRelations(results: ProfileRunResults): RelationsModel {
       }
     }
   }
-  const pos = forceLayout(ids, edges);
+  const pos = forceLayout(ids, edges, undefined, attraction);
   const nodes = ids.map((id) => {
     const [x, y, z] = pos.get(id) as [number, number, number];
     return { id, family: family.get(id) as NodeFamily, x, y, z };
