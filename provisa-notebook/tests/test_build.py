@@ -84,3 +84,37 @@ def test_built_assets_are_current_only_when_their_manifest_records_this_fingerpr
     assert build.is_current(tmp_path)
     manifest.write_text(json.dumps({"build": "an older build"}))
     assert not build.is_current(tmp_path)
+
+
+# The splash plugin's removal as jupyterlite-core 0.5.1's jlab_core bundle minifies it.
+_SPLASH_JS = (
+    's.classList.add("splash-fade"),window.setTimeout((()=>{document.body.removeChild(s)}),200)'
+    '))})))}}},te={id:"@jupyterlab/apputils-extension:print"'
+)
+
+
+def test_the_splash_is_removed_without_throwing_once_it_is_gone():
+    from provisa_notebook.build import detach_splash_safely
+
+    out = detach_splash_safely(_SPLASH_JS, "jlab_core.x.js")
+    assert "window.setTimeout((()=>{s.remove()}),200)" in out
+    assert "removeChild" not in out
+    assert out.replace("s.remove()", "document.body.removeChild(s)") == _SPLASH_JS
+
+
+@pytest.mark.parametrize("js", ["no splash here", _SPLASH_JS + _SPLASH_JS])
+def test_a_bundle_without_exactly_one_splash_removal_is_refused(js):
+    from provisa_notebook.build import detach_splash_safely
+
+    with pytest.raises(RuntimeError, match="jlab_core.x.js: expected one splash removal"):
+        detach_splash_safely(js, "jlab_core.x.js")
+
+
+def test_the_build_patches_its_one_core_bundle(tmp_path):
+    from provisa_notebook.build import _patch_splash
+
+    (tmp_path / "build").mkdir()
+    bundle = tmp_path / "build" / "jlab_core.abc123.js"
+    bundle.write_text(_SPLASH_JS)
+    _patch_splash(tmp_path)
+    assert "s.remove()" in bundle.read_text()
