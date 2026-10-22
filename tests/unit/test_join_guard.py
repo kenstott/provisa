@@ -828,3 +828,41 @@ def test_a_recursive_statement_relates_its_rows_along_relationships_only():
     )
     refused = _refused(outside)
     assert refused and "customers" in refused[0] and "orders" in refused[0], refused
+
+
+def test_a_union_of_every_table_with_its_columns_named_is_checked_in_linear_time_per_column():
+    """Cypher's ``MATCH (n) RETURN n`` reads a UNION ALL of every label's table, and governance
+    names each of its columns: one per property of every label. Each column was traced by
+    re-reading every branch's columns, cubic in the labels -- 40 seconds and more for the e2e
+    model, past the request's deadline (504). Each union's columns are now read once per check."""
+    import time
+
+    import sqlglot
+
+    from provisa.compiler.join_guard import unrelated_tables
+
+    labels, props = 60, 8
+    names = [f"p{i}_{j}" for i in range(labels) for j in range(props)]
+    branches = " UNION ALL ".join(
+        f"SELECT '{i}' AS __label, "
+        + ", ".join(f"{n} AS {n}" if n.startswith(f"p{i}_") else f"NULL AS {n}" for n in names)
+        + f" FROM t{i}"
+        for i in range(labels)
+    )
+    tree = sqlglot.parse_one(
+        f"SELECT n.__label, {', '.join(f'n.{c}' for c in names)} FROM ({branches}) AS n LIMIT 1",
+        read="postgres",
+    )
+    started = time.perf_counter()
+    found = unrelated_tables(
+        tree,
+        resolve_table_id=lambda t: int(t.name[1:]),
+        columns_of=lambda i: {f"p{i}_{j}" for j in range(props)},
+        registered=set(),
+        exempt_table=lambda i: False,
+        same_remote_source=lambda a, b: False,
+        primary_keys={},
+    )
+    assert found == []  # the branches of a union are alternatives, never related
+    # Cubic, this took about 7s on a laptop; read once per union, under 0.5s.
+    assert time.perf_counter() - started < 1.5
