@@ -116,7 +116,12 @@ def _make_app_state_with_orders():
                     table_name="orders",
                     domain_id="default",
                 )
-            }
+            },
+            # The table's own columns and key, as the GraphQL type and the source's rows above
+            # have them: a graph node is built from these (label_map), and since REQ-471 its id
+            # column is reported by the property it is read by.
+            aggregate_columns={1: [("id", "integer"), ("region", "varchar"), ("amount", "double")]},
+            pk_columns={1: ["id"]},
         )
     except Exception:
         raise
