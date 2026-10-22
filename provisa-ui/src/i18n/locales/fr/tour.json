@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "De retour en administrateur",
         "description": "Le tableau de bord est ce que voient les opérations. La suite de la visite se fait de nouveau en tant qu'administrateur, et chaque instruction qui suit indique le rôle sous lequel elle s'exécute."
+      },
+      "groupexposureScenario": {
+        "title": "De quoi parle cette démo",
+        "description": "Une banque pragoise prête à des entreprises tchèques et enregistre chacune par son Legal Entity Identifier (LEI). Les règles de l'UE plafonnent ce qu'elle peut prêter à un client, ou à un groupe d'entreprises contrôlé par un même propriétaire, à 25 % de ses fonds propres de base (Tier 1). La question : envers quels groupes la banque dépasse-t-elle ce plafond ? Ses livres disent à qui elle a prêté, pas qui détient qui. La banque et ses prêts sont fictifs ; les entreprises sont réelles."
+      },
+      "groupexposureJoin": {
+        "title": "Reliés par le LEI",
+        "description": "Les contreparties de la banque et les tables de Wikidata partagent le LEI, et ces relations les relient. Les données de la banque restent dans sa base, celles de Wikidata dans leur réplique ; la jointure se fait dans la requête."
+      },
+      "groupexposureAnswer": {
+        "title": "La réponse en SQL",
+        "description": "La vue group_exposure rattache chaque financement au groupe de son emprunteur selon Wikidata. Les sociétés d'eau et de chauffage de Veolia et les sociétés de construction de Vinci dépassent chacune 25 % des fonds propres de base. Ni les livres de la banque ni Wikidata ne le montrent seuls."
+      },
+      "groupexposureExample": {
+        "title": "La réponse en GraphQL",
+        "description": "La même vue en GraphQL : les groupes auxquels la banque prête le plus, leurs emprunteurs, le montant engagé et si chacun dépasse la limite."
+      },
+      "groupexposureRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Le portefeuille de prêts d'une banque et des données liées publiques de Wikidata, reliés par LEI dans un modèle gouverné. Les chaînes de propriété de Wikidata transforment de nombreux petits prêts en quelques grandes expositions de groupe, et la réponse est servie en SQL, GraphQL et REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Qui détient qui, selon Wikidata",
+        "description": "Wikidata, le graphe de connaissances public, enregistre le LEI de chaque entreprise et son organisation mère. Cette source le lit via le service de requêtes SPARQL de Wikidata. Ses tables ont été chargées une seule fois, à la construction de la démo, si bien que la démo n'appelle jamais Wikidata pendant que vous l'utilisez."
+      },
+      "groupexposureFacilities": {
+        "title": "Les financements de la banque",
+        "description": "Chaque prêt à terme, ligne de crédit renouvelable et garantie accordé par la banque, avec le LEI de l'emprunteur, le montant engagé et le montant tiré. La limite compte le montant engagé."
+      },
+      "groupexposureGroups": {
+        "title": "Le groupe de chaque emprunteur",
+        "description": "Pour chaque emprunteur, l'entreprise au sommet de sa chaîne d'organisations mères sur Wikidata, trouvée avec un seul chemin de propriétés SPARQL. Un emprunteur que personne ne détient est son propre groupe. Un emprunteur a deux propriétaires au sommet ; il figure donc dans les deux groupes."
+      },
+      "groupexposureTerms": {
+        "title": "En termes simples",
+        "description": "Le glossaire explique les termes d'un responsable des risques : grand risque, fonds propres de base, Legal Entity Identifier et organisation mère. Un groupe de clients liés est un ensemble d'entreprises qui forment un seul risque parce que l'une contrôle les autres."
+      },
+      "groupexposureAlone": {
+        "title": "Les livres seuls",
+        "description": "L'exposition propre de chaque emprunteur, telle que les livres de la banque la voient. La plus grande est inférieure à 10 % des fonds propres de base : aucun emprunteur n'approche la limite de 25 %."
+      },
+      "groupexposureRest": {
+        "title": "La même réponse en REST",
+        "description": "La vue est aussi un point d'accès REST, ici groupé selon qu'un groupe dépasse la limite et totalisé sur le serveur, prêt pour un rapport de risques ou un tableur."
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "Reporting de clôture sans copier le grand livre",
         "summary": "Les totaux de fin de journée d'une banque, calculés à chaque clôture directement depuis un grand livre jamais copié dans l'entrepôt, lus tels que déclarés et tels que corrigés depuis, avec la même réponse en GraphQL, en SQL et par un agent."
+      },
+      "groupexposure": {
+        "title": "Exposition par groupe via Wikidata",
+        "summary": "Envers quels groupes une banque dépasse-t-elle sa limite de grands risques ? Son portefeuille de prêts, relié par LEI aux chaînes d'organisations mères de Wikidata via SPARQL, rattache chaque emprunteur au groupe qui le détient."
       }
     }
   }
