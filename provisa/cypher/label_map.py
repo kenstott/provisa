@@ -151,6 +151,16 @@ class RelationshipMapping:
         """REQ-1586: the relationship's attributes. Empty unless it is junction-backed."""
         return self.via.attributes if self.via else {}
 
+    @property
+    def constant_source(self) -> bool:
+        """The source side is a constant, not a column of the source row: a literal
+        (``source_constant``) or an expression reading none of its columns -- HAS_TABLE's
+        (domain, name) pair. Such a link anchors every row of the source to one row of the
+        target, so only a pattern naming it traverses it."""
+        return self.source_constant is not None or (
+            self.source_expr is not None and "{alias}" not in self.source_expr
+        )
+
 
 class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     """Graph schema derived from registered Provisa tables and relationships."""
@@ -241,7 +251,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 # implicit traversal — they anchor every data row to a single
                 # meta row via a constant, not a real FK, so they cannot serve
                 # as intermediate hops without contradictory join conditions.
-                if rel_types is None and rel.source_constant is not None:
+                if rel_types is None and rel.constant_source:
                     continue
                 # Forward edge
                 if rel.source_label == cur_label:

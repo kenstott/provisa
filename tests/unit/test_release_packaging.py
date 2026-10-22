@@ -90,3 +90,22 @@ def test_python_slim_is_used_as_a_build_base_in_the_dockerfile():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+def test_every_config_a_packaged_service_names_is_in_the_image():
+    """A service the packaged compose starts with PROVISA_CONFIG=/app/config/<file> reads that
+    file from the image (no mount shadows /app/config): one the Dockerfile does not copy is no
+    config at all, and the node starts as though it declared nothing (the regions sandbox tier
+    refused its own --region in a restart loop)."""
+    import re
+
+    launch = (_ROOT / "packaging" / "linux" / "first-launch.sh").read_text()
+    named = set(re.findall(r'PROVISA_CONFIG: "/app/config/([^"/]+)"', launch))
+    dockerfile = (_ROOT / "Dockerfile").read_text().replace("\\\n", " ")
+    copied = {
+        name
+        for line in dockerfile.splitlines()
+        if line.startswith("COPY ") and line.rstrip().endswith("./config/")
+        for name in re.findall(r"config/([^\s/]+\.yaml)", line)
+    }
+    assert named and named <= copied, sorted(named - copied)

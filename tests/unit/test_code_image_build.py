@@ -10,11 +10,12 @@
 
 """Build image (REQ-2098): a code source's remote host image, assembled for a Linux platform from
 the code at its pinned hash, its dependencies installed for that platform (wheels only; npm with no
-install scripts), the pinned runtime and Arrow library read from their archives, and the remote
-host program, on the pinned base -- here with a base registry answered in-process, the runtimes'
-archives already in the cache, and the installs' commands recorded rather than run."""
+install scripts), the pinned runtime and Arrow library read from their archives, and the front end
+every image runs with the language's host program as its worker (REQ-2100), on the pinned base --
+here with a base registry answered in-process, the runtimes' archives already in the cache, and the
+installs' commands recorded rather than run."""
 
-# Requirements: REQ-2098
+# Requirements: REQ-2098, REQ-2100
 
 from __future__ import annotations
 
@@ -100,6 +101,16 @@ def base(tmp_path: Path) -> oci.Registry:
     return registry, digest
 
 
+NAMES = {"rates": {"columns": [], "parameters": [], "pushdown": {}}}
+FRONT = [
+    "-I",
+    "/opt/provisa/front/front.py",
+    "7443",
+    "/var/lib/provisa",
+    "/opt/provisa/front/names.json",
+]
+
+
 def _plan(root: Path, language: str, runtime: str, cache: Path, entry: str | None = None):
     return image_build.Plan(
         source_id="Rates Source",
@@ -108,6 +119,7 @@ def _plan(root: Path, language: str, runtime: str, cache: Path, entry: str | Non
         code_hash=content_hash(root),
         entry=entry,
         exports=["rates"],
+        names=NAMES,
         registries=[],
         cache_root=cache,
         version="0.1.0a7+local",
@@ -154,8 +166,8 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
     def run(argv, cwd, env):
         ran.append(list(argv))
         target = Path(argv[argv.index("--target") + 1])
-        host_own = argv[-1].endswith("remote_host_requirements.txt")
-        (target / ("cryptography.py" if host_own else "six.py")).write_text("")
+        front = argv[-1].endswith("front_requirements.txt")
+        (target / ("duckdb.py" if front else "six.py")).write_text("")
 
     built = image_build.assemble(
         _plan(code, "python", "python", cache, "rates"), None, None, "amd64", tmp_path / "w",
@@ -166,11 +178,13 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
     for argv in ran:
         assert argv[argv.index("--python-platform") + 1] == "x86_64-manylinux_2_28"
         assert "--only-binary" in argv and ":all:" in argv and "--require-hashes" in argv
-    assert ran[-1][-1].endswith("remote_host_requirements.txt")
+    assert ran[-1][-1].endswith("front_requirements.txt")
     config = json.loads(built.image.config())["config"]
+    python = RUNTIMES["python"].asset(LINUX_X64).executable
     assert config["Entrypoint"] == [
-        "/opt/provisa/venv/bin/python", "-I", "/opt/provisa/host/remote_host.py",
-        "7443", "/var/lib/provisa", "/opt/provisa/code", "rates",
+        f"/opt/provisa/runtime/{python}", *FRONT,
+        "/opt/provisa/venv/bin/python", "-I", "/opt/provisa/host/host.py", "{fd}",
+        "/opt/provisa/code", "rates",
     ]  # fmt: skip
     assert config["User"] == "65532:65532" and config["ExposedPorts"] == {"7443/tcp": {}}
     assert config["Labels"] == {
@@ -179,6 +193,7 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "dev.provisa.runtime": "python",
         "dev.provisa.code_hash": content_hash(code),
         "dev.provisa.exports": "rates",
+        "dev.provisa.names": json.dumps(NAMES, sort_keys=True, separators=(",", ":")),
     }
     assert "PROVISA_CODE_HASH=" + content_hash(code) in config["Env"]
     paths = _layers_paths(built)
@@ -187,11 +202,16 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "opt/provisa/runtime/python/bin/python3.12",
         "opt/provisa/hostlib/pyarrow/__init__.py",
         "opt/provisa/host/host.py",
-        "opt/provisa/host/remote_host.py",
+        "opt/provisa/front/front.py",
+        "opt/provisa/front/residual.py",
+        "opt/provisa/front/pgfront.py",
+        "opt/provisa/front/pgcatalog.py",
+        "opt/provisa/front/names.json",
+        "opt/provisa/frontlib/duckdb.py",
+        "opt/provisa/frontlib/buenavista/postgres.py",
         "opt/provisa/venv/pyvenv.cfg",
         "opt/provisa/venv/bin/python",
         "opt/provisa/venv/lib/python3.12/site-packages/six.py",
-        "opt/provisa/venv/lib/python3.12/site-packages/cryptography.py",
         "opt/provisa/code/rates.py",
         "var/lib/provisa",
     } <= paths
@@ -216,6 +236,9 @@ def test_a_node_source_installs_its_packages_for_the_images_platform(
 
     def run(argv, cwd, env):
         ran.append(list(argv))
+        if "--target" in argv:  # the front end's own libraries
+            (Path(argv[argv.index("--target") + 1]) / "duckdb.py").write_text("")
+            return
         (cwd / "node_modules" / "dayjs").mkdir(parents=True)
 
     built = image_build.assemble(
@@ -227,22 +250,28 @@ def test_a_node_source_installs_its_packages_for_the_images_platform(
         run=run,
         base=pinned_base,
     )
-    (npm,) = ran
+    npm, front = ran
+    assert front[-1].endswith("front_requirements.txt")
     assert "ci" in npm and "--ignore-scripts" in npm
     assert {"--os=linux", "--cpu=arm64", "--libc=glibc"} <= set(npm)
     config = json.loads(built.image.config())
     node = RUNTIMES["node"].asset(LINUX_ARM64).executable
+    python = RUNTIMES["python"].asset(LINUX_ARM64).executable
     assert config["architecture"] == "arm64"
     assert config["config"]["Entrypoint"] == [
-        f"/opt/provisa/runtime/{node}", "/opt/provisa/host/remote_host.mjs",
-        "7443", "/var/lib/provisa", "/opt/provisa/code/index.js",
+        f"/opt/provisa/front-runtime/{python}", *FRONT,
+        f"/opt/provisa/runtime/{node}", "/opt/provisa/host/host.mjs", "{fd}",
+        "/opt/provisa/code/index.js",
     ]  # fmt: skip
     paths = _layers_paths(built)
     assert {
         f"opt/provisa/runtime/{node}",
         "opt/provisa/hostlib/package/Arrow.es2015.min.js",
         "opt/provisa/host/host-core.mjs",
-        "opt/provisa/host/remote_host.mjs",
+        "opt/provisa/host/host.mjs",
+        f"opt/provisa/front-runtime/{python}",
+        "opt/provisa/front/front.py",
+        "opt/provisa/frontlib/duckdb.py",
         "opt/provisa/code/node_modules/dayjs",
     } <= paths
     assert not (code / ".npmrc").exists()

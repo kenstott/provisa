@@ -23,6 +23,7 @@ import asyncio
 from typing import Any
 
 from provisa.codesource.manifest import (
+    LOADER,
     Anonymous,
     EnumOf,
     Export,
@@ -71,6 +72,8 @@ def _parameter_columns(export: Export) -> list[dict]:
             "comment": None,
         }
         for p in export.parameters
+        # REQ-2100: a join's keys reach the loader; a statement gives it no argument.
+        if not (export.loader and p.name == LOADER)
     ]
 
 

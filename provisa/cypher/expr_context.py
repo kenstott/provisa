@@ -28,6 +28,7 @@ import sqlglot.expressions as exp
 from provisa.cypher.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
 from provisa.cypher.translator_helpers import (  # REQ-1586
     _make_junction_joins,
+    edge_properties_column,
     via_alias_for,
 )
 from provisa.cypher.translator_helpers import via_column as _via_column  # REQ-1586
@@ -112,10 +113,12 @@ class TranslatorExprContext:
         t = self._t
         if var is not None:
             if var in t._all_rels_rel_vars:
+                # The edge's own properties, never its JSON: that carries an id built from both
+                # endpoints' keys (translator_union._build_all_rels_union).
                 return _anon(
                     "JSON_EXTRACT_SCALAR",
-                    exp.column(var),
-                    exp.Literal.string(f"$.properties.{name}"),
+                    exp.column(edge_properties_column(var)),
+                    exp.Literal.string(f"$.{name}"),
                 )
             if var in t._all_rels_node_vars:
                 return _anon(

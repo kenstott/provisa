@@ -141,6 +141,7 @@ def _make_app_state_with_orders():
     state.rls_contexts = {"admin": RLSContext.empty()}
     state.roles = {
         "admin": {
+            "description": "Test role.",
             "id": "admin",
             "capabilities": ["full_results", "query_development"],
             "domain_access": ["*"],

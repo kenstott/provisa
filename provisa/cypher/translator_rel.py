@@ -90,6 +90,9 @@ class _RelJoinMixin:  # mixin for _Translator
             tgt_var: str | None,
             src_domain: str | None = None,
             tgt_domain: str | None = None,
+            *,
+            src_type: str | None = None,
+            tgt_type: str | None = None,
         ) -> exp.Expression: ...
 
         def _translate_path_function(
@@ -194,11 +197,18 @@ class _RelJoinMixin:  # mixin for _Translator
         src_var: "str | None",
         rel_var: "str | None",
         tgt_var: "str | None",
+        *,
+        src_type: "str | None" = None,
+        tgt_type: "str | None" = None,
     ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Handle fully unlabeled rel pattern: UNION ALL over all relationship types."""
+        """Handle an untyped rel pattern: UNION ALL over the relationship types whose endpoints
+        are of the node types the pattern labels (``src_type`` / ``tgt_type``), every type where
+        it labels neither."""
         src_domain = self._domain_nodes.get(src_var) if src_var else None
         tgt_domain = self._domain_nodes.get(tgt_var) if tgt_var else None
-        from_expr = self._build_all_rels_union(src_var, rel_var, tgt_var, src_domain, tgt_domain)
+        from_expr = self._build_all_rels_union(
+            src_var, rel_var, tgt_var, src_domain, tgt_domain, src_type=src_type, tgt_type=tgt_type
+        )
         if src_var:
             self._domain_nodes.pop(src_var, None)
             self._var_table[src_var] = (src_var, None)
@@ -542,7 +552,15 @@ class _RelJoinMixin:  # mixin for _Translator
                 j = self._build_domain_target_join(tgt_var, rel_mapping, src_var, src_nm, clause)
                 joins.append(j)
             elif rel_mapping is None:
-                from_expr = self._handle_unlabeled_rel_pattern(src_var, rel.variable, tgt_var)
+                # An endpoint's own label holds: (n:Inquiries)-[r]->(m) reads only the
+                # relationships from Inquiries, never every relationship of the model.
+                from_expr = self._handle_unlabeled_rel_pattern(
+                    src_var,
+                    rel.variable,
+                    tgt_var,
+                    src_type=src_nm.type_name if src_nm is not None and src_nm_explicit else None,
+                    tgt_type=tgt_nm.type_name if tgt_nm is not None and tgt_nm_explicit else None,
+                )
             return from_expr, joins, True
 
         bidir = rel.direction == "none"

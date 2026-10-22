@@ -445,7 +445,7 @@ sources:
   mapping:
     database: provisa
     host: ${env:PROVISA_DQ_HOST:-localhost}
-    # This config runs with no auth provider, where pgwire's trust mode ignores the password.
+    # This config runs with no auth provider, where pgwire's trust mode asks for no password.
     password: ""
     port: ${env:PROVISA_PGWIRE_PORT:-5439}
     user: ${env:PROVISA_DQ_USER:-org_admin}
@@ -460,7 +460,7 @@ sources:
   mapping:
     database: provisa
     host: ${env:PROVISA_DQ_HOST:-localhost}
-    # This config runs with no auth provider, where pgwire's trust mode ignores the password.
+    # This config runs with no auth provider, where pgwire's trust mode asks for no password.
     password: ""
     port: ${env:PROVISA_PGWIRE_PORT:-5439}
     user: ${env:PROVISA_DQ_USER:-org_admin}
@@ -804,7 +804,7 @@ tables:
   source_id: __derived__
   table: dim_pet
   view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM
-    "pet_store_sqlite"."pet_store"."pets"
+    "pet_store"."pets"
 - columns:
   - description: Employee id to fetch - sent to the GraphQL query as an argument
     name: _nf_id
@@ -949,7 +949,7 @@ tables:
   schema: views
   source_id: __derived__
   table: fact_pet_inquiries
-  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "inquiries_sqlite"."default"."inquiries"
+  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "pet_store"."inquiries"
     GROUP BY "pet_id"
 - alias: pet_by_status
   columns:

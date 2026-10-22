@@ -61,10 +61,12 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
     "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
     "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
+    "glossary_term_domains": "glossary_term_domains_meta",  # REQ-1591
     "tracked_webhooks": "tracked_webhooks_meta",
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
+    "data_products": "data_products_meta",  # REQ-2125
 }
 
 
@@ -386,7 +388,7 @@ async def _build_source_pools_and_enums(
     from provisa.api.app import state
     from provisa.api.data.pgwire_write import start_write_server
     from provisa.executor.drivers.registry import has_driver
-    from provisa.transpiler.router import VIRTUAL_SOURCES
+    from provisa.transpiler.router import CODE_DIRECT_SOURCES, VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.core.secrets_store import bound_to_request_org
 
@@ -416,7 +418,9 @@ async def _build_source_pools_and_enums(
             start_write_server(src)
             _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
             if has_driver(src.type.value) and (
-                src.type.value not in VIRTUAL_SOURCES or _is_flat_file
+                src.type.value not in VIRTUAL_SOURCES
+                or _is_flat_file
+                or src.type.value in CODE_DIRECT_SOURCES  # REQ-2100
             ):
                 resolved_pw = resolve_secrets(src.password)
                 resolved_host = (
@@ -428,6 +432,9 @@ async def _build_source_pools_and_enums(
                 state.source_dsns[src.id] = (
                     resolved_database
                     if _is_flat_file
+                    # REQ-2100: a code source is no database another source can share.
+                    else f"code:{src.id}"
+                    if src.type.value in CODE_DIRECT_SOURCES
                     else f"{resolved_host}:{src.port}/{src.database}"
                 )
                 # Best-effort: an unreachable/misconfigured source must not abort startup —
@@ -1715,8 +1722,11 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     field_numbers=None,  # FieldNumberAllocator | None (REQ-1903) — the caller owns load/persist
     *,
     draft_tables: list[dict],  # REQ-1921: out of service; named only to be refused
-) -> None:
-    """Build and register GraphQL schemas, contexts, and protos for each role."""
+) -> dict[int, int]:
+    """Build and register GraphQL schemas, contexts, and protos for each role.
+
+    Returns each checker table's id with the id of the governed table its contract scans
+    (REQ-2125), resolved here, where the contexts the contract names exist."""
     from provisa.api.app import state
 
     from provisa.graphql_remote.relation_columns import (
@@ -1862,14 +1872,17 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     from provisa.dq.contract import contract_dataset
     from provisa.dq.registration import check_contract_target, is_checker_source_type
 
+    checked: dict[int, int] = {}
     for t in tables:
         checker = state.source_types[t["source_id"]]
         if t.get("dq_contract") and is_checker_source_type(checker):
-            check_contract_target(
+            target = check_contract_target(
                 SimpleNamespace(schema_name=t["schema_name"], table_name=t["table_name"]),
                 contract_dataset(t["dq_contract"], checker),
                 state.contexts,
             )
+            checked[t["id"]] = target.table_id
+    return checked
 
 
 def _setup_approval_hook(st: AppState) -> None:
@@ -1925,6 +1938,10 @@ _META_TABLES = [
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
     "glossary_term_edges",  # REQ-1584
     "glossary_term_experts",  # REQ-1584
+    "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
+    "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
+    "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
+    "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped

@@ -128,7 +128,9 @@ describe("DataProductFormCard", () => {
     expect(identity).toHaveAttribute("data-has-error", "true");
     expect(within(identity).getAllByText("Required")).toHaveLength(3);
     expect(screen.getByTestId("data-product-panel-identity-error")).toBeInTheDocument();
-    expect(screen.getByTestId("data-product-panel-ownership")).not.toHaveAttribute("data-has-error");
+    expect(screen.getByTestId("data-product-panel-ownership")).not.toHaveAttribute(
+      "data-has-error",
+    );
   });
 
   it("saves a complete form without flagging anything", () => {

@@ -1283,6 +1283,14 @@ async def vector_registry(state: Any) -> Any:  # REQ-419, REQ-423
     )
 
 
+def _attached_parameters(state: Any, table_ids: Any) -> set[str]:  # REQ-2100
+    """The parameters of the code tables the engine attaches (codesource.attach): their
+    conditions stay in the statement, which the engine hands to the host."""
+    from provisa.codesource.attach import parameters
+
+    return parameters(state, table_ids)
+
+
 def context_parameters(ctx: Any) -> set[str]:  # REQ-1986
     """The parameter columns of ``ctx``, every table's (``native_filter_columns``)."""
     return {name for columns in ctx.native_filter_columns.values() for name in columns}
@@ -2141,7 +2149,7 @@ async def route_governed(
     # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys()
+    _parameters = context_parameters(ctx) - _frozen.keys() - _attached_parameters(state, _table_ids)
     _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _physical_sql, embedded_params or [], _parameters, _frozen
@@ -2369,6 +2377,10 @@ async def route_governed(
 
     await _await_source_servers(decision, _sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_deferred
+
+        # REQ-2100: a code table held for its source's own read is landed for the engine.
+        _qualified = await land_deferred(_qualified, state)
         # REQ-135/REQ-1163: optimization — a view governance kept as its reference (its region's
         # copy, an as-of read of a bitemporal view, a materialized view the reader sees whole) is
         # answered here, BEFORE the unknown-catalog check and transpile (mv/view_read.py). Same
@@ -3981,7 +3993,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             _span.set_attribute("db.statement", plan.sql[:1000])
             async with tenant_db.acquire() as _conn:
                 # Column names come from the result itself, so an empty result still has them.
-                col_names, _rows = await _conn.fetch_with_columns(plan.sql)
+                # The statement's $N placeholders are bound from the plan, as on every route.
+                col_names, _rows = await _conn.fetch_with_columns(
+                    plan.sql, *(plan.exec_params or ())
+                )
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
         result = QueryResult(rows=rows, column_names=col_names)
@@ -4786,7 +4801,7 @@ async def _route_compiled(
         )
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys()
+    _parameters = context_parameters(ctx) - _frozen.keys() - _attached_parameters(state, _table_ids)
     _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _exec_sql, exec_params or [], _parameters, _frozen
@@ -4943,6 +4958,10 @@ async def _route_compiled(
     # instead. A single-source neo4j query now always falls through to Route.ENGINE.
     await _await_source_servers(decision, sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_deferred
+
+        # REQ-2100: a code table held for its source's own read is landed for the engine.
+        _exec_sql = await land_deferred(_exec_sql, state)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
         _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
         return _Plan(

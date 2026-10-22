@@ -41,7 +41,12 @@ _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _CSV = str(_FILES / "customers.csv")
 _ORDERS_SQLITE = str(_FILES / "orders.sqlite")
 
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 
 
 def _col(n: str, d: str = "varchar", nl: bool = True) -> ColumnMetadata:

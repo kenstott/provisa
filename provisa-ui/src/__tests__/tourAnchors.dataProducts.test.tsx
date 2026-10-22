@@ -17,6 +17,29 @@ import { render } from "../test-utils/render";
 import { walkTourStep } from "../test-utils/tourAnchor";
 import type { DataProduct } from "../types/admin";
 
+// REQ-2127: the list and the panel core are read from the meta domain; the reads are held by
+// their own tests (productCore.test.ts).
+vi.mock("../pages/data-products/useProductCore", () => ({
+  useMetaProducts: () => ({
+    data: PRODUCTS.dataProducts,
+    unreadable: false,
+    error: null,
+    loading: false,
+    reload: vi.fn(),
+  }),
+  useProductCore: () => ({
+    data: CORE,
+    unreadable: false,
+    error: null,
+    loading: false,
+    reload: vi.fn(),
+  }),
+  useMetaReader: () => null,
+}));
+vi.mock("../components/graph3d/KnowledgeGraphPanel", () => ({
+  ProductMapButton: () => null,
+  KnowledgeGraphPanel: () => null,
+}));
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
 }));
@@ -47,6 +70,13 @@ const PET_HEALTH = [
     customProperties: {},
   } as unknown as DataProduct,
 ];
+// The pet store's product as the meta domain answers its panel: no members yet.
+const CORE = {
+  product: PET_HEALTH[0],
+  tables: NONE,
+  commands: NONE,
+  queries: { graphql: "", sql: "", jsonapi: "" },
+};
 let PRODUCTS = {
   dataProducts: NONE as DataProduct[],
   loading: false,
@@ -62,7 +92,6 @@ vi.mock("../hooks/useDataProductMutations", () => ({
 }));
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
-  useDataProducts: () => PRODUCTS,
   useDomains: () => ({ ...EMPTY, domains: NONE }),
   useTables: () => ({ ...EMPTY, tables: NONE }),
   useSources: () => ({ ...EMPTY, sources: NONE }),

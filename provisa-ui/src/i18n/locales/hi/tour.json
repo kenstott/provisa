@@ -958,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "समूह विश्लेषक के रूप में",
-        "description": "आगे, SQL एक्सप्लोरर group_analyst के रूप में चलता है, जो US में समूह रिपोर्टिंग पर काम करता है।"
+        "description": "अब रोल चयनकर्ता <strong>group_analyst</strong> पर जाता है, जो US में समूह रिपोर्टिंग पर काम करता है, ताकि इसके बाद का SQL और GraphQL group_analyst के रूप में चले।"
       },
       "retailGroupView": {
         "title": "समूह रिपोर्टिंग, EU ग्राहक छद्मनामित",
@@ -967,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "यही, GraphQL में",
         "description": "वही समूह व्यू GraphQL पर: एक मॉडल, हर ट्रांसपोर्ट, वही नियम।"
+      },
+      "retailEveryRole": {
+        "title": "फिर से सभी भूमिकाएँ",
+        "description": "अब रोल चयनकर्ता फिर <strong>All</strong> पर लौटता है।"
       },
       "retailAsMarketing": {
         "title": "EU मार्केटिंग के रूप में",
@@ -1286,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "analyst के रूप में पढ़ा गया",
-        "description": "इसके बाद की क्वेरी analyst के रूप में चलती हैं, वह भूमिका जिससे डेटा साइंटिस्ट पढ़ता है।"
+        "description": "अब रोल चयनकर्ता <strong>analyst</strong> पर जाता है, वह भूमिका जिससे डेटा साइंटिस्ट पढ़ता है, ताकि इसके बाद हर सतह analyst के रूप में चले।"
       },
       "churnFeatures": {
         "title": "वे फ़ीचर जिनसे मॉडल सीखता है",
@@ -1299,6 +1303,10 @@
       "churnNotebook": {
         "title": "आपके ब्राउज़र में प्रशिक्षित एक मॉडल",
         "description": "डेमो की नोटबुक, Notebook टैब में चलाई गई: फ़ीचर analyst के रूप में pandas में पढ़े गए, उन पर एक scikit-learn मॉडल प्रशिक्षित किया गया, और सबसे अधिक जोखिम वाले ग्राहकों की सूची दी गई। Python आपके ब्राउज़र में चलता है, और ईमेल पते अब भी मास्क किए हुए हैं।"
+      },
+      "churnEveryRole": {
+        "title": "फिर से सभी भूमिकाएँ",
+        "description": "अब रोल चयनकर्ता फिर <strong>All</strong> पर लौटता है।"
       },
       "churnRecap": {
         "title": "आपने क्या देखा",

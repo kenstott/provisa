@@ -318,6 +318,22 @@ describe("DataQualityPanel", () => {
     expect(await screen.findByTestId("dq-dry-run-result")).toHaveTextContent("Failed to fetch");
   });
 
+  it("shows the server's reason for a dry run it refused", async () => {
+    dryRunContract.mockResolvedValue({
+      success: false,
+      message: "checker 'soda' exited 1: Could not connect to 'provisa'",
+      checkerVersion: null,
+      checks: [],
+    });
+    renderPanel();
+    await screen.findByTestId("dq-check-rows");
+    fireEvent.click(screen.getByTestId("dq-dry-run"));
+
+    expect(await screen.findByTestId("dq-dry-run-result")).toHaveTextContent(
+      "checker 'soda' exited 1: Could not connect to 'provisa'",
+    );
+  });
+
   it("reports a dry run whose mutation carried no payload", async () => {
     dryRunContract.mockResolvedValue(null);
     renderPanel();

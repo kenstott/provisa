@@ -32,7 +32,10 @@ import pytest
 
 class DeadlineClock:
     def __init__(self) -> None:
-        self.now = time.monotonic()
+        # A whole second of the machine's uptime: binary fractions added to it are exact, so a
+        # test's sums of them land exactly where it says. Started at the uptime itself (its
+        # fraction arbitrary), 511.79574547 + 0.25 came to 512.0457454699999.
+        self.now = float(int(time.monotonic()))
 
     def monotonic(self) -> float:
         return self.now

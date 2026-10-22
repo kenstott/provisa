@@ -129,6 +129,19 @@ def resolve_row_cap(
     return _get_default_row_limit()
 
 
+def _readable_term_predicate(column: str, domains: frozenset[str]) -> str:
+    """REQ-1593: ``column`` (a term's domains, as |a|b|) names a term the caller may read by
+    glossary.readable_term: one with no domains, an enterprise ("*") one, or one in a domain of
+    ``domains``."""
+    from provisa.compiler.sql_literals import sql_literal
+
+    tests = [f"{column} IS NULL"] + [
+        f"POSITION({sql_literal(f'|{d}|', 'postgres')} IN {column}) > 0"
+        for d in ("*", *sorted(domains))
+    ]
+    return "(" + " OR ".join(tests) + ")"
+
+
 def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, REQ-971
     role_id: str,
     rls_context,
@@ -202,7 +215,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
     # meta domain is governed by the tiered rule below.
     from provisa.security.rights import (
+        GLOSSARY_SCOPED_META_VIEWS,
         GOVERNANCE_META_COLUMNS,
+        GOVERNANCE_META_ROWS,
         META_DOMAIN_ID,
         META_ROW_SCOPED_VIEWS,
         Capability,
@@ -315,6 +330,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         gov.table_map[
             physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)
         ] = meta.table_id
+        # And its physical schema.table, which a statement lowered without a catalog names it by.
+        # For most tables that is also the stored name below; for one read through a physical
+        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
+        # such a read is refused as unregistered.
+        gov.table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")
@@ -336,12 +356,47 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
-            scope_col = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
-            if scope_col is None:
+            scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
+            if scope_cols is None:
                 continue
-            predicate = f"{scope_col} IN ({id_list})"
+            predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
             existing = gov.rls_rules.get(tm.table_id)
             # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
+            gov.rls_rules[tm.table_id] = (
+                f"({existing}) AND ({predicate})" if existing else predicate
+            )
+
+    # REQ-2126: the governance rows of a meta view are read only with view_governance, under the
+    # same WHERE-injection as the row scope above.
+    if not _has_view_gov:
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+                continue
+            predicate = GOVERNANCE_META_ROWS.get(getattr(tm, "table_name", ""))
+            if predicate is None:
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
+            gov.rls_rules[tm.table_id] = (
+                f"({existing}) AND ({predicate})" if existing else predicate
+            )
+
+    # REQ-1593: the glossary meta views answer what the glossary API does -- a term is read where
+    # glossary.readable_term admits it -- by the same WHERE-injection.
+    from provisa.core import domain_policy
+    from provisa.core.env_authority import domains_within
+
+    readable_in = None if domain_policy.single_domain() else domains_within(role["domain_access"])
+    if readable_in is not None:
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+                continue
+            scope_cols = GLOSSARY_SCOPED_META_VIEWS.get(getattr(tm, "table_name", ""))
+            if scope_cols is None:
+                continue
+            predicate = " AND ".join(
+                _readable_term_predicate(col, readable_in) for col in scope_cols
+            )
+            existing = gov.rls_rules.get(tm.table_id)
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )

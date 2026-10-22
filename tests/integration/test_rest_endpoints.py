@@ -332,6 +332,7 @@ class TestRestEndpointsHTTP:
             # capability. Every column above grants org_admin explicitly, so the schema it sees comes
             # from real grants rather than from a wildcard.
             role = {
+                "description": "Test role.",
                 "id": "org_admin",
                 "capabilities": ["query_development", "full_results", "usage", "write"],
                 "domain_access": ["*"],
@@ -372,6 +373,7 @@ class TestRestEndpointsHTTP:
         # lists), so the role the request runs as must be loaded, as it is on a real server.
         app_state.roles = {
             "org_admin": {
+                "description": "Test role.",
                 "id": "org_admin",
                 "capabilities": ["full_results"],
                 "domain_access": ["*"],

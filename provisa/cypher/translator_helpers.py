@@ -100,6 +100,11 @@ def _src_col_expr_for_rm(
     )
 
 
+def edge_properties_column(rel_col: str) -> str:  # REQ-603
+    """The all-relationships union's column holding one edge's own properties, beside its JSON."""
+    return f"{rel_col}__properties"
+
+
 def via_alias_for(rm: "RelationshipMapping", seed: "str | None") -> str:  # REQ-1586
     """Deterministic SQL alias for a junction-backed relationship's junction table.
 

@@ -36,6 +36,7 @@ from provisa.core.schema_org import replica_build_log
 from provisa.core.schema_org import replica_state as replica_state_table
 from provisa.federation import replica_state
 from provisa.federation.data_replicator import BuildOutcome
+from provisa.federation.engine import FederationEngine
 from provisa.federation.query_residency import ensure_resident
 from provisa.federation.replica_address import ReplicaRoutes
 from provisa.federation.replica_locks import BuildLocks
@@ -170,6 +171,7 @@ def _state(db: Database, backend: _Backend) -> SimpleNamespace:
             name="postgres",
             native_store="postgres",
             connectors={},
+            asks_in_place=FederationEngine.asks_in_place,  # REQ-1867, REQ-2100: as the engine asks
             materialize_store=lambda: "postgresql://unused/materialize",
         )
     )

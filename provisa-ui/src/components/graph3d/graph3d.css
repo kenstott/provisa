@@ -1,0 +1,77 @@
+/* REQ-2128: the data product graph, on the 3D profile views' tokens and layout (profile3d.css). */
+.g3d.is-expanded {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}
+.g3d-filters .mantine-MultiSelect-root,
+.g3d-filters .mantine-Select-root {
+  width: 200px;
+}
+.g3d-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.g3d-panel-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+  height: 320px;
+  margin-top: var(--mantine-spacing-xs);
+}
+.g3d-panel-view .p3d-stage {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.g3d-sw-product {
+  background: var(--p3d-accent);
+}
+.g3d-sw-domain {
+  background: var(--p3d-fam-temporal);
+}
+.g3d-sw-table {
+  background: var(--p3d-fam-numeric);
+}
+.g3d-sw-relation {
+  background: var(--p3d-fam-foreign);
+}
+.g3d-sw-column {
+  background: var(--p3d-fam-other);
+}
+.g3d-sw-command {
+  background: var(--p3d-warm);
+}
+.g3d-sw-checker {
+  background: var(--p3d-q-tail);
+}
+.g3d-sw-profile {
+  background: var(--p3d-q-mid);
+}
+.g3d-sw-tag {
+  background: var(--p3d-fam-boolean);
+}
+.g3d-sw-term {
+  background: var(--p3d-cool);
+}
+/* REQ-2130: a proposed term's name, with why; a deprecated one's, dimmed. */
+.g3d-label-proposed {
+  font-style: italic;
+  color: var(--p3d-warn-fg);
+}
+.g3d-label-dim {
+  opacity: 0.45;
+}
+.g3d-inline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}
+.g3d-filters .mantine-InputBase-root {
+  width: 200px;
+}
+.g3d-placeholder {
+  color: var(--mantine-color-placeholder);
+}

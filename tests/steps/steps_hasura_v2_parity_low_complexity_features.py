@@ -360,8 +360,7 @@ def _when_compiler_processes_upsert(shared_data: dict) -> None:
 
     field_node: FieldNode = shared_data["field_node"]
     table: TableMeta = shared_data["table"]
-    # A context naming no column renames: the input's names are the table's own.
-    result: MutationResult = compile_upsert(field_node, table, None, CompilationContext())
+    result: MutationResult = compile_upsert(field_node, table, None, CompilationContext())  # type: ignore[arg-type]
     shared_data["result"] = result
 
 

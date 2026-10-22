@@ -51,12 +51,25 @@ _META: dict[str, str] = {
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
+    # REQ-2125
+    "data_products": "Every data product — one row per product with its own fields; its domain, "
+    "member tables, commands, tags, glossary terms and profiles are reached by relationship",
+    # REQ-2126
+    "data_product_edges": "Each data product's links to the rest of the model — the tables and "
+    "products it reaches through relationships, and the relations upstream and downstream of "
+    "its tables in lineage — one row per product, target and kind",
+    # REQ-2129
+    "column_lineage_edges": "The model's column lineage — each column a view or command derives "
+    "from another registered column, naming the view or command",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
     # REQ-1584: the business glossary as queryable metadata.
     "glossary_terms": "The business vocabulary — one row per term, with the ref count and the "
     "live flag the export's admission rule computes",
+    # REQ-1591
+    "glossary_term_domains": "Each glossary term's domains, by the one rule: its refs' domains "
+    "while it holds refs, the domains declared for it otherwise",
     "glossary_term_refs": "Each binding of a term to a physical column, resolved to that "
     "column's source, schema, table and domain",
     "glossary_term_edges": "The term graph — how terms relate to one another, with both "
@@ -151,6 +164,67 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "l3_cluster": "Third-level semantic cluster within the L2 cluster",
         "clusters_computed_at": "When the semantic clusters were last recomputed",
         "tenant_id": _TENANT,
+        # REQ-2125
+        "dq_contract": "The data-quality contract a checker table's rows are the scan results "
+        "of; empty for any other table",
+        "profiled_table_id": "For a profile result table, the table it profiles; empty for any "
+        "other table",
+        "checked_table_id": "For a checker table, the table its data-quality contract scans; "
+        "empty for any other table",
+    },
+    # REQ-2129
+    "column_lineage_edges": {
+        "id": "Edge identifier",
+        "source_relation": "The relation the derivation reads (domain.table)",
+        "source_column": "The column it reads, by its SQL name",
+        "target_relation": "The relation the derivation produces (domain.table)",
+        "target_column": "The column it produces, by its SQL name",
+        "via": "The view (its relation) or the command (its name) that derives the target",
+        "via_kind": "view or command",
+        "source_table_id": "The registered table the source column belongs to",
+        "source_column_name": "The source column's stored name",
+        "target_table_id": "The registered table the target column belongs to",
+        "target_column_name": "The target column's stored name",
+        "source_column_key": "Synthesized column identity (table_id:column_name) of the source",
+        "target_column_key": "Synthesized column identity (table_id:column_name) of the target",
+    },
+    # REQ-2126
+    "data_product_edges": {
+        "id": "Edge identifier: product, kind and target",
+        "product_id": "The data product the edge starts from",
+        "kind": "relationship or lineage",
+        "direction": "For a lineage edge, upstream (the product derives from the target) or "
+        "downstream (the target derives from the product); empty for a relationship edge",
+        "target_product_id": "The other data product the edge reaches, when its end is a member "
+        "of one",
+        "target_table_id": "The table the edge reaches, when its end is a registered table",
+        "target_relation": "For a lineage edge, the relation it reaches (domain.table)",
+        "direct": "True when one relationship, or one derivation, joins a member to the target",
+        "hops": "The shortest number of relationships or derivations between a member and the "
+        "target",
+        "path_count": "How many paths connect the product to the target",
+        "aliases": "The aliases of the relationships on those paths",
+        "relationship_ids": "The relationships on those paths",
+        "supporting_tables": "Tables in no product that a path runs through",
+        "vias": "For a lineage edge, the views and commands on its paths",
+    },
+    # REQ-2125
+    "data_products": {
+        "id": "Data product identifier",
+        "domain_id": "Domain the product is published in",
+        "name": "Name the product is listed under",
+        "owner_role": "Role that owns the product",
+        "team_role": "Role of the team that maintains the product",
+        "purpose": "What the product is for",
+        "limitations": "What the product should not be used for, and its known gaps",
+        "usage": "How to use the product",
+        "version": "The product's version",
+        "status": "The product's lifecycle status",
+        "sla": "The service level the product is held to",
+        "support": "Where to get support for the product",
+        "support_contact": "Who to contact for support",
+        "publish": "True when the product is published; false while it is a draft",
+        "custom_properties": "The product's own named properties",
     },
     "table_columns": {
         "id": "Surrogate key for the column registration",
@@ -276,6 +350,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the function does, shown to consumers",
         "created_at": "When the function was registered",
         "updated_at": "When the registration was last changed",
+        "product_id": "The data product the function is a member of, if any",  # REQ-2125
     },
     "tags": {
         "id": "Tag name, e.g. pii or deprecated",
@@ -313,6 +388,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         # assignment is on a column.
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
+        "product_id": "Tagged data product, when the object is a data product",  # REQ-2125
     },
     "tag_expiry": {
         "id": "Assignment identifier",
@@ -383,6 +459,21 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "live": "True when the term is in service, defined, and connected over in-service "
         "edges to a term holding a physical ref",
         "tenant_id": _TENANT,
+        # REQ-1387
+        "grounded": "True when the term is connected over in-service edges to a term holding a "
+        "physical ref, defined or not",
+        "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
+        "for a term with no domains",
+    },
+    # REQ-1591
+    "glossary_term_domains": {
+        "id": "Term and domain",
+        "term_id": "The term",
+        "domain_id": "A domain the term belongs to: the domains of the tables its refs point at "
+        "while it holds refs, its declared domains otherwise; * is the whole org",
+        "tenant_id": _TENANT,
+        "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
+        "for a term with no domains",
     },
     "glossary_term_refs": {
         "id": "Ref identifier",
@@ -396,6 +487,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_name": "Name of the bound column's table",
         "domain_id": "Domain the bound column is governed under",
         "tenant_id": _TENANT,
+        "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
+        "for a term with no domains",
     },
     "glossary_term_edges": {
         "id": "Edge identifier",
@@ -405,6 +498,10 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "from_term": "Name of the starting term",
         "to_term": "Name of the ending term",
         "tenant_id": _TENANT,
+        "from_term_domains": "Synthesized: the from term's domains as |a|b| — what its readable-term scope tests; empty "
+        "for a term with no domains",
+        "to_term_domains": "Synthesized: the to term's domains as |a|b| — what its readable-term scope tests; empty "
+        "for a term with no domains",
     },
     "glossary_term_experts": {
         "id": "Assignment identifier",

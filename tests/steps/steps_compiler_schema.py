@@ -107,6 +107,7 @@ def _make_default_schema_input(role_id: str = "admin") -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": role_id,
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -189,6 +190,7 @@ def _make_federation_schema_input(role_id: str = "admin") -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": role_id,
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -240,6 +242,7 @@ def _make_sampling_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -295,6 +298,7 @@ def _make_group_by_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -373,6 +377,7 @@ def _make_req009_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -484,6 +489,7 @@ def _make_mongo_discover_schema_input(
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -566,6 +572,7 @@ def _make_naming_convention_schema_input(
     }
 
     role = {
+        "description": "Test role.",
         "id": role_id,
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -760,6 +767,7 @@ def _make_hasura_default_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -860,6 +868,7 @@ def _make_graphql_default_schema_input() -> SchemaInput:
     }
 
     role = {
+        "description": "Test role.",
         "id": "admin",
         "capabilities": ["query_development"],
         "domain_access": ["*"],
@@ -1005,12 +1014,14 @@ def req253_assert_fresh(shared_data):
 def req403_rules(shared_data):
     rules = [
         {
+            "description": "Test rule.",
             "table_id": 1,
             "domain_id": None,
             "role_id": "analyst",
             "filter_expr": "owner_id = current_user",
         },
         {
+            "description": "Test rule.",
             "table_id": None,
             "domain_id": "sales",
             "role_id": "analyst",

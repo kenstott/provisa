@@ -958,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "Als Konzernanalyst",
-        "description": "Als Nächstes läuft der SQL-Explorer als group_analyst, der in der Region US am Konzernreporting arbeitet."
+        "description": "Als Nächstes wechselt die Rollenauswahl zu <strong>group_analyst</strong>, der in der Region US am Konzernreporting arbeitet, sodass SQL und GraphQL danach als group_analyst laufen."
       },
       "retailGroupView": {
         "title": "Konzernreporting, EU-Kunden pseudonymisiert",
@@ -967,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "Dasselbe in GraphQL",
         "description": "Dieselbe Konzernsicht über GraphQL: ein Modell, jeder Transport, dieselben Regeln."
+      },
+      "retailEveryRole": {
+        "title": "Zurück zu allen Rollen",
+        "description": "Als Nächstes wechselt die Rollenauswahl wieder zu <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "Als EU-Marketing",
@@ -1286,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Als analyst gelesen",
-        "description": "Die Abfragen danach laufen als analyst, die Rolle, mit der der Data Scientist liest."
+        "description": "Als Nächstes wechselt die Rollenauswahl zu <strong>analyst</strong>, der Rolle, mit der der Data Scientist liest, sodass jede Oberfläche danach als analyst läuft."
       },
       "churnFeatures": {
         "title": "Die Merkmale, aus denen das Modell lernt",
@@ -1299,6 +1303,10 @@
       "churnNotebook": {
         "title": "Ein Modell, in Ihrem Browser trainiert",
         "description": "Das Notebook der Demo, im Notebook-Tab ausgeführt: die Merkmale als analyst in pandas gelesen, ein scikit-learn-Modell darauf trainiert und die gefährdetsten Kunden aufgelistet. Python läuft in Ihrem Browser, und die E-Mail-Adressen bleiben maskiert."
+      },
+      "churnEveryRole": {
+        "title": "Zurück zu allen Rollen",
+        "description": "Als Nächstes wechselt die Rollenauswahl wieder zu <strong>All</strong>."
       },
       "churnRecap": {
         "title": "Was Sie gesehen haben",

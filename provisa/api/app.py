@@ -3288,7 +3288,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                 )
             )
 
-        _build_and_register_schemas(
+        _checked = _build_and_register_schemas(
             roles=roles,
             tables=tables,
             relationships=relationships,
@@ -3308,11 +3308,25 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         await persist_field_numbers(conn, _field_numbers)
 
+        # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.
+        from provisa.api.admin.lineage_router import write_lineage_edges
+
+        await write_lineage_edges(conn, state)
+
+        # REQ-2125: the table each checker checks, as this build resolved it, for the meta domain.
+        from provisa.dq.registration import write_checker_targets
+
+        await write_checker_targets(conn, _checked)
+
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
     # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive
     # visible_columns and all_columns; without this assignment the list is always empty and
     # column visibility + masking are silently skipped on every raw-SQL transport.
     state.tables = tables
+    # REQ-2100: the identity a built code host accepts, where the engine attaching it reads it.
+    from provisa.codesource.attach import prepare as _prepare_code_hosts
+
+    await _prepare_code_hosts(state)
     # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
     # governance path can compute 1-hop meta row scoping.
     state.relationships = relationships

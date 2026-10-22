@@ -958,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "Como analista do grupo",
-        "description": "Em seguida, o explorador SQL executa como group_analyst, que trabalha nos relatórios do grupo nos US."
+        "description": "Em seguida, o seletor de papéis passa para <strong>group_analyst</strong>, que trabalha nos relatórios do grupo nos US, para que o SQL e o GraphQL seguintes rodem como group_analyst."
       },
       "retailGroupView": {
         "title": "Relatórios do grupo, clientes da EU pseudonimizados",
@@ -967,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "O mesmo, em GraphQL",
         "description": "A mesma visão do grupo por GraphQL: um modelo, cada transporte, as mesmas regras."
+      },
+      "retailEveryRole": {
+        "title": "De volta a todas as funções",
+        "description": "Em seguida, o seletor de papéis volta para <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "Como marketing da EU",
@@ -1286,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Lido como analyst",
-        "description": "As consultas seguintes são executadas como analyst, a função com que o cientista de dados lê."
+        "description": "Em seguida, o seletor de papéis passa para <strong>analyst</strong>, a função com que o cientista de dados lê, para que todas as superfícies seguintes rodem como analyst."
       },
       "churnFeatures": {
         "title": "As variáveis com que o modelo aprende",
@@ -1299,6 +1303,10 @@
       "churnNotebook": {
         "title": "Um modelo, treinado no seu navegador",
         "description": "O notebook da demo, executado na aba Notebook: as variáveis lidas no pandas como analyst, um modelo scikit-learn treinado com elas e a lista dos clientes com mais risco. O Python é executado no seu navegador, e os endereços de e-mail continuam mascarados."
+      },
+      "churnEveryRole": {
+        "title": "De volta a todas as funções",
+        "description": "Em seguida, o seletor de papéis volta para <strong>All</strong>."
       },
       "churnRecap": {
         "title": "O que você viu",

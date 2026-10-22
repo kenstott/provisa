@@ -1,0 +1,49 @@
+# REQ-2126: a data product whose member view reads a governed table. A real server's model build
+# writes the view's lineage edges, and the meta domain's data_product_edges reads them.
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: dpe
+    description: Data product edges
+data_products:
+  - id: order_book
+    domain_id: dpe
+    name: Order Book
+sources:
+  - id: dpe-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+tables:
+  - source_id: dpe-pg
+    domain_id: dpe
+    schema: dpe_e2e
+    table: orders
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: customer
+        data_type: varchar
+        visible_to: [org_admin]
+views:
+  - id: open_orders
+    domain_id: dpe
+    product_id: order_book
+    sql: SELECT o.id, o.customer FROM "dpe"."orders" o
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: customer, data_type: varchar, visible_to: [org_admin]}
+roles: []

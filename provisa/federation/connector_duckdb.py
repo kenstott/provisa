@@ -32,6 +32,7 @@ from provisa.federation.connector_base import (
     Mechanism,
     ProbeResult,
     RuntimeDep,
+    probe_pg_extension,
 )
 from provisa.federation.duckdb_extensions import connect as _duckdb_connect
 
@@ -883,20 +884,6 @@ class DuckDBClickHouseConnector(_DuckDBExtensionConnector):  # REQ-899
 # --- Postgres: a single-node federator that ATTACHes remote sources via postgres_fdw (SQL/MED) ---
 
 
-async def _probe_pg_extension(fetch, ext: str, *, auto_create: bool) -> ProbeResult:  # REQ-904
-    """Probe a Postgres extension/FDW: created -> available; installable -> available iff the engine
-    auto-creates it on attach; absent -> unavailable with an install remediation."""
-    if await fetch(f"SELECT 1 FROM pg_extension WHERE extname = '{ext}'"):
-        return ProbeResult(True, f"{ext} installed")
-    if await fetch(f"SELECT 1 FROM pg_available_extensions WHERE name = '{ext}'"):
-        return ProbeResult(
-            auto_create,
-            f"{ext} available" + ("" if auto_create else " but not created"),
-            None if auto_create else f"CREATE EXTENSION {ext}",
-        )
-    return ProbeResult(False, f"{ext} not installed in this Postgres", f"install {ext} extension")
-
-
 class PostgresFdwConnector(Connector):  # REQ-893
     """Attach a remote PostgreSQL source into a Postgres engine via postgres_fdw (SQL/MED).
 
@@ -914,7 +901,7 @@ class PostgresFdwConnector(Connector):  # REQ-893
     async def probe(
         self, fetch
     ) -> ProbeResult:  # REQ-904 — engine creates it on attach, so installable is enough
-        return await _probe_pg_extension(fetch, "postgres_fdw", auto_create=True)
+        return await probe_pg_extension(fetch, "postgres_fdw", auto_create=True)
 
     def capability(self) -> Capability:
         # postgres_fdw pushes down predicates, joins between same-server foreign tables, and (PG14+)
@@ -1003,7 +990,7 @@ class PgClickHouseFdwConnector(Connector):  # REQ-1870
     )
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904/1870
-        return await _probe_pg_extension(fetch, "pg_clickhouse", auto_create=True)
+        return await probe_pg_extension(fetch, "pg_clickhouse", auto_create=True)
 
     def capability(self) -> Capability:
         # Live-verified: predicate AND aggregate pushdown both confirmed via EXPLAIN VERBOSE.
@@ -1124,7 +1111,7 @@ class _PgPgwireConnector(Connector):  # REQ-1730
         from provisa.runtime_deps import BundleResolver, bundle_spec_for
         from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
 
-        fdw = await _probe_pg_extension(fetch, "postgres_fdw", auto_create=True)
+        fdw = await probe_pg_extension(fetch, "postgres_fdw", auto_create=True)
         if not fdw.available:
             return fdw
         try:
@@ -1242,7 +1229,7 @@ class FileFdwConnector(Connector):  # REQ-893
     key = "file_fdw"
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
-        return await _probe_pg_extension(fetch, "file_fdw", auto_create=True)
+        return await probe_pg_extension(fetch, "file_fdw", auto_create=True)
 
     def capability(self) -> Capability:
         return Capability()  # file_fdw is a plain sequential scan — no pushdown
@@ -1274,7 +1261,7 @@ class SqliteFdwConnector(Connector):  # REQ-907
     runtime_deps = (RuntimeDep("libsqlite3", DriverProvider.SYSTEM),)  # OS-provided on macOS/Linux
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
-        return await _probe_pg_extension(fetch, "sqlite_fdw", auto_create=True)
+        return await probe_pg_extension(fetch, "sqlite_fdw", auto_create=True)
 
     def capability(self) -> Capability:
         # sqlite_fdw pushes some predicates to SQLite and supports write on foreign tables.
@@ -1310,7 +1297,7 @@ class MysqlFdwConnector(Connector):  # REQ-907
     runtime_deps = (RuntimeDep("libmysqlclient / mariadb-connector-c", DriverProvider.BUNDLED),)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
-        return await _probe_pg_extension(fetch, "mysql_fdw", auto_create=True)
+        return await probe_pg_extension(fetch, "mysql_fdw", auto_create=True)
 
     def capability(self) -> Capability:
         # mysql_fdw pushes predicates and joins, and supports write on foreign tables.
@@ -1352,7 +1339,7 @@ class TdsFdwConnector(Connector):  # REQ-900
     runtime_deps = (RuntimeDep("freetds", DriverProvider.BUNDLED),)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
-        return await _probe_pg_extension(fetch, "tds_fdw", auto_create=True)
+        return await probe_pg_extension(fetch, "tds_fdw", auto_create=True)
 
     def capability(self) -> Capability:
         # tds_fdw pushes WHERE + column projection to SQL Server; no JOIN/aggregate pushdown, read-only.
@@ -1393,7 +1380,7 @@ class OracleFdwConnector(Connector):  # REQ-900
     runtime_deps = (RuntimeDep("Oracle Instant Client + SDK", DriverProvider.OPERATOR),)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
-        return await _probe_pg_extension(fetch, "oracle_fdw", auto_create=True)
+        return await probe_pg_extension(fetch, "oracle_fdw", auto_create=True)
 
     def capability(self) -> Capability:
         # oracle_fdw pushes WHERE + ORDER BY and same-server joins; writable on foreign tables.

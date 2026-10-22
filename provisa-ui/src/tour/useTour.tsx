@@ -873,7 +873,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const pos = steps.indexOf(i);
         const counted = [...new Set([...countedRef.current, ...steps])].sort((a, b) => a - b);
         const isFirst = pos === 0;
-        const isLast = pos === steps.length - 1;
+        // A step whose Next picks a role (or environment) changes the rights the itinerary follows,
+        // so what comes after it is not the current rights' to say: "back to every role" is not the
+        // end because the analyst may open nothing after it. It goes on through the steps counted,
+        // and the runner moves past any the picked rights still deny.
+        const onward = step.chooseOnNext ? counted : steps;
+        const isLast = onward.indexOf(i) === onward.length - 1;
         // REQ-2010: a named demo's track ends on a choice -- the Deep Dives menu, or the demo's own
         // landing page -- not on a Done that rolls into another tour.
         const landing = scopeRef.current === "demo" && isLast ? landingRef.current : null;
@@ -899,7 +904,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             clickIfPresent(step.clickAfterNext);
             const advance = () => {
               if (isLast) endTour("completed");
-              else setActiveStep(steps[pos + 1]);
+              else setActiveStep(onward[onward.indexOf(i) + 1]);
             };
             const choose = step.chooseOnNext;
             if (!choose) return advance();

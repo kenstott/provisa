@@ -137,7 +137,12 @@ def _gov(*pairs: tuple[str, int]) -> GovernanceContext:
 
 
 def _role(*domains: str) -> dict:
-    return {"id": "analyst", "capabilities": ["query_development"], "domain_access": list(domains)}
+    return {
+        "description": "Test role.",
+        "id": "analyst",
+        "capabilities": ["query_development"],
+        "domain_access": list(domains),
+    }
 
 
 def _v001(sql, ctx, gov, role):

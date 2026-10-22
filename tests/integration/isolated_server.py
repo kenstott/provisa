@@ -27,6 +27,7 @@ from pathlib import Path
 
 import yaml
 
+from tests.integration.mcp_pin import pinned_roles_of
 from tests.pg_control_plane import ControlPlane
 
 _REPO_ROOT = Path(__file__).parents[2]
@@ -277,6 +278,8 @@ class IsolatedServer:
             "PROVISA_PGWIRE_PORT": str(self.pgwire_port),
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
+            # REQ-2075: the roles this server's MCP agent may act as (tests/integration/mcp_pin).
+            "PROVISA_MCP_ROLE": pinned_roles_of(self._cfg_path),
             **self._extra_env,
         }
         if self._materialize_store_url is not None:

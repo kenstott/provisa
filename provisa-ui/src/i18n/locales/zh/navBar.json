@@ -28,7 +28,7 @@
     "itemOrgs": "组织",
     "itemDashboard": "仪表板",
     "itemDomains": "域",
-    "itemEnvironments": "环境",
+    "itemEnvironments": "DataOps",
     "itemCache": "缓存",
     "itemScheduler": "触发器",
     "itemFederation": "联邦",
