@@ -36,7 +36,17 @@ from provisa.codesource import table as code_table
 from provisa.codesource import worker as w
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.discovery import declared_columns
-from provisa.codesource.manifest import PYTHON_RULES, read_manifest
+from provisa.codesource.manifest import (
+    PYTHON_RULES,
+    Export,
+    Field,
+    Manifest,
+    Named,
+    ObjectType,
+    Parameter,
+    Scalar,
+    read_manifest,
+)
 from provisa.codesource.table import CodeTableRefused, check_table
 from provisa.python.source import HOST, READER
 
@@ -190,6 +200,35 @@ def test_register_table_suggests_the_declared_columns_and_the_parameters(manifes
     ]
     # Exactly what a registration of the suggestion passes.
     check_table(_orders_table(), manifest)
+
+
+def test_a_suggested_column_is_described_as_its_field_is_documented():
+    documented = Manifest(
+        exports=(
+            Export(
+                "rates",
+                "table",
+                "",
+                (Parameter("pair", Scalar("text"), False, True),),
+                Named("Rate"),
+            ),
+        ),
+        types={
+            "Rate": ObjectType(
+                "Rate",
+                (
+                    Field("pair", Scalar("text"), False, "The currency pair, base first."),
+                    Field("mid", Scalar("double"), False),
+                ),
+            )
+        },
+    )
+    suggested = declared_columns(documented, documented.export("rates"))
+    assert [(c["name"], c["comment"]) for c in suggested] == [
+        ("pair", "The currency pair, base first."),
+        ("mid", None),
+        ("_nf_pair", None),
+    ]
 
 
 # -- reading ------------------------------------------------------------------------------------

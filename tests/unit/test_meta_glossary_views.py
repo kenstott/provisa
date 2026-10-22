@@ -45,7 +45,7 @@ CREATE TABLE table_columns (
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
     table_id INTEGER, column_name TEXT, relationship_id TEXT, command_name TEXT,
-    object_key TEXT, reason TEXT, expires_on TEXT, tenant_id TEXT);
+    object_key TEXT, reason TEXT, expires_on TEXT, tenant_id TEXT, product_id TEXT);
 """
 
 _VIEWS = (

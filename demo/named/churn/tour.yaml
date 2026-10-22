@@ -38,11 +38,14 @@ steps:
   route: /relationships
   capability: create_relationship
   relationship: USED_BY
+# The header's role: every surface after it (SQL, GraphQL, the notebook) reads as the analyst.
 - key: churnAnalyst
-  route: /sql
+  route: /query
   capability: query_development
   role: analyst
 - key: churnFeatures
+  route: /sql
+  capability: query_development
   sql: >-
     SELECT f.customer_id, f.email, f.plan, f.tenure_months, f.logins_per_month, f.tickets,
       f.churned
@@ -57,6 +60,9 @@ steps:
   route: /notebook
   capability: query_development
   notebook: true
+# Back to every role in the header: the analyst reads no tables page.
+- key: churnEveryRole
+  role: all
 - key: churnRecap
   route: /tables
   capability: table_registration

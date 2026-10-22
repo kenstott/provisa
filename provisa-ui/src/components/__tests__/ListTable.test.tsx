@@ -22,6 +22,8 @@ import {
   ListRow,
   ListExpandRow,
   ListEmpty,
+  ListActions,
+  ListActionsHead,
 } from "../list/ListTable";
 
 function renderList(expandedIndex: number | null) {
@@ -80,7 +82,9 @@ describe("ListTable", () => {
 
   it("stripe rule is zero-specificity so hover and selected states win", () => {
     const css = readFileSync(resolve(process.cwd(), "src/App.css"), "utf8");
-    expect(css).toMatch(/\.data-table tbody :where\(tr\.list-row:nth-child\(even of \.list-row\)\)/);
+    expect(css).toMatch(
+      /\.data-table tbody :where\(tr\.list-row:nth-child\(even of \.list-row\)\)/,
+    );
   });
 
   it("empty state spans every column", () => {
@@ -92,5 +96,34 @@ describe("ListTable", () => {
       </ListTable>,
     );
     expect(getByText("nothing").getAttribute("colspan")).toBe("3");
+  });
+});
+
+describe("a row's actions", () => {
+  it("are the pinned last column, header and cells alike, never cut", () => {
+    const { getByTestId, container } = render(
+      <ListTable testId="acts">
+        <ListHead columns={["Name", <ListActionsHead key="actions" />]} />
+        <Table.Tbody>
+          <ListRow testId="row">
+            <Table.Td>daily_totals</Table.Td>
+            <ListActions>
+              <button type="button">Refresh</button>
+            </ListActions>
+          </ListRow>
+        </Table.Tbody>
+      </ListTable>,
+    );
+    const ths = container.querySelectorAll("thead th");
+    expect(ths[1].classList.contains("list-actions")).toBe(true);
+    expect(ths[0].classList.contains("list-actions")).toBe(false);
+    const cells = getByTestId("row").querySelectorAll("td");
+    expect(cells[1].classList.contains("list-actions")).toBe(true);
+    // The pin is App.css's: sticky at the row's end, and the table is no scroll container.
+    const css = readFileSync(resolve(__dirname, "../../App.css"), "utf8");
+    expect(css).toMatch(
+      /\.data-table \.list-actions \{[^}]*position: sticky;[^}]*inset-inline-end: 0;/,
+    );
+    expect(css).toMatch(/\.data-table \{[^}]*overflow: clip;/);
   });
 });

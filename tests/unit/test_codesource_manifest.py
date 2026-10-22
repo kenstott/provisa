@@ -83,11 +83,12 @@ ORDER = {
     "kind": "object",
     "name": "Order",
     "fields": [
-        {"name": "id", "optional": False, "type": N},
-        {"name": "placed", "optional": False, "type": DATE},
+        {"name": "id", "description": "The order's number.", "optional": False, "type": N},
+        {"name": "placed", "description": "", "optional": False, "type": DATE},
         {
             "name": "tier",
             "optional": False,
+            "description": "",
             "type": {
                 "kind": "union",
                 "name": "Tier",
@@ -97,11 +98,15 @@ ORDER = {
                 ],
             },
         },
-        {"name": "lines", "optional": False, "type": arr(ref("Line"))},
-        {"name": "note", "optional": True, "type": opt(S)},
+        {"name": "lines", "description": "", "optional": False, "type": arr(ref("Line"))},
+        {"name": "note", "description": "", "optional": True, "type": opt(S)},
     ],
 }
-LINE = {"kind": "object", "name": "Line", "fields": [{"name": "sku", "optional": False, "type": S}]}
+LINE = {
+    "kind": "object",
+    "name": "Line",
+    "fields": [{"name": "sku", "description": "", "optional": False, "type": S}],
+}
 TYPES = {"Order": ORDER, "Line": LINE}
 
 
@@ -139,7 +144,7 @@ def test_a_table_is_its_functions_parameters_and_its_row_types_fields():
         ("since", Scalar("timestamp"), False, True),
     ]
     assert manifest.types["Order"].fields == (
-        Field("id", Scalar("double"), False),
+        Field("id", Scalar("double"), False, "The order's number."),
         Field("placed", Scalar("timestamp"), False),
         Field("tier", EnumOf("Tier", ("gold", "silver")), False),
         Field("lines", ListOf(Named("Line")), False),
@@ -206,7 +211,14 @@ def test_a_command_returns_rows_one_value_or_nothing():
                 {
                     "kind": "object",
                     "name": None,
-                    "fields": [{"name": "ok", "optional": False, "type": {"kind": "boolean"}}],
+                    "fields": [
+                        {
+                            "name": "ok",
+                            "description": "",
+                            "optional": False,
+                            "type": {"kind": "boolean"},
+                        }
+                    ],
                 },
             ),
         )
@@ -272,6 +284,7 @@ def test_a_field_whose_type_cannot_be_mapped_is_refused_by_its_place():
             {
                 "name": "pair",
                 "optional": False,
+                "description": "",
                 "type": {"kind": "unsupported", "text": "[number, string]"},
             }
         ],
@@ -285,8 +298,8 @@ def test_a_self_referencing_type_is_named_once():
         "kind": "object",
         "name": "Node",
         "fields": [
-            {"name": "id", "optional": False, "type": S},
-            {"name": "children", "optional": False, "type": arr(ref("Node"))},
+            {"name": "id", "description": "", "optional": False, "type": S},
+            {"name": "children", "description": "", "optional": False, "type": arr(ref("Node"))},
         ],
     }
     manifest = read_manifest(raw(fn("tree", ["table"], [], arr(ref("Node"))), types={"Node": node}))

@@ -82,6 +82,18 @@ class TestTheAdminApi:  # REQ-2114
         assert {"admin_mutation", "admin_request"} <= set(chat_mod._CLIENT_TOOL_NAMES)
 
 
+class TestReadScreen:  # REQ-2115
+    def test_read_screen_is_a_client_tool_taking_no_input(self):
+        tool = next(t for t in chat_mod._CLIENT_TOOLS if t["name"] == "read_screen")
+        assert tool["input_schema"] == {"type": "object", "properties": {}}
+        assert "read_screen" in chat_mod._CLIENT_TOOL_NAMES
+
+    def test_the_prompt_reads_the_screen_when_the_user_points_at_it(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "call read_screen first and work from what it returns" in s
+        assert "never say you cannot see the screen" in s
+
+
 class TestNavigateBeforeAction:  # REQ-1834
     def test_the_prompt_requires_navigating_to_the_page_first_every_time(self):
         s = _flat(chat_mod._SYSTEM)

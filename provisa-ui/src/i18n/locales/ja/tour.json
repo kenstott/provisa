@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "ソースをその場で追加",
-        "description": "ソースはこうして追加します。ピッカーが一覧全体を表示して開き、<strong>Parquet File</strong> が選ばれ、ファイルのアドレス（provisa.dev で公開している <code>supplies.parquet</code>）が入力され、保存で作成されました。新しい <strong>supplies</strong> ソースは、そのファイルをその場で読み取ります。",
+        "description": "ソースはこうして追加します。ピッカーが一覧全体を表示して開き、<strong>Parquet File</strong> が選ばれ、ファイルのアドレス（<code>supplies.parquet</code>）が入力され、保存で作成されました。新しい <strong>supplies</strong> ソースは、そのファイルをその場で読み取ります。",
         "acting": "ソースを追加しています"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "実行ごとに保持される",
         "description": "実行結果は測定の種類ごとに専用のテーブルに入り、各実行は過去の実行と並べて保持されます。これは customers テーブルの実行一覧で、読み取った行数と見つかった重複行を示します。"
       },
+      "profilingTerrain": {
+        "title": "実行を地形で",
+        "acting": "customers テーブルのプロファイル実行を地形で開いています",
+        "description": "customers の最新の実行を地形で描きます。列ごとに 1 本の尾根があり、その高さは値の範囲ごとの行数で、各列の手前にはその列の null があります。"
+      },
       "profilingTerms": {
         "title": "用語",
         "description": "用語集は、データプロファイル、もっともらしい型、値の形、重複行、プレースホルダー値を定義し、各用語をそれが説明する測定値に結び付けています。"
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "前回の実行から何が変わったか",
         "description": "セットアップはプロファイラーを2回実行し、その間に CRM の次の同期が米国の郵便番号をすべて ZIP+4 で書き込みました。ドリフトテーブルは各指標を前回の実行と比べます。postal_code の変更で動いた指標はドリフトとしてフラグが立ち、同期が触れなかった列には立ちません。"
+      },
+      "profilingStrata": {
+        "title": "postal_code を実行ごとに",
+        "acting": "ドリフト層を開いています",
+        "description": "各実行の postal_code で、最も古い実行が奥にあります。各値が占める行の割合です。ドリフトテーブルが示したとおり、最新の実行にはドリフトの印が付き、その前の実行には付いていません。"
       },
       "profilingOriginal": {
         "title": "実際の顧客",
@@ -916,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "天候はどれだけ説明するか",
-        "description": "デモのノートブックをブラウザで実行します。各郡のシーズンを analyst として pandas に読み込み、損害率をシーズンの降水量、32 °C を超えた日数、市場の損失のうち干ばつと高温による割合と相関させ、回帰を当てはめてグラフにします。天候は損害率の変動の 54% を説明します。32 °C を超える日が 10 日増えるごとに損害率は 20 ポイント、雨が 100 mm 少ないと 7 ポイント、干ばつと高温による市場の損失の割合が 10 ポイント増えると 9 ポイント上がります。今日の契約全体では、2012 年のようなシーズンの見込み損害率は 1.75 です。"
+        "description": "デモのノートブックをブラウザで実行します。各郡のシーズンを analyst として pandas に読み込み、損害率をシーズンの降水量、32 °C を超えた日数、市場の損失のうち干ばつと高温による割合と相関させ、回帰を当てはめてグラフにします。"
       },
       "agricultureRest": {
         "title": "RESTで年別に",
@@ -948,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "グループアナリストとして",
-        "description": "次に、SQL エクスプローラーは US でグループレポーティングを担当する group_analyst として実行されます。"
+        "description": "次に、ロール選択が US でグループレポーティングを担当する <strong>group_analyst</strong> に切り替わるので、この後の SQL と GraphQL は group_analyst として実行されます。"
       },
       "retailGroupView": {
         "title": "グループレポーティング、EU 顧客は仮名化",
@@ -957,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "同じことを GraphQL で",
         "description": "同じグループビューを GraphQL で。一つのモデル、あらゆるトランスポート、同じルール。"
+      },
+      "retailEveryRole": {
+        "title": "すべてのロールに戻る",
+        "description": "次に、ロール選択が <strong>All</strong> に戻ります。"
       },
       "retailAsMarketing": {
         "title": "EU マーケティングとして",
@@ -1276,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "analyst として読む",
-        "description": "この後のクエリは、データサイエンティストが読み取りに使うロール analyst として実行されます。"
+        "description": "次に、ロール選択がデータサイエンティストが読み取りに使うロール <strong>analyst</strong> に切り替わるので、この後のすべての画面は analyst として実行されます。"
       },
       "churnFeatures": {
         "title": "モデルが学習する特徴量",
@@ -1289,6 +1303,10 @@
       "churnNotebook": {
         "title": "ブラウザで学習させたモデル",
         "description": "デモのノートブックを Notebook タブで実行します。特徴量を analyst として pandas に読み込み、scikit-learn のモデルを学習させ、最もリスクの高い顧客を一覧表示します。Python はブラウザ内で動作し、メールアドレスはマスキングされたままです。"
+      },
+      "churnEveryRole": {
+        "title": "すべてのロールに戻る",
+        "description": "次に、ロール選択が <strong>All</strong> に戻ります。"
       },
       "churnRecap": {
         "title": "ご覧いただいた内容",

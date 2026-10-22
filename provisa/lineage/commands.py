@@ -40,10 +40,11 @@ if TYPE_CHECKING:
 COMMAND_WRITE = "command_write"
 
 
-def command_write_graphs(commands: dict[str, dict]) -> list[LineageGraph]:
-    """The write graph of each statement command in ``commands`` (the served commands, a command
-    registered under more than one name counted once) whose contract resolves and writes."""
-    graphs: list[LineageGraph] = []
+def command_write_graphs(commands: dict[str, dict]) -> list[tuple[str, LineageGraph]]:
+    """(command name, its write graph) for each statement command in ``commands`` (the served
+    commands, a command registered under more than one name counted once) whose contract resolves
+    and writes."""
+    graphs: list[tuple[str, LineageGraph]] = []
     seen: set[str] = set()
     for fn in commands.values():
         if fn.get("impl_kind") != "statement" or fn["name"] in seen:
@@ -63,7 +64,7 @@ def command_write_graphs(commands: dict[str, dict]) -> list[LineageGraph]:
         op = TransformOp(name=fn["name"], kind=COMMAND_WRITE)
         for edge in graph.edges:
             edge.ops = (*edge.ops, op)
-        graphs.append(graph)
+        graphs.append((fn["name"], graph))
     return graphs
 
 
@@ -71,5 +72,5 @@ def with_command_writes(merged: "MergedGraph", commands: dict[str, dict]) -> "Me
     """The federation graph ``merged`` with each statement command's write stitched in."""
     from provisa.lineage.merge import merge_graphs
 
-    graphs = command_write_graphs(commands)
+    graphs = [graph for _, graph in command_write_graphs(commands)]
     return merge_graphs([merged.graph, *graphs]) if graphs else merged

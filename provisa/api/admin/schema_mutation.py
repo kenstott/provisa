@@ -135,6 +135,14 @@ from provisa.api.admin.schema_common import (  # noqa: E402
 _DQ_STANDARD_PGWIRE_PORT = 5439
 
 
+def _secured() -> bool:
+    """Whether an auth provider secures this deployment: pgwire then checks a password; with
+    none it is in trust mode and asks for none (pgwire/server.py)."""
+    from provisa.api.app import state
+
+    return state.auth_middleware_active
+
+
 def _dq_pgwire_port() -> str:
     """The pgwire port a data-quality check dials on ``PROVISA_DQ_HOST``.
 
@@ -147,6 +155,23 @@ def _dq_pgwire_port() -> str:
 
     port = settings_registry.value("server.pgwire_port")
     return str(port if port != 0 else _DQ_STANDARD_PGWIRE_PORT)
+
+
+def checker_mapping() -> dict[str, str]:
+    """The connection a checker source made in the Sources form scans through: this deployment's
+    own pgwire endpoint, with the env-var defaults provisa-install.yaml's dq-checker and dq-soda
+    entries use (REQ-1742, REQ-1443)."""
+    return {
+        "host": os.environ.get("PROVISA_DQ_HOST", "localhost"),
+        "port": _dq_pgwire_port(),
+        "database": "provisa",
+        "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
+        # Under an auth provider, a reference resolved at each scan (dq.scan): unset, the scan
+        # fails naming it. No account's password is assumed. With none, pgwire is in trust mode
+        # and asks for no password, as the shipped dq-checker and dq-soda sources write it.
+        # reference-convention: REQ-1443 -- docs/configuration.md's checker source
+        "password": "${env:PROVISA_DQ_PASSWORD}" if _secured() else "",
+    }
 
 
 async def _save_relationship_as_caller(
@@ -1671,6 +1696,62 @@ async def _delete_source(id: str) -> MutationResult:
     )
 
 
+async def _register_draft_table(
+    info: StrawberryInfo, input: SourceInput
+) -> MutationResult | None:  # REQ-2113
+    """A single-file CSV or Parquet source's table, set up with the source as a draft (out
+    of service until a steward takes it out of draft, REQ-1921): named after the source and
+    typed from its file as Register Table proposes it, every role seeing every column. None
+    when it is set up; else the source stands and why its table was not set up is said."""
+    from provisa.api.admin.schema_query import resolve_available_columns_metadata
+    from provisa.api.app import state
+    from provisa.core.source_downloads import DOWNLOAD_TYPES
+
+    def _without(reason: str) -> MutationResult:
+        return MutationResult(
+            success=True,
+            message=f"Source {input.id!r} created; its table was not set up: {reason}",
+            code="schema.source_created_without_table",
+            params={"source": input.id, "reason": reason},
+        )
+
+    if input.type not in DOWNLOAD_TYPES:
+        return _without(f"a {input.type} source has no single table to set up")
+    if not input.table_domain_id:
+        return _without("no domain was chosen for it")
+    columns = await resolve_available_columns_metadata(input.id, "main", input.id)
+    if not columns:
+        return _without("its file has no columns")
+    import re
+
+    def _snake(name: str) -> str:
+        # As the Register Table form names a column's alias (naming.ts toSnakeCase).
+        name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+        return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
+
+    # What the Register Table form gives a new table by default: every role sees each column,
+    # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
+    roles = sorted(state.roles or {})
+    table = TableInput(
+        source_id=input.id,
+        domain_id=input.table_domain_id,
+        schema_name="main",
+        table_name=input.id,
+        columns=[
+            ColumnInput(
+                name=c.name,
+                visible_to=roles,
+                alias=_snake(c.name) if _snake(c.name) != c.name else None,
+                data_type=c.data_type,
+                description=c.comment,
+            )
+            for c in columns
+        ],
+    )
+    result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
+    return None if result.success else _without(result.message)
+
+
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
@@ -2059,16 +2140,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 # all, so its mapping stayed permanently empty and every dry-run/scan against it
                 # raised a raw KeyError('host') the first time run_contract indexed into it.
                 # Same env-var defaults provisa-install.yaml's own dq-checker/dq-soda entries use.
-                _mapping = {
-                    "host": os.environ.get("PROVISA_DQ_HOST", "localhost"),
-                    "port": _dq_pgwire_port(),
-                    "database": "provisa",
-                    "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
-                    # A reference, resolved at each scan (dq.scan): unset under an auth
-                    # provider, the scan fails naming it. No account's password is assumed.
-                    # reference-convention: REQ-1443 -- docs/configuration.md's checker source
-                    "password": "${env:PROVISA_DQ_PASSWORD}",
-                }
+                _mapping = checker_mapping()
         model = SourceModel(
             id=input.id,
             type=SourceTypeEnum(input.type),
@@ -2177,7 +2249,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             await reschedule_org_triggers()
         if input.register_table_draft:  # REQ-2113
-            refused = await self._register_draft_table(info, input)
+            refused = await _register_draft_table(info, input)
             if refused is not None:
                 return refused
         return MutationResult(
@@ -2186,61 +2258,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.source_created",
             params={"source": input.id},
         )
-
-    async def _register_draft_table(
-        self, info: StrawberryInfo, input: SourceInput
-    ) -> MutationResult | None:  # REQ-2113
-        """A single-file CSV or Parquet source's table, set up with the source as a draft (out
-        of service until a steward takes it out of draft, REQ-1921): named after the source and
-        typed from its file as Register Table proposes it, every role seeing every column. None
-        when it is set up; else the source stands and why its table was not set up is said."""
-        from provisa.api.admin.schema_query import resolve_available_columns_metadata
-        from provisa.api.app import state
-        from provisa.core.source_downloads import DOWNLOAD_TYPES
-
-        def _without(reason: str) -> MutationResult:
-            return MutationResult(
-                success=True,
-                message=f"Source {input.id!r} created; its table was not set up: {reason}",
-                code="schema.source_created_without_table",
-                params={"source": input.id, "reason": reason},
-            )
-
-        if input.type not in DOWNLOAD_TYPES:
-            return _without(f"a {input.type} source has no single table to set up")
-        if not input.table_domain_id:
-            return _without("no domain was chosen for it")
-        columns = await resolve_available_columns_metadata(input.id, "main", input.id)
-        if not columns:
-            return _without("its file has no columns")
-        import re
-
-        def _snake(name: str) -> str:
-            # As the Register Table form names a column's alias (naming.ts toSnakeCase).
-            name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-            return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
-
-        # What the Register Table form gives a new table by default: every role sees each column,
-        # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
-        roles = sorted(state.roles or {})
-        table = TableInput(
-            source_id=input.id,
-            domain_id=input.table_domain_id,
-            schema_name="main",
-            table_name=input.id,
-            columns=[
-                ColumnInput(
-                    name=c.name,
-                    visible_to=roles,
-                    alias=_snake(c.name) if _snake(c.name) != c.name else None,
-                    data_type=c.data_type,
-                    description=c.comment,
-                )
-                for c in columns
-            ],
-        )
-        result = await self.register_table(info, table)  # pyright: ignore[reportCallIssue]
-        return None if result.success else _without(result.message)
 
     @strawberry.mutation
     async def stage_kaggle_dataset(  # REQ-1780, REQ-1781, REQ-1782

@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Een bron, live toegevoegd",
-        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>, gepubliceerd op provisa.dev) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
+        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
         "acting": "Bron toevoegen"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "Elke run blijft bewaard",
         "description": "De resultaten van een run komen in eigen tabellen terecht, één per soort meting, en elke run blijft naast de eerdere bewaard. Hier de runs van de tabel customers, met de gelezen rijen en de gevonden herhaalde rijen."
       },
+      "profilingTerrain": {
+        "title": "De run als terrein",
+        "acting": "De profielruns van de tabel customers worden geopend op het terrein",
+        "description": "De laatste run van customers, getekend als terrein: één rug per kolom, de hoogte het aantal rijen in elk waardebereik, en vóór elke kolom haar null-waarden."
+      },
       "profilingTerms": {
         "title": "De woordenschat",
         "description": "De woordenlijst definieert dataprofiel, plausibel type, waardevorm, dubbele rij en plaatsvervangende waarde, en koppelt elke term aan de metingen die hij beschrijft."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Wat er sinds de vorige run veranderde",
         "description": "De setup draaide de profiler twee keer, en tussen de runs schreef de volgende synchronisatie van het CRM elke Amerikaanse postcode als ZIP+4. De drifttabel vergelijkt elke maat met die van de vorige run: de maten die de wijziging van postal_code verschoof, zijn als driftend gemarkeerd, en de kolommen die de synchronisatie niet aanraakte niet."
+      },
+      "profilingStrata": {
+        "title": "postal_code, run na run",
+        "acting": "De driftlagen worden geopend",
+        "description": "postal_code in elke run, de oudste achteraan: het aandeel rijen dat elke waarde heeft. De nieuwste run is als driftend gemarkeerd, zoals de drifttabel liet zien, en de run ervoor niet."
       },
       "profilingOriginal": {
         "title": "De echte klanten",
@@ -916,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "Hoeveel verklaart het weer?",
-        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek. Het weer verklaart 54% van de variatie in de schadequote. Elke 10 dagen boven 32 °C voegen 20 punten schadequote toe, 100 mm minder regen voegt er 7 toe en 10 punten meer van de marktschade door droogte en hitte voegen er 9 toe. Over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
+        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek."
       },
       "agricultureRest": {
         "title": "Per jaar via REST",
@@ -948,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "Als concernanalist",
-        "description": "Hierna draait de SQL-verkenner als group_analyst, die in de US aan de concernrapportage werkt."
+        "description": "Vervolgens schakelt de rolkiezer naar <strong>group_analyst</strong>, die in de US aan de concernrapportage werkt, zodat de SQL en GraphQL hierna als group_analyst draaien."
       },
       "retailGroupView": {
         "title": "Concernrapportage, EU-klanten gepseudonimiseerd",
@@ -957,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "Hetzelfde, in GraphQL",
         "description": "Dezelfde concernview via GraphQL: één model, elk transport, dezelfde regels."
+      },
+      "retailEveryRole": {
+        "title": "Terug naar alle rollen",
+        "description": "Vervolgens schakelt de rolkiezer terug naar <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "Als EU-marketing",
@@ -1276,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Gelezen als analyst",
-        "description": "De query's hierna draaien als analyst, de rol waarmee de data scientist leest."
+        "description": "Vervolgens schakelt de rolkiezer naar <strong>analyst</strong>, de rol waarmee de data scientist leest, zodat elk oppervlak hierna als analyst draait."
       },
       "churnFeatures": {
         "title": "De kenmerken waarvan het model leert",
@@ -1289,6 +1303,10 @@
       "churnNotebook": {
         "title": "Een model, getraind in je browser",
         "description": "Het notebook van de demo, uitgevoerd op het tabblad Notebook: de kenmerken als analyst in pandas gelezen, een scikit-learn-model erop getraind en de klanten met het hoogste risico op een rij. Python draait in je browser, en de e-mailadressen blijven gemaskeerd."
+      },
+      "churnEveryRole": {
+        "title": "Terug naar alle rollen",
+        "description": "Vervolgens schakelt de rolkiezer terug naar <strong>All</strong>."
       },
       "churnRecap": {
         "title": "Wat je hebt gezien",

@@ -22,6 +22,8 @@ export interface NamedDemo {
   landing: DemoLanding | null;
   /** REQ-2084: the code cells of the notebook the demo ships; none when it ships none. */
   notebook: string[];
+  /** REQ-2101 (amended): the org files the demo ships, each in the org's folder as {files}/<path>. */
+  orgFiles: string[];
 }
 
 /** A page rendered outside the app (a component test) has read no status: no named demo. */
@@ -31,6 +33,7 @@ export const NO_NAMED_DEMO: NamedDemo = {
   tour: [],
   landing: null,
   notebook: [],
+  orgFiles: [],
 };
 
 /** The named demo a status reports. A deployment started as no named demo (a fresh org's) has
@@ -38,7 +41,12 @@ export const NO_NAMED_DEMO: NamedDemo = {
 export function namedDemoOf(
   status: Pick<
     SetupStatus,
-    "named_demo" | "example_queries" | "demo_tour" | "demo_landing" | "demo_notebook"
+    | "named_demo"
+    | "example_queries"
+    | "demo_tour"
+    | "demo_landing"
+    | "demo_notebook"
+    | "demo_org_files"
   >,
 ): NamedDemo {
   if (status.named_demo === null) return NO_NAMED_DEMO;
@@ -48,6 +56,7 @@ export function namedDemoOf(
     tour: status.demo_tour,
     landing: status.demo_landing,
     notebook: status.demo_notebook,
+    orgFiles: status.demo_org_files,
   };
 }
 

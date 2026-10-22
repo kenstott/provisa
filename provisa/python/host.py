@@ -18,7 +18,7 @@ takes the one it inherited, already connected), says which functions it has, and
 until the socket closes, when it exits. A coroutine function is awaited; a generator or an async
 generator is iterated; any other function runs on a thread, so a slow one holds no other call.
 A table's rows go in batches of 1000, a stream's each as it is yielded. A row is a dict, a
-dataclass, a NamedTuple or an object with annotated fields.
+dataclass, a NamedTuple, a Pydantic model or an object with annotated fields.
 
 Rows go as Arrow IPC batches against the schema the call gives (REQ-2098,
 provisa/codesource/arrow_rows.py): a field Arrow has no exact form for (a ``numeric``, a ``json``
@@ -62,6 +62,14 @@ _DONE = object()
 _ABSENT = object()
 
 
+def _is_model(value: typing.Any) -> bool:
+    """Whether ``value`` is a Pydantic (v2) model instance; pydantic is the code's, never imported
+    here."""
+    return isinstance(getattr(type(value), "__pydantic_fields__", None), dict) and not isinstance(
+        value, type
+    )
+
+
 def to_wire(value: typing.Any) -> typing.Any:  # a value the code returned: any shape
     """``value`` as the wire carries it."""
     if value is None or isinstance(value, (bool, str, float)):
@@ -78,6 +86,8 @@ def to_wire(value: typing.Any) -> typing.Any:  # a value the code returned: any 
         return to_wire(value.value)
     if isinstance(value, dict):
         return {str(k): to_wire(v) for k, v in value.items()}
+    if _is_model(value):
+        return to_wire(value.model_dump(by_alias=True))
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {f.name: to_wire(getattr(value, f.name)) for f in dataclasses.fields(value)}
     if isinstance(value, tuple) and hasattr(value, "_asdict"):
@@ -145,9 +155,13 @@ def _arrow() -> typing.Any:  # the pyarrow module
 
 
 def _plain(value: typing.Any) -> typing.Any:  # a row or a field of one, as the code made it
-    """A record (a dataclass, a NamedTuple, an annotated object) as a dict; an enum as its value."""
+    """A record (a dataclass, a NamedTuple, a Pydantic model, an annotated object) as a dict; an
+    enum as its value."""
     if isinstance(value, enum.Enum):
         return value.value
+    if _is_model(value):
+        # By alias: the reader names a model's columns by the alias it is sent under.
+        return value.model_dump(by_alias=True)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {f.name: getattr(value, f.name) for f in dataclasses.fields(value)}
     if isinstance(value, tuple) and hasattr(value, "_asdict"):

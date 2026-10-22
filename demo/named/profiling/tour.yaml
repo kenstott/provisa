@@ -42,6 +42,13 @@ steps:
     FROM "harbor"."customer_profile_runs" AS r
     ORDER BY r.run_time DESC
     LIMIT 5
+# The latest run drawn: the tour opens the table's View Profile Runs and picks the graph itself.
+- key: profilingTerrain
+  route: /tables
+  capability: table_registration
+  table: crm.customers
+  open: quality
+  graph: terrain
 - key: profilingTerms
   route: /admin/glossary
   capability: glossary_read
@@ -82,7 +89,16 @@ steps:
     WHERE d.drifting AND d.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_drift" AS p)
     ORDER BY d.scope, d.column_name, d.subject, d.measure
     LIMIT 20
+# The column that drifted, drawn across the runs.
+- key: profilingStrata
+  route: /tables
+  capability: table_registration
+  table: crm.customers
+  open: quality
+  graph: driftStrata
 - key: profilingOriginal
+  route: /sql
+  capability: query_development
   sql: >-
     SELECT c.customer_id, c.full_name, c.email, c.phone, c.country, c.postal_code, c.status
     FROM "harbor"."customers" AS c

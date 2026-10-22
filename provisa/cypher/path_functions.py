@@ -109,7 +109,7 @@ def _filter_allowed_rels(
         r
         for r in lm.relationships.values()
         if (rel_types is None or r.rel_type in rel_types)
-        and (rel_types is not None or r.source_constant is None)
+        and (rel_types is not None or not r.constant_source)
     ]
 
 

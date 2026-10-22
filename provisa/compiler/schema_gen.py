@@ -935,7 +935,8 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
 
 
 def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
-    """Return {gql_field_name: {schema_name, table_name, domain_id, table_description, domain_description}} for REST path routing."""
+    """Return {gql_field_name: {table_id, schema_name, table_name, domain_id, table_description,
+    domain_description}} for REST path routing and the root-field lookup (REQ-2128)."""
     tables = _build_visible_tables(si)
     if not tables:
         return {}
@@ -946,6 +947,7 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
     domain_descs = {d["id"]: d.get("description") for d in si.domains}
     return {
         t.field_name: {
+            "table_id": t.table_id,
             "schema_name": t.schema_name,
             "table_name": t.table_name,
             "domain_id": t.domain_id,

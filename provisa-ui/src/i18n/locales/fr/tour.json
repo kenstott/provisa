@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Une source, ajoutée en direct",
-        "description": "Voici comment s'ajoute une source : le sélecteur s'est ouvert sur sa liste complète, <strong>Parquet File</strong> a été choisi, l'adresse du fichier a été saisie (<code>supplies.parquet</code>, publié sur provisa.dev) et Enregistrer l'a créée. La nouvelle source <strong>supplies</strong> lit ce fichier sur place.",
+        "description": "Voici comment s'ajoute une source : le sélecteur s'est ouvert sur sa liste complète, <strong>Parquet File</strong> a été choisi, l'adresse du fichier a été saisie (<code>supplies.parquet</code>) et Enregistrer l'a créée. La nouvelle source <strong>supplies</strong> lit ce fichier sur place.",
         "acting": "Ajout d'une source"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "Chaque exécution est conservée",
         "description": "Les résultats d'une exécution arrivent dans des tables à part, une par type de mesure, et chaque exécution est conservée à côté des précédentes. Voici les exécutions de la table customers, avec les lignes lues et les lignes répétées trouvées."
       },
+      "profilingTerrain": {
+        "title": "L'exécution, en terrain",
+        "acting": "Ouverture des exécutions de profil de la table customers, sur le terrain",
+        "description": "La dernière exécution de customers, dessinée en terrain : une crête par colonne, sa hauteur les lignes de chaque plage de valeurs, et devant chaque colonne ses valeurs nulles."
+      },
       "profilingTerms": {
         "title": "Le vocabulaire",
         "description": "Le glossaire définit profil de données, type plausible, forme de valeur, ligne en double et valeur de remplissage, et relie chaque terme aux mesures qu'il décrit."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Ce qui a changé depuis la dernière exécution",
         "description": "La mise en place a lancé le profileur deux fois, et entre les deux, la synchronisation suivante du CRM a écrit chaque code postal américain au format ZIP+4. La table de dérive compare chaque mesure à celle de l'exécution précédente : les mesures que le changement de postal_code a déplacées sont signalées en dérive, et les colonnes que la synchronisation n'a pas touchées ne le sont pas."
+      },
+      "profilingStrata": {
+        "title": "postal_code, exécution par exécution",
+        "acting": "Ouverture des strates de dérive",
+        "description": "postal_code dans chaque exécution, la plus ancienne au fond : la part des lignes que détient chaque valeur. La dernière exécution est signalée en dérive, comme l'a montré la table de dérive, et celle d'avant ne l'est pas."
       },
       "profilingOriginal": {
         "title": "Les vrais clients",
@@ -916,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "Quelle part la météo explique-t-elle ?",
-        "description": "Le notebook de la démo, exécuté dans votre navigateur : chaque saison de comté lue dans pandas en tant qu'analyst, le ratio sinistres/primes corrélé à la pluie de la saison, à ses jours au-dessus de 32 °C et à la part des pertes du marché due à la sécheresse et à la chaleur, une régression ajustée sur ces mesures et le graphique. La météo explique 54 % de la variation du ratio sinistres/primes. Chaque tranche de 10 jours au-dessus de 32 °C ajoute 20 points de ratio, 100 mm de pluie en moins en ajoutent 7, et 10 points de plus des pertes du marché dues à la sécheresse et à la chaleur en ajoutent 9. Sur le portefeuille actuel, une saison comme 2012 a un ratio attendu de 1,75."
+        "description": "Le notebook de la démo, exécuté dans votre navigateur : chaque saison de comté lue dans pandas en tant qu'analyst, le ratio sinistres/primes corrélé à la pluie de la saison, à ses jours au-dessus de 32 °C et à la part des pertes du marché due à la sécheresse et à la chaleur, une régression ajustée sur ces mesures et le graphique."
       },
       "agricultureRest": {
         "title": "Par année via REST",
@@ -948,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "En tant qu'analyste du groupe",
-        "description": "Ensuite, l'explorateur SQL s'exécute en tant que group_analyst, qui travaille sur le reporting du groupe aux US."
+        "description": "Ensuite, le sélecteur de rôle passe à <strong>group_analyst</strong>, qui travaille sur le reporting du groupe aux US, pour que le SQL et le GraphQL qui suivent s'exécutent en tant que group_analyst."
       },
       "retailGroupView": {
         "title": "Reporting du groupe, clients EU pseudonymisés",
@@ -957,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "La même chose, en GraphQL",
         "description": "La même vue du groupe en GraphQL : un modèle, chaque transport, les mêmes règles."
+      },
+      "retailEveryRole": {
+        "title": "Retour à tous les rôles",
+        "description": "Ensuite, le sélecteur de rôle revient sur <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "En tant que marketing EU",
@@ -1276,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Lu en tant qu'analyst",
-        "description": "Les requêtes qui suivent s'exécutent en tant qu'analyst, le rôle avec lequel lit le data scientist."
+        "description": "Ensuite, le sélecteur de rôle passe à <strong>analyst</strong>, le rôle avec lequel lit le data scientist, pour que chaque surface qui suit s'exécute en tant qu'analyst."
       },
       "churnFeatures": {
         "title": "Les variables dont le modèle apprend",
@@ -1289,6 +1303,10 @@
       "churnNotebook": {
         "title": "Un modèle, entraîné dans votre navigateur",
         "description": "Le notebook de la démo, exécuté dans l'onglet Notebook : les variables lues dans pandas en tant qu'analyst, un modèle scikit-learn entraîné dessus et les clients les plus à risque listés. Python s'exécute dans votre navigateur, et les adresses e-mail restent masquées."
+      },
+      "churnEveryRole": {
+        "title": "Retour à tous les rôles",
+        "description": "Ensuite, le sélecteur de rôle revient sur <strong>All</strong>."
       },
       "churnRecap": {
         "title": "Ce que vous avez vu",

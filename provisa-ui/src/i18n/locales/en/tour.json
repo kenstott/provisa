@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "A source, added live",
-        "description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>, published at provisa.dev) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+        "description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
         "acting": "Adding a source"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "Each run is kept",
         "description": "A run's results land as tables of their own, one for each kind of measure, and every run is kept beside the ones before it. Here are the customers table's runs, with the rows each read and the repeated rows it found."
       },
+      "profilingTerrain": {
+        "title": "The run, as terrain",
+        "acting": "Opening the customers table's profile runs on the terrain",
+        "description": "The latest run of customers, drawn as terrain: one ridge for each column, its height the rows in each range of values, and each column's nulls in front of it."
+      },
       "profilingTerms": {
         "title": "The vocabulary",
         "description": "The glossary defines data profile, plausible type, value shape, duplicate row and placeholder value, and ties each term to the measures it describes."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "What changed since the last run",
         "description": "Setup ran the profiler twice, and between the runs the CRM's next sync wrote every US postal code as ZIP+4. The drift table compares each measure with the previous run's: the measures postal_code's change moved are flagged drifting, and the columns the sync left alone are not."
+      },
+      "profilingStrata": {
+        "title": "postal_code, run by run",
+        "acting": "Opening the drift strata",
+        "description": "postal_code in each run, the oldest at the back: the share of rows each value holds. The newest run is flagged as drifting, as the drift table showed, and the run before it is not."
       },
       "profilingOriginal": {
         "title": "The real customers",
@@ -916,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "How much does the weather explain?",
-        "description": "The demo's notebook, run in your browser: every county season read into pandas as the analyst, the loss ratio correlated with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, a regression fitted on them, and the plot. The weather explains 54% of the variation in loss ratio. Each 10 days above 32 °C adds 20 points of loss ratio, 100 mm less rain adds 7, and 10 points more of the market's losses down to drought and heat add 9. Across today's book, a 2012-like season has an expected loss ratio of 1.75."
+        "description": "The demo's notebook, run in your browser: every county season read into pandas as the analyst, the loss ratio correlated with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, a regression fitted on them, and the plot."
       },
       "agricultureRest": {
         "title": "By year over REST",
@@ -948,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "As a group analyst",
-        "description": "Next, the SQL explorer runs as group_analyst, who works on group reporting in the US."
+        "description": "Next, the role picker switches to <strong>group_analyst</strong>, who works on group reporting in the US, so the SQL and GraphQL after this run as group_analyst."
       },
       "retailGroupView": {
         "title": "Group reporting, EU customers pseudonymised",
@@ -957,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "The same, in GraphQL",
         "description": "The same group view over GraphQL: one model, every transport, the same rules."
+      },
+      "retailEveryRole": {
+        "title": "Back to every role",
+        "description": "Next, the role picker switches back to <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "As EU marketing",
@@ -1276,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Read as the analyst",
-        "description": "The statements after this run as the analyst, the role the data scientist reads with."
+        "description": "Next, the role picker switches to <strong>analyst</strong>, the role the data scientist reads with, so every surface after this runs as the analyst."
       },
       "churnFeatures": {
         "title": "The features the model learns from",
@@ -1289,6 +1303,10 @@
       "churnNotebook": {
         "title": "A model, trained in your browser",
         "description": "The demo's notebook, run in the Notebook tab: the features read into pandas as the analyst, a scikit-learn model trained on them, and the customers most at risk listed. Python runs in your browser, and the email addresses are still masked."
+      },
+      "churnEveryRole": {
+        "title": "Back to every role",
+        "description": "Next, the role picker switches back to <strong>All</strong>."
       },
       "churnRecap": {
         "title": "What you saw",

@@ -14,7 +14,6 @@ import { useTranslation } from "react-i18next";
 import { Alert, Button, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
 import { Plus } from "lucide-react";
 import {
-  useDataProducts,
   useDomains,
   useTables,
   useUpdateTable,
@@ -28,7 +27,7 @@ import {
   useDeleteDataProduct,
 } from "../hooks/useDataProductMutations";
 import { buildTableUpdateInput } from "./tables/helpers";
-import type { DataProduct, RegisteredTable, Relationship } from "../types/admin";
+import type { DataProduct } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -36,10 +35,10 @@ import { DataProductDetailPanel, type InputPortRow } from "./data-products/DataP
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
-import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../api/glossary";
 import { relationName } from "../naming";
-import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
+import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
+import { ProductMapButton } from "../components/graph3d/KnowledgeGraphPanel";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import {
@@ -81,7 +80,10 @@ export function DataProductsPage() {
       { replace: true },
     );
   };
-  const { dataProducts, loading, error } = useDataProducts();
+  // REQ-2127: the list is data_products_meta, read as the user through the governed pipeline.
+  const products = useMetaProducts();
+  const dataProducts = useMemo(() => products.data ?? [], [products.data]);
+  const { loading, error } = products;
   const { domains } = useDomains();
   const { tables } = useTables(); // REQ-1634: member-table list + assignment
   const { sources } = useSources(); // REQ-1443 clause 10: checker type for a scan's rules modal
@@ -135,18 +137,16 @@ export function DataProductsPage() {
       // localStorage unavailable (private mode, quota) — expanded state just won't persist
     }
   };
+  // REQ-2127: the expanded product's panel core; read again after the product is saved.
+  const [coreVersion, setCoreVersion] = useState(0);
+  const core = useProductCore(expanded, coreVersion);
+  const reader = useMetaReader();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   // REQ-1640: whole-federation provenance graph, fetched once (no domains filter — scoping
   // to the product's own domain would sever legitimate cross-domain ancestor chains).
   const [lineageGraph, setLineageGraph] = useState<LineageGraphData | null>(null);
-  const [lineageLoading, setLineageLoading] = useState(false);
   const [lineageError, setLineageError] = useState("");
-  // REQ-1634: Related Terms panel — fetched lazily for the expanded product's member tables,
-  // since the transitive-closure BFS is a server-side call, not a client-side derivation like
-  // relatedTables()/lineageFor() above.
-  const [relatedTerms, setRelatedTerms] = useState<RelatedGlossaryTerm[]>([]);
-  const [relatedTermsLoading, setRelatedTermsLoading] = useState(false);
 
   useEffect(() => {
     // REQ-1634: command <-> data product membership lives on the (REST-served) Function row.
@@ -158,18 +158,12 @@ export function DataProductsPage() {
   useEffect(() => {
     if (!canSeeLineage) return;
     let cancelled = false;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect --
-       flips the loading flag synchronously before the async fetch starts */
-    setLineageLoading(true);
     fetchFederationGraph()
       .then((g) => {
         if (!cancelled) setLineageGraph(g);
       })
       .catch((e: Error) => {
         if (!cancelled) setLineageError(e.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLineageLoading(false);
       });
     return () => {
       cancelled = true;
@@ -178,116 +172,10 @@ export function DataProductsPage() {
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
-  // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
-  // consumer's column is as hoverable as a member's.
-  const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
   const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
 
-  useEffect(() => {
-    if (!expanded) {
-      /* eslint-disable-next-line react-hooks/set-state-in-effect --
-         clears stale related terms synchronously when the expanded product collapses */
-      setRelatedTerms([]);
-      return;
-    }
-    let cancelled = false;
-    setRelatedTermsLoading(true);
-    fetchRelatedGlossaryTerms(memberTables(expanded).map((tb) => tb.id))
-      .then((terms) => {
-        // proposed terms (not yet live) aren't ready for consumers to rely on
-        if (!cancelled) setRelatedTerms(terms.filter((term) => term.live));
-      })
-      .catch(() => {
-        if (!cancelled) setRelatedTerms([]);
-      })
-      .finally(() => {
-        if (!cancelled) setRelatedTermsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- memberTables is derived from tables each render, including it would just restate the tables dep
-  }, [expanded, tables]);
-
-  // REQ-1640: subgraph of the whole federation lineage graph scoped to this product's member
-  // tables — the published endpoint — plus their full upstream ancestry (walked backward,
-  // source -> target = derives-into, transitively) and the tables ONE hop downstream, so the
-  // reader sees what the product is built from and who consumes it directly, without the graph
-  // running on into everything those consumers feed in turn.
-  // Same LineageDag component the Lineage page renders (REQ-1161/1627), not a table-list view.
-  // Informational only — never stored, mirrors the Related Tables computation.
-  //
-  // A data-quality results table is a member by inheritance (REQ-1443 clause 10) but not part of
-  // the product's data flow: its rows are scan outcomes ABOUT a member table, and its lineage
-  // would pull the checker's own plumbing into the graph. Left out here, as in the member picker.
-  const lineageFor = (id: string): LineageGraphData | null => {
-    if (!lineageGraph) return null;
-    const relationOf = (tb: { domainId: string; tableName: string }) => relationName(tb);
-    const members = memberTables(id).filter((tb) => tb.dqContract == null);
-    const checkerRelations = new Set(
-      tables.filter((tb) => tb.dqContract != null).map((tb) => relationOf(tb)),
-    );
-    const memberRelations = new Set(members.map(relationOf));
-    const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
-    const relationEdges = lineageGraph.edges
-      .map((e) => ({
-        from: nodesById.get(e.source)?.relation,
-        to: nodesById.get(e.target)?.relation,
-      }))
-      .filter((e): e is { from: string; to: string } => !!e.from && !!e.to && e.from !== e.to);
-    const keepRelations = new Set(memberRelations);
-    let frontier = memberRelations;
-    while (frontier.size > 0) {
-      const next = new Set<string>();
-      for (const e of relationEdges) {
-        if (frontier.has(e.to) && !keepRelations.has(e.from)) {
-          keepRelations.add(e.from);
-          next.add(e.from);
-        }
-      }
-      frontier = next;
-    }
-    for (const e of relationEdges) {
-      if (memberRelations.has(e.from) && !checkerRelations.has(e.to)) keepRelations.add(e.to);
-    }
-    if (keepRelations.size === 0) return { nodes: [], edges: [], outputs: [] };
-    const nodes = lineageGraph.nodes.filter((n) => n.relation && keepRelations.has(n.relation));
-    const keepIds = new Set(nodes.map((n) => n.id));
-    // The product's tables are what it publishes, so EVERY column of a member table is an output
-    // of this graph — including the ones no registered view derives from, which the federation
-    // graph never mentions. Those are added as source nodes of their table (the graph's own id
-    // shape, relation.column) so the table draws complete, and all of them ring as outputs.
-    for (const tb of members) {
-      const relation = relationOf(tb);
-      for (const c of tb.columns) {
-        const nodeId = `${relation}.${c.columnName}`;
-        if (keepIds.has(nodeId)) continue;
-        keepIds.add(nodeId);
-        nodes.push({
-          id: nodeId,
-          column: c.columnName,
-          relation,
-          kind: "source",
-          materialized: false,
-        });
-      }
-    }
-    const edges = lineageGraph.edges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target));
-    const outputs = nodes.filter((n) => memberRelations.has(n.relation as string)).map((n) => n.id);
-    return { nodes, edges, outputs };
-  };
-
-  // REQ-1667: the relations the detail's swimlanes are built around — the same members
-  // lineageFor() publishes as outputs.
-  const lineageMembersFor = (id: string): ReadonlySet<string> =>
-    new Set(
-      memberTables(id)
-        .filter((tb) => tb.dqContract == null)
-        .map((tb) => relationName(tb)),
-    );
-
   // REQ-1660 (ODPS inputPorts): the 1-hop input(s) -> transform -> output edges landing on this
-  // product's member-table columns, grouped by target column. Unlike lineageFor() this does not
+  // product's member-table columns, grouped by target column. Unlike the Lineage section this does not
   // walk transitively upstream — inputPorts is the product's direct contract surface, not its
   // full provenance.
   const inputPortsFor = (id: string): InputPortRow[] => {
@@ -315,29 +203,8 @@ export function DataProductsPage() {
     }));
   };
 
-  // REQ-1634: tables one approved relationship away from this product's member tables, so a
-  // curated view can pull in the related data or the product's owner can see how to extend it.
-  // Informational only — computed from `relationships` + `registered_tables`, never stored as
-  // membership.
-  const relatedTables = (id: string) => {
-    const memberIds = new Set(memberTables(id).map((tb) => tb.id));
-    // One row per relationship, not per table — two distinct named relationships can lead to the
-    // same related table, and collapsing on the table id silently dropped the second one.
-    const related: { table: RegisteredTable; relationship: Relationship }[] = [];
-    for (const r of relationships) {
-      if (r.targetTableId == null) continue; // computed (function-target) relationship, no table
-      const srcIn = memberIds.has(r.sourceTableId);
-      const tgtIn = memberIds.has(r.targetTableId);
-      const otherId = srcIn && !tgtIn ? r.targetTableId : tgtIn && !srcIn ? r.sourceTableId : null;
-      if (otherId === null) continue;
-      const table = tables.find((tb) => tb.id === otherId);
-      if (table) related.push({ table, relationship: r });
-    }
-    return related;
-  };
-
   // Relationships where both endpoints are member tables of this product — the connections that
-  // exist entirely within the published surface, as opposed to relatedTables()'s one-hop-outside view.
+  // exist entirely within the published surface, as opposed to the Related Tables section's.
   const internalRelationships = (id: string) => {
     const memberIds = new Set(memberTables(id).map((tb) => tb.id));
     return relationships.filter(
@@ -463,6 +330,8 @@ export function DataProductsPage() {
       const refreshed = await fetchActions();
       setFunctions(refreshed.functions);
     }
+    products.reload();
+    setCoreVersion((v) => v + 1);
     closeForm();
   };
 
@@ -473,6 +342,7 @@ export function DataProductsPage() {
     if (refusal.refused(result, deleteTarget)) return;
     if (expanded === deleteTarget) setExpanded(null);
     if (!result.success) setMsg(result.message || t("dataProductsTab.deleteFailed"));
+    else products.reload();
   };
 
   const formCard = (
@@ -550,6 +420,7 @@ export function DataProductsPage() {
           placeholder={t("dataProductsTab.filterPlaceholder")}
         />
         <Group gap="xs">
+          <ProductMapButton />
           {/* Hidden while its form is open: the form ends with Save and Cancel. */}
           {canEdit && !creating && (
             <Button
@@ -572,7 +443,17 @@ export function DataProductsPage() {
 
       {error && (
         <Alert color="red" mb="sm">
-          {error.message}
+          {error}
+        </Alert>
+      )}
+      {products.unreadable && (
+        <Alert color="yellow" mb="sm" data-testid="data-products-unreadable">
+          {t("dataProductCore.unreadable")}
+        </Alert>
+      )}
+      {lineageError && (
+        <Alert color="red" mb="sm">
+          {lineageError}
         </Alert>
       )}
       {msg && !creating && editingId === null && (
@@ -669,20 +550,13 @@ export function DataProductsPage() {
                             ) : (
                               <DataProductDetailPanel
                                 p={p}
-                                tables={memberTables(p.id)}
+                                core={core.data}
+                                coreError={core.error}
+                                reader={reader}
                                 sources={sources}
-                                functions={memberFunctions(p.id)}
-                                relatedTerms={relatedTerms}
-                                relatedTermsLoading={relatedTermsLoading}
-                                relatedTables={relatedTables(p.id)}
                                 internalRelationships={internalRelationships(p.id)}
                                 canEdit={canEdit}
                                 canSeeLineage={canSeeLineage}
-                                lineageLoading={lineageLoading}
-                                lineageError={lineageError}
-                                lineageGraph={lineageFor(p.id)}
-                                lineageMembers={lineageMembersFor(p.id)}
-                                describeColumn={describeColumn}
                                 inputPorts={inputPortsFor(p.id)}
                                 onEdit={() => openEdit(p)}
                                 onDelete={() => setDeleteTarget(p.id)}

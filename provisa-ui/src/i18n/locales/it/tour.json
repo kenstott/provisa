@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Una sorgente, aggiunta dal vivo",
-        "description": "Ecco come si aggiunge una sorgente: il selettore si è aperto con l'elenco completo, è stato scelto <strong>Parquet File</strong>, è stato inserito l'indirizzo del file (<code>supplies.parquet</code>, pubblicato su provisa.dev) e Salva l'ha creata. La nuova sorgente <strong>supplies</strong> legge quel file sul posto.",
+        "description": "Ecco come si aggiunge una sorgente: il selettore si è aperto con l'elenco completo, è stato scelto <strong>Parquet File</strong>, è stato inserito l'indirizzo del file (<code>supplies.parquet</code>) e Salva l'ha creata. La nuova sorgente <strong>supplies</strong> legge quel file sul posto.",
         "acting": "Aggiunta di una sorgente"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "Ogni esecuzione viene conservata",
         "description": "I risultati di un'esecuzione finiscono in tabelle proprie, una per tipo di misura, e ogni esecuzione è conservata accanto alle precedenti. Ecco le esecuzioni della tabella customers, con le righe lette e le righe ripetute trovate."
       },
+      "profilingTerrain": {
+        "title": "L'esecuzione, come terreno",
+        "acting": "Apertura delle esecuzioni di profilo della tabella customers, sul terreno",
+        "description": "L'ultima esecuzione di customers, disegnata come terreno: una cresta per colonna, la sua altezza le righe in ogni intervallo di valori, e davanti a ogni colonna i suoi valori nulli."
+      },
       "profilingTerms": {
         "title": "Il vocabolario",
         "description": "Il glossario definisce profilo dei dati, tipo plausibile, forma del valore, riga duplicata e valore segnaposto, e collega ogni termine alle misure che descrive."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Cosa è cambiato dall'ultima esecuzione",
         "description": "La configurazione ha eseguito il profiler due volte, e tra le due la sincronizzazione successiva del CRM ha scritto ogni CAP statunitense come ZIP+4. La tabella di deriva confronta ogni misura con quella dell'esecuzione precedente: le misure spostate dal cambiamento di postal_code sono segnalate in deriva, le colonne che la sincronizzazione non ha toccato no."
+      },
+      "profilingStrata": {
+        "title": "postal_code, esecuzione per esecuzione",
+        "acting": "Apertura degli strati di deriva",
+        "description": "postal_code in ogni esecuzione, la più vecchia sul fondo: la quota di righe di ciascun valore. L'esecuzione più recente è segnalata in deriva, come mostrava la tabella di deriva, e quella precedente no."
       },
       "profilingOriginal": {
         "title": "I clienti reali",
@@ -916,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "Quanto spiega il meteo?",
-        "description": "Il notebook della demo, eseguito nel tuo browser: ogni stagione di contea letta in pandas come analyst, il loss ratio correlato con la pioggia della stagione, i suoi giorni sopra i 32 °C e la quota delle perdite del mercato dovuta a siccità e caldo, una regressione adattata su di essi e il grafico. Il meteo spiega il 54% della variazione del loss ratio. Ogni 10 giorni sopra i 32 °C aggiungono 20 punti di loss ratio, 100 mm di pioggia in meno ne aggiungono 7 e 10 punti in più delle perdite del mercato dovute a siccità e caldo ne aggiungono 9. Sul portafoglio di oggi, una stagione come il 2012 ha un loss ratio atteso di 1,75."
+        "description": "Il notebook della demo, eseguito nel tuo browser: ogni stagione di contea letta in pandas come analyst, il loss ratio correlato con la pioggia della stagione, i suoi giorni sopra i 32 °C e la quota delle perdite del mercato dovuta a siccità e caldo, una regressione adattata su di essi e il grafico."
       },
       "agricultureRest": {
         "title": "Per anno tramite REST",
@@ -948,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "Come analista di gruppo",
-        "description": "Ora l'esploratore SQL esegue come group_analyst, che lavora sul reporting di gruppo negli US."
+        "description": "Ora il selettore dei ruoli passa a <strong>group_analyst</strong>, che lavora sul reporting di gruppo negli US, così l'SQL e il GraphQL che seguono girano come group_analyst."
       },
       "retailGroupView": {
         "title": "Reporting di gruppo, clienti EU pseudonimizzati",
@@ -957,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "Lo stesso, in GraphQL",
         "description": "La stessa vista di gruppo via GraphQL: un modello, ogni trasporto, le stesse regole."
+      },
+      "retailEveryRole": {
+        "title": "Di nuovo tutti i ruoli",
+        "description": "Ora il selettore dei ruoli torna su <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "Come marketing EU",
@@ -1276,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "Letto come analyst",
-        "description": "Le query successive vengono eseguite come analyst, il ruolo con cui legge il data scientist."
+        "description": "Ora il selettore dei ruoli passa a <strong>analyst</strong>, il ruolo con cui legge il data scientist, così ogni superficie che segue gira come analyst."
       },
       "churnFeatures": {
         "title": "Le variabili da cui il modello impara",
@@ -1289,6 +1303,10 @@
       "churnNotebook": {
         "title": "Un modello, addestrato nel tuo browser",
         "description": "Il notebook della demo, eseguito nella scheda Notebook: le variabili lette in pandas come analyst, un modello scikit-learn addestrato su di esse e l'elenco dei clienti più a rischio. Python viene eseguito nel tuo browser, e gli indirizzi email restano mascherati."
+      },
+      "churnEveryRole": {
+        "title": "Di nuovo tutti i ruoli",
+        "description": "Ora il selettore dei ruoli torna su <strong>All</strong>."
       },
       "churnRecap": {
         "title": "Cosa hai visto",

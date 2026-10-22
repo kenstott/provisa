@@ -69,6 +69,7 @@ def _parameter_columns(export: Export) -> list[dict]:
             "path": None,
             "native_filter_type": QUERY_ARG,
             "native_filter_required": p.required,
+            "comment": None,
         }
         for p in export.parameters
         # REQ-2100: a join's keys reach the loader; a statement gives it no argument.
@@ -77,7 +78,8 @@ def _parameter_columns(export: Export) -> list[dict]:
 
 
 def declared_columns(manifest: Manifest, export: Export) -> list[dict]:
-    """The columns ``export``'s row type declares, its parameters after them."""
+    """The columns ``export``'s row type declares, each described as its field is documented,
+    its parameters after them."""
     data = [
         {
             "name": f.name,
@@ -85,6 +87,7 @@ def declared_columns(manifest: Manifest, export: Export) -> list[dict]:
             "path": None,
             "native_filter_type": None,
             "native_filter_required": None,
+            "comment": f.description or None,
         }
         for f in _row_fields(manifest, export)
     ]
@@ -123,7 +126,7 @@ async def exports(state: Any, source_id: str) -> list[tuple[str, str]] | None:
 
 async def columns(state: Any, source_id: str, function: str) -> list[dict] | None:
     """The suggested columns of the table ``function`` reads: ``{name, data_type, path,
-    native_filter_type, native_filter_required}``, its parameters last."""
+    native_filter_type, native_filter_required, comment}``, its parameters last."""
     from provisa.codesource.source import context_for, prepare
     from provisa.mongodb.pipeline_rows import infer_columns
 
@@ -165,6 +168,7 @@ async def columns(state: Any, source_id: str, function: str) -> list[dict] | Non
             "path": c.path,
             "native_filter_type": None,
             "native_filter_required": None,
+            "comment": None,
         }
         for c in infer_columns(sample)
     ]
