@@ -397,8 +397,11 @@ def router(provisa, provisa_sdl, order_type, reviews, tmp_path_factory):
     )
     name = f"provisa-itest-apollo-router-{os.getpid()}"
     network = ["--network", "host"] if _HOST_NETWORK else ["-p", f"127.0.0.1:{port}:4000"]
+    # As the runner's user: the image's own user cannot read the test's private tmp directory
+    # mounted as its config. Not --rm: a router that exits keeps its log until the fixture's end.
     subprocess.run(
-        ["docker", "run", "-d", "--rm", "--name", name, *network]
+        ["docker", "run", "-d", "--name", name, *network]
+        + ["--user", f"{os.getuid()}:{os.getgid()}"]
         + ["-e", "APOLLO_TELEMETRY_DISABLED=true", "-v", f"{workdir}:/dist/config:ro"]
         + [_ROUTER_IMAGE, "--config", "/dist/config/router.yaml"]
         + ["--supergraph", "/dist/config/supergraph.graphql"],
