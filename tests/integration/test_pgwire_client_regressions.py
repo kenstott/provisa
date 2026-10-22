@@ -81,7 +81,9 @@ def _make_mock_state(role: str = "admin", provider: str = "none") -> MagicMock:
     state = with_surfaces(no_replica_routes(MagicMock()))
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}
-    state.roles = {role: {"id": role, "capabilities": [], "domain_access": ["*"]}}
+    state.roles = {
+        role: {"description": "Test role.", "id": role, "capabilities": [], "domain_access": ["*"]}
+    }
     state.schema_build_cache = {"column_types": {}}
     state.auth_config = {"provider": provider, "default_role": role, "role_mapping": []}
     state.auth_middleware_active = provider != "none"
@@ -169,10 +171,14 @@ def _connect_and_auth(port: int, user: str, password: str = "x", database: str =
     sock.settimeout(10)
     body = f"user\x00{user}\x00database\x00{database}\x00\x00".encode()
     sock.sendall(struct.pack("!i", 4 + 4 + len(body)) + struct.pack("!i", 196608) + body)
-    mtype, _ = _read_message(sock)
+    mtype, payload = _read_message(sock)
     assert mtype == b"R", f"expected AuthenticationRequest, got {mtype!r}"
-    pw_body = password.encode() + b"\x00"
-    sock.sendall(b"p" + struct.pack("!i", 4 + len(pw_body)) + pw_body)
+    # The password is sent only when asked for (AuthenticationCleartextPassword, 3). Trust mode
+    # (no auth provider) answers the startup with AuthenticationOk (0), as PostgreSQL's trust
+    # does, and a PasswordMessage then is a message the server does not expect.
+    if struct.unpack("!i", payload[:4])[0] == 3:
+        pw_body = password.encode() + b"\x00"
+        sock.sendall(b"p" + struct.pack("!i", 4 + len(pw_body)) + pw_body)
     while True:
         mtype, payload = _read_message(sock)
         if mtype == b"E":

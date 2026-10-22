@@ -83,7 +83,7 @@ def _create_graphql(c: httpx.Client, role_id: str, parent: str | None = None) ->
     parent_arg = f', parentRoleId: "{parent}"' if parent else ""
     made = _gql(
         c,
-        f"""mutation {{ createRole(input: {{
+        f"""mutation {{ createRole(input: {{ description: "Test role.",
             id: "{role_id}", capabilities: ["query_development"], domainAccess: ["*"]{parent_arg}
         }}) {{ success message }} }}""",
     )["createRole"]

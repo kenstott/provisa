@@ -86,6 +86,7 @@ def server():
             # org_admin is the reserved administrative role (REQ-1349): not declared here.
             "roles": [
                 {
+                    "description": "Test role.",
                     "id": role,
                     "capabilities": ["query_development", "full_results"],
                     "domain_access": ["*"],
@@ -94,7 +95,12 @@ def server():
             ],
             # The org admin's own row rule: the profile describes only the rows it may read.
             "rls_rules": [
-                {"table_id": "orders", "role_id": "org_admin", "filter": "region <> 'north'"}
+                {
+                    "description": "Test rule.",
+                    "table_id": "orders",
+                    "role_id": "org_admin",
+                    "filter": "region <> 'north'",
+                }
             ],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},
@@ -199,6 +205,7 @@ def _register(boot, entry: dict) -> None:
                     "tableId": entry["tableName"],
                     "roleId": rule["roleId"],
                     "filterExpr": rule["filter"],
+                    "description": rule["description"],
                 }
             },
         )
