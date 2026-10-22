@@ -434,6 +434,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
     mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: entity key
     mv_bitemporal_source_time: str | None = None  # REQ-1163: the source's change-time column
@@ -1168,6 +1169,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     mv_bitemporal_mode: str | None = None  # REQ-1162: None | "snapshot" | "delta"
     mv_bitemporal_key: list[str] = strawberry.field(default_factory=list)  # REQ-1162: entity key
     mv_bitemporal_source_time: str | None = None  # REQ-1163: the source's change-time column

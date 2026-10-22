@@ -728,6 +728,7 @@ O input principal de registro de tabela. Campos-chave além do básico:
 | `mvRefreshInterval` | Segundos entre atualizações |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Manutenção incremental |
+| `mvHoldOnFailingChecks` | Reter quando verificações falham: uma atualização é cancelada, e a view mantém a cópia anterior, enquanto uma tabela de verificação que analisa uma de suas entradas falhou na última execução |
 | `mvBitemporalMode` | `snapshot` \| `delta` para tabelas bitemporais |
 | `mvCalendar` | Nome do calendário de snapshot |
 | `mvGrain` | Granularidade do snapshot: `daily`, `weekly`, `monthly`, `annual`, ou personalizada `3WE` / `LFR` |

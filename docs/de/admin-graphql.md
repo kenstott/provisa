@@ -728,6 +728,7 @@ Die zentrale Eingabe zur Tabellenregistrierung. Wichtige Felder über die Grundl
 | `mvRefreshInterval` | Sekunden zwischen Aktualisierungen |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Inkrementelle Wartung |
+| `mvHoldOnFailingChecks` | Bei fehlschlagenden Prüfungen anhalten: Eine Aktualisierung wird abgebrochen, und die Sicht behält ihre vorherige Kopie, solange eine Prüftabelle, die eine ihrer Eingaben prüft, bei ihrem letzten Lauf fehlgeschlagen ist |
 | `mvBitemporalMode` | `snapshot` \| `delta` für bitemporale Tabellen |
 | `mvCalendar` | Snapshot-Kalendername |
 | `mvGrain` | Snapshot-Granularität: `daily`, `weekly`, `monthly`, `annual` oder benutzerdefiniert `3WE` / `LFR` |

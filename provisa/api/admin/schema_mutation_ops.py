@@ -631,6 +631,9 @@ async def register_table(
             input.change_signal,
             consistency=input.mv_consistency,  # REQ-879
             preprocess=input.mv_preprocess,  # REQ-957
+            hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
+            table_id=table_id,  # REQ-2133
+            product_id=input.product_id,  # REQ-2133
             bitemporal_mode=input.mv_bitemporal_mode,  # REQ-1162
             bitemporal_key=list(input.mv_bitemporal_key),  # REQ-1162
             bitemporal_source_time=input.mv_bitemporal_source_time,  # REQ-1163

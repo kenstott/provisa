@@ -728,6 +728,7 @@ mutation {
 | `mvRefreshInterval` | 重新整理間隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量維護 |
+| `mvHoldOnFailingChecks` | 檢查失敗時暫停：只要掃描其某個輸入的檢查表最近一次執行失敗，重新整理就會中止，視圖保留上一份副本 |
 | `mvBitemporalMode` | 雙時態資料表的 `snapshot` \| `delta` |
 | `mvCalendar` | 快照日曆名稱 |
 | `mvGrain` | 快照粒度：`daily`、`weekly`、`monthly`、`annual`，或自定義的 `3WE` / `LFR` |

@@ -45,6 +45,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     pushDebounceMaxDelay: t.pushDebounceMaxDelay,
     mvConsistency: t.mvConsistency,
     mvPreprocess: t.mvPreprocess || null, // REQ-957
+    mvHoldOnFailingChecks: t.mvHoldOnFailingChecks, // REQ-2133
     mvBitemporalMode: t.mvBitemporalMode || null, // REQ-1162
     mvBitemporalKey: t.mvBitemporalKey, // REQ-1162
     mvBitemporalSourceTime: t.mvBitemporalSourceTime ?? null, // REQ-1163

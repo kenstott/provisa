@@ -728,6 +728,7 @@ The core table registration input. Key fields beyond the basics:
 | `mvRefreshInterval` | Seconds between refreshes |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Incremental maintenance |
+| `mvHoldOnFailingChecks` | Hold on failing checks: a refresh is aborted, and the view keeps its previous copy, while a checker table scanning one of its inputs failed its latest run |
 | `mvBitemporalMode` | `snapshot` \| `delta` for bitemporal tables |
 | `mvCalendar` | Snapshot calendar name |
 | `mvGrain` | Snapshot grain: `daily`, `weekly`, `monthly`, `annual`, or custom `3WE` / `LFR` |

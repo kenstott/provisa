@@ -126,6 +126,7 @@ _VIEW_KEYS = {
     "alias": "alias",
     "columns": "columns",
     "preprocess": "mv_preprocess",
+    "hold_on_failing_checks": "mv_hold_on_failing_checks",  # REQ-2133
     # REQ-2009: a view offers the GraphQL Aggregate and GroupBy root fields as a table does.
     "enable_aggregates": "enable_aggregates",
     "enable_group_by": "enable_group_by",

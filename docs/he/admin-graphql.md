@@ -728,6 +728,7 @@ mutation {
 | `mvRefreshInterval` | שניות בין רענונים |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | תחזוקה מצטברת |
+| `mvHoldOnFailingChecks` | לעצור כשבדיקות נכשלות: רענון מבוטל, והתצוגה שומרת את העותק הקודם שלה, כל עוד טבלת בדיקה הסורקת אחד מהקלטים שלה נכשלה בהרצה האחרונה שלה |
 | `mvBitemporalMode` | `snapshot` \| `delta` עבור טבלאות דו-זמניות |
 | `mvCalendar` | שם לוח שנה של תמונת מצב |
 | `mvGrain` | גרעיניות תמונת מצב: `daily`, `weekly`, `monthly`, `annual`, או מותאם `3WE` / `LFR` |

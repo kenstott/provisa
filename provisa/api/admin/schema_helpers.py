@@ -470,6 +470,7 @@ async def _fetch_table_with_columns(
         push_debounce_max_delay=float(row.get("push_debounce_max_delay") or 5.0),  # REQ-1733
         mv_consistency=row.get("mv_consistency") or "shared",  # REQ-879
         mv_preprocess=row.get("mv_preprocess"),  # REQ-957
+        mv_hold_on_failing_checks=bool(row["mv_hold_on_failing_checks"]),  # REQ-2133
         mv_bitemporal_mode=row.get("mv_bitemporal_mode"),  # REQ-1162
         mv_bitemporal_key=list(row.get("mv_bitemporal_key") or []),  # REQ-1162
         mv_bitemporal_source_time=row.get("mv_bitemporal_source_time"),  # REQ-1163

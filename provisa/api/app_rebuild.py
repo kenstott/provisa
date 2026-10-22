@@ -111,6 +111,8 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_refresh_interval,
                         _registered_tables_t.c.change_signal,
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
+                        _registered_tables_t.c.product_id,  # REQ-2133
+                        _registered_tables_t.c.mv_hold_on_failing_checks,  # REQ-2133
                         _registered_tables_t.c.mv_bitemporal_mode,  # REQ-1162
                         _registered_tables_t.c.mv_bitemporal_key,  # REQ-1162
                         _registered_tables_t.c.mv_bitemporal_source_time,  # REQ-1163
@@ -233,6 +235,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
                             preprocess=_vr.get("mv_preprocess"),  # REQ-957
+                            table_id=_vr["id"],  # REQ-2133
+                            product_id=_vr["product_id"],  # REQ-2133
+                            hold_on_failing_checks=bool(_vr["mv_hold_on_failing_checks"]),
                             bitemporal=_bt_spec,  # REQ-1162: survive restart
                             persist=_vr.get("mv_persist") or "replace",  # REQ-965
                             primary_key=list(_vr.get("mv_primary_key") or []),  # REQ-970
@@ -263,6 +268,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                     _existing.region = _vr.get("region")  # REQ-1921
                     _existing.read_tables = read_table_names(_semantic_sql)
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
+                    _existing.table_id = _vr["id"]  # REQ-2133
+                    _existing.product_id = _vr["product_id"]  # REQ-2133
+                    _existing.hold_on_failing_checks = bool(_vr["mv_hold_on_failing_checks"])
                     _existing.bitemporal = _bt_spec  # REQ-1162
                     _existing.persist = _vr.get("mv_persist") or "replace"  # REQ-965
                     _existing.primary_key = list(_vr.get("mv_primary_key") or [])  # REQ-970

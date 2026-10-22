@@ -728,6 +728,7 @@ La entrada central de registro de tablas. Campos clave más allá de lo básico:
 | `mvRefreshInterval` | Segundos entre actualizaciones |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Mantenimiento incremental |
+| `mvHoldOnFailingChecks` | Retener si fallan las comprobaciones: se cancela una actualización, y la vista conserva su copia anterior, mientras una tabla de comprobación que analiza una de sus entradas haya fallado en su última ejecución |
 | `mvBitemporalMode` | `snapshot` \| `delta` para tablas bitemporales |
 | `mvCalendar` | Nombre del calendario de instantáneas |
 | `mvGrain` | Grano de instantánea: `daily`, `weekly`, `monthly`, `annual`, o personalizado `3WE` / `LFR` |

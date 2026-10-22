@@ -4,8 +4,23 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { Alert, Checkbox, NumberInput, Select, Text, Textarea, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Code,
+  Group,
+  NumberInput,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+} from "@mantine/core";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CopyButton } from "../../components/CopyButton";
+import { useHoldOnFailingChecksSource } from "../../hooks/useAdminQueries";
 import type { RegisteredTable } from "../../types/admin";
 import { useMaterializeStoreInfo } from "../../hooks/useAdminOpsQueries";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -310,6 +325,67 @@ export function MaterializedViewPanels({
           />
         </FormField>
       )}
+      {editingTable.materialize && (
+        <HoldOnFailingChecks editingTable={editingTable} setEditingTable={setEditingTable} />
+      )}
+    </>
+  );
+}
+
+/** REQ-2133: Hold on failing checks, and the code it applies, for a steward to read and copy. */
+function HoldOnFailingChecks({
+  editingTable,
+  setEditingTable,
+}: {
+  editingTable: RegisteredTable;
+  setEditingTable: (t: RegisteredTable) => void;
+}) {
+  const { t } = useTranslation();
+  const [shown, setShown] = useState(false);
+  const { source } = useHoldOnFailingChecksSource(!shown);
+  return (
+    <>
+      <FormChecks>
+        <FormField help={t("tableEditForm.holdOnFailingChecksHelp")} size="medium">
+          <Checkbox
+            data-testid="mv-hold-on-failing-checks"
+            checked={editingTable.mvHoldOnFailingChecks}
+            label={t("tableEditForm.holdOnFailingChecksLabel")}
+            onChange={(e) =>
+              setEditingTable({ ...editingTable, mvHoldOnFailingChecks: e.currentTarget.checked })
+            }
+          />
+        </FormField>
+      </FormChecks>
+      <FormField size="full">
+        <Stack gap="xs">
+          <Group gap="xs">
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              data-testid="mv-hold-on-failing-checks-code-toggle"
+              onClick={() => setShown(!shown)}
+            >
+              {t(
+                shown
+                  ? "tableEditForm.holdOnFailingChecksHideCode"
+                  : "tableEditForm.holdOnFailingChecksShowCode",
+              )}
+            </Button>
+            {shown && source && <CopyButton text={source} />}
+          </Group>
+          {shown && source && (
+            <>
+              <Text size="xs" c="dimmed">
+                {t("tableEditForm.holdOnFailingChecksCodeHelp")}
+              </Text>
+              <Code block data-testid="mv-hold-on-failing-checks-code">
+                {source}
+              </Code>
+            </>
+          )}
+        </Stack>
+      </FormField>
     </>
   );
 }

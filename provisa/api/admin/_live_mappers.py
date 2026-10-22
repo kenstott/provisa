@@ -75,6 +75,7 @@ def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
         push_debounce_max_delay=inp.push_debounce_max_delay,  # REQ-1733
         mv_consistency=inp.mv_consistency,  # REQ-879
         mv_preprocess=inp.mv_preprocess,  # REQ-957
+        mv_hold_on_failing_checks=inp.mv_hold_on_failing_checks,  # REQ-2133
         mv_bitemporal_mode=inp.mv_bitemporal_mode,  # REQ-1162
         mv_bitemporal_key=list(inp.mv_bitemporal_key),  # REQ-1162
         mv_bitemporal_source_time=inp.mv_bitemporal_source_time,  # REQ-1163

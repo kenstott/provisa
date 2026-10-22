@@ -243,6 +243,7 @@ def _table(tid: int, columns: list[dict[str, Any]]) -> dict[str, Any]:
             "mvConsistency": "shared",
             "mvPersist": "replace",
             "mvIncremental": False,
+            "mvHoldOnFailingChecks": False,
             "mvAllowedLateness": 0.0,
             "mvBusinessDayGrain": False,
             "enableAggregates": False,

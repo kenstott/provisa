@@ -1469,6 +1469,10 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
+    # REQ-2133: Hold on failing checks -- a built-in preflight that holds a refresh while a checker
+    # scanning one of the view's nearest physical inputs failed its latest run; combined with
+    # mv_preprocess, the refresh lands only if both continue.
+    mv_hold_on_failing_checks: bool = False
     # REQ-1162: append-only bitemporal materialization. None = ordinary MV; "snapshot" appends the
     # whole fresh dataset each refresh; "delta" appends only engine-computed changes. mv_bitemporal_key
     # is the business identity a version belongs to (required for delta). Time travel ("as of") is then
