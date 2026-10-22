@@ -48,14 +48,16 @@ import {
 } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
+import { kindKey } from "./nodeLook";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
 /** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
 const STATUSES: TermStatus[] = ["proposed", "deprecated", "retired"];
 
-/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns. */
-const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns"]);
+/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns,
+ * and its Tables, which draws the tables of the columns drawn and so goes with Columns. */
+const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "ownerTables"]);
 
 export function GraphExplorer({
   data,
@@ -93,10 +95,14 @@ export function GraphExplorer({
   const choices = useMemo(() => filterChoices(data), [data]);
   const edgeTypes = useMemo(
     () =>
-      [...new Set(data.edges.filter((e) => e.kind === "term_edge").map((e) => e.label ?? ""))]
+      [
+        ...new Set(
+          data.edges.filter((e) => scope.typedKinds.includes(e.kind)).map((e) => e.label ?? ""),
+        ),
+      ]
         .filter(Boolean)
         .sort(),
-    [data],
+    [data, scope],
   );
   const hasStatus = useMemo(() => data.nodes.some((n) => n.status !== undefined), [data]);
   const hasTerms = useMemo(() => data.nodes.some((n) => n.type === "term"), [data]);
@@ -194,7 +200,10 @@ export function GraphExplorer({
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
 
   const shown = useMemo(() => {
-    const on = new Set([...layers].filter((l) => offered.has(l)));
+    // Tables are the tables of the columns drawn: without Columns, there are none to draw.
+    const on = new Set(
+      [...layers].filter((l) => offered.has(l) && (l !== "ownerTables" || layers.has("columns"))),
+    );
     // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
     // carry no domain included.
     const all = (chosen: string[], every: string[]) =>
@@ -370,6 +379,17 @@ export function GraphExplorer({
             {t("graph3d.columnsToggle")}
           </Chip>
         )}
+        {offered.has("ownerTables") && (
+          <Chip
+            size="xs"
+            checked={layers.has("ownerTables")}
+            disabled={!layers.has("columns")}
+            onChange={(on) => toggleLayer("ownerTables", on)}
+            data-testid={`${testId}-tables`}
+          >
+            {t("graph3d.tablesToggle")}
+          </Chip>
+        )}
         {scope.orphans && hasTerms && (
           <Chip size="xs" checked={orphans} onChange={setOrphans} data-testid={`${testId}-orphans`}>
             {t("graph3d.orphans")}
@@ -428,6 +448,7 @@ export function GraphExplorer({
           setSelected={setSelected}
           setHover={setHover}
           expanded={expanded}
+          folds={scope.foldColumns}
           toggleExpanded={(id) =>
             setExpanded((prev) => {
               const next = new Set(prev);
@@ -453,6 +474,7 @@ function GraphDetail({
   setSelected,
   setHover,
   expanded,
+  folds,
   toggleExpanded,
   onFocus,
   testId,
@@ -463,6 +485,8 @@ function GraphDetail({
   setSelected: (id: string) => void;
   setHover: (h: GraphHover | null) => void;
   expanded: ReadonlySet<string>;
+  /** Whether a table's columns fold into it (and so can be shown on asking). */
+  folds: boolean;
   toggleExpanded: (id: string) => void;
   onFocus: (id: string) => void;
   testId: string;
@@ -472,11 +496,19 @@ function GraphDetail({
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.label ?? id;
   const links = node ? edgesOf(graph, node.id) : [];
   const hasColumns =
-    node?.type === "table" && data.nodes.some((n) => n.type === "column" && n.parent === node.id);
+    folds &&
+    node?.type === "table" &&
+    data.nodes.some((n) => n.type === "column" && n.parent === node.id);
+  // Each kind drawn, named as its look shows it, with how many.
   const counts = useMemo(() => {
-    const by = new Map<string, number>();
-    for (const n of graph.nodes) by.set(n.type, (by.get(n.type) ?? 0) + 1);
-    return [...by.entries()].sort((a, b) => b[1] - a[1]);
+    const by = new Map<string, { key: string; type: string; count: number }>();
+    for (const n of graph.nodes) {
+      const key = kindKey(n);
+      const seen = by.get(key);
+      if (seen) seen.count += 1;
+      else by.set(key, { key, type: n.type, count: 1 });
+    }
+    return [...by.values()].sort((a, b) => b.count - a.count);
   }, [graph]);
   return (
     <div className="p3d-detail">
@@ -484,7 +516,7 @@ function GraphDetail({
         <section data-testid={`${testId}-detail`} aria-live="polite">
           <div className="p3d-col-head">
             <h4>{node.label}</h4>
-            <span className="p3d-kind">{t(`graph3d.type_${node.type}`)}</span>
+            <span className="p3d-kind">{t(kindKey(node))}</span>
           </div>
           {node.definition && (
             <ClampedDetail testId={`${testId}-definition`}>
@@ -542,18 +574,18 @@ function GraphDetail({
       <section>
         <h5 className="p3d-section-title">{t("graph3d.shown")}</h5>
         <div className="p3d-list">
-          {counts.map(([type, count]) => (
-            <div key={type} className="p3d-row p3d-row-compact">
+          {counts.map(({ key, type, count }) => (
+            <div key={key} className="p3d-row p3d-row-compact">
               <span className="p3d-row-name">
                 <i className={`p3d-dot g3d-sw-${type}`} />
-                {t(`graph3d.type_${type}`)}
+                {t(key)}
               </span>
               <span className="p3d-num">{count}</span>
             </div>
           ))}
         </div>
       </section>
-      <p className="p3d-note">{t("graph3d.note")}</p>
+      <p className="p3d-note">{t(folds ? "graph3d.note" : "graph3d.noteUnfolded")}</p>
     </div>
   );
 }

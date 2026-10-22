@@ -32,6 +32,7 @@
     "paths_one": "{{count}} pad",
     "paths_other": "{{count}} paden",
     "note": "Kies een knooppunt om de verbindingen ervan te zien. De kolommen van een tabel blijven erin ingeklapt tot u ze toont.",
+    "noteUnfolded": "Kies een knooppunt om de verbindingen ervan te tonen.",
     "type_product": "dataproduct",
     "type_domain": "domein",
     "type_table": "lidtabel",
@@ -72,6 +73,7 @@
     "ontologyView": "Ontologieweergave",
     "orphans": "Wezen",
     "columnsToggle": "Kolommen",
+    "tablesToggle": "Tabellen",
     "allEdgeTypes": "Alle randtypen",
     "someEdgeTypes": "{{count}} van {{total}} randtypen",
     "allDomains": "Alle domeinen",
@@ -87,6 +89,7 @@
     "look_abstract": "abstracte term",
     "look_in_product": "kolom in een dataproduct",
     "look_out_of_product": "kolom buiten dataproducten",
+    "look_stored": "tabel",
     "status_live": "Actief"
   }
 }

@@ -39,8 +39,15 @@ export type Colour =
   | "cool"
   | "hl";
 
-/** A node kind's variant: a term concrete or abstract, a column in a data product or not. */
-export type Variant = "plain" | "concrete" | "abstract" | "in_product" | "out_of_product";
+/** A node kind's variant: a term concrete or abstract, a column in a data product or not, a table
+ * as stored (the Ontology View's). */
+export type Variant =
+  | "plain"
+  | "concrete"
+  | "abstract"
+  | "in_product"
+  | "out_of_product"
+  | "stored";
 
 export interface Look {
   shape: Shape;
@@ -70,6 +77,9 @@ export function nodeLook(n: GraphNode): Look {
       ? { shape: "cube", colour: "fam-numeric", variant: "in_product" }
       : { shape: "cube", colour: "fam-other", variant: "out_of_product" };
   }
+  // The Ontology View's tables, the fourth shape beside its terms, columns and domains.
+  if (n.type === "table" && n.stored)
+    return { shape: "cylinder", colour: "fam-numeric", variant: "stored" };
   return { ...BY_TYPE[n.type], variant: "plain" };
 }
 
@@ -85,4 +95,10 @@ export function labelClass(status: TermStatus | undefined): string {
     default:
       return "";
   }
+}
+
+/** The i18n key naming what a node is, as its look shows it: a table drawn as stored is a table,
+ * not a product's member. */
+export function kindKey(n: GraphNode): string {
+  return n.type === "table" && n.stored ? "graph3d.look_stored" : `graph3d.type_${n.type}`;
 }

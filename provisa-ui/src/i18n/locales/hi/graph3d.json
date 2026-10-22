@@ -32,6 +32,7 @@
     "paths_one": "{{count}} पाथ",
     "paths_other": "{{count}} पाथ",
     "note": "किसी नोड को चुनें ताकि उसके कनेक्शन दिखें। किसी टेबल के कॉलम तब तक उसी में समेटे रहते हैं जब तक आप उन्हें न दिखाएँ।",
+    "noteUnfolded": "किसी नोड को चुनें ताकि उसके कनेक्शन सूचीबद्ध हों।",
     "type_product": "डेटा प्रोडक्ट",
     "type_domain": "डोमेन",
     "type_table": "सदस्य टेबल",
@@ -72,6 +73,7 @@
     "ontologyView": "ऑन्टोलॉजी दृश्य",
     "orphans": "अनाथ",
     "columnsToggle": "कॉलम",
+    "tablesToggle": "टेबल",
     "allEdgeTypes": "सभी एज प्रकार",
     "someEdgeTypes": "{{total}} में से {{count}} एज प्रकार",
     "allDomains": "सभी डोमेन",
@@ -87,6 +89,7 @@
     "look_abstract": "अमूर्त शब्द",
     "look_in_product": "डेटा उत्पाद में कॉलम",
     "look_out_of_product": "डेटा उत्पादों से बाहर कॉलम",
+    "look_stored": "टेबल",
     "status_live": "सक्रिय"
   }
 }

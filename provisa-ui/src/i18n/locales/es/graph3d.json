@@ -32,6 +32,7 @@
     "paths_one": "{{count}} ruta",
     "paths_other": "{{count}} rutas",
     "note": "Elija un nodo para ver sus conexiones. Las columnas de una tabla quedan plegadas en ella hasta que las muestre.",
+    "noteUnfolded": "Elija un nodo para listar sus conexiones.",
     "type_product": "producto de datos",
     "type_domain": "dominio",
     "type_table": "tabla miembro",
@@ -72,6 +73,7 @@
     "ontologyView": "Vista de ontología",
     "orphans": "Huérfanos",
     "columnsToggle": "Columnas",
+    "tablesToggle": "Tablas",
     "allEdgeTypes": "Todos los tipos de arista",
     "someEdgeTypes": "{{count}} de {{total}} tipos de arista",
     "allDomains": "Todos los dominios",
@@ -87,6 +89,7 @@
     "look_abstract": "término abstracto",
     "look_in_product": "columna en un producto de datos",
     "look_out_of_product": "columna fuera de los productos de datos",
+    "look_stored": "tabla",
     "status_live": "Vigente"
   }
 }

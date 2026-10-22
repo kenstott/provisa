@@ -32,6 +32,7 @@
     "paths_one": "Путей: {{count}}",
     "paths_other": "Путей: {{count}}",
     "note": "Выберите узел, чтобы увидеть его связи. Столбцы таблицы остаются свёрнутыми в ней, пока вы их не покажете.",
+    "noteUnfolded": "Выберите узел, чтобы увидеть его связи.",
     "type_product": "продукт данных",
     "type_domain": "домен",
     "type_table": "таблица-участник",
@@ -72,6 +73,7 @@
     "ontologyView": "Вид онтологии",
     "orphans": "Сироты",
     "columnsToggle": "Столбцы",
+    "tablesToggle": "Таблицы",
     "allEdgeTypes": "Все типы рёбер",
     "someEdgeTypes": "{{count}} из {{total}} типов рёбер",
     "allDomains": "Все домены",
@@ -87,6 +89,7 @@
     "look_abstract": "абстрактный термин",
     "look_in_product": "столбец в продукте данных",
     "look_out_of_product": "столбец вне продуктов данных",
+    "look_stored": "таблица",
     "status_live": "Действующий"
   }
 }

@@ -32,6 +32,7 @@
     "paths_one": "パス: {{count}}",
     "paths_other": "パス: {{count}}",
     "note": "ノードを選ぶと接続が一覧表示されます。テーブルの列は表示するまでテーブルに折りたたまれています。",
+    "noteUnfolded": "ノードを選ぶと、その接続が一覧表示されます。",
     "type_product": "データプロダクト",
     "type_domain": "ドメイン",
     "type_table": "メンバーテーブル",
@@ -72,6 +73,7 @@
     "ontologyView": "オントロジービュー",
     "orphans": "孤立",
     "columnsToggle": "列",
+    "tablesToggle": "テーブル",
     "allEdgeTypes": "すべてのエッジ種別",
     "someEdgeTypes": "{{total}} 件中 {{count}} 件のエッジ種別",
     "allDomains": "すべてのドメイン",
@@ -87,6 +89,7 @@
     "look_abstract": "抽象的な用語",
     "look_in_product": "データプロダクト内の列",
     "look_out_of_product": "データプロダクト外の列",
+    "look_stored": "テーブル",
     "status_live": "有効"
   }
 }

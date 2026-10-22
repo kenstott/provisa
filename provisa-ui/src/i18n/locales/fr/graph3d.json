@@ -32,6 +32,7 @@
     "paths_one": "{{count}} chemin",
     "paths_other": "{{count}} chemins",
     "note": "Choisissez un nœud pour lister ses connexions. Les colonnes d'une table restent repliées dans celle-ci jusqu'à ce que vous les affichiez.",
+    "noteUnfolded": "Choisissez un nœud pour lister ses connexions.",
     "type_product": "produit de données",
     "type_domain": "domaine",
     "type_table": "table membre",
@@ -72,6 +73,7 @@
     "ontologyView": "Vue ontologie",
     "orphans": "Orphelins",
     "columnsToggle": "Colonnes",
+    "tablesToggle": "Tables",
     "allEdgeTypes": "Tous les types d’arêtes",
     "someEdgeTypes": "{{count}} sur {{total}} types d’arêtes",
     "allDomains": "Tous les domaines",
@@ -87,6 +89,7 @@
     "look_abstract": "terme abstrait",
     "look_in_product": "colonne d’un produit de données",
     "look_out_of_product": "colonne hors des produits de données",
+    "look_stored": "table",
     "status_live": "Actif"
   }
 }

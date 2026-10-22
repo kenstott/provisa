@@ -32,6 +32,7 @@
     "paths_one": "{{count}} path",
     "paths_other": "{{count}} paths",
     "note": "Pick a node to list its connections. A table's columns stay folded into it until you show them.",
+    "noteUnfolded": "Pick a node to list its connections.",
     "type_product": "data product",
     "type_domain": "domain",
     "type_table": "member table",
@@ -72,6 +73,7 @@
     "ontologyView": "Ontology view",
     "orphans": "Orphans",
     "columnsToggle": "Columns",
+    "tablesToggle": "Tables",
     "allEdgeTypes": "All edge types",
     "someEdgeTypes": "{{count}} of {{total}} edge types",
     "allDomains": "All domains",
@@ -87,6 +89,7 @@
     "look_abstract": "abstract term",
     "look_in_product": "column in a data product",
     "look_out_of_product": "column outside data products",
+    "look_stored": "table",
     "status_live": "Live"
   }
 }

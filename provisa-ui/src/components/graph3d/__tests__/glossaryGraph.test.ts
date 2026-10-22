@@ -161,12 +161,18 @@ describe("the Ontology View's presets", () => {
     expect(y("term:1")).toBeGreaterThan(y("term:3"));
   });
 
-  it("the data layer, off by default, adds the bound columns' tables and their products", () => {
+  it("the data layer, off by default, adds the products' datasets, unfolded into their columns", () => {
     expect(preset("ontology").layers).not.toContain("data");
     const g = view([...preset("ontology").layers, "data"]);
-    expect(ids(g)).toEqual(expect.arrayContaining(["t:10", "p:c360"]));
-    // The columns are folded into their table.
-    expect(ids(g)).not.toContain("c:10:email");
-    expect(g.edges.find((e) => e.kind === "term_binding" && e.a === "term:1")?.b).toBe("t:10");
+    expect(ids(g)).toEqual(expect.arrayContaining(["t:10", "p:c360", "c:10:email"]));
+    // A column is drawn as itself, joined to its dataset, and the term IS it.
+    expect(g.edges.find((e) => e.kind === "term_binding" && e.a === "term:1")?.b).toBe(
+      "c:10:email",
+    );
+    expect(g.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "has_column", a: "t:10", b: "c:10:email" }),
+      ]),
+    );
   });
 });

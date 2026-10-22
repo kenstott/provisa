@@ -7761,5 +7761,8 @@
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer.",
   "he/glossaryTab.json::glossaryTab.generateMenu": "Generate with AI",
   "he/profile3d.json::profile3d.resetSettings": "Reset view settings",
-  "he/profile3d.json::profile3d.resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults."
+  "he/profile3d.json::profile3d.resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults.",
+  "he/graph3d.json::graph3d.tablesToggle": "Tables",
+  "he/graph3d.json::graph3d.look_stored": "table",
+  "he/graph3d.json::graph3d.noteUnfolded": "Pick a node to list its connections."
 }

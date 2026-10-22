@@ -32,6 +32,7 @@
     "paths_one": "{{count}} Pfad",
     "paths_other": "{{count}} Pfade",
     "note": "Wählen Sie einen Knoten, um seine Verbindungen aufzulisten. Die Spalten einer Tabelle bleiben eingeklappt, bis Sie sie anzeigen.",
+    "noteUnfolded": "Wählen Sie einen Knoten, um seine Verbindungen aufzulisten.",
     "type_product": "Datenprodukt",
     "type_domain": "Domäne",
     "type_table": "Mitgliedstabelle",
@@ -72,6 +73,7 @@
     "ontologyView": "Ontologie-Ansicht",
     "orphans": "Verwaiste",
     "columnsToggle": "Spalten",
+    "tablesToggle": "Tabellen",
     "allEdgeTypes": "Alle Kantentypen",
     "someEdgeTypes": "{{count}} von {{total}} Kantentypen",
     "allDomains": "Alle Domänen",
@@ -87,6 +89,7 @@
     "look_abstract": "abstrakter Begriff",
     "look_in_product": "Spalte in einem Datenprodukt",
     "look_out_of_product": "Spalte außerhalb von Datenprodukten",
+    "look_stored": "Tabelle",
     "status_live": "Aktiv"
   }
 }

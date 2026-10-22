@@ -23,8 +23,10 @@ import { GraphExplorer } from "./GraphExplorer";
 import { GLOSSARY_SCOPE, type GraphData } from "./graphModel";
 import {
   glossaryGraph,
+  productsQuery,
   termEdgesQuery,
   termsQuery,
+  type ProductRow,
   type TermEdgeRow,
   type TermRow,
 } from "./glossaryGraphData";
@@ -38,15 +40,21 @@ async function loadGlossaryGraph(role: string): Promise<GraphData | null> {
   const tq = termsQuery(m);
   if (tq === null) return null;
   const eq = termEdgesQuery(m);
-  const [{ glossary_terms: terms }, edges] = await Promise.all([
+  // The data products with their datasets and columns (the Data layer); a role that cannot read
+  // them draws the ontology without them.
+  const pq = productsQuery(m);
+  const [{ glossary_terms: terms }, edges, products] = await Promise.all([
     dataGraphql<{ glossary_terms: TermRow[] }>(tq, {}, role),
     eq === null
       ? Promise.resolve([] as TermEdgeRow[])
       : dataGraphql<{ glossary_term_edges: TermEdgeRow[] }>(eq, {}, role).then(
           (r) => r.glossary_term_edges,
         ),
+    pq === null
+      ? Promise.resolve([] as ProductRow[])
+      : dataGraphql<{ data_products: ProductRow[] }>(pq, {}, role).then((r) => r.data_products),
   ]);
-  return glossaryGraph(terms, edges);
+  return glossaryGraph(terms, edges, products);
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */

@@ -32,6 +32,7 @@
     "paths_one": "{{count}} percorso",
     "paths_other": "{{count}} percorsi",
     "note": "Scegli un nodo per elencarne i collegamenti. Le colonne di una tabella restano compresse al suo interno finché non le mostri.",
+    "noteUnfolded": "Scegli un nodo per elencarne le connessioni.",
     "type_product": "prodotto dati",
     "type_domain": "dominio",
     "type_table": "tabella membro",
@@ -72,6 +73,7 @@
     "ontologyView": "Vista ontologia",
     "orphans": "Orfani",
     "columnsToggle": "Colonne",
+    "tablesToggle": "Tabelle",
     "allEdgeTypes": "Tutti i tipi di arco",
     "someEdgeTypes": "{{count}} di {{total}} tipi di arco",
     "allDomains": "Tutti i domini",
@@ -87,6 +89,7 @@
     "look_abstract": "termine astratto",
     "look_in_product": "colonna in un prodotto dati",
     "look_out_of_product": "colonna fuori dai prodotti dati",
+    "look_stored": "tabella",
     "status_live": "Attivo"
   }
 }

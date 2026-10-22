@@ -17,7 +17,7 @@ import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import { edgesOf, type GraphData, type NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
-import { labelClass, nodeLook, type Look } from "./nodeLook";
+import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
 
 export interface StageState {
   graph: GraphData;
@@ -120,7 +120,7 @@ export function GraphStage({
       body = (
         <>
           <b>{node.label}</b>
-          <span>{t(`graph3d.type_${node.type}`)}</span>
+          <span>{t(kindKey(node))}</span>
           <span className="p3d-num">
             {t("graph3d.tipLinks", { count: edgesOf(s.graph, node.id).length })}
           </span>

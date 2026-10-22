@@ -32,6 +32,7 @@
     "paths_one": "נתיבים: {{count}}",
     "paths_other": "נתיבים: {{count}}",
     "note": "בחרו צומת כדי לראות את החיבורים שלו. עמודות של טבלה נשארות מקופלות בתוכה עד שתציגו אותן.",
+    "noteUnfolded": "בחרו צומת כדי להציג את החיבורים שלו.",
     "type_product": "מוצר נתונים",
     "type_domain": "תחום",
     "type_table": "טבלה חברה",
@@ -72,6 +73,7 @@
     "ontologyView": "תצוגת אונטולוגיה",
     "orphans": "יתומים",
     "columnsToggle": "עמודות",
+    "tablesToggle": "טבלאות",
     "allEdgeTypes": "כל סוגי הקשתות",
     "someEdgeTypes": "{{count}} מתוך {{total}} סוגי קשתות",
     "allDomains": "כל התחומים",
@@ -87,6 +89,7 @@
     "look_abstract": "מונח מופשט",
     "look_in_product": "עמודה במוצר נתונים",
     "look_out_of_product": "עמודה מחוץ למוצרי נתונים",
+    "look_stored": "טבלה",
     "status_live": "פעיל"
   }
 }
