@@ -599,6 +599,7 @@
       "wrong_tier": "Deze sandbox wordt elders geserveerd; open hem via zijn eigen adres.",
       "unknown_demo": "Er is geen gepubliceerde demo met de naam {{demo}}.",
       "demo_not_ready": "Deze demo wordt nog voorbereid. Probeer het zo meteen opnieuw.",
+      "demo_stores_failed": "Deze demo kon niet worden gestart. Probeer het over een paar minuten opnieuw.",
       "at_capacity": "Alle demo-sandboxes zijn in gebruik. Probeer het zo meteen opnieuw.",
       "starting": "De demoserver wordt gestart. Probeer het over een minuut of twee opnieuw.",
       "disk_full": "Deze sandbox heeft zijn schijflimiet van {{limit}} bytes bereikt; er kan niets meer in worden geschreven.",
