@@ -105,7 +105,7 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
     await page.getByTestId("ontology-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
     await expect(
-      page.getByTestId("graph3d-modal").getByText("Ontology", { exact: true }),
+      page.getByTestId("graph3d-modal").getByRole("heading", { name: "Ontology", exact: true }),
     ).toBeVisible();
   });
 });
