@@ -129,12 +129,11 @@ _VIEW_KEYS = {
     # REQ-2009: a view offers the GraphQL Aggregate and GroupBy root fields as a table does.
     "enable_aggregates": "enable_aggregates",
     "enable_group_by": "enable_group_by",
-    # REQ-1162: a materialized view keeps every version of its rows, appended (snapshot | delta),
-    # keyed on its business identity.
-    "bitemporal_mode": "mv_bitemporal_mode",
-    "bitemporal_key": "mv_bitemporal_key",
-    # REQ-1163: the column holding the source's change time, the clock its time travel reads on.
-    "bitemporal_source_time": "mv_bitemporal_source_time",
+    # REQ-2109: the bitemporal declaration -- business key, valid time and recorded time, all
+    # three or none; a materialized view declaring them keeps every version of its rows.
+    "business_key": "business_key",
+    "valid_time": "valid_time",
+    "recorded_time": "recorded_time",
     # REQ-2066: a materialized view's load management window, when consumers may read it.
     "off_peak_window": "off_peak_window",
     "off_peak_tz": "off_peak_tz",
@@ -142,6 +141,12 @@ _VIEW_KEYS = {
     "region": "region",
     # REQ-1634: a view is a member of a data product as a table is.
     "product_id": "product_id",
+    # REQ-2120: a materialized view's snapshot schedule, as a table entry's mv_* keys (REQ-961/962).
+    "calendar": "mv_calendar",
+    "grain": "mv_grain",
+    "business_day_grain": "mv_business_day_grain",
+    "allowed_lateness": "mv_allowed_lateness",
+    "expected_events": "mv_expected_events",
 }
 
 
@@ -238,14 +243,14 @@ def views_as_tables(raw: dict) -> dict:
             "table": f"view_{view['id'].replace('-', '_')}",
         }
         entry.update({_VIEW_KEYS[k]: v for k, v in view.items() if k in _VIEW_KEYS})
-        if entry.get("mv_bitemporal_mode") and entry.get("columns"):
+        if entry.get("business_key") and entry.get("columns"):
             # REQ-2064: a bitemporal view answers each version's times beside its own columns.
             from provisa.mv.bitemporal import with_read_columns
 
             entry["columns"] = with_read_columns(
                 entry["columns"],
-                list(entry.get("mv_bitemporal_key") or []),
-                entry.get("mv_bitemporal_source_time"),
+                list(entry["business_key"]),
+                entry.get("recorded_time"),
             )
         tables.append(entry)
     return raw
@@ -570,6 +575,9 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
                     f"sparql source {src.id!r}: host must be the SPARQL endpoint URL "
                     "(e.g. http://fuseki:3030/ds/query)"
                 )
+            from provisa.sparql.reasoning import source_reasoner
+
+            source_reasoner(src.id, src.mapping)  # REQ-2138
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
         stype = src.type.value if src is not None else None
@@ -579,6 +587,14 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
                 f"table {tbl.table_name!r}: a table under {stype} source {tbl.source_id!r} requires "
                 "query_template (the query that produces its rows)"
             )
+        if stype == "sparql" and src is not None:
+            from provisa.sparql.reasoning import inferred_iri, source_reasoner
+
+            if inferred_iri(tbl.query_template) and source_reasoner(src.id, src.mapping) is None:
+                raise ValueError(
+                    f"table {tbl.table_name!r}: its query names one IRI, an inferred class or "
+                    f"property, and sparql source {src.id!r} names no reasoner"
+                )
         if stype == "cosmosdb":
             # REQ-1982: a container table, or a query table; its parameters checked either way.
             from provisa.cosmosdb.table import check_table as check_cosmos_table
@@ -662,6 +678,7 @@ async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> No
 async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> None:  # REQ-1683
     """Persist the config table's SPARQL as an api_endpoints row (plus its api_sources row)."""
     from provisa.sparql.persist import persist_sparql_table
+    from provisa.sparql.reasoning import source_reasoner
 
     assert tbl.query_template is not None  # _validate_neo4j_sources
     await persist_sparql_table(
@@ -673,6 +690,7 @@ async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> N
         columns=tbl.columns,
         ttl=tbl.cache_ttl or src.cache_ttl or 300,
         default_graph_uri=src.federation_hints.get("default_graph_uri"),  # REQ-1740
+        reasoner=source_reasoner(src.id, src.mapping),  # REQ-2138
     )
 
 
@@ -1184,6 +1202,17 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     for gt in config.glossary_terms:
         await glossary_repo.upsert_declared_term(
             conn, gt.name, definition=gt.definition, domains=set(gt.domains)
+        )
+
+    # 4.7 Calendars (REQ-2120): before the tables, whose views name one as their mv_calendar.
+    from provisa.core.repositories import calendar as calendar_repo
+    from provisa.events.calendars import calendar_of
+
+    for declared in config.calendars:
+        fields = declared.model_dump()
+        # Validated when the config was parsed (CalendarConfig); the column holds a date.
+        await calendar_repo.upsert(
+            conn, {**fields, "retail_anchor": calendar_of(fields).retail_anchor}
         )
 
     # 5. Tables + columns
@@ -1917,7 +1946,8 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
             "source",
             await _ids(select(sources.c.id).where(sources.c.id.not_in(sorted(SEEDED_SOURCE_IDS)))),
         ),
-        ("calendar", await _ids(select(calendars.c.name))),
+        # A calendar is removed by name, every version at once (integrity.discard).
+        ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
     for kind, idents in order:
         for ident in idents:

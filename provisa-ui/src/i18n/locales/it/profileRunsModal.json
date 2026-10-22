@@ -42,6 +42,7 @@
     "kind_terrain": "Terreno",
     "kind_relationsMap": "Relazioni",
     "kind_jointCloud": "Nuvola congiunta",
-    "kind_driftStrata": "Strati di deriva"
+    "kind_driftStrata": "Strati di deriva",
+    "resultsMenu": "Risultati"
   }
 }

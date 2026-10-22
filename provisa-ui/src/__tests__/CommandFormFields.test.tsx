@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "../test-utils/render";
+import { fireEvent, render, screen } from "../test-utils/render";
 import { CommandFormFields } from "../pages/commands/CommandFormFields";
 import { EMPTY_FORM } from "../pages/commands/types";
 import type { FormState } from "../pages/commands/types";
@@ -244,6 +244,58 @@ describe("CommandFormFields — a remote source's write operations (REQ-1924)", 
     expect(screen.getByText("Arguments")).toBeInTheDocument();
     expect(screen.getByTestId("command-function-input")).toBeInTheDocument();
     expect(screen.getByTestId("command-return-type-select")).toBeInTheDocument();
+  });
+});
+
+describe("CommandFormFields — a code source's column transforms (REQ-2131)", () => {
+  function CodeHarness({ initial }: { initial: Partial<FormState> }) {
+    const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, ...initial });
+    return (
+      <>
+        <span data-testid="impl-kind">{form.implKind}</span>
+        <span data-testid="schema">{form.schemaName}</span>
+        <CommandFormFields
+          form={form}
+          setForm={setForm}
+          sources={[{ id: "addresses", type: "python" } as never]}
+          tables={[]}
+          domainHints={[]}
+          availableFunctions={[
+            { name: "clean_address", comment: "raw_address -> street, city, country" },
+          ]}
+          loadingFunctions={false}
+          dataProducts={[]}
+          roleOptions={[]}
+        />
+      </>
+    );
+  }
+
+  it("offers the code's @columns functions to pick, and leaves their columns to the function", () => {
+    render(
+      <CodeHarness
+        initial={{
+          actionType: "function",
+          implKind: "code_columns",
+          sourceId: "addresses",
+          schemaName: "code",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("command-function-select")).toBeInTheDocument();
+    expect(screen.getByTestId("command-schema-input")).toHaveAttribute("readonly");
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("output-columns")).not.toBeInTheDocument();
+  });
+
+  it("registers a function picked from a code source as a column transform", async () => {
+    render(<CodeHarness initial={{ actionType: "function", implKind: "source_procedure" }} />);
+    fireEvent.click(screen.getByTestId("command-source-select"));
+    fireEvent.click(
+      await screen.findByRole("option", { name: "addresses (python)", hidden: true }),
+    );
+    expect(screen.getByTestId("impl-kind")).toHaveTextContent("code_columns");
+    expect(screen.getByTestId("schema")).toHaveTextContent("code");
   });
 });
 

@@ -5,6 +5,10 @@
     "hint": "Arraste para orbitar · role para ampliar · arraste com o botão direito para mover",
     "rotate": "Girar",
     "resetView": "Redefinir visualização",
-    "zoomTo": "Ampliar para esta coluna"
+    "zoomTo": "Ampliar para esta coluna",
+    "attraction": "Atração",
+    "attractionLoose": "Solto",
+    "attractionTight": "Compacto",
+    "grid": "Grade"
   }
 }

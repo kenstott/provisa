@@ -2,6 +2,8 @@
 
 Um comando é uma função registrada e governada que coloca a computação externa sob a governança, a auditoria e a linhagem do Provisa. O motor de federação trata SQL nativamente. Um comando cobre a computação que SQL não consegue expressar, como um microsserviço de enriquecimento, um modelo Python, um script shell ou uma stored procedure nativa do banco. Você o registra uma vez, e toda superfície de cliente (GraphQL, SQL via pgwire, REST, Arrow Flight, gRPC, Bolt/Cypher) pode invocá-lo com governança idêntica.
 
+Os comandos são uma das formas de escrever lógica de negócio no Provisa. Veja [Lógica de negócio no Provisa](business-logic.md).
+
 Um comando é um **RPC governado**. Suas entradas e saídas são declaradas, tipadas, validadas, rastreadas e ligadas à linhagem. Um passo de ETL improvisado, uma chamada curl sem governança ou um subprocesso não têm nada disso.
 
 ## Tipos de implementação {: #implementation-kinds }

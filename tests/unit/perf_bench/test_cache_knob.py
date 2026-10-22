@@ -313,3 +313,20 @@ def test_warmup_covers_every_cache_variant_the_client_can_send(tmp_path: Path) -
     assert variants(0.0, True) == [False]
     assert variants(0.5, True) == [True, False]
     assert variants(1.0, False) == [False]
+
+
+def test_the_summary_carries_the_whole_latency_distribution() -> None:
+    """A fixed stall on a few requests is its own mode in the histogram, not only a p99."""
+    reqs = [_rec(0.0015, True, True)] * 98 + [_rec(0.040, True, True)] * 2
+    hist = ol.summarize_requests(reqs, window_s=1.0)["latency_histogram_ms"]
+    assert hist["counts"]["<=2"] == 98
+    assert hist["counts"]["<=40"] == 2
+    assert sum(hist["counts"].values()) == 100
+    assert hist["p90_ms"] == 1.5
+    assert hist["max_ms"] == 40.0
+    assert (
+        ol.summarize_requests([_rec(2.0, True, True)], window_s=1.0)["latency_histogram_ms"][
+            "counts"
+        ][">1000"]
+        == 1
+    )

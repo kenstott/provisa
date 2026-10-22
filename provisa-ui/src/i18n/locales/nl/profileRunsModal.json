@@ -42,6 +42,7 @@
     "kind_terrain": "Terrein",
     "kind_relationsMap": "Verbanden",
     "kind_jointCloud": "Gezamenlijke wolk",
-    "kind_driftStrata": "Driftlagen"
+    "kind_driftStrata": "Driftlagen",
+    "resultsMenu": "Resultaten"
   }
 }

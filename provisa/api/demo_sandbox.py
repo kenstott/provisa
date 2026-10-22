@@ -144,6 +144,29 @@ async def _open_count(conn: Any) -> int:
     )
 
 
+def _refuse_failed_stores(demo: PublishedDemo) -> None:
+    """A demo whose stores the node could not bring up since it was last asked for is refused,
+    not left starting: the visitor waiting on it is told, and trying again (an open) asks the node
+    again. Why is the operator's (logged, and in the node's own log): docker's own words name
+    networks and containers no visitor needs."""
+    if demo.stores_ready:  # up, or a demo served from its directory, which runs its own
+        return
+    from provisa.core.demo_bundles import stores_failed
+
+    why = stores_failed(demo.name)
+    if why is None:
+        return
+    logging.getLogger(__name__).error(
+        "demo %s: its stores could not be started: %s", demo.name, why
+    )
+    raise ApiError(
+        503,
+        "sandbox.demo_stores_failed",
+        f"{demo.title} could not be started; try again in a few minutes",
+        demo=demo.name,
+    )
+
+
 async def demo_status(name: str) -> dict:
     """Whether published demo ``name`` can be opened now, and how many places are free (REQ-2006):
     its template's place in the tier's builds (demo_templates.TemplateBuilds.state_of) and the cap
@@ -153,6 +176,7 @@ async def demo_status(name: str) -> dict:
     from provisa.api.demo_templates import template_builds
 
     demo = published_demo(name)
+    _refuse_failed_stores(demo)
     state = template_builds.state_of(demo.name)
     cap = int(settings_registry.value("sandbox.max_concurrent"))
     async with _admin_pool().acquire() as conn:

@@ -24,7 +24,7 @@ import string
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 from provisa.cypher.sql_to_cypher_helpers import (
     _resolve_label,
     _rel_type_from_on,

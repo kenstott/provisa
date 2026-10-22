@@ -42,7 +42,7 @@ class _ControlPlane:
         store = self
 
         class _Conn:
-            async def fetch_with_columns(self, sql):
+            async def fetch_with_columns(self, sql, *args, bind_as_given=False):
                 store.ran.append(sql)
                 return ["id"], [(1,)]
 

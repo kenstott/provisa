@@ -332,6 +332,8 @@ export function toGraphData(
           label: `${t.table_name}.${c.column_name}`,
           parent: tid,
           domains: [t.domain_id],
+          // A member's column: the product holds it.
+          inProduct: true,
           tags: tagIds(c),
           ...(sensitive === null ? {} : { sensitivities: sens.get(c.column_key) ?? [] }),
         });
@@ -340,7 +342,12 @@ export function toGraphData(
         for (const u of c.upstream ?? []) {
           const sid = `c:${u.source_column_key}`;
           // A column outside the product stands alone, named by its relation.
-          node({ id: sid, type: "column", label: `${u.source_relation}.${u.source_column}` });
+          node({
+            id: sid,
+            type: "column",
+            label: `${u.source_relation}.${u.source_column}`,
+            inProduct: false,
+          });
           const id = `column_lineage:${sid}>${cid}`;
           if (!edges.has(id))
             edges.set(id, { id, a: sid, b: cid, kind: "column_lineage", label: u.via });

@@ -422,7 +422,7 @@ def _computed_model():
     """orders, customers and regions. Two registered relationships with computed edges:
     LOWER(orders.customer_code) = customers.code, and every customer -> the region whose id is
     the constant 1."""
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
     columns = {
         1: ["id", "customer_code"],
@@ -539,7 +539,7 @@ def test_a_pattern_over_a_computed_registered_relationship_passes(cypher):
     """A relationship registered with a computed edge -- an expression, a constant -- is a
     registered relationship: the join a pattern over it lowers to IS its own condition."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     sql_tree, _, _ = cypher_to_sql(parse_cypher(cypher), label_map, {})
@@ -573,7 +573,7 @@ def test_a_pattern_whose_type_does_not_connect_its_labels_is_refused_saying_so()
     """A registered relationship type named between two labels it does not connect lowers to a
     join that is never true; the refusal says no relationship of that type connects them."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     cypher = "MATCH (o:Orders)-[:HOME]->(r:Regions) RETURN o.id, r.name"
@@ -588,7 +588,7 @@ def test_a_lowering_that_is_not_the_relationships_own_condition_is_refused():
     is lowered on the two plain columns (#148), which is not the registered condition: the guard
     holds the statement to the relationship as registered, whoever wrote the SQL."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     ctx, gov, label_map = _computed_model()
     cypher = "MATCH (c:Customers)<-[:PLACED_BY]-(o:Orders) RETURN o.id, c.name"
@@ -828,3 +828,62 @@ def test_a_recursive_statement_relates_its_rows_along_relationships_only():
     )
     refused = _refused(outside)
     assert refused and "customers" in refused[0] and "orders" in refused[0], refused
+
+
+def _union_of_labels(labels: int, props: int = 8):
+    """A statement reading a UNION ALL of ``labels`` tables, each column of it named."""
+    import sqlglot
+
+    names = [f"p{i}_{j}" for i in range(labels) for j in range(props)]
+    branches = " UNION ALL ".join(
+        f"SELECT '{i}' AS __label, "
+        + ", ".join(f"{n} AS {n}" if n.startswith(f"p{i}_") else f"NULL AS {n}" for n in names)
+        + f" FROM t{i}"
+        for i in range(labels)
+    )
+    return sqlglot.parse_one(
+        f"SELECT n.__label, {', '.join(f'n.{c}' for c in names)} FROM ({branches}) AS n LIMIT 1",
+        read="postgres",
+    )
+
+
+def _select_items_read(monkeypatch, labels: int, props: int = 8) -> int:
+    """How many select-list items the relationship guard reads checking ``_union_of_labels``."""
+    from provisa.compiler import join_guard
+
+    read = 0
+
+    class _Counted(list):
+        def __iter__(self):
+            nonlocal read
+            for item in list.__iter__(self):
+                read += 1
+                yield item
+
+    real = join_guard._selects
+    monkeypatch.setattr(join_guard, "_selects", lambda scope: _Counted(real(scope)))
+    found = join_guard.unrelated_tables(
+        _union_of_labels(labels, props),
+        resolve_table_id=lambda t: int(t.name[1:]),
+        columns_of=lambda i: {f"p{i}_{j}" for j in range(props)},
+        registered=set(),
+        exempt_table=lambda i: False,
+        same_remote_source=lambda a, b: False,
+        primary_keys={},
+    )
+    monkeypatch.setattr(join_guard, "_selects", real)
+    assert found == []  # the branches of a union are alternatives, never related
+    return read
+
+
+def test_a_union_of_every_table_with_its_columns_named_is_checked_in_linear_time_per_column(
+    monkeypatch,
+):
+    """Cypher's ``MATCH (n) RETURN n`` reads a UNION ALL of every label's table, and governance
+    names each of its columns: one per property of every label. Each column was traced by
+    re-reading every branch's select list, cubic in the labels -- past the request's 60s deadline
+    for the e2e model (504). Each union's columns are now read once per check: twice the labels
+    reads about four times the items (the columns grow with the labels), never eight."""
+    ratio = _select_items_read(monkeypatch, 60) / _select_items_read(monkeypatch, 30)
+    # Measured: cubic 7.8x, now 3.96x.
+    assert ratio < 5, ratio

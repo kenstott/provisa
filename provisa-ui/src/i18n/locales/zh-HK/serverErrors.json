@@ -177,7 +177,8 @@
       "unknown_arg_kind": "「{{name}}」的 arg_kind「{{arg_kind}}」未知",
       "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」",
-      "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊"
+      "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊",
+      "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",
@@ -443,7 +444,12 @@
       "role_description_missing": "角色 '{{role}}' 需要說明其用途",
       "rls_rule_description_missing": "行規則需要說明其用途",
       "file_download_refused": "來源 {{source}}：{{reason}}",
-      "source_created_without_table": "已建立來源 {{source}}；其資料表未設定：{{reason}}"
+      "source_created_without_table": "已建立來源 {{source}}；其資料表未設定：{{reason}}",
+      "mv_window_needs_calendar": "具體化檢視「{{mv}}」未指定行事曆：於營業日結束時封存的建置需要行事曆",
+      "version_log_updated": "版本日誌 '{{mv}}' 已更新",
+      "mv_window_held": "MV '{{mv}}' 未在 {{day}} 的收市時封存：它的另一次構建持有認領",
+      "mv_window_unchanged": "MV '{{mv}}' 未在 {{day}} 的收市時封存：自上次構建以來，它讀取的內容沒有任何變化",
+      "landing_time_pipeline": "表 '{{table}}' 將到達時間保存在 {{column}} 中，但它的存儲透過自己的管道載入該主題，Provisa 看不到每則訊息何時到達。"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -599,6 +605,7 @@
       "wrong_tier": "此沙盒由其他位置提供；請從它自己的地址開啟。",
       "unknown_demo": "沒有名為 {{demo}} 的已發佈示範。",
       "demo_not_ready": "此示範仍在準備中。請稍後再試。",
+      "demo_stores_failed": "無法啟動此示範。請過幾分鐘再試。",
       "at_capacity": "所有示範沙盒都在使用中。請稍後再試。",
       "starting": "示範伺服器正在啟動。請一兩分鐘後再試。",
       "disk_full": "此沙盒已用完 {{limit}} 位元組的磁碟上限；無法再寫入任何內容。",

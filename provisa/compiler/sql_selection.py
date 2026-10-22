@@ -545,8 +545,8 @@ def _collect_nested_columns(
             if (
                 nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)
             ) and not _use_agg:
-                if nested_join_meta.default_limit is not None:
-                    has_lateral = True
+                # Each lateral join repeats its parent's rows: the root is limited before it.
+                has_lateral = True
                 join_clauses.append(
                     _lateral_join(
                         nested_sel,

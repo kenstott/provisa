@@ -177,7 +177,8 @@
       "unknown_arg_kind": "Unknown arg_kind '{{arg_kind}}' for '{{name}}'",
       "unknown_command": "Unknown command: '{{name}}'",
       "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
-      "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered"
+      "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
+      "host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead."
     },
     "graphql_remote": {
       "introspection_failed": "Introspection failed: {{error}}",
@@ -443,7 +444,12 @@
       "role_description_missing": "Role '{{role}}' needs a description of what it is for",
       "rls_rule_description_missing": "A row rule needs a description of what it is for",
       "file_download_refused": "Source {{source}}: {{reason}}",
-      "source_created_without_table": "Source {{source}} created; its table was not set up: {{reason}}"
+      "source_created_without_table": "Source {{source}} created; its table was not set up: {{reason}}",
+      "mv_window_needs_calendar": "MV '{{mv}}' names no calendar: a build sealed at a business day's close needs one",
+      "version_log_updated": "Version log '{{mv}}' updated",
+      "mv_window_held": "MV '{{mv}}' was not sealed at {{day}}'s close: another build of it holds its claim",
+      "mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build",
+      "landing_time_pipeline": "Table '{{table}}' keeps its landing time in {{column}}, but its store lands the topic through its own pipeline, where Provisa does not see each message land."
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
@@ -599,6 +605,7 @@
       "wrong_tier": "This sandbox is served elsewhere; open it from its own address.",
       "unknown_demo": "There is no published demo named {{demo}}.",
       "demo_not_ready": "This demo is still being prepared. Try again shortly.",
+      "demo_stores_failed": "This demo could not be started. Try again in a few minutes.",
       "at_capacity": "Every demo sandbox is in use. Try again shortly.",
       "starting": "The demo server is starting. Try again in a minute or two.",
       "disk_full": "This sandbox has used its disk limit of {{limit}} bytes; nothing more can be written to it.",

@@ -14,7 +14,7 @@
 // asks only what a command needs in order to exist; saved, it is selected and opens in edit.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor, within } from "../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { TrackedFunction, TrackedWebhook } from "../../api/actions";
 
@@ -94,6 +94,17 @@ beforeEach(() => {
   ACTIONS = { functions: [fn("refund_order"), fn("close_period")], webhooks: [wh("notify_ops")] };
   saveWebhook.mockReset().mockResolvedValue(undefined);
   testAction.mockReset().mockResolvedValue({ rows: [{ refunded: true }] });
+});
+
+describe("the Commands lists' search", () => {
+  it("lists the commands matching any word of the search, in both lists", async () => {
+    render(<CommandsPage />);
+    await screen.findByTestId("commands-fn-row-refund_order");
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "refund notify" } });
+    expect(screen.getByTestId("commands-fn-row-refund_order")).toBeInTheDocument();
+    expect(screen.getByTestId("commands-wh-row-notify_ops")).toBeInTheDocument();
+    expect(screen.queryByTestId("commands-fn-row-close_period")).toBeNull();
+  });
 });
 
 describe("a command's detail is a panel at the right of the lists", () => {

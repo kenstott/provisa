@@ -203,6 +203,11 @@
     "accountEmailHint": "Het e-mailadres waarmee je inlogt bij Atlassian; het API-token hoort bij dit account.",
     "apiToken": "API-token",
     "apiTokenHint": "Aangemaakt op id.atlassian.com, Security, API tokens. Bewaard in de geheimenkluis.",
-    "siteAddressInvalid": "Voer het volledige adres van de site in, beginnend met https://"
+    "siteAddressInvalid": "Voer het volledige adres van de site in, beginnend met https://",
+    "namingInherit": "Overnemen (globaal)",
+    "reasoner": "Reasoner",
+    "reasonerNone": "Geen",
+    "axioms": "OWL-axioma's",
+    "axiomsHint": "Turtle-, RDF/XML-, functionele of Manchester-syntaxis. Een tabel waarvan de query één IRI is, zoals <http://example.org/kyc#controls>, leest wat eruit wordt afgeleid."
   }
 }

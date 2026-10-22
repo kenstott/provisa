@@ -17,9 +17,9 @@
 # when it was filed); the book and the report built from it; the figure's lineage to its source
 # columns, and the refresh that built it; what renaming a source column would break; the report
 # now; the report as of 30 September as recorded now, then as recorded when it was filed -- the
-# time the correction's rebuild began, taken from the refreshes step's answer (each refresh's
-# record is stamped before it writes, so that time falls after the filed version was recorded and
-# before the correction was: Provisa stamps both, the tour cannot know them in advance);
+# time the report was first built and filed, taken from the refreshes step's answer (the report's
+# recorded time is when the book entered or changed a figure, REQ-2109: the filed figures were
+# entered before that first build and the correction after it, so the time falls between them);
 # and the audit log of who read it, with the times they read it as of.
 landing:
   route: /sql
@@ -65,7 +65,7 @@ steps:
     FROM "reproduce"."view_exposure" AS e
     ORDER BY e.desk
 - key: reproduceAsFiled
-  as_recorded_from: {step: reproduceRefreshes, row: 1, column: refreshed_at}
+  as_recorded_from: {step: reproduceRefreshes, row: 0, column: refreshed_at}
 - key: reproduceFiled
   sql: >-
     SELECT e.desk, e.exposure, e.recorded_at

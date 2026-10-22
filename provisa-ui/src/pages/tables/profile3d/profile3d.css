@@ -1,9 +1,11 @@
 /* REQ-2123, REQ-2124: the 3D profile views. Colours the scenes read are --p3d-* tokens here, set
  * for both Mantine colour schemes; a scene re-reads them when the scheme changes. */
 .p3d {
-  --p3d-canvas: #0e1412;
-  --p3d-ground: #19221f;
-  --p3d-grid: #2d3934;
+  /* The stage is a slate a step lighter than the dark panels around it, with a grid that reads
+   * on it, so the edges and the darker node colours do not sink into black. */
+  --p3d-canvas: #283442;
+  --p3d-ground: #33414f;
+  --p3d-grid: #6f8499;
   --p3d-ramp-0: #1f4a4f;
   --p3d-ramp-1: #3e7a66;
   --p3d-ramp-2: #8fa556;
@@ -32,9 +34,10 @@
   gap: 8px;
 }
 :root[data-mantine-color-scheme="light"] .p3d {
-  --p3d-canvas: #e3e8e1;
-  --p3d-ground: #d5dcd3;
-  --p3d-grid: #b6c0b7;
+  /* A cool grey stage, set apart from the white panels around it. */
+  --p3d-canvas: #dbe2e9;
+  --p3d-ground: #cbd4dd;
+  --p3d-grid: #8b9aab;
   --p3d-ramp-0: #2e5a5e;
   --p3d-ramp-1: #4f7f68;
   --p3d-ramp-2: #9baa5c;
@@ -59,8 +62,10 @@
   --p3d-fam-other: #6b6f80;
   --p3d-fam-foreign: #9aa0b2;
 }
+/* Expanded, the view fills the modal's body: toolbars at their own height, the body taking the rest. */
 .p3d.is-expanded {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 .p3d-toolbar {
   align-items: center;
@@ -521,4 +526,49 @@
 }
 .p3d-edge-dependence {
   background: var(--p3d-hl);
+}
+
+/* The profile runs dialog: beneath the runs, the results menu and the chosen result side by side,
+   each scrolling on its own, down to the dialog's bottom edge; a 3D view or a grid fills it. */
+.profile-runs-results {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--mantine-spacing-sm);
+}
+.profile-runs-menu {
+  flex: 0 0 12.5rem;
+  padding-inline-end: 0.5rem;
+  border-inline-end: 1px solid var(--border);
+}
+.profile-runs-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.profile-runs-panel > .p3d {
+  flex: 1;
+  min-height: 0;
+}
+.profile-runs-panel > .p3d > .p3d-body {
+  flex: 1;
+  height: auto;
+  min-height: 160px;
+}
+
+/* A Columns row with its include checkbox: a left-out column stays listed, dimmed. */
+.p3d-row-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.p3d-row-line > .p3d-row {
+  flex: 1;
+  min-width: 0;
+}
+.p3d-row-line.is-excluded > .p3d-row {
+  opacity: 0.55;
 }

@@ -12,7 +12,7 @@ import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
 import { resultRedirectText } from "../components/resultRedirectText";
 import { Tip } from "../components/Tip";
-import { useSetTableDraft, useSetTableRegion, useRegionChoices } from "../hooks/useRegionQueries";
+import { useSetTableDraft, useRegionChoices } from "../hooks/useRegionQueries";
 import { useRegionSelection } from "../hooks/useRegionSelection";
 import { filterByRegion } from "../hooks/regionFilter";
 import { RegionSelector } from "../components/RegionSelector";
@@ -45,25 +45,15 @@ import {
   useGenerateTableDescription,
   useGenerateColumnDescription,
   useColumnDependents,
-  useRegisterTable,
   useUpdateTable,
   useDeleteTable,
-  useUpdateTableCache,
-  useUpdateTableReplicate,
-  useUpdateTableLoadProtection,
-  useUpdateTableNaming,
   useDeployViewToDb,
   useSuggestTableAlias,
   useForceRegen,
   useAllRelationships,
   useDataProducts, // REQ-1634
 } from "../hooks/useAdminQueries";
-import {
-  usePurgeCacheByTable,
-  useReplicaBuilds,
-  useUpdateTablePaging,
-  useUpdateTableRoleTtl,
-} from "../hooks/useAdminOpsQueries";
+import { usePurgeCacheByTable, useReplicaBuilds } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -71,7 +61,7 @@ import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { diffEditedColumns } from "./tables/columnDiff";
-import { NAMING_CONVENTIONS } from "./tables/constants";
+import { namingConventionLabel } from "../hooks/useNamingConventions";
 import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
@@ -89,9 +79,12 @@ import { NativeParamsModal } from "../components/NativeParamsModal";
 import { previewSql, requiredParamColumns } from "../components/nativeParams";
 import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
+import { draftFromRegistration, type Registration } from "./tables/draftTable";
+import { useCreateTable } from "./tables/useCreateTable";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { roleTtlValid, tableTtlSignalError } from "./tables/roleTtl";
-import { declaredPaging, pagingChanged, pagingProblem } from "./tables/paging";
+import { declaredPaging, pagingChanged, pagingInput, pagingProblem } from "./tables/paging";
 import { refusalError, serverMessage } from "../i18n/serverMessage";
 import {
   replicateContradictsLoadProtection,
@@ -110,6 +103,7 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
+import { matchesQuery } from "../lib/searchItems";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -137,17 +131,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { generateTableDescription } = useGenerateTableDescription();
   const { generateColumnDescription } = useGenerateColumnDescription();
   const getColumnDependents = useColumnDependents();
-  const { registerTable } = useRegisterTable();
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
-  const { updateTableCache } = useUpdateTableCache();
-  const { updateTableRoleTtl } = useUpdateTableRoleTtl();
-  const { updateTablePaging } = useUpdateTablePaging();
-  const { updateTableReplicate } = useUpdateTableReplicate();
-  const setTableRegion = useSetTableRegion();
   const setTableDraft = useSetTableDraft();
-  const { updateTableLoadProtection } = useUpdateTableLoadProtection();
-  const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
@@ -207,7 +193,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     tabParam && (COLUMN_TABS as string[]).includes(tabParam) ? (tabParam as ColumnTab) : undefined;
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
-  const { checkedDomains, domainsEnabled } = useDomainFilter();
+  const { checkedDomains, domainsEnabled, ensureDomainChecked } = useDomainFilter();
   // REQ-1944: without table_registration the page is a governance surface -- the tables of the
   // domains the caller's hiding rights reach, editable only in how their columns are hidden.
   const tableEditor = useCapability("table_registration");
@@ -225,10 +211,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         if (viewsOnly && !t.viewSql) return false;
         if (governedDomains !== null && !governedDomains.has(t.domainId ?? "")) return false;
         if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
-        const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
-        if (terms.length === 0) return true;
-        const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
-        return terms.every((term) => haystack.includes(term));
+        return matchesQuery([t.sourceId, t.tableName, t.domainId], tableSearch);
       }),
     [tables, viewsOnly, checkedDomains, tableSearch, governedDomains],
   );
@@ -294,8 +277,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const leave = usePanelLeave();
   const [editingColumnTypes, setEditingColumnTypes] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [generatingDesc, setGeneratingDesc] = useState(false);
-  const [generatingColDesc, setGeneratingColDesc] = useState<string | null>(null);
+  // REQ-2109 (settled): a table or view being created -- what its create step chose. Its settings
+  // are edited in the same sections as an editor's (editingTable holds them) until Save registers it.
+  const [newRegistration, setNewRegistration] = useState<Registration | null>(null);
+  const createTable = useCreateTable();
 
   // Cache state
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
@@ -340,6 +325,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   useEffect(() => {
     setCacheTtlEdits((prev) => {
       const next: Record<number, { value: string; dirty: boolean; saving: boolean }> = {};
+      // A table being created is not in the list yet: what was typed for it is kept.
+      for (const [id, edit] of Object.entries(prev)) {
+        if (edit.dirty && !tables.some((tbl) => tbl.id === Number(id))) next[Number(id)] = edit;
+      }
       for (const tbl of tables) {
         const existing = prev[tbl.id];
         next[tbl.id] =
@@ -391,26 +380,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     if (source?.cacheTtl != null) return `${source.cacheTtl}s (from source)`;
     if (settings) return `${settings.cache.default_ttl}s (global)`;
     return "default";
-  };
-
-  const handleSaveTableCache = async (tableId: number) => {
-    const edit = cacheTtlEdits[tableId];
-    setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], saving: true } }));
-    setError(null);
-    try {
-      const ttlValue = edit.value.trim() === "" ? null : parseInt(edit.value, 10);
-      if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
-      const result = await updateTableCache(tableId, ttlValue);
-      if (!result.success) throw refusalError(result);
-      setCacheTtlEdits((prev) => ({
-        ...prev,
-        [tableId]: { ...prev[tableId], dirty: false, saving: false },
-      }));
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], saving: false } }));
-    }
   };
 
   // A table whose source caches its results (a remote API's) has a cache to drop; the panel's
@@ -571,6 +540,56 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   const cancelEditing = () => {
     setEditingTable(null);
+    setNewRegistration(null);
+  };
+
+  // REQ-2109 (settled): the create step chose what is registered; its settings follow in the same
+  // sections as the editor's, on the table as it will be registered.
+  const startCreating = (registration: Registration) => {
+    setShowForm(false);
+    setShowViewForm(false);
+    setExpanded(null);
+    setSection("identity");
+    startEditing(draftFromRegistration(registration));
+    setNewRegistration(registration);
+  };
+  // A view handed over from the SQL editor's + View is created here, with every setting.
+  useNavPayload<{ createView?: Registration }>((payload) => {
+    if (payload.createView) startCreating(payload.createView);
+  });
+
+  // One Save registers the table with every setting its form holds, then shows it.
+  const handleCreate = async () => {
+    if (!editingTable || !newRegistration) return;
+    setError(null);
+    const problem = saveProblem(editingTable);
+    if (problem !== null) {
+      setError(problem);
+      return;
+    }
+    const staged = cacheTtlEdits[editingTable.id]?.value;
+    const cacheTtl =
+      staged === undefined ? editingTable.cacheTtl : staged === "" ? null : Number(staged);
+    setSaving(true);
+    try {
+      const outcome = await createTable(editingTable, newRegistration, cacheTtl);
+      if (outcome.refused) {
+        setError(serverMessage(outcome.refused, outcome.refused.message));
+        return;
+      }
+      // A table registered into a domain the filter has not seen (one with no tables until now)
+      // would otherwise stay hidden from the list until a reload.
+      ensureDomainChecked(editingTable.domainId);
+      setEditingTable(null);
+      setNewRegistration(null);
+      await reload();
+      // The table just registered is selected and its detail shown.
+      if (outcome.registered) setExpanded(outcome.registered.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateEditCol = (
@@ -621,13 +640,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     await performSaveEdit();
   };
 
-  const performSaveEdit = async () => {
-    if (!editingTable) return;
-    setError(null);
+  // What Save refuses of the table in the form before any mutation runs, the same when it is
+  // created and when it is edited; null when nothing.
+  const saveProblem = (editingTable: RegisteredTable): string | null => {
     // REQ-1907: an invalid role TTL row blocks the whole save before any mutation runs.
     if (!roleTtlValid(editingTable.roleTtl)) {
-      setError(translate("tableEditForm.roleTtlFixErrors"));
-      return;
+      return translate("tableEditForm.roleTtlFixErrors");
     }
     // REQ-318: paging the table cannot take blocks the save too (the server refuses it by name).
     if (
@@ -638,8 +656,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         editingTable.pagingCeilingRows,
       ) !== null
     ) {
-      setError(translate("tableEditForm.pagingFixErrors"));
-      return;
+      return translate("tableEditForm.pagingFixErrors");
     }
     const source = sources.find((s) => s.id === editingTable.sourceId);
     const effectiveLoadProtected = editingTable.loadProtected ?? source?.loadProtected ?? false;
@@ -649,8 +666,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       const tableTtl =
         staged === undefined ? editingTable.cacheTtl : staged === "" ? null : Number(staged);
       if (tableTtlSignalError(editingTable, source, tableTtl ?? source?.cacheTtl ?? null)) {
-        setError(translate("tableEditForm.loadManagementFixErrors"));
-        return;
+        return translate("tableEditForm.loadManagementFixErrors");
       }
       // REQ-826: load protection with Replicate = Never is contradictory.
       if (
@@ -659,121 +675,61 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           effectiveLoadProtected,
         )
       ) {
-        setError(translate("replicateSelect.neverWithLoadProtection"));
-        return;
+        return translate("replicateSelect.neverWithLoadProtection");
       }
     }
+    return null;
+  };
+
+  const performSaveEdit = async () => {
+    if (!editingTable) return;
+    setError(null);
+    const problem = saveProblem(editingTable);
+    if (problem !== null) {
+      setError(problem);
+      return;
+    }
+    const saved = tables.find((tbl) => tbl.id === editingTable.id);
+    // The Cache TTL as typed (staged apart from the table), carried only when it was changed.
+    const ttlEdit = cacheTtlEdits[editingTable.id];
+    const typedTtl =
+      ttlEdit?.dirty !== true
+        ? undefined
+        : ttlEdit.value.trim() === ""
+          ? null
+          : parseInt(ttlEdit.value, 10);
+    if (typedTtl !== undefined && typedTtl !== null && isNaN(typedTtl)) {
+      setError(translate("tableEditForm.loadManagementFixErrors"));
+      return;
+    }
+    const paging = declaredPaging(editingTable.pagination);
     setSaving(true);
     try {
-      const result = await updateTable(buildTableUpdateInput(editingTable));
+      // REQ-2109 (settled): the table and every setting of it -- naming convention, role TTLs,
+      // replicate, load protection, draft, region, Cache TTL and paging -- in one save, applied
+      // in one transaction: a refusal of any one saves nothing. A caller who may change only how
+      // columns are hidden (REQ-1944) sends the table's other settings as they are stored.
+      const result = await updateTable({
+        ...buildTableUpdateInput(editingTable),
+        ...(hidingOnly
+          ? {}
+          : {
+              region: editingTable.region,
+              ...(typedTtl === undefined ? {} : { cacheTtl: typedTtl }),
+              ...(pagingChanged(saved?.pagination ?? null, editingTable.pagination)
+                ? { pagination: paging === null ? null : pagingInput(paging) }
+                : {}),
+            }),
+      });
       if (!result.success) {
         setError(serverMessage(result, result.message));
         return;
       }
-      if (hidingOnly) {
-        // REQ-1944: a governance-only editor changed how columns are hidden and nothing else; the
-        // table's naming, TTLs, paging, replication and load protection are the table editor's.
-        await reload();
-        setEditingTable(null);
-        return;
-      }
-      // Each of the table's own settings below is saved on its own, and only when it changed: every
-      // one of them rebuilds the model and refetches what is shown, so a save that sent them all
-      // took four rebuilds for a one-field edit -- past 15s on a loaded CI runner.
-      const saved = tables.find((tbl) => tbl.id === editingTable.id);
-      // Apply naming convention directly — skip handleNamingChange to avoid its intermediate
-      // reload() call which fires refetchTables() and races with updateTable's refetchQueries.
-      const _namingVal = editingTable.gqlNamingConvention ?? "";
-      if ((saved?.gqlNamingConvention ?? "") !== _namingVal) {
-        const namingResult = await updateTableNaming(
-          editingTable.id,
-          _namingVal === "" ? null : _namingVal,
-        );
-        if (!namingResult.success) {
-          setError(serverMessage(namingResult, namingResult.message));
-          return;
-        }
-      }
-      const ttlEdit = cacheTtlEdits[editingTable.id];
-      if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
-      // REQ-1907: persist the role → TTL list (full replace) only when it changed.
-      const savedRoleTtl = saved?.roleTtl;
-      const roleTtlChanged =
-        JSON.stringify(savedRoleTtl?.map(({ role, ttl }) => ({ role, ttl }))) !==
-        JSON.stringify(editingTable.roleTtl.map(({ role, ttl }) => ({ role, ttl })));
-      if (roleTtlChanged) {
-        const roleTtlResult = await updateTableRoleTtl(editingTable.id, editingTable.roleTtl);
-        if (!roleTtlResult.success) {
-          setError(serverMessage(roleTtlResult, roleTtlResult.message));
-          return;
-        }
-      }
-      // REQ-318: persist the table's paging only when it changed; nothing declared clears it.
-      const savedPaging = saved?.pagination ?? null;
-      if (pagingChanged(savedPaging, editingTable.pagination)) {
-        const pagingResult = await updateTablePaging(
-          editingTable.id,
-          declaredPaging(editingTable.pagination),
-        );
-        if (!pagingResult.success) {
-          setError(serverMessage(pagingResult, pagingResult.message));
-          return;
-        }
-      }
-      // REQ-1921: the region is saved on its own, and only when it changed.
-      // REQ-1921: draft and region are saved on their own, each only when it changed. Going to
-      // draft is saved before a region change and a release after it: a draft table is claimed
-      // by its destination alone, so a move between regions is draft, re-region, release.
-      const savedRegion = saved?.region ?? null;
-      const savedDraft = saved?.draft ?? false;
-      const saveDraft = async () => {
-        if (savedDraft === editingTable.draft) return true;
-        const draftResult = await setTableDraft(editingTable.id, editingTable.draft);
-        if (!draftResult.success) setError(serverMessage(draftResult, draftResult.message));
-        return draftResult.success;
-      };
-      if (editingTable.draft && !(await saveDraft())) return;
-      if (savedRegion !== editingTable.region) {
-        const regionResult = await setTableRegion(editingTable.id, editingTable.region);
-        if (!regionResult.success) {
-          setError(serverMessage(regionResult, regionResult.message));
-          return;
-        }
-      }
-      if (!editingTable.draft && !(await saveDraft())) return;
-      // REQ-826 / REQ-1141: persist Replicate and load protection + off-peak window (the ≥1-gate
-      // rule is validated server-side). The server refuses load protection with Replicate = Never,
-      // judged against what is stored at each save, so the one that is being turned off goes
-      // first: load protection off before a Never, a non-Never Replicate before load protection.
-      const saveReplicate = () => updateTableReplicate(editingTable.id, editingTable.replicate);
-      const saveLoadProtection = () =>
-        updateTableLoadProtection(
-          editingTable.id,
-          editingTable.loadProtected,
-          editingTable.offPeakWindow,
-          editingTable.offPeakTz,
-        );
-      const replicateChanged = (saved?.replicate ?? null) !== editingTable.replicate;
-      const loadProtectionChanged =
-        (saved?.loadProtected ?? null) !== editingTable.loadProtected ||
-        (saved?.offPeakWindow ?? null) !== editingTable.offPeakWindow ||
-        (saved?.offPeakTz ?? null) !== editingTable.offPeakTz;
-      const saves: [boolean, typeof saveReplicate][] = effectiveLoadProtected
-        ? [
-            [replicateChanged, saveReplicate],
-            [loadProtectionChanged, saveLoadProtection],
-          ]
-        : [
-            [loadProtectionChanged, saveLoadProtection],
-            [replicateChanged, saveReplicate],
-          ];
-      for (const [changed, save] of saves) {
-        if (!changed) continue;
-        const result = await save();
-        if (!result.success) {
-          setError(serverMessage(result, result.message));
-          return;
-        }
+      if (typedTtl !== undefined) {
+        setCacheTtlEdits((prev) => ({
+          ...prev,
+          [editingTable.id]: { ...prev[editingTable.id], dirty: false, saving: false },
+        }));
       }
       // Await the reload before clearing the form. The refetches are otherwise fire-and-forget, so
       // the read view (and any editor re-opened from it) would render off the pre-save cache entry
@@ -808,202 +764,179 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   };
   const selectedTable =
     expanded === null ? null : (tables.find((tb) => tb.id === expanded) ?? null);
-  const panelBody = editingViewDef ? (
-    // REQ-1318: a view's definition is edited in the panel, with a way back to its detail: a
-    // working surface is never a dialog over the page. A metric view opens in Metrics mode
-    // prefilled; a free-hand view opens in SQL mode.
-    <div className="split-pane__fill" data-testid="view-definition-modal">
-      <div className="split-pane__bar">
-        <Button
-          variant="subtle"
-          size="compact-sm"
-          leftSection={<ArrowLeft size={14} />}
-          onClick={() => setEditingViewDef(null)}
-          data-testid="view-definition-back"
-        >
-          {translate("tablesPage.backToDetail")}
-        </Button>
-        <Text fw={600}>{translate("tablesPage.editViewDefinitionTitle")}</Text>
+  // The table's form: its editor, or -- with no saved table -- the same sections as its create form.
+  const editForm = (editing: RegisteredTable, saved: RegisteredTable | null) => (
+    <ReplicaBuildsContext.Provider value={replicaBuilds}>
+      <TableEditForm
+        hidingOnly={hidingOnly}
+        editingTable={editing}
+        setEditingTable={setEditingTable}
+        savedTable={saved}
+        savedProfilerId={saved?.profilerSourceId ?? null}
+        editingColumnTypes={editingColumnTypes}
+        cacheTtlEdits={cacheTtlEdits}
+        setCacheTtlEdits={setCacheTtlEdits}
+        sources={sources}
+        roles={roles}
+        dataProducts={dataProducts}
+        settings={settings}
+        saving={saving}
+        generateTableDescription={generateTableDescription}
+        generateColumnDescription={generateColumnDescription}
+        cancelEditing={cancelEditing}
+        handleSaveEdit={saved === null ? handleCreate : handleSaveEdit}
+        problem={error}
+        // What the create step chose is lost on leaving, so a form creating a table is changed.
+        dirty={
+          saved === null ||
+          JSON.stringify(editing) !== pristine ||
+          cacheTtlEdits[editing.id]?.dirty === true
+        }
+        updateEditCol={updateEditCol}
+        relationships={relationships}
+        section={section}
+        onSectionChange={setSection}
+      />
+    </ReplicaBuildsContext.Provider>
+  );
+  const panelBody =
+    newRegistration !== null && editingTable !== null ? (
+      editForm(editingTable, null)
+    ) : editingViewDef ? (
+      // REQ-1318: a view's definition is edited in the panel, with a way back to its detail: a
+      // working surface is never a dialog over the page. A metric view opens in Metrics mode
+      // prefilled; a free-hand view opens in SQL mode.
+      <div className="split-pane__fill" data-testid="view-definition-modal">
+        <div className="split-pane__bar">
+          <Button
+            variant="subtle"
+            size="compact-sm"
+            leftSection={<ArrowLeft size={14} />}
+            onClick={() => setEditingViewDef(null)}
+            data-testid="view-definition-back"
+          >
+            {translate("tablesPage.backToDetail")}
+          </Button>
+          <Text fw={600}>{translate("tablesPage.editViewDefinitionTitle")}</Text>
+        </div>
+        <ViewDefinitionForm
+          editing={editingViewDef}
+          tables={tables}
+          relationships={relationships}
+          domainHints={domainHints}
+          updateTable={updateTable}
+          onContinue={startCreating}
+          onSuccess={() => {
+            setEditingViewDef(null);
+            reload();
+          }}
+          onCancel={() => setEditingViewDef(null)}
+        />
       </div>
+    ) : showForm && !viewsOnly ? (
+      <RegisterTableForm
+        sources={sources}
+        domainHints={domainHints}
+        domainAccess={domainAccess}
+        checkedDomains={checkedDomains}
+        domainsEnabled={domainsEnabled}
+        tables={tables}
+        roles={roles}
+        getAvailableColumnsMetadata={getAvailableColumnsMetadata}
+        suggestTableAlias={suggestTableAlias}
+        onContinue={startCreating}
+        onCancel={() => setShowForm(false)}
+        setError={setError}
+        problem={error}
+      />
+    ) : showViewForm && viewsOnly ? (
       <ViewDefinitionForm
-        editing={editingViewDef}
+        editing={null}
         tables={tables}
         relationships={relationships}
         domainHints={domainHints}
-        registerTable={registerTable}
         updateTable={updateTable}
+        onContinue={startCreating}
+        onSuccess={() => setShowViewForm(false)}
+        onCancel={() => setShowViewForm(false)}
+      />
+    ) : showModeling ? (
+      <ModelingForm
+        domains={domains}
         onSuccess={() => {
-          setEditingViewDef(null);
+          setShowModeling(false);
           reload();
         }}
-        onCancel={() => setEditingViewDef(null)}
+        onCancel={() => setShowModeling(false)}
       />
-    </div>
-  ) : showForm && !viewsOnly ? (
-    <RegisterTableForm
-      sources={sources}
-      domainHints={domainHints}
-      domainAccess={domainAccess}
-      checkedDomains={checkedDomains}
-      domainsEnabled={domainsEnabled}
-      tables={tables}
-      roles={roles}
-      getAvailableColumnsMetadata={getAvailableColumnsMetadata}
-      suggestTableAlias={suggestTableAlias}
-      registerTable={registerTable}
-      onSuccess={async (registered) => {
-        setShowForm(false);
-        const [fresh] = await reload();
-        // The draft just registered is selected and its detail opens in edit on Identity, with
-        // everything the short step did not ask for at its default.
-        const made =
-          registered === null
-            ? undefined
-            : fresh?.data?.tables.find((tb) => tb.id === registered.id);
-        if (made) {
-          setExpanded(made.id);
-          setSection("identity");
-          startEditing(made);
-        }
-      }}
-      onCancel={() => setShowForm(false)}
-      setError={setError}
-      problem={error}
-    />
-  ) : showViewForm && viewsOnly ? (
-    <ViewDefinitionForm
-      editing={null}
-      tables={tables}
-      relationships={relationships}
-      domainHints={domainHints}
-      registerTable={registerTable}
-      updateTable={updateTable}
-      onSuccess={async (created) => {
-        setShowViewForm(false);
-        const [fresh] = await reload();
-        // The view just made is selected and its detail opens in edit, with everything the
-        // short step did not ask for at its default.
-        const made = created
-          ? fresh?.data?.tables.find((tb) => tb.tableName === created && tb.schemaName === "views")
-          : undefined;
-        if (made) {
-          setExpanded(made.id);
-          startEditing(made);
-        }
-      }}
-      onCancel={() => setShowViewForm(false)}
-    />
-  ) : showModeling ? (
-    <ModelingForm
-      domains={domains}
-      onSuccess={() => {
-        setShowModeling(false);
-        reload();
-      }}
-      onCancel={() => setShowModeling(false)}
-    />
-  ) : selectedTable ? (
-    ((t: RegisteredTable) => {
-      const readView = (extra: { actionsOnly?: boolean }) => (
-        <TableReadView
-          t={t}
-          build={buildOf(replicaBuilds?.builds, t)}
-          hidingOnly={hidingOnly}
-          dataProducts={dataProducts}
-          navigate={navigate}
-          viewsOnly={viewsOnly}
-          onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
-          deploying={deploying}
-          setDeploying={setDeploying}
-          deployMsg={deployMsg}
-          setDeployMsg={setDeployMsg}
-          tableProfiles={tableProfiles}
-          deployViewToDb={deployViewToDb}
-          reload={reload}
-          startEditing={startEditing}
-          handleDelete={handleDelete}
-          handleProfile={handleProfile}
-          onPreview={setPreviewTable}
-          onSetDraft={handleSetDraft}
-          source={sources.find((s) => s.id === t.sourceId)}
-          relationships={relationships}
-          onInvalidateCache={!hidingOnly && hasCacheable(t) ? handlePurgeTableCache : undefined}
-          invalidating={purging[t.id] === true}
-          section={section}
-          onSectionChange={setSection}
-          columnTab={linkedColumnTab}
-          profileColumnsTable={
-            // REQ-1934: this table's profile, if its columns table is registered.
-            tables.find(
-              (tb) =>
-                tb.tableName === `${t.tableName}_profile_columns` &&
-                sources.find((s) => s.id === tb.sourceId)?.type === "data_profiler",
-            ) ?? null
-          }
-          {...extra}
-        />
-      );
-      // Preview is a view of the table inside the panel, with a way back to its detail: a
-      // working surface is never a dialog over the page.
-      if (previewTable?.id === t.id) {
-        return (
-          <div className="split-pane__fill" data-testid="table-preview-modal">
-            {/* The table's actions stay in the panel's head while its rows are looked at. */}
-            {readView({ actionsOnly: true })}
-            <TablePreviewPane table={t} role={actingRole} onBack={() => setPreviewTable(null)} />
-          </div>
+    ) : selectedTable ? (
+      ((t: RegisteredTable) => {
+        const readView = (extra: { actionsOnly?: boolean }) => (
+          <TableReadView
+            t={t}
+            build={buildOf(replicaBuilds?.builds, t)}
+            hidingOnly={hidingOnly}
+            dataProducts={dataProducts}
+            navigate={navigate}
+            viewsOnly={viewsOnly}
+            onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
+            deploying={deploying}
+            setDeploying={setDeploying}
+            deployMsg={deployMsg}
+            setDeployMsg={setDeployMsg}
+            tableProfiles={tableProfiles}
+            deployViewToDb={deployViewToDb}
+            reload={reload}
+            startEditing={startEditing}
+            handleDelete={handleDelete}
+            handleProfile={handleProfile}
+            onPreview={setPreviewTable}
+            onSetDraft={handleSetDraft}
+            source={sources.find((s) => s.id === t.sourceId)}
+            relationships={relationships}
+            onInvalidateCache={!hidingOnly && hasCacheable(t) ? handlePurgeTableCache : undefined}
+            invalidating={purging[t.id] === true}
+            section={section}
+            onSectionChange={setSection}
+            columnTab={linkedColumnTab}
+            profileColumnsTable={
+              // REQ-1934: this table's profile, if its columns table is registered.
+              tables.find(
+                (tb) =>
+                  tb.tableName === `${t.tableName}_profile_columns` &&
+                  sources.find((s) => s.id === tb.sourceId)?.type === "data_profiler",
+              ) ?? null
+            }
+            {...extra}
+          />
         );
-      }
-      if (editingTable?.id !== t.id) {
+        // Preview is a view of the table inside the panel, with a way back to its detail: a
+        // working surface is never a dialog over the page.
+        if (previewTable?.id === t.id) {
+          return (
+            <div className="split-pane__fill" data-testid="table-preview-modal">
+              {/* The table's actions stay in the panel's head while its rows are looked at. */}
+              {readView({ actionsOnly: true })}
+              <TablePreviewPane table={t} role={actingRole} onBack={() => setPreviewTable(null)} />
+            </div>
+          );
+        }
+        if (editingTable?.id !== t.id) {
+          return (
+            <ReplicaBuildsContext.Provider value={replicaBuilds}>
+              {readView({})}
+            </ReplicaBuildsContext.Provider>
+          );
+        }
         return (
-          <ReplicaBuildsContext.Provider value={replicaBuilds}>
-            {readView({})}
-          </ReplicaBuildsContext.Provider>
-        );
-      }
-      return (
-        <>
-          {/* While it is edited the panel's head holds the form's Save and Cancel in place
+          <>
+            {/* While it is edited the panel's head holds the form's Save and Cancel in place
                 of the table's actions: none of those can be used from inside a form. */}
-          <ReplicaBuildsContext.Provider value={replicaBuilds}>
-            <TableEditForm
-              hidingOnly={hidingOnly}
-              editingTable={editingTable}
-              setEditingTable={setEditingTable}
-              savedProfilerId={
-                tables.find((tb) => tb.id === editingTable.id)?.profilerSourceId ?? null
-              }
-              editingColumnTypes={editingColumnTypes}
-              cacheTtlEdits={cacheTtlEdits}
-              setCacheTtlEdits={setCacheTtlEdits}
-              sources={sources}
-              roles={roles}
-              dataProducts={dataProducts}
-              settings={settings}
-              saving={saving}
-              generatingDesc={generatingDesc}
-              setGeneratingDesc={setGeneratingDesc}
-              generatingColDesc={generatingColDesc}
-              setGeneratingColDesc={setGeneratingColDesc}
-              generateTableDescription={generateTableDescription}
-              generateColumnDescription={generateColumnDescription}
-              cancelEditing={cancelEditing}
-              handleSaveEdit={handleSaveEdit}
-              problem={error}
-              dirty={
-                JSON.stringify(editingTable) !== pristine ||
-                cacheTtlEdits[editingTable.id]?.dirty === true
-              }
-              updateEditCol={updateEditCol}
-              relationships={relationships}
-              section={section}
-              onSectionChange={setSection}
-            />
-          </ReplicaBuildsContext.Provider>
-        </>
-      );
-    })(selectedTable)
-  ) : null;
+            {editForm(editingTable, t)}
+          </>
+        );
+      })(selectedTable)
+    ) : null;
   // A form whose Save reports through the page's error: it shows that with its own actions.
   const panelFormOpen = (showForm && !viewsOnly) || editingTable !== null;
   const panelIsReadOnly =
@@ -1014,15 +947,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     previewTable === null &&
     editingViewDef === null;
   const panelTitle =
-    showForm && !viewsOnly
-      ? translate("tablesPage.panelRegisterTable")
-      : showViewForm && viewsOnly
-        ? translate("tablesPage.panelNewView")
-        : showModeling
-          ? translate("tablesPage.panelNewModel")
-          : selectedTable
-            ? (selectedTable.alias ?? selectedTable.tableName)
-            : "";
+    newRegistration !== null
+      ? translate(viewsOnly ? "tablesPage.panelNewView" : "tablesPage.panelRegisterTable")
+      : showForm && !viewsOnly
+        ? translate("tablesPage.panelRegisterTable")
+        : showViewForm && viewsOnly
+          ? translate("tablesPage.panelNewView")
+          : showModeling
+            ? translate("tablesPage.panelNewModel")
+            : selectedTable
+              ? (selectedTable.alias ?? selectedTable.tableName)
+              : "";
 
   return (
     <div className="page page-sticky-head">
@@ -1320,6 +1255,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                   )}
                                 </>
                               )}
+                              {/* REQ-2109: a table or view that keeps its versions. */}
+                              {t.businessKey.length > 0 && (
+                                <Badge
+                                  size="xs"
+                                  variant="light"
+                                  color="orange"
+                                  title={translate("tablesPage.history.title")}
+                                  data-testid={`tables-history-${t.tableName}`}
+                                >
+                                  {translate("tablesPage.history.badge")}
+                                </Badge>
+                              )}
                               {/* REQ-1443: a checker table names the checker its contract runs under —
                                 the source's type is the one authority for that, never a table field. */}
                               {(() => {
@@ -1352,11 +1299,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             </Group>
                           </Table.Td>
                           <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                            {NAMING_CONVENTIONS.find(
-                              (nc) => nc.value === (t.gqlNamingConvention ?? ""),
-                            )?.label ??
-                              t.gqlNamingConvention ??
-                              translate("tablesPage.inheritSource")}
+                            {t.gqlNamingConvention
+                              ? namingConventionLabel(translate, t.gqlNamingConvention)
+                              : translate("tablesPage.inheritSource")}
                           </Table.Td>
                           <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                             {t.cacheTtl != null

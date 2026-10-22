@@ -26,9 +26,9 @@ from provisa.compiler.sql_validator import (
     tables_outside_relationships,
 )
 from provisa.compiler.stage2 import GovernanceContext
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 
 _COLUMNS = {
     "orders": (1, ["id", "customer_code", "doc"]),

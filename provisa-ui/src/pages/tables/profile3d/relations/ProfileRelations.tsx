@@ -16,6 +16,10 @@ import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
+import { AttractionSlider } from "../Attraction";
+import { useAttraction } from "../attractionState";
+import { GridToggle } from "../GridToggle";
+import { useGrid } from "../gridState";
 import { Stage3D, type CameraCommand } from "../Stage3D";
 import { useLazyScene } from "../useLazyScene";
 import {
@@ -34,12 +38,16 @@ const STRENGTHS = ["0.1", "0.3", "0.5", "0.7"];
 interface Shared {
   model: RelationsModel;
   edges: RelEdge[];
+  attraction: number;
+  setAttraction: (v: number) => void;
   min: string;
   setMin: (v: string) => void;
   kinds: Set<EdgeKind>;
   toggleKind: (k: "correlation" | "dependence", on: boolean) => void;
   rotate: boolean;
   setRotate: (on: boolean) => void;
+  grid: boolean;
+  setGrid: (shown: boolean) => void;
   selected: string | null;
   setSelected: (id: string) => void;
   hover: RelHover | null;
@@ -73,10 +81,21 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
           },
           theme,
         );
+        sc.setGrid(latest.current.grid);
         sc.setData(latest.current.model, latest.current.edges, true);
         return sc;
       }),
   );
+  // A new layout (the attraction moved) is drawn where the camera already is.
+  const laid = useRef<RelationsModel | null>(null);
+  useEffect(() => {
+    if (!scene) return;
+    if (laid.current === null) laid.current = latest.current.model;
+    else if (laid.current !== s.model) {
+      laid.current = s.model;
+      scene.setData(s.model, latest.current.edges, false);
+    }
+  }, [scene, s.model]);
   const shown = useRef<RelEdge[] | null>(null);
   useEffect(() => {
     if (!scene) return;
@@ -89,6 +108,7 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
+  useEffect(() => scene?.setGrid(s.grid), [scene, s.grid]);
   useEffect(() => {
     if (!scene || command == null) return;
     if (command.kind === "reset") scene.resetView();
@@ -294,9 +314,11 @@ function RelationsView({
         >
           {t("profileRelations.showDependence")}
         </Chip>
+        <AttractionSlider value={s.attraction} onChange={s.setAttraction} testId="relations" />
         <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="relations-rotate">
           {t("profile3d.rotate")}
         </Chip>
+        <GridToggle value={s.grid} onChange={s.setGrid} testId="relations" />
         <Button
           size="xs"
           variant="default"
@@ -329,12 +351,14 @@ export function ProfileRelations({
   tableName: string;
 }) {
   const { t } = useTranslation();
-  const model = useMemo(() => buildRelations(results), [results]);
+  const [attraction, setAttraction] = useAttraction("relations");
+  const model = useMemo(() => buildRelations(results, attraction), [results, attraction]);
   const [min, setMin] = useState("0.3");
   const [kinds, setKinds] = useState<Set<EdgeKind>>(
     new Set(["spearman", "correlation_ratio", "dependence"]),
   );
   const [rotate, setRotate] = useState(true);
+  const [grid, setGrid] = useGrid("relations");
   const [picked, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<RelHover | null>(null);
   const edges = useMemo(() => visibleEdges(model, Number(min), kinds), [model, min, kinds]);
@@ -354,6 +378,8 @@ export function ProfileRelations({
   const s: Shared = {
     model,
     edges,
+    attraction,
+    setAttraction,
     min,
     setMin,
     kinds,
@@ -370,6 +396,8 @@ export function ProfileRelations({
       }),
     rotate,
     setRotate,
+    grid,
+    setGrid,
     selected,
     setSelected,
     hover,

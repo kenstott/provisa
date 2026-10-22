@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 def _node(label: str, pk_columns: list[str]):
-    from provisa.cypher.label_map import NodeMapping
+    from provisa.gql.label_map import NodeMapping
 
     # Each column read and written by its published name (the convention's: customerId).
     return NodeMapping(

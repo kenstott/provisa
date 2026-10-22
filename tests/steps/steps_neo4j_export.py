@@ -271,7 +271,7 @@ def _make_graph_schema_state() -> Any:
 
 def _build_real_label_map() -> Any:
     """Construct a real CypherLabelMap with two node labels and one relationship."""
-    from provisa.cypher.label_map import (
+    from provisa.gql.label_map import (
         CypherLabelMap,
         NodeMapping,
         RelationshipMapping,
@@ -1379,7 +1379,7 @@ def then_req793_param_error(shared_data: dict) -> None:
 )
 def given_req794_nested() -> dict:
     """Assemble real Node/Edge dataclasses and serialize them to nested result rows."""
-    from provisa.cypher.assembler import Edge, Node, to_serializable
+    from provisa.gql.assembler import Edge, Node, to_serializable
 
     start = Node(id="Orders|1", label="Orders", table_label="Orders", properties={"amount": 100})
     end = Node(
@@ -1400,7 +1400,7 @@ def given_req794_nested() -> dict:
 @when("result rows are introspected")
 def when_req794_introspect(shared_data: dict) -> None:
     """Run the real recursive node/edge walkers over the nested result row."""
-    from provisa.cypher.assembler import _walk_for_edges, _walk_for_nodes
+    from provisa.gql.assembler import _walk_for_edges, _walk_for_nodes
 
     nodes_out: dict[str, Any] = {}
     edges_out: dict[str, Any] = {}

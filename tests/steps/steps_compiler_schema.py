@@ -695,7 +695,7 @@ def _build_cypher_label_map_for_event() -> Any:
     """
     Build a minimal CypherLabelMap for an Event node with a timestamp PK column.
     """
-    from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
     event_meta = NodeMapping(
         label="Event",
@@ -897,7 +897,7 @@ from provisa.security.row_filters import resolve_table_rules  # noqa: E402
 from tests.helpers import governed_for_role  # noqa: E402
 from provisa.compiler.sql_gen import compile_query  # noqa: E402
 from provisa.compiler.context import build_context  # noqa: E402
-from provisa.cypher.translator_helpers import _coerce_ts_literals  # noqa: E402
+from provisa.gql.translator_helpers import _coerce_ts_literals  # noqa: E402
 from provisa.grpc.proto_gen import generate_proto  # noqa: E402
 
 scenarios("../features/REQ-008.feature")

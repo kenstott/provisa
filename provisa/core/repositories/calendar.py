@@ -47,6 +47,7 @@ async def upsert(conn: "Connection", cal: dict[str, Any]) -> None:
         "week_start": cal.get("week_start", 0),
         "holidays": cal.get("holidays", []),
         "weekend": cal.get("weekend", [5, 6]),
+        "day_close": cal.get("day_close"),  # REQ-2111: "HH:MM", None = midnight
     }
     await conn.upsert(
         calendars,
@@ -61,6 +62,7 @@ async def upsert(conn: "Connection", cal: dict[str, Any]) -> None:
             "week_start",
             "holidays",
             "weekend",
+            "day_close",
         ],
     )
 

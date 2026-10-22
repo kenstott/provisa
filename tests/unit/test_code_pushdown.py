@@ -342,3 +342,57 @@ def test_two_names_one_wire_form_cannot_tell_apart_are_refused():
     with pytest.raises(ManifestRefused) as caught:
         name_tables(read_manifest(raw))
     assert "orders: id and ID are both id on pgwire" in caught.value.problems
+
+
+def test_a_columns_function_declares_no_pushdown():
+    """REQ-2131: a batch column transform is given rows, not asked for them: nothing is pushed."""
+    raw = _orders(
+        _param(
+            "since", {"kind": "array", "element": DATE}, optional=False, pushdown=("gte_signup",)
+        ),
+        kind="columns",
+    )
+    assert _problems(raw) == [
+        "orders(since): @gte_signup pushes a predicate, and a @columns function has no rows to "
+        "filter"
+    ]
+
+
+_ORDER_ROWS = {"kind": "array", "element": {"kind": "ref", "name": "Order"}}
+
+
+@pytest.mark.parametrize(
+    ("kind", "param_type", "returns"),
+    [
+        ("command", DATE, {"kind": "undefined"}),
+        (
+            "stream",
+            DATE,
+            {
+                "kind": "iterable",
+                "async": True,
+                "generator": True,
+                "element": _ORDER_ROWS["element"],
+            },
+        ),
+        ("columns", {"kind": "array", "element": DATE}, _ORDER_ROWS),
+    ],
+)
+@pytest.mark.parametrize("declared", ["tag", "parameter"])
+def test_a_loader_declared_on_any_kind_but_a_table_is_refused_by_name(
+    kind, param_type, returns, declared
+):
+    """REQ-2100: a loader batches a table's keys. Declared on another kind it would be ignored, so
+    it is refused, whether as a @loader tag or as ``loader N`` on a parameter."""
+    raw = _orders(
+        _param(
+            "since",
+            param_type,
+            optional=False,
+            pushdown=("loader 100",) if declared == "parameter" else (),
+        ),
+        kind=kind,
+        tags=(("loader", "100"),) if declared == "tag" else (),
+        returns=returns,
+    )
+    assert f"orders: @loader batches a table's keys, and a @{kind} takes none" in _problems(raw)

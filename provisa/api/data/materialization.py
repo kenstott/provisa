@@ -466,22 +466,54 @@ class _Feed:
     relationship: str
     parameters: dict[str, str]
     source: Any  # the source table's TableMeta in the statement's model
+    # The target's column the relationship joins on (REQ-2099): a parameter column when the
+    # target's rows do not carry the value they were read for, as a Qdrant search's points do not.
+    target_column: str | None = None
 
 
-def _feed_of(state, ctx, table: dict, table_ids: Iterable[int]) -> _Feed | None:
+def _feed_of(state, ctx, table: dict, table_ids: Iterable[int], given: dict | None) -> _Feed | None:
     """The relationship feeding ``table``'s parameters from a table the statement reads, or None.
-    Only a table of the role's model feeds one: the source is read as the role reads it."""
+    Only a table of the role's model feeds one: the source is read as the role reads it. A
+    statement that gives one of the parameters the relationship feeds reads the table under its
+    own arguments, and is not fed: a search for a phrase of its own, beside the lines it joins its
+    points back to."""
+    from provisa.compiler.naming import apply_sql_name
+
     if ctx is None:
         return None
+    stated = {apply_sql_name(k.lstrip("_")) for k, v in (given or {}).items() if v is not None}
     ids = set(table_ids)
     metas = {m.table_id: m for m in ctx.tables.values()}
     for rel in getattr(state, "relationships", None) or []:
         if not rel["parameters"] or rel.get("target_table_id") != table["id"]:
             continue
+        if stated & {apply_sql_name(p) for p in rel["parameters"]}:
+            continue
         source = metas.get(rel["source_table_id"])
         if source is not None and source.table_id in ids:
-            return _Feed(rel["id"], dict(rel["parameters"]), source)
+            return _Feed(rel["id"], dict(rel["parameters"]), source, rel.get("target_column"))
     return None
+
+
+def _carried(feed: _Feed, state) -> dict[str, tuple[str, str]]:
+    """REQ-2099: the parameter column the relationship joins on, when it joins on one, as
+    ``{column: (parameter, IR type)}``: each fed row carries the value its argument set gave that
+    parameter, typed as the source column it was read from, so the join matches each row to the
+    source row it was read for. Empty when the relationship joins on a column of the rows."""
+    from provisa.core.parameters import NF_PREFIX
+
+    column = feed.target_column
+    if column is None or not column.startswith(NF_PREFIX):
+        return {}
+    parameter = column[len(NF_PREFIX) :]
+    if parameter not in feed.parameters:
+        raise ValueError(
+            f"relationship {feed.relationship!r} joins on {column!r}, a parameter it does not feed"
+        )
+    source_column = feed.parameters[parameter]
+    [source] = [t for t in state.tables if t["id"] == feed.source.table_id]
+    [data_type] = [c["data_type"] for c in source["columns"] if c["column_name"] == source_column]
+    return {column: (parameter, data_type)}
 
 
 async def _fed_argument_sets(feed: _Feed, role_id: str) -> list[dict]:
@@ -516,24 +548,30 @@ async def _mat_fed_table(
     values_cte_entries: dict,
     nf_args: dict | None,
 ) -> None:
-    """A code table joined over a relationship that feeds its parameters (REQ-2099): called once
-    per distinct argument set the source gives the role, with the statement's own arguments for
-    the parameters the relationship does not feed, and landed together for the engine's join,
-    kept under those argument sets for the table's TTL."""
-    from provisa.codesource.table import read_each
+    """A code table or a Qdrant search joined over a relationship that feeds its parameters
+    (REQ-2099): called once per distinct argument set the source gives the role, with the
+    statement's own arguments for the parameters the relationship does not feed, and landed
+    together for the engine's join, kept under those argument sets for the table's TTL. A search's
+    rows carry the value of the parameter the relationship joins on (:func:`_carried`)."""
+    from provisa.qdrant.table import is_search
 
     given = dict(nf_args or {})
     sets = [{**given, **fed} for fed in await _fed_argument_sets(feed, role_id)]
     key = {"fed_by": feed.relationship, "sets": json.dumps(sets, sort_keys=True, default=str)}
-    await _land_per_statement(
-        tn,
-        table,
-        state,
-        cache_rewrites,
-        values_cte_entries,
-        key,
-        lambda: read_each(state, table, sets, joined=True),
-    )
+    if is_search(table, state.source_types):
+        from provisa.qdrant.table import read_each as search_each
+
+        carried = _carried(feed, state)
+
+        def answer():
+            return search_each(state, table, sets, carried)
+    else:
+        from provisa.codesource.table import read_each
+
+        def answer():
+            return read_each(state, table, sets, joined=True)
+
+    await _land_per_statement(tn, table, state, cache_rewrites, values_cte_entries, key, answer)
 
 
 def _refuse_or_drop(exec_sql: str, tn: str, missing: list[str], dropped_tables: dict) -> None:
@@ -1083,13 +1121,16 @@ async def _mat_api_ep_table(
     values_cte_entries: dict,
     nf_args: dict | None = None,
     ctx=None,
+    pushed: dict | None = None,
 ) -> None:
     """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE.
 
     The cache table is kept under the arguments the statement gives the endpoint (REQ-318): an
     endpoint with a parameter is a function of its arguments, so the answer to one argument set
     is never another's. ``ctx`` is the model the statement compiled against, for the joins that
-    feed a parameter from a parent's keys."""
+    feed a parameter from a parent's keys. ``pushed``: the arguments the statement's own
+    conditions narrow the call by (a SPARQL table's narrowed query, REQ-2138), part of the call
+    and of the name its answer is kept under."""
     from provisa.api_source.engine_cache import (
         cache_table_name,
         ensure_cache_schema,
@@ -1109,7 +1150,7 @@ async def _mat_api_ep_table(
     )
 
     _cache_loc = source_cache_location(state, source_id, api_source)
-    args = endpoint_args(ep, nf_args)
+    args = {**endpoint_args(ep, nf_args), **(pushed or {})}
     # Read by its parent's keys, the fills are one argument set per key and the table is all of
     # them, whatever else the statement gives. Read by argument, the table is that answer's:
     # named as the fetch names it, with the endpoint's default parameters under the arguments.
@@ -1135,7 +1176,7 @@ async def _mat_api_ep_table(
     redirect_config = RedirectConfig.from_env()
     # An endpoint with a parameter is a function of its arguments: what its fills or a fetch hold
     # is the rows for some arguments, never the table's whole rows, so none of it is held hot.
-    whole = not any(c.param_type for c in ep.columns)
+    whole = not any(c.param_type for c in ep.columns) and not pushed
 
     if not response_cols:
         log.warning("[MAT] %s has no response columns — skipping", tn)
@@ -1354,6 +1395,8 @@ async def _materialize_api_to_engine_cache(
     from provisa.codesource import direct as code_direct
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
+    from provisa.qdrant.table import is_search
+    from provisa.sparql import pushdown as sparql_pushdown
 
     code_direct.begin()
     cache_rewrites: dict = {}
@@ -1403,11 +1446,15 @@ async def _materialize_api_to_engine_cache(
                 code_direct.defer(tn, attached_table, nf_args)
             continue
         pipeline_table = pipelines.get(_sql_name(table))
-        # REQ-2099: a code table the statement joins to a table whose relationship feeds its
-        # parameters is given them by the join.
+        # REQ-2099: a code table or a Qdrant search the statement joins to a table whose
+        # relationship feeds its parameters is given them by the join.
         feed = (
-            _feed_of(state, ctx, pipeline_table, table_ids)
-            if pipeline_table is not None and is_code_table(pipeline_table, state.source_types)
+            _feed_of(state, ctx, pipeline_table, table_ids, nf_args)
+            if pipeline_table is not None
+            and (
+                is_code_table(pipeline_table, state.source_types)
+                or is_search(pipeline_table, state.source_types)
+            )
             else None
         )
         # REQ-1986: a table read without a value for a required parameter is refused before
@@ -1526,6 +1573,7 @@ async def _materialize_api_to_engine_cache(
             values_cte_entries,
             nf_args=nf_args,
             ctx=ctx,
+            pushed=sparql_pushdown.pushed_arguments(ep, exec_sql, tn),
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:
             log.warning("[MAT] %s could not be materialized — dropping union branch", tn)

@@ -18,6 +18,8 @@ type-specific slot):
                   {"kind": "git", "repository", "commit", "subdirectory"}
                   {"kind": "upload", "upload": <content hash of the uploaded archive>,
                    "filename": <the name of the file it was uploaded from, when known>}
+                  {"kind": "directory", "path": <a directory on this server>} (REQ-2121): read
+                   where it is, under the operator's allowed directories, single-tenant only
     lockfile      {"filename", "upload": <SHA-256 of its bytes>}, given beside code that carries none
     entry         a python source's entry module, when its code has more than one
     content_hash  the code's content hash, recorded when the source was saved
@@ -38,7 +40,8 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.codesource import remote_sources, services
 from provisa.codesource.bundle import BundleRefused
-from provisa.codesource.install import GitCode, Lockfile
+from provisa.codesource.bundle import content_hash as hash_of
+from provisa.codesource.install import DIRECTORY_SKIPPED, DirectoryCode, GitCode, Lockfile
 from provisa.codesource.manifest import Manifest
 from provisa.codesource.worker import HostCommand, Worker, pool
 
@@ -49,13 +52,19 @@ if TYPE_CHECKING:
 CODE_SOURCE_TYPES = frozenset({"node", "python"})
 NODE_RUNTIMES = ("node", "bun", "deno")
 
-_CODE_KINDS = {"node": ("npm", "git", "upload"), "python": ("pypi", "git", "upload")}
+_CODE_KINDS = {
+    "node": ("npm", "git", "upload", "directory"),
+    "python": ("pypi", "git", "upload", "directory"),
+}
 _CODE_FIELDS = {
     "npm": ("package", "version"),
     "pypi": ("package", "version"),
     "git": ("repository", "commit"),
     "upload": ("upload",),
+    "directory": ("path",),
 }
+#: REQ-2121: a code directory is read where it is, never pinned to a content hash.
+DIRECTORY = "directory"
 
 
 @dataclass(frozen=True)
@@ -78,6 +87,19 @@ class CodeConfig:
     remote: dict | None = None
     #: REQ-2106: its non-secret settings, which its code reads through Provisa's services.
     settings: dict[str, Any] = field(default_factory=dict)
+    #: REQ-2131: how many workers it runs in each Provisa process; a @columns transform's batches
+    #: spread across them.
+    workers: int = 1
+
+
+def _workers(mapping: dict) -> int:
+    # REQ-2131: one worker unless the source names more -- the form's default, written or not.
+    given = mapping.get("workers", 1)
+    if isinstance(given, bool) or not isinstance(given, int) or given < 1:
+        raise BundleRefused(
+            "workers", f"a code source runs one or more workers, not {given!r}", workers=str(given)
+        )
+    return given
 
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
@@ -106,6 +128,8 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
             f"the source's code needs {', '.join(missing)}",
             missing=", ".join(missing),
         )
+    if code["kind"] == DIRECTORY:
+        code["path"] = str(checked_directory(code["path"]))
     lockfile = mapping.get("lockfile") or None
     return CodeConfig(
         language=source_type,
@@ -113,7 +137,8 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         code=code,
         lockfile=lockfile,
         entry=mapping.get("entry") or None,
-        content_hash=mapping.get("content_hash") or None,
+        # REQ-2121: a directory is read as it is now, never held to the hash it had.
+        content_hash=None if code["kind"] == DIRECTORY else mapping.get("content_hash") or None,
         secrets=services.declared(mapping.get("secrets")),
         llm_cap_usd=services.llm_cap(mapping.get("llm")),
         mode=remote_sources.mode_of(mapping),
@@ -121,7 +146,44 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         if remote_sources.mode_of(mapping) == remote_sources.BUILT
         else None,
         settings=services.declared_settings(mapping.get("settings")),
+        workers=_workers(mapping),
     )
+
+
+def checked_directory(path: str) -> Path:
+    """A code directory on this server (REQ-2121): a directory under the operator's allowed
+    directories (``sources.download_roots``, as a file source's mount path is, REQ-2113) once its
+    symlinks are followed; refused by name otherwise, and always on a server of many
+    organizations, whose disk is the platform's."""
+    import os
+
+    from provisa.core.secrets_providers import many_organisations
+    from provisa.core.source_downloads import download_roots
+
+    if many_organisations():
+        raise BundleRefused(
+            "directory_refused",
+            f"{path}: a server of many organizations runs no code from its own disk",
+            path=path,
+        )
+    expanded = os.path.expanduser(path)
+    if not os.path.isabs(expanded):
+        raise BundleRefused(
+            "directory_relative", f"{path}: name the directory by its full path", path=path
+        )
+    real = os.path.realpath(expanded)
+    roots = download_roots()
+    if not any(real == r or real.startswith(r.rstrip(os.sep) + os.sep) for r in roots):
+        raise BundleRefused(
+            "directory_outside_roots",
+            f"{path} resolves to {real}, outside the directories code may be read from: "
+            f"{', '.join(roots) or 'none are listed'}",
+            path=path,
+            roots=", ".join(roots),
+        )
+    if not os.path.isdir(real):
+        raise BundleRefused("directory_missing", f"{path}: there is no directory there", path=path)
+    return Path(real)
 
 
 @dataclass(frozen=True)
@@ -138,8 +200,16 @@ class Prepared:
     #: REQ-2098: a built source's remote host, and the identity Provisa presents to it.
     remote: dict | None = None
     identity: Any = None
+    #: REQ-2131: how many workers it runs in this process (``CodeConfig.workers``).
+    workers: int = 1
 
-    def worker(self) -> Worker:
+    def worker(self, slot: int = 0) -> Worker:
+        """Its worker number ``slot`` of :attr:`workers` (REQ-2131); one call that needs one
+        worker takes the first."""
+        if not 0 <= slot < self.workers:
+            raise ValueError(
+                f"source {self.source_id!r} runs {self.workers} workers, not {slot + 1}"
+            )
         remote = self.remote
         if remote is not None:
             return pool.remote(
@@ -149,8 +219,11 @@ class Prepared:
                 lambda: remote_sources.worker_for(
                     self.org_id, self.source_id, self.content_hash, remote, self.identity
                 ),
+                slot=slot,
             )
-        return pool.get(self.source_id, self.content_hash, lambda: self.command, org=self.org_id)
+        return pool.get(
+            self.source_id, self.content_hash, lambda: self.command, org=self.org_id, slot=slot
+        )
 
 
 @dataclass(frozen=True)
@@ -181,6 +254,8 @@ async def _code_reference(config: CodeConfig, ctx: Context) -> Any:  # the langu
         return PypiCode(code["package"], code["version"])
     if code["kind"] == "git":
         return GitCode(code["repository"], code["commit"], code.get("subdirectory", ""))
+    if code["kind"] == DIRECTORY:
+        return DirectoryCode(code["path"])
     return await uploads.read(ctx.admin_db, ctx.org_id, code["upload"])
 
 
@@ -234,6 +309,7 @@ def _prepare_node(
         manifest,
         _granted(command, source_id, config, ctx),
         ctx.org_id,
+        workers=config.workers,
     )
 
 
@@ -293,6 +369,7 @@ def _prepare_python(
         manifest,
         _granted(command, source_id, config, ctx),
         ctx.org_id,
+        workers=config.workers,
     )
 
 
@@ -302,7 +379,14 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
     saved (no hash recorded yet) is prepared afresh, and the hash it reports is the one to
     record."""
     config = config_of(source_type, mapping)
-    if config.content_hash is not None:
+    if config.code["kind"] == DIRECTORY:
+        # REQ-2121: what is in the directory now; prepared afresh once it has changed.
+        found = await asyncio.to_thread(hash_of, Path(config.code["path"]), DIRECTORY_SKIPPED)
+        with _lock:
+            held = _prepared.get((ctx.org_id, source_id, found))
+        if held is not None:
+            return held
+    elif config.content_hash is not None:
         with _lock:
             held = _prepared.get((ctx.org_id, source_id, config.content_hash))
         if held is not None:
@@ -321,6 +405,7 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
             ctx.org_id,
             remote=config.remote,
             identity=await remote_sources.identity(ctx.org_id),
+            workers=config.workers,
         )
         with _lock:
             _prepared[(ctx.org_id, source_id, config.content_hash)] = ready

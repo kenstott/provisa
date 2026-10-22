@@ -16,8 +16,9 @@
 // REQ-2105: the monthly cap on what its calls to Provisa's LLM service cost.
 // REQ-2106: its non-secret settings, which its code reads through Provisa's services.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  Button,
   FileInput,
   MultiSelect,
   NumberInput,
@@ -32,6 +33,17 @@ import { fetchSecrets } from "../../api/secrets";
 import { FieldGroup, FormField, FormSection } from "../../components/form/FormLayout";
 import { useFormRead } from "../../components/form/formRead";
 import { CodeExports } from "./CodeExports";
+import { VscodeLink } from "./VscodeLink";
+import {
+  NEW_SOURCE,
+  canKeepFolders,
+  filesOfHandle,
+  filesOfInput,
+  heldFolder,
+  pickFolder,
+  zipFolder,
+  type FolderFile,
+} from "./folderZip";
 import { CodeHostPanel } from "./CodeHostPanel";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -39,6 +51,7 @@ import {
   NODE_RUNTIMES,
   PYTHON,
   declaredSecrets,
+  vscodeLink,
   withSecretNames,
   type CodeOrigin,
 } from "./codeSource";
@@ -65,7 +78,12 @@ function CodeLocked({ locked, children }: { locked: boolean; children: ReactNode
 
 export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
   const { t } = useTranslation();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, multitenancy } = useAuth();
+  const read = useFormRead();
+  // REQ-2121: the folder chosen for this source's code, kept by the browser where it can be.
+  const folderKey = sourceId ?? NEW_SOURCE;
+  const folderInput = useRef<HTMLInputElement>(null);
+  const [folderChosen, setFolderChosen] = useState(false);
   const [uploading, setUploading] = useState("");
   const [failed, setFailed] = useState<{ key: string; text: string } | null>(null);
   const origin = (fields.code_origin ?? "package") as CodeOrigin;
@@ -107,6 +125,48 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
   };
 
   // What is kept: its file's name with the start of its hash beside it, or the hash alone.
+  // REQ-2121: Choose folder zips the folder here and uploads it as the source's archive.
+  const sendFolder = async (name: string, files: FolderFile[]) => {
+    if (!activeOrgId) return;
+    const file = zipFolder(name, files);
+    const hash = await uploadCodeArchive(activeOrgId, file);
+    set({ code_upload: hash, code_upload_filename: file.name });
+    setFolderChosen(true);
+  };
+  const chooseFolder = async () => {
+    if (!canKeepFolders()) {
+      folderInput.current?.click(); // folderPicked takes it from there
+      return;
+    }
+    setUploading("code");
+    setFailed(null);
+    try {
+      const handle = await pickFolder(folderKey);
+      await sendFolder(handle.name, await filesOfHandle(handle));
+    } catch (e) {
+      // Closing the folder picker chooses nothing; anything else is said beside the field.
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setFailed({ key: "code", text: String(e instanceof Error ? e.message : e) });
+      }
+    } finally {
+      setUploading("");
+    }
+  };
+  const folderPicked = async (files: File[]) => {
+    if (!files.length) return;
+    setUploading("code");
+    setFailed(null);
+    try {
+      const picked = await filesOfInput(files);
+      await sendFolder(picked.name, picked.files);
+    } catch (e) {
+      setFailed({ key: "code", text: String(e instanceof Error ? e.message : e) });
+    } finally {
+      setUploading("");
+    }
+  };
+  const vscode = vscodeLink(fields);
+
   const kept = (hash: string, name: string) =>
     !hash
       ? undefined
@@ -152,6 +212,10 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 },
                 { value: "git", label: t("codeSourceFields.git") },
                 { value: "upload", label: t("codeSourceFields.upload") },
+                // REQ-2121: a directory on the server, on a single-tenant install alone.
+                ...(multitenancy
+                  ? []
+                  : [{ value: "directory", label: t("codeSourceFields.directoryOrigin") }]),
               ]}
               value={origin}
               allowDeselect={false}
@@ -237,6 +301,56 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 data-testid="code-archive"
               />
             </FormField>
+            {!read && (
+              <Button
+                variant="default"
+                disabled={uploading === "code"}
+                onClick={() => void chooseFolder()}
+                data-testid="code-choose-folder"
+              >
+                {t("codeSourceFields.chooseFolder")}
+              </Button>
+            )}
+            {!read && (
+              <input
+                ref={folderInput}
+                type="file"
+                hidden
+                {...{ webkitdirectory: "", directory: "" }}
+                onChange={(e) => void folderPicked([...(e.currentTarget.files ?? [])])}
+                data-testid="code-folder-input"
+              />
+            )}
+            {!read && (heldFolder(folderKey) || folderChosen) && (
+              <Text size="xs" c="dimmed" data-testid="code-folder-note">
+                {t(
+                  heldFolder(folderKey)
+                    ? "codeSourceFields.folderKept"
+                    : "codeSourceFields.folderAgain",
+                )}
+              </Text>
+            )}
+          </FieldGroup>
+        )}
+
+        {origin === "directory" && (
+          <FieldGroup>
+            <FormField size="long" help={t("codeSourceFields.directoryHint")}>
+              <TextInput
+                required
+                label={t("codeSourceFields.directory")}
+                placeholder="/srv/code/rates"
+                value={fields.code_directory ?? ""}
+                onChange={(e) => set({ code_directory: e.currentTarget.value })}
+                data-testid="code-directory"
+              />
+            </FormField>
+          </FieldGroup>
+        )}
+
+        {vscode && (
+          <FieldGroup>
+            <VscodeLink href={vscode} />
           </FieldGroup>
         )}
 
@@ -296,6 +410,17 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
               value={fields.code_llm_cap ?? ""}
               onChange={(v) => set({ code_llm_cap: v === "" ? "" : String(v) })}
               data-testid="code-llm-cap"
+            />
+          </FormField>
+          <FormField size="short" help={t("codeSourceFields.workersHint")}>
+            <NumberInput
+              label={t("codeSourceFields.workers")}
+              min={1}
+              allowDecimal={false}
+              allowNegative={false}
+              value={fields.code_workers || "1"}
+              onChange={(v) => set({ code_workers: v === "" ? "" : String(v) })}
+              data-testid="code-workers"
             />
           </FormField>
         </FieldGroup>

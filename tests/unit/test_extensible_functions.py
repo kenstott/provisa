@@ -25,6 +25,12 @@ from provisa.executor.function_dispatch import dispatch_function
 from provisa.otel_compat import MemoryUdfTraceSink
 
 
+@pytest.fixture
+def host_code_allowed(monkeypatch):
+    """REQ-2134: the python and script kinds run only where the operator allows host code."""
+    monkeypatch.setenv("PROVISA_COMMANDS_ALLOW_HOST_CODE", "true")
+
+
 class _FakeResult:
     def __init__(self, cols, rows):
         self.column_names = cols
@@ -94,7 +100,7 @@ async def test_source_procedure_builds_sql():
 
 
 @pytest.mark.asyncio
-async def test_script_kind_subprocess(monkeypatch):
+async def test_script_kind_subprocess(monkeypatch, host_code_allowed):
     seen = {}
 
     async def fake_run(argv, payload):
@@ -111,7 +117,7 @@ async def test_script_kind_subprocess(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_script_missing_argv_fails_loud():
+async def test_script_missing_argv_fails_loud(host_code_allowed):
     fn = _fn(impl_kind="script", binding={})
     with pytest.raises(HTTPException) as ei:
         await dispatch_function(fn, {}, _state(), "ops")
@@ -299,7 +305,7 @@ async def test_grpc_missing_binding_fails_loud():
 
 
 @pytest.mark.asyncio
-async def test_python_kind_in_process():
+async def test_python_kind_in_process(host_code_allowed):
     mod = types.ModuleType("provisa_test_udf_mod")
     calls = {}
 
@@ -320,7 +326,7 @@ async def test_python_kind_in_process():
 
 
 @pytest.mark.asyncio
-async def test_python_bad_callable_spec_fails_loud():
+async def test_python_bad_callable_spec_fails_loud(host_code_allowed):
     fn = _fn(impl_kind="python", binding={"callable": "nocolon"})
     with pytest.raises(HTTPException) as ei:
         await dispatch_function(fn, {}, _state(), "ops")

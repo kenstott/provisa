@@ -203,6 +203,11 @@
     "accountEmailHint": "L'e-mail con cui accedi ad Atlassian; il token API appartiene a questo account.",
     "apiToken": "Token API",
     "apiTokenHint": "Creato su id.atlassian.com, Security, API tokens. Conservato nel vault dei segreti.",
-    "siteAddressInvalid": "Inserisci l'indirizzo completo del sito, che inizi con https://"
+    "siteAddressInvalid": "Inserisci l'indirizzo completo del sito, che inizi con https://",
+    "namingInherit": "Eredita (globale)",
+    "reasoner": "Reasoner",
+    "reasonerNone": "Nessuno",
+    "axioms": "Assiomi OWL",
+    "axiomsHint": "Sintassi Turtle, RDF/XML, funzionale o Manchester. Una tabella la cui query è un solo IRI, come <http://example.org/kyc#controls>, legge ciò che ne viene inferito."
   }
 }

@@ -177,7 +177,8 @@
       "unknown_arg_kind": "arg_kind desconocido '{{arg_kind}}' para '{{name}}'",
       "unknown_command": "Comando desconocido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de función desconocido: '{{impl_kind}}'",
-      "written_table_missing": "el comando '{{name}}' escribe '{{table}}', que no está registrada"
+      "written_table_missing": "el comando '{{name}}' escribe '{{table}}', que no está registrada",
+      "host_code_refused": "El comando '{{name}}' es de tipo {{impl_kind}}, que ejecuta código en el host del servidor. El código del host está desactivado en esta implementación; use un resolutor de código en su lugar."
     },
     "graphql_remote": {
       "introspection_failed": "Error en la introspección: {{error}}",
@@ -443,7 +444,12 @@
       "role_description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve",
       "rls_rule_description_missing": "Una regla de fila necesita una descripción de para qué sirve",
       "file_download_refused": "Origen {{source}}: {{reason}}",
-      "source_created_without_table": "Origen {{source}} creado; su tabla no se configuró: {{reason}}"
+      "source_created_without_table": "Origen {{source}} creado; su tabla no se configuró: {{reason}}",
+      "mv_window_needs_calendar": "La MV '{{mv}}' no nombra ningún calendario: una compilación sellada al cierre de un día hábil necesita uno",
+      "version_log_updated": "Registro de versiones '{{mv}}' actualizado",
+      "mv_window_held": "La MV '{{mv}}' no se selló al cierre del {{day}}: otra compilación suya tiene la reserva",
+      "mv_window_unchanged": "La MV '{{mv}}' no se selló al cierre del {{day}}: nada de lo que lee cambió desde su última compilación",
+      "landing_time_pipeline": "La tabla '{{table}}' guarda su hora de llegada en {{column}}, pero su almacén carga el topic por su propia canalización, donde Provisa no ve llegar cada mensaje."
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",
@@ -599,6 +605,7 @@
       "wrong_tier": "Este sandbox se sirve en otro lugar; ábralo desde su propia dirección.",
       "unknown_demo": "No hay ninguna demostración publicada llamada {{demo}}.",
       "demo_not_ready": "Esta demostración todavía se está preparando. Inténtelo de nuevo en breve.",
+      "demo_stores_failed": "No se pudo iniciar esta demostración. Inténtelo de nuevo en unos minutos.",
       "at_capacity": "Todos los sandboxes de demostración están en uso. Inténtelo de nuevo en breve.",
       "starting": "El servidor de demostración se está iniciando. Vuelve a intentarlo en uno o dos minutos.",
       "disk_full": "Este sandbox ha agotado su límite de disco de {{limit}} bytes; no se puede escribir nada más en él.",

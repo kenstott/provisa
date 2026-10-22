@@ -545,6 +545,8 @@ def _ep(columns):
         columns=columns,
         promotions=[],
         default_params={},
+        response_normalizer=None,
+        query_template=None,
     )
 
 
@@ -1144,6 +1146,39 @@ class TestMaterializeApiToEngineCache:
             )
         assert step.await_args.args[:2] == ("pets", ep)
         assert (rewrites, ctes, dropped) == ({"pets": (loc, "r_x")}, {}, {})
+
+    async def test_a_sparql_tables_call_carries_the_statements_narrowed_query(self):
+        """REQ-2138: the conditions and LIMIT a statement puts on a SPARQL table are sent in its
+        query, as an argument of the call, so its answer is kept apart from the whole table's."""
+        from provisa.api_source.models import ApiEndpoint
+
+        ep = ApiEndpoint(
+            source_id="src",
+            path="/sparql",
+            method="POST",
+            table_name="pets",
+            columns=[_col("name")],
+            body_encoding="form",
+            query_template="SELECT ?name WHERE { ?p <urn:name> ?name }",
+            response_normalizer="sparql_bindings",
+        )
+        state = SimpleNamespace(
+            hot_manager=None,
+            api_endpoints={("src", "pets"): ep},
+            tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
+            graphql_remote_sources={},
+        )
+        step = AsyncMock()
+        with patch("provisa.api.data.materialization._mat_api_ep_table", new=step):
+            await _materialize_api_to_engine_cache(
+                "SELECT name FROM pets WHERE name = 'Rex' LIMIT 2", state, table_ids=[PETS]
+            )
+        assert step.await_args.kwargs["pushed"] == {
+            "query": "SELECT * WHERE {\n"
+            "  { SELECT ?name WHERE { ?p <urn:name> ?name } }\n"
+            '  FILTER(STR(?name) = "Rex")\n'
+            "}\nLIMIT 2"
+        }
 
     async def test_gql_remote_missing_required_arg_drops_branch(self):
         # REQ-1986: in a sweep (a UNION) a table lacking a required parameter is left out; its

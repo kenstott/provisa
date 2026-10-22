@@ -43,7 +43,8 @@ let pollyRuns = 0;
 
 /** REQ-1810: what present_choice asks for and what it resolves with. */
 export type ChoiceMode = "single" | "multi" | "yes_no";
-export type ChoiceAnswer = string | string[] | boolean;
+// null: the user closed the widget without choosing -- an answer of its own, never an empty one.
+export type ChoiceAnswer = string | string[] | boolean | null;
 
 export interface PresentChoiceRequest {
   question: string;
@@ -245,6 +246,13 @@ export async function executeClientTool(
       return { success: false, message: `present_choice: 'options' is required for mode ${mode}` };
     }
     const selected = await ctx.presentChoice({ question, mode, options });
+    if (selected === null) {
+      return {
+        success: true,
+        message: "The user closed the choice without picking an option.",
+        selected,
+      };
+    }
     return { success: true, message: "Answered.", selected };
   }
 

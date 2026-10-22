@@ -162,6 +162,20 @@ describe("what a code source saves", () => {
     ).not.toHaveProperty("llm");
   });
 
+  it("keeps how many workers it runs, and writes none for the one it runs by default", () => {
+    // REQ-2131: a column transform's batches run side by side across the source's workers.
+    const four = JSON.parse(
+      codeMappingJson("python", { code_package: "a", code_version: "1", code_workers: "4" }),
+    );
+    expect(four.workers).toBe(4);
+    expect(codeFieldsFromMapping(JSON.stringify(four)).code_workers).toBe("4");
+    const one = JSON.parse(
+      codeMappingJson("python", { code_package: "a", code_version: "1", code_workers: "1" }),
+    );
+    expect(one).not.toHaveProperty("workers");
+    expect(codeFieldsFromMapping(JSON.stringify(one)).code_workers).toBe("1");
+  });
+
   it("keeps its settings, one name = value to a line", () => {
     const mapping = JSON.parse(
       codeMappingJson("python", {

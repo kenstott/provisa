@@ -85,6 +85,18 @@ const rowOf = (text: string) =>
   within(screen.getByTestId("relationships-list")).getByText(text).closest("tr")!;
 const panel = () => screen.getByTestId("relationships-split-panel");
 
+describe("RelationshipsPage: the list's search", () => {
+  it("lists the relationships matching any word of the search", () => {
+    render(<RelationshipsPage />);
+    fireEvent.change(screen.getByTestId("filter-input"), {
+      target: { value: "customers payments" },
+    });
+    const list = within(screen.getByTestId("relationships-list"));
+    expect(list.getByText("orders.customer_id")).toBeInTheDocument();
+    expect(list.queryByText("orders.region_id")).toBeNull();
+  });
+});
+
 describe("RelationshipsPage: the right-hand detail panel", () => {
   it("has no panel until a row is chosen, then shows that relationship and marks its row", () => {
     render(<RelationshipsPage />);

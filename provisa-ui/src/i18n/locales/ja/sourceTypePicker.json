@@ -9,6 +9,25 @@
     "reachLive": "ライブ（その場で読み取り）",
     "reachReplica": "レプリカ（更新されるコピー）",
     "reachLiveOn": "{{engines}} でのみライブ",
-    "reachNone": "このエンジンからは到達できません"
+    "reachNone": "このエンジンからは到達できません",
+    "categories": {
+      "Subscriptions": "サブスクリプション",
+      "RDBMS": "RDBMS",
+      "Cloud DW": "クラウドデータウェアハウス",
+      "Analytics": "アナリティクス",
+      "Data Lake": "データレイク",
+      "NoSQL": "NoSQL",
+      "Code": "コードリゾルバー",
+      "Graph": "グラフ",
+      "File": "ファイル",
+      "API": "API",
+      "Streaming": "ストリーミング",
+      "Enterprise": "エンタープライズ",
+      "Data Quality": "データ品質",
+      "Other": "その他"
+    },
+    "categorySubtitles": {
+      "Code": "Python または Node によるビジネスロジック"
+    }
   }
 }

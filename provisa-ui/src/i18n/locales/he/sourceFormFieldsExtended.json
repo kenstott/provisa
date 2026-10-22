@@ -203,6 +203,11 @@
     "accountEmailHint": "הדוא\"ל שבו נכנסים ל-Atlassian; אסימון ה-API שייך לחשבון זה.",
     "apiToken": "אסימון API",
     "apiTokenHint": "נוצר ב-id.atlassian.com, Security, API tokens. נשמר בכספת הסודות.",
-    "siteAddressInvalid": "הזינו את הכתובת המלאה של האתר, המתחילה ב-https://"
+    "siteAddressInvalid": "הזינו את הכתובת המלאה של האתר, המתחילה ב-https://",
+    "namingInherit": "ירושה (גלובלי)",
+    "reasoner": "מנוע הסקה",
+    "reasonerNone": "ללא",
+    "axioms": "אקסיומות OWL",
+    "axiomsHint": "תחביר Turtle,‏ RDF/XML, פונקציונלי או Manchester. טבלה שהשאילתה שלה היא IRI יחיד, כגון <http://example.org/kyc#controls>, קוראת את מה שמוסק מהן."
   }
 }

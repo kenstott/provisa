@@ -31,4 +31,3 @@ export function setActingRoles(header: string | null): void {
 export function currentActingRoles(): string | null {
   return acting;
 }
-

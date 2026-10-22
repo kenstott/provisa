@@ -8,14 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/cypher/graph_rewriter.py."""
+"""Unit tests for provisa/gql/graph_rewriter.py."""
 
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.cypher.graph_rewriter import apply_graph_rewrites
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
-from provisa.cypher.translator_types import GraphVarKind
+from provisa.gql.graph_rewriter import apply_graph_rewrites
+from provisa.gql.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.translator_types import GraphVarKind
 
 
 def _make_domain_label_map() -> CypherLabelMap:
@@ -165,7 +165,7 @@ def test_no_duplicate_id_key_when_column_named_id():
 def test_domain_node_props_in_json():
     """Domain-only MATCH (n:PetStore) RETURN n must include domain props in JSON output."""
     from provisa.cypher.parser import parse_cypher
-    from provisa.cypher.translator import cypher_to_sql
+    from provisa.gql.translator import cypher_to_sql
 
     lm = _make_domain_label_map()
     ast = parse_cypher("MATCH (n:PetStore) RETURN n LIMIT 5")

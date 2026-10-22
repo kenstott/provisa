@@ -12,11 +12,20 @@
 // Extracted out of SourceFormFieldsExtended.tsx to keep that file under the eslint max-lines gate
 // (same pattern as PushFeedFormSection.tsx).
 
-import { PasswordInput, Select, TextInput } from "@mantine/core";
+import { PasswordInput, Select, Textarea, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { AuthUserPass } from "./AuthUserPass";
 import type { SourceFormState } from "./SourceFormFields";
 import { FormField } from "../../components/form/FormLayout";
+import { SPARQL_REASONERS } from "./sparqlReasoner";
+
+/** The fields that are not the auth mode's own, kept when the mode changes. */
+function kept(fields: Record<string, string>): Record<string, string> {
+  const { default_graph_uri, reasoner, axioms } = fields;
+  return Object.fromEntries(
+    Object.entries({ default_graph_uri, reasoner, axioms }).filter(([, v]) => v !== undefined),
+  ) as Record<string, string>;
+}
 
 export function SparqlFormSection({
   form,
@@ -56,14 +65,44 @@ export function SparqlFormSection({
           data-testid="sparql-default-graph-uri-input"
         />
       </FormField>
+      {/* REQ-2138: a reasoner and its OWL axioms; a table whose query is one IRI reads what
+          they infer. */}
+      <FormField size="medium">
+        <Select
+          label={t("sourceFormFieldsExtended.reasoner")}
+          value={authFields.reasoner ?? ""}
+          onChange={(v) => setAuthFields({ ...authFields, reasoner: v ?? "" })}
+          data={[
+            { value: "", label: t("sourceFormFieldsExtended.reasonerNone") },
+            ...SPARQL_REASONERS.map((r) => ({ value: r, label: "HermiT" })),
+          ]}
+          allowDeselect={false}
+          data-testid="sparql-reasoner-select"
+        />
+      </FormField>
+      {authFields.reasoner && (
+        <FormField size="long" help={t("sourceFormFieldsExtended.axiomsHint")}>
+          <Textarea
+            required
+            label={t("sourceFormFieldsExtended.axioms")}
+            value={authFields.axioms ?? ""}
+            onChange={(e) => setAuthFields({ ...authFields, axioms: e.target.value })}
+            autosize
+            minRows={6}
+            maxRows={20}
+            styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+            data-testid="sparql-axioms-input"
+          />
+        </FormField>
+      )}
       <FormField section="authentication" size="medium">
         <Select
           label={t("sourceFormFieldsExtended.authentication")}
           value={authType}
           onChange={(v) => {
             setAuthType(v ?? "");
-            // Keep default_graph_uri — it's orthogonal to auth mode.
-            setAuthFields({ default_graph_uri: authFields.default_graph_uri ?? "" });
+            // Keep default_graph_uri and the reasoner: they are orthogonal to the auth mode.
+            setAuthFields(kept(authFields));
           }}
           data={[
             { value: "none", label: t("sourceFormFieldsExtended.authNone") },

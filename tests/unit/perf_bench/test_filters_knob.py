@@ -292,11 +292,12 @@ def test_grpc_client_sends_the_filter(monkeypatch: pytest.MonkeyPatch, tmp_path:
         def _resolve_message_class(self, name: str) -> Any:
             return _Msg
 
-        _channel = SimpleNamespace(
-            unary_stream=lambda path, **kw: (
-                lambda req, metadata: sent.append((req, metadata)) or [req]
+        def channel(self) -> Any:
+            return SimpleNamespace(
+                unary_stream=lambda path, **kw: (
+                    lambda req, metadata: sent.append((req, metadata)) or [req]
+                )
             )
-        )
 
     monkeypatch.setattr(ol, "_grpc_shared", FakeTransport())
     setup = _setup(tmp_path)

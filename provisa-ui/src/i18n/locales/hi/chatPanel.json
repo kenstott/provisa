@@ -34,6 +34,7 @@
     "chooseFile": "भेजने के लिए फ़ाइल",
     "graphCaption": "नोड: {{nodes}} · संबंध: {{relationships}}",
     "downloadPng": "PNG डाउनलोड करें",
-    "openOnGraphPage": "ग्राफ़ पेज पर खोलें"
+    "openOnGraphPage": "ग्राफ़ पेज पर खोलें",
+    "choiceClosed": "(बिना चुने बंद किया गया)"
   }
 }

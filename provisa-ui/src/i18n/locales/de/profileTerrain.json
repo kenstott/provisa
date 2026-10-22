@@ -62,6 +62,11 @@
     "flagBimodal": "Bimodal",
     "flagSpike": "Spitze bei {{value}} ({{pct}})",
     "flagBeyond": "{{rows}} jenseits von 3×IQR",
-    "flagDistinct": "{{count}} eindeutig"
+    "flagDistinct": "{{count}} eindeutig",
+    "includeColumn": "{{column}} im Terrain zeigen",
+    "includeAll": "Alle",
+    "includeNone": "Keine",
+    "includeAllAria": "Jede Spalte im Terrain zeigen",
+    "includeNoneAria": "Jede Spalte aus dem Terrain nehmen"
   }
 }

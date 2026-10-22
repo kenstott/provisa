@@ -61,6 +61,22 @@ def test_a_held_statement_is_current_only_under_the_generation_it_was_governed_i
     )
 
 
+def test_a_held_statement_is_current_only_under_the_time_travel_it_was_governed_under():
+    """REQ-2110: a statement held from its Describe is governed again once the session's
+    SET provisa.as_of / provisa.as_recorded has changed."""
+    import dataclasses
+
+    from provisa.pgwire._pipeline import _mint_stamp, governed_statement_is_current
+
+    state = SimpleNamespace(schema_boot_id="boot", schema_version=3)
+    held = _governed(_mint_stamp())
+    assert governed_statement_is_current(held, state, as_of=None)
+    assert not governed_statement_is_current(held, state, as_of="as-of-key")
+    travelled = dataclasses.replace(held, as_of="as-of-key")
+    assert governed_statement_is_current(travelled, state, as_of="as-of-key")
+    assert not governed_statement_is_current(travelled, state, as_of=None)
+
+
 def test_route_governed_refuses_a_statement_the_pipeline_did_not_govern():
     from provisa.pgwire._pipeline import route_governed
 

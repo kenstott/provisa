@@ -8,14 +8,6 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-export const NAMING_CONVENTIONS = [
-  { value: "", label: "Inherit (source)" },
-  { value: "none", label: "none" },
-  { value: "snake_case", label: "snake_case" },
-  { value: "camelCase", label: "camelCase" },
-  { value: "PascalCase", label: "PascalCase" },
-];
-
 export const CDC_TYPES = new Set(["postgresql", "mongodb", "kafka", "debezium"]);
 
 // REQ-1141: IANA time-zone identifiers for the off-peak-window zone picklist. Sourced from the

@@ -72,6 +72,9 @@ export const IMPL_KINDS = [
   { value: "python", label: "Python (in-process)" },
   // REQ-2001: a Provisa SQL statement, governed and run as the caller.
   { value: "statement", label: "Provisa SQL statement" },
+  // REQ-2131: a code source's @columns function, a batch column transform applied in a
+  // projection. Chosen by picking a code source; its columns follow from the function.
+  { value: "code_columns", label: "Column transform (code source)" },
 ];
 
 export const ARG_KINDS = [
@@ -197,3 +200,7 @@ export const OPERATION_SCHEMA: Record<string, string> = {
   graphql_remote: "graphql",
   grpc_remote: "grpc_remote",
 };
+
+// REQ-2131: the schema a code source's @columns functions are offered and registered under.
+// A code source offers functions to pick, registered as column transforms.
+export const CODE_SCHEMA: Record<string, string> = { node: "code", python: "code" };

@@ -186,6 +186,9 @@ class OrgRuntime:
     mv_registry: MVRegistry = field(default_factory=MVRegistry)
     view_sql_map: dict[str, str] = field(default_factory=dict)
     bitemporal_view_reads: dict = field(default_factory=dict)
+    # REQ-2131: the views that apply a column transform: each is read only from its stored table
+    # (its view_sql_map entry is that read, already physical), never by expanding its SQL.
+    stored_view_reads: set[str] = field(default_factory=set)
     table_cache: dict[int, int | None] = field(default_factory=dict)
     # REQ-1266: what the org's build records about its sources and tables, keyed by source ids,
     # table names and table ids that repeat from one org to the next.
@@ -275,6 +278,9 @@ class OrgRuntime:
     # (app_loaders._load_tracked_functions_and_webhooks). Each environment holds its own model,
     # so its own commands: a Test (synthetic) environment defines fewer than its parent.
     tracked_functions: dict[str, dict] = field(default_factory=dict)
+    # REQ-2131: its registered column transforms (``code_columns`` commands), by name: applied in a
+    # projection, never called on their own, so on no surface as commands.
+    column_transforms: dict[str, dict] = field(default_factory=dict)
     tracked_webhooks: dict[str, dict] = field(default_factory=dict)
     # REQ-1942: command name -> why it is not defined here: a command of a source bound to a synthetic store
     # in a Test (synthetic) environment. A call to one is refused saying so.

@@ -42,6 +42,7 @@
     "kind_terrain": "שטח",
     "kind_relationsMap": "קשרים",
     "kind_jointCloud": "ענן משותף",
-    "kind_driftStrata": "שכבות סטייה"
+    "kind_driftStrata": "שכבות סטייה",
+    "resultsMenu": "תוצאות"
   }
 }

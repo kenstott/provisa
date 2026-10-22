@@ -203,6 +203,11 @@
     "accountEmailHint": "用於登入 Atlassian 的電郵；API 權杖屬於此帳戶。",
     "apiToken": "API 權杖",
     "apiTokenHint": "在 id.atlassian.com 建立，Security, API tokens。保存在密鑰保管庫中。",
-    "siteAddressInvalid": "請輸入完整的網站地址，以 https:// 開頭"
+    "siteAddressInvalid": "請輸入完整的網站地址，以 https:// 開頭",
+    "namingInherit": "繼承（全域）",
+    "reasoner": "推理機",
+    "reasonerNone": "無",
+    "axioms": "OWL 公理",
+    "axiomsHint": "Turtle、RDF/XML、函數式或 Manchester 語法。查詢為單一 IRI（例如 <http://example.org/kyc#controls>）的表讀取由公理推斷出的內容。"
   }
 }

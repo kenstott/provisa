@@ -67,7 +67,15 @@
       "refreshing": "...",
       "disable": "Uitschakelen",
       "enable": "Inschakelen",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "Versielogboek van {{table}}",
+      "fullCapture": "Volledige vastlegging",
+      "fullCaptureHelp": "Leest de hele tabel opnieuw en legt rijen vast die sinds de laatste vastlegging zijn verwijderd.",
+      "logSettings": "Instellingen",
+      "logInterval": "Vastleginterval (seconden)",
+      "logIntervalHelp": "Hoe vaak de tabel wordt gelezen op rijen die sinds de laatste vastlegging zijn vastgelegd.",
+      "logLateness": "Toegestane vertraging (seconden)",
+      "logLatenessHelp": "Hoe ver vóór de laatste vastlegtijd elke vastlegging opnieuw leest, zodat een te laat vastgelegde rij toch wordt bewaard."
     },
     "pagination": {
       "first": "Eerste pagina",

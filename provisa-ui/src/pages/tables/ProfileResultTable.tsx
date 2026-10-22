@@ -13,6 +13,7 @@
 // run's results has an expand button that draws it again in the 95% modal, as the 3D views do
 // (Expandable3D).
 
+import type { CSSProperties } from "react";
 import { Group } from "@mantine/core";
 import { ResultsGrid } from "../sql/ResultsGrid";
 import { useResultsGrid } from "../sql/useResultsGrid";
@@ -28,8 +29,11 @@ interface Props {
   testId: string;
   /** The expanded copy's title, and the downloaded workbook's name. */
   title: string;
-  /** The in-place copy's height; the expanded one fills its modal. */
-  height: number;
+  /** The in-place copy's height, or "fill" for the rest of a flex column it sits in; the expanded
+   * one fills its modal. */
+  height: number | "fill";
+  /** ``height`` is a cap: the grid is as tall as its rows, up to it. */
+  fitRows?: boolean;
   expandable?: boolean;
   onRowClick?: (row: Row) => void;
   selectedRow?: (row: Row) => boolean;
@@ -48,11 +52,19 @@ function Grid({ rows, columns, title, onRowClick, selectedRow }: Props) {
   );
 }
 
+const FILL: CSSProperties = { flex: 1, minHeight: 0 };
+
 export function ProfileResultTable(props: Props) {
-  const { testId, height, expandable = true, title } = props;
+  const { testId, height, expandable = true, title, fitRows = false } = props;
+  const box: CSSProperties =
+    height === "fill"
+      ? FILL
+      : fitRows
+        ? { maxHeight: height, display: "flex", flexDirection: "column" }
+        : { height };
   if (!expandable) {
     return (
-      <div style={{ height }} data-testid={testId}>
+      <div style={box} data-testid={testId}>
         <Grid {...props} />
       </div>
     );
@@ -63,18 +75,22 @@ export function ProfileResultTable(props: Props) {
       testId={testId}
       render={(expanded, onExpand) =>
         expanded ? (
-          <div style={{ height: "100%" }} data-testid={`${testId}-expanded`}>
+          <div style={FILL} data-testid={`${testId}-expanded`}>
             <Grid {...props} />
           </div>
         ) : (
-          <>
+          <div
+            style={
+              height === "fill" ? { ...FILL, display: "flex", flexDirection: "column" } : undefined
+            }
+          >
             <Group justify="flex-end" mb={4}>
               {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
             </Group>
-            <div style={{ height }} data-testid={testId}>
+            <div style={box} data-testid={testId}>
               <Grid {...props} />
             </div>
-          </>
+          </div>
         )
       }
     />

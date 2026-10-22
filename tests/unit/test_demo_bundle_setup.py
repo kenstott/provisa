@@ -615,6 +615,8 @@ def _sync(
     ask_on_pull=False,
     wanted: str | None = None,
     lingering_until: int | None = None,
+    stores_fail: str | None = None,
+    failed_before: str | None = None,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -654,9 +656,13 @@ def _sync(
         f'#!/usr/bin/env bash\necho "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
     )
     (fake / "pull").chmod(0o755)
+    # stores_fail: the stores cannot be brought up, and demo_stores.py says why on stderr.
+    failing = f"sys.stderr.write({stores_fail!r} + '\\n')\nsys.exit(1)\n" if stores_fail else ""
     (fake / "demo_stores.py").write_text(
-        f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n{failing}"
     )
+    if failed_before is not None:
+        (bundles / "weblogs" / "failed").write_text(failed_before + "\n")
     env = {
         **os.environ,
         "PROVISA_DEMO_BUNDLES": "weblogs,later" if ask_on_pull else "weblogs",
@@ -693,6 +699,33 @@ def test_a_demo_asked_for_has_its_stores_brought_up_and_its_version_marked_ready
     assert run.returncode == 0, run.stderr
     assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
     assert (demo / "ready").read_text().strip() == _VERSION
+
+
+def test_a_demo_whose_stores_cannot_come_up_says_why_for_the_waiting_visitor(tmp_path):
+    """Its stores not brought up (a shared store that would not start), the version is not marked
+    ready and <name>/failed says why, which the tier answers the visitor waiting on it with --
+    never a demo left starting with nothing said (cloud-dev, 2026-10-22)."""
+    said = "Error response from daemon: failed to set up container networking"
+    run, demo, asked = _sync(tmp_path, requested=True, stores_fail=said)
+    assert run.returncode != 0
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert not (demo / "ready").exists()
+    assert said in (demo / "failed").read_text()
+    assert said in run.stderr  # the run's own log says it too
+    assert not (demo / ".up-errors").exists()
+
+
+def test_a_demo_whose_stores_come_up_again_is_ready_and_no_longer_failed(tmp_path):
+    run, demo, _ = _sync(tmp_path, requested=True, failed_before="it did not start")
+    assert run.returncode == 0, run.stderr
+    assert (demo / "ready").read_text().strip() == _VERSION
+    assert not (demo / "failed").exists()
+
+
+def test_the_nodes_start_clears_a_failure_its_last_run_left(tmp_path):
+    run, demo, _ = _sync(tmp_path, "--boot", failed_before="it did not start")
+    assert run.returncode == 0, run.stderr
+    assert not (demo / "failed").exists()
 
 
 def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp_path):

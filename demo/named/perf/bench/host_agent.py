@@ -189,6 +189,13 @@ def parse_rtt_target(value: str) -> tuple[str, tuple[str, int]]:
     return name, parse_listen(address)
 
 
+class _Server(ThreadingHTTPServer):
+    # The stdlib's listen backlog is 5: a peer's RTT probe (RTT_CONNECTS back-to-back connects)
+    # overran it while the accepting thread was busy, the kernel dropped the SYN, and that connect
+    # took the 1 s SYN retransmit -- a p99 of ~1 s that was the agent's, not the network's.
+    request_queue_size = 2 * RTT_CONNECTS
+
+
 def serve(
     listen: tuple[str, int],
     *,
@@ -198,7 +205,7 @@ def serve(
 ) -> ThreadingHTTPServer:
     if pid is not None:
         cpu_seconds(pid)  # refuse a pid that is not there before listening
-    return ThreadingHTTPServer(listen, handler(pid=pid, facts=facts, rtt_targets=rtt_targets))
+    return _Server(listen, handler(pid=pid, facts=facts, rtt_targets=rtt_targets))
 
 
 def main() -> int:

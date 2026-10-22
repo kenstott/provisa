@@ -1044,7 +1044,7 @@ Schema endpoint returns node_labels with a `pk: string | null` field (first PK c
 
 **Use case:** Explicit PK designation in schema enables semantic graph operations and node-centric navigation without node ID heuristics.
 
-**Code:** `provisa/api/rest/cypher_router.py`, `provisa/cypher/label_map.py`
+**Code:** `provisa/api/rest/cypher_router.py`, `provisa/gql/label_map.py`
 
 **Tests:** `tests/unit/test_core_registration.py`, `tests/unit/test_graph_schema.py`, `tests/unit/test_graph_schema_pk.py`, `tests/unit/test_relationship_alias.py`, `tests/unit/test_schema_pk_requirements.py`
 
@@ -3112,7 +3112,7 @@ Cypher translator detects ISO 8601 datetime string literals in WHERE clauses and
 
 **Use case:** Automatic timestamp coercion eliminates manual casting for timestamp PK comparisons in Cypher queries.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_schema_service.py`
 
@@ -3260,7 +3260,7 @@ Correlated CALL subqueries of the form CALL { WITH x MATCH (x)-[:R]->(n) RETURN 
 
 **Use case:** CROSS JOIN LATERAL translation of correlated CALL subqueries lets graph clients use subquery-pattern idioms that are common in openCypher workloads.
 
-**Code:** `provisa/cypher/correlated_call.py`, `provisa/cypher/translator.py`
+**Code:** `provisa/gql/correlated_call.py`, `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3274,7 +3274,7 @@ Relationships in Provisa exist solely as join metadata in the semantic layer (Jo
 
 **Use case:** Restricting relationships to join metadata avoids the complexity of relationship property storage while covering the vast majority of graph traversal use cases.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3288,7 +3288,7 @@ Bidirectional traversal syntax (a)-[]-(b) is rewritten at compile time to a UNIO
 
 **Use case:** Bidirectional sugar covers common graph traversal patterns without requiring stewards to register both directions of every relationship.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3302,7 +3302,7 @@ When shortestPath endpoints have different node types and no self-referential re
 
 **Use case:** Flat JOIN for heterogeneous shortestPath avoids unnecessary recursive CTE overhead when the schema topology determines the path uniquely.
 
-**Code:** `provisa/cypher/path_translator.py`
+**Code:** `provisa/gql/path_translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_path_translator.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3316,7 +3316,7 @@ When multiple schema paths of equal hop count connect the same start and end nod
 
 **Use case:** Emitting all schema paths as UNION ALL branches ensures no valid traversal is silently omitted when multiple relationship types connect the same pair of node types.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3330,7 +3330,7 @@ WITH clause CTEs are named _w0, _w1, ... using a positional index assigned withi
 
 **Use case:** Positional CTE naming is deterministic within one translation call; the collision risk on batch composition is a known limitation that callers must handle.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3496,7 +3496,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** Relationship immutability prevents accidental FK manipulation and keeps relationship metadata consistent with the declared join paths.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/label_map.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/label_map.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
@@ -3510,7 +3510,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** Property-to-column mapping with type coercion enables straightforward graph-idiomatic CREATE statements without explicit SQL casting.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/select_builder.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/select_builder.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`
 
@@ -3524,7 +3524,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** WHERE clause reuse avoids duplicating filter translation logic between read and write paths.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/select_builder.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/select_builder.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`
 
@@ -3538,7 +3538,7 @@ Relationships in Cypher cannot be written. They are derived from foreign-key joi
 
 **Use case:** Property-to-column mapping with multi-assignment composition lets graph clients issue idiomatic UPDATE patterns.
 
-**Code:** `provisa/cypher/write_translator.py`, `provisa/cypher/select_builder.py`
+**Code:** `provisa/cypher/write_translator.py`, `provisa/gql/select_builder.py`
 
 **Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`
 
@@ -7406,7 +7406,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Use case:** Consistent JSON serialization of graph objects enables client libraries to deserialize typed node/edge/path representations.
 
-**Code:** `provisa/cypher/assembler.py`, `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/assembler.py`, `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `provisa-ui/e2e/cypher-api.spec.ts`
 
@@ -7420,7 +7420,7 @@ Variable-length relationship patterns `[*1..n]` are compiled to recursive CTEs i
 
 **Use case:** Variable-length traversals enable clients to explore multi-hop relationships without writing nested joins.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7432,7 +7432,7 @@ Intermediate node property access in multi-hop MATCH patterns (e.g., `(p:Person)
 
 **Use case:** Complex traversals require filtering and returning properties from intermediate nodes without manual projection.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7444,7 +7444,7 @@ Path object RETURN (e.g., `RETURN p`) emits a JSON_OBJECT with `nodes` (array of
 
 **Use case:** Returning entire paths as objects enables clients to navigate graph traversals without unpacking individual nodes/edges.
 
-**Code:** `provisa/cypher/translator.py`, `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/translator.py`, `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7456,7 +7456,7 @@ Correlated CALL subqueries (e.g., `CALL { WITH x MATCH (x)-[:REL]->(y) RETURN y 
 
 **Use case:** Correlated subqueries enable filtering inner results based on outer row context without materializing cartesian joins.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7468,7 +7468,7 @@ Node label alternation (e.g., `(n:Label1|Label2)`) translates to UNION ALL branc
 
 **Use case:** Label alternation enables flexible node matching without explicit OR conditions.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7480,7 +7480,7 @@ Subquery predicates — EXISTS { ... }, COUNT { ... }, COLLECT { ... } — trans
 
 **Use case:** Subquery predicates enable complex filtering based on related-node aggregations without intermediate MATCH clauses.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7492,7 +7492,7 @@ Map projections — `n { .prop1, .prop2 }`, `n { .* }`, `n { key: expr }` — tr
 
 **Use case:** Map projections enable client-friendly reshaping of returned objects without manual column aliasing.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7504,7 +7504,7 @@ Bidirectional edge traversal (e.g., `(a)-[]-(b)` without direction marker) expan
 
 **Use case:** Bidirectional traversal enables undirected graph exploration without explicit forward/backward branches.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7516,7 +7516,7 @@ Backward relationship traversal (e.g., `(c:Company)<-[:WORKS_AT]-(p:Person)`) in
 
 **Use case:** Backward traversal enables reverse-direction path queries without schema bidirectionality.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7528,7 +7528,7 @@ String, list, and numeric functions (LEFT, RIGHT, TRIM, SIZE, COUNT DISTINCT, RE
 
 **Use case:** Function support enables rich query expressions without learning Trino-specific syntax.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7540,7 +7540,7 @@ Implicit GROUP BY is inferred in the RETURN clause when non-aggregated columns a
 
 **Use case:** Implicit GROUP BY matches Neo4j Cypher semantics and reduces query verbosity.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7552,7 +7552,7 @@ CASE expressions (both searched `CASE WHEN ... THEN ... ELSE ... END` and simple
 
 **Use case:** CASE expressions enable conditional logic in projections and filters without external control flow.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7564,7 +7564,7 @@ UNWIND clauses (e.g., `UNWIND [1,2,3] AS x`) translate to Trino UNNEST with CROS
 
 **Use case:** UNWIND enables iteration over lists without explicit array expansion in the application.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7576,7 +7576,7 @@ IN list predicates (e.g., `n.age IN [25, 30, 35]`) translate directly to SQL IN 
 
 **Use case:** IN predicates enable efficient filtering on multi-value sets without repeated OR conditions.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7588,7 +7588,7 @@ Pattern comprehensions (e.g., `[(p)-[:WORKS_AT]->(c:Company) | c.name]`) transla
 
 **Use case:** Pattern comprehensions enable inline aggregation of related rows without explicit GROUP BY.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7600,7 +7600,7 @@ length(p) function on a path variable returns the hop count (number of edges). F
 
 **Use case:** length(p) enables path-based filtering and ordering without explicit edge counting.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7612,7 +7612,7 @@ Recursive CTE shortestPath and allShortestPaths functions enforce max-hop bounds
 
 **Use case:** Shortest-path functions enable efficient shortest-path queries without client-side traversal algorithms.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7624,7 +7624,7 @@ Node graph variable deserialization from SQL result rows. JSON columns marked as
 
 **Use case:** Node deserialization enables type-safe access to node objects in the assembler stage before HTTP response serialization.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7636,7 +7636,7 @@ Edge graph variable deserialization from SQL result rows. JSON columns marked as
 
 **Use case:** Edge deserialization enables type-safe access to relationship objects with start/end node tracking.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7648,7 +7648,7 @@ Path graph variable deserialization from SQL result rows. Rows with _path_id and
 
 **Use case:** Path deserialization enables client-friendly navigation of multi-hop graph results without manual array unpacking.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7660,7 +7660,7 @@ Variable-length relationship edge columns (e.g., `[c*..5]` variable) are deseria
 
 **Use case:** Variable-length edge deserialization enables structured access to multi-hop relationship sequences.
 
-**Code:** `provisa/cypher/assembler.py`
+**Code:** `provisa/gql/assembler.py`
 
 **Tests:** `tests/unit/test_cypher_assembler.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7672,7 +7672,7 @@ Graph rewriter applies JSON object wrapping to all graph variables in the SELECT
 
 **Use case:** The graph rewriter preserves data integrity by making every graph variable JSON-compatible before HTTP serialization.
 
-**Code:** `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7684,7 +7684,7 @@ Domain-scoped node projections (e.g., `MATCH (n:PetStore) RETURN n`) include all
 
 **Use case:** Domain-scoped queries enable exploration of all entities within a business domain without explicit type specification.
 
-**Code:** `provisa/cypher/graph_rewriter.py`, `provisa/cypher/translator.py`
+**Code:** `provisa/gql/graph_rewriter.py`, `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7696,7 +7696,7 @@ Duplicate JSON key prevention. When a table's id_column differs from 'id' but th
 
 **Use case:** Duplicate key prevention ensures well-formed JSON output from federated tables with unconventional id column naming.
 
-**Code:** `provisa/cypher/graph_rewriter.py`
+**Code:** `provisa/gql/graph_rewriter.py`
 
 **Tests:** `tests/unit/test_cypher_graph_rewriter.py`
 
@@ -7708,7 +7708,7 @@ Anonymous all-rels path pattern `MATCH p=()-->()` (no node/edge labels or variab
 
 **Use case:** Anonymous paths enable exploratory graph queries without schema knowledge.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7720,7 +7720,7 @@ OPTIONAL MATCH chains (e.g., `OPTIONAL MATCH (a)-[r1]->(b) OPTIONAL MATCH (b)-[r
 
 **Use case:** OPTIONAL MATCH chains enable exploratory traversals where intermediate results may be absent without failing the entire query.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7732,7 +7732,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Use case:** UNION ALL queries enable multi-entity result merging and cross-entity property filtering in a single query.
 
-**Code:** `provisa/cypher/translator.py`
+**Code:** `provisa/gql/translator.py`
 
 **Tests:** `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
@@ -7820,7 +7820,7 @@ Auto-impute endpoint generates relationship edges for visible graph nodes based 
 
 **Use case:** Graph Explorer users need to automatically discover edges between visible nodes without manually querying each relationship type.
 
-**Code:** `provisa/api/rest/cypher_router.py`, `provisa/cypher/assembler.py`
+**Code:** `provisa/api/rest/cypher_router.py`, `provisa/gql/assembler.py`
 
 **Tests:** `provisa-ui/e2e/cypher-impute-edges.spec.ts`, `tests/unit/test_cypher_analytics.py`
 
@@ -7832,7 +7832,7 @@ Imputed edge startNode/endNode ids must be stable integers (registered via node_
 
 **Use case:** Graph Explorer relies on stable node ids (as registered in node_ids.id) to correlate imputed edges with visible nodes; raw PKs cause canvas lookup failures.
 
-**Code:** `provisa/api/rest/cypher_router.py`, `provisa/cypher/assembler.py`
+**Code:** `provisa/api/rest/cypher_router.py`, `provisa/gql/assembler.py`
 
 **Tests:** `provisa-ui/e2e/cypher-impute-edges.spec.ts`, `tests/unit/test_cypher_analytics.py`
 
@@ -8120,7 +8120,7 @@ The Bolt endpoint must never subvert the connecting user's domain rights. The ac
 
 **Use case:** Bolt's flexible query language (cypher) could bypass view/role filtering if not enforced at the session/catalog level. This requirement ensures domain visibility is the immovable constraint, not an advisory filter.
 
-**Code:** `provisa/bolt/session.py`, `provisa/cypher/assembler.py`, `provisa/api/rest/cypher_router.py`
+**Code:** `provisa/bolt/session.py`, `provisa/gql/assembler.py`, `provisa/api/rest/cypher_router.py`
 
 **Tests:** `tests/unit/test_bolt_domain_ceiling.py`, `tests/integration/test_bolt_domain_ceiling.py`
 
@@ -8186,13 +8186,13 @@ The `X-Provisa-Sink` request header on a subscription request redirects the subs
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-The `live` block (LiveDeliveryConfig on Table) is a unified change-feed / CDC abstraction. The binary `delivery: poll|cdc` field is replaced by a multi-strategy model: `strategy: poll|native|debezium|kafka`. Per-table params: poll → watermark_column/poll_interval; native → none; kafka → LiveKafkaParams (topic/format/key_column/field_mapping). Reconciled with [REQ-824](#REQ-824): Debezium/Kafka delta-transport (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id) is inherited from Source.cdc, entered once per source and NOT repeated in per-table debezium params. query_id and outputs are optional so `live` covers both raw table change-feeds and live persisted-query output fan-out. Debezium topic names are derived from the source transport: {topic_prefix}.{schema}.{table}.
+The `live` block (LiveDeliveryConfig on Table) is a unified change-feed / CDC abstraction. The binary `delivery: poll|cdc` field is replaced by a multi-strategy model: `strategy: poll|native|debezium|kafka`. Per-table params: poll → watermark_column/poll_interval; native → none; kafka → LiveKafkaParams (topic/format/key_column/field_mapping). Reconciled with [REQ-824](#REQ-824): Debezium/Kafka delta-transport (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id) is inherited from Source.cdc, entered once per source and NOT repeated in per-table debezium params. query_id and outputs are optional so `live` covers both raw table change-feeds and live persisted-query output fan-out. Debezium topic names are derived from the source transport: {topic_prefix}.{schema}.{table}. (Amended 2026-10-21, LANDING TIME:) A live Kafka table may declare a landing-time column (kafka.landing_time_column), one of its timestamp columns. Provisa fills it with the time it lands each message, stamped as mail landing stamps its rows: one stamp per landed batch, each later than the last. It is when the row was recorded in Provisa, whatever time the message carries, so a view over the table can declare it as its recorded_time ([REQ-2109](#REQ-2109)). The table form offers it among the topic's settings.
 
 **Use case:** A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY, MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll vs CDC" where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution. Optional query_id and outputs enable both low-level table subscriptions and high-level live persisted-query delivery.
 
-**Code:** `provisa/core/models.py`
+**Code:** `provisa/core/models.py`, `provisa/events/push_wiring.py`, `provisa/api/admin/types.py`, `provisa/api/admin/_live_mappers.py`, `provisa/api/admin/_row_mappers.py`, `provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx`, `provisa-ui/src/pages/tables/loadReadFields.tsx`, `provisa/api/admin/_table_settings.py`, `provisa/api/mcp/table_edit.py`, `demo/named/perf/bench/governance.py`
 
-**Tests:** `tests/unit/test_live_delivery_config.py`
+**Tests:** `tests/unit/test_live_delivery_config.py`, `tests/unit/test_kafka_landing_time.py`, `tests/integration/test_provisioning_demo.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [subscriptions.md](../subscriptions.md)
 
@@ -9508,7 +9508,7 @@ Every query transform — governance (RLS, masking, visibility, row-cap), correl
 
 **Use case:** String/regex transforms silently mis-apply governance: a scalar subquery in the projection moves the masking boundary (PII leak), a non-t0 alias convention skips RLS qualification (scope-ambiguous predicate), and a parameterized LIMIT bypasses the row-cap ceiling. AST transforms make "governance applied" a structural property of the tree rather than a textual coincidence each frontend must keep satisfying.
 
-**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/rls.py`, `provisa/transpiler/transpile.py`, `provisa/cypher/translator.py`, `provisa/cypher/expr_parser.py`
+**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/rls.py`, `provisa/transpiler/transpile.py`, `provisa/gql/translator.py`, `provisa/cypher/expr_parser.py`
 
 **Tests:** `tests/unit/test_ast_transform_invariants.py`, `tests/unit/test_ast_transforms.py`, `tests/integration/test_ast_transform_e2e.py`, `tests/unit/test_cypher_expr_parser.py`
 
@@ -12376,7 +12376,7 @@ The platform MUST be able to merge every per-view / per-statement column-level l
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A materialized view's time-travel capability is a property of its DEFINITION, guaranteed on any materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY: a version, once written, is never updated or deleted (no valid_to write-back), so it works on engines that cannot cheaply UPDATE a federated store. Each refresh appends one of two ways: `snapshot` appends the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys, never folded row-by-row in Provisa. "As of" history is DERIVED at read time from the immutable append log (latest batch for snapshot; a ROW_NUMBER window per entity key for delta), so consumer-facing `as_of` semantics are identical across every substrate. On Iceberg each append is exactly one snapshot ([REQ-844](#REQ-844)). Declared end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal -> refresh_mv) with a UI control in TableEditForm. NOTE: exposing `as_of` as a query-language argument that routes bitemporal-MV reads through reconstruction is tracked as [REQ-1163](#REQ-1163) (the consumer query surface, analogous to [REQ-372](#REQ-372) for sources). (Amended 2026-10-16, DECLARED IN CONFIG AND CARRIED BY A DEMO BUNDLE:) a config.yaml view declares it as bitemporal_mode and bitemporal_key. A view's history is its append log and no rebuild from its sources gives it back, so a named demo's bundle carries it: the build writes each bitemporal view's append log, as its setup left it, beside the seed (seeded/views.duckdb, seeded/views.json); the demo's template copies it into its own store when its runtime is built, before any refresh of it; and each sandbox is given the template's. A refresh over sources unchanged since appends nothing, so the history is the view's own wherever the demo runs. A bitemporal view the setup never built fails the build by name.
+A materialized view's time-travel capability is a property of its DEFINITION, guaranteed on any materializing substrate (Iceberg, PostgreSQL, DuckDB, ...). Maintenance is APPEND-ONLY: a version, once written, is never updated or deleted (no valid_to write-back), so it works on engines that cannot cheaply UPDATE a federated store. [SUPERSEDED by [REQ-2109](#REQ-2109), 2026-10-20 -- no mode is declared; Provisa picks the mechanism from business_key, valid_time and recorded_time. Kept here for history; do not implement against it.] Each refresh appends one of two ways: `snapshot` appends the whole fresh dataset stamped with system time; `delta` appends only the rows the ENGINE computes as changed (anti-joins in INSERT ... SELECT) plus tombstones for removed keys, never folded row-by-row in Provisa. [END SUPERSEDED BLOCK] "As of" history is DERIVED at read time from the immutable append log (latest batch for snapshot; a ROW_NUMBER window per entity key for delta), so consumer-facing `as_of` semantics are identical across every substrate. On Iceberg each append is exactly one snapshot ([REQ-844](#REQ-844)). [SUPERSEDED by [REQ-2109](#REQ-2109), 2026-10-20 -- declared as business_key, valid_time and recorded_time. Kept here for history; do not implement against it.] Declared end to end via mv_bitemporal_mode / mv_bitemporal_key (TableInput -> core Table -> MVDefinition.bitemporal -> refresh_mv) with a UI control in TableEditForm. [END SUPERSEDED BLOCK] NOTE: exposing `as_of` as a query-language argument that routes bitemporal-MV reads through reconstruction is tracked as [REQ-1163](#REQ-1163) (the consumer query surface, analogous to [REQ-372](#REQ-372) for sources). (Amended 2026-10-16, DECLARED IN CONFIG AND CARRIED BY A DEMO BUNDLE:) [SUPERSEDED by [REQ-2109](#REQ-2109), 2026-10-20 -- a config.yaml table or view declares business_key, valid_time and recorded_time. Kept here for history; do not implement against it.] a config.yaml view declares it as bitemporal_mode and bitemporal_key. [END SUPERSEDED BLOCK] A view's history is its append log and no rebuild from its sources gives it back, so a named demo's bundle carries it: the build writes each bitemporal view's append log, as its setup left it, beside the seed (seeded/views.duckdb, seeded/views.json); the demo's template copies it into its own store when its runtime is built, before any refresh of it; and each sandbox is given the template's. A refresh over sources unchanged since appends nothing, so the history is the view's own wherever the demo runs. A bitemporal view the setup never built fails the build by name. (Amended 2026-10-20, THREE DECLARATIONS, [REQ-2109](#REQ-2109):) a view or a table keeps its history by declaring exactly three columns, business_key, valid_time and recorded_time; no mode is declared, and Provisa picks the mechanism.
 
 **Use case:** Time-travel previously existed only on Iceberg; when Iceberg was unreachable the substrate degraded to replace/append/upsert, losing history. Append-only bitemporal materialization makes time-travel available on any substrate, and the same definition retargets across engines without remodeling.
 
@@ -12390,7 +12390,7 @@ A materialized view's time-travel capability is a property of its DEFINITION, gu
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A bitemporal materialized view ([REQ-1162](#REQ-1162)) is READABLE through the query languages: consumers get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view's inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta), never the raw log. (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to the whole query: _prepare_compiled overlays each bitemporal view's expansion entry with an as-of reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every substrate. A whole-query as-of context (like a bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema. Analogous to [REQ-372](#REQ-372) (`as_of` for Iceberg/Delta SOURCES). Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE's time, not Provisa's load time. A bitemporal table or view declares its source-time column (the source's own change timestamp such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range ([REQ-2064](#REQ-2064)) measure against that time, so "as of last Tuesday" means as of last Tuesday in the source. Provisa's own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a view that declares none uses Provisa's load time as its clock (maintainer 2026-10-16), and the docs and the view's editor state the implication: versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing, not when it happened in the source. Amended 2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time before any version span is drawn, then the as-of picks the version in force at its time. So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded).
+A bitemporal materialized view ([REQ-1162](#REQ-1162)) is READABLE through the query languages: consumers get current state by default and can travel in time. (1) Current-by-default: a bitemporal materialized view's inline-expansion entry (state.view_sql_map, app_rebuild.py) is pointed at a reconstruction over the physical append log (bitemporal.py: view_read_sql), so a plain read returns the CURRENT reconstructed state (latest batch for snapshot; latest-version-per-business-key window dropping tombstones for delta), never the raw log. (2) Time travel: a request-level `X-Provisa-As-Of` header (validated to a safe SQL timestamp literal by parse_as_of; malformed → HTTP 400) applies to the whole query: _prepare_compiled overlays each bitemporal view's expansion entry with an as-of reconstruction over its append log (as_of_view_map + view_read_sql(ts)), giving identical consumer-facing as-of semantics across every substrate. A whole-query as-of context (like a bitemporal system time) rather than a per-field arg keeps it out of the GraphQL schema. Analogous to [REQ-372](#REQ-372) (`as_of` for Iceberg/Delta SOURCES). [SUPERSEDED by [REQ-2109](#REQ-2109), 2026-10-20 -- as_of filters valid time and as_recorded filters recorded time; all three declarations are required. Kept here for history; do not implement against it.] Amended 2026-10-16 (maintainer): the clock of time travel is the SOURCE's time, not Provisa's load time. A bitemporal table or view declares its source-time column (the source's own change timestamp such as updated_at, or the commit timestamp a CDC landing carries); X-Provisa-As-Of and its range ([REQ-2064](#REQ-2064)) measure against that time, so "as of last Tuesday" means as of last Tuesday in the source. Provisa's own recorded (load) time is kept beside it as the audit answer to when Provisa knew, and is not the default clock. Declaring a source-time column is optional: a view that declares none uses Provisa's load time as its clock (maintainer 2026-10-16), and the docs and the view's editor state the implication: versions are then ordered and read as of when Provisa landed each change, which depends on refresh timing, not when it happened in the source. [END SUPERSEDED BLOCK] Amended 2026-10-17 (maintainer): a SECOND axis, as recorded. A request-level `X-Provisa-As-Recorded` header (one ISO 8601 point, validated by parse_as_recorded; a range or malformed value → HTTP 400 data.invalid_as_recorded) reads each bitemporal view as Provisa had recorded it then: its append log is cut to rows recorded at or before that time before any version span is drawn, then the as-of picks the version in force at its time. So a correction recorded later does not change a replay of the past (as-of 30 Sept as recorded 1 Oct = the original; as recorded 5 Oct = the correction; as-of alone = the correction). Both values travel as one canonical value (AsOf.key, as_of@recorded) on every surface as-of reaches: the GraphQL, SQL, explain and query endpoints' headers, the resolve field/RPC/tool argument and REST parameter as_recorded, the Flight ticket option as_recorded. The audit row records both (query_audit_log.as_of, as_recorded). The SQL explorer offers both pickers and a demo tour can set each (step kinds as_of, as_recorded). (Amended 2026-10-20, VALID TIME AND RECORDED TIME, [REQ-2109](#REQ-2109):) as_of means valid_time <= X: the latest version per business_key among rows whose valid time is at or before X. as_recorded means what was known at Y: only versions whose recorded_time is at or before Y. Every surface that takes them (the GraphQL and SQL headers, Flight options, the gRPC and MCP resolve arguments, and a pgwire session's SET provisa.as_of / provisa.as_recorded, [REQ-2110](#REQ-2110)) applies the same meaning.
 
 **Use case:** Without routing reads through reconstruction a bitemporal MV read would surface all historical versions instead of current state. Current-by-default makes bitemporal MVs usable; the X-Provisa-As-Of header adds opt-in, whole-query time travel.
 
@@ -14392,7 +14392,7 @@ The entity/fact modeling roles ([REQ-1164](#REQ-1164)) are retained after loweri
 
 **Use case:** [REQ-1164](#REQ-1164) captures star/vault semantics at authoring time and evaporates them before any consumer can use them - downstream surfaces see undifferentiated tables. Retaining the role turns guesswork into derivation everywhere it matters. "Which groupings are valid for this measure" becomes computable, agents get the schema-shape context that makes generated queries correct, BI tools that infer star roles read them from the catalog instead of guessing, and the Ossie export preserves the fact/dimension distinction the standard itself is built around. This is the entity-taxonomy layer BusinessObjects universes carried and Ossie lacks - held internally, projected outward where expressible.
 
-**Code:** `provisa/mv/modeling.py`, `provisa/api/admin/modeling_register.py`, `provisa/cypher/label_map.py`, `provisa/compiler/schema_gen.py`
+**Code:** `provisa/mv/modeling.py`, `provisa/api/admin/modeling_register.py`, `provisa/gql/label_map.py`, `provisa/compiler/schema_gen.py`
 
 **Tests:** `tests/unit/test_modeling.py`, `tests/unit/test_cypher_label_map.py`
 
@@ -15302,7 +15302,7 @@ Management/operations reporting is delivered as defined views in the built-in op
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Dictionary/ontology of business terms over the semantic layer. Every physical field name in the semantic layer normalizes deterministically into a term via rules based on common enterprise DB naming conventions (case folding, separator/camelCase tokenization, standard abbreviation expansion, and stripping of TRAILING proxy tokens — id/key/code/index/reference and their expansions — because a column named for a key or code refers to its concept through a stand-in value, so cust_id and the customer concept share one term; concept-FORMING suffixes never strip: temporal (order_dt → "order date"), locational (cust_city → "customer city") and actor/activity ("created_by" stays the full phrase) tokens are what the value is about, and stripping them would merge distinct meanings. The deterministic layer may under-merge, curation consolidates, but it must never over-merge; and TOO-GENERIC full phrases — bare attribute words like name, identifier, date, location, message, first name, last name — qualify with the enclosing table's concept (singular head noun), so employees.first_name → "employee first name" and orders.id → "order identifier" rather than one meaningless shared term. Native-filter pseudo-columns (_nf_-prefixed / native_filter_type) are query machinery and derive no terms). Terms are deduplicated; each term holds a list of physical refs (catalog-identity resolved: table_id + column name). The term unit is the phrase — the full normalized field name — never decomposed into tokens; users resolve homonyms and granularity by revising terms or creating abstract terms. Users can rename a term, move a physical ref between terms to consolidate, and attach a definition. Terms carry relationships to users designated as experts: people who can answer questions about the term or who authored its definition. Users can create abstract terms with no physical refs, connected to rooted terms through a closed, enum-typed relationship set (KIND_OF, RELATED_TO, PART_OF, SYNONYM_OF); free-form edge types are not permitted. Lifecycle is derived from semantic-layer membership — adding an object creates/links terms; deleting or modifying a schema element removes its ref, and removal of a term's last physical ref removes the term — unless an abstract term is connected to the rooted graph through it, in which case the term is deprecated (kept) instead so no abstract term is left dangling. The term graph is included in metadata export ([REQ-1068](#REQ-1068) family) and exposed via an MCP tool for term search/lookup. v1 scope is documentation and discovery only; term membership does not drive policy (masking/RLS by term is a possible follow-on). Boundary vs tags ([REQ-1373](#REQ-1373)): tags remain flat operator-assigned labels; terms are the normalized vocabulary derived from and linked to schema. Implemented so far: schema (glossary_terms/refs/edges/experts in schema.sql + schema_org, tenant-scoped), deterministic normalizer, repository with the full lifecycle (sync rides table_repo.upsert — the single table_columns write path — and refless-term settling rides every deletion path via a departed-table sweep, cascade-independent because the SQLite backend runs without PRAGMA foreign_keys), the dangling check as true reachability (delete the term unless an abstract term would newly lose all paths to rooted terms, judged against a baseline where the candidate still anchors), admin REST router (/admin/glossary, org_settings-gated, every mutation queues a [REQ-1072](#REQ-1072) publish), MCP search_terms tool, term graph in the export snapshot (data_product/technical filters extend to refs; terms with no published refs withheld unless abstract; edges need both endpoints), and the admin UI Glossary tab with 13-locale i18n; Glossary is a TOP-LEVEL nav item (route stays /admin/glossary, org_settings) and Team moved into the Admin group. Verified: unit, PG integration (real config-load lifecycle), BDD (feature + implemented steps), Playwright e2e (curation flows against the core lane) and MCP protocol-level tests all pass; docs section added to api-reference.md. ADAPTERS (implemented): every vendor publishes the term graph natively into a PROVISA-OWNED glossary container created idempotently — Atlas/Atlan (glossary API, definition on longDescription, isA/synonyms/seeAlso mapping, Atlan deprecation via certificateStatus), DataHub (glossaryNode urn:li:glossaryNode:provisa.<org>, term URNs immutable so renames follow deprecation-succession), OpenMetadata (fqn PUT, renames PATCH-rebind by stored UUID — GlossaryTermRepository allows rename; KIND_OF as native parent hierarchy, entityStatus deprecation), Collibra (Glossary-type domain via the Import API; REPLACE safety re-derived by CONTAINMENT: only Provisa-domain assets and Provisa-term relations are ever mentioned). Updates read-merge so steward fields on Provisa's own terms survive; nothing deletes on snapshot absence; NO adapter writes term-to-asset assignments (Provisa-authored assignment publishing is the one explicit follow-on). OWNERSHIP CONSTRAINT (settled): the [REQ-1389](#REQ-1389) authorship contract extends to glossary items. A vendor-side glossary item is modified or deleted ONLY when Provisa created it, tracked the same way as every published asset: the vendor's own id is captured into catalog_bindings at publish, keyed by the term's URN (provisa://<org>/terms/<name>), and that binding is the ownership test. A glossary item with no Provisa binding originated in the external system (steward- or vendor-created) and is NEVER modified, re-parented, or deleted, whatever its name; steward term-to-asset assignments remain HUMAN-OWNED per [REQ-1389](#REQ-1389) and are never written. ADMISSION RULE (settled): what any consuming surface may offer is ONE predicate, core.glossary.live_term_ids, shared by the repository and the exporter. A term is LIVE only when it is (1) IN SERVICE: neither retired (a curator withdrew it) nor deprecated (the derivation lost its last column); (2) DEFINED: a term derived from a column name is a token, not a meaning, so an undefined term is a PROPOSAL awaiting a curator, never vocabulary an agent may ground a question on; and (3) GROUNDED: connected, over in-service terms, to a term holding a physical ref. The glossary is an entry point INTO the data, so every term chain must terminate at a physical column: an abstract term wired to nothing physical names no data and is not offered. Groundedness is a property of the term graph, not of any one row, so it is computed server-side and rides the admin payload as a `live` flag rather than being re-derived in the UI. Connectivity is STRUCTURAL and ignores definitions — an undefined rooted term still CONDUCTS grounding to its neighbours, it is merely not offered itself — but out-of-service terms do not conduct, so retiring a term also withdraws whatever reached data only through it. The rule cannot be enforced at creation (a term must exist before an edge can attach to it), so it is enforced at CONSUMPTION: MCP term search, metadata export, and the admin surface all apply it. Rootedness is the caller's: the repository counts every ref, the exporter counts only refs whose column actually publishes. CURATION-PRESERVING SETTLE: a term losing its last physical ref is deprecated rather than deleted whenever it carries curator work — a definition, a relationship, a named expert, or a retirement — because a derived term is born blank, so any of those can only have come from a person and deleting the row would discard it silently. Deprecation (system-set) is auto-cleared by _find_or_create_term when a matching column reappears; retirement (curator-set) never auto-clears. Blank refless terms are still hard-deleted. COLUMN-REMOVAL WARNING ([REQ-1484](#REQ-1484) surface): the pre-save dependents check reports each bound term with the outcome already decided by the settle rule — kept (has another column), kept but taken out of service (curated), or deleted with the column (derived and blank) — so an administrator reads the consequence rather than inferring it. RELATIONSHIP RETYPING: rel_type is part of an edge's identity, so correcting one is a single curation act served by PATCH /admin/glossary/terms/{term_id}/edges. The repository does the delete and the insert together inside one transaction, rather than the UI publishing twice and leaving a window in which the relationship does not exist. An incoming edge is retyped through the same stored forward values shown under reverse labels, so the curator reads the sentence on screen while the server still receives the edge's own direction. GLOSSARY PURPOSE HELP: a hover bubble beside the add control states what the glossary is for — that terms for real columns are derived automatically, and a hand-added term is warranted only for a concept no single column carries — because the button is self-evident and the purpose is not. The same control (provisa-ui/src/components/HelpBubble.tsx) sits beside the add action on Sources, Tables/Views, Relationships, Metrics, Tags and the Glossary, each carrying purposeTitle/purposeBody/purposeAdd/purposeAria in all 13 locales. The copy says what the object does once it exists and what the curator is deciding by creating one, never what the button does. An icon-only control has no visible label at all, so on Tables/Views and Relationships the icon is itself the hover target (HelpBubble accepts the control as its target instead of rendering a second '?'): the ERD icon on both pages, and the SQL modeling workbench and Suggest with AI icons on Relationships, each explaining what the tool behind the glyph opens and whether it edits the model or only reads it. The Tables/Views copy carries a third paragraph (purposeModel) because a view is not a saved query: registration also fixes how it is served (live, or materialized on a cadence or a calendar window per [REQ-962](#REQ-962)), what a refresh writes (replace / upsert / append), whether it keeps append-only history for as-of reads ([REQ-1162](#REQ-1162)), and its lineage inputs, while + Model lowers an entity or fact onto those same primitives plus the relationships ([REQ-1164](#REQ-1164)). Security carries the same control beside + RLS, stating that a rule is a SQL predicate bound to a role and a scope that the server ANDs into the query on reads and writes alike ([REQ-038](#REQ-038)/040), that a table rule wins over a domain rule for that table ([REQ-402](#REQ-402)), and that a rule names a role rather than a person. Security's Roles surface carries its own bubble beside + Role, stating that a role is the unit every other permission is written against — capabilities decide which operations it may run and domain access which parts of the model it reaches ([REQ-003](#REQ-003)/005/042) — and that it carries its own rate and query-complexity ceilings ([REQ-369](#REQ-369)/1174). The card is the single explanation style: the NL page and the MCP explorer render their control explanations through the same component rather than as Mantine tooltips, with the control itself as the hover target so the row keeps its shape.
+Dictionary/ontology of business terms over the semantic layer. Every physical field name in the semantic layer normalizes deterministically into a term via rules based on common enterprise DB naming conventions (case folding, separator/camelCase tokenization, standard abbreviation expansion, and stripping of TRAILING proxy tokens — id/key/code/index/reference and their expansions — because a column named for a key or code refers to its concept through a stand-in value, so cust_id and the customer concept share one term; concept-FORMING suffixes never strip: temporal (order_dt → "order date"), locational (cust_city → "customer city") and actor/activity ("created_by" stays the full phrase) tokens are what the value is about, and stripping them would merge distinct meanings. The deterministic layer may under-merge, curation consolidates, but it must never over-merge; and TOO-GENERIC full phrases — bare attribute words like name, identifier, date, location, message, first name, last name — qualify with the enclosing table's concept (singular head noun), so employees.first_name → "employee first name" and orders.id → "order identifier" rather than one meaningless shared term. Native-filter pseudo-columns (_nf_-prefixed / native_filter_type) are query machinery and derive no terms). Terms are deduplicated; each term holds a list of physical refs (catalog-identity resolved: table_id + column name). The term unit is the phrase — the full normalized field name — never decomposed into tokens; users resolve homonyms and granularity by revising terms or creating abstract terms. Users can rename a term, move a physical ref between terms to consolidate, and attach a definition. Terms carry relationships to users designated as experts: people who can answer questions about the term or who authored its definition. Users can create abstract terms with no physical refs, connected to rooted terms through a closed, enum-typed relationship set (KIND_OF, RELATED_TO, PART_OF, SYNONYM_OF); free-form edge types are not permitted. Lifecycle is derived from semantic-layer membership — adding an object creates/links terms; deleting or modifying a schema element removes its ref, and removal of a term's last physical ref removes the term — unless an abstract term is connected to the rooted graph through it, in which case the term is deprecated (kept) instead so no abstract term is left dangling. The term graph is included in metadata export ([REQ-1068](#REQ-1068) family) and exposed via an MCP tool for term search/lookup. v1 scope is documentation and discovery only; term membership does not drive policy (masking/RLS by term is a possible follow-on). Boundary vs tags ([REQ-1373](#REQ-1373)): tags remain flat operator-assigned labels; terms are the normalized vocabulary derived from and linked to schema. Implemented so far: schema (glossary_terms/refs/edges/experts in schema.sql + schema_org, tenant-scoped), deterministic normalizer, repository with the full lifecycle (sync rides table_repo.upsert — the single table_columns write path — and refless-term settling rides every deletion path via a departed-table sweep, cascade-independent because the SQLite backend runs without PRAGMA foreign_keys), the dangling check as true reachability (delete the term unless an abstract term would newly lose all paths to rooted terms, judged against a baseline where the candidate still anchors), admin REST router (/admin/glossary, org_settings-gated, every mutation queues a [REQ-1072](#REQ-1072) publish), MCP search_terms tool, term graph in the export snapshot (data_product/technical filters extend to refs; terms with no published refs withheld unless abstract; edges need both endpoints), and the admin UI Glossary tab with 13-locale i18n; Glossary is a TOP-LEVEL nav item ([SUPERSEDED by [REQ-2130](#REQ-2130), 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not implement against it.] route stays /admin/glossary, [END SUPERSEDED BLOCK] org_settings) and Team moved into the Admin group. Verified: unit, PG integration (real config-load lifecycle), BDD (feature + implemented steps), Playwright e2e (curation flows against the core lane) and MCP protocol-level tests all pass; docs section added to api-reference.md. ADAPTERS (implemented): every vendor publishes the term graph natively into a PROVISA-OWNED glossary container created idempotently — Atlas/Atlan (glossary API, definition on longDescription, isA/synonyms/seeAlso mapping, Atlan deprecation via certificateStatus), DataHub (glossaryNode urn:li:glossaryNode:provisa.<org>, term URNs immutable so renames follow deprecation-succession), OpenMetadata (fqn PUT, renames PATCH-rebind by stored UUID — GlossaryTermRepository allows rename; KIND_OF as native parent hierarchy, entityStatus deprecation), Collibra (Glossary-type domain via the Import API; REPLACE safety re-derived by CONTAINMENT: only Provisa-domain assets and Provisa-term relations are ever mentioned). Updates read-merge so steward fields on Provisa's own terms survive; nothing deletes on snapshot absence; NO adapter writes term-to-asset assignments (Provisa-authored assignment publishing is the one explicit follow-on). OWNERSHIP CONSTRAINT (settled): the [REQ-1389](#REQ-1389) authorship contract extends to glossary items. A vendor-side glossary item is modified or deleted ONLY when Provisa created it, tracked the same way as every published asset: the vendor's own id is captured into catalog_bindings at publish, keyed by the term's URN (provisa://<org>/terms/<name>), and that binding is the ownership test. A glossary item with no Provisa binding originated in the external system (steward- or vendor-created) and is NEVER modified, re-parented, or deleted, whatever its name; steward term-to-asset assignments remain HUMAN-OWNED per [REQ-1389](#REQ-1389) and are never written. ADMISSION RULE (settled): what any consuming surface may offer is ONE predicate, core.glossary.live_term_ids, shared by the repository and the exporter. A term is LIVE only when it is (1) IN SERVICE: neither retired (a curator withdrew it) nor deprecated (the derivation lost its last column); (2) DEFINED: a term derived from a column name is a token, not a meaning, so an undefined term is a PROPOSAL awaiting a curator, never vocabulary an agent may ground a question on; and (3) GROUNDED: connected, over in-service terms, to a term holding a physical ref. The glossary is an entry point INTO the data, so every term chain must terminate at a physical column: an abstract term wired to nothing physical names no data and is not offered. Groundedness is a property of the term graph, not of any one row, so it is computed server-side and rides the admin payload as a `live` flag rather than being re-derived in the UI. Connectivity is STRUCTURAL and ignores definitions — an undefined rooted term still CONDUCTS grounding to its neighbours, it is merely not offered itself — but out-of-service terms do not conduct, so retiring a term also withdraws whatever reached data only through it. The rule cannot be enforced at creation (a term must exist before an edge can attach to it), so it is enforced at CONSUMPTION: MCP term search, metadata export, and the admin surface all apply it. Rootedness is the caller's: the repository counts every ref, the exporter counts only refs whose column actually publishes. CURATION-PRESERVING SETTLE: a term losing its last physical ref is deprecated rather than deleted whenever it carries curator work — a definition, a relationship, a named expert, or a retirement — because a derived term is born blank, so any of those can only have come from a person and deleting the row would discard it silently. Deprecation (system-set) is auto-cleared by _find_or_create_term when a matching column reappears; retirement (curator-set) never auto-clears. Blank refless terms are still hard-deleted. COLUMN-REMOVAL WARNING ([REQ-1484](#REQ-1484) surface): the pre-save dependents check reports each bound term with the outcome already decided by the settle rule — kept (has another column), kept but taken out of service (curated), or deleted with the column (derived and blank) — so an administrator reads the consequence rather than inferring it. RELATIONSHIP RETYPING: rel_type is part of an edge's identity, so correcting one is a single curation act served by PATCH /admin/glossary/terms/{term_id}/edges. The repository does the delete and the insert together inside one transaction, rather than the UI publishing twice and leaving a window in which the relationship does not exist. An incoming edge is retyped through the same stored forward values shown under reverse labels, so the curator reads the sentence on screen while the server still receives the edge's own direction. GLOSSARY PURPOSE HELP: a hover bubble beside the add control states what the glossary is for — that terms for real columns are derived automatically, and a hand-added term is warranted only for a concept no single column carries — because the button is self-evident and the purpose is not. The same control (provisa-ui/src/components/HelpBubble.tsx) sits beside the add action on Sources, Tables/Views, Relationships, Metrics, Tags and the Glossary, each carrying purposeTitle/purposeBody/purposeAdd/purposeAria in all 13 locales. The copy says what the object does once it exists and what the curator is deciding by creating one, never what the button does. An icon-only control has no visible label at all, so on Tables/Views and Relationships the icon is itself the hover target (HelpBubble accepts the control as its target instead of rendering a second '?'): the ERD icon on both pages, and the SQL modeling workbench and Suggest with AI icons on Relationships, each explaining what the tool behind the glyph opens and whether it edits the model or only reads it. The Tables/Views copy carries a third paragraph (purposeModel) because a view is not a saved query: registration also fixes how it is served (live, or materialized on a cadence or a calendar window per [REQ-962](#REQ-962)), what a refresh writes (replace / upsert / append), whether it keeps append-only history for as-of reads ([REQ-1162](#REQ-1162)), and its lineage inputs, while + Model lowers an entity or fact onto those same primitives plus the relationships ([REQ-1164](#REQ-1164)). Security carries the same control beside + RLS, stating that a rule is a SQL predicate bound to a role and a scope that the server ANDs into the query on reads and writes alike ([REQ-038](#REQ-038)/040), that a table rule wins over a domain rule for that table ([REQ-402](#REQ-402)), and that a rule names a role rather than a person. Security's Roles surface carries its own bubble beside + Role, stating that a role is the unit every other permission is written against — capabilities decide which operations it may run and domain access which parts of the model it reaches ([REQ-003](#REQ-003)/005/042) — and that it carries its own rate and query-complexity ceilings ([REQ-369](#REQ-369)/1174). The card is the single explanation style: the NL page and the MCP explorer render their control explanations through the same component rather than as Mantine tooltips, with the control itself as the hover target so the row keeps its shape.
 
 **Use case:** Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.
 
@@ -15464,7 +15464,7 @@ ExprContext.resolve_property() must resolve post-WITH property references using 
 
 **Use case:** Cypher queries that carry a node variable through a WITH clause with an aggregate and then access that node's properties in RETURN fail with "Column cannot be resolved" errors without correct SQL table qualification.
 
-**Code:** `provisa/cypher/expr_context.py`
+**Code:** `provisa/gql/expr_context.py`
 
 **Tests:** `tests/unit/test_cypher_translator.py`
 
@@ -17802,7 +17802,7 @@ A junction table is declarable as a first-class Cypher relationship, and its own
 
 **Use case:** A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops make variable-length depth meaningless.
 
-**Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/cypher/parser.py`, `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`, `provisa/cypher/translator_helpers.py`, `provisa/cypher/select_builder.py`, `provisa/cypher/translator.py`, `provisa/cypher/translator_union.py`, `provisa/cypher/expr_context.py`, `provisa/api/_meta_seed.py`, `provisa/mv/models.py`, `provisa/mv/refresh.py`, `provisa/mv/view_reinject.py`, `provisa/api/app_loaders.py`, `provisa-ui/src/naming.ts`, `provisa-ui/src/components/relationships/JunctionPanel.tsx`, `provisa-ui/src/pages/GraphPage.tsx`, `provisa-ui/src/pages/graph-drop.ts`, `provisa-ui/src/components/graph/frame/use-overlay-navigation.ts`, `config/provisa.yaml`, `config/provisa-install.yaml`, `demo/files/create_demo_files.py`, `db/init.sql`, `start-ui-install.sh`
+**Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/cypher/parser.py`, `provisa/gql/label_map.py`, `provisa/gql/translator_rel.py`, `provisa/gql/translator_helpers.py`, `provisa/gql/select_builder.py`, `provisa/gql/translator.py`, `provisa/gql/translator_union.py`, `provisa/gql/expr_context.py`, `provisa/api/_meta_seed.py`, `provisa/mv/models.py`, `provisa/mv/refresh.py`, `provisa/mv/view_reinject.py`, `provisa/api/app_loaders.py`, `provisa-ui/src/naming.ts`, `provisa-ui/src/components/relationships/JunctionPanel.tsx`, `provisa-ui/src/pages/GraphPage.tsx`, `provisa-ui/src/pages/graph-drop.ts`, `provisa-ui/src/components/graph/frame/use-overlay-navigation.ts`, `config/provisa.yaml`, `config/provisa-install.yaml`, `demo/files/create_demo_files.py`, `db/init.sql`, `start-ui-install.sh`
 
 **Tests:** `tests/unit/test_cypher_junction_relationships.py`, `tests/unit/test_mv_junction_pattern.py`, `tests/integration/test_glossary_meta_domain.py`, `provisa-ui/src/__tests__/GraphDropExpansion.test.ts`, `provisa-ui/src/__tests__/JunctionPanel.test.tsx`
 
@@ -17852,7 +17852,7 @@ The Lemon Squeezy checkout is dressed from how the buyer is reading the app: the
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-THE BUSINESS GLOSSARY IS GOVERNED BY TWO RIGHTS, AND READING IT IS NOT ADMINISTERING THE ORG. ``glossary_read`` opens the surface: the /admin/glossary route, its top-level nav link, and the read endpoints GET /glossary/terms and GET /glossary/terms/{id}. ``glossary_rw`` is curation on top of that: create, rename, definition, retire, delete, export exclusion, ref moves, edges (add/retype/remove), experts, and the AI generation endpoints that PERSIST what they draft (generate-definition, generate-definitions, generate-relationships). THE GAP: the whole surface was gated on ``org_settings``, so an analyst looking up what a column means was shown "You do not have permission to view this page"; the vocabulary the model is described in was reachable only by an administrator. NO IMPLICATION: the two rights are checked independently and neither implies the other; granting ``glossary_rw`` alone leaves the page unreachable, because the page is gated on read. Both are granted and revoked from the role capability grid like any other right. SEEDS: org_admin and modeler carry both (modeler is the model-curation role); analyst and developer carry ``glossary_read`` only. READ-ONLY RENDERING: without ``glossary_rw`` the page still lists terms and shows each term's definition, refs, relationships and experts, but every control that writes is WITHHELD rather than disabled, and a "Read-only" badge names the missing right; a disabled button says nothing about why, and the endpoint behind it answers 403. GET /glossary/ref stays on ``table_registration``: it serves the Tables surface's hover popup, and Tables already requires that right. THE TOUR: the glossary step points at the AI generation buttons, so it declares ``glossary_rw``, stricter than its route's gate, and a read-only viewer skips the step rather than waiting out an anchor that never mounts.
+THE BUSINESS GLOSSARY IS GOVERNED BY TWO RIGHTS, AND READING IT IS NOT ADMINISTERING THE ORG. ``glossary_read`` opens the surface: [SUPERSEDED by [REQ-2130](#REQ-2130), 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not implement against it.] the /admin/glossary route, [END SUPERSEDED BLOCK] its top-level nav link, and the read endpoints GET /glossary/terms and GET /glossary/terms/{id}. ``glossary_rw`` is curation on top of that: create, rename, definition, retire, delete, export exclusion, ref moves, edges (add/retype/remove), experts, and the AI generation endpoints that PERSIST what they draft (generate-definition, generate-definitions, generate-relationships). THE GAP: the whole surface was gated on ``org_settings``, so an analyst looking up what a column means was shown "You do not have permission to view this page"; the vocabulary the model is described in was reachable only by an administrator. NO IMPLICATION: the two rights are checked independently and neither implies the other; granting ``glossary_rw`` alone leaves the page unreachable, because the page is gated on read. Both are granted and revoked from the role capability grid like any other right. SEEDS: org_admin and modeler carry both (modeler is the model-curation role); analyst and developer carry ``glossary_read`` only. READ-ONLY RENDERING: without ``glossary_rw`` the page still lists terms and shows each term's definition, refs, relationships and experts, but every control that writes is WITHHELD rather than disabled, and a "Read-only" badge names the missing right; a disabled button says nothing about why, and the endpoint behind it answers 403. GET /glossary/ref stays on ``table_registration``: it serves the Tables surface's hover popup, and Tables already requires that right. THE TOUR: the glossary step points at the AI generation buttons, so it declares ``glossary_rw``, stricter than its route's gate, and a read-only viewer skips the step rather than waiting out an anchor that never mounts.
 
 **Code:** `provisa/security/rights.py`, `provisa/api/admin/glossary_router.py`, `provisa/core/schema.sql`, `provisa/core/db.py`, `provisa-ui/src/components/admin/GlossaryTab.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/pages/SecurityPage.tsx`
 
@@ -18314,7 +18314,7 @@ Every row of a registered table is traceable in the graph to its table and domai
 
 **Use case:** A graph user can go from a data row to the metadata of the table it came from (domain, description, tags, steward) in one query.
 
-**Code:** `provisa/compiler/context.py`, `provisa/cypher/label_map.py`, `provisa/cypher/path_functions.py`, `provisa/cypher/graph_rewriter.py`, `provisa/api/admin/schema_query.py`
+**Code:** `provisa/compiler/context.py`, `provisa/gql/label_map.py`, `provisa/gql/path_functions.py`, `provisa/gql/graph_rewriter.py`, `provisa/api/admin/schema_query.py`
 
 **Tests:** `tests/unit/test_sql_to_cypher.py`, `tests/unit/test_graph_has_table_synthetic.py`, `tests/integration/test_graph_has_table_synthetic_e2e.py`, `tests/integration/test_public_columns_every_surface_e2e.py`
 
@@ -22046,7 +22046,7 @@ GraphQL enforces cross-domain access control by not exposing cross-domain tables
 
 Cypher enforces cross-domain access control at translator/parse time: starting node labels must map to a domain in the role's domain_access; cross-domain hops must follow a registered relationship. Direct MATCH on a node label outside the role's domain_access is rejected.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator.py`, `provisa/cypher/translator_union.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator.py`, `provisa/gql/translator_union.py`
 
 **Tests:** `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_label_map.py`
 
@@ -22066,7 +22066,7 @@ SQL enforces cross-domain access control at query-validation/parse time using th
 
 The registered relationships table is the single authority for what cross-domain connections are permitted across all three interfaces (GraphQL, Cypher, SQL). The enforcement logic is designed for reuse across interfaces.
 
-**Code:** `provisa/compiler/sql_validator.py`, `provisa/cypher/label_map.py`, `provisa/compiler/schema_gen.py`
+**Code:** `provisa/compiler/sql_validator.py`, `provisa/gql/label_map.py`, `provisa/compiler/schema_gen.py`
 
 **Tests:** `tests/unit/test_sql_endpoint_governance.py`, `tests/unit/test_cypher_label_map.py`, `tests/unit/test_visibility.py`
 
@@ -22350,7 +22350,7 @@ Transpilation is a compiler responsibility, never a transport responsibility. Re
 
 Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema) are each the responsibility of a single dedicated module. No transport implements catalog logic directly; transports consume the output of the centralized catalog module for their language.
 
-**Code:** `provisa/pgwire/catalog.py`, `provisa/cypher/label_map.py`, `provisa/bolt/session.py`
+**Code:** `provisa/pgwire/catalog.py`, `provisa/gql/label_map.py`, `provisa/bolt/session.py`
 
 **Tests:** —
 
@@ -23220,7 +23220,7 @@ publish query results to Kafka topics: new output format (Accept: application/x-
 
 The Relationship model accepts an optional alias field, a relationship type name (for example WORKS_FOR) that defaults to None. The alias is persisted with the relationship row and exposed to the Cypher label map.
 
-**Code:** `provisa/core/models.py`, `provisa/core/repositories/relationship.py`, `provisa/cypher/label_map.py`
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/relationship.py`, `provisa/gql/label_map.py`
 
 **Tests:** `tests/unit/test_relationship_alias.py`
 
@@ -23242,7 +23242,7 @@ A relationship alias is unique per source table. Saving a second relationship wi
 
 CypherLabelMap indexes relationships by alias so a Cypher relationship type written as the alias resolves to the mapped source and target tables. RelationshipMapping carries the alias, defaulting to None, and a wrong arrow direction or unknown type yields an empty result.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator_rel.py`
 
 **Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
 
@@ -23252,7 +23252,7 @@ CypherLabelMap indexes relationships by alias so a Cypher relationship type writ
 
 When several source/target pairs share one relationship alias, the aliases index stores every mapping under that alias and the Cypher translator emits a UNION ALL across them.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator_rel.py`
 
 **Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
 
@@ -24196,7 +24196,7 @@ Every query surface strives to match the capabilities of the other surfaces. A c
 
 **Use case:** A remote GraphQL table of orders has an embedded address object (its type is not registered) and a list of line items (a registered table). GraphQL returns address as a nested object and lineItems through the relationship; a Cypher client reads the same order node with address as a map property and reaches the line items over the edge.
 
-**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_types.py`
+**Code:** `provisa/gql/label_map.py`, `provisa/gql/translator_types.py`
 
 **Tests:** `tests/unit/test_cypher_label_map.py`
 
@@ -24914,9 +24914,9 @@ The sonnets named demo: Shakespeare's 154 sonnets in Postgres, embedded into Qdr
 
 **Use case:** A visitor opens the sonnets demo and sees one model take a corpus from rows to vectors to a governed search to a graph: the themes the sonnets share and the lines where Shakespeare repeats himself, walked in Cypher.
 
-**Code:** `demo/named/sonnets/config.yaml`, `demo/named/sonnets/echoes.py`, `demo/named/sonnets/setup.yaml`, `scripts/run_demo_setup.py`, `scripts/demo_extras.py`, `start-ui-install.sh`, `provisa/core/settings_catalog.py`
+**Code:** `demo/named/sonnets/config.yaml`, `demo/named/sonnets/setup.yaml`, `scripts/run_demo_setup.py`, `scripts/demo_extras.py`, `start-ui-install.sh`, `provisa/core/settings_catalog.py`
 
-**Tests:** `tests/unit/test_demo_setup.py`, `tests/unit/test_named_demo_tour.py`
+**Tests:** `tests/unit/test_demo_setup.py`, `tests/unit/test_named_demo_tour.py`, `tests/unit/test_sonnets_demo_echoes.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -25022,9 +25022,9 @@ A capability demo, insider review at an investment bank: Is anyone sending deal-
 
 **Use case:** A compliance buyer opens the insider review demo and sees watch-list deals matched against outbound mail, ranked for review, with the watch list itself never exposed to the reviewer.
 
-**Code:** `demo/named/insider/config.yaml`, `demo/named/insider/matching.py`, `demo/named/insider/generate.py`, `demo/named/insider/db/init.sql`, `demo/named/insider/tour.yaml`
+**Code:** `demo/named/insider/config.yaml`, `demo/named/insider/insider_signals/insider_signals.py`, `demo/named/insider/generate.py`, `demo/named/insider/db/init.sql`, `demo/named/insider/tour.yaml`
 
-**Tests:** `tests/integration/test_insider_demo.py`, `tests/unit/test_named_demo_tour.py`, `tests/unit/test_polly_bakeoff_questions.py`
+**Tests:** `tests/integration/test_insider_demo.py`, `tests/unit/test_insider_demo_signals.py`, `tests/unit/test_named_demo_tour.py`, `tests/unit/test_polly_bakeoff_questions.py`
 
 ## 1. Access Governance & Security
 
@@ -25126,7 +25126,7 @@ A feature demo, data vault: how to set up a data vault in Provisa. Built on a we
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-The as-of header (X-Provisa-As-Of, [REQ-1163](#REQ-1163)) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every version of each row that was in force at any time within the range, one row per version, each with the time it was recorded from and to, so a client sees what changed and when in one read instead of one as-of read per moment. A single time keeps today's meaning. The range applies to the same tables and views as a single time, with the same rights, masks and row rules. The range is measured on the source's time ([REQ-1163](#REQ-1163) as amended): each version is in force from its source time to the next version's, and the answer also carries each version's source time and Provisa's recorded time.
+The as-of header (X-Provisa-As-Of, [REQ-1163](#REQ-1163)) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every version of each row that was in force at any time within the range, one row per version, each with the time it was recorded from and to, so a client sees what changed and when in one read instead of one as-of read per moment. A single time keeps today's meaning. The range applies to the same tables and views as a single time, with the same rights, masks and row rules. [SUPERSEDED by [REQ-2109](#REQ-2109), 2026-10-20 -- a range is measured on valid time. Kept here for history; do not implement against it.] The range is measured on the source's time ([REQ-1163](#REQ-1163) as amended): each version is in force from its source time to the next version's, and the answer also carries each version's source time and Provisa's recorded time. [END SUPERSEDED BLOCK] (Amended 2026-10-20, VALID TIME, [REQ-2109](#REQ-2109):) the range is measured on valid time: a read with a range answers every version whose valid time falls within it, with its valid time and recorded time.
 
 **Use case:** An analyst reads a customer with an as-of range covering last quarter and sees each version of the record with when it was recorded, in one answer.
 
@@ -25532,6 +25532,90 @@ The benchmark contract has governance knobs: row rules per table, the share of c
 
 **Tests:** —
 
+## 4. Source Connectors
+
+### REQ-2109 · Materialization Store {#REQ-2109}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A table or a view is bitemporal by mapping three values to its columns: business_key (what identifies the same thing across versions), valid_time (the date the business gives the record: when it was agreed, booked or took effect) and recorded_time (when this version was entered or changed). Recorded time is called transaction time in the temporal-database literature and system time in SQL:2011; valid time is called application time in SQL:2011 or effective date. All three or none; each names a column. as_of filters valid time (valid_time <= X, latest version per business key) and as_recorded filters recorded time (recorded_time <= Y). Provisa picks the mechanism: a table whose business key is not its primary key keeps every version as a row, so a read filters and keeps the latest version per key, pushed down with the query; a table whose business key is its primary key is updated in place, so Provisa keeps its version log in the table's home region's store, captured incrementally on recorded time (re-reading a window of allowed_lateness so a late commit is not missed). A plain read returns the latest version per business key. A materialized view over a bitemporal input inherits its temporality with no settings of its own: each refresh reads the input rows recorded since the last refresh, recomputes only the valid-time dates they touch, appends versions for those dates (removals confined to them) and advances its watermark only after the append. A row moved between valid-time dates, or a source that deletes rows, needs a full refresh, which is offered on demand.
+
+**Use case:** A bank's end-of-day report shows a past day as reported then and as restated now, from a ledger whose corrections keep their business date.
+
+**Code:** `provisa/core/models.py`, `provisa/mv/bitemporal.py`, `provisa-ui/src/pages/tables/BitemporalFields.tsx`
+
+**Tests:** `tests/unit/test_bitemporal_declaration.py`, `provisa-ui/src/pages/tables/__tests__/TableEditForm.bitemporal.test.tsx`
+
+## 9. Live Data & Events
+
+### REQ-2111 · Derived / MV Processor {#REQ-2111}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A calendar can declare the local time its day closes at, in its time zone (an 18:00 close of business in Europe/London); a day then runs from the previous day's close to its own, every grain's boundary moves with it, and a daily view refreshes at the close. With no close declared a day ends at local midnight.
+
+**Use case:** A bank's end-of-day aggregate is recorded at its 18:00 close, and a transaction booked after the close belongs to the next business day.
+
+**Code:** `provisa/events/calendars.py`, `provisa/core/repositories/calendar.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/pages/tables/CalendarCreateModal.tsx`
+
+**Tests:** `tests/unit/test_live_temporal.py`, `tests/unit/test_calendar_repo.py`, `provisa-ui/src/pages/tables/__tests__/CalendarCreateModal.test.tsx`
+
+### REQ-2120 · Derived / MV Processor {#REQ-2120}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A config declares its calendars in a calendars: section (name and version required, then base_system, tz, fiscal_anchor_month, fiscal_anchor_day, retail_anchor, week_start, holidays, weekend and day_close), stored before the tables whose views name one and refused for exactly what the createCalendar mutation refuses; the model export writes them back. A views: entry takes a view's snapshot schedule as calendar, grain, business_day_grain, allowed_lateness and expected_events. The refreshMv mutation takes an optional window, a date: it builds a view that names a calendar sealed at that business day's close, its append stamped by the end of the calendar's window for that date (its day_close in its time zone), as the event loop's build at the close stamps it, through the same refresh. A view that names no calendar is refused by name.
+
+**Use case:** A bank declares its 18:00 New York close in its config and rebuilds the end-of-day report for a past business day, stamped at that day's close.
+
+**Code:** `provisa/core/models.py`, `provisa/core/config_loader.py`, `provisa/core/store_config.py`, `provisa/events/calendars.py`, `provisa/mv/refresh.py`, `provisa/api/admin/schema_mutation.py`
+
+**Tests:** `tests/unit/test_config_calendars.py`, `tests/unit/test_sealed_build.py`, `tests/unit/test_refresh_mv_mutation.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-2107 · UI {#REQ-2107}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+A named demo, banking: end-of-day reporting without copying the ledger. Its business question: "Can the warehouse report each day's close, and every restatement since, without a copy of the ledger?" Two regions on one node, as the retail demo runs them (visitor warehouse, headless ledger), each with its own store. The ledger region homes a Postgres ledger of accounts and an append-only transactions table (business key transaction_id, valid time business_date, recorded time updated_at; a correction is a new row with the same transaction_id, the primary key a row id) that is never replicated (replicate -1), so no posting is ever copied into the warehouse. The warehouse region materializes in its own store the end-of-day totals by business date, branch, product and currency, with one group_key column: a single-source GROUP BY over the ledger table, built whole at the ledger's Postgres so only grouped rows land, on a declared calendar whose business day closes at 18:00 Europe/London, inheriting the ledger's versions with no history settings of its own. Faked accounts and postings over 30 business days are loaded a day at a time by the demo's setup, each day's totals built sealed at that day's close, so 30 end-of-day versions exist; two restatements (a reversed payment and a late trade) arrive on later days and become new versions of their past dates, the versions reported at the close kept. A relationship from a total's group_key to a thin live view of the postings computing the same key is the drill-down. Roles: the reporting analyst reads the totals; operations drills into postings under the ledger's row rules and masks. Its tour follows the settled demo tour shape and names four focuses in its opening and recap: compute cost, data footprint and so governance surface, the same answer over GraphQL, SQL and MCP, and the cost of change. The solution is predesigned queries: a GraphQL dashboard with the postings nested, SQL as a BI tool runs it over pgwire with SET provisa.as_recorded at a close and as restated since, the postings under the ledger's rules, and a stored agent answer. A step before the recap shows moving the ledger to a warehouse replica as a two-line placement change (region and replicate) under which the same queries answer. Plain words, no figures.
+
+**Use case:** A bank's data lead opens the banking demo and sees each day's end-of-day totals built in the warehouse from a ledger that is never copied there, read as reported at each close and as restated since, with the same numbers on the dashboard, in BI and from an agent.
+
+**Code:** `demo/named/banking/config.yaml`, `demo/named/banking/db/init.sql`, `demo/named/banking/load_days.py`, `demo/named/banking/setup.yaml`, `demo/named/banking/tour.yaml`
+
+**Tests:** `tests/integration/test_banking_demo.py`, `tests/unit/test_named_demo_tour.py`, `tests/unit/test_polly_bakeoff_questions.py`
+
+## 4. Source Connectors
+
+### REQ-2110 · Materialization Store {#REQ-2110}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A pgwire session sets its time travel with SET provisa.as_of and SET provisa.as_recorded (RESET either, or set it TO DEFAULT); every statement the session then runs, COPY included, reads as a request carrying the matching X-Provisa-As-Of / X-Provisa-As-Recorded headers does. A value that cannot be read is refused naming the setting; a statement prepared under other settings is governed again.
+
+**Use case:** A BI tool connected over pgwire shows a report as it was reported on a past date, with no HTTP headers to send.
+
+**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/pgwire/copy_handler.py`
+
+**Tests:** `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/pgwire/test_statement_stages.py`
+
+## 9. Live Data & Events
+
+### REQ-2108 · Derived / MV Processor {#REQ-2108}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A materialized view's build takes the same route decision a query with its definition takes: a definition one source reads whole runs at that source, on any engine kind, and only its result rows come back; they are staged beside the view's table and every build step reads them there. The size guard counts the staged rows, so the source is read once.
+
+**Use case:** An end-of-day aggregate over a large transaction table is computed where the table lives, and only the grouped rows reach the store, whatever engine the region runs.
+
+**Code:** `provisa/mv/governed_build.py`, `provisa/mv/refresh.py`, `provisa/events/app_wiring.py`
+
+**Tests:** `tests/unit/test_mv_governed_build.py`, `tests/unit/test_mv_lifecycle.py`
+
+## 11. Platform, Infrastructure & Delivery
+
 ### REQ-2093 · Performance {#REQ-2093}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
@@ -25678,13 +25762,13 @@ A configuration may declare the code its code sources run: code/<name>.tar.gz (o
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them. (Amended 2026-10-20, ONE CALL:) The distinct argument sets go to the code's host in one call, and the host calls the function once per set in its own process, every set's rows coming back under that call in the sets' order: no round trip per set. Functions are unchanged.
+A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them. (Amended 2026-10-20, ONE CALL:) The distinct argument sets go to the code's host in one call, and the host calls the function once per set in its own process, every set's rows coming back under that call in the sets' order: no round trip per set. Functions are unchanged. (Amended 2026-10-22, QDRANT SEARCH:) A relationship may feed a Qdrant search table's parameters ([REQ-1983](#REQ-1983)), its query among them, by the same feed: the search is read live once per distinct set, one Qdrant query a set. A search's points hold nothing of the query that found them, so a relationship may join on the target's parameter column: each row read for a set then carries, in that column, the value the set gave the parameter, typed as the source column it was read from, and the join matches each source row to the rows read for it. A relationship that joins on a parameter it does not feed is refused. A statement that gives one of the parameters a relationship feeds reads the target under its own arguments and is not fed by it, so a search for a phrase of its own still joins its points back to the source's rows.
 
 **Use case:** A churn model packaged as a Python code table, churn_risk(customer_id, plan, tenure_months, ...), is joined to the customers' features view: each customer the analyst may read is scored with that customer's features, emails masked, and a regional role's join scores only its region's customers.
 
-**Code:** `provisa/api/data/materialization.py`, `provisa/codesource/table.py`, `provisa/core/models.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/repositories/relationship.py`, `provisa/api/admin/types.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/components/relationships/ParametersPanel.tsx`, `provisa/codesource/worker.py`, `provisa/python/host.py`, `provisa/node/host-core.mjs`
+**Code:** `provisa/api/data/materialization.py`, `provisa/codesource/table.py`, `provisa/core/models.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/repositories/relationship.py`, `provisa/api/admin/types.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/components/relationships/ParametersPanel.tsx`, `provisa/codesource/worker.py`, `provisa/python/host.py`, `provisa/node/host-core.mjs`, `provisa/qdrant/table.py`, `demo/named/sonnets/config.yaml`
 
-**Tests:** `tests/unit/test_relationship_fed_code_table.py`, `tests/unit/test_code_worker.py`, `tests/unit/test_python_source.py`, `tests/unit/test_node_host_argument_sets.py`, `tests/integration/test_churnprod_at_risk_timing.py`
+**Tests:** `tests/unit/test_relationship_fed_code_table.py`, `tests/unit/test_relationship_fed_qdrant_search.py`, `tests/integration/test_sonnets_demo.py`, `tests/unit/test_code_worker.py`, `tests/unit/test_python_source.py`, `tests/unit/test_node_host_argument_sets.py`, `tests/integration/test_churnprod_at_risk_timing.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -25952,7 +26036,7 @@ The meta domain has a view-only column_lineage_edges view with one row per colum
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
 
-The Glossary page has an Ontology View: the [REQ-2128](#REQ-2128) 3D graph engine scoped to the whole glossary rather than one data product, with the same layer, filter and preset controls and the same expand button. Nodes are glossary terms, and edges are term-to-term edges. Edge type (KIND_OF, PART_OF, SYNONYM_OF, REPLACES and the other term edge types) is a filter. The dimensions are as follows. Domain: domains are cluster nodes, and a term links to each domain it belongs to, as the glossary derives them ([REQ-1591](#REQ-1591)), with enterprise-scope terms ([REQ-1593](#REQ-1593)) at the centre; terms are not coloured by domain, because a term can belong to several. Status: a term is proposed when it is in service (neither retired nor deprecated) but not live, meaning it has no definition or is not grounded (no chain of edges from it reaches a term bound to a column), by the one admission rule in live_term_ids ([REQ-1387](#REQ-1387)). Proposed, deprecated and retired are each a filter. Proposed and deprecated are shown by default, deprecated terms are dimmed, and retired terms are hidden by default. A proposed term's node shows whether it is undefined, ungrounded or both. Abstract or concrete: an abstract term (is_abstract) is drawn hollow and a concrete one solid. Data: a layer, off by default, that adds each term's bound columns collapsed into their tables, and the data products those tables belong to. There are two presets. Ontology shows every edge type with the force layout. Taxonomy shows only KIND_OF and PART_OF edges as a top-down tree. All graph data comes from meta-domain queries run as the signed-in user (glossary_terms_meta and its live column, glossary_term_edges_meta, glossary_term_refs_meta, and [REQ-2125](#REQ-2125) for products), so a term the user cannot read is absent. three.js loads only when the view is opened.
+[SUPERSEDED by REQ-2130, 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not implement against it.] The Glossary page has an Ontology View: [END SUPERSEDED BLOCK] the [REQ-2128](#REQ-2128) 3D graph engine scoped to the whole glossary rather than one data product, with the same layer, filter and preset controls and the same expand button. Nodes are glossary terms, and edges are term-to-term edges. Edge type (KIND_OF, PART_OF, SYNONYM_OF, REPLACES and the other term edge types) is a filter. The dimensions are as follows. Domain: domains are cluster nodes, and a term links to each domain it belongs to, as the glossary derives them ([REQ-1591](#REQ-1591)), with enterprise-scope terms ([REQ-1593](#REQ-1593)) at the centre; terms are not coloured by domain, because a term can belong to several. Status: a term is proposed when it is in service (neither retired nor deprecated) but not live, meaning it has no definition or is not grounded (no chain of edges from it reaches a term bound to a column), by the one admission rule in live_term_ids ([REQ-1387](#REQ-1387)). Proposed, deprecated and retired are each a filter. Proposed and deprecated are shown by default, deprecated terms are dimmed, and retired terms are hidden by default. A proposed term's node shows whether it is undefined, ungrounded or both. Abstract or concrete: an abstract term (is_abstract) is drawn hollow and a concrete one solid. Data: a layer, off by default, that adds each term's bound columns collapsed into their tables, and the data products those tables belong to. There are two presets. Ontology shows every edge type with the force layout. Taxonomy shows only KIND_OF and PART_OF edges as a top-down tree. All graph data comes from meta-domain queries run as the signed-in user (glossary_terms_meta and its live column, glossary_term_edges_meta, glossary_term_refs_meta, and [REQ-2125](#REQ-2125) for products), so a term the user cannot read is absent. three.js loads only when the view is opened. (Amended 2026-10-22, NAMED ONTOLOGY:) The page is named Ontology in the UI: its navigation item, its title, its route, /admin/ontology, and the docs. The view described here is that page's graph. The API path /admin/glossary and the identifiers in code (glossary_read, glossary_rw, the glossary tables and meta tables) keep their names for now.
 
 **Use case:** A curator sees the shape of the vocabulary: which terms are still proposals and why, where abstract concepts are left without concrete terms under them, which domains share terms, and which terms reach real data and data products.
 
@@ -25966,7 +26050,7 @@ The Glossary page has an Ontology View: the [REQ-2128](#REQ-2128) 3D graph engin
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-A code-source function (Node, [REQ-1984](#REQ-1984), or Python, [REQ-1993](#REQ-1993)) tagged @columns is a batch column transform, the batched form of [REQ-1924](#REQ-1924)'s column transform. It takes a batch of rows, each row holding the input columns named by its parameters, and returns one result per input row, in order, holding the output columns declared by its return type. It is applied to a table's or view's columns like any column transform, and its outputs are named steps in that projection's lineage. It is stateless: a batch's result depends only on that batch's rows, so batches are independent and run in parallel across the source's workers, and adding workers raises throughput. It may call Provisa's services, including the LLM service ([REQ-2105](#REQ-2105)), so one model call can cleanse, classify or enrich a whole batch, metered and capped as any code-source LLM call. In a materialized view, @columns outputs are recomputed when the view is refreshed, as the view's freshness declares; they have no schedule of their own. A function that returns a different number of results than rows it was given is refused naming the function.
+A code-source function (Node, [REQ-1984](#REQ-1984), or Python, [REQ-1993](#REQ-1993)) tagged @columns is a batch column transform, the batched form of [REQ-1924](#REQ-1924)'s column transform. It takes a batch of rows, each row holding the input columns named by its parameters, and returns one result per input row, in order, holding the output columns declared by its return type. It is applied to a table's or view's columns like any column transform, and its outputs are named steps in that projection's lineage. It is stateless: a batch's result depends only on that batch's rows, so batches are independent and run in parallel across the source's workers, and adding workers raises throughput. It may call Provisa's services, including the LLM service ([REQ-2105](#REQ-2105)), so one model call can cleanse, classify or enrich a whole batch, metered and capped as any code-source LLM call. In a materialized view, @columns outputs are recomputed when the view is refreshed, as the view's freshness declares; they have no schedule of their own. A function that returns a different number of results than rows it was given is refused naming the function. (Amended 2026-10-21, LANDED:) A view that applies a column transform is landed, whether or not its steward declares it materialized, as API and code tables are landed: it is built through the materialized views' governed build (its inputs read, the function called in batches, the result stored), refreshed as the view's freshness declares, and read by the engine from its stored table.
 
 **Use case:** A data team cleanses free-text supplier addresses with one @columns function that sends each batch of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a materialized view refreshed by its freshness, and the work scales by adding workers.
 
@@ -25997,6 +26081,88 @@ A data-quality checker table's description states its quality claim: why the che
 The Python preflight check ([REQ-1165](#REQ-1165)) can call Provisa's services, the provisa_services module a code source's worker gets ([REQ-2106](#REQ-2106): llm, vectors, http, cache, settings), plus a dq service that finds everything about the data quality of any dataset or data product. For a dataset, dq returns the checker tables ([REQ-1443](#REQ-1443)) scanning it, the description and contract of each, the latest run of each (its outcome, when it ran and its failing checks) and the product each is assigned to. It also returns the dataset's profiles ([REQ-1934](#REQ-1934)): the profile result tables registered for it and the latest run of each, so a check can compare this load against the dataset's profiled history (a row count, null rate or distribution that moved). For a data product, it returns its promises, expectations, partner DQ and orphans as [REQ-1443](#REQ-1443) defines them. Asked from a view's preflight, each result also says how it relates to the view's product: promise, expectation or partner DQ. The dq service is also offered to code sources through the same module, and what it returns is what the meta domain shows the caller. A materialized view has a Hold on failing checks option. It is a built-in Python preflight that calls dq: a refresh is aborted, and the view keeps its previous copy, if the latest run of any checker table scanning one of the view's inputs failed. The inputs are the view's nearest physical datasets, as [REQ-2126](#REQ-2126) finds them. All checker tables scanning an input count, whatever product they are assigned to, since a failing check on an input means the view would land data built from it. The abort's reason names each failing checker table and the input it scans, and the failure propagates downstream as any preflight abort does ([REQ-941](#REQ-941)). The option shows the preflight code it applies, and a steward can copy it into the view's own preflight to change it. It combines with any preflight the view already declares: the refresh lands only if both continue. Service calls from a preflight are metered and audited as for a code source; they run in the server process, without a code source's sandbox.
 
 **Use case:** A product owner stops a gold view from refreshing on bad input with one switch, instead of writing a preflight query over checker results, and still has the full preflight for every other condition.
+
+**Code:** —
+
+**Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-2134 · Extensible Functions {#REQ-2134}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A deployment setting, commands.allow_host_code (off by default), governs host code: the python command kind (an in-process module:attr callable) and the script command kind (a subprocess on the server's host). Both run with the server's full access to its memory, credentials, files and network, so code that is malicious, buggy or greedy can read anything the server can, starve it or take it down. A model entry holds only a reference to the code (module:attr or a path), so the code does not travel with the model when it is promoted. While the setting is off, registering or updating a command of either kind is refused, from the admin API and from a config file alike, and calling an existing one is refused; one check makes both refusals. The setting is the operator's, never an organization's, and has its field in Deployment settings. Code resolvers are the governed alternative: sandboxed, pinned, and promoted with the model.
+
+**Use case:** An operator runs a server of many organizations without any of them, or a model promoted into it, being able to run code with the server's own access.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2135 · SPARQL Query Frontend {#REQ-2135}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is a full surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same editor, results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients query; and a "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic SQL statement through the graph mapping Cypher uses ([REQ-351](#REQ-351)): a table is a class and its rows are its subjects, each subject's IRI built from its primary key, only on output; a column linked to a term is a predicate; a declared relationship is an edge predicate; and the meta-domain tables (terms, term edges, term references, tables, columns, domains) are mapped as SKOS and OWL. The statement is governed whole and routed as any query is; there is no separate triple store and no knowledge-graph views. A property path is lowered as a Cypher variable-length path is ([REQ-348](#REQ-348)): WITH RECURSIVE capped at a depth limit, or unrolled to that depth on an engine without recursion, with cycles handled. A result cut at the limit says it was cut. The depth limit is an operator setting with its field in Deployment settings. A variable predicate (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded. (Amended 2026-10-22, ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two steps. First, a refactor makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary no front end owns, with Cypher's parser on one side and select_builder, assembler, path_translator and label_map as the back end both languages share; Cypher's existing tests prove the refactor changes nothing. Second, a SPARQL front end lowers rdflib's SPARQL algebra to that IR and adds what SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib is a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:) [SUPERSEDED by REQ-2135, 2026-10-22 -- the IR is the GQL+ IR, a GQL-inspired IR (GQL+ IR amendment below); the tiers and the symmetry stand, read with GQL+ IR for Cypher+ IR. Kept here for history; do not implement against it.] The canonical graph form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher's pattern IR extended with what SPARQL needs, which is path expressions (sequence, alternative and inverse among them), variable predicates, a triples output for CONSTRUCT, and IRI and datatype values. [END SUPERSEDED BLOCK] It stands to graph languages as semantic SQL stands to every language, and semantic SQL is likewise a superset IR, not SQL: SQL extended with the model (model names, views and metrics resolved, governance attached), lowered per engine at routing and never run as written. Neither is the language it is named after. The tiers are: a graph language, parsed into the Cypher+ IR, which holds the graph meaning (patterns, paths, variable predicates, triples out); the graph mapping lowers that, in one back end, into semantic SQL, which holds the data meaning (views expanded, governed whole, optimized, routed). Every graph language front end parses into the Cypher+ IR: Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing below it is duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within what Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric: Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no language is its IR, the namesake included. So the refactor makes Cypher's parser a front end like SPARQL's, and nothing below the IR is specific to Cypher. (Amended 2026-10-22, GQL+ IR:) The graph-side IR is the GQL+ IR. As semantic SQL is a SQL-inspired IR, the GQL+ IR is a GQL-inspired IR: each borrows its namesake's shape, each is our own representation, and neither claims conformance to the standard. The GQL+ IR borrows GQL's pattern concepts (quantified path patterns, the path modes WALK, TRAIL, ACYCLIC and SIMPLE, label expressions) and adds only variable predicates, a triples output for CONSTRUCT, and IRI and datatype values. Cypher maps straight in, its depth-capped cycle-free paths being ACYCLIC with a bound; SPARQL's path sequences, alternatives and inverses map onto those same concepts; a GQL or SQL/PGQ front end would be a parser only. The tiers are unchanged, and GraphQL still lowers straight to semantic SQL. Both IR names are internal: no user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:) Built in five phases. 1: the GQL IR starts as today's Cypher compiler; its Cypher AST and precompile (the parser and the Cypher-specific front end) are split out, and what remains is the GQL IR back end, proven by Cypher's existing tests. 2: that back end gains the GQL-inspired features SPARQL needs: quantified paths, path modes, label expressions, variable predicates, CONSTRUCT triples, IRI and datatype values. 3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol endpoint. 5: the UI, the SPARQL tab and the Ontology page's SPARQL button ([REQ-2136](#REQ-2136)); it comes last and can wait. (Amended 2026-10-22, EXPRESSIONS AS TREES:) Phase 2 opens with expressions as trees. Today the Cypher AST holds WHERE, RETURN, WITH, UNWIND and ORDER BY expressions as raw text (the expression field of WhereClause, ReturnItem, UnwindClause and OrderItem), and the back end reads that text in about twenty places: regex scans, map-literal rewriting, and a late re-parse with Cypher's expression grammar (expr_parser). The Cypher front end instead parses every expression into the expression tree (expr_ast) when it parses the statement, and the back end walks trees only, proven by the Cypher tests. Only then is the IR fully structural: SPARQL's FILTER, BIND and ORDER BY convert straight to trees, and nothing below the IR reads Cypher syntax. Phase 1 keeps the text on purpose, so that its move stays purely structural.
+
+**Use case:** A knowledge-graph team queries the governed model with the language and RDF clients it already uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied into a triple store.
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2136 · Glossary Admin {#REQ-2136}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The Ontology page's filter controls are shorthand for a SPARQL query ([REQ-2135](#REQ-2135)) that scopes the graph. The page has a SPARQL button: it builds the SPARQL query equivalent to the current filter (search focus, edge types, domains, status, Orphans, Columns) and opens it in the SPARQL query surface, ready to edit and run. An export of the graph is that query as CONSTRUCT, serialized as Turtle, JSON-LD or N-Triples, and streamed. Terms only exports SKOS and OWL, with DCAT and DPROD for the links to columns, tables and data products. With instances extends the slice to the rows behind the grounded columns, read as the viewer. The server estimates the export's size first; past a limit it narrows the export or runs it as a background job. (Amended 2026-10-22, PHASING:) The SPARQL button is phase 5 of [REQ-2135](#REQ-2135)'s phasing, with the SPARQL tab: it comes after the SPARQL front end and endpoint, and can wait.
+
+**Use case:** A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope into SPARQL to refine it.
+
+**Code:** —
+
+**Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-2137 · SPARQL Query Frontend {#REQ-2137}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+Later: SPARQL Update is lowered to the governed writes that exist: ontology curation (under its rights, [REQ-1590](#REQ-1590)), mutations and commands. It never writes raw triples or rows past them.
+
+**Use case:** A knowledge-graph team curates the vocabulary and changes data from the language it uses, under the same rights and the same write paths as every other surface.
+
+**Code:** —
+
+**Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2138 · SPARQL {#REQ-2138}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A sparql source ([REQ-1683](#REQ-1683)) may name a reasoner, HermiT first, and an OWL axioms file. At each refresh it pulls the slice of the graph its axioms need from its endpoint by CONSTRUCT, classifies it, and serves the inferred class memberships and properties as tables, such as sanctions_exposed(party) and controls(controller, controlled). How often it reasons is the source's freshness declaration (cache_ttl, replica), as for any source. It works against any SPARQL 1.1 endpoint, Provisa's own among them ([REQ-2135](#REQ-2135)), which it reads as a service identity, so it reasons over only what that identity is granted; what it serves is governed again for every reader, as any table is. A source that would read predicates produced by its own inferred tables is refused, as a view that reads itself is. The reasoner runs in the source's own process or container, never in the server's. HermiT and owlready2 are LGPL: they are used as separate programs and imported libraries, never linked into Provisa, under the dependency rules, and HermiT needs a Java runtime in the source's image.
+
+**Use case:** A compliance team writes once, as OWL axioms, what makes a party sanctions-exposed or one company control another, and every surface reads the inferred answer as a governed table, recomputed as often as the source's freshness says.
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2139 · UI {#REQ-2139}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo "beneficial ownership": KYC parties, companies, owners and their stakes, over a few sources, with an ontology whose terms are linked to the stake and sanctions columns, and an OWL file declaring controls transitive and SanctionsExposed equivalent to being controlled by some SanctionedParty. A sparql source with HermiT ([REQ-2138](#REQ-2138)) reads Provisa's own SPARQL endpoint ([REQ-2135](#REQ-2135)). The answer, which parties are sanctions-exposed and through which chain of control, is queried from SQL, GraphQL and Cypher, and a role without the sanctions rights gets it masked or filtered. Its tour follows the settled demo shape: the scenario, how the pieces fit, then the solution.
+
+**Use case:** A visitor sees an ownership chain several companies deep turn into a governed yes-or-no on sanctions exposure, inferred from rules written once, and readable from the language they already use.
 
 **Code:** —
 

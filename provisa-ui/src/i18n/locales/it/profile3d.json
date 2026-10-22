@@ -5,6 +5,10 @@
     "hint": "Trascina per orbitare · scorri per ingrandire · trascina con il tasto destro per spostare",
     "rotate": "Ruota",
     "resetView": "Reimposta vista",
-    "zoomTo": "Ingrandisci su questa colonna"
+    "zoomTo": "Ingrandisci su questa colonna",
+    "attraction": "Attrazione",
+    "attractionLoose": "Largo",
+    "attractionTight": "Stretto",
+    "grid": "Griglia"
   }
 }

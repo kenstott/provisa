@@ -17,9 +17,9 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import cypher_to_sql
+from provisa.gql.translator import cypher_to_sql
 
 
 def _node(label: str, table_id: int, table: str, columns: list[str]) -> NodeMapping:

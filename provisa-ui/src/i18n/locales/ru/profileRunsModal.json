@@ -42,6 +42,7 @@
     "kind_terrain": "Рельеф",
     "kind_relationsMap": "Связи",
     "kind_jointCloud": "Совместное облако",
-    "kind_driftStrata": "Страты дрейфа"
+    "kind_driftStrata": "Страты дрейфа",
+    "resultsMenu": "Результаты"
   }
 }

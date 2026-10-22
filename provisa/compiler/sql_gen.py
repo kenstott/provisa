@@ -192,8 +192,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             if (
                 join_meta.default_limit is not None or _has_lateral_force_args(sel)
             ) and not _use_agg:
-                if join_meta.default_limit is not None:
-                    has_lateral_ops_joins = True
+                # A lateral join repeats each root row once per joined row, so the root's own
+                # WHERE, ORDER BY and LIMIT are applied to the root rows before it.
+                has_lateral_ops_joins = True
                 join_clauses.append(
                     _lateral_join(
                         sel,
@@ -433,18 +434,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
         else:
             from_clause = f"{ref}{time_travel_clause}"
 
-    # When ops LATERAL joins are present, wrap the base table in a subquery so that
-    # the base row count is capped before the lateral Cartesian expansion.
-    # Without this cap, the engine runs one full Iceberg scan per base row (no secondary index).
     result_limit: int | None = None
-    if has_lateral_ops_joins:
-        base_limit = int(args["limit"]) if "limit" in args else _get_default_row_limit()
-        result_limit = base_limit if "limit" in args else None
-        if use_aliases:
-            assert root_alias is not None
-            from_clause = f"(SELECT * FROM {ref} LIMIT {base_limit}) {_q(root_alias)}"
-        else:
-            from_clause = f"(SELECT * FROM {ref} LIMIT {base_limit})"
 
     # REQ-263a: statistical sampling — TABLESAMPLE BERNOULLI(<pct>) on the base table.
     # PG places TABLESAMPLE after the (optional) alias; SQLGlot transpiles per dialect.
@@ -456,6 +446,56 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
         if not 0 < _pct <= 100:
             raise ValueError(f"sample must be a percentage in (0, 100], got {_pct}")
         from_clause = f"{from_clause} TABLESAMPLE BERNOULLI ({_pct})"
+
+    # Native filter args (any arg not handled by SQL compilation): each a _nf_-prefixed condition
+    # of the root's WHERE, so the SQL/CQL preview shows the filter. nf_extractor strips them before
+    # the engine runs the statement; endpoint.py uses api_args for the REST call.
+    api_args = native_args(args, _STANDARD_ARGS, ctx.native_filter_columns.get(table.table_id, {}))
+
+    # WHERE
+    where_parts: list[str] = []
+    if "where" in args:
+        _vvals = ctx.virtual_columns.get(table.table_id)
+        where_parts.append(
+            _compile_where(
+                args["where"],
+                collector,
+                root_alias,
+                _vvals,
+                table.table_id,
+                ctx.exposed_to_physical,
+            )
+        )
+    where_parts += native_arg_conditions(api_args)
+    where_sql = f" WHERE {' AND '.join(where_parts)}" if where_parts else ""
+
+    # ORDER BY -- a similar search first: the rows most like the query lead (REQ-430).
+    order_parts = [f"{similar_sql} DESC"] if similar_sql is not None else []
+    if "order_by" in args:
+        order_by_val = args["order_by"]
+        if isinstance(order_by_val, dict):
+            order_by_val = [order_by_val]
+        order_parts.append(
+            _compile_order_by(order_by_val, root_alias, table.table_id, ctx.exposed_to_physical)
+        )
+    order_sql = f" ORDER BY {', '.join(order_parts)}" if order_parts else ""
+
+    if has_lateral_ops_joins:
+        # A lateral join repeats each root row once per joined row: the root rows are chosen
+        # first -- filtered, ordered and limited in a subquery -- and only those are expanded.
+        # With no limit asked, the default row limit caps them, so one lateral scan runs per
+        # row it keeps, not per row of the table. result_limit truncates the grouped rows.
+        base_limit = int(args["limit"]) if "limit" in args else _get_default_row_limit()
+        result_limit = base_limit if "limit" in args else None
+        base = f"SELECT * FROM {from_clause}{where_sql}{order_sql} LIMIT {base_limit}"
+        if "offset" in args:
+            base += f" OFFSET {collector.add(int(args['offset']))}"
+        if use_aliases:
+            assert root_alias is not None
+            from_clause = f"({base}) {_q(root_alias)}"
+        else:
+            from_clause = f"({base})"
+        where_sql = ""
 
     sql = f"SELECT {', '.join(select_parts)} FROM {from_clause}"
 
@@ -489,53 +529,11 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             inner_sql = f"SELECT *, {rn_expr} FROM ({sql}) AS {_q(inner_alias)}"
             sql = f"SELECT * FROM ({inner_sql}) AS {_q('__distinct_dedup')} WHERE __rn = 1"
 
-    # Native filter args (any arg not handled by SQL compilation): each a _nf_-prefixed condition
-    # of the root's WHERE, so the SQL/CQL preview shows the filter. nf_extractor strips them before
-    # the engine runs the statement; endpoint.py uses api_args for the REST call.
-    api_args = native_args(args, _STANDARD_ARGS, ctx.native_filter_columns.get(table.table_id, {}))
+    # The root rows' order holds over the expanded rows too.
+    sql += f"{where_sql}{order_sql}"
 
-    # WHERE
-    where_parts: list[str] = []
-    if "where" in args:
-        _vvals = ctx.virtual_columns.get(table.table_id)
-        where_parts.append(
-            _compile_where(
-                args["where"],
-                collector,
-                root_alias,
-                _vvals,
-                table.table_id,
-                ctx.exposed_to_physical,
-            )
-        )
-    where_parts += native_arg_conditions(api_args)
-    if where_parts:
-        sql += f" WHERE {' AND '.join(where_parts)}"
-
-    # ORDER BY -- a similar search first: the rows most like the query lead (REQ-430).
-    order_parts = [f"{similar_sql} DESC"] if similar_sql is not None else []
-    if "order_by" in args:
-        order_by_val = args["order_by"]
-        if isinstance(order_by_val, dict):
-            order_by_val = [order_by_val]
-        order_parts.append(
-            _compile_order_by(order_by_val, root_alias, table.table_id, ctx.exposed_to_physical)
-        )
-    if order_parts:
-        sql += f" ORDER BY {', '.join(order_parts)}"
-
-    # LIMIT / OFFSET
-    # When ops LATERAL joins are present, SQL LIMIT would cut the expanded join rows,
-    # not the base rows. result_limit is set above (base-table subquery) for the SQL path;
-    # it's also used for Python-level truncation after grouping in the GraphQL path.
-    if has_lateral_ops_joins:
-        if result_limit is None and "limit" in args:
-            result_limit = int(args["limit"])
-        # Outer LIMIT is meaningless after lateral expansion; use a fixed cap
-        sql += " LIMIT 25"
-        if "offset" in args:
-            sql += f" OFFSET {collector.add(int(args['offset']))}"
-    else:
+    # LIMIT / OFFSET: with a lateral join they chose the root rows in the subquery above.
+    if not has_lateral_ops_joins:
         # Always parameterized, never interpolated. No compile-time default LIMIT:
         # the row cap is applied by governance (stage2 resolve_row_cap) so it is
         # role-aware — FULL_RESULTS roles get no default row limit, others get the

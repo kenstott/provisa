@@ -34,6 +34,58 @@ export function ExpandButton({ onClick, testId }: { onClick: () => void; testId:
   );
 }
 
+/**
+ * The dialog a 3D view, a graph or a results grid opens in. It never scrolls: it is the window's
+ * height less its offsets, a column of the header and a body that takes the rest. What it holds
+ * lays out in the body: a stage takes the space left (its renderer follows the size), and a side
+ * panel or a menu scrolls on its own.
+ */
+export function FitModal({
+  opened,
+  onClose,
+  title,
+  testId,
+  size = "95%",
+  children,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  title: string;
+  testId: string;
+  size?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      size={size}
+      yOffset="2.5dvh"
+      title={title}
+      styles={{
+        content: {
+          height: "95dvh",
+          maxHeight: "95dvh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        },
+        header: { flex: "none" },
+        body: {
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        },
+      }}
+      data-testid={testId}
+    >
+      {children}
+    </Modal>
+  );
+}
+
 export function Expandable3D({
   title,
   testId,
@@ -48,19 +100,14 @@ export function Expandable3D({
   return (
     <>
       {render(false, () => setExpanded(true))}
-      <Modal
+      <FitModal
         opened={expanded}
         onClose={() => setExpanded(false)}
-        size="95%"
         title={title}
-        styles={{
-          content: { height: "95vh" },
-          body: { height: "calc(95vh - 3.5rem)", overflow: "hidden" },
-        }}
-        data-testid={`${testId}-modal`}
+        testId={`${testId}-modal`}
       >
         {expanded && render(true)}
-      </Modal>
+      </FitModal>
     </>
   );
 }

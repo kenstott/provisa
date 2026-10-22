@@ -50,7 +50,7 @@ One long-running process per code source per Provisa process, in its runtime, st
   | From | Message | Meaning |
   |---|---|---|
   | host | `hello {exports}` | the host loaded the code; these are its exports |
-  | Provisa | `call {id, export, kind, args}` | `kind` is table, command or stream; `args` in declared order |
+  | Provisa | `call {id, export, kind, args}` | `kind` is table, command, stream or columns; `args` in declared order (for columns, each input column a list of the batch's values, REQ-2131) |
   | host | `rows {id, rows}` | a batch (tables: up to 1000; streams: each row as it is yielded) |
   | host | `value {id, value}` | a command's single result |
   | host | `end {id}` / `error {id, message, stack}` | the call finished / failed |
