@@ -2,7 +2,7 @@
   "quickstart.md": "70d5d3868168470098b422e159b2cc6849fa976090ef390dac5282f6d24f3c4c",
   "api-reference.md": "5713969669b099bba3ac6cf311f467b8f7c041d0910f23da6792b8225011091e",
   "architecture.md": "44ad8bc5217aa098325df055e5ef5f676d869d7235b402f3c2b1ec5b5edc2ebe",
-  "security.md": "438965807a0df3b0e3bc1be1caa289083baa8d5f59039288d9a90667027c3fe2",
+  "security.md": "6725c4bbe0e07c93cf5c3559d1d77e8951d2fe6921d4537b20bf7f8186b239f3",
   "cli.md": "b1fd69b10cf41fbf249cb9b24e6974aff57693e57eec5b7fdb09408fcac0d8de",
   "subscriptions.md": "5795d80c43de4beae7ed777810511b2d2ba385b5f2aa6acdd622090c945f170c",
   "integrations.md": "1aa64a5a24b943feb6d22213c34f4ff3183ea64506fa9b2fabf9f08a21f9dae6",
@@ -17,7 +17,7 @@
   "migration/hasura-ddn.md": "08402b12f53b7dfde3716e9ac0ffffa525102d43e6bfd35740a72d4aff8ccdf4",
   "migration/hasura-v2.md": "34f9b7024b33ca49ddddb99d6952bbc3e8415f3e63bfca35b5d1fed24eff9c2f",
   "index.md": "4c6791df32af1652467dd1a537440d957042e95dad761c66effa1e692a923412",
-  "configuration.md": "f7fa7d407745ffb8ccd873f5bfb4746cf24166a007f51cbc6e89db3e5f77cd6c",
+  "configuration.md": "cb6aadd477f624992c8b0cc1fb849f228c167ef86f651c22de7ba4aa69a8f682",
   "sources.md": "9ee84df8de5c7b93807a1de8d171385909fefc8c98fe1b047d8935b265088a75",
   "python-client.md": "72587a15c990d156e03ee427c950f92fde4eec3d59bd4bab690ef294f7955588",
   "import.md": "9b781675414c6e01ca20754346e9519a05bba685f58d4f8455d446feee691603",
@@ -32,5 +32,5 @@
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
   "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
-  "code-sources.md": "cc7e437ab9897625b4bdac4ead372ada0022e87a2bf3e1f94010ba10e0b4113c"
+  "code-sources.md": "46e046e30ca7a146d1c0551f2063e64ebd5c2d838e8f3a6c99e9aa679759b8a0"
 }

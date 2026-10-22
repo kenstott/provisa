@@ -1652,6 +1652,8 @@ sources:
 | `PROVISA_DATA_DIR` | `~/.provisa` | תיקיית נתונים למאגר DuckDB המובנה |
 | `TRINO_HOST` | `localhost` | מארח coordinator של Trino |
 | `TRINO_PORT` | `8080` | פורט HTTP של coordinator‏ Trino |
+| `PROVISA_ENGINE_FILES_GID` | `1000` | הקבוצה שבה Trino קורא את קובצי הסוד שלו (הגדרות ה-SASL של מקור Kafka, מפתח הלקוח של שרת קוד) כש-Provisa רץ לא כ-root ולא כמשתמש של Trino, כמו אפליקציה מקומית לצד הקונטיינר של Trino. המשתמש של Provisa חייב להיות חבר בה, אחרת הקובץ נדחה בשמו. |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | אותו דבר, עבור השרת של מנוע Postgres שקורא את מפתח הלקוח של שרת קוד |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | נתיב ל-JSON מפתח service-account של GCP (מנוע/מקור BigQuery) |
 | `GOOGLE_CLOUD_PROJECT` | — | פרויקט GCP ברירת מחדל (BigQuery; נדרס על ידי URL) |
 | `FABRIC_SQL_SERVER` | — | נקודת קצה SQL של Fabric Warehouse (חלופה ל-`PROVISA_ENGINE_URL`) |
