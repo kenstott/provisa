@@ -177,7 +177,8 @@
       "unknown_arg_kind": "Unbekanntes arg_kind '{{arg_kind}}' für '{{name}}'",
       "unknown_command": "Unbekannter Befehl: '{{name}}'",
       "unknown_impl_kind": "Unbekanntes Funktions-impl_kind: '{{impl_kind}}'",
-      "written_table_missing": "Befehl '{{name}}' schreibt '{{table}}', die nicht registriert ist"
+      "written_table_missing": "Befehl '{{name}}' schreibt '{{table}}', die nicht registriert ist",
+      "host_code_refused": "Befehl '{{name}}' ist vom Typ {{impl_kind}} und führt Code auf dem Host des Servers aus. Host-Code ist in dieser Bereitstellung ausgeschaltet; verwenden Sie stattdessen einen Code-Resolver."
     },
     "graphql_remote": {
       "introspection_failed": "Introspektion fehlgeschlagen: {{error}}",

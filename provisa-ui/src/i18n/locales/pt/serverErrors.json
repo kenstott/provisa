@@ -177,7 +177,8 @@
       "unknown_arg_kind": "arg_kind desconhecido '{{arg_kind}}' para '{{name}}'",
       "unknown_command": "Comando desconhecido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de função desconhecido: '{{impl_kind}}'",
-      "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada"
+      "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada",
+      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso."
     },
     "graphql_remote": {
       "introspection_failed": "Falha na introspecção: {{error}}",

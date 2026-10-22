@@ -17,6 +17,9 @@ Six `impl_kind` values are supported:
 | `grpc` | gRPC unary; proto-less JSON bridge |
 | `python` | In-process Python callable (`module:attr`) |
 
+`script` and `python` are host code: they run on the server's own host, and a deployment allows
+them only when its operator turns host code on (see [Host code](#host-code)).
+
 Addressing (the catalog `name` and `function_name`) is decoupled from `binding` (transport and
 location). Swap the binding and the command's governance, lineage, and caller contracts stay
 unchanged.
@@ -69,6 +72,9 @@ etc.).
 ## Authoring a command
 
 ### Config file
+
+This example is a `python` command, so it loads only where host code is allowed (see
+[Host code](#host-code)).
 
 ```yaml
 functions:
@@ -278,6 +284,39 @@ See [Lineage](lineage.md) for how command nodes appear in the DAG and how to rea
 ## Egress allowlist
 
 `http` and `grpc` commands call external endpoints. Every target host must appear on the deployment's `udf_egress_allowlist`. Loopback (`localhost`, `127.0.0.1`, `::1`) is always permitted. Without an allowlist, all external egress is denied with HTTP 403, and there's no silent default.
+
+## Host code
+
+A `python` command calls a `module:attr` inside the server's process, and a `script` command runs a
+subprocess on the server's host. Either one runs with everything the server can reach: its memory,
+its credentials, its files and its network. Code that is malicious, buggy or greedy can read any of
+it, starve the server or take it down. The command's model entry holds only a reference to the code
+(`module:attr`, or the script's path), so the code itself doesn't travel with the model when the
+model is promoted to another environment.
+
+The deployment setting `commands.allow_host_code` governs both kinds. It is off by default. While
+it is off:
+
+- registering a command of either kind is refused, whether from the admin API or from a config file;
+- updating a command to either kind is refused;
+- calling an existing command of either kind is refused, with HTTP 403 and the code
+  `functions.host_code_refused`.
+
+The setting belongs to the operator, never to an organization. It is on the Deployment settings page
+under Security, and can also be set in the config file or the environment:
+
+```yaml
+server:
+  commands:
+    allow_host_code: true
+```
+
+```bash
+PROVISA_COMMANDS_ALLOW_HOST_CODE=true
+```
+
+[Code sources](code-sources.md) are the governed alternative: their code runs in a sandbox, is
+pinned to a version, and is promoted with the model.
 
 ## Invocation tracing
 

@@ -41,7 +41,7 @@ from sqlalchemy import insert, select
 # The API layer says at import whether the deployment holds many organizations, which a secret's
 # read asks; run alone, nothing else here imports it.
 import provisa.api.app  # noqa: F401
-from provisa.core import config_loader, secrets_store
+from provisa.core import config_loader, secrets_store, settings_registry
 from provisa.core.config_loader import (
     apply_config,
     is_seeded,
@@ -918,6 +918,9 @@ async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(db, config_fil
     from provisa.core.config_loader import rebuild_from_config
 
     raw = config_loader.read_config_with_includes(_REPO / config_file)
+    # The boot names the config to the operator settings before it seeds (app_loaders): perf's
+    # allows the host code its python commands are (REQ-2134).
+    settings_registry.bind_config(raw)
     seeded, _config = await _boot(db, raw)
     assert seeded is True
     first = await _model(db)

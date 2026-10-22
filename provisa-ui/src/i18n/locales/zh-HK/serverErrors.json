@@ -177,7 +177,8 @@
       "unknown_arg_kind": "「{{name}}」的 arg_kind「{{arg_kind}}」未知",
       "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」",
-      "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊"
+      "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊",
+      "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",

@@ -86860,3 +86860,38 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2106
   - REQ-2126
   target: "2027-Q1"
+- id: REQ-2134
+  status: proposed
+  since: 2026-10
+  group: 5. Query Languages, Compilation & Operations
+  category: Extensible Functions
+  feature: commands-and-functions-tracked-functions
+  priority: MUST
+  type: behavioral
+  description: >-
+    A deployment setting, commands.allow_host_code (off by default), governs host code: the python
+    command kind (an in-process module:attr callable) and the script command kind (a subprocess on
+    the server's host). Both run with the server's full access to its memory, credentials, files and
+    network, so code that is malicious, buggy or greedy can read anything the server can, starve it
+    or take it down. A model entry holds only a reference to the code (module:attr or a path), so the
+    code does not travel with the model when it is promoted. While the setting is off, registering or
+    updating a command of either kind is refused, from the admin API and from a config file alike, and
+    calling an existing one is refused; one check makes both refusals. The setting is the operator's,
+    never an organization's, and has its field in Deployment settings. Code resolvers are the governed
+    alternative: sandboxed, pinned, and promoted with the model.
+  use_case: >-
+    An operator runs a server of many organizations without any of them, or a model promoted into
+    it, being able to run code with the server's own access.
+  scenario: |
+    Given commands.allow_host_code is off, as it is by default
+    When a steward registers or updates a command of kind python or script
+    Then it is refused, naming the kind and the setting
+    When an existing command of kind python or script is called
+    Then the call is refused, naming the kind and the setting
+    Given commands.allow_host_code is on
+    Then commands of either kind are registered, updated and called
+  relates_to:
+  - REQ-885
+  - REQ-1913
+  - REQ-2104
+  target: "2027-Q1"

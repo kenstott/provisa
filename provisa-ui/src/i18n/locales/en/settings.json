@@ -862,6 +862,12 @@
         "label": "Fake leak-rate threshold",
         "help": "The share of a sensitive column's sampled values its fake may leave equal to the real value before the leak-rate check marks the fake inadequate. 0 fails a fake that leaves any value unchanged."
       }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Allow host code commands",
+        "help": "On: python and script commands may be registered and called. Each runs with the server's own access to its memory, credentials, files and network, and its code does not travel with the model. Off by default; use a code resolver instead."
+      }
     }
   }
 }
