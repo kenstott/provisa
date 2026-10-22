@@ -61,6 +61,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
     "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
     "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
+    "glossary_term_domains": "glossary_term_domains_meta",  # REQ-1591
     "tracked_webhooks": "tracked_webhooks_meta",
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
@@ -1937,6 +1938,7 @@ _META_TABLES = [
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
     "glossary_term_edges",  # REQ-1584
     "glossary_term_experts",  # REQ-1584
+    "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
     "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
     "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
