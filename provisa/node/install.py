@@ -51,6 +51,7 @@ from urllib.parse import quote, urlsplit
 from provisa.codesource import install as shared
 from provisa.codesource.bundle import BundleRefused, unpack
 from provisa.codesource.install import (
+    DirectoryCode,
     GitCode,
     Http,
     Installed,
@@ -84,7 +85,7 @@ class NpmCode:
     version: str
 
 
-Code = NpmCode | GitCode | UploadCode
+Code = NpmCode | GitCode | UploadCode | DirectoryCode
 
 
 # -- registries ------------------------------------------------------------------------------------
