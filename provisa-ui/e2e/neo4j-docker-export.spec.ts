@@ -12,6 +12,27 @@ import { test, expect, BACKEND_URL } from "./coverage";
 import { NEO4J_URL } from "./neo4j-container";
 
 const EXPORT_BATCH = 200;
+// The discovery queries run this many at a time: one per label and one per relationship type,
+// each a second or more on a CI runner, serially outgrew the test's budget as the e2e model grew.
+const DISCOVERY_CONCURRENCY = 8;
+
+/** ``fn`` over ``items``, ``limit`` at a time; results in the order of ``items``. */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const at = next++;
+      out[at] = await fn(items[at]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
 
 type ApiNode = { id: number; tableLabel: string; properties: Record<string, unknown> };
 type ApiEdge = {
@@ -156,19 +177,23 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   const edgesMap = new Map<string, ExportEdge>();
   const BASE = `${BACKEND_URL}`;
 
-  for (const label of allLabels) {
-    const rows = await tryCypherQuery(BASE, `MATCH (n:${label}) RETURN n`);
+  const labelRows = await mapLimit(allLabels, DISCOVERY_CONCURRENCY, (label) =>
+    tryCypherQuery(BASE, `MATCH (n:${label}) RETURN n`),
+  );
+  for (const rows of labelRows) {
     if (rows !== null) extractNodesAndEdges(rows, nodesById, edgesMap);
   }
 
   // ── 3. Query all relationships from schema ────────────────────────────────
   const relTypes: Array<{ type: string; source: string; target: string }> =
     schema.relationship_types ?? [];
-  for (const rel of relTypes) {
-    const relRows = await tryCypherQuery(
+  const relRowsAll = await mapLimit(relTypes, DISCOVERY_CONCURRENCY, (rel) =>
+    tryCypherQuery(
       BASE,
       `MATCH (a:${rel.source})-[r:${rel.type}]->(b:${rel.target}) RETURN a, r, b`,
-    );
+    ),
+  );
+  for (const relRows of relRowsAll) {
     if (relRows) extractNodesAndEdges(relRows, nodesById, edgesMap);
   }
 
