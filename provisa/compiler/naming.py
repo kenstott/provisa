@@ -247,7 +247,14 @@ def source_to_catalog(source_id: str) -> str:  # REQ-471
 #: The kinds of object an engine keeps to reach a source live, each named ``<kind>_<catalog>``:
 #: a pg engine's foreign servers and staging schemas (postgres_fdw and the other FDWs, the
 #: connector-pgwire bridge, file_fdw) and a ClickHouse engine's databases.
-ATTACH_KINDS: tuple[str, ...] = ("fdw", "fdw_pgwire", "fdw_file", "ch", "ch_pgwire")
+ATTACH_KINDS: tuple[str, ...] = (
+    "fdw",
+    "fdw_pgwire",
+    "fdw_file",
+    "fdw_codehost",  # REQ-2100: a built code host
+    "ch",
+    "ch_pgwire",
+)
 
 
 def engine_attach_name(kind: str, catalog: str) -> str:  # REQ-1266, REQ-1529

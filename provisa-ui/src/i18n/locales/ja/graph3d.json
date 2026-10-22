@@ -58,6 +58,21 @@
     "edge_owns": "所有",
     "loadError": "グラフを読み込めませんでした: {{error}}",
     "zoomTo": "ズーム",
-    "edge_column_lineage": "列に供給"
+    "edge_column_lineage": "列に供給",
+    "preset_taxonomy": "タクソノミー",
+    "layer_domains": "ドメイン",
+    "layer_data": "データ",
+    "show": "表示",
+    "status_proposed": "提案中",
+    "status_deprecated": "非推奨",
+    "status_retired": "廃止",
+    "filterEdgeType": "エッジの種類",
+    "why_undefined": "未定義",
+    "why_ungrounded": "データ未接続",
+    "glossaryUnreadable": "あなたのロールは meta ドメインの用語集を読み取れません。",
+    "ontologyTitle": "用語集オントロジー",
+    "ontologyView": "オントロジービュー",
+    "selected_one": "{{count}} 件選択",
+    "selected_other": "{{count}} 件選択"
   }
 }

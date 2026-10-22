@@ -40,7 +40,9 @@ _ROWS = [
     (4, "west", 33.0),
     (5, "east", 11.0),
     (6, "west", 29.0),
+    # Two in every region: compare measures each group's sample variance, which one value has none.
     (7, "north", 50.0),
+    (8, "north", 54.0),
 ]
 _CAP = 4
 _SQL = "SELECT id, region, email, amount FROM sales.orders"
@@ -137,7 +139,7 @@ def _column(answer: dict, name: str) -> dict:
 def test_a_row_rule_narrows_n(server):
     every = _call(server, "describe", {"sql": _SQL, "role": "org_admin"})
     east = _call(server, "describe", {"sql": _SQL, "role": "analyst"})
-    assert every["n"] == 7 and east["n"] == 3
+    assert every["n"] == len(_ROWS) and east["n"] == 3
     assert _column(east, "amount")["mean"] == pytest.approx(11.0)
 
 
@@ -146,14 +148,14 @@ def test_a_masked_column_is_described_as_the_role_reads_it(server):
     email = _column(east, "email")
     assert email["top_values"] == [{"value": "***", "count": 3}] and email["distinct"] == 1
     admin = _call(server, "describe", {"sql": _SQL, "role": "org_admin"})
-    assert _column(admin, "email")["distinct"] == 7
+    assert _column(admin, "email")["distinct"] == len(_ROWS)
 
 
 def test_a_comparison_counts_only_the_rows_the_role_reads(server):
     every = _call(
         server, "compare", {"sql": _SQL, "value": "amount", "group": "region", "role": "org_admin"}
     )
-    assert every["method"] == "one-way ANOVA" and every["n"] == 7
+    assert every["method"] == "one-way ANOVA" and every["n"] == len(_ROWS)
     with pytest.raises(AssertionError, match="two or more groups"):
         _call(
             server,

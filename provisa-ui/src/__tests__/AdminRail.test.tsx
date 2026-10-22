@@ -55,7 +55,7 @@ describe("AdminRail", () => {
     // Security is platform_settings; an org admin holding only org_settings must not see a link
     // that answers with "You do not have permission to view this page."
     expect(screen.queryByRole("link", { name: "Security" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Environments" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "DataOps" })).toBeInTheDocument();
   });
 
   it("offers Environments on its own right and not on org settings", () => {
@@ -63,11 +63,11 @@ describe("AdminRail", () => {
     // org_settings holder without the right sees no link to a page that would refuse them.
     auth.capabilities = ["environment_management"];
     renderAt("/admin/tags");
-    expect(screen.getByRole("link", { name: "Environments" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "DataOps" })).toBeInTheDocument();
     cleanup();
     auth.capabilities = ["org_settings"];
     renderAt("/admin/tags");
-    expect(screen.queryByRole("link", { name: "Environments" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "DataOps" })).toBeNull();
   });
 
   it("offers a platform administrator the deployment-wide surfaces", () => {

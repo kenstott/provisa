@@ -161,6 +161,44 @@ def build(out: Path = ASSETS) -> dict:
     return manifest
 
 
+# JupyterLab's splash screen (@jupyterlab/apputils-extension, the splash plugin; unchanged from the
+# 4.3 that jupyterlite-core 0.5.1 bundles through 4.5.11 and 4.7.0-alpha.2) is removed 200 ms after
+# its last holder lets go, by document.body.removeChild. A theme load inside those 200 ms shows the
+# same element again, the earlier timer takes it away, and the later removal throws NotFoundError
+# ("The node to be removed is not a child of this node") -- a page error the e2e coverage fixture
+# fails on. ThemeManager loads the theme again on every change to its settings, each load showing
+# the splash, so one theme change can be two loads. Element.remove() is a no-op on a detached node:
+# the same removal, minus the throw. The pattern is the minified call as jlab_core builds it.
+_SPLASH_REMOVAL = re.compile(
+    r"window\.setTimeout\(\(\(\)=>\{document\.body\.removeChild\((\w+)\)\}\),200\)"
+)
+
+
+def detach_splash_safely(js: str, name: str) -> str:
+    """``js`` (JupyterLab's core bundle, file ``name``) with its splash removal a no-op once the
+    splash is gone. Raises when the call is not there exactly once: a silent no-op would bring the
+    page error back, and a JupyterLab that changed it needs this patch re-read, or removed."""
+    found = _SPLASH_REMOVAL.findall(js)
+    if len(found) != 1:
+        raise RuntimeError(
+            f"{name}: expected one splash removal "
+            f"(window.setTimeout(()=>{{document.body.removeChild(...)}},200)), found {len(found)}; "
+            "re-read the jupyterlite-core pin against detach_splash_safely"
+        )
+    return _SPLASH_REMOVAL.sub(
+        lambda m: f"window.setTimeout((()=>{{{m.group(1)}.remove()}}),200)", js
+    )
+
+
+def _patch_splash(target: Path) -> None:
+    """Applies :func:`detach_splash_safely` to the one core bundle the build wrote."""
+    bundles = sorted((target / "build").glob("jlab_core.*.js"))
+    if len(bundles) != 1:
+        raise RuntimeError(f"expected one jlab_core bundle in {target / 'build'}, found {bundles}")
+    bundle = bundles[0]
+    bundle.write_text(detach_splash_safely(bundle.read_text(), bundle.name))
+
+
 def build_lite(target: Path) -> None:
     """The JupyterLite site served at /lite, its contents the starter notebooks."""
     if target.exists():
@@ -214,6 +252,7 @@ def build_lite(target: Path) -> None:
         # failed build shows everything it said.
         if built.returncode != 0:
             raise RuntimeError(f"jupyter lite build failed:\n{built.stdout}\n{built.stderr}")
+    _patch_splash(target)
 
 
 def fingerprint() -> str:

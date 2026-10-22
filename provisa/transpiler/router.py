@@ -45,6 +45,10 @@ class Route(str, Enum):
 # API sources — route through API caller pipeline
 API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api", "grpc_remote"}
 
+# REQ-2100: code sources, VIRTUAL to every reader that lands or attaches a source, whose single-source
+# read goes DIRECT to their own driver (provisa/codesource/direct.py).
+CODE_DIRECT_SOURCES: frozenset[str] = frozenset({"node", "python"})
+
 # Virtual sources — always route through the engine (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
     # File-based: exposed only via the engine's ATTACH (DuckDBSqliteConnector). There is no
@@ -273,6 +277,16 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             source_id=sid,
             dialect=None,
             reason=f"api source ({stype})",
+        )
+
+    # REQ-2100: a read of one code source runs its function and applies the rest of the statement
+    # to its rows, on its own driver; no engine runs it.
+    if stype in CODE_DIRECT_SOURCES:
+        return RouteDecision(
+            route=Route.DIRECT,
+            source_id=sid,
+            dialect=source_dialects.get(sid),
+            reason=f"single code source ({stype}), read by its function",
         )
 
     # Connector-only sources (NoSQL, data lake, non-SQL)

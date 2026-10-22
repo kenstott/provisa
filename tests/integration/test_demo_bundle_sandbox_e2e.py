@@ -289,7 +289,12 @@ def test_a_visitor_reads_what_the_demo_shows_its_admin_and_runs_as_its_own_roles
     demo = published_demo(named, "alpha")
     config = yaml.safe_load((demo / "config.yaml").read_text())
     config["roles"] = [
-        {"id": "keeper", "capabilities": ["query_development"], "domain_access": ["zoo"]}
+        {
+            "description": "Test role.",
+            "id": "keeper",
+            "capabilities": ["query_development"],
+            "domain_access": ["zoo"],
+        }
     ]
     for column in config["tables"][0]["columns"]:
         column["visible_to"] = (

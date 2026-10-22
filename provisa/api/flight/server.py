@@ -820,11 +820,19 @@ class ProvisaFlightServer(
             # check, and held until the stream is drained.
             from provisa.api.flight.deadline import FlightDeadlineExceeded, request_budget
 
+            from provisa.core.read_refusal import ReadRefused
+
             try:
                 with request_budget(request_timeout_for("flight")):
                     result = self._execute_with_role_cap(request, limiter, role_id, cap)
             except FlightDeadlineExceeded as exc:
                 raise _flight_error(str(exc), exc) from exc
+            except ReadRefused as exc:
+                # The family's one answer on this transport (core.read_refusal): gRPC UNAVAILABLE
+                # with the refusal's message. Raised as anything but a Flight error, pyarrow sends
+                # it as an untyped "Unknown error".
+                refused = flight.FlightUnavailableError(str(exc)[:_FLIGHT_ERROR_MAX_LEN])  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                raise refused from exc
             # REQ-1910: the statement text is a debug-detail fact, and the request's detail is
             # known only once the pipeline has resolved its trace scope (a window, or the ticket's
             # own hint): recorded here, after that, rather than only at the ticket's arrival.

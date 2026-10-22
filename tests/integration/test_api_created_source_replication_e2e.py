@@ -197,13 +197,17 @@ def test_a_source_created_through_the_admin_api_is_replicated_and_read(
             _admin(srv, 'updateSourceReplicate(sourceId: "src", replicate: 0)')
             replicated = _read(srv)
             assert replicated.status_code == 200, replicated.text
-            assert sorted(replicated.json()["data"]["orders"], key=lambda r: r["id"]) == _ID_AMOUNT
+            assert (
+                sorted(replicated.json()["data"]["orders"], key=lambda r: r["id"]) == _ID_AMOUNT
+            ), srv.dump_stderr_debug()[-6000:]
 
             # The read is the replica's: a later change in the source is not seen.
             pg.update_source("UPDATE orders SET amount = 999 WHERE id = 1")
             again = _read(srv)
             assert again.status_code == 200, again.text
-            assert sorted(again.json()["data"]["orders"], key=lambda r: r["id"]) == _ID_AMOUNT
+            assert sorted(again.json()["data"]["orders"], key=lambda r: r["id"]) == _ID_AMOUNT, (
+                srv.dump_stderr_debug()[-6000:]
+            )
             # The replica was built by the runner, which no request's vault binding reaches:
             # the field was resolved in the source's own organisation, and the vault is as the
             # operator left it.

@@ -549,7 +549,7 @@ _CLIENT_TOOLS: list[Any] = [
             "building the query. Explore's Python tab (/python) and Notebook tab (/notebook) run "
             "Python in the user's browser as the user, reading Provisa through provisa_client "
             "(provisa_client.query(sql_or_graphql_or_cypher) returns a pandas DataFrame; pandas, "
-            "numpy, scikit-learn and matplotlib are available). They are two different tabs, "
+            "numpy, scikit-learn, matplotlib and networkx are available). They are two different tabs, "
             "never one for the other: the Python tab (state.code: one script, written into the "
             "active script tab -- or into a new tab with state.newTab true, titled state.title "
             "when given, when the user asks for a new one; every run starts from nothing, so the "

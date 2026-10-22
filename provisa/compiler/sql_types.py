@@ -39,6 +39,7 @@ class _TableInfoProto(Protocol):
     native_filter_columns: list[dict]
     alias: str | None
     metrics: list[dict]  # REQ-1319: role-visible single-table metrics for this table
+    write_ops: frozenset[str]  # REQ-209: the operations the table's source takes
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -130,6 +131,11 @@ class CompilationContext:
     # REQ-1942: why every statement compiled for this environment is refused (a Test (fake)
     # environment showing a sensitive column with no fake); None when it serves.
     refusal: str | None = None
+    # REQ-2074: the role this context is built for, and per table the operations its source takes.
+    # The schema offers a mutation only where both the source takes it and the role holds a grant
+    # for it; these say which of the two an absent one lacks.
+    role_id: str | None = None
+    write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
     # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
     # address and primary key columns.
     kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)

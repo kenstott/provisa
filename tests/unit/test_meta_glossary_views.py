@@ -31,6 +31,8 @@ CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_edges (
     id TEXT PRIMARY KEY, from_term_id TEXT, to_term_id TEXT, rel_type TEXT, tenant_id TEXT);
+CREATE TABLE glossary_term_domains (
+    id INTEGER PRIMARY KEY, term_id TEXT, domain_id TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
@@ -49,6 +51,8 @@ CREATE TABLE tag_assignments (
 """
 
 _VIEWS = (
+    # First: the other glossary views read each term's domains from it (REQ-1593).
+    "glossary_term_domains",
     "glossary_terms",
     "glossary_term_refs",
     "glossary_term_edges",
@@ -58,11 +62,25 @@ _VIEWS = (
 )
 
 
+class _StringAgg:
+    def __init__(self) -> None:
+        self.values: list[str] = []
+
+    def step(self, value: str, separator: str) -> None:
+        self.separator = separator
+        self.values.append(value)
+
+    def finalize(self) -> str:
+        return self.separator.join(self.values)
+
+
 @pytest.fixture
 def db() -> sqlite3.Connection:
     """A control plane holding one table, two columns, three terms and four tags."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
+    # The control plane is PostgreSQL; this SQLite build has no STRING_AGG, so the test supplies it.
+    conn.create_aggregate("STRING_AGG", 2, _StringAgg)
     conn.executescript(_BASE_DDL)
     for name in _VIEWS:
         # SQLite has no CREATE OR REPLACE VIEW — startup_seed adapts the same way.

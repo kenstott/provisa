@@ -37,7 +37,8 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.naming import attach_catalog, engine_attach_name
 from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
-from provisa.federation.connector_duckdb import _DuckDBExtensionConnector, _probe_pg_extension
+from provisa.federation.connector_base import probe_pg_extension
+from provisa.federation.connector_duckdb import _DuckDBExtensionConnector
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -102,7 +103,7 @@ class GenericPgFdwConnector(Connector):  # REQ-1177
         return Capability(predicate_pushdown=True, write=self.mechanism == Mechanism.ATTACH_RW)
 
     async def probe(self, fetch) -> ProbeResult:  # standard PG discovery — pg_available_extensions
-        return await _probe_pg_extension(fetch, self._fdw, auto_create=True)
+        return await probe_pg_extension(fetch, self._fdw, auto_create=True)
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)

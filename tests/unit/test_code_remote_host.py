@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A code source on a remote host (REQ-2098): the Python remote host program, paired with and
-dialled by Provisa over mutual TLS, serving the same calls as a local worker."""
+"""A code source on a remote host (REQ-2098, REQ-2100): the front end every built image runs, with
+the Python host program as its worker, paired with and dialled by Provisa over mutual TLS, serving
+the same calls as a local worker to each Provisa connection."""
 
-# Requirements: REQ-2098
+# Requirements: REQ-2098, REQ-2100
 
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ import time
 import pyarrow as pa
 import pytest
 
+from provisa.codehost import front
 from provisa.codesource import remote
 from provisa.codesource.arrow_rows import schema_text
 from provisa.codesource.worker import WorkerFailed
@@ -32,7 +34,7 @@ from provisa.python.source import HOST
 
 pytestmark = pytest.mark.unit
 
-REMOTE_HOST = HOST.with_name("remote_host.py")
+FRONT = front.__file__
 _CODE = textwrap.dedent(
     '''
     def orders(n: int) -> list[dict]:
@@ -60,9 +62,12 @@ def started(tmp_path):
     code = tmp_path / "code"
     code.mkdir()
     (code / "shop.py").write_text(_CODE)
-    port = _free_port()
-    process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's host
-        [sys.executable, str(REMOTE_HOST), str(port), str(tmp_path / "state"), str(code), "shop"],
+    port = 0
+    names = tmp_path / "names.json"
+    names.write_text("{}")
+    worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
+    process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
+        [sys.executable, FRONT, str(port), str(tmp_path / "state"), str(names), *worker],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -74,7 +79,9 @@ def started(tmp_path):
         line = process.stderr.readline()
         if line.startswith("pairing code: "):
             pairing = line.removeprefix("pairing code: ").strip()
-        if line.startswith("remote host listening"):
+        if line.startswith("remote host listening on "):
+            # Bound by the host itself (port 0): no other test can take it first.
+            port = int(line.rsplit(" ", 1)[1])
             break
     assert pairing is not None, "the host printed no pairing code"
     yield port, pairing
@@ -170,3 +177,43 @@ def test_a_host_that_is_not_there_is_named():
 def test_a_pairing_code_that_is_not_one_is_refused_by_name():
     with pytest.raises(remote.PairingRefused, match="the line the remote host printed"):
         remote.parse_pairing_code("hello")
+
+
+def test_a_read_carrying_its_statement_is_answered_with_it_applied_on_the_host(started):
+    from provisa.codesource.direct import _ipc_text
+
+    port, code = started
+    identity = remote.new_identity()
+    pin = remote.pair("127.0.0.1", port, code, identity)
+    worker = _worker(port, pin, identity)
+    worker.start()
+    try:
+        residual = {
+            "sql": "SELECT n FROM shop.orders WHERE n >= 3 AND _nf_n = 6 ORDER BY n DESC",
+            "dialect": "duckdb",
+            "table": "orders",
+            "schema": ORDERS,
+            "arguments": _ipc_text(pa.table({"n": pa.array([6], pa.int64())})),
+        }
+        answered = [
+            pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
+            for ipc in worker.batches(
+                "orders", "table", [6], ["n"], schema=ORDERS, residual=residual
+            )
+        ]
+        assert pa.concat_tables(answered).column("n").to_pylist() == [5, 4, 3]
+        # A statement the host cannot run fails the call, named, and the host serves on.
+        with pytest.raises(Exception, match="nope"):
+            list(
+                worker.batches(
+                    "orders",
+                    "table",
+                    [1],
+                    ["n"],
+                    schema=ORDERS,
+                    residual={**residual, "sql": "SELECT nope FROM orders"},
+                )
+            )
+        assert worker.ping()
+    finally:
+        worker.stop()

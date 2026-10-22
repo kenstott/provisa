@@ -243,10 +243,17 @@ async def _org_roles(org_id: str) -> dict[str, dict]:  # REQ-1337
         reset_current_org(token)
 
 
-async def org_env_capabilities(identity: object, org_id: str) -> set[str] | None:  # REQ-1573
+async def org_env_capabilities(  # REQ-1573
+    identity: object, org_id: str, claims: list[str] | None = None
+) -> set[str] | None:
     """The capabilities an ENVIRONMENT gate reads for ``identity`` in ``org_id``: judged by that
     org's own PROD role definitions (REQ-1266) -- never another org's, and never by the copy an
-    environment holds, which must not be able to grant the right to select itself."""
+    environment holds, which must not be able to grant the right to select itself.
+
+    ``claims`` are the role claims to judge, when they are the org's assignments read for this
+    request rather than ``identity.roles``, which the middleware settles from them afterwards."""
+    from types import SimpleNamespace
+
     from provisa.api.admin.capabilities import env_gate_capabilities_for
     from provisa.core.request_context import reset_current_env, set_current_env
 
@@ -255,6 +262,8 @@ async def org_env_capabilities(identity: object, org_id: str) -> set[str] | None
         roles = await _org_roles(org_id)
     finally:
         reset_current_env(env_token)
+    if claims is not None:
+        identity = SimpleNamespace(user_id=getattr(identity, "user_id", None), roles=claims)
     return env_gate_capabilities_for(identity, roles)
 
 
@@ -577,6 +586,10 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # Where this request's org runtime is, when it is not the default one: a meta-role is
         # built in it (_meta_role).
         _org_binding: tuple[str, str | None] | None = None
+        # The environment the request names (x-provisa-env), once it is known to exist, and the
+        # one served without the header; its right is judged once the org's assignments are read
+        # (REQ-1573).
+        named_env: tuple[str, str | None] | None = None
         # The acting tenant org's own role definitions, once read (REQ-1266, REQ-1337).
         tenant_roles: dict[str, dict] | None = None
 
@@ -1042,10 +1055,13 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 requested_env = env_header_value(request.scope.get("headers") or [])
                 if requested_env is not None:
                     # Refused here as _OrgRoutingMiddleware refuses it, by name: nothing is built
-                    # in an environment the request will not be served by.
+                    # in an environment the request will not be served by. Whether it exists is
+                    # answered now; whether the user may be served by it needs their roles, which
+                    # are read below (in the environment served without the header), so the right
+                    # is judged there, before its runtime or any meta-role is built.
                     try:
                         bound_env = await _resolve_selected_env(
-                            self._admin_pool, active_org_id, identity, requested_env, env_caps
+                            self._admin_pool, active_org_id, identity, requested_env, None
                         )
                     except EnvironmentSelectionError as exc:
                         return JSONResponse(
@@ -1057,8 +1073,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                             {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
                             status_code=403,
                         )
-                    if bound_env != active_env:
-                        await ensure_org_runtime(active_org_id, bound_env)
+                    named_env = (requested_env, active_env)
                 _org_binding = (active_org_id, bound_env)
                 org_token = set_current_org(active_org_id)
                 env_token = set_current_env(active_env) if active_env is not None else None
@@ -1098,6 +1113,29 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 assignments = [
                     a for a in assignments if not _carries_platform_right(a.role_id, tenant_roles)
                 ]
+
+            if named_env is not None and _org_binding is not None:
+                # REQ-1573: the right to be served by the environment the request names, judged by
+                # the roles just read -- the same answer _OrgRoutingMiddleware gives with them.
+                from provisa.api.app import ensure_org_runtime
+                from provisa.api.env_routing import EnvironmentRightError
+                from provisa.api.env_routing import resolve_selected_env as _resolve_selected_env
+
+                assert active_org_id is not None  # an environment is named in a bound org
+                held_caps = await org_env_capabilities(
+                    identity, active_org_id, _assignments_to_claims(assignments)
+                )
+                try:
+                    await _resolve_selected_env(
+                        self._admin_pool, active_org_id, identity, named_env[0], held_caps
+                    )
+                except EnvironmentRightError as exc:
+                    return JSONResponse(
+                        {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
+                        status_code=403,
+                    )
+                if _org_binding[1] != named_env[1]:
+                    await ensure_org_runtime(active_org_id, _org_binding[1])
 
         identity.org_attributes = org_attributes
         from provisa.auth.derived_roles import principal_bindings

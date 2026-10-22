@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 
 from provisa.observability.ops_schema import OPS_TABLES
-from provisa.observability.ops_trino import metadata_missing, seed_ops_trino
+from provisa.observability.ops_trino import metadata_files_gone, metadata_missing, seed_ops_trino
 
 _LOCATION = "s3://provisa-otel/warehouse/signals/traces-1/metadata/00003.metadata.json"
 
@@ -101,3 +101,37 @@ def test_the_boot_ensure_leaves_an_unreadable_table_alone_and_makes_the_others()
                 sql.startswith(f"CREATE TABLE IF NOT EXISTS otel.signals.{table} ")
                 for sql in conn.ran
             ), table
+
+
+_DDL = (
+    "CREATE TABLE otel.signals.traces (trace_id varchar) WITH (format = 'PARQUET', "
+    "location = 's3://provisa-otel/warehouse/signals/traces-1')"
+)
+
+
+def _bucket(keys: list[str]):
+    asked: list[tuple[str, str]] = []
+
+    def keys_under(bucket: str, prefix: str):
+        asked.append((bucket, prefix))
+        return [k for k in keys if k.startswith(prefix)]
+
+    return keys_under, asked
+
+
+def test_a_location_holding_no_metadata_file_is_said_whatever_the_engine_cached(caplog):
+    """The catalog caches a table's metadata, and a table with no snapshot is answered from that
+    cache without the bucket being read: the location in the bucket is what says it is gone."""
+    keys_under, asked = _bucket(["warehouse/signals/traces-1/data/x.parquet"])
+    with caplog.at_level(logging.ERROR):
+        assert metadata_files_gone(lambda _sql: [(_DDL,)], keys_under, "traces") is True
+    assert asked == [("provisa-otel", "warehouse/signals/traces-1/metadata/")]
+    assert "otel.signals.traces" in caplog.text
+    assert "s3://provisa-otel/warehouse/signals/traces-1/metadata/" in caplog.text
+
+
+def test_a_location_holding_its_metadata_file_is_not_gone(caplog):
+    keys_under, _ = _bucket(["warehouse/signals/traces-1/metadata/00001-a.metadata.json"])
+    with caplog.at_level(logging.ERROR):
+        assert metadata_files_gone(lambda _sql: [(_DDL,)], keys_under, "traces") is False
+    assert caplog.text == ""

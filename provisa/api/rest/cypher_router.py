@@ -688,14 +688,6 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     ctx = surface.context
 
     label_map = _build_label_map(ctx, role_id, state)
-    # REQ-2128: each table's root query field in this role's GraphQL schema and the name it is
-    # registered under, so a client queries a table by the field the compiler named it rather
-    # than re-deriving the name. A node the role has no root field for (a cross-domain traversal
-    # node) has neither.
-    root_of = {
-        info["table_id"]: (field, info["table_name"])
-        for field, info in surface.table_path_map.items()
-    }
     all_tables: list[dict] = getattr(state, "schema_build_cache", {}).get("tables", [])
     col_types: dict = getattr(state, "schema_build_cache", {}).get("column_types", {})
     from provisa.cypher.label_map import _table_label_from_table_name
@@ -726,8 +718,6 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "domain_label": n.domain_label,
                     "domain_id": n.domain_id,
                     "table_label": n.table_label,
-                    "table_name": root_of[n.table_id][1] if n.table_id in root_of else None,
-                    "graphql_field": root_of[n.table_id][0] if n.table_id in root_of else None,
                     "properties": list(n.properties.keys()),
                     # REQ-392: singular primary-key column name (first designated PK), or null.
                     "pk": n.property_of(n.pk_columns[0]) if n.pk_columns else None,
@@ -750,6 +740,18 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     ),
                 }
                 for n in label_map.nodes.values()
+            ],
+            # REQ-2128: every table's root query field in this role's GraphQL schema and the name
+            # it is registered under, so a client queries a table by the field the compiler named
+            # it rather than re-deriving the name. Every table the role has a root field for,
+            # including the junctions a relationship traverses, which are no node label.
+            "root_fields": [
+                {
+                    "domain_id": info["domain_id"],
+                    "table_name": info["table_name"],
+                    "graphql_field": field,
+                }
+                for field, info in surface.table_path_map.items()
             ],
             "relationship_types": [
                 {
