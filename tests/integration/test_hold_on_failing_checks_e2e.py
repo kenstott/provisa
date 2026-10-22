@@ -333,10 +333,9 @@ def test_a_view_refreshes_holds_on_a_failing_check_and_refreshes_once_it_passes(
     _record_scan(server, "fail")
     held = _refresh(server)
     assert not held["success"], held
-    checker = _checker(server)
     assert "a check on its inputs failed" in held["message"], held
     assert "failed on hold.orders" in held["message"], held
-    assert _CHECKER in held["message"] or checker["table_name"] in held["message"], held
+    assert f".{_CHECKER} failed on hold.orders" in held["message"], held
     after = _view(server)
     assert after["rowCount"] == before["rowCount"]  # the view keeps what it had
     assert after["lastRefreshAt"] == before["lastRefreshAt"]
@@ -400,5 +399,5 @@ def test_a_code_source_asks_dq_as_the_role_of_the_request_it_serves(server, qual
     _record_scan(server, "fail")
     query = "SELECT checker, outcome FROM quality WHERE _nf_dataset = 'hold.orders'"
     (seen,) = _sql(server, query, _ADMIN)
-    assert seen["outcome"] == "fail" and seen["checker"].endswith(_checker(server)["table_name"])
+    assert seen["outcome"] == "fail" and seen["checker"].endswith(f".{_CHECKER}")
     assert _sql(server, query, _OUTSIDER) == []  # the checker's domain is beyond the outsider

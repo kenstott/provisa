@@ -91,10 +91,29 @@ async def _read(sql: str, role: str) -> list[dict]:
     return [dict(zip(names, row, strict=True)) for row in result.rows]
 
 
+def _meta(row: dict) -> Any:
+    """The model's table for a registered table's row of the meta domain."""
+    from provisa.live.governed import table_meta
+
+    return table_meta(int(row["id"]))
+
+
+def _name(row: dict) -> str:
+    """A registered table's name as the model shows it: ``<domain>.<table>``, its alias where it
+    has one -- never the physical schema and table its rows are kept in."""
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
+    meta = _meta(row)
+    return f"{domain_to_sql_name(meta.domain_id)}.{semantic_table_name(meta)}"
+
+
 def _relation(row: dict) -> str:
-    """A registered table's name as the role's SQL reads it: ``<schema>.<table>``, as the metadata
-    export reads a checker's results (provisa.api.metadata_export.dq_outcomes)."""
-    return f"{row['schema_name']}.{row['table_name']}"
+    """A registered table's reference in the role's SQL: its semantic name, which governance
+    admits (a physical name is refused)."""
+    from provisa.compiler.sql_rewrite import semantic_ref
+
+    return semantic_ref(_meta(row))
 
 
 async def _dataset_row(name: str, role: str) -> dict | None:
@@ -135,7 +154,7 @@ async def _latest_run(checker: dict, role: str) -> dict | None:
 
 async def _checker(row: dict, role: str) -> dict:
     return {
-        "checker_table": _relation(row),
+        "checker_table": _name(row),
         "checker_table_id": row["id"],
         "description": row["description"],
         "contract": row["dq_contract"],
@@ -161,7 +180,7 @@ async def _profiles(dataset_id: int, role: str) -> list[dict]:
         )
         out.append(
             {
-                "profile_table": relation,
+                "profile_table": _name(table),
                 "profile_table_id": table["id"],
                 "latest_run": rows or None,
             }
@@ -199,7 +218,7 @@ async def dataset(name: str, role: str, view_product: str | None = None) -> dict
             check["relation_to_view_product"] = related.get(int(row["id"]))
         checks.append(check)
     return {
-        "dataset": _relation(found),
+        "dataset": _name(found),
         "dataset_id": dataset_id,
         "checker_tables": checks,
         "profiles": await _profiles(dataset_id, role),
