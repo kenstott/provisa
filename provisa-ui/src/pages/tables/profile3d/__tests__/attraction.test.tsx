@@ -89,6 +89,7 @@ describe("the graph's Attraction slider", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
         testId="x"
       />,
     );
@@ -116,6 +117,7 @@ describe("the graph's Attraction slider", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
         testId="x"
       />,
     );
@@ -133,6 +135,7 @@ describe("the graph's Attraction slider", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
         testId="x"
       />,
     );
@@ -152,6 +155,7 @@ describe("the graph's Attraction slider", () => {
         preset="taxonomy"
         zero={[]}
         settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
         testId="x"
       />,
     );

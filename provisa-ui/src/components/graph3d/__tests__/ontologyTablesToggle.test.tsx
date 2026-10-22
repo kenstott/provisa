@@ -93,6 +93,7 @@ describe("the Ontology View's Tables checkbox", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "ontology", subject: null }}
+        exportName="ontology"
         testId="x"
       />,
     );
@@ -121,6 +122,7 @@ describe("the Ontology View's Tables checkbox", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "ontology", subject: null }}
+        exportName="ontology"
         testId="x"
       />,
     );
@@ -137,6 +139,7 @@ describe("the Ontology View's Tables checkbox", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "ontology", subject: null }}
+        exportName="ontology"
         testId="x"
       />
     );

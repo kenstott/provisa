@@ -11,6 +11,21 @@
     "attractionTight": "紧密",
     "grid": "网格",
     "resetSettings": "重置视图设置",
-    "resetSettingsHelp": "清除此图已保存的布局、图层、筛选器和开关，恢复默认设置。"
+    "resetSettingsHelp": "清除此图已保存的布局、图层、筛选器和开关，恢复默认设置。",
+    "export": "导出",
+    "exportImage": "图像",
+    "exportScale": "图像比例",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG（矢量）",
+    "recordRotation": "录制旋转",
+    "recordLength": "录制时长",
+    "seconds": "{{count}} 秒",
+    "format_mp4": "MP4 视频",
+    "format_webm": "WebM 视频",
+    "recording": "正在录制旋转… {{percent}}%",
+    "cancelRecording": "停止录制",
+    "exportFailed": "无法导出视图：{{error}}"
   }
 }

@@ -28,6 +28,7 @@ export function TerrainStage({
   onHover,
   onSelect,
   onUserMove,
+  exportName,
 }: {
   columns: TerrainColumn[];
   order: string[];
@@ -39,6 +40,8 @@ export function TerrainStage({
   onHover: (h: TerrainHover | null) => void;
   onSelect: (column: string) => void;
   onUserMove: () => void;
+  /** What the view's exports are named after. */
+  exportName: string;
 }) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: TerrainHover; x: number; y: number } | null>(null);
@@ -131,6 +134,8 @@ export function TerrainStage({
       error={error}
       canvasLabel={t("profileTerrain.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={exportName}
       testId="terrain-stage"
       legend={
         <>

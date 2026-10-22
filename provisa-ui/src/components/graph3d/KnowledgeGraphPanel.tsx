@@ -50,6 +50,7 @@ export function GraphModal({
   zero,
   search,
   settingsKey,
+  exportName,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -63,6 +64,8 @@ export function GraphModal({
   search?: string;
   /** Which graph's remembered settings (graphSettings.ts): the same as its in-place view's. */
   settingsKey: GraphKey;
+  /** What the graph's exports are named after. */
+  exportName: string;
 }) {
   return (
     <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
@@ -75,6 +78,7 @@ export function GraphModal({
           zero={zero}
           search={search}
           settingsKey={settingsKey}
+          exportName={exportName}
           testId="graph3d"
         />
       )}
@@ -86,10 +90,12 @@ function PanelStage({
   graph,
   product,
   productId,
+  productName,
 }: {
   graph: GraphData;
   product: string;
   productId: string;
+  productName: string;
 }) {
   const at = useMemo(() => layoutGraph(graph, "force", []), [graph]);
   const [picked, setSelected] = useState<string | null>(product);
@@ -137,7 +143,7 @@ function PanelStage({
         </Button>
         <ResetSettingsButton onReset={resetSettings} testId="kg-panel" />
       </Group>
-      <GraphStage s={s} command={command} testId="kg-panel-stage" />
+      <GraphStage s={s} command={command} exportName={productName} testId="kg-panel-stage" />
     </>
   );
 }
@@ -183,7 +189,12 @@ export function KnowledgeGraphPanel({
       <div className="p3d g3d-panel-view">
         {seen &&
           (graph ? (
-            <PanelStage graph={graph} product={product} productId={productId} />
+            <PanelStage
+              graph={graph}
+              product={product}
+              productId={productId}
+              productName={productName}
+            />
           ) : (
             <Loading error={error} testId="kg-panel" />
           ))}
@@ -196,6 +207,7 @@ export function KnowledgeGraphPanel({
           data={data}
           scope={PRODUCT_SCOPE}
           preset="knowledge"
+          exportName={productName}
           focus={product}
           zero={membersOf(data, product)}
           settingsKey={{ kind: "product-graph", subject: productId }}
@@ -235,6 +247,7 @@ export function ProductMapButton() {
           data={data}
           scope={PRODUCT_SCOPE}
           preset="productMap"
+          exportName="product-map"
           focus={null}
           zero={[]}
           settingsKey={{ kind: "product-map", subject: null }}

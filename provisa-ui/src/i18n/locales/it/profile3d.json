@@ -11,6 +11,21 @@
     "attractionTight": "Stretto",
     "grid": "Griglia",
     "resetSettings": "Ripristina le impostazioni di visualizzazione",
-    "resetSettingsHelp": "Dimentica layout, livelli, filtri e opzioni salvati di questo grafo e torna ai valori predefiniti."
+    "resetSettingsHelp": "Dimentica layout, livelli, filtri e opzioni salvati di questo grafo e torna ai valori predefiniti.",
+    "export": "Esporta",
+    "exportImage": "Immagine",
+    "exportScale": "Scala dell'immagine",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (vettoriale)",
+    "recordRotation": "Registra la rotazione",
+    "recordLength": "Durata della registrazione",
+    "seconds": "{{count}} s",
+    "format_mp4": "Video MP4",
+    "format_webm": "Video WebM",
+    "recording": "Registrazione del giro… {{percent}}%",
+    "cancelRecording": "Interrompi la registrazione",
+    "exportFailed": "Impossibile esportare la vista: {{error}}"
   }
 }

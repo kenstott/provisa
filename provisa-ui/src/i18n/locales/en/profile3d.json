@@ -11,6 +11,21 @@
     "attractionTight": "Tight",
     "grid": "Grid",
     "resetSettings": "Reset view settings",
-    "resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults."
+    "resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults.",
+    "export": "Export",
+    "exportImage": "Image",
+    "exportScale": "Image scale",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (vector)",
+    "recordRotation": "Record rotation",
+    "recordLength": "Recording length",
+    "seconds": "{{count}} s",
+    "format_mp4": "MP4 video",
+    "format_webm": "WebM video",
+    "recording": "Recording the turn… {{percent}}%",
+    "cancelRecording": "Stop recording",
+    "exportFailed": "The view could not be exported: {{error}}"
   }
 }

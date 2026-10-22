@@ -11,6 +11,21 @@
     "attractionTight": "צפוף",
     "grid": "רשת",
     "resetSettings": "איפוס הגדרות התצוגה",
-    "resetSettingsHelp": "שכחת הפריסה, השכבות, המסננים והמתגים השמורים של הגרף הזה וחזרה לברירות המחדל."
+    "resetSettingsHelp": "שכחת הפריסה, השכבות, המסננים והמתגים השמורים של הגרף הזה וחזרה לברירות המחדל.",
+    "export": "ייצוא",
+    "exportImage": "תמונה",
+    "exportScale": "קנה מידה של התמונה",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (וקטורי)",
+    "recordRotation": "הקלטת סיבוב",
+    "recordLength": "אורך ההקלטה",
+    "seconds": "{{count}} ש׳",
+    "format_mp4": "סרטון MP4",
+    "format_webm": "סרטון WebM",
+    "recording": "מקליט את הסיבוב… {{percent}}%",
+    "cancelRecording": "עצירת ההקלטה",
+    "exportFailed": "לא ניתן היה לייצא את התצוגה: {{error}}"
   }
 }

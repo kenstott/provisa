@@ -7764,5 +7764,20 @@
   "nl/profile3d.json::profile3d.resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults.",
   "nl/graph3d.json::graph3d.tablesToggle": "Tables",
   "nl/graph3d.json::graph3d.look_stored": "table",
-  "nl/graph3d.json::graph3d.noteUnfolded": "Pick a node to list its connections."
+  "nl/graph3d.json::graph3d.noteUnfolded": "Pick a node to list its connections.",
+  "nl/profile3d.json::profile3d.export": "Export",
+  "nl/profile3d.json::profile3d.exportImage": "Image",
+  "nl/profile3d.json::profile3d.exportScale": "Image scale",
+  "nl/profile3d.json::profile3d.format_png": "PNG",
+  "nl/profile3d.json::profile3d.format_jpeg": "JPEG",
+  "nl/profile3d.json::profile3d.format_webp": "WebP",
+  "nl/profile3d.json::profile3d.format_svg": "SVG (vector)",
+  "nl/profile3d.json::profile3d.recordRotation": "Record rotation",
+  "nl/profile3d.json::profile3d.recordLength": "Recording length",
+  "nl/profile3d.json::profile3d.seconds": "{{count}} s",
+  "nl/profile3d.json::profile3d.format_mp4": "MP4 video",
+  "nl/profile3d.json::profile3d.format_webm": "WebM video",
+  "nl/profile3d.json::profile3d.recording": "Recording the turn… {{percent}}%",
+  "nl/profile3d.json::profile3d.cancelRecording": "Stop recording",
+  "nl/profile3d.json::profile3d.exportFailed": "The view could not be exported: {{error}}"
 }

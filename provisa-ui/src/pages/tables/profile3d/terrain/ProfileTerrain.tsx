@@ -36,6 +36,8 @@ import "../profile3d.css";
 const ORDERS: TerrainOrder[] = ["schema", "nulls", "skew", "distinct", "drift"];
 
 interface SharedState {
+  /** What the view's exports are named after. */
+  exportName: string;
   columns: TerrainColumn[];
   order: string[];
   options: TerrainOptions;
@@ -138,6 +140,7 @@ function TerrainView({
           onHover={s.setHover}
           onSelect={s.setSelected}
           onUserMove={() => s.setRotate(false)}
+          exportName={s.exportName}
         />
         <TerrainDetail
           columns={s.columns}
@@ -230,6 +233,7 @@ export function ProfileTerrain({
     );
   }
   const s: SharedState = {
+    exportName: `${tableName}-terrain`,
     columns,
     order,
     options,

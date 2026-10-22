@@ -7765,5 +7765,20 @@
   "zh-HK/profile3d.json::profile3d.resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults.",
   "zh-HK/graph3d.json::graph3d.tablesToggle": "Tables",
   "zh-HK/graph3d.json::graph3d.look_stored": "table",
-  "zh-HK/graph3d.json::graph3d.noteUnfolded": "Pick a node to list its connections."
+  "zh-HK/graph3d.json::graph3d.noteUnfolded": "Pick a node to list its connections.",
+  "zh-HK/profile3d.json::profile3d.export": "Export",
+  "zh-HK/profile3d.json::profile3d.exportImage": "Image",
+  "zh-HK/profile3d.json::profile3d.exportScale": "Image scale",
+  "zh-HK/profile3d.json::profile3d.format_png": "PNG",
+  "zh-HK/profile3d.json::profile3d.format_jpeg": "JPEG",
+  "zh-HK/profile3d.json::profile3d.format_webp": "WebP",
+  "zh-HK/profile3d.json::profile3d.format_svg": "SVG (vector)",
+  "zh-HK/profile3d.json::profile3d.recordRotation": "Record rotation",
+  "zh-HK/profile3d.json::profile3d.recordLength": "Recording length",
+  "zh-HK/profile3d.json::profile3d.seconds": "{{count}} s",
+  "zh-HK/profile3d.json::profile3d.format_mp4": "MP4 video",
+  "zh-HK/profile3d.json::profile3d.format_webm": "WebM video",
+  "zh-HK/profile3d.json::profile3d.recording": "Recording the turn… {{percent}}%",
+  "zh-HK/profile3d.json::profile3d.cancelRecording": "Stop recording",
+  "zh-HK/profile3d.json::profile3d.exportFailed": "The view could not be exported: {{error}}"
 }

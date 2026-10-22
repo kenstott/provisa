@@ -17,6 +17,7 @@ import {
   BaseScene,
   type SceneCallbacks,
   type SceneTheme,
+  type VectorScene,
 } from "../../pages/tables/profile3d/baseScene";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
 import { labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
@@ -147,6 +148,18 @@ export class GraphScene extends BaseScene<GraphHover> {
     this.at = at;
     this.rebuild();
     if (resetCamera) this.resetView(true);
+  }
+
+  /** Nodes, edges and arrowheads, flat (an SVG export). */
+  get canVector(): boolean {
+    return true;
+  }
+
+  vector(): VectorScene {
+    return this.vectorOf([
+      ...this.edgeMeshes.flatMap((e) => e.meshes),
+      ...this.nodes.map((n) => n.mesh),
+    ]);
   }
 
   setSelected(id: string | null) {

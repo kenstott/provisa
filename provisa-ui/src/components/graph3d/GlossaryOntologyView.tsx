@@ -137,6 +137,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         search={search}
         onExpand={() => setOpen(true)}
         settingsKey={ONTOLOGY_SETTINGS}
+        exportName="ontology"
         testId="ontology"
       />
       <GraphModal
@@ -150,6 +151,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         zero={[]}
         search={search}
         settingsKey={ONTOLOGY_SETTINGS}
+        exportName="ontology"
       />
     </div>
   );

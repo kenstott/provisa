@@ -64,6 +64,7 @@ describe("a 3D network graph's Grid checkbox", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
         testId="x"
       />,
     );
@@ -82,6 +83,7 @@ describe("a 3D network graph's Grid checkbox", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
         testId="x"
       />,
     );
@@ -98,6 +100,7 @@ describe("a 3D network graph's Grid checkbox", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
         testId="x"
       />,
     );
@@ -109,6 +112,7 @@ describe("a 3D network graph's Grid checkbox", () => {
         preset="ontology"
         zero={[]}
         settingsKey={{ kind: "test", subject: "another" }}
+        exportName="test"
         testId="y"
       />,
     );

@@ -53,10 +53,13 @@ const LEGEND: NodeType[] = [
 export function GraphStage({
   s,
   command,
+  exportName,
   testId,
 }: {
   s: StageState;
   command: CameraCommand | null;
+  /** What the view's exports are named after (the graph and its view). */
+  exportName: string;
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -152,6 +155,8 @@ export function GraphStage({
       error={error}
       canvasLabel={t("graph3d.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={exportName}
       testId={testId}
       legend={<GraphLegend graph={s.graph} />}
     />

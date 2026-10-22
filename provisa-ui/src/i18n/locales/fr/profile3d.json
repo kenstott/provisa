@@ -11,6 +11,21 @@
     "attractionTight": "Serré",
     "grid": "Grille",
     "resetSettings": "Réinitialiser les réglages d'affichage",
-    "resetSettingsHelp": "Oublie la disposition, les couches, les filtres et les bascules enregistrés de ce graphe et revient aux valeurs par défaut."
+    "resetSettingsHelp": "Oublie la disposition, les couches, les filtres et les bascules enregistrés de ce graphe et revient aux valeurs par défaut.",
+    "export": "Exporter",
+    "exportImage": "Image",
+    "exportScale": "Échelle de l'image",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (vectoriel)",
+    "recordRotation": "Enregistrer la rotation",
+    "recordLength": "Durée de l'enregistrement",
+    "seconds": "{{count}} s",
+    "format_mp4": "Vidéo MP4",
+    "format_webm": "Vidéo WebM",
+    "recording": "Enregistrement du tour… {{percent}} %",
+    "cancelRecording": "Arrêter l'enregistrement",
+    "exportFailed": "La vue n'a pas pu être exportée : {{error}}"
   }
 }

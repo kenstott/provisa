@@ -29,6 +29,8 @@ import "../profile3d.css";
 export const STRATA_RUNS = 8;
 
 interface Shared {
+  /** What the view's exports are named after. */
+  exportName: string;
   columns: string[];
   column: string;
   setColumn: (c: string) => void;
@@ -131,6 +133,8 @@ function DriftStage({ s, command }: { s: Shared; command: CameraCommand | null }
       error={error}
       canvasLabel={t("profileStrata.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={s.exportName}
       testId="strata-stage"
       legend={
         <>
@@ -288,6 +292,7 @@ function DriftLoaded({
   const setRotate = (on: boolean) => save("rotate", on);
   const [hover, setHover] = useState<StrataHover | null>(null);
   const s: Shared = {
+    exportName: `${tableName}-strata`,
     columns,
     column,
     setColumn: (c) => {

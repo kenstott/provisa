@@ -28,6 +28,8 @@ import "../profile3d.css";
 const LISTED = 8;
 
 interface Shared {
+  /** What the view's exports are named after. */
+  exportName: string;
   targets: string[];
   target: string;
   setTarget: (c: string) => void;
@@ -134,6 +136,8 @@ function JointStage({ s, command }: { s: Shared; command: CameraCommand | null }
       error={error}
       canvasLabel={t("profileJoint.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={s.exportName}
       testId="joint-stage"
       legend={
         s.color === "rows" ? (
@@ -329,6 +333,7 @@ function JointLoaded({
   const [hover, setHover] = useState<JointHover | null>(null);
   const slotName = useSlotName(model);
   const s: Shared = {
+    exportName: `${tableName}-joint`,
     targets,
     target,
     setTarget: (c) => {

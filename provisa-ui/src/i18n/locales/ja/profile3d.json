@@ -11,6 +11,21 @@
     "attractionTight": "密",
     "grid": "グリッド",
     "resetSettings": "表示設定をリセット",
-    "resetSettingsHelp": "このグラフに保存されたレイアウト、レイヤー、フィルター、切り替えを破棄し、既定値に戻します。"
+    "resetSettingsHelp": "このグラフに保存されたレイアウト、レイヤー、フィルター、切り替えを破棄し、既定値に戻します。",
+    "export": "エクスポート",
+    "exportImage": "画像",
+    "exportScale": "画像の倍率",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG（ベクター）",
+    "recordRotation": "回転を録画",
+    "recordLength": "録画の長さ",
+    "seconds": "{{count}} 秒",
+    "format_mp4": "MP4 動画",
+    "format_webm": "WebM 動画",
+    "recording": "回転を録画中… {{percent}}%",
+    "cancelRecording": "録画を停止",
+    "exportFailed": "ビューをエクスポートできませんでした: {{error}}"
   }
 }

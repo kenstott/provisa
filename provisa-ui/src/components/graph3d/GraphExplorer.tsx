@@ -68,6 +68,7 @@ export function GraphExplorer({
   onExpand,
   search,
   settingsKey,
+  exportName,
   testId = "graph3d",
 }: {
   data: GraphData;
@@ -83,6 +84,8 @@ export function GraphExplorer({
   search?: string;
   /** Which graph's settings these are (graphSettings.ts): kept across reloads, per graph. */
   settingsKey: GraphKey;
+  /** What the graph's exports are named after; the preset drawn is added ("ontology-taxonomy"). */
+  exportName: string;
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -439,7 +442,12 @@ export function GraphExplorer({
             </Text>
           </div>
         ) : (
-          <GraphStage s={s} command={command} testId={`${testId}-stage`} />
+          <GraphStage
+            s={s}
+            command={command}
+            exportName={preset === exportName ? exportName : `${exportName}-${preset}`}
+            testId={`${testId}-stage`}
+          />
         )}
         <GraphDetail
           graph={shown}

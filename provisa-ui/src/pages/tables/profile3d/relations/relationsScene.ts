@@ -12,7 +12,7 @@
 // the stronger it is, an arrowhead on a dependence pointing at the column that depends.
 
 import * as THREE from "three";
-import { BaseScene, type SceneCallbacks, type SceneTheme } from "../baseScene";
+import { BaseScene, type SceneCallbacks, type SceneTheme, type VectorScene } from "../baseScene";
 import type { RelEdge, RelationsModel, RelNode } from "./relationsModel";
 
 export type RelHover = { kind: "node"; id: string } | { kind: "edge"; id: string };
@@ -63,6 +63,18 @@ export class RelationsScene extends BaseScene<RelHover> {
   setEdges(edges: RelEdge[]) {
     this.edges = edges;
     this.rebuild();
+  }
+
+  /** Columns, relationships and arrowheads, flat (an SVG export). */
+  get canVector(): boolean {
+    return true;
+  }
+
+  vector(): VectorScene {
+    return this.vectorOf([
+      ...this.edgeMeshes.flatMap((e) => e.meshes),
+      ...this.nodes.map((n) => n.mesh),
+    ]);
   }
 
   setSelected(id: string | null) {

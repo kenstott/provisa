@@ -37,6 +37,8 @@ import "../profile3d.css";
 const STRENGTHS = ["0.1", "0.3", "0.5", "0.7"];
 
 interface Shared {
+  /** What the view's exports are named after. */
+  exportName: string;
   model: RelationsModel;
   edges: RelEdge[];
   attraction: number;
@@ -155,6 +157,8 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
       error={error}
       canvasLabel={t("profileRelations.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={s.exportName}
       testId="relations-stage"
       legend={
         <>
@@ -400,6 +404,7 @@ export function ProfileRelations({
   )[0];
   const selected = model.nodes.some((n) => n.id === picked) ? picked : busiest.id;
   const s: Shared = {
+    exportName: `${tableName}-relations`,
     model,
     edges,
     attraction,
