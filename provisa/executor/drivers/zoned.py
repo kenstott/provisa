@@ -14,8 +14,8 @@ WITH TIME ZONE`` (python-oracledb hands it on with its offset dropped) and ``TIM
 TIME ZONE`` (read in the session's zone). Each comes back as an aware datetime in UTC.
 python-oracledb (Thin mode as Thick) hands a TIMESTAMP WITH TIME ZONE on as its wall time with its
 offset dropped, whatever type a fetch asks for, so the instant is taken in the database: a
-statement with such a column is run again with the column cast to TIMESTAMP WITH LOCAL TIME ZONE
-(:func:`execute_instants`), which the database gives in the session's zone, UTC. Oracle's
+statement with such a column (found by parsing it) is run with the column cast to TIMESTAMP WITH
+LOCAL TIME ZONE (:func:`execute_instants`), which the database gives in the session's zone, UTC. Oracle's
 INTERVAL YEAR TO MONTH, which python-oracledb hands on as its own ``IntervalYM``, is read here too,
 as the IR interval it is (ir_types.interval_value)."""
 
@@ -100,18 +100,16 @@ def _zoned_select(sql: str, description: Any) -> str | None:
 
 
 def execute_instants(cursor: Any, sql: str, bound: Any, **kw: Any) -> list[str] | None:
-    """Run ``sql`` on ``cursor`` so a TIMESTAMP WITH TIME ZONE column is read as its instant: run
-    as given, and -- when its result has such a column -- once more with the column cast in the
-    database (:func:`_zoned_select`). The result's column names as the statement gives them
-    (lower case), or None for a statement that answers no rows."""
-    cursor.execute(sql, bound, **kw)
-    if not cursor.description:
-        return None
-    names = [d.name.lower() for d in cursor.description]
-    cast = _zoned_select(sql, cursor.description)
-    if cast is not None:
-        cursor.execute(cast, bound, **kw)
-    return names
+    """Run ``sql`` on ``cursor`` once, so a TIMESTAMP WITH TIME ZONE column is read as its
+    instant: the statement is parsed first (its result's columns described, nothing run), and
+    one with such a column is run with the column cast in the database (:func:`_zoned_select`),
+    any other as given. The result's column names as the statement gives them (lower case), or
+    None for a statement that answers no rows."""
+    cursor.parse(sql)
+    described = cursor.description
+    cast = _zoned_select(sql, described) if described else None
+    cursor.execute(sql if cast is None else cast, bound, **kw)
+    return None if not described else [d.name.lower() for d in described]
 
 
 def oracle_connection(conn: Any) -> Any:

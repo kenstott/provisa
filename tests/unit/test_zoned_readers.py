@@ -94,23 +94,29 @@ class _Described:
 
 
 class _StatementCursor:
-    """Runs statements, recording each; its description is the statement's result columns."""
+    """Parses and runs statements, recording each; a parse describes the result's columns."""
 
     def __init__(self, description):
+        self.parsed: list[str] = []
         self.ran: list[str] = []
         self._description = description
         self.description = None
 
+    def parse(self, sql):
+        self.parsed.append(sql)
+        self.description = self._description
+
     def execute(self, sql, bound, **kw):
         assert kw == {"fetch_lobs": False}
+        assert self.parsed, "described before it runs"
         self.ran.append(sql)
-        self.description = self._description
 
 
 def test_a_zoned_column_is_cast_to_its_instant_in_the_database():
     """python-oracledb hands a TIMESTAMP WITH TIME ZONE on as its wall time, its offset dropped,
-    whatever the fetch asks: the statement is run again with the column cast to TIMESTAMP WITH
-    LOCAL TIME ZONE, which the UTC session gives as the instant. Its names stay the statement's."""
+    whatever the fetch asks: the statement, parsed first, is run once, with the column cast to
+    TIMESTAMP WITH LOCAL TIME ZONE, which the UTC session gives as the instant. Its names stay the
+    statement's."""
     import oracledb
 
     sql = "SELECT TIMESTAMP '2024-01-02 03:04:05 +02:00', n FROM dual"
@@ -124,14 +130,14 @@ def test_a_zoned_column_is_cast_to_its_instant_in_the_database():
         "timestamp'2024-01-0203:04:05+02:00'",
         "n",
     ]
-    assert cur.ran == [
-        sql,
+    assert cur.parsed == [sql]
+    assert cur.ran == [  # one execution: the cast statement alone
         f"WITH provisa_zoned (c0, c1) AS ({sql}) SELECT "
         "CAST(c0 AS TIMESTAMP WITH LOCAL TIME ZONE) AS c0, c1 FROM provisa_zoned",
     ]
 
 
-def test_a_statement_with_no_zoned_column_runs_once():
+def test_a_statement_with_no_zoned_column_runs_as_given_once():
     import oracledb
 
     cur = _StatementCursor([_Described("N", oracledb.DB_TYPE_NUMBER)])
