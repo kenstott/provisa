@@ -84,3 +84,41 @@ def test_built_assets_are_current_only_when_their_manifest_records_this_fingerpr
     assert build.is_current(tmp_path)
     manifest.write_text(json.dumps({"build": "an older build"}))
     assert not build.is_current(tmp_path)
+
+
+def test_the_built_lock_and_wheels_carry_networkx_and_its_dependencies(tmp_path, monkeypatch):
+    import json
+    import subprocess
+
+    from provisa_notebook import PACKAGES, build
+
+    # Pyodide's lock as 0.27.7 has it for networkx; every other shipped package stands alone.
+    depends = {"networkx": ["decorator", "setuptools", "matplotlib", "numpy"]}
+    names = {*PACKAGES, "decorator", "setuptools", "unshipped"}
+    lock = {
+        "info": {"version": "0.27.7"},
+        "packages": {
+            n: {"name": n, "file_name": f"{n}.whl", "sha256": n, "depends": depends.get(n, [])}
+            for n in names
+        },
+    }
+    fetched: list[str] = []
+    monkeypatch.setattr(build, "_download", lambda url: json.dumps(lock).encode())
+    monkeypatch.setattr(build, "_fetch", lambda name, dest, sha256=None: fetched.append(name))
+    monkeypatch.setattr(build, "build_lite", lambda target: None)
+    monkeypatch.setattr(build, "fingerprint", lambda: "fp")
+
+    def wheel(cmd, check):  # the provisa-client wheel pip would build
+        out = tmp_path / "pyodide" / "wheels"
+        out.mkdir(parents=True)
+        (out / "provisa_client-1.0.0-py3-none-any.whl").write_bytes(b"whl")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(build.subprocess, "run", wheel)
+    manifest = build.build(tmp_path)
+    written = json.loads((tmp_path / "pyodide" / "pyodide-lock.json").read_text())["packages"]
+    for name in ("networkx", "decorator", "setuptools"):
+        assert name in manifest["packages"]
+        assert name in written
+        assert f"{name}.whl" in fetched
+    assert "unshipped" not in written
