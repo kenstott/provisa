@@ -398,7 +398,7 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | 系統設計與元件圖 | [docs/architecture.md](docs/architecture.md) |
 | 安全模型（RLS、遮罩、驗證） | [docs/security.md](docs/security.md) |
 | 密鑰儲存與 `${secret:NAME}` 參照 | [docs/secrets.md](docs/secrets.md) |
-| 業務詞彙表與詞條策展 | [docs/glossary.md](docs/glossary.md) |
+| 業務詞彙表與詞條策展 | [docs/ontology.md](docs/ontology.md) |
 | 環境（dev / staging / prod） | [docs/environments.md](docs/environments.md) |
 | 建構測試環境（剖析、偽造數據、合成數據） | [docs/test-data.md](docs/test-data.md) |
 | 偽造數據方法參考 | [docs/fake-methods.md](docs/fake-methods.md) |

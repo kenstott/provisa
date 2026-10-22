@@ -398,7 +398,7 @@ Siehe [docs/python-client.md](docs/python-client.md) für die vollständige Refe
 | Systemdesign und Komponentenübersicht | [docs/architecture.md](docs/architecture.md) |
 | Sicherheitsmodell (RLS, Maskierung, Auth) | [docs/security.md](docs/security.md) |
 | Secret-Speicherung und `${secret:NAME}`-Referenzen | [docs/secrets.md](docs/secrets.md) |
-| Business-Glossar und Begriffskuratierung | [docs/glossary.md](docs/glossary.md) |
+| Business-Glossar und Begriffskuratierung | [docs/ontology.md](docs/ontology.md) |
 | Umgebungen (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Testumgebungen aufbauen (Profiling, Fakes, synthetische Daten) | [docs/test-data.md](docs/test-data.md) |
 | Referenz der Fake-Methoden | [docs/fake-methods.md](docs/fake-methods.md) |
