@@ -68,6 +68,7 @@
     "excludeFromExportHelp": "Sommige kolommen dragen bedrijfsgegevens, andere het technische leidingwerk. Een term als \"etl batch identifier\" of \"row version\" heeft een echte definitie — het is alleen geen bedrijfstaal. Sluit hem uit en hij blijft hier voor engineers, buiten de catalogi waarnaar Provisa publiceert. De kolommen worden nog steeds geëxporteerd; de term en zijn relaties niet.",
     "bulkGenerateDefinitions": "Definities",
     "bulkGenerateRelationships": "Relaties",
+    "generateMenu": "Genereren met AI",
     "definitionsGenerated": "{{count}} definitie gegenereerd.",
     "definitionsGenerated_other": "{{count}} definities gegenereerd.",
     "relationshipsGenerated": "{{count}} relatie toegevoegd.",

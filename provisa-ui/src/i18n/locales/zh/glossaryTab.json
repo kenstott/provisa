@@ -68,6 +68,7 @@
     "excludeFromExportHelp": "有些列承载业务数据，有些承载技术管道。像“etl batch identifier”或“row version”这样的术语有确切的定义——只是它并非业务用语。将其排除后，它会留在这里供工程师使用，不会进入 Provisa 发布的目录。列仍会导出；术语及其关系不会。",
     "bulkGenerateDefinitions": "定义",
     "bulkGenerateRelationships": "关系",
+    "generateMenu": "使用 AI 生成",
     "definitionsGenerated": "已生成 {{count}} 个定义。",
     "definitionsGenerated_other": "已生成 {{count}} 个定义。",
     "relationshipsGenerated": "已添加 {{count}} 个关系。",

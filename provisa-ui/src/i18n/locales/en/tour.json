@@ -288,7 +288,7 @@
       },
       "stepGlossary": {
         "title": "A living business glossary",
-        "description": "📖 Every term links to the columns that carry it and to other terms. Curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps: <strong>✨ Definitions</strong> drafts only the terms still missing one, and <strong>✨ Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
+        "description": "📖 Every term links to the columns that carry it and to other terms. Curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps from the <strong>✨</strong> menu: <strong>Definitions</strong> drafts only the terms still missing one, and <strong>Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
       },
       "stepDataProducts": {
         "title": "Data products, published where consumers already look",

@@ -68,6 +68,7 @@
     "excludeFromExportHelp": "業務データを担う列もあれば、配管にあたる技術データを担う列もあります。「etl batch identifier」や「row version」のような用語にも確かな定義はありますが、それは業務の言葉ではありません。除外すると、その用語はエンジニア向けにここへ残り、Provisa が公開するカタログには出ません。列はこれまでどおり書き出されますが、用語とその関係は書き出されません。",
     "bulkGenerateDefinitions": "定義",
     "bulkGenerateRelationships": "リレーションシップ",
+    "generateMenu": "AI で生成",
     "definitionsGenerated": "{{count}} 件の定義を生成しました。",
     "definitionsGenerated_other": "{{count}} 件の定義を生成しました。",
     "relationshipsGenerated": "{{count}} 件のリレーションシップを追加しました。",

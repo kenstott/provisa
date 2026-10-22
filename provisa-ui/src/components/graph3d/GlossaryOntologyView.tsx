@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Loader } from "@mantine/core";
+import { ActionIcon, Alert, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { dataGraphql } from "../../api/metaGraph";
@@ -29,6 +29,7 @@ import {
   type TermRow,
 } from "./glossaryGraphData";
 import { GraphModal } from "./KnowledgeGraphPanel";
+import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
 
 async function loadGlossaryGraph(role: string): Promise<GraphData | null> {
@@ -56,16 +57,20 @@ export function OntologyToggle({
   onChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
+  // An icon in the page's toolbar, named by its tip and its label, filled while the view is on.
   return (
-    <Button
-      variant={open ? "filled" : "default"}
-      leftSection={<Network size={14} />}
-      onClick={() => onChange(!open)}
-      aria-pressed={open}
-      data-testid="glossary-ontology-toggle"
-    >
-      {t("graph3d.ontologyView")}
-    </Button>
+    <Tip text={t("graph3d.ontologyView")} named>
+      <ActionIcon
+        size="input-sm"
+        variant={open ? "filled" : "default"}
+        onClick={() => onChange(!open)}
+        aria-label={t("graph3d.ontologyView")}
+        aria-pressed={open}
+        data-testid="glossary-ontology-toggle"
+      >
+        <Network size={16} aria-hidden />
+      </ActionIcon>
+    </Tip>
   );
 }
 

@@ -7398,7 +7398,7 @@
   "fr/tour.json::tour.steps.stepFakes.title": "Declare a fake",
   "fr/tour.json::tour.steps.stepFakesFill.description": "✨ <strong>Fill from profile</strong> proposes fakes for identifying columns, and synthetic rules for the rest, from the table's latest profile. Nothing saves until you save the form.",
   "fr/tour.json::tour.steps.stepFakesFill.title": "Fill fakes from a profile",
-  "fr/tour.json::tour.steps.stepGlossary.description": "📖 Every term links to the columns that carry it and to other terms. Curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps: <strong>✨ Definitions</strong> drafts only the terms still missing one, and <strong>✨ Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata.",
+  "fr/tour.json::tour.steps.stepGlossary.description": "📖 Every term links to the columns that carry it and to other terms. Curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps from the <strong>✨</strong> menu: <strong>Definitions</strong> drafts only the terms still missing one, and <strong>Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata.",
   "fr/tour.json::tour.steps.stepGlossary.title": "A living business glossary",
   "fr/tour.json::tour.steps.stepGlossaryTerm.description": "📖 A term names one business concept, lists the columns that carry it, links to the terms it relates to and says what it means. Terms for real columns are derived for you; add one by hand for a concept no single column carries.",
   "fr/tour.json::tour.steps.stepGlossaryTerm.title": "Add a term",
@@ -7754,5 +7754,6 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
-  "fr/profile3d.json::profile3d.grid": "Grid"
+  "fr/profile3d.json::profile3d.grid": "Grid",
+  "fr/glossaryTab.json::glossaryTab.generateMenu": "Generate with AI"
 }

@@ -288,7 +288,7 @@
       },
       "stepGlossary": {
         "title": "Un glossaire métier vivant",
-        "description": "📖 Chaque terme est relié aux colonnes qui le portent et à d'autres termes. Gérez les noms, les définitions et les relations typées (type de, partie de, synonyme de) à la main, ou laissez l'IA combler les lacunes : <strong>✨ Définitions</strong> ne rédige que les termes qui n'en ont pas encore, et <strong>✨ Relations</strong> propose des liens sur l'ensemble du glossaire. Marquez un terme comme <strong>exclu de l'export</strong> pour le tenir hors des métadonnées publiées."
+        "description": "📖 Chaque terme est relié aux colonnes qui le portent et à d'autres termes. Gérez les noms, les définitions et les relations typées (type de, partie de, synonyme de) à la main, ou laissez l'IA combler les lacunes depuis le menu <strong>✨</strong> : <strong>Définitions</strong> ne rédige que les termes qui n'en ont pas encore, et <strong>Relations</strong> propose des liens sur l'ensemble du glossaire. Marquez un terme comme <strong>exclu de l'export</strong> pour le tenir hors des métadonnées publiées."
       },
       "stepDataProducts": {
         "title": "Des produits de données publiés là où les consommateurs regardent déjà",

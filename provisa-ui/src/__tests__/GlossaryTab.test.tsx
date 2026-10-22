@@ -429,12 +429,49 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }));
   });
 
+  it("orders its toolbar: Ontology view, + Term, the AI menu, then help", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    const ontology = screen.getByTestId("glossary-ontology-toggle");
+    expect(ontology).toHaveAccessibleName("Ontology view");
+    expect(ontology).toHaveAttribute("aria-pressed", "false");
+    expect(ontology).not.toHaveTextContent("Ontology view");
+    const order = [
+      "glossary-ontology-toggle",
+      "glossary-new-btn",
+      "glossary-generate-menu",
+      "glossary-purpose-help",
+    ].map((id) => screen.getByTestId(id));
+    for (let i = 1; i < order.length; i++)
+      expect(
+        order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByTestId("glossary-generate-menu")).toHaveAccessibleName("Generate with AI");
+    // Its two drafts are items of the menu, in this order, and nowhere else on the page.
+    expect(screen.queryByTestId("glossary-bulk-relationships-btn")).toBeNull();
+    fireEvent.click(screen.getByTestId("glossary-generate-menu"));
+    const menu = await screen.findByRole("menu");
+    // Mantine's items are not exposed by role in jsdom (mantine-menu-test-pattern): read them in place.
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent)).toEqual([
+      "Relationships",
+      "Definitions",
+    ]);
+  });
+
+  it("presses the Ontology view icon while the view is on", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
+    expect(screen.getByTestId("glossary-ontology-toggle")).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("bulk-generates definitions and shows a count notification", async () => {
     mockBulkDefinitions.mockResolvedValue({ generated: 3 });
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 
-    fireEvent.click(screen.getByTestId("glossary-bulk-definitions-btn"));
+    fireEvent.click(screen.getByTestId("glossary-generate-menu"));
+    fireEvent.click(await screen.findByTestId("glossary-bulk-definitions-btn"));
     await waitFor(() => expect(mockBulkDefinitions).toHaveBeenCalled());
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
@@ -510,7 +547,8 @@ describe("GlossaryTab", () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 
-    fireEvent.click(screen.getByTestId("glossary-bulk-relationships-btn"));
+    fireEvent.click(screen.getByTestId("glossary-generate-menu"));
+    fireEvent.click(await screen.findByTestId("glossary-bulk-relationships-btn"));
     await waitFor(() => expect(mockBulkRelationships).toHaveBeenCalled());
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(

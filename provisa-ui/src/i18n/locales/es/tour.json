@@ -288,7 +288,7 @@
       },
       "stepGlossary": {
         "title": "Un glosario de negocio vivo",
-        "description": "📖 Cada término remite a las columnas que lo contienen y a otros términos. Cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos: <strong>✨ Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>✨ Relaciones</strong> propone enlaces en todo el glosario. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
+        "description": "📖 Cada término remite a las columnas que lo contienen y a otros términos. Cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos desde el menú <strong>✨</strong>: <strong>Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>Relaciones</strong> propone enlaces en todo el glosario. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
       },
       "stepDataProducts": {
         "title": "Productos de datos, publicados donde los consumidores ya buscan",
