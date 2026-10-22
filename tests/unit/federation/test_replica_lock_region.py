@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0b3044d0-700e-4af6-ae7d-28206e00c174
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-1915, REQ-1922: one build of a replica at a time is a limit each cluster applies to itself.
 Each region builds a table's copy into its own store, so a build in eu and one in us do not wait on
 each other; two builds of it in one region still do. The one implicit region keeps today's name."""
