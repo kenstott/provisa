@@ -135,6 +135,7 @@
     "qdrantVectors": "Vectoren van {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensies, gescoord met {{distance}}",
     "qdrantUnnamedVector": "(naamloos)",
+    "continue": "Doorgaan",
     "checkReasonLabel": "Waarom deze controle bestaat",
     "checkReasonHint": "De kwaliteitsbelofte in zakelijke termen; ze staat boven de controle in elk product.",
     "checkReasonPlaceholder": "Bestellingen zijn volledig en uniek zodat de dagomzet aansluit op finance"

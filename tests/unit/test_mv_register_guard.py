@@ -196,9 +196,9 @@ def test_table_input_maps_consistency():
         mv_consistency="distributed",
         mv_preprocess=None,  # REQ-957
         mv_hold_on_failing_checks=False,  # REQ-2133
-        mv_bitemporal_mode=None,  # REQ-1162
-        mv_bitemporal_key=[],  # REQ-1162
-        mv_bitemporal_source_time=None,  # REQ-1163
+        business_key=[],  # REQ-2109
+        valid_time=None,  # REQ-2109
+        recorded_time=None,  # REQ-2109
         mv_persist="replace",  # REQ-965
         mv_primary_key=[],  # REQ-970
         mv_incremental=False,  # REQ-969

@@ -29,8 +29,9 @@ import { sandboxDestination } from "../../lib/sandboxSession";
 
 /** A demo whose stores or template are still being prepared: waited for, not refused. */
 const NOT_READY = "sandbox.demo_not_ready";
-/** Refusals that pass with time: the page offers to try again. */
-const TRANSIENT = new Set(["sandbox.at_capacity"]);
+/** Refusals that pass with time: the page offers to try again. Trying again after the demo's
+ * stores failed to start asks the node for them again. */
+const TRANSIENT = new Set(["sandbox.at_capacity", "sandbox.demo_stores_failed"]);
 /** How often a starting demo's status is asked. */
 const STARTING_POLL_MS = 5000;
 

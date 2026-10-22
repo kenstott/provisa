@@ -51,7 +51,8 @@ def entity_table_input(inp: EntityInput) -> TableInput:
             key=tuple(inp.key),
             attributes=tuple(inp.attributes),
             history=inp.history,
-            source_time=inp.source_time,
+            valid_time=inp.valid_time,
+            recorded_time=inp.recorded_time,
         )
     )
     return TableInput(
@@ -62,9 +63,9 @@ def entity_table_input(inp: EntityInput) -> TableInput:
         columns=_columns(reg["columns"], inp.visible_to),
         view_sql=reg["view_sql"],
         materialize=True,
-        mv_bitemporal_mode=reg.get("mv_bitemporal_mode"),
-        mv_bitemporal_key=reg.get("mv_bitemporal_key", []),
-        mv_bitemporal_source_time=reg.get("mv_bitemporal_source_time"),  # REQ-1163
+        business_key=reg.get("business_key", []),  # REQ-2109
+        valid_time=reg.get("valid_time"),  # REQ-2109
+        recorded_time=reg.get("recorded_time"),  # REQ-2109
         modeling_role=reg["modeling_role"],  # REQ-1320
         modeling_history=reg.get("modeling_history"),  # REQ-1320
     )

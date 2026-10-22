@@ -3126,7 +3126,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         state.federation_engine.reseed_ops(_OPS_VIEWS)
 
-        await _register_user_views_in_state(conn, raw_config)
+        await _register_user_views_in_state(conn, raw_config, tables, draft_tables)
 
         # Schema-currency reconcile (REQ-846/932): converge this environment's own landing tables
         # to the registered shape before introspection reads them. Boot and post-mutation registration

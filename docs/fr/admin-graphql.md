@@ -396,11 +396,11 @@ Exécuter `ANALYZE` sur toutes les tables enregistrées d'une source. Améliore 
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Enregistrer une nouvelle table (ou vue) dans un domaine. Requiert la capacité `table_registration` et l'appartenance au domaine cible. Un appelant sans `create_relationship` qui soumet une vue est mis en file d'attente comme demande de création pour qu'un titulaire des droits l'approuve.
+Enregistre une nouvelle table (ou vue) dans un domaine, avec chaque réglage que porte l'entrée, dont `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` et `draft`, en une transaction : si l'un d'eux est refusé, rien n'est enregistré. Requiert la capacité `table_registration` et l'appartenance au domaine cible ; porter `writeGrants` requiert aussi `masking_config` dans ce domaine. Un appelant sans `create_relationship` qui soumet une vue est mis en file comme demande de création, à approuver par un détenteur des droits.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Mettre à jour l'alias, la description, les métadonnées de colonnes, les paramètres de MV, et la config de livraison en direct d'une table existante. Requiert `table_registration`.
+Met à jour l'alias, la description, les métadonnées de colonnes, les réglages de MV, la configuration de diffusion en direct d'une table existante et les réglages que porte l'entrée (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), en une transaction : si l'un d'eux est refusé, rien n'est enregistré. Un réglage omis garde sa valeur stockée. Requiert `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -729,7 +729,9 @@ L'entrée principale d'enregistrement de table. Champs clés au-delà des bases 
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Maintenance incrémentale |
 | `mvHoldOnFailingChecks` | Suspendre si des contrôles échouent : une actualisation est annulée, et la vue garde sa copie précédente, tant qu'une table de contrôle qui analyse l'une de ses entrées a échoué à sa dernière exécution |
-| `mvBitemporalMode` | `snapshot` \| `delta` pour les tables bitemporelles |
+| `businessKey` | Colonnes qui identifient la même chose d'une version à l'autre ; déclarée avec `validTime` et `recordedTime`, les trois ou aucune |
+| `validTime` | Colonne contenant la date que l'activité donne à l'enregistrement |
+| `recordedTime` | Colonne contenant le moment où cette version a été saisie ou modifiée |
 | `mvCalendar` | Nom du calendrier d'instantané |
 | `mvGrain` | Granularité d'instantané : `daily`, `weekly`, `monthly`, `annual`, ou personnalisée `3WE` / `LFR` |
 | `viewSql` | SQL pour une vue dérivée |
@@ -738,6 +740,15 @@ L'entrée principale d'enregistrement de table. Champs clés au-delà des bases 
 | `queryTemplate` | Cypher pour une table Neo4j |
 | `live` | Config de livraison en direct pour push SSE/Kafka |
 | `discover` | Inférer les colonnes depuis la source en direct au moment de l'enregistrement |
+| `gqlNamingConvention` | Convention de nommage GraphQL de la table ; `null` hérite. Omise, une nouvelle table hérite et une mise à jour garde celle stockée |
+| `roleTtl` | La liste entière rôle vers TTL, `[{ role, ttl }]` |
+| `replicate` | Quand la table est servie depuis sa réplique ; `null` hérite la valeur de la source |
+| `writeGrants` | L'ensemble entier des droits d'écriture de la table ; requiert `masking_config` |
+| `draft` | `false` publie la table ; sinon un enregistrement commence en brouillon |
+| `cacheTtl` | Le Cache TTL propre à la table ; `null` n'en a pas |
+| `pagination` | La pagination déclarée de la table ; `null` n'en déclare aucune |
+| `region` | Où vivent les données de la table ; lors d'une mise à jour, une autre région la déplace, jugée comme `setTableRegion` la juge |
+| `rowRules` | Règles de ligne de la table (`RLSRuleInput`), enregistrées avec elle ; requiert `masking_config` |
 
 ### `RelationshipInput`
 

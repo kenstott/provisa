@@ -43,7 +43,7 @@ beforeEach(() => {
 
 describe("RegisterTableForm on a sparql source (REQ-1683)", () => {
   it("previews the SELECT and registers its variables as text columns with the query", async () => {
-    const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+    const onContinue = vi.fn();
     render(
       <RegisterTableForm
         sources={[{ id: "sparql-demo", type: "sparql", allowedDomains: [] } as never]}
@@ -55,8 +55,7 @@ describe("RegisterTableForm on a sparql source (REQ-1683)", () => {
         roles={[{ id: "org_admin" } as never]}
         getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
-        registerTable={registerTable}
-        onSuccess={vi.fn()}
+        onContinue={onContinue}
         onCancel={() => {}}
         setError={vi.fn()}
       />,
@@ -81,8 +80,8 @@ describe("RegisterTableForm on a sparql source (REQ-1683)", () => {
       query: QUERY,
     });
     fireEvent.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalledTimes(1));
-    expect(registerTable.mock.calls[0][0]).toMatchObject({
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    expect(onContinue.mock.calls[0][0].input).toMatchObject({
       sourceId: "sparql-demo",
       schemaName: "sparql",
       tableName: "volunteer",

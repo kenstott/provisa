@@ -49,6 +49,12 @@ async function loadSourceTypes() {
   return mod.SOURCE_TYPES;
 }
 
+// Each category's heading, as the product's picker shows it in English (the id is its key there).
+function loadCategoryLabels() {
+  const cat = JSON.parse(fs.readFileSync(path.join(UI, "src/i18n/locales/en/sourceTypePicker.json"), "utf8"));
+  return cat.sourceTypePicker.categories;
+}
+
 function loadMarks() {
   const simple = require("simple-icons");
   const logo = fs.readFileSync(path.join(UI, "src/components/sourceLogoMarks.ts"), "utf8");
@@ -107,6 +113,7 @@ export async function renderPicker() {
     types.splice(at + 1, 0, { value: add.value, label: add.label, category: add.category });
   }
   const { marks, tones, files } = loadMarks();
+  const labels = loadCategoryLabels();
   const order = [...new Set(types.map((t) => t.category))];
   const cats = [...CATEGORY_FIRST.filter((c) => order.includes(c)), ...order.filter((c) => !CATEGORY_FIRST.includes(c))];
   const used = new Map();
@@ -134,7 +141,8 @@ export async function renderPicker() {
       const sub = subs.length ? `<ul class="picker-sub">${subs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
       rows.push(`<li class="picker-row">${logo}<span class="picker-name">${esc(name)}</span>${sub}</li>`);
     }
-    out.push(`<section class="picker-cat" data-category="${esc(cat)}"><h3>${esc(cat)}</h3><ul>${rows.join("")}</ul></section>`);
+    if (!labels[cat]) throw new Error(`no English label for source category ${cat} in sourceTypePicker.json`);
+    out.push(`<section class="picker-cat" data-category="${esc(cat)}"><h3>${esc(labels[cat])}</h3><ul>${rows.join("")}</ul></section>`);
   }
   // The larger number is a floor to the nearest five: connectors plus the kinds shown under tiles.
   const kinds = Math.floor((total + extra) / 5) * 5;

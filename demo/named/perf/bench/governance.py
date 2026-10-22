@@ -82,12 +82,11 @@ TABLE_FIELDS = (
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
     "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
-    "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks mvBitemporalMode "
-    "mvBitemporalKey mvBitemporalSourceTime mvPersist mvIncremental mvCalendar mvGrain "
-    "mvAllowedLateness "
+    "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks businessKey "
+    "validTime recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
     "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
-    "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn } "
+    "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn landingTimeColumn } "
     "outputs { type topic keyColumn bootstrapServers role } } "
     f"columns {{ {COLUMN_FIELDS} }}"
 )
@@ -110,7 +109,6 @@ _TABLE_EMPTY_IS_NULL = (
     "importSet",
     "landingFilter",
     "mvPreprocess",
-    "mvBitemporalMode",
     "mvCalendar",
     "mvGrain",
 )
@@ -129,7 +127,8 @@ _TABLE_AS_IS = (
     "pushDebounceQuiet",
     "pushDebounceMaxDelay",
     "mvConsistency",
-    "mvBitemporalSourceTime",
+    "validTime",
+    "recordedTime",
     "mvPersist",
     "mvIncremental",
     "mvHoldOnFailingChecks",
@@ -195,7 +194,7 @@ def table_input(
     out.update(
         {
             "arguments": dict(t["arguments"] or {}),
-            "mvBitemporalKey": list(t["mvBitemporalKey"] or []),
+            "businessKey": list(t["businessKey"] or []),
             # REQ-970: the MV row-identity key IS the table's primary key, as the editor derives it
             "mvPrimaryKey": [c["columnName"] for c in t["columns"] if c["isPrimaryKey"]],
             # REQ-1443 clause 10: a checker table's product is derived and refused on the row

@@ -135,6 +135,7 @@
     "qdrantVectors": "וקטורים של {{collection}}",
     "qdrantVector": "{{name}}: {{size}} ממדים, מדורג לפי {{distance}}",
     "qdrantUnnamedVector": "(ללא שם)",
+    "continue": "המשך",
     "checkReasonLabel": "למה הבדיקה הזו קיימת",
     "checkReasonHint": "הבטחת האיכות במונחים עסקיים; היא מופיעה מעל הבדיקה בכל מוצר.",
     "checkReasonPlaceholder": "ההזמנות שלמות וייחודיות כדי שההכנסות היומיות יתאמו לכספים"

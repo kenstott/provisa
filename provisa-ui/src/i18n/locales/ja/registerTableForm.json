@@ -135,6 +135,7 @@
     "qdrantVectors": "{{collection}} のベクトル",
     "qdrantVector": "{{name}}: {{size}} 次元、{{distance}} でスコア付け",
     "qdrantUnnamedVector": "(名前なし)",
+    "continue": "次へ",
     "checkReasonLabel": "このチェックが存在する理由",
     "checkReasonHint": "ビジネス用語で表した品質の約束。各プロダクトでチェックの見出しになります。",
     "checkReasonPlaceholder": "日次売上が財務と一致するよう、注文は欠けがなく一意である"

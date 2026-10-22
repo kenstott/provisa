@@ -135,6 +135,7 @@
     "qdrantVectors": "Vectores de {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensiones, puntuado por {{distance}}",
     "qdrantUnnamedVector": "(sin nombre)",
+    "continue": "Continuar",
     "checkReasonLabel": "Por qué existe esta comprobación",
     "checkReasonHint": "La promesa de calidad en términos de negocio; encabeza la comprobación en cada producto.",
     "checkReasonPlaceholder": "Los pedidos están completos y son únicos para que los ingresos diarios cuadren con finanzas"

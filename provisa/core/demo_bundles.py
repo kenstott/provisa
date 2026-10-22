@@ -422,7 +422,8 @@ def _ok(response: httpx.Response, what: str) -> None:
 # (<name>/pulled); it starts the demo's stores only once the tier has asked for the demo since the
 # node started (<name>/requested, which the node clears when it starts, with <name>/ready): its
 # data is loaded into the node's shared stores, its stores.env written (where its stores are, and
-# the names of its data), and the version marked ready (<name>/ready). The tier asks for a demo at
+# the names of its data), and the version marked ready (<name>/ready) -- or, when they cannot be
+# brought up, why in <name>/failed, which a waiting visitor is answered with. The tier asks for a demo at
 # its first open, and again when the registry names a version newer than the ready one (the node
 # always pulls the latest published); it records in <name>/in-use the versions its open sandboxes
 # and template read, which the node keeps. When a demo's last sandbox closes, the tier rewrites
@@ -489,9 +490,17 @@ def ready_version(name: str) -> str | None:
 
 def request(name: str) -> None:
     """Ask the node to bring demo ``name``'s stores up: they are started only once it is asked for
-    (its first open since the node started)."""
+    (its first open since the node started). An ask is a new attempt: why the last one failed is
+    cleared, and the node says it again if this one fails too."""
+    (bundles_root() / name / "failed").unlink(missing_ok=True)
     _write(bundles_root() / name / "requested", "requested")
     (bundles_root() / WANTED_SIGNAL).touch()
+
+
+def stores_failed(name: str) -> str | None:
+    """Why the node could not bring demo ``name``'s stores up since it was last asked for
+    (``<name>/failed``, scripts/demo_stores_sync.sh); None when nothing failed."""
+    return _read(bundles_root() / name / "failed")
 
 
 #: ``<name>/requested`` once demo ``name``'s last sandbox has closed: the time its stores are

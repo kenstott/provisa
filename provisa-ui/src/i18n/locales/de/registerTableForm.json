@@ -135,6 +135,7 @@
     "qdrantVectors": "Vektoren von {{collection}}",
     "qdrantVector": "{{name}}: {{size}} Dimensionen, bewertet nach {{distance}}",
     "qdrantUnnamedVector": "(ohne Namen)",
+    "continue": "Weiter",
     "checkReasonLabel": "Warum diese Prüfung existiert",
     "checkReasonHint": "Die Qualitätszusage in fachlichen Begriffen; sie steht über der Prüfung in jedem Produkt.",
     "checkReasonPlaceholder": "Bestellungen sind vollständig und eindeutig, damit der Tagesumsatz mit der Finanzabteilung abgestimmt werden kann"

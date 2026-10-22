@@ -36,9 +36,15 @@ VIEW = "orders_v"
 VIEW_REF = f'"cat"."public"."{VIEW}"'  # how a query references the registered view
 BUSINESS = ["id", "region", "amount"]
 
-STEP1 = [(1, "west", 10), (2, "east", 20)]
-STEP2 = [(1, "west", 15), (2, "east", 20), (3, "north", 30)]
-STEP3 = [(1, "west", 15), (3, "north", 30)]  # id=2 deleted
+# Each row carries when it took effect (eff): the view's valid time, which a read travels on
+# (REQ-1163 as amended 2026-10-20).
+STEP1 = [(1, "west", 10, "2026-01-01"), (2, "east", 20, "2026-01-01")]
+STEP2 = [
+    (1, "west", 15, "2026-02-01"),
+    (2, "east", 20, "2026-01-01"),
+    (3, "north", 30, "2026-02-01"),
+]
+STEP3 = [(1, "west", 15, "2026-02-01"), (3, "north", 30, "2026-02-01")]  # id=2 deleted
 TS = ["2026-01-01 00:00:00.000000", "2026-02-01 00:00:00.000000", "2026-03-01 00:00:00.000000"]
 
 
@@ -81,15 +87,17 @@ def _query(view_sql_map: dict[str, str]) -> str:
 
 async def _materialize(monkeypatch, mode: str):
     con = duckdb.connect(":memory:")
-    con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
+    con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER, eff TIMESTAMP)")
     engine, registry = DuckEngine(con), MVRegistry()
     mv = MVDefinition(
         id=VIEW,
         source_tables=[],
         target_catalog="memory",
         target_schema="mvs",
-        sql="SELECT id, region, amount FROM base",
-        bitemporal=BitemporalSpec(key=("id",), mode=mode, columns=("id", "region", "amount")),
+        sql="SELECT id, region, amount, eff FROM base",
+        bitemporal=BitemporalSpec(
+            key=("id",), mode=mode, valid_column="eff", columns=("id", "region", "amount", "eff")
+        ),
     )
     registry.register(mv)
 
@@ -100,7 +108,7 @@ async def _materialize(monkeypatch, mode: str):
     for rows in (STEP1, STEP2, STEP3):
         con.execute("DELETE FROM base")
         for r in rows:
-            con.execute("INSERT INTO base VALUES (?, ?, ?)", r)
+            con.execute("INSERT INTO base VALUES (?, ?, ?, ?)", r)
         await refresh_mv(engine, mv, registry)
 
     # app_rebuild wires the view's inline-expansion entry to the reconstruction over the append log.

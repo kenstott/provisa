@@ -396,11 +396,11 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-רישום טבלה (או view) חדשה לתוך תחום. דורש את היכולת `table_registration` וחברות בתחום היעד. קורא שאין לו `create_relationship` המגיש view מועמד בתור כבקשת יצירה שמחזיק זכות חייב לאשר.
+רושם טבלה (או view) חדשה בתוך domain, עם כל הגדרה שהקלט נושא, ובהן `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` ו-`draft`, בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נרשם. דורש את היכולת `table_registration` וחברות ב-domain היעד; נשיאת `writeGrants` דורשת שם גם `masking_config`. קורא בלי `create_relationship` שמגיש view נכנס לתור כבקשת יצירה שבעל ההרשאות יאשר.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-עדכון כינוי, תיאור, מטא-דאטה של עמודות, הגדרות MV, והגדרות אספקה חיה של טבלה קיימת. דורש `table_registration`.
+מעדכן את הכינוי, התיאור, מטא-נתוני העמודות, הגדרות ה-MV ותצורת המסירה החיה של טבלה קיימת, ואת ההגדרות שהקלט נושא (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נשמר. הגדרה שהושמטה שומרת את הערך השמור שלה. דורש `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -729,7 +729,9 @@ mutation {
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | תחזוקה מצטברת |
 | `mvHoldOnFailingChecks` | לעצור כשבדיקות נכשלות: רענון מבוטל, והתצוגה שומרת את העותק הקודם שלה, כל עוד טבלת בדיקה הסורקת אחד מהקלטים שלה נכשלה בהרצה האחרונה שלה |
-| `mvBitemporalMode` | `snapshot` \| `delta` עבור טבלאות דו-זמניות |
+| `businessKey` | עמודות שמזהות את אותו הדבר לאורך הגרסאות; מוצהר יחד עם `validTime` ו-`recordedTime`, שלושתם או אף אחד |
+| `validTime` | עמודה שמחזיקה את התאריך שהעסק נותן לרשומה |
+| `recordedTime` | עמודה שמחזיקה את המועד שבו גרסה זו הוזנה או שונתה |
 | `mvCalendar` | שם לוח שנה של תמונת מצב |
 | `mvGrain` | גרעיניות תמונת מצב: `daily`, `weekly`, `monthly`, `annual`, או מותאם `3WE` / `LFR` |
 | `viewSql` | SQL עבור view נגזר |
@@ -738,6 +740,15 @@ mutation {
 | `queryTemplate` | Cypher עבור טבלת Neo4j |
 | `live` | הגדרת אספקה חיה עבור דחיפת SSE/Kafka |
 | `discover` | הסק עמודות מהמקור החי בעת הרישום |
+| `gqlNamingConvention` | מוסכמת השמות של GraphQL לטבלה; `null` יורש. אם הושמטה, טבלה חדשה יורשת ועדכון שומר את השמורה |
+| `roleTtl` | כל רשימת התפקיד ל-TTL, `[{ role, ttl }]` |
+| `replicate` | מתי הטבלה מוגשת מהעותק שלה; `null` יורש את ערך המקור |
+| `writeGrants` | כל קבוצת הרשאות הכתיבה של הטבלה; דורש `masking_config` |
+| `draft` | `false` משחרר את הטבלה; אחרת רישום מתחיל כטיוטה |
+| `cacheTtl` | ה-Cache TTL של הטבלה עצמה; `null` – אין לה משלה |
+| `pagination` | העימוד המוצהר של הטבלה; `null` לא מצהיר על עימוד |
+| `region` | איפה נמצאים נתוני הטבלה; בעדכון, אזור אחר מעביר אותה, ונבדק כמו ב-`setTableRegion` |
+| `rowRules` | כללי השורות של הטבלה (`RLSRuleInput`), נשמרים איתה; דורש `masking_config` |
 
 ### `RelationshipInput`
 

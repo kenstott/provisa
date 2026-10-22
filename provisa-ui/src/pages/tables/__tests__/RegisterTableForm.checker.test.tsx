@@ -61,7 +61,7 @@ const { RegisterTableForm } = await import("../RegisterTableForm");
 const GX = "name: x\nmeta:\n  dataset: provisa/pet_store/pets\nexpectations: []\n";
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   const setError = vi.fn();
   const suggestTableAlias = vi.fn().mockResolvedValue("suggested");
   render(
@@ -75,13 +75,12 @@ function renderForm() {
       roles={[{ id: "org_admin" } as never, { id: "analyst" } as never]}
       getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
       suggestTableAlias={suggestTableAlias}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={setError}
     />,
   );
-  return { registerTable, setError, suggestTableAlias };
+  return { onContinue, setError, suggestTableAlias };
 }
 
 beforeEach(() => {
@@ -145,33 +144,33 @@ describe("RegisterTableForm on a checker source (REQ-1663)", () => {
   });
 
   it("refuses to register until a table to scan is picked", async () => {
-    const { registerTable, setError } = renderForm();
+    const { onContinue, setError } = renderForm();
     const user = userEvent.setup();
     await user.selectOptions(screen.getByTestId("register-table-source-select"), "dq-checker");
     await screen.findByTestId("register-table-dq");
 
     await user.click(screen.getByTestId("register-table-submit"));
-    expect(registerTable).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
     expect(setError).toHaveBeenLastCalledWith(expect.stringContaining("required"));
   });
 
   it("refuses to register a checker table without a scan interval", async () => {
-    const { registerTable, setError } = renderForm();
+    const { onContinue, setError } = renderForm();
     const user = await pickScanTarget();
 
     await user.click(screen.getByTestId("register-table-submit"));
-    expect(registerTable).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
     expect(setError).toHaveBeenLastCalledWith(expect.stringContaining("how often"));
   });
 
   it("registers the contract with the placeholder column carrying visible_to", async () => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pickScanTarget();
 
     await user.type(screen.getByTestId("register-table-dq-scan-interval"), "3600");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalledTimes(1));
-    expect(registerTable).toHaveBeenCalledWith(
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    expect(onContinue.mock.calls[0][0].input).toEqual(
       expect.objectContaining({
         sourceId: "dq-checker",
         domainId: "pet-store",

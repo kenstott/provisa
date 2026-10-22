@@ -272,6 +272,8 @@ export interface LiveKafkaConfig {
   topic: string;
   format?: string;
   keyColumn?: string | null;
+  // REQ-813: the column Provisa fills with the time it lands each message.
+  landingTimeColumn?: string | null;
 }
 
 export interface LiveDeliveryConfig {
@@ -384,10 +386,12 @@ export interface RegisteredTable {
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
   mvPreprocess: string | null; // REQ-1165: inline preflight(rows, ctx) check source; null = no check
   mvHoldOnFailingChecks: boolean; // REQ-2133: built-in preflight on its inputs' failing checks
-  mvBitemporalMode: string | null; // REQ-1162: null | "snapshot" | "delta" (append-only time travel)
-  mvBitemporalKey: string[]; // REQ-1162: entity key a version belongs to (required for delta)
-  /** REQ-1163: the column holding the source's change time; null reads on recorded time. */
-  mvBitemporalSourceTime?: string | null;
+  /** REQ-2109: the columns identifying the same thing across versions; [] = none declared. */
+  businessKey: string[];
+  /** REQ-2109: the column holding the date the business gives the record. */
+  validTime: string | null;
+  /** REQ-2109: the column holding when this version was entered or changed. */
+  recordedTime: string | null;
   mvPersist: string; // REQ-965: replace | append | upsert
   mvPrimaryKey: string[]; // REQ-970: row identity (required for upsert / incremental)
   mvIncremental: boolean; // REQ-969: incremental maintenance

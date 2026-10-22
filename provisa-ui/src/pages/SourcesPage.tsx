@@ -95,6 +95,8 @@ import { LOGS, logsMapping } from "./sources/logs";
 import { COSMOSDB, cosmosHints } from "./sources/cosmosdb";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
 import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
+import { NEW_SOURCE, keepFolderAs, resendHeldFolder } from "./sources/folderZip";
+import { uploadCodeArchive } from "../api/codeUploads";
 import { WIKIPEDIA, wikipediaHints } from "./sources/wikipedia";
 import { sourceFormCacheTtl, sourceLoadFieldsValid } from "./sources/loadManagement";
 import { useCacheTtlRequired } from "./sources/sourceKind";
@@ -136,7 +138,7 @@ export function SourcesPage() {
   // `_refuse_soda_on_hosted_plane` gates on server-side (commerce.enabled()). soda is Elastic
   // License 2.0 and must never be offered as a hosted/managed service; hiding it here is
   // defense-in-depth UX, not the enforcement boundary — the server refuses it regardless.
-  const { billing: hostedPlane } = useAuth();
+  const { billing: hostedPlane, activeOrgId } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
@@ -745,11 +747,18 @@ export function SourcesPage() {
           : form.type === "databricks" && authType === "token"
             ? { password: authFields.access_token }
             : {};
+      // REQ-2121: a folder the browser keeps for this source's code is zipped and sent again.
+      const codeFields =
+        CODE_SOURCE_TYPES.has(form.type) && activeOrgId
+          ? await resendHeldFolder(editingSourceId ?? NEW_SOURCE, authFields, (file) =>
+              uploadCodeArchive(activeOrgId, file),
+            )
+          : authFields;
       const spMappingJson =
         form.type === "data_profiler"
           ? profilerMappingJson(authFields) // REQ-1934
           : CODE_SOURCE_TYPES.has(form.type)
-            ? codeMappingJson(form.type, authFields) // REQ-1984, REQ-1993
+            ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
             : form.type === "cloudops"
               ? cloudopsMappingJson(authFields) // REQ-1947
               : form.type === GOOGLE_WORKSPACE
@@ -952,6 +961,7 @@ export function SourcesPage() {
         }
       }
       const created = editingSourceId ? null : form.id.trim();
+      if (created) keepFolderAs(created); // REQ-2121
       handleCancelForm();
       load();
       if (created) await openCreated(created);
@@ -1518,7 +1528,10 @@ export function SourcesPage() {
                 }}
               >
                 {typeSelectData().map((group) => (
-                  <optgroup key={group.group} label={group.group}>
+                  <optgroup
+                    key={group.group}
+                    label={t(`sourceTypePicker.categories.${group.group}`)}
+                  >
                     {group.items.map((item) => (
                       <option key={item.value} value={item.value} disabled={item.disabled}>
                         {item.label}

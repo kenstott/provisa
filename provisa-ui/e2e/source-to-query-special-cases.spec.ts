@@ -372,6 +372,8 @@ for (const c of [
       // dq-checker/dq-soda baked sources; here it's a source this test created itself.
       await page.getByTestId("register-table-dq-scan-interval").fill("3600");
       await page.getByTestId("register-table-submit").click();
+      // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
+      await page.getByTestId("table-edit-save").click();
       // Registered under its result relation's name, <name>_<source>_dq (REQ-1443).
       const relation = `${resultsTable}_${sourceId.replaceAll("-", "_")}_dq`;
       const badge = page.getByTestId(`tables-checker-${relation}`);

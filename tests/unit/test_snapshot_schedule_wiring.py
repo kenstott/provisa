@@ -40,9 +40,9 @@ def _table_input(**overrides):
         mv_consistency="shared",
         mv_preprocess=None,
         mv_hold_on_failing_checks=False,
-        mv_bitemporal_mode=None,
-        mv_bitemporal_key=[],
-        mv_bitemporal_source_time=None,  # REQ-1163
+        business_key=[],  # REQ-2109
+        valid_time=None,  # REQ-2109
+        recorded_time=None,  # REQ-2109
         mv_persist="replace",
         mv_primary_key=[],
         mv_incremental=False,

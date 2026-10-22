@@ -135,6 +135,7 @@
     "qdrantVectors": "{{collection}} के वेक्टर",
     "qdrantVector": "{{name}}: {{size}} आयाम, {{distance}} से स्कोर किए गए",
     "qdrantUnnamedVector": "(बिना नाम)",
+    "continue": "जारी रखें",
     "checkReasonLabel": "यह जाँच क्यों है",
     "checkReasonHint": "व्यावसायिक शब्दों में गुणवत्ता का दावा; यह हर प्रोडक्ट में जाँच के ऊपर दिखता है।",
     "checkReasonPlaceholder": "ऑर्डर पूरे और अद्वितीय हैं ताकि दैनिक राजस्व वित्त से मेल खाए"

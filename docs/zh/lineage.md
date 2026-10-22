@@ -211,12 +211,12 @@ ORDER BY refreshed_at
 
 ## 视图当时的样子，以及当时记录的样子 {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-声明为双时态的视图会保留它有过的每个版本：每次刷新都是追加，任何版本都不会被改写，在任何存储上都是如此。普通读取返回当前状态。两个请求头用于读取它的过去：
+将源的列映射为 `business_key`、`valid_time` 和 `recorded_time` 的视图会保留它拥有过的每个版本：每次刷新都是追加，任何存储上都不会改写任何版本。普通读取返回当前状态。两个请求头读取它的过去：
 
-- `X-Provisa-As-Of` 按视图的时钟读取某个时间点或某个区间的视图：视图声明了 `bitemporal_source_time` 时用数据源自身的变更时间，未声明时用 Provisa 的加载时间。
+- `X-Provisa-As-Of` 按某个时间或某个时间范围读取视图。
 - `X-Provisa-As-Recorded` 按 Provisa 在某个时间点所记录的样子读取视图。该时间之后记录的版本不计入，因此之后记录的更正不会改变对过去的重放。
 
-截至 9 月 30 日、按 10 月 1 日的记录读取得到原始数字；按 10 月 5 日的记录读取得到更正后的数字。每条语句的审计记录都保存这两个时间（`as_of`、`as_recorded`），因此报表可以按其首次生成时的样子重现。[带历史的视图](configuration.md#views-with-history-time-travel)介绍如何声明双时态视图，以及接受这两个值的每个接口。
+截至 9 月 30 日、按 10 月 1 日的记录读取得到原始数字；按 10 月 5 日的记录读取得到更正后的数字。每条语句的审计记录都保存这两个时间（`as_of`、`as_recorded`），因此报表可以按其首次生成时的样子重现。[带历史的视图](configuration.md#views-with-history-time-travel)介绍这三项声明（附示例），以及接受这两个值的每个接口。
 
 ## 重命名或删除一个列会打断什么 {: #what-a-column-rename-or-drop-would-break }
 

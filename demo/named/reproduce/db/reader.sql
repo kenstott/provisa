@@ -16,4 +16,4 @@
 CREATE ROLE provisa_reader LOGIN PASSWORD 'provisa_reader';
 GRANT USAGE ON SCHEMA public TO provisa_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO provisa_reader;
-GRANT UPDATE (fx_rate) ON positions TO provisa_reader;
+GRANT UPDATE (fx_rate, entered_at) ON positions TO provisa_reader;

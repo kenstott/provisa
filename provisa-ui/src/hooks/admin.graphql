@@ -285,9 +285,9 @@ query TablesQuery {
     mvConsistency
     mvPreprocess
     mvHoldOnFailingChecks
-    mvBitemporalMode
-    mvBitemporalKey
-    mvBitemporalSourceTime
+    businessKey
+    validTime
+    recordedTime
     mvPersist
     mvPrimaryKey
     mvIncremental
@@ -316,6 +316,7 @@ query TablesQuery {
         topic
         format
         keyColumn
+        landingTimeColumn
       }
       outputs {
         type
@@ -779,6 +780,8 @@ query MVList {
     lastRefreshAt
     rowCount
     lastError
+    versionLogOf
+    allowedLateness
   }
 }
 
@@ -1046,6 +1049,7 @@ query Calendars {
     weekStart
     holidays
     weekend
+    dayClose
   }
 }
 
@@ -1302,8 +1306,14 @@ mutation DeployViewToDb($tableId: Int!) {
   }
 }
 
-mutation RefreshMv($mvId: String!) {
-  refreshMv(mvId: $mvId) {
+mutation RefreshMv($mvId: String!, $full: Boolean! = false) {
+  refreshMv(mvId: $mvId, full: $full) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateVersionLog($mvId: String!, $refreshInterval: Int!, $allowedLateness: Float!) {
+  updateVersionLog(mvId: $mvId, refreshInterval: $refreshInterval, allowedLateness: $allowedLateness) {
     ...MutationResult
   }
 }
@@ -1479,4 +1489,9 @@ query SampleOpenapiColumns($sourceId: String!, $tableName: String!, $params: JSO
     name
     dataType
   }
+}
+
+# REQ-416: the naming conventions the server takes -- the one list the admin offers.
+query NamingConventions {
+  namingConventions
 }

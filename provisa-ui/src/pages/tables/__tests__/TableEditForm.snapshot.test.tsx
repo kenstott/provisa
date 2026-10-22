@@ -24,6 +24,9 @@ vi.mock("../../../api/admin", async (importOriginal) => ({
 
 import { TableEditForm } from "../TableEditForm";
 import type { RegisteredTable } from "../../../types/admin";
+import i18n from "../../../i18n";
+
+const t = i18n.getFixedT("en");
 
 function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
@@ -66,8 +69,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvConsistency: "shared",
     mvPreprocess: null,
     mvHoldOnFailingChecks: false,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -100,6 +104,8 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       onSectionChange={vi.fn()}
       savedProfilerId={null}
       editingTable={table}
+      // Saved before any history was declared: what this file stages is still open to change.
+      savedTable={{ ...table, businessKey: [], validTime: null, recordedTime: null }}
       setEditingTable={setEditingTable}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
@@ -109,10 +115,6 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       dataProducts={[]}
       settings={null}
       saving={false}
-      generatingDesc={false}
-      setGeneratingDesc={vi.fn()}
-      generatingColDesc={null}
-      setGeneratingColDesc={vi.fn()}
       generateTableDescription={vi.fn()}
       generateColumnDescription={vi.fn()}
       cancelEditing={vi.fn()}
@@ -173,20 +175,38 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     expect(screen.queryByTestId("mv-snapshot-panel")).not.toBeInTheDocument();
   });
 
-  it("time-travel toggle switches Store As into history (delta) mode", () => {
-    // off by default → turning it on defaults the store mode to delta (append revisions)
-    const setEditingTable = vi.fn();
-    renderForm(makeTable(), setEditingTable);
-    fireEvent.click(screen.getByRole("checkbox", { name: /time travel/i }));
-    expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({ mvBitemporalMode: "delta" }),
-    );
+  it("Time Travel set to Bitemporal offers the three history fields in place of Store As", () => {
+    // REQ-2109: off by default; turning it on shows the business key, valid time and recorded time.
+    renderForm(makeTable());
+    expect(screen.getByTestId("mv-persist")).toBeInTheDocument();
+    expect(screen.queryByTestId("business-key")).toBeNull();
+    fireEvent.click(screen.getByRole("textbox", { name: t("tableEditForm.timeTravelLabel") }));
+    fireEvent.click(screen.getByRole("option", { name: t("tableEditForm.timeTravelBitemporal") }));
+    expect(screen.getByTestId("business-key")).toBeInTheDocument();
+    expect(screen.getByTestId("valid-time")).toBeInTheDocument();
+    expect(screen.getByTestId("recorded-time")).toBeInTheDocument();
+    expect(screen.queryByTestId("mv-persist")).toBeNull();
   });
 
-  it("reflects a set bitemporal mode as time-travel on, with a history key field", () => {
-    renderForm(makeTable({ mvBitemporalMode: "snapshot" }));
-    expect(screen.getByRole("checkbox", { name: /time travel/i })).toBeChecked();
-    expect(screen.getByTestId("mv-bitemporal-key")).toBeInTheDocument();
+  it("reflects a declared business key as time-travel on, with the history fields", () => {
+    renderForm(makeTable({ businessKey: ["id"], validTime: "booked_at", recordedTime: "ts" }));
+    expect(screen.getByRole("textbox", { name: t("tableEditForm.timeTravelLabel") })).toHaveValue(
+      t("tableEditForm.timeTravelBitemporal"),
+    );
+    expect(screen.getByTestId("business-key")).toBeInTheDocument();
+  });
+
+  it("turning time travel off clears the three", () => {
+    const setEditingTable = vi.fn();
+    renderForm(
+      makeTable({ businessKey: ["id"], validTime: "booked_at", recordedTime: "ts" }),
+      setEditingTable,
+    );
+    fireEvent.click(screen.getByRole("textbox", { name: t("tableEditForm.timeTravelLabel") }));
+    fireEvent.click(screen.getByRole("option", { name: t("tableEditForm.timeTravelOff") }));
+    expect(setEditingTable).toHaveBeenCalledWith(
+      expect.objectContaining({ businessKey: [], validTime: null, recordedTime: null }),
+    );
   });
 
   it("opens the new-calendar modal from the picker's + button", async () => {

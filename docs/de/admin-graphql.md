@@ -396,11 +396,11 @@ Führt `ANALYZE` auf allen registrierten Tabellen einer Quelle aus. Verbessert J
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Registriert eine neue Tabelle (oder Sicht) in einer Domäne. Erfordert die Capability `table_registration` und Mitgliedschaft in der Zieldomäne. Ein Aufrufer ohne `create_relationship`, der eine Sicht einreicht, wird als Erstellungsanfrage für einen Rechteinhaber zur Genehmigung eingereiht.
+Registriert eine neue Tabelle (oder Sicht) in einer Domäne, mit jeder Einstellung, die die Eingabe mitführt, darunter `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` und `draft`, in einer Transaktion: Wird eine davon abgelehnt, wird nichts registriert. Erfordert die Capability `table_registration` und Mitgliedschaft in der Zieldomäne; wer `writeGrants` mitführt, braucht dort auch `masking_config`. Ein Aufrufer ohne `create_relationship`, der eine Sicht einreicht, wird als Erstellungsanfrage für einen Rechteinhaber zur Genehmigung eingereiht.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Aktualisiert Alias, Beschreibung, Spaltenmetadaten, MV-Einstellungen und Live-Delivery-Konfiguration einer bestehenden Tabelle. Erfordert `table_registration`.
+Aktualisiert Alias, Beschreibung, Spaltenmetadaten, MV-Einstellungen und Live-Delivery-Konfiguration einer bestehenden Tabelle sowie die Einstellungen, die die Eingabe mitführt (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), in einer Transaktion: Wird eine davon abgelehnt, wird nichts gespeichert. Eine weggelassene Einstellung behält ihren gespeicherten Wert. Erfordert `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -729,7 +729,9 @@ Die zentrale Eingabe zur Tabellenregistrierung. Wichtige Felder über die Grundl
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Inkrementelle Wartung |
 | `mvHoldOnFailingChecks` | Bei fehlschlagenden Prüfungen anhalten: Eine Aktualisierung wird abgebrochen, und die Sicht behält ihre vorherige Kopie, solange eine Prüftabelle, die eine ihrer Eingaben prüft, bei ihrem letzten Lauf fehlgeschlagen ist |
-| `mvBitemporalMode` | `snapshot` \| `delta` für bitemporale Tabellen |
+| `businessKey` | Spalten, die über alle Versionen hinweg dasselbe Ding bezeichnen; deklariert mit `validTime` und `recordedTime`, alle drei oder keine |
+| `validTime` | Spalte mit dem Datum, das das Unternehmen dem Datensatz gibt |
+| `recordedTime` | Spalte mit dem Zeitpunkt, zu dem diese Version erfasst oder geändert wurde |
 | `mvCalendar` | Snapshot-Kalendername |
 | `mvGrain` | Snapshot-Granularität: `daily`, `weekly`, `monthly`, `annual` oder benutzerdefiniert `3WE` / `LFR` |
 | `viewSql` | SQL für eine abgeleitete Sicht |
@@ -738,6 +740,15 @@ Die zentrale Eingabe zur Tabellenregistrierung. Wichtige Felder über die Grundl
 | `queryTemplate` | Cypher für eine Neo4j-Tabelle |
 | `live` | Live-Delivery-Konfiguration für SSE-/Kafka-Push |
 | `discover` | Leitet Spalten zur Registrierungszeit aus der Live-Quelle ab |
+| `gqlNamingConvention` | GraphQL-Namenskonvention der Tabelle; `null` erbt. Weggelassen erbt eine neue Tabelle, und eine Aktualisierung behält die gespeicherte |
+| `roleTtl` | Die ganze Liste Rolle zu TTL, `[{ role, ttl }]` |
+| `replicate` | Wann die Tabelle aus ihrem Replikat bedient wird; `null` erbt den Wert der Quelle |
+| `writeGrants` | Die ganze Menge der Schreibberechtigungen der Tabelle; erfordert `masking_config` |
+| `draft` | `false` gibt die Tabelle frei; sonst beginnt eine Registrierung als Entwurf |
+| `cacheTtl` | Die eigene Cache-TTL der Tabelle; `null` hat keine eigene |
+| `pagination` | Das deklarierte Paging der Tabelle; `null` deklariert keines |
+| `region` | Wo die Daten der Tabelle liegen; bei einer Aktualisierung verschiebt eine andere Region sie, geprüft wie bei `setTableRegion` |
+| `rowRules` | Zeilenregeln der Tabelle (`RLSRuleInput`), mit ihr gespeichert; erfordert `masking_config` |
 
 ### `RelationshipInput`
 

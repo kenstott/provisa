@@ -340,7 +340,13 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # tenant schema. Runs on this connection's own loop, on this thread (REQ-1882).
         plan = run_on_connection_loop(
             _srv._run_with_org(
-                org_id, with_audit_identity(user_id, "pgwire", plan_pgwire_sql(query, role_id))
+                org_id,
+                with_audit_identity(
+                    user_id,
+                    "pgwire",
+                    # REQ-2110: under the session's SET provisa.as_of / provisa.as_recorded
+                    plan_pgwire_sql(query, role_id, as_of=_ctx.session.time_travel()),  # type: ignore[attr-defined]
+                ),
             ),
             timeout=60,
         )

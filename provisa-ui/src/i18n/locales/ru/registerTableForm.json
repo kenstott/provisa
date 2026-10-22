@@ -135,6 +135,7 @@
     "qdrantVectors": "Векторы {{collection}}",
     "qdrantVector": "{{name}}: {{size}} измерений, оценка по {{distance}}",
     "qdrantUnnamedVector": "(без имени)",
+    "continue": "Далее",
     "checkReasonLabel": "Зачем нужна эта проверка",
     "checkReasonHint": "Обещание качества в бизнес-терминах; оно стоит над проверкой в каждом продукте.",
     "checkReasonPlaceholder": "Заказы полны и уникальны, чтобы дневная выручка сходилась с финансами"

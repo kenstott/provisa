@@ -74,7 +74,10 @@ def _live_input(live: Any) -> Any:
         return None
     kafka = (
         LiveKafkaParamsInput(
-            topic=live.kafka.topic, format=live.kafka.format, key_column=live.kafka.key_column
+            topic=live.kafka.topic,
+            format=live.kafka.format,
+            key_column=live.kafka.key_column,
+            landing_time_column=live.kafka.landing_time_column,  # REQ-813
         )
         if live.strategy == "kafka" and live.kafka is not None
         else None
@@ -167,9 +170,9 @@ def table_input(t: Any) -> Any:
         mv_consistency=t.mv_consistency,
         mv_preprocess=t.mv_preprocess or None,
         mv_hold_on_failing_checks=t.mv_hold_on_failing_checks,  # REQ-2133
-        mv_bitemporal_mode=t.mv_bitemporal_mode or None,
-        mv_bitemporal_key=list(t.mv_bitemporal_key),
-        mv_bitemporal_source_time=t.mv_bitemporal_source_time,
+        business_key=list(t.business_key),
+        valid_time=t.valid_time,
+        recorded_time=t.recorded_time,
         mv_persist=t.mv_persist,
         # REQ-970: the MV row-identity key IS the table's primary key, as the editor derives it.
         mv_primary_key=[c.column_name for c in t.columns if c.is_primary_key],

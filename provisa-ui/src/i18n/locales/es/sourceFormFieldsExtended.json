@@ -203,6 +203,7 @@
     "accountEmailHint": "El correo con el que inicia sesión en Atlassian; el token de API es de esta cuenta.",
     "apiToken": "Token de API",
     "apiTokenHint": "Se crea en id.atlassian.com, Security, API tokens. Se guarda en la bóveda de secretos.",
-    "siteAddressInvalid": "Introduzca la dirección completa del sitio, que empiece por https://"
+    "siteAddressInvalid": "Introduzca la dirección completa del sitio, que empiece por https://",
+    "namingInherit": "Heredar (global)"
   }
 }

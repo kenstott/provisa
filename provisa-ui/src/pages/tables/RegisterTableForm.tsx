@@ -14,20 +14,24 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { UntypedColumns } from "./UntypedColumns";
 import { ProfilerRowRulesField } from "./ProfilerRowRulesField";
 import { QueryTableFields } from "./QueryTableFields";
-import {
-  argumentName,
-  isPipelineArgument,
-  NATIVE_QUERY_MODES,
-  previewedColumn,
-} from "./queryTables";
+import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./queryTables";
 import { QDRANT, QDRANT_SCHEMA, offeredUnselected, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
+import { DQ_PLACEHOLDER_COLUMN, registeredColumns } from "./registrationColumns";
 import { QdrantVectorColumns } from "./QdrantVectorColumns";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { isFilesSourceType } from "./tableSectionFields";
 import { useTranslation } from "react-i18next";
-import { Checkbox, SegmentedControl, Select, Text, TextInput, NumberInput } from "@mantine/core";
+import {
+  Button,
+  Checkbox,
+  NumberInput,
+  SegmentedControl,
+  Select,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { NlTableSearch } from "./NlTableSearch";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
@@ -41,25 +45,17 @@ import {
   type ProfilerCatalogEntry,
   type ProfilerRowRule,
 } from "../../api/profiler";
-import { useUpsertRlsRule } from "../../hooks/useSecurityQueries";
 import { DQ_CHECKERS } from "../../types/admin";
-import { registeredTable } from "./registeredTable";
-import type {
-  MutationResult,
-  Paging,
-  RegisteredTable,
-  Source,
-  UniqueConstraint,
-} from "../../types/admin";
+import type { Registration } from "./draftTable";
+import type { Paging, RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
 import { CDC_TYPES } from "./constants";
 import { IR_TYPES_FALLBACK } from "../../irTypes";
 import { isWatermarkEligible } from "./helpers";
 import { CheckerFields } from "./CheckerFields";
-import { useDomainFilter } from "../../context/DomainFilterContext";
 import { PagingField } from "./PagingField";
-import { declaredPaging, pagingInput, pagingProblem } from "./paging";
+import { declaredPaging, pagingProblem } from "./paging";
 import {
   FormChecks,
   FormField,
@@ -69,9 +65,9 @@ import {
 } from "../../components/form/FormLayout";
 import { useSourceKind } from "../sources/sourceKind";
 import { ttlSignalMissingCacheTtl } from "../sources/loadManagement";
-import { serverMessage } from "../../i18n/serverMessage";
 import { usePanelDirty } from "../../components/list/panelLeave";
-import { TableOptions } from "./TableOptions";
+import { ProfilerResultSelect } from "./ProfilerResultSelect";
+import { SchemaTableSelects } from "./SchemaTableSelects";
 import { DeclaredColumns } from "./DeclaredColumns";
 import { ImportSetField } from "./ImportSetField";
 import { assignableDomainIds } from "../../lib/internalDomains";
@@ -84,9 +80,6 @@ const DQ_RESULTS_SCHEMA = "default";
 const PROFILER_RESULTS_SCHEMA = "default";
 // REQ-1670/REQ-1683: a query-API source lists one schema, named after its type.
 const QUERY_API_TYPES = ["neo4j", "sparql"] as const;
-// REQ-1443: the results envelope replaces whatever columns are declared; the one declared column
-// exists to carry visible_to, exactly as the YAML demo registers it.
-const DQ_PLACEHOLDER_COLUMN = { name: "scan_id", dataType: "varchar" };
 
 interface RegisterTableFormProps {
   sources: Source[];
@@ -112,13 +105,11 @@ interface RegisterTableFormProps {
     }[]
   >;
   suggestTableAlias: (tableName: string, domainId: string, sourceId: string) => Promise<string>;
-  registerTable: (input: Record<string, unknown>) => Promise<MutationResult>;
   /**
-   * The registered table, by the id the server gave it -- not by the address the form sent, which
-   * the server may store otherwise (an ingest table's schema is the org's control-plane schema).
-   * Null when nothing is registered yet (a request queued for approval).
+   * REQ-2109 (settled): what is registered is chosen here; every setting of the table follows in
+   * the same sections as its editor, and Save there registers it.
    */
-  onSuccess: (registered: { id: number } | null) => void;
+  onContinue: (registration: Registration) => void;
   /** Closes the form without registering anything. */
   onCancel: () => void;
   setError: (e: string | null) => void;
@@ -136,8 +127,7 @@ export function RegisterTableForm({
   roles,
   getAvailableColumnsMetadata,
   suggestTableAlias,
-  registerTable,
-  onSuccess,
+  onContinue,
   onCancel,
   setError,
   problem,
@@ -145,7 +135,6 @@ export function RegisterTableForm({
   const { t } = useTranslation();
   const [sourceId, setSourceId] = useState("");
   const [chosenDomain, setDomainId] = useState("");
-  const { ensureDomainChecked } = useDomainFilter();
   const [schemaName, setSchemaName] = useState("");
   const [tableName, setTableName] = useState("");
   // Leaving the panel once something is chosen asks first (the panel's one mechanism).
@@ -208,7 +197,6 @@ export function RegisterTableForm({
   // The row rules the picked result table is registered with, prefilled from the profiled table's
   // rules and editable here; saved after the table, as the table's own rules.
   const [profilerRowRules, setProfilerRowRules] = useState<ProfilerRowRule[]>([]);
-  const { upsertRlsRule } = useUpsertRlsRule();
   const isSparql = sourceType === "sparql";
   const isFilesSource = isFilesSourceType(sourceType); // REQ-788
   // REQ-1670/REQ-1683: a query-API source has no tables to list — its table IS a query projection.
@@ -500,37 +488,16 @@ export function RegisterTableForm({
     setColumns(next);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     setError(null);
     if (isChecker) {
-      await submitChecker();
+      submitChecker();
       return;
     }
     // REQ-1983: a Qdrant search's query is the one argument Qdrant requires.
     const searchQuery =
       isPipeline && sourceType === QDRANT ? searchQueryArgument(cypher.trim()) : null;
-    const selectedCols = columns
-      .filter((c) => c.selected)
-      .map((c) => ({
-        name: c.name,
-        dataType: c.dataType,
-        visibleTo: c.visibleTo,
-        masks: c.masks,
-        alias: c.alias || undefined,
-        description: c.description || undefined,
-        nativeFilterType: c.nativeFilterType || undefined,
-        nativeFilterRequired:
-          searchQuery !== null && isPipelineArgument(c) && argumentName(c) === searchQuery
-            ? true
-            : (c.nativeFilterRequired ?? undefined),
-        requiredBySteward: c.requiredBySteward || undefined, // REQ-1986
-        isPrimaryKey: c.isPrimaryKey || undefined,
-        scope: c.scope || "domain",
-        path: c.path?.trim() || undefined, // REQ-1739: ingest per-column JSON extraction path
-        // REQ-2000: a vector column's registered model.
-        embedding: c.embeddingModel ? true : undefined,
-        embeddingModel: c.embeddingModel || undefined,
-      }));
+    const selectedCols = registeredColumns(columns, searchQuery);
     if (!sourceId || !schemaName || !tableName) {
       setError(t("registerTableForm.errorRequiredFields"));
       return;
@@ -572,8 +539,8 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorCacheTtlRequired"));
       return;
     }
-    try {
-      const result = await registerTable({
+    onContinue({
+      input: {
         sourceId,
         domainId,
         ...regionInput,
@@ -594,71 +561,23 @@ export function RegisterTableForm({
         sourceFileColumn:
           isFilesSource && sourceFileColumn.trim() ? sourceFileColumn.trim() : undefined, // REQ-788
         importSet: sourceType === "servicenow" ? importSet : undefined, // REQ-1954
-        // REQ-318: only what is declared; nothing declared registers the table with no paging.
-        pagination:
-          !short && pagingKind !== null && declaredPaging(pagination) !== null
-            ? pagingInput(pagination as Paging)
-            : undefined,
         columns: selectedCols,
         // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
         uniqueConstraints: uniqueConstraints
           .filter((u) => u.name.trim() && u.columns.length > 0)
           .map((u) => ({ name: u.name.trim(), columns: u.columns })),
-      });
-      if (!result.success) {
-        setError(serverMessage(result, result.message));
-        return;
-      }
-      // A table registered into a domain the filter has not seen (one with no tables until now)
-      // would otherwise stay hidden from the tables list until a reload.
-      ensureDomainChecked(domainId);
-      if (isProfiler) {
-        for (const rule of profilerRowRules.filter((r) => r.filter.trim())) {
-          const saved = await upsertRlsRule({
-            tableId: tableName,
-            roleId: rule.roleId,
-            filterExpr: rule.filter.trim(),
-            description: rule.description.trim(),
-          });
-          if (!saved.success) {
-            setError(
-              t("registerTableForm.profilerRowRuleFailed", {
-                role: rule.roleId,
-                message: saved.message,
-              }),
-            );
-            return;
-          }
-        }
-      }
-      resetForm();
-      onSuccess(registeredTable(result));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const resetForm = () => {
-    setSourceId("");
-    setDomainId("");
-    setSchemaName("");
-    setTableName("");
-    setTableAlias("");
-    setTableDescription("");
-    setColumns([]);
-    setUniqueConstraints([]);
-    setCypher("");
-    setPreviewRows([]);
-    setWatermarkColumn("");
-    setCacheTtl("");
-    setDiscover(false);
-    setDqContract("");
-    setDqScanned(null);
+      },
+      // REQ-318: the short step declares no paging; the longer one sends what it declared.
+      pagination: !short && pagingKind !== null ? declaredPaging(pagination) : null,
+      pagingKind,
+      pagingCeilingRows,
+      rowRules: isProfiler ? profilerRowRules : [],
+    });
   };
 
   // REQ-1663: a checker registration is the contract plus a governance intent (visible_to); every
   // other input the server derives from the checker's fixed envelope (provisa.dq.registration).
-  const submitChecker = async () => {
+  const submitChecker = () => {
     if (!sourceId || !tableName) {
       setError(t("registerTableForm.errorRequiredFields"));
       return;
@@ -676,8 +595,8 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorDqScanInterval"));
       return;
     }
-    try {
-      const result = await registerTable({
+    onContinue({
+      input: {
         sourceId,
         domainId,
         ...regionInput,
@@ -698,19 +617,12 @@ export function RegisterTableForm({
         uniqueConstraints: [],
         dqContract,
         cacheTtl: Number(cacheTtl),
-      });
-      if (!result.success) {
-        setError(serverMessage(result, result.message));
-        return;
-      }
-      // A table registered into a domain the filter has not seen (one with no tables until now)
-      // would otherwise stay hidden from the tables list until a reload.
-      ensureDomainChecked(domainId);
-      resetForm();
-      onSuccess(registeredTable(result));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+      },
+      pagination: null,
+      pagingKind: null,
+      pagingCeilingRows: null,
+      rowRules: [],
+    });
   };
 
   const isRegistered = (tbl: { name: string }) =>
@@ -818,90 +730,25 @@ export function RegisterTableForm({
           </FormField>
         )}
         {isProfiler && (
-          <FormField size="medium">
-            <label>
-              {t("registerTableForm.profilerResultLabel")}
-              <select
-                className="form-select"
-                value={tableName}
-                onChange={(e) => setTableName(e.target.value)}
-                disabled={profilerCatalog == null}
-                data-testid="register-table-profiler-select"
-              >
-                <option value="">
-                  {profilerCatalog == null
-                    ? t("registerTableForm.schemaLoading")
-                    : profilerCatalog.length === 0
-                      ? t("registerTableForm.profilerNoMembers")
-                      : t("registerTableForm.profilerResultPlaceholder")}
-                </option>
-                {(profilerCatalog ?? []).flatMap((entry) =>
-                  entry.tables.map((tb) => (
-                    <option key={tb.tableName} value={tb.tableName}>
-                      {t("registerTableForm.profilerResultOption", {
-                        member: entry.member,
-                        kind: tb.kind,
-                      })}
-                    </option>
-                  )),
-                )}
-              </select>
-            </label>
-          </FormField>
+          <ProfilerResultSelect
+            catalog={profilerCatalog}
+            value={tableName}
+            onChange={setTableName}
+          />
         )}
         {!isChecker && !isQueryApi && !isProfiler && (
           <>
-            <FormField size="medium">
-              <label>
-                {t("registerTableForm.schemaLabel")}
-                <select
-                  className="form-select"
-                  value={schemaName}
-                  onChange={(e) => setSchemaName(e.target.value)}
-                  disabled={!sourceId || loadingSchemas || isFixedSchema}
-                  data-testid="register-table-schema-select"
-                >
-                  <option value="">
-                    {loadingSchemas
-                      ? t("registerTableForm.schemaLoading")
-                      : t("registerTableForm.schemaPlaceholder")}
-                  </option>
-                  {availableSchemas.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </FormField>
-            <FormField size="medium">
-              <label>
-                {t("registerTableForm.tableLabel")}
-                <select
-                  className="form-select"
-                  value={tableName}
-                  onChange={(e) => setTableName(e.target.value)}
-                  disabled={!schemaName || loadingTables || allTablesRegistered}
-                  data-testid="register-table-table-select"
-                >
-                  <option value="">
-                    {startingTables
-                      ? t("registerTableForm.tableStarting")
-                      : loadingTables
-                        ? t("registerTableForm.tableLoading")
-                        : allTablesRegistered
-                          ? t("registerTableForm.tableAllRegistered")
-                          : t("registerTableForm.tablePlaceholder")}
-                  </option>
-                  <TableOptions tables={availableTables} isRegistered={isRegistered} />
-                </select>
-                {startingTablesTimedOut && (
-                  <Text size="xs" c="red" mt={4} data-testid="register-table-starting-timeout">
-                    {t("registerTableForm.tableStartingTimedOut")}
-                  </Text>
-                )}
-              </label>
-            </FormField>
+            <SchemaTableSelects
+              {...{ sourceId, schemaName, setSchemaName, tableName, setTableName, isRegistered }}
+              schemas={availableSchemas}
+              loadingSchemas={loadingSchemas}
+              fixedSchema={isFixedSchema}
+              tables={availableTables}
+              loadingTables={loadingTables}
+              allRegistered={allTablesRegistered}
+              starting={startingTables}
+              startingTimedOut={startingTablesTimedOut}
+            />
             {sourceType === "servicenow" && tableName && (
               <ImportSetField
                 {...{ sourceId, schemaName, tableName, value: importSet, onChange: setImportSet }}
@@ -1125,14 +972,18 @@ export function RegisterTableForm({
           />
         </FormField>
       )}
-      {/* Save registers the table, Cancel closes the form. (The page's "+ Table" only opens it.) */}
+      {/* Continue takes the chosen table to its settings, Cancel closes the form. */}
       <FormFooter
         panel
         problem={problem}
-        onSave={handleSubmit}
         onCancel={onCancel}
-        saveProps={{ "data-testid": "register-table-submit" }}
         cancelProps={{ "data-testid": "register-table-cancel" }}
+        // Choosing what is registered is not a save: every setting of it follows (REQ-2109).
+        action={
+          <Button onClick={handleSubmit} data-testid="register-table-submit">
+            {t("registerTableForm.continue")}
+          </Button>
+        }
       />
     </FormLayout>
   );

@@ -28,6 +28,7 @@ vi.mock("../../context/DomainFilterContext", async (importOriginal) => ({
     selectedDomain: null,
     setSelectedDomain: vi.fn(),
     toggleDomain: vi.fn(),
+    ensureDomainChecked,
   }),
 }));
 
@@ -107,8 +108,9 @@ function table(
     mvConsistency: "shared",
     mvPreprocess: null,
     mvHoldOnFailingChecks: false,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -156,6 +158,9 @@ const ROLES = [
   { id: "trader", capabilities: [], domainAccess: ["*"] },
 ];
 const ok = { success: true, message: "" };
+const ensureDomainChecked = vi.fn();
+// REQ-2109: one Save registers what is created; the server answers with the new table's id.
+const registerTable = vi.fn();
 const refetchTables = vi.fn();
 const updateTable = vi.fn();
 const updateTableNaming = vi.fn();
@@ -198,36 +203,77 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useAvailableColumnsMetadataLazy: () => async () => [],
   useRefreshPolicyPreview: () => async () => null,
   useUpdateTable: () => ({ updateTable, loading: false }),
+  useRegisterTable: () => ({ registerTable, loading: false }),
   useUpdateTableNaming: () => ({ updateTableNaming, loading: false }),
   useUpdateTableCache: () => ({ updateTableCache, loading: false }),
   useUpdateTableReplicate: () => ({ updateTableReplicate, loading: false }),
   useUpdateTableLoadProtection: () => ({ updateTableLoadProtection, loading: false }),
 }));
 
-// The form that creates or redefines a view, as the page sees it: it reports the view it made.
+// The form that creates or redefines a view, as the page sees it: a new view's definition is
+// handed on for its settings; a redefinition is saved.
 vi.mock("../tables/ViewDefinitionForm", () => ({
   ViewDefinitionForm: (props: {
     editing: RegisteredTable | null;
-    onSuccess: (created?: string) => void;
+    onContinue: (registration: unknown) => void;
+    onSuccess: () => void;
   }) => (
     <div data-testid="view-form-stub">
       {props.editing ? `redefining ${props.editing.tableName}` : "a new view"}
-      <button onClick={() => props.onSuccess(props.editing ? undefined : "rev_by_region")}>
+      <button
+        onClick={() =>
+          props.editing
+            ? props.onSuccess()
+            : props.onContinue({
+                input: {
+                  sourceId: "__derived__",
+                  domainId: "sales",
+                  schemaName: "views",
+                  tableName: "rev_by_region",
+                  alias: "rev_by_region",
+                  viewMetrics: { metrics: ["revenue"], dimensions: ["region"], filters: [] },
+                  columns: [{ name: "region", visibleTo: ["*"] }],
+                },
+                pagination: null,
+                pagingKind: null,
+                pagingCeilingRows: null,
+                rowRules: [],
+              })
+        }
+      >
         saved
       </button>
     </div>
   ),
 }));
 
-// The short register step, as the page sees it: it reports the table it registered, by the id the
-// server gave it.
+// The register step, as the page sees it: it hands on the table it chose for its settings.
 vi.mock("../tables/RegisterTableForm", () => ({
-  RegisterTableForm: (props: { onSuccess: (registered: { id: number } | null) => void }) => (
-    <button onClick={() => props.onSuccess({ id: 10 })}>registered</button>
+  RegisterTableForm: (props: { onContinue: (registration: unknown) => void }) => (
+    <button
+      onClick={() =>
+        props.onContinue({
+          input: {
+            sourceId: "sales-pg",
+            domainId: "sales",
+            schemaName: "sales",
+            tableName: "returns",
+            columns: [{ name: "id", dataType: "integer", visibleTo: ["analyst"], scope: "domain" }],
+          },
+          pagination: null,
+          pagingKind: null,
+          pagingCeilingRows: null,
+          rowRules: [],
+        })
+      }
+    >
+      registered
+    </button>
   ),
 }));
 
 import { TablesPage } from "../TablesPage";
+import { TABLE_SECTIONS } from "../tables/tableSections";
 
 const view = (id: number, name: string, over: Partial<RegisteredTable> = {}) =>
   table(id, name, [], { schemaName: "views", viewSql: "SELECT 1", ...over });
@@ -235,6 +281,8 @@ const panel = () => screen.queryByTestId("tables-split-panel");
 
 beforeEach(() => {
   TABLES = [view(7, "sales_by_day"), table(8, "orders", [])];
+  ensureDomainChecked.mockReset();
+  registerTable.mockReset();
   refetchTables.mockReset().mockImplementation(async () => ({ data: { tables: TABLES } }));
 });
 
@@ -249,23 +297,37 @@ describe("the Views page", () => {
     expect(screen.getByTestId("tables-split-title")).toHaveTextContent("sales_by_day");
   });
 
-  it("selects the view it created and opens its detail in edit", async () => {
+  it("asks every setting of a new view in the editor's sections, then registers and selects it", async () => {
     render(<TablesPage viewsOnly />);
     await userEvent.click(await screen.findByTestId("views-add-toggle"));
     expect(within(panel()!).getByTestId("view-form-stub")).toHaveTextContent("a new view");
+    await userEvent.click(screen.getByText("saved"));
+    // The new view's settings: the same seven sections as its editor, before anything is saved.
+    for (const section of TABLE_SECTIONS)
+      expect(within(panel()!).getByTestId(`table-section-${section}`)).toBeInTheDocument();
+    expect(screen.getByTestId("tables-split-title")).toHaveTextContent("New view");
+    expect(registerTable).not.toHaveBeenCalled();
+    // A view is materialized on its Load and timeliness section, where it keeps Time Travel.
+    await userEvent.click(screen.getByTestId("table-section-load"));
+    await userEvent.click(screen.getByRole("checkbox", { name: /Materialized View/ }));
+    expect(screen.getByTestId("time-travel-section")).toBeInTheDocument();
     // The list as the server has it once the view exists: a draft, as every new view is.
+    registerTable.mockResolvedValue({ ...ok, params: { id: 9 } });
     refetchTables.mockImplementation(async () => {
       TABLES = [...TABLES, view(9, "rev_by_region", { draft: true })];
       return { data: { tables: TABLES } };
     });
-    await userEvent.click(screen.getByText("saved"));
+    await userEvent.click(within(panel()!).getByTestId("table-edit-save"));
     await waitFor(() =>
       expect(screen.getByTestId("tables-split-title")).toHaveTextContent("rev_by_region"),
     );
-    // In edit: the form's own Save and Cancel are there, and Escape does not drop it.
-    expect(await within(panel()!).findByText("Save")).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
-    expect(screen.getByTestId("tables-split-title")).toHaveTextContent("rev_by_region");
+    const input = registerTable.mock.calls[0][0];
+    expect(input).toMatchObject({
+      tableName: "rev_by_region",
+      materialize: true,
+      viewMetrics: { metrics: ["revenue"], dimensions: ["region"], filters: [] },
+    });
+    expect(ensureDomainChecked).toHaveBeenCalledWith("sales");
   });
 
   it("edits a view's definition in the panel, with a way back, not in a dialog", async () => {
@@ -294,22 +356,33 @@ describe("the Views page", () => {
   });
 });
 
-describe("the Tables page's short register step", () => {
-  it("selects the draft it registered and opens it in edit on Identity", async () => {
+describe("the Tables page's register step", () => {
+  it("asks every setting of the chosen table in the editor's sections, then registers and selects it", async () => {
     render(<TablesPage />);
     await userEvent.click(await screen.findByTestId("tables-add-toggle"));
-    // The list as the server has it once the table exists: a draft, as every new table is.
+    await userEvent.click(screen.getByText("registered"));
+    // The create form shows every section the editor shows, on Identity first.
+    for (const section of TABLE_SECTIONS)
+      expect(within(panel()!).getByTestId(`table-section-${section}`)).toBeInTheDocument();
+    expect(screen.getByTestId("table-section-identity")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("table-edit-table")).toHaveValue("returns");
+    await userEvent.click(screen.getByTestId("table-section-query"));
+    await userEvent.click(screen.getByRole("checkbox", { name: /Enable Aggregates/ }));
+    registerTable.mockResolvedValue({ ...ok, params: { id: 10 } });
+    // Stored under another schema than the form sent, as an ingest table is: found by its id.
     refetchTables.mockImplementation(async () => {
-      // Stored under another schema than the form sent, as an ingest table is: found by its id.
       TABLES = [...TABLES, table(10, "returns", [], { draft: true, schemaName: "org_default" })];
       return { data: { tables: TABLES } };
     });
-    await userEvent.click(screen.getByText("registered"));
+    await userEvent.click(within(panel()!).getByTestId("table-edit-save"));
     await waitFor(() =>
       expect(screen.getByTestId("tables-split-title")).toHaveTextContent("returns"),
     );
-    expect(await within(panel()!).findByText("Save")).toBeInTheDocument();
-    expect(screen.getByTestId("table-section-identity")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByTestId("table-edit-table")).toHaveValue("returns");
+    expect(registerTable.mock.calls[0][0]).toMatchObject({
+      tableName: "returns",
+      enableAggregates: true,
+    });
+    // Registered through the admin a table starts as draft; nothing releases it unasked.
+    expect(setTableDraft).not.toHaveBeenCalled();
   });
 });

@@ -396,11 +396,11 @@ Executa `ANALYZE` em todas as tabelas registradas de uma fonte. Melhora as decis
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Registra uma nova tabela (ou view) em um domínio. Exige a capacidade `table_registration` e associação ao domínio alvo. Um chamador sem `create_relationship` que envia uma view é enfileirado como uma requisição de criação para um detentor de direitos aprovar.
+Registra uma nova tabela (ou exibição) em um domínio, com cada configuração que a entrada leva, entre elas `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` e `draft`, em uma transação: se qualquer uma for recusada, nada é registrado. Requer a capacidade `table_registration` e participação no domínio de destino; levar `writeGrants` requer também `masking_config` nele. Um chamador sem `create_relationship` que envia uma exibição entra na fila como solicitação de criação para um detentor de direitos aprovar.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Atualiza o alias, descrição, metadados de coluna, configurações de MV e configuração de entrega ao vivo de uma tabela existente. Exige `table_registration`.
+Atualiza o alias, a descrição, os metadados de colunas, as configurações de MV, a configuração de entrega ao vivo de uma tabela existente e as configurações que a entrada leva (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), em uma transação: se qualquer uma for recusada, nada é salvo. Uma configuração omitida mantém o valor armazenado. Requer `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -729,7 +729,9 @@ O input principal de registro de tabela. Campos-chave além do básico:
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Manutenção incremental |
 | `mvHoldOnFailingChecks` | Reter quando verificações falham: uma atualização é cancelada, e a view mantém a cópia anterior, enquanto uma tabela de verificação que analisa uma de suas entradas falhou na última execução |
-| `mvBitemporalMode` | `snapshot` \| `delta` para tabelas bitemporais |
+| `businessKey` | Colunas que identificam a mesma coisa entre versões; declarada com `validTime` e `recordedTime`, as três ou nenhuma |
+| `validTime` | Coluna com a data que o negócio dá ao registro |
+| `recordedTime` | Coluna com o momento em que esta versão foi inserida ou alterada |
 | `mvCalendar` | Nome do calendário de snapshot |
 | `mvGrain` | Granularidade do snapshot: `daily`, `weekly`, `monthly`, `annual`, ou personalizada `3WE` / `LFR` |
 | `viewSql` | SQL para uma view derivada |
@@ -738,6 +740,15 @@ O input principal de registro de tabela. Campos-chave além do básico:
 | `queryTemplate` | Cypher para uma tabela Neo4j |
 | `live` | Configuração de entrega ao vivo para push SSE/Kafka |
 | `discover` | Infere colunas a partir da fonte ao vivo no momento do registro |
+| `gqlNamingConvention` | Convenção de nomes GraphQL da tabela; `null` herda. Omitida, uma tabela nova herda e uma atualização mantém a armazenada |
+| `roleTtl` | A lista inteira de papel para TTL, `[{ role, ttl }]` |
+| `replicate` | Quando a tabela é servida pela sua réplica; `null` herda o valor da fonte |
+| `writeGrants` | O conjunto inteiro de permissões de escrita da tabela; requer `masking_config` |
+| `draft` | `false` libera a tabela; caso contrário um registro começa como rascunho |
+| `cacheTtl` | O Cache TTL próprio da tabela; `null` não tem um próprio |
+| `pagination` | A paginação declarada da tabela; `null` não declara nenhuma |
+| `region` | Onde ficam os dados da tabela; em uma atualização, outra região a move, julgada como `setTableRegion` julga |
+| `rowRules` | Regras de linha da tabela (`RLSRuleInput`), salvas com ela; requer `masking_config` |
 
 ### `RelationshipInput`
 

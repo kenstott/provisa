@@ -135,6 +135,7 @@
     "qdrantVectors": "Vecteurs de {{collection}}",
     "qdrantVector": "{{name}} : {{size}} dimensions, notées par {{distance}}",
     "qdrantUnnamedVector": "(sans nom)",
+    "continue": "Continuer",
     "checkReasonLabel": "Pourquoi ce contrôle existe",
     "checkReasonHint": "L'engagement de qualité en termes métier ; il coiffe le contrôle dans chaque produit.",
     "checkReasonPlaceholder": "Les commandes sont complètes et uniques afin que le chiffre d'affaires quotidien se rapproche de la finance"

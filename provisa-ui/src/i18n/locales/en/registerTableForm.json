@@ -135,6 +135,7 @@
     "qdrantVectors": "Vectors of {{collection}}",
     "qdrantVector": "{{name}}: {{size}} dimensions, scored by {{distance}}",
     "qdrantUnnamedVector": "(unnamed)",
+    "continue": "Continue",
     "checkReasonLabel": "Why this check exists",
     "checkReasonHint": "The quality claim in business terms; it headlines the check on each product.",
     "checkReasonPlaceholder": "Orders are complete and unique so daily revenue reconciles with finance"

@@ -17,7 +17,9 @@
 #      type that has one (Postgres, MongoDB, Elasticsearch), and its other services -- a Neo4j
 #      store, a Qdrant store, a Kafka broker, a producer -- as its version's own compose project;
 #      then write the bundle's stores.env, where each store is and the names of its data;
-#   3. mark the version ready (<bundles>/<name>/ready), which the tier then serves;
+#   3. mark the version ready (<bundles>/<name>/ready), which the tier then serves; when its stores
+#      cannot be brought up, say why in <bundles>/<name>/failed instead, which the tier answers a
+#      waiting visitor with (and clears when it asks for the demo again);
 #   4. take down every older version nothing reads (<bundles>/<name>/in-use): its data dropped
 #      from the shared stores, its own services removed with the images no other container uses,
 #      its bundle directory deleted.
@@ -81,12 +83,12 @@ linger_out() { # name
     python3 "$DEMO_STORES" stop "$name" "$ready"
     rm -f "$DEMO_BUNDLES_DIR/$name/$ready/stores.env"
   fi
-  rm -f "$DEMO_BUNDLES_DIR/$name/requested"
+  rm -f "$DEMO_BUNDLES_DIR/$name/requested" "$DEMO_BUNDLES_DIR/$name/failed"
   echo "demo $name: no sandbox open since it lingered; its stores taken down"
 }
 
 sync_demo() { # name
-  local name="$1" pulled version dir keep old asked
+  local name="$1" pulled version dir keep old asked errors
   mkdir -p "$DEMO_BUNDLES_DIR/$name"
   pulled="$($DEMO_PULL pull "$name" --into "$DEMO_PULL_INTO")"
   version="$(basename "$pulled")"
@@ -108,8 +110,20 @@ sync_demo() { # name
       ;;
   esac
   if [ -f "$dir/docker-compose.run.yml" ]; then
-    python3 "$DEMO_STORES" up "$name" "$version" "$dir"
+    # Its stores not brought up: why, for the tier to answer the visitor waiting on them with,
+    # never a demo left starting with nothing said.
+    errors="$DEMO_BUNDLES_DIR/$name/.up-errors"
+    if ! python3 "$DEMO_STORES" up "$name" "$version" "$dir" 2>"$errors"; then
+      cat "$errors" >&2
+      write_atomically "$DEMO_BUNDLES_DIR/$name/failed" "$(tail -c 4000 "$errors")"
+      rm -f "$errors"
+      echo "demo $name: $version could not be brought up" >&2
+      return 1
+    fi
+    cat "$errors" >&2
+    rm -f "$errors"
   fi
+  rm -f "$DEMO_BUNDLES_DIR/$name/failed"
   write_atomically "$DEMO_BUNDLES_DIR/$name/ready" "$version"
   echo "demo $name: $version ready"
   keep=" $version "
@@ -140,7 +154,8 @@ if [ "${1:-}" = "--boot" ]; then
   : "${DEMO_BUNDLES_DIR:?the bundles directory}"
   # A version an earlier release pinned (<name>/wanted, no longer written) goes too: the latest
   # published is always the one pulled.
-  rm -f "$DEMO_BUNDLES_DIR"/*/requested "$DEMO_BUNDLES_DIR"/*/ready "$DEMO_BUNDLES_DIR"/*/wanted
+  rm -f "$DEMO_BUNDLES_DIR"/*/requested "$DEMO_BUNDLES_DIR"/*/ready "$DEMO_BUNDLES_DIR"/*/wanted \
+    "$DEMO_BUNDLES_DIR"/*/failed
   echo "demo stores: no demo asked for or ready since the node started"
   exit 0
 fi

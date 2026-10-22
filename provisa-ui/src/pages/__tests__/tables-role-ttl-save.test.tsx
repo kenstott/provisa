@@ -105,8 +105,9 @@ function table(
     mvConsistency: "shared",
     mvPreprocess: null,
     mvHoldOnFailingChecks: false,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -225,12 +226,18 @@ describe("TablesPage — Role TTL save (REQ-1907)", () => {
     await openEditor();
     await userEvent.click(await screen.findByRole("button", { name: "Add role TTL" }));
     await userEvent.click(screen.getByTestId("table-edit-save"));
+    // REQ-2109: the list goes with the table's own save, in one transaction.
     await waitFor(() =>
-      expect(updateTableRoleTtl).toHaveBeenCalledWith(7, [
-        { role: "analyst", ttl: 360 },
-        { role: "trader", ttl: 60 },
-      ]),
+      expect(updateTable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roleTtl: [
+            { role: "analyst", ttl: 360 },
+            { role: "trader", ttl: 60 },
+          ],
+        }),
+      ),
     );
+    expect(updateTableRoleTtl).not.toHaveBeenCalled();
   });
 
   it("does not call updateTableRoleTtl when the list is unchanged", async () => {
@@ -250,7 +257,7 @@ describe("TablesPage — Role TTL save (REQ-1907)", () => {
   });
 
   it("reports a server refusal", async () => {
-    updateTableRoleTtl.mockResolvedValue({
+    updateTable.mockResolvedValue({
       success: false,
       message: "Unknown role 'trader'",
       code: "schema.role_ttl_unknown_role",

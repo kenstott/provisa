@@ -396,11 +396,11 @@ query {
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-將一張新資料表（或檢視）註冊到某個網域中。需要 `table_registration` 能力以及目標網域的成員身份。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
+將一張新資料表（或檢視）註冊到某個網域中，並在一個交易中套用輸入攜帶的每項設定，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules` 和 `draft`：任何一項被拒絕，就不會註冊任何內容。需要 `table_registration` 能力以及目標網域的成員身份；攜帶 `writeGrants` 亦需要該網域的 `masking_config`。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定和即時投遞設定。需要 `table_registration`。
+更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定、即時投遞設定，以及輸入攜帶的設定（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules`、`draft`），在一個交易中完成：任何一項被拒絕，就不會儲存任何內容。省略的設定保留其已儲存的值。需要 `table_registration`。
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -729,7 +729,9 @@ mutation {
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量維護 |
 | `mvHoldOnFailingChecks` | 檢查失敗時暫停：只要掃描其某個輸入的檢查表最近一次執行失敗，重新整理就會中止，視圖保留上一份副本 |
-| `mvBitemporalMode` | 雙時態資料表的 `snapshot` \| `delta` |
+| `businessKey` | 喺各個版本之間標識同一事物嘅欄；同 `validTime`、`recordedTime` 一齊宣告，三者全有或全無 |
+| `validTime` | 儲存業務賦予該記錄嘅日期嘅欄 |
+| `recordedTime` | 儲存該版本幾時輸入或修改嘅欄 |
 | `mvCalendar` | 快照日曆名稱 |
 | `mvGrain` | 快照粒度：`daily`、`weekly`、`monthly`、`annual`，或自定義的 `3WE` / `LFR` |
 | `viewSql` | 派生檢視的 SQL |
@@ -738,6 +740,15 @@ mutation {
 | `queryTemplate` | Neo4j 資料表的 Cypher |
 | `live` | SSE/Kafka 推送的即時投遞設定 |
 | `discover` | 在註冊時從即時數據來源推斷欄位 |
+| `gqlNamingConvention` | 資料表的 GraphQL 命名慣例；`null` 表示繼承。省略時，新資料表繼承，更新則保留已儲存的值 |
+| `roleTtl` | 完整的角色對 TTL 清單，`[{ role, ttl }]` |
+| `replicate` | 資料表幾時由其副本提供；`null` 繼承數據來源的值 |
+| `writeGrants` | 資料表完整的寫入授權集合；需要 `masking_config` |
+| `draft` | `false` 發佈該資料表；否則註冊後為草稿 |
+| `cacheTtl` | 資料表自身的 Cache TTL；`null` 表示冇自身的 |
+| `pagination` | 資料表聲明的分頁；`null` 表示唔聲明 |
+| `region` | 資料表數據所在位置；更新時畀出另一個區域會遷移該資料表，檢查方式同 `setTableRegion` 一樣 |
+| `rowRules` | 資料表的行規則（`RLSRuleInput`），隨資料表一齊儲存；需要 `masking_config` |
 
 ### `RelationshipInput`
 

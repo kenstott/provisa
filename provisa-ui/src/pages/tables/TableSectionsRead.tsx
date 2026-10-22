@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
 import { replicateLabel } from "../../components/admin/replicate";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
-import { NAMING_CONVENTIONS } from "./constants";
+import { namingConventionLabel } from "../../hooks/useNamingConventions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { useSourceKind } from "../sources/sourceKind";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
@@ -27,6 +27,7 @@ import {
 } from "./tableSectionFields";
 import {
   deltaFields,
+  historyFields,
   liveFields,
   mvStoreFields,
   offPeakFields,
@@ -75,9 +76,9 @@ export function RefreshPolicyAlert({ policy }: { policy: RefreshPolicySummary })
 export function IdentityRead({ table, source }: { table: RegisteredTable; source?: Source }) {
   const { t } = useTranslation();
   const regions = useRegionChoices().regions;
-  const naming =
-    NAMING_CONVENTIONS.find((nc) => nc.value === (table.gqlNamingConvention ?? ""))?.label ??
-    table.gqlNamingConvention;
+  const naming = table.gqlNamingConvention
+    ? namingConventionLabel(t, table.gqlNamingConvention)
+    : t("tablesPage.inheritSource");
   const fields: DetailField[] = [
     { label: t("tableSections.source"), value: table.sourceId },
     { label: t("tableSections.schema"), value: table.schemaName },
@@ -212,6 +213,8 @@ export function LoadRead({ table, source }: { table: RegisteredTable; source?: S
                   },
                 ]
             : []),
+          // REQ-2109: the columns the table keeps its versions by, when it declares them.
+          ...historyFields(t, table),
         ]),
     { label: t("tableEditForm.delta.enable"), value: yesNo(t, table.delta != null) },
     ...deltaFields(t, table),

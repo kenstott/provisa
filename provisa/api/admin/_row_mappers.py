@@ -305,6 +305,7 @@ def _live_type_from_row(raw):  # REQ-565, REQ-813
                 topic=kafka_raw["topic"],
                 format=kafka_raw.get("format", "json"),
                 key_column=kafka_raw.get("key_column"),
+                landing_time_column=kafka_raw.get("landing_time_column"),
             )
             if kafka_raw
             else None
