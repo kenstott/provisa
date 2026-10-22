@@ -87137,7 +87137,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     paths, path modes, label expressions, variable predicates, CONSTRUCT triples, IRI and datatype
     values. 3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol
     endpoint. 5: the UI, the SPARQL tab and the Ontology page's SPARQL button (REQ-2136); it comes last
-    and can wait.
+    and can wait. (Amended 2026-10-22, EXPRESSIONS AS TREES:) Phase 2 opens with expressions as trees.
+    Today the Cypher AST holds WHERE, RETURN, WITH, UNWIND and ORDER BY expressions as raw text (the
+    expression field of WhereClause, ReturnItem, UnwindClause and OrderItem), and the back end reads
+    that text in about twenty places: regex scans, map-literal rewriting, and a late re-parse with
+    Cypher's expression grammar (expr_parser). The Cypher front end instead parses every expression
+    into the expression tree (expr_ast) when it parses the statement, and the back end walks trees
+    only, proven by the Cypher tests. Only then is the IR fully structural: SPARQL's FILTER, BIND and
+    ORDER BY convert straight to trees, and nothing below the IR reads Cypher syntax. Phase 1 keeps the
+    text on purpose, so that its move stays purely structural.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
