@@ -177,7 +177,8 @@
       "unknown_arg_kind": "「{{name}}」の arg_kind「{{arg_kind}}」は不明です",
       "unknown_command": "不明なコマンド: '{{name}}'",
       "unknown_impl_kind": "不明な関数 impl_kind：「{{impl_kind}}」",
-      "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます"
+      "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます",
+      "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。"
     },
     "graphql_remote": {
       "introspection_failed": "イントロスペクションに失敗しました：{{error}}",
@@ -443,7 +444,12 @@
       "role_description_missing": "ロール '{{role}}' には目的の説明が必要です",
       "rls_rule_description_missing": "行ルールには目的の説明が必要です",
       "file_download_refused": "ソース {{source}}: {{reason}}",
-      "source_created_without_table": "ソース {{source}} を作成しました。テーブルは設定されませんでした: {{reason}}"
+      "source_created_without_table": "ソース {{source}} を作成しました。テーブルは設定されませんでした: {{reason}}",
+      "mv_window_needs_calendar": "MV「{{mv}}」はカレンダーを指定していません：営業日の締めで確定するビルドにはカレンダーが必要です",
+      "version_log_updated": "バージョンログ '{{mv}}' を更新しました",
+      "mv_window_held": "MV '{{mv}}' は {{day}} の締めで封印されませんでした: その別のビルドが権利を保持しています",
+      "mv_window_unchanged": "MV '{{mv}}' は {{day}} の締めで封印されませんでした: 前回のビルド以降、読み取る内容に変更はありません",
+      "landing_time_pipeline": "テーブル '{{table}}' は着信時刻を {{column}} に保持しますが、そのストアはトピックを独自のパイプラインで取り込むため、Provisa は各メッセージの着信を見ることができません。"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",

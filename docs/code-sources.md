@@ -11,6 +11,7 @@ What differs from a resolver you write by hand:
 - **Pushed down.** A filter on a column reaches your function as a parameter when you ask for it.
 - **Served everywhere.** The same function answers GraphQL, SQL (over HTTP, pgwire and Arrow Flight), Cypher (over HTTP and Bolt), gRPC, REST, JSON:API and MCP.
 
+
 Code resolvers are one of three ways to write business logic in Provisa. See [Business Logic in Provisa](business-logic.md).
 
 ## A first resolver {: #an-example }
@@ -19,6 +20,79 @@ Code resolvers are one of three ways to write business logic in Provisa. See [Bu
 from dataclasses import dataclass
 
 
+@dataclass
+class Region:
+    code: str
+    name: str
+
+
+def regions() -> list[Region]:
+    """Sales regions.
+
+    @table
+    """
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
+```
+
+To serve it:
+
+1. Add a `python` source and point it at the code: a PyPI package, a Git commit, an upload or a folder (see [Where the code comes from](#where-the-code-comes-from)).
+2. Save it. Provisa installs the code, reads it, and offers `regions` as a table with the columns `code` and `name`.
+3. A steward registers the table in a domain, here `sales`, and grants it like any other.
+
+Then read it in GraphQL:
+
+```graphql
+{
+  regions {
+    code
+    name
+  }
+}
+```
+
+Or in SQL:
+
+```sql
+SELECT code, name
+FROM sales.regions
+```
+
+Node works the same way, with JSDoc tags and TypeScript types: see [Node](#node).
+
+## Build {: #build }
+
+### What a function becomes {: #what-a-function-becomes }
+
+Provisa reads your code's own declarations: docstrings and type hints in Python, JSDoc tags and TypeScript types in Node.
+
+| Tag | Becomes |
+|---|---|
+| `@table` | A table. The function returns a list or an iterable, and each element is a row. |
+| `@command` | A command, run on request. |
+| `@stream` | A live table. The function is a generator, and each row is sent as it is yielded. |
+| `@columns` | A column transform: a batch of rows in, one result per row out. See [Column transforms](#column-transforms). |
+
+- A function without a tag is ignored.
+- A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal lists every problem at once, so you fix them in one pass.
+
+The row type gives the columns:
+
+- Text, numbers, booleans, dates and timestamps map to their column types. Lists stay lists, and nested objects become named types.
+- In Python a row type is a dataclass, a `TypedDict`, a `NamedTuple`, a Pydantic model or any class with annotated fields. A Pydantic model's rows are sent as `model_dump(by_alias=True)` gives them, so a field with an alias becomes a column named by its alias.
+- In TypeScript a row type is an interface, a type alias or a class.
+- A field's own documentation becomes its column's description when you register the table: a Pydantic `Field(description=...)`, or a doc comment on a TypeScript property.
+- A loose row type (`Any` or a `dict` in Python, `any`, `unknown` or a `Record` in TypeScript) has no columns to read. Provisa calls the function once with no arguments and suggests columns from the rows that come back. When the function has a required parameter it can't be called that way, so you type the columns yourself when you register the table.
+
+### Parameters {: #parameters }
+
+A function's parameters become its table's parameters. This one scores one account:
+
+```python
 @dataclass
 class Risk:
     score: float
@@ -33,13 +107,7 @@ def churn_risk(account_id: str) -> list[Risk]:
     return [Risk(score=0.82, reasons=["no logins in 30 days"])]
 ```
 
-To serve it:
-
-1. Add a `python` source and point it at the code: a PyPI package, a Git commit, an upload or a folder (see [Where the code comes from](#where-the-code-comes-from)).
-2. Save it. Provisa installs the code, reads it, and offers `churn_risk` as a table with the columns `score` and `reasons` and a required parameter, `account_id`.
-3. A steward registers the table in a domain, here `accounts`, and grants it like any other.
-
-Then read it. In GraphQL the parameter is a field argument:
+In GraphQL a parameter is a field argument:
 
 ```graphql
 {
@@ -58,36 +126,15 @@ FROM accounts.churn_risk
 WHERE _nf_account_id = 'A-1042'
 ```
 
-Node works the same way, with JSDoc tags and TypeScript types: see [Node](#node).
-
-## Build {: #build }
-
-### What a function becomes {: #what-a-function-becomes }
-
-Provisa reads your code's own declarations: docstrings and type hints in Python, JSDoc tags and TypeScript types in Node.
-
-| Tag | Becomes |
-|---|---|
-| `@table` | A table. The function returns a list or an iterable, and each element is a row. |
-| `@command` | A command, run on request. |
-| `@stream` | A live table. The function is a generator, and each row is sent as it is yielded. |
-
-- A function without a tag is ignored.
-- A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal lists every problem at once, so you fix them in one pass.
-
-The row type gives the columns:
-
-- Text, numbers, booleans, dates and timestamps map to their column types. Lists stay lists, and nested objects become named types.
-- In Python a row type is a dataclass, a `TypedDict`, a `NamedTuple`, a Pydantic model or any class with annotated fields. A Pydantic model's rows are sent as `model_dump(by_alias=True)` gives them, so a field with an alias becomes a column named by its alias.
-- In TypeScript a row type is an interface, a type alias or a class.
-- A field's own documentation becomes its column's description when you register the table: a Pydantic `Field(description=...)`, or a doc comment on a TypeScript property.
-- A loose row type (`Any` or a `dict` in Python, `any`, `unknown` or a `Record` in TypeScript) has no columns to read. Provisa calls the function once with no arguments and suggests columns from the rows that come back. When the function has a required parameter it can't be called that way, so you type the columns yourself when you register the table.
-
-The function's parameters become the table's parameters:
-
 - A parameter without a default is required. A read that leaves it out is refused before your code runs.
 - A parameter with a default is optional. Leave it out and your default applies.
 - A steward can still make an optional one required.
+
+### What reaches your function {: #what-reaches-your-function }
+
+A call gets the read's arguments and nothing else of the request. Each parameter's value comes from a field argument, an `_nf_` condition, a filter pushed down to it or a join's keys. Your function never sees who is asking: the caller's identity and roles stay with Provisa, which governs the rows your function returns.
+
+Pushdown builds on this. A filter in the query becomes a parameter's value, so your function can fetch only the rows asked for.
 
 ### Pushdown {: #pushdown }
 
@@ -167,6 +214,46 @@ def churn_score(
 ```
 
 Joined to a table of customers, it is called with a `loader` such as `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. The second key carries only `customer_id`, so its plan and region take the defaults. The function returns `{"9f2c...": [...], "41ab...": [...], ...}`.
+
+### Column transforms: `@columns` {: #column-transforms }
+
+A function tagged `@columns` computes new columns from the columns of rows you already have: it splits an address into its parts, classifies a description, or enriches a name. It takes a batch of rows and returns one result per row, in the same order.
+
+Each parameter is one input column, given as a list of that batch's values in row order. The function returns a list with one object per input row, and the object's fields are the output columns. In Python:
+
+```python
+@dataclass
+class Address:
+    street: str
+    city: str
+    country: str
+
+
+def clean_address(raw_address: list[str]) -> list[Address]:
+    """Each raw address of the batch, as its parts.
+
+    @columns
+    """
+    ...
+```
+
+In TypeScript, declare it as `clean_address(raw_address: string[]): Promise<Address[]>` with `@columns` in its JSDoc.
+
+You register it as a command, one at a time like any other: on the **Commands** page, pick the source, and its `@columns` functions are offered to pick from. The function's declaration supplies the input and output columns. Register it into a domain with the roles that may use it.
+
+Apply it in a select list, and its output columns take the place of the call:
+
+```sql
+SELECT id, clean_address(raw_address) FROM suppliers
+```
+
+This answers `id, street, city, country`. Rename the outputs in an outer query if you need other names. The call has to be an item of the statement's own select list: Provisa runs the function on the rows once they are read, so a call in a `WHERE`, a `JOIN`, a `GROUP BY` or inside another expression is refused, and so is an alias on the call. Each output column is a named step of the projection's lineage.
+
+The rows go to the function in batches of 1,000. A function that keeps no state between calls lets the batches run side by side, across the source's workers: set **Workers** on the source's form (`workers` in its mapping, see [Dev mode and workers](#workers)) to run more than one, and each added worker adds throughput. A batch answered with a different number of results than rows it was given is refused, naming the function.
+
+The function can call Provisa's services, the LLM service among them, so one model call can clean, classify or enrich a whole batch. Each call is metered and capped against the source like any of its other calls ([Calling a model](#calling-a-model)).
+
+A view that applies a column transform is landed, whether or not you declare it a materialized view: Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
 
 ### Where the code comes from {: #where-the-code-comes-from }
 

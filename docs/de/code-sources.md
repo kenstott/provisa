@@ -11,6 +11,7 @@ Was sich von einem Resolver unterscheidet, den Sie selbst schreiben:
 - **Heruntergereicht.** Ein Filter auf eine Spalte erreicht Ihre Funktion als Parameter, wenn Sie danach fragen.
 - **Überall bedient.** Dieselbe Funktion beantwortet GraphQL, SQL (über HTTP, pgwire und Arrow Flight), Cypher (über HTTP und Bolt), gRPC, REST, JSON:API und MCP.
 
+
 Code-Resolver sind eine von drei Arten, Geschäftslogik in Provisa zu schreiben. Siehe [Geschäftslogik in Provisa](business-logic.md).
 
 ## Ein erster Resolver {: #an-example }
@@ -20,42 +21,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 So stellen Sie ihn bereit:
 
 1. Legen Sie eine `python`-Quelle an und verweisen Sie auf den Code: ein PyPI-Paket, einen Git-Commit, einen Upload oder einen Ordner (siehe [Woher der Code kommt](#where-the-code-comes-from)).
-2. Speichern Sie sie. Provisa installiert den Code, liest ihn und bietet `churn_risk` als Tabelle mit den Spalten `score` und `reasons` und einem Pflichtparameter `account_id` an.
-3. Ein Steward registriert die Tabelle in einer Domäne, hier `accounts`, und gewährt sie wie jede andere.
+2. Speichern Sie sie. Provisa installiert den Code, liest ihn und bietet `regions` als Tabelle mit den Spalten `code` und `name` an.
+3. Ein Steward registriert die Tabelle in einer Domäne, hier `sales`, und gewährt sie wie jede andere.
 
-Dann lesen Sie sie. In GraphQL ist der Parameter ein Feldargument:
+Dann lesen Sie sie in GraphQL:
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-In SQL ist er eine `_nf_`-Bedingung:
+Oder in SQL:
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node funktioniert genauso, mit JSDoc-Tags und TypeScript-Typen: siehe [Node](#node).
@@ -83,11 +87,53 @@ Der Zeilentyp liefert die Spalten:
 - Die eigene Dokumentation eines Felds wird zur Beschreibung seiner Spalte, wenn Sie die Tabelle registrieren: ein Pydantic-`Field(description=...)` oder ein Doc-Kommentar an einer TypeScript-Eigenschaft.
 - Ein loser Zeilentyp (`Any` oder ein `dict` in Python, `any`, `unknown` oder ein `Record` in TypeScript) hat keine Spalten zum Lesen. Provisa ruft die Funktion einmal ohne Argumente auf und schlägt Spalten aus den zurückgegebenen Zeilen vor. Hat die Funktion einen Pflichtparameter, lässt sie sich so nicht aufrufen, und Sie geben die Spaltentypen beim Registrieren der Tabelle selbst an.
 
-Die Parameter der Funktion werden zu den Parametern der Tabelle:
+### Parameter {: #parameters }
+
+Die Parameter einer Funktion werden zu den Parametern ihrer Tabelle. Diese bewertet ein Konto:
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+In GraphQL ist der Parameter ein Feldargument:
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+In SQL ist er eine `_nf_`-Bedingung:
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - Ein Parameter ohne Standardwert ist Pflicht. Ein Lesen, das ihn weglässt, wird abgelehnt, bevor Ihr Code läuft.
 - Ein Parameter mit Standardwert ist optional. Lassen Sie ihn weg, gilt Ihr Standardwert.
 - Ein Steward kann einen optionalen trotzdem zur Pflicht machen.
+
+### Was bei Ihrer Funktion ankommt {: #what-reaches-your-function }
+
+Ein Aufruf bekommt die Argumente des Lesens und sonst nichts von der Anfrage. Der Wert jedes Parameters kommt aus einem Feldargument, einer `_nf_`-Bedingung, einem dorthin weitergereichten Filter oder den Schlüsseln eines Joins. Ihre Funktion sieht nie, wer fragt: Identität und Rollen des Aufrufers bleiben bei Provisa, das die Zeilen steuert, die Ihre Funktion zurückgibt.
+
+Darauf baut Pushdown auf. Ein Filter in der Abfrage wird zum Wert eines Parameters, sodass Ihre Funktion nur die angefragten Zeilen holen kann.
 
 ### Pushdown {: #pushdown }
 

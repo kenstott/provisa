@@ -11,6 +11,7 @@
 - **דחיפת מסננים.** מסנן על עמודה מגיע לפונקציה כפרמטר כשאתם מבקשים זאת.
 - **בכל מקום.** אותה פונקציה עונה ל-GraphQL, ל-SQL (דרך HTTP, pgwire ו-Arrow Flight), ל-Cypher (דרך HTTP ו-Bolt), ל-gRPC, ל-REST, ל-JSON:API ול-MCP.
 
+
 Resolvers של קוד הם אחת משלוש הדרכים לכתוב לוגיקה עסקית ב-Provisa. ראו [לוגיקה עסקית ב-Provisa](business-logic.md).
 
 ## resolver ראשון {: #an-example }
@@ -20,42 +21,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 כדי להגיש אותו:
 
 1. הוסיפו מקור `python` והפנו אותו לקוד: חבילת PyPI, commit ב-Git, העלאה או תיקייה (ראו [מאיפה מגיע הקוד](#where-the-code-comes-from)).
-2. שמרו אותו. Provisa מתקינה את הקוד, קוראת אותו ומציעה את `churn_risk` כטבלה עם העמודות `score` ו-`reasons` ופרמטר חובה אחד, `account_id`.
-3. Steward רושם את הטבלה בתחום, כאן `accounts`, ומעניק אליה גישה כמו לכל טבלה אחרת.
+2. שמרו אותו. Provisa מתקינה את הקוד, קוראת אותו ומציעה את `regions` כטבלה עם העמודות `code` ו-`name`.
+3. Steward רושם את הטבלה בתחום, כאן `sales`, ומעניק אליה גישה כמו לכל טבלה אחרת.
 
-אחר כך קראו אותה. ב-GraphQL הפרמטר הוא ארגומנט של שדה:
+אחר כך קראו אותה ב-GraphQL:
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-ב-SQL הוא תנאי `_nf_`:
+או ב-SQL:
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node עובד באותה דרך, עם תגי JSDoc וטיפוסי TypeScript: ראו [Node](#node).
@@ -83,11 +87,53 @@ Provisa קוראת את ההצהרות של הקוד עצמו: docstring ורמ�
 - התיעוד של השדה עצמו הופך לתיאור העמודה שלו כשאתם רושמים את הטבלה: `Field(description=...)` של Pydantic, או הערת תיעוד על מאפיין TypeScript.
 - לטיפוס שורה רופף (`Any` או `dict` ב-Python, `any`, `unknown` או `Record` ב-TypeScript) אין עמודות לקרוא. Provisa קוראת לפונקציה פעם אחת בלי ארגומנטים ומציעה עמודות לפי השורות שחוזרות. אם לפונקציה יש פרמטר חובה, אי אפשר לקרוא לה כך, ואתם מזינים את טיפוסי העמודות בעצמכם כשאתם רושמים את הטבלה.
 
-הפרמטרים של הפונקציה הופכים לפרמטרים של הטבלה:
+### פרמטרים {: #parameters }
+
+הפרמטרים של פונקציה הופכים לפרמטרים של הטבלה שלה. הפונקציה הזו מדרגת חשבון אחד:
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+ב-GraphQL הפרמטר הוא ארגומנט של שדה:
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+ב-SQL הוא תנאי `_nf_`:
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - פרמטר ללא ערך ברירת מחדל הוא חובה. קריאה שמשמיטה אותו נדחית לפני שהקוד רץ.
 - פרמטר עם ערך ברירת מחדל הוא רשות. השמיטו אותו וברירת המחדל שלכם חלה.
 - Steward עדיין יכול להפוך פרמטר רשות לחובה.
+
+### מה מגיע לפונקציה {: #what-reaches-your-function }
+
+קריאה מקבלת את הארגומנטים של הקריאה ושום דבר אחר מהבקשה. הערך של כל פרמטר מגיע מארגומנט של שדה, מתנאי `_nf_`, ממסנן שנדחף אליו או מהמפתחות של join. הפונקציה אף פעם לא רואה מי שואל: הזהות והתפקידים של הקורא נשארים אצל Provisa, שמנהלת את השורות שהפונקציה מחזירה.
+
+דחיפת מסננים נשענת על זה. מסנן בשאילתה הופך לערך של פרמטר, כך שהפונקציה יכולה להביא רק את השורות שהתבקשו.
 
 ### דחיפת מסננים {: #pushdown }
 

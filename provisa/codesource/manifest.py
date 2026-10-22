@@ -14,14 +14,18 @@ Every language's reader writes the same document (docs/arch/code-sources.md, sec
 (provisa/node/reader.mjs) writes every export of the bundle's entry module with its
 JSDoc tags and its signature's types as trees. This module applies REQ-1984's rules to that:
 
-- an export tagged ``@table`` is a table, ``@command`` a command, ``@stream`` a live table;
-  untagged exports are ignored;
+- an export tagged ``@table`` is a table, ``@command`` a command, ``@stream`` a live table,
+  ``@columns`` a batch column transform (REQ-2131); untagged exports are ignored;
 - a tag that is neither one of those nor a standard JSDoc tag is a problem named by the export
   and the tag;
 - a ``@table`` returns a collection (an array or an iterable, synchronous or asynchronous) whose
   elements are its rows; one that returns a single object is a problem by name;
 - a ``@stream`` is an async generator (its declaration returns ``AsyncGenerator<T>`` or
   ``AsyncIterable<T>``), with the same parameter and column rules as ``@table``;
+- a ``@columns`` function takes a batch: each parameter is one input column, a list of its values
+  in row order, and it returns a list holding one result per row, each an object whose fields are
+  the output columns (REQ-2131); a parameter that is not a list, or a result that is not a list of
+  objects, is a problem by name;
 - a non-optional parameter is required by the source; an optional one is not;
 - the columns are the row type's fields, or -- when the row type is loose (``any``, ``unknown``
   or a ``Record``) -- found by a preview;
@@ -34,7 +38,7 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
 Every problem is collected, and the bundle is refused with all of them at once.
 """
 
-# Requirements: REQ-1984, REQ-1993
+# Requirements: REQ-1984, REQ-1993, REQ-2131
 from __future__ import annotations
 
 import re
@@ -44,8 +48,8 @@ from typing import Any
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.pushdown import Pushdown, parse, type_problem
 
-TABLE, COMMAND, STREAM = "table", "command", "stream"
-PROVISA_TAGS = frozenset({TABLE, COMMAND, STREAM})
+TABLE, COMMAND, STREAM, COLUMNS = "table", "command", "stream", "columns"
+PROVISA_TAGS = frozenset({TABLE, COMMAND, STREAM, COLUMNS})
 
 #: The standard JSDoc and TSDoc tags an export may carry beside Provisa's. Any other is unknown.
 STANDARD_TAGS = frozenset(
@@ -154,7 +158,8 @@ class Export:
     kind: str
     description: str
     parameters: tuple[Parameter, ...]
-    #: A table's or stream's row type; a command's result (None: it returns nothing).
+    #: A table's or stream's row type; a command's result (None: it returns nothing); a
+    #: ``@columns`` function's result row, whose fields are its output columns.
     returns: Shape | None
     #: Whether the columns are found by a preview: the row type is loose.
     preview: bool = False
@@ -417,6 +422,36 @@ def _rows(mapper: _Mapper, export: str, element: dict) -> tuple[Shape, bool]:
     return shape, False
 
 
+def _columns_export(
+    mapper: _Mapper, name: str, entry: dict, parameters: list[Parameter], returns: dict
+) -> Export | None:
+    """A ``@columns`` function (REQ-2131): each parameter one input column, a list of the batch's
+    values, and a list of result rows, one per input row, whose fields are the output columns."""
+    ok = True
+    for p in parameters:
+        if not isinstance(p.shape, ListOf):
+            mapper.fail(name, f"@columns parameter {p.name} is one input column: a list of values")
+            ok = False
+    if not parameters:
+        mapper.fail(name, "@columns takes at least one input column")
+        ok = False
+    result = _unwrap_promise(returns)
+    if result["kind"] != "array":
+        mapper.fail(name, "@columns returns a list holding one result per input row")
+        return None
+    element = result["element"]
+    if element["kind"] in ("any", "unknown", "record"):
+        mapper.fail(name, "@columns declares its output columns: its result is a typed object")
+        return None
+    row, _ = mapper.shape(element, f"{name} (result)")
+    if not isinstance(row, (Named, Anonymous)):
+        mapper.fail(name, "@columns returns objects whose fields are its output columns")
+        return None
+    if not ok:
+        return None
+    return Export(name, COLUMNS, entry["description"], tuple(parameters), row, many=True)
+
+
 def ir_of(shape: Shape) -> str:
     """The IR type of a value of ``shape``: a scalar's own, an enum's text, a list's ``list``, and
     an object's json."""
@@ -603,6 +638,10 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             shape, nullable = mapper.shape(p["type"], f"{name}({p['name']})")
             parameters.append(Parameter(p["name"], shape, nullable, required=not p["optional"]))
         returns = signature["returns"]
+        if kind != TABLE and (LOADER in tags or _loader_sizes(entry, signature)):
+            # REQ-2100: a loader batches a table's keys; any other kind declaring one would have
+            # it ignored, so it is refused by name.
+            problems.append(f"{name}: @loader batches a table's keys, and a @{kind} takes none")
         if kind == TABLE:
             result = _unwrap_promise(returns)
             if result["kind"] == "array":
@@ -635,6 +674,16 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                     loader_batch=batch,
                 )
             )
+        elif kind == COLUMNS:
+            for parameter, spellings in _declared_pushdown(entry, signature, rules).items():
+                if spellings:
+                    problems.append(
+                        f"{name}({parameter}): @{spellings[0]} pushes a predicate, and a "
+                        "@columns function has no rows to filter"
+                    )
+            column_transform = _columns_export(mapper, name, entry, parameters, returns)
+            if column_transform is not None:
+                exports.append(column_transform)
         elif kind == STREAM:
             if not (returns["kind"] == "iterable" and (returns["async"] or rules.sync_streams)):
                 problems.append(

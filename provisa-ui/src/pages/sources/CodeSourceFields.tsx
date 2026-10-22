@@ -412,6 +412,17 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
               data-testid="code-llm-cap"
             />
           </FormField>
+          <FormField size="short" help={t("codeSourceFields.workersHint")}>
+            <NumberInput
+              label={t("codeSourceFields.workers")}
+              min={1}
+              allowDecimal={false}
+              allowNegative={false}
+              value={fields.code_workers || "1"}
+              onChange={(v) => set({ code_workers: v === "" ? "" : String(v) })}
+              data-testid="code-workers"
+            />
+          </FormField>
         </FieldGroup>
         <FieldGroup>
           <FormField size="long" help={t("codeSourceFields.settingsHint")}>

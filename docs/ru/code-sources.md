@@ -11,6 +11,7 @@
 - **С передачей фильтров.** Фильтр по столбцу доходит до функции как параметр, если вы этого просите.
 - **Везде.** Одна и та же функция отвечает на GraphQL, SQL (через HTTP, pgwire и Arrow Flight), Cypher (через HTTP и Bolt), gRPC, REST, JSON:API и MCP.
 
+
 Резолверы кода — один из трёх способов писать бизнес-логику в Provisa. См. [Бизнес-логика в Provisa](business-logic.md).
 
 ## Первый resolver {: #an-example }
@@ -20,42 +21,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 Чтобы его опубликовать:
 
 1. Добавьте источник `python` и укажите на код: пакет PyPI, коммит Git, загрузку или папку (см. [Откуда берётся код](#where-the-code-comes-from)).
-2. Сохраните его. Provisa устанавливает код, читает его и предлагает `churn_risk` как таблицу со столбцами `score` и `reasons` и обязательным параметром `account_id`.
-3. Стюард регистрирует таблицу в домене, здесь `accounts`, и выдаёт к ней доступ, как к любой другой.
+2. Сохраните его. Provisa устанавливает код, читает его и предлагает `regions` как таблицу со столбцами `code` и `name`.
+3. Стюард регистрирует таблицу в домене, здесь `sales`, и выдаёт к ней доступ, как к любой другой.
 
-Затем читайте её. В GraphQL параметр — это аргумент поля:
+Затем читайте её в GraphQL:
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-В SQL это условие `_nf_`:
+Или в SQL:
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node работает так же, с тегами JSDoc и типами TypeScript: см. [Node](#node).
@@ -83,11 +87,53 @@ Provisa читает объявления вашего кода: docstring и а
 - Собственная документация поля становится описанием его столбца при регистрации таблицы: `Field(description=...)` в Pydantic или документирующий комментарий у свойства TypeScript.
 - У нестрогого типа строки (`Any` или `dict` в Python, `any`, `unknown` или `Record` в TypeScript) нет столбцов, которые можно прочитать. Provisa один раз вызывает функцию без аргументов и предлагает столбцы по возвращённым строкам. Если у функции есть обязательный параметр, так её не вызвать, и типы столбцов вы указываете сами при регистрации таблицы.
 
-Параметры функции становятся параметрами таблицы:
+### Параметры {: #parameters }
+
+Параметры функции становятся параметрами её таблицы. Эта оценивает один аккаунт:
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+В GraphQL параметр — это аргумент поля:
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+В SQL это условие `_nf_`:
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - Параметр без значения по умолчанию обязателен. Чтение, в котором он пропущен, отклоняется до запуска вашего кода.
 - Параметр со значением по умолчанию необязателен. Пропустите его, и применится ваше значение по умолчанию.
 - Стюард всё равно может сделать необязательный параметр обязательным.
+
+### Что получает ваша функция {: #what-reaches-your-function }
+
+Вызов получает аргументы чтения и больше ничего из запроса. Значение каждого параметра приходит из аргумента поля, условия `_nf_`, переданного ему фильтра или ключей join. Ваша функция никогда не видит, кто спрашивает: личность и роли вызывающего остаются у Provisa, которая управляет строками, возвращёнными функцией.
+
+На этом строится передача фильтров. Фильтр в запросе становится значением параметра, поэтому функция может получить только запрошенные строки.
 
 ### Передача фильтров {: #pushdown }
 

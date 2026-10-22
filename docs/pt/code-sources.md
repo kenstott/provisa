@@ -11,6 +11,7 @@ O que muda em relação a um resolver escrito à mão:
 - **Delegado.** Um filtro em uma coluna chega à sua função como parâmetro quando você pede.
 - **Servido em todo lugar.** A mesma função responde a GraphQL, SQL (sobre HTTP, pgwire e Arrow Flight), Cypher (sobre HTTP e Bolt), gRPC, REST, JSON:API e MCP.
 
+
 Os resolvers de código são uma das três formas de escrever lógica de negócio no Provisa. Veja [Lógica de negócio no Provisa](business-logic.md).
 
 ## Um primeiro resolver {: #an-example }
@@ -20,42 +21,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 Para servi-lo:
 
 1. Adicione uma fonte `python` e aponte-a para o código: um pacote do PyPI, um commit do Git, um upload ou uma pasta (veja [De onde vem o código](#where-the-code-comes-from)).
-2. Salve-a. O Provisa instala o código, lê e oferece `churn_risk` como uma tabela com as colunas `score` e `reasons` e um parâmetro obrigatório, `account_id`.
-3. Um steward registra a tabela em um domínio, aqui `accounts`, e a concede como qualquer outra.
+2. Salve-a. O Provisa instala o código, lê e oferece `regions` como uma tabela com as colunas `code` e `name`.
+3. Um steward registra a tabela em um domínio, aqui `sales`, e a concede como qualquer outra.
 
-Depois leia-a. No GraphQL o parâmetro é um argumento de campo:
+Depois leia-a no GraphQL:
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-No SQL é uma condição `_nf_`:
+Ou no SQL:
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node funciona do mesmo jeito, com tags JSDoc e tipos TypeScript: veja [Node](#node).
@@ -83,11 +87,53 @@ O tipo de linha dá as colunas:
 - A documentação própria de um campo vira a descrição da sua coluna quando você registra a tabela: um `Field(description=...)` do Pydantic, ou um comentário de documentação em uma propriedade TypeScript.
 - Um tipo de linha frouxo (`Any` ou um `dict` em Python, `any`, `unknown` ou um `Record` em TypeScript) não tem colunas para ler. O Provisa chama a função uma vez sem argumentos e sugere colunas a partir das linhas devolvidas. Se a função tem um parâmetro obrigatório, ela não pode ser chamada assim, e você mesmo informa os tipos das colunas ao registrar a tabela.
 
-Os parâmetros da função viram os parâmetros da tabela:
+### Parâmetros {: #parameters }
+
+Os parâmetros de uma função viram os parâmetros da sua tabela. Esta pontua uma conta:
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+No GraphQL o parâmetro é um argumento de campo:
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+No SQL é uma condição `_nf_`:
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - Um parâmetro sem valor padrão é obrigatório. Uma leitura que o omite é recusada antes de o seu código rodar.
 - Um parâmetro com valor padrão é opcional. Omita-o e seu valor padrão se aplica.
 - Um steward ainda pode tornar obrigatório um opcional.
+
+### O que chega à sua função {: #what-reaches-your-function }
+
+Uma chamada recebe os argumentos da leitura e nada mais da requisição. O valor de cada parâmetro vem de um argumento de campo, de uma condição `_nf_`, de um filtro delegado a ele ou das chaves de um join. Sua função nunca vê quem pergunta: a identidade e os papéis de quem chama ficam com o Provisa, que governa as linhas que sua função retorna.
+
+A delegação de filtros se apoia nisso. Um filtro na consulta vira o valor de um parâmetro, então sua função pode buscar só as linhas pedidas.
 
 ### Delegação de filtros {: #pushdown }
 

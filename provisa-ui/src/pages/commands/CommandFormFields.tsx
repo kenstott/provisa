@@ -35,6 +35,7 @@ import {
   EMPTY_INLINE,
   EMPTY_DATASET_COLUMN,
   OPERATION_SCHEMA,
+  CODE_SCHEMA,
 } from "./types";
 import type { FormState } from "./types";
 import { ColumnGovernanceFields } from "./ColumnGovernanceFields";
@@ -164,8 +165,12 @@ export function CommandFormFields({
   const selectedSource = sources.find((s) => s.id === form.sourceId);
   // REQ-1924: a remote source offers write operations to pick; one picked is called as it is,
   // so its kind, arguments and answer follow from the operation, not from this form.
-  const operationSchema = selectedSource ? OPERATION_SCHEMA[selectedSource.type] : undefined;
-  const isSourceOperation = form.implKind === "source_operation";
+  // REQ-2131: a code source offers its @columns functions the same way, as column transforms.
+  const operationSchema = selectedSource
+    ? (OPERATION_SCHEMA[selectedSource.type] ?? CODE_SCHEMA[selectedSource.type])
+    : undefined;
+  const isSourceOperation =
+    form.implKind === "source_operation" || form.implKind === "code_columns";
   // REQ-2001: a statement command's statement declares its kind, its written table and its
   // output, so the form asks for none of them.
   const isStatement = form.implKind === "statement";
@@ -201,13 +206,19 @@ export function CommandFormFields({
                           const schema = selectedSrc
                             ? OPERATION_SCHEMA[selectedSrc.type]
                             : undefined;
+                          const code = selectedSrc ? CODE_SCHEMA[selectedSrc.type] : undefined;
                           setForm({
                             ...form,
                             sourceId: val ?? "",
-                            implKind: schema ? "source_operation" : "source_procedure",
-                            schemaName: schema ?? form.schemaName,
+                            implKind: schema
+                              ? "source_operation"
+                              : code
+                                ? "code_columns"
+                                : "source_procedure",
+                            schemaName: schema ?? code ?? form.schemaName,
                             functionName: "",
                             ...(schema ? { kind: "mutation", arguments: [], returns: "" } : {}),
+                            ...(code ? { kind: "query", arguments: [], returns: "" } : {}),
                           });
                         }}
                         data-testid="command-source-select"

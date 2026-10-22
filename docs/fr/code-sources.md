@@ -11,6 +11,7 @@ Ce qui change par rapport à un resolver écrit à la main :
 - **Délégué.** Un filtre sur une colonne atteint votre fonction comme paramètre quand vous le demandez.
 - **Servi partout.** La même fonction répond à GraphQL, SQL (sur HTTP, pgwire et Arrow Flight), Cypher (sur HTTP et Bolt), gRPC, REST, JSON:API et MCP.
 
+
 Les resolvers de code sont l'une des trois façons d'écrire la logique métier dans Provisa. Voir [La logique métier dans Provisa](business-logic.md).
 
 ## Un premier resolver {: #an-example }
@@ -20,42 +21,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 Pour le servir :
 
 1. Ajoutez une source `python` et pointez-la vers le code : un paquet PyPI, un commit Git, un téléversement ou un dossier (voir [D'où vient le code](#where-the-code-comes-from)).
-2. Enregistrez-la. Provisa installe le code, le lit et propose `churn_risk` comme table avec les colonnes `score` et `reasons` et un paramètre obligatoire, `account_id`.
-3. Un intendant enregistre la table dans un domaine, ici `accounts`, et l'accorde comme n'importe quelle autre.
+2. Enregistrez-la. Provisa installe le code, le lit et propose `regions` comme table avec les colonnes `code` et `name`.
+3. Un intendant enregistre la table dans un domaine, ici `sales`, et l'accorde comme n'importe quelle autre.
 
-Lisez-la ensuite. En GraphQL, le paramètre est un argument de champ :
+Lisez-la ensuite en GraphQL :
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-En SQL, c'est une condition `_nf_` :
+Ou en SQL :
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node fonctionne de la même façon, avec des balises JSDoc et des types TypeScript : voir [Node](#node).
@@ -83,11 +87,53 @@ Le type de ligne donne les colonnes :
 - La documentation propre d'un champ devient la description de sa colonne quand vous enregistrez la table : un `Field(description=...)` Pydantic, ou un commentaire de documentation sur une propriété TypeScript.
 - Un type de ligne lâche (`Any` ou un `dict` en Python, `any`, `unknown` ou un `Record` en TypeScript) n'a pas de colonnes à lire. Provisa appelle la fonction une fois sans argument et propose des colonnes à partir des lignes renvoyées. Si la fonction a un paramètre obligatoire, elle ne peut pas être appelée ainsi, et vous indiquez vous-même les types des colonnes en enregistrant la table.
 
-Les paramètres de la fonction deviennent les paramètres de la table :
+### Paramètres {: #parameters }
+
+Les paramètres d'une fonction deviennent les paramètres de sa table. Celle-ci note un compte :
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+En GraphQL, le paramètre est un argument de champ :
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+En SQL, c'est une condition `_nf_` :
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - Un paramètre sans valeur par défaut est obligatoire. Une lecture qui l'omet est refusée avant que votre code ne s'exécute.
 - Un paramètre avec une valeur par défaut est facultatif. Omettez-le et votre valeur par défaut s'applique.
 - Un intendant peut tout de même rendre obligatoire un paramètre facultatif.
+
+### Ce qui parvient à votre fonction {: #what-reaches-your-function }
+
+Un appel reçoit les arguments de la lecture et rien d'autre de la requête. La valeur de chaque paramètre vient d'un argument de champ, d'une condition `_nf_`, d'un filtre qui lui est délégué ou des clés d'une jointure. Votre fonction ne voit jamais qui demande : l'identité et les rôles de l'appelant restent chez Provisa, qui gouverne les lignes que votre fonction renvoie.
+
+La délégation des filtres repose là-dessus. Un filtre de la requête devient la valeur d'un paramètre, si bien que votre fonction peut ne récupérer que les lignes demandées.
 
 ### Délégation des filtres {: #pushdown }
 

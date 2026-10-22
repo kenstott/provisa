@@ -164,10 +164,20 @@ def _data_product_edges_sql() -> str:
     number of distinct relationships (or derivations) leaving the members that lead on to the
     target, the hops are the shortest distance, and the aliases and supporting tables are those on
     any walk from a member to the target. Each recursion's rows are bounded by the model's tables
-    (or relations), so the cost grows with the model, not with the routes through it."""
+    (or relations), so the cost grows with the model, not with the routes through it.
+
+    Every table a row names -- a supporting table, a view a lineage edge goes through -- is named
+    as the model names it: its domain and its alias, or its name when it has none."""
     return """
         CREATE OR REPLACE VIEW data_product_edges AS
-        WITH RECURSIVE members AS (
+        WITH RECURSIVE
+        -- Each registered table by the name the model gives it: its domain and its alias, or its
+        -- name when it has none -- every reference this view returns is a model name.
+        model_names AS (
+            SELECT id AS table_id, domain_id || '.' || COALESCE(alias, table_name) AS model_name
+            FROM registered_tables
+        ),
+        members AS (
             SELECT id AS table_id, product_id, dq_contract
             FROM registered_tables
             WHERE product_id IS NOT NULL AND NOT draft
@@ -314,10 +324,10 @@ def _data_product_edges_sql() -> str:
         ),
         rel_support AS (
             SELECT s.product_id, s.target_product_id, s.target_table_id,
-                   STRING_AGG(DISTINCT t.table_name, ', ' ORDER BY t.table_name)
+                   STRING_AGG(DISTINCT t.model_name, ', ' ORDER BY t.model_name)
                        AS supporting_tables
             FROM supporting s
-            JOIN registered_tables t ON t.id = s.node
+            JOIN model_names t ON t.table_id = s.node
             GROUP BY s.product_id, s.target_product_id, s.target_table_id
         ),
         ledges AS (
@@ -412,16 +422,26 @@ def _data_product_edges_sql() -> str:
             FROM lineage_paths l
             GROUP BY l.product_id, l.direction, l.relation
         ),
+        -- A view a derivation goes through, by its model name; a command, by its own name; a
+        -- relation the model has not registered, by the name the lineage records.
+        via_names AS (
+            SELECT DISTINCT e.via, COALESCE(n.model_name, e.via) AS via_name
+            FROM lineage_edges e
+            LEFT JOIN relation_tables rt ON e.via_kind = 'view' AND rt.relation = e.via
+            LEFT JOIN model_names n ON n.table_id = rt.table_id
+        ),
         lineage_vias AS (
-            SELECT product_id, 'upstream' AS direction, relation,
-                   STRING_AGG(DISTINCT via, ', ' ORDER BY via) AS vias
-            FROM up_vias
-            GROUP BY product_id, relation
+            SELECT u.product_id, 'upstream' AS direction, u.relation,
+                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name) AS vias
+            FROM up_vias u
+            JOIN via_names n ON n.via = u.via
+            GROUP BY u.product_id, u.relation
             UNION ALL
             SELECT mr.product_id, 'downstream', e.tgt,
-                   STRING_AGG(DISTINCT e.via, ', ' ORDER BY e.via)
+                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name)
             FROM member_relations mr
             JOIN ledges e ON e.src = mr.relation
+            JOIN via_names n ON n.via = e.via
             GROUP BY mr.product_id, e.tgt
         )
         SELECT r.product_id || ':relationship:'

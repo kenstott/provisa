@@ -249,7 +249,7 @@ async def _exposed_name_dependents(
             )
 
     # The table's own MV row identity names its OUTPUT columns, i.e. exposed names.
-    for field, label in (("mv_primary_key", "MV primary key"), ("mv_bitemporal_key", "MV key")):
+    for field, label in (("mv_primary_key", "MV primary key"), ("business_key", "business key")):
         if exposed in (row.get(field) or []):
             out.append(Dependent("mv_key", row["table_name"], label, "rename"))
     return out

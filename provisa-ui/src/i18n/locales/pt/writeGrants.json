@@ -29,6 +29,7 @@
     "addGrant": "Adicionar uma concessão",
     "removeGrant": "Remover esta concessão",
     "save": "Salvar concessões",
-    "saved": "Concessões salvas."
+    "saved": "Concessões salvas.",
+    "kept": "Mantido: salvo com a tabela."
   }
 }

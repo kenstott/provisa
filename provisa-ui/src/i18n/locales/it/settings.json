@@ -862,6 +862,12 @@
         "label": "Soglia del tasso di fuga dei valori fittizi",
         "help": "La quota dei valori campionati di una colonna sensibile che il suo valore fittizio può lasciare uguali al valore reale prima che il controllo del tasso di fuga lo segni come inadeguato. 0 fa fallire un valore fittizio che lascia invariato qualsiasi valore."
       }
+    },
+    "commands": {
+      "allow_host_code": {
+        "label": "Consenti comandi di codice host",
+        "help": "Attivo: i comandi python e script possono essere registrati e chiamati. Ognuno viene eseguito con l'accesso completo del server alla sua memoria, alle credenziali, ai file e alla rete, e il suo codice non viaggia con il modello. Disattivato per impostazione predefinita; usa invece un resolver di codice."
+      }
     }
   }
 }

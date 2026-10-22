@@ -142,7 +142,10 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "change_signal, watermark_column, probe_type, "  # REQ-929/924/982: the table's own
         "pagination, "  # REQ-318
         "landing_filter, "  # REQ-2062: what of the table its replica holds
-        "query_template "  # REQ-1668/1683/1980: the query a query-API or pipeline table runs
+        "query_template, "  # REQ-1668/1683/1980: the query a query-API or pipeline table runs
+        # REQ-2109: what a bitemporal table maps, and the refresh interval and allowed lateness
+        # of the version log of one updated in place (bitemporal_capture).
+        "business_key, valid_time, recorded_time, mv_refresh_interval, mv_allowed_lateness "
         "FROM registered_tables WHERE draft = $1 ORDER BY id",
         draft,
     )
@@ -169,6 +172,10 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         table["live"] = _as_dict(row.get("live"))  # REQ-1733
         table["delta"] = row.get("delta")  # REQ-874: dict or None, reconstructed on the registry
         table["role_ttl"] = _as_dict(row["role_ttl"])  # REQ-1907
+        # REQ-2109: NULL = not bitemporal
+        table["business_key"] = (
+            None if row["business_key"] is None else _as_list(row["business_key"])
+        )
         table["pagination"] = (  # REQ-318: NULL = not paged here
             None if row["pagination"] is None else _as_dict(row["pagination"])
         )

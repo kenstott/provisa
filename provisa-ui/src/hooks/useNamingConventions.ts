@@ -1,0 +1,36 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 7298c43c-7d75-44a9-8acf-053c9fcb4f5a
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+// REQ-416: the GraphQL naming conventions a table, a source or the deployment may name. The
+// server is their authority: the admin offers what it lists, and keeps no list of its own.
+
+import { useQuery } from "@apollo/client/react";
+import type { TFunction } from "i18next";
+import { NamingConventions } from "./admin.graphql";
+
+/** The conventions the server takes, in the order it gives them; [] until they are read. */
+export function useNamingConventions(): string[] {
+  const { data } = useQuery<{ namingConventions: string[] }>(NamingConventions, {
+    fetchPolicy: "cache-first",
+  });
+  return data?.namingConventions ?? [];
+}
+
+const LABELS: Record<string, string> = {
+  snake: "adminPage.namingConventionSnake",
+  hasura_graphql: "adminPage.namingConventionHasura",
+  apollo_graphql: "adminPage.namingConventionApollo",
+};
+
+/** How a convention the server names reads: the server stores only its presets (a Hasura or DDN
+ *  spelling is kept as the preset it names), and each has its words here. */
+export function namingConventionLabel(t: TFunction, convention: string): string {
+  return t(LABELS[convention]);
+}

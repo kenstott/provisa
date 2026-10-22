@@ -1528,7 +1528,10 @@ export function SourcesPage() {
                 }}
               >
                 {typeSelectData().map((group) => (
-                  <optgroup key={group.group} label={group.group}>
+                  <optgroup
+                    key={group.group}
+                    label={t(`sourceTypePicker.categories.${group.group}`)}
+                  >
                     {group.items.map((item) => (
                       <option key={item.value} value={item.value} disabled={item.disabled}>
                         {item.label}

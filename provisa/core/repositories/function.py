@@ -22,6 +22,7 @@ from sqlalchemy import delete as _delete, func as _sa_func, select
 
 from provisa.core import domain_policy
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
+from provisa.core.host_code import refuse_host_code
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
@@ -36,6 +37,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     return_schema: dict | None = None,
 ) -> int | None:
     """Upsert a tracked DB function. Returns the row id."""
+    refuse_host_code(func.name, func.impl_kind)  # REQ-2134: config load and the admin API alike
     model_change.name("upsert", "command", func.name)  # REQ-1524
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as

@@ -41,6 +41,8 @@ interface Props {
   roles: { id: string; label: string }[];
   /** Edited and saved through this; absent, the grants are only read. */
   onSave?: (grants: WriteGrant[]) => Promise<MutationResult>;
+  /** REQ-2109: the table is being created: what onSave takes is kept and saved with the table. */
+  kept: boolean;
 }
 
 function presetText(p: WritePreset, t: (k: string, o?: Record<string, unknown>) => string): string {
@@ -50,7 +52,7 @@ function presetText(p: WritePreset, t: (k: string, o?: Record<string, unknown>) 
   return t("writeGrants.presetLiteral", { column: p.column, value: p.value ?? "" });
 }
 
-export function WriteGrantsPanel({ grants, columns, roles, onSave }: Props) {
+export function WriteGrantsPanel({ grants, columns, roles, onSave, kept }: Props) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<WriteGrant[]>(grants ?? []);
   const [saving, setSaving] = useState(false);
@@ -321,7 +323,9 @@ export function WriteGrantsPanel({ grants, columns, roles, onSave }: Props) {
               color={result.success ? "green" : "red"}
               data-testid={result.success ? "write-grants-saved" : "write-grants-refused"}
             >
-              {result.success ? t("writeGrants.saved") : serverMessage(result, result.message)}
+              {result.success
+                ? t(kept ? "writeGrants.kept" : "writeGrants.saved")
+                : serverMessage(result, result.message)}
             </Alert>
           </FormField>
         )}

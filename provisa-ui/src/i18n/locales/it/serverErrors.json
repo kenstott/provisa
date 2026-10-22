@@ -177,7 +177,8 @@
       "unknown_arg_kind": "arg_kind '{{arg_kind}}' sconosciuto per '{{name}}'",
       "unknown_command": "Comando sconosciuto: '{{name}}'",
       "unknown_impl_kind": "impl_kind della funzione sconosciuto: '{{impl_kind}}'",
-      "written_table_missing": "il comando '{{name}}' scrive '{{table}}', che non è registrata"
+      "written_table_missing": "il comando '{{name}}' scrive '{{table}}', che non è registrata",
+      "host_code_refused": "Il comando '{{name}}' è di tipo {{impl_kind}}, che esegue codice sull'host del server. Il codice host è disattivato in questo deployment; usa invece un resolver di codice."
     },
     "graphql_remote": {
       "introspection_failed": "Introspezione non riuscita: {{error}}",
@@ -443,7 +444,12 @@
       "role_description_missing": "Il ruolo '{{role}}' ha bisogno di una descrizione di a cosa serve",
       "rls_rule_description_missing": "Una regola di riga ha bisogno di una descrizione di a cosa serve",
       "file_download_refused": "Sorgente {{source}}: {{reason}}",
-      "source_created_without_table": "Sorgente {{source}} creata; la sua tabella non è stata impostata: {{reason}}"
+      "source_created_without_table": "Sorgente {{source}} creata; la sua tabella non è stata impostata: {{reason}}",
+      "mv_window_needs_calendar": "La MV '{{mv}}' non indica alcun calendario: una build sigillata alla chiusura di un giorno lavorativo ne richiede uno",
+      "version_log_updated": "Registro delle versioni '{{mv}}' aggiornato",
+      "mv_window_held": "La MV '{{mv}}' non è stata sigillata alla chiusura del {{day}}: un'altra build ne detiene la richiesta",
+      "mv_window_unchanged": "La MV '{{mv}}' non è stata sigillata alla chiusura del {{day}}: nulla di ciò che legge è cambiato dalla sua ultima build",
+      "landing_time_pipeline": "La tabella '{{table}}' tiene l'ora di arrivo in {{column}}, ma il suo store carica il topic con una propria pipeline, dove Provisa non vede arrivare ogni messaggio."
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",

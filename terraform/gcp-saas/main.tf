@@ -292,14 +292,9 @@ locals {
     export VITE_AZURE_TENANT="${var.azure_tenant_id}"
     ${local.protocol_exports}
     export UI_PORT=${local.protocols.ui.port}
-    %{if var.tls_cert_pem != "" && var.tls_key_pem != ""}
-    mkdir -p /etc/provisa/tls
-    printf '%s' '${base64encode(var.tls_cert_pem)}' | base64 -d > /etc/provisa/tls/node.crt
-    printf '%s' '${base64encode(var.tls_key_pem)}' | base64 -d > /etc/provisa/tls/node.key
-    chmod 600 /etc/provisa/tls/node.key
+    ${local.node_tls_sync}
     export PROVISA_TLS_CERT=/etc/provisa/tls/node.crt
     export PROVISA_TLS_KEY=/etc/provisa/tls/node.key
-    %{endif}
     cd /opt
   SHELL
 
@@ -592,6 +587,9 @@ resource "google_compute_instance" "coordinator" {
     scopes = ["cloud-platform"]
   }
 
+  # Its certificate is read from Secret Manager at boot (secrets.tf).
+  depends_on = [google_secret_manager_secret_iam_member.tls_reader]
+
   # The front door stops/starts this instance; terraform must not "fix" the
   # resulting TERMINATED state (or flag it as drift) on the next apply.
   desired_status = null
@@ -703,8 +701,43 @@ locals {
     boot_grace_seconds = var.front_door_boot_grace_minutes * 60
     status_port        = var.front_door_status_port
     status_token       = random_password.front_door_token.result
-    tls_cert           = var.tls_cert_pem != "" ? "/etc/provisa-front-door/tls.crt" : ""
-    tls_key            = var.tls_key_pem != "" ? "/etc/provisa-front-door/tls.key" : ""
+    tls_cert           = "/etc/provisa-front-door/tls.crt"
+    tls_key            = "/etc/provisa-front-door/tls.key"
+  })
+
+  # The certificate on the coordinator and the sandbox VM: where the node reads it and where
+  # first-launch copies it for the containers (/app/certs), restarting those that serve it.
+  node_tls_sync = templatefile("${path.module}/tls/install-sync.sh.tftpl", {
+    script      = base64encode(file("${path.module}/tls/provisa-tls-sync.sh"))
+    project     = var.project
+    cert_secret = local.tls_cert_secret
+    key_secret  = local.tls_key_secret
+    targets     = "/etc/provisa/tls/node.crt:/etc/provisa/tls/node.key /root/.provisa/certs/provisa.crt:/root/.provisa/certs/provisa.key"
+    restart     = "docker ps --format '{{.Names}}' | grep -E '^compose-provisa(-ui|-sandbox|-sandbox-regions)?-1$' | xargs -r docker restart"
+    before      = "docker.service provisa.service"
+  })
+  # The front door renews it (the one VM always on).
+  front_door_tls_renew = templatefile("${path.module}/tls/install-renew.sh.tftpl", {
+    script       = base64encode(file("${path.module}/tls/provisa-tls-renew.sh"))
+    lego_url     = "https://github.com/go-acme/lego/releases/download/v5.4.1/lego_v5.4.1_linux_amd64.tar.gz"
+    lego_sha256  = "ebb33f1bead5a7c99dd46f1c5734b44cf1eab5b5c12faf397cd14d50a5916419"
+    project      = var.project
+    cert_secret  = local.tls_cert_secret
+    key_secret   = local.tls_key_secret
+    token_secret = local.tls_token_secret
+    acme_email   = var.acme_email
+    domain       = var.tls_domain
+    renew_days   = var.tls_renew_days
+  })
+  # And on the front door, which serves it at the shared address.
+  front_door_tls_sync = templatefile("${path.module}/tls/install-sync.sh.tftpl", {
+    script      = base64encode(file("${path.module}/tls/provisa-tls-sync.sh"))
+    project     = var.project
+    cert_secret = local.tls_cert_secret
+    key_secret  = local.tls_key_secret
+    targets     = "/etc/provisa-front-door/tls.crt:/etc/provisa-front-door/tls.key"
+    restart     = "systemctl restart provisa-front-door"
+    before      = "provisa-front-door.service"
   })
 }
 
@@ -755,11 +788,8 @@ resource "google_compute_instance" "front_door" {
       mkdir -p /etc/provisa-front-door /opt/provisa-front-door
       printf '%s' '${base64encode(file("${path.module}/front-door/proxy.py"))}' | base64 -d > /opt/provisa-front-door/proxy.py
       printf '%s' '${base64encode(local.front_door_config)}' | base64 -d > /etc/provisa-front-door/config.json
-      %{if var.tls_cert_pem != "" && var.tls_key_pem != ""}
-      printf '%s' '${base64encode(var.tls_cert_pem)}' | base64 -d > /etc/provisa-front-door/tls.crt
-      printf '%s' '${base64encode(var.tls_key_pem)}' | base64 -d > /etc/provisa-front-door/tls.key
-      chmod 600 /etc/provisa-front-door/tls.key
-      %{endif}
+      ${local.front_door_tls_sync}
+      ${local.front_door_tls_renew}
       cat > /etc/systemd/system/provisa-front-door.service <<'UNIT'
       [Unit]
       Description=Provisa SaaS front-door proxy (wake-on-hit + idle-stop)
@@ -781,5 +811,10 @@ resource "google_compute_instance" "front_door" {
     SHELL
   })
 
-  depends_on = [google_project_iam_member.front_door]
+  depends_on = [
+    google_project_iam_member.front_door,
+    google_secret_manager_secret_iam_member.tls_reader,
+    google_secret_manager_secret_iam_member.tls_renewer,
+    google_secret_manager_secret_iam_member.dns_token_reader,
+  ]
 }

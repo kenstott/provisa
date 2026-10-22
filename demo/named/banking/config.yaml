@@ -1,0 +1,210 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "banking" (start-ui-install.sh --demo banking; REQ-2107):
+# end-of-day reporting for a bank without copying its ledger into the warehouse. Its question:
+# "Can the warehouse report each day's close, and every restatement since, without a copy of the
+# ledger?"
+#
+#   ledger-db   the bank's ledger (db/init.sql): accounts and an append-only transaction ledger,
+#               read live as provisa_reader. Homed in the ledger region and never replicated: no
+#               copy of a posting lands in the warehouse.
+#
+# Two regions, one definition. The warehouse region (the visitor's node) materializes the
+# end-of-day totals in its own store, built at each business day's 18:00 London close: one GROUP BY
+# over the ledger's one table, so the build runs whole at the ledger's Postgres and only the
+# grouped rows come back. The totals inherit the ledger's versions -- a restatement recorded on a
+# later day becomes a new version of its own past date, the version reported at the close kept.
+# The drill-down from a total to its postings reads the ledger live, under the ledger's own row
+# rules and masks. start-ui-install.sh starts the ledger node headless and the warehouse node the
+# visitor uses, on one model store; the per-launch values (the nodes' addresses, the stores) are
+# the script's environment.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+platform:
+  regions:
+  - {id: ledger, address: '${env:PROVISA_DEMO_LEDGER_ADDRESS}'}
+  - {id: warehouse, address: '${env:PROVISA_DEMO_WAREHOUSE_ADDRESS}'}
+# Each region keeps its replicas, views, build state and record in its own PostgreSQL store; each
+# runs its own DuckDB engine.
+stores:
+- {id: ledger_engine, url: 'duckdb:///${env:PROVISA_NAMED_DEMO_DIR}/data/ledger-engine.duckdb', kind: duckdb}
+- {id: warehouse_engine, url: 'duckdb:///${env:PROVISA_NAMED_DEMO_DIR}/data/warehouse-engine.duckdb', kind: duckdb}
+- {id: ledger_data, url: '${env:PROVISA_DEMO_LEDGER_PG_URL}'}
+- {id: warehouse_data, url: '${env:PROVISA_DEMO_WAREHOUSE_PG_URL}'}
+- {id: cache, url: '${env:REDIS_URL}'}
+regions:
+- {id: ledger, engine: ledger_engine, replicas: ledger_data, views: ledger_data, cache: cache, state: ledger_data, record: ledger_data}
+- {id: warehouse, engine: warehouse_engine, replicas: warehouse_data, views: warehouse_data, cache: cache, state: warehouse_data, record: warehouse_data}
+# The bank's business day closes at 18:00 London time; a day's end-of-day build is sealed then.
+calendars:
+- name: bank
+  version: v1
+  tz: Europe/London
+  day_close: "18:00"
+domains:
+- id: banking
+  description: A bank's ledger -- its accounts and every posting -- and the end-of-day totals the
+    warehouse reports from it
+roles:
+- id: analyst
+  description: "The bank's reporting analysts: the end-of-day totals, as reported at each close and as restated since, and the five ledger columns they are built from; never an account, a counterparty or a holder."
+  capabilities: [query_development]
+  domain_access: [banking]
+- id: ops_analyst
+  description: "Operations: drills from a total into its postings, under the ledger's row rules and masks."
+  capabilities: [query_development]
+  domain_access: [banking]
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: ledger-db
+  type: postgresql
+  host: ${env:BANKING_PG_HOST:-localhost}
+  port: ${env:BANKING_PG_PORT:-27032}
+  database: ledger${env:BANKING_PG_NS}
+  username: provisa_reader
+  password: provisa_reader
+  region: ledger
+  description: The bank's ledger, homed in the ledger region
+tables:
+- source_id: ledger-db
+  domain_id: banking
+  schema: public
+  table: accounts
+  region: ledger
+  replicate: -1
+  description: The bank's accounts -- each one's branch, product and currency
+  columns:
+  - {name: account_id, data_type: varchar, is_primary_key: true, description: The account's number, visible_to: [org_admin, ops_analyst]}
+  - name: holder_name
+    data_type: varchar
+    description: Who holds the account -- withheld from operations
+    visible_to: [org_admin, ops_analyst]
+    masks:
+    - to: [org_admin]
+    - to: ['*']
+      mask: {type: constant, value: withheld}
+  - {name: branch, data_type: varchar, description: The branch the account is held at, visible_to: [org_admin, ops_analyst]}
+  - {name: product, data_type: varchar, description: 'The account''s product: current, savings, staff or corporate', visible_to: [org_admin, ops_analyst]}
+  - {name: currency, data_type: varchar, description: The account's currency, visible_to: [org_admin, ops_analyst]}
+  - {name: opened_on, data_type: date, description: When the account was opened, visible_to: [org_admin, ops_analyst]}
+# The ledger: append-only, a correction a new row with the same transaction_id. Homed in the
+# ledger region and never replicated (replicate -1): every read of it runs at the ledger.
+- source_id: ledger-db
+  domain_id: banking
+  schema: public
+  table: transactions
+  region: ledger
+  replicate: -1
+  business_key: [transaction_id]
+  valid_time: business_date
+  recorded_time: updated_at
+  description: Every posting of the ledger, each version of it a row of its own -- a correction keeps
+    its transaction id and business date and gets its own entry time
+  columns:
+  - {name: row_id, data_type: integer, is_primary_key: true, description: The ledger row's number, visible_to: [org_admin, ops_analyst]}
+  - {name: transaction_id, data_type: varchar, description: The transaction this row is a version of, visible_to: [org_admin, ops_analyst]}
+  - {name: account_id, data_type: varchar, description: The account it was posted to, visible_to: [org_admin, ops_analyst]}
+  # The end-of-day totals read these five: a reader of the totals is served them (the view's
+  # definition is governed for its reader as if they had written it).
+  - {name: business_date, data_type: date, description: The business day the posting belongs to, visible_to: [org_admin, ops_analyst, analyst]}
+  - {name: branch, data_type: varchar, description: The branch it was posted at, visible_to: [org_admin, ops_analyst, analyst]}
+  - {name: product, data_type: varchar, description: The product of the account it was posted to, visible_to: [org_admin, ops_analyst, analyst]}
+  - {name: currency, data_type: varchar, description: Its currency, visible_to: [org_admin, ops_analyst, analyst]}
+  - {name: amount, data_type: decimal, description: 'Its amount: positive in, negative out; 0 once reversed', visible_to: [org_admin, ops_analyst, analyst]}
+  - {name: kind, data_type: varchar, description: 'deposit, withdrawal, payment or trade', visible_to: [org_admin, ops_analyst]}
+  - name: counterparty
+    data_type: varchar
+    description: Who the money came from or went to -- withheld from operations
+    visible_to: [org_admin, ops_analyst]
+    masks:
+    - to: [org_admin]
+    - to: ['*']
+      mask: {type: constant, value: withheld}
+  - {name: status, data_type: varchar, description: booked or reversed, visible_to: [org_admin, ops_analyst]}
+  - {name: updated_at, data_type: timestamp, description: When this version was entered (UTC), visible_to: [org_admin, ops_analyst]}
+rls_rules:
+- {description: "Operations reads no posting to a staff account.", table_id: transactions, role_id: ops_analyst, filter: "product <> 'staff'"}
+views:
+# The end-of-day totals, built in the warehouse at each business day's close. One GROUP BY over
+# the ledger's one table: the build runs whole at the ledger and only the grouped rows land.
+# It declares no history of its own: it inherits the ledger's -- each total keyed on its day,
+# branch, product and currency, each version recorded at the close it was built at.
+- id: eod_totals
+  domain_id: banking
+  region: warehouse
+  materialize: true
+  calendar: bank
+  grain: daily
+  business_day_grain: true
+  # A posting entered up to an hour before the previous build's latest is read again.
+  allowed_lateness: 3600
+  enable_aggregates: true
+  description: Each business day's end-of-day totals by branch, product and currency -- what came
+    in, what went out and the net -- as reported at each close and as restated since
+  sql: >-
+    SELECT t.business_date, t.branch, t.product, t.currency,
+      concat_ws('|', CAST(t.business_date AS VARCHAR), t.branch, t.product, t.currency) AS group_key,
+      COUNT(*) AS posting_count,
+      SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END) AS credits,
+      SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END) AS debits,
+      SUM(t.amount) AS net_movement
+    FROM "banking"."transactions" AS t
+    GROUP BY t.business_date, t.branch, t.product, t.currency
+  columns:
+  - {name: business_date, data_type: date, description: The business day, visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: branch, data_type: varchar, description: The branch, visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: product, data_type: varchar, description: The product, visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: currency, data_type: varchar, description: The currency, visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: group_key, data_type: varchar, description: 'The day, branch, product and currency as one key: what the drill-down follows', visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: posting_count, data_type: bigint, description: How many postings are behind the total, visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: credits, data_type: decimal, description: What came in, visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: debits, data_type: decimal, description: What went out, visible_to: [org_admin, analyst, ops_analyst]}
+  - {name: net_movement, data_type: decimal, description: 'Credits less debits: the day''s net', visible_to: [org_admin, analyst, ops_analyst]}
+# The drill-down's side of the key: each posting with the key of the total it belongs to. A live
+# view: it reads the ledger where it is, under the ledger's row rules and masks.
+- id: ledger_postings
+  domain_id: banking
+  description: Every posting, with the key of the end-of-day total it belongs to
+  sql: >-
+    SELECT t.transaction_id, t.account_id, t.business_date, t.branch, t.product, t.currency,
+      concat_ws('|', CAST(t.business_date AS VARCHAR), t.branch, t.product, t.currency) AS group_key,
+      t.kind, t.amount, t.counterparty, t.status, t.updated_at
+    FROM "banking"."transactions" AS t
+  columns:
+  - {name: transaction_id, data_type: varchar, description: The transaction, visible_to: [org_admin, ops_analyst]}
+  - {name: account_id, data_type: varchar, description: The account it was posted to, visible_to: [org_admin, ops_analyst]}
+  - {name: business_date, data_type: date, description: The business day it belongs to, visible_to: [org_admin, ops_analyst]}
+  - {name: branch, data_type: varchar, description: The branch, visible_to: [org_admin, ops_analyst]}
+  - {name: product, data_type: varchar, description: The product, visible_to: [org_admin, ops_analyst]}
+  - {name: currency, data_type: varchar, description: The currency, visible_to: [org_admin, ops_analyst]}
+  - {name: group_key, data_type: varchar, description: The key of the end-of-day total it belongs to, visible_to: [org_admin, ops_analyst]}
+  - {name: kind, data_type: varchar, description: 'deposit, withdrawal, payment or trade', visible_to: [org_admin, ops_analyst]}
+  - {name: amount, data_type: decimal, description: 'Its amount: positive in, negative out; 0 once reversed', visible_to: [org_admin, ops_analyst]}
+  - {name: counterparty, data_type: varchar, description: Who the money came from or went to, visible_to: [org_admin, ops_analyst]}
+  - {name: status, data_type: varchar, description: booked or reversed, visible_to: [org_admin, ops_analyst]}
+  - {name: updated_at, data_type: timestamp, description: When this version was entered (UTC), visible_to: [org_admin, ops_analyst]}
+relationships:
+- {id: total-to-postings, alias: MADE_UP_OF, graphql_alias: postings, cardinality: one-to-many, source_table_id: view_eod_totals, source_column: group_key, target_table_id: view_ledger_postings, target_column: group_key}
+- {id: posting-to-account, alias: POSTED_TO, graphql_alias: account, cardinality: many-to-one, source_table_id: view_ledger_postings, source_column: account_id, target_table_id: accounts, target_column: account_id}

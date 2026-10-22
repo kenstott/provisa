@@ -67,8 +67,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -453,7 +454,12 @@ describe("TableReadView — Query shows every stored setting", () => {
     );
     fireEvent.click(screen.getByTestId("table-section-writes"));
     const grants = screen.getByTestId("write-grants-read");
-    for (const text of ["clerk", "Update", "status = 'placed'", "updated_at to the time of the write"])
+    for (const text of [
+      "clerk",
+      "Update",
+      "status = 'placed'",
+      "updated_at to the time of the write",
+    ])
       expect(grants).toHaveTextContent(text);
   });
 

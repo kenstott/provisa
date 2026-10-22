@@ -11,6 +11,7 @@ Cosa cambia rispetto a un resolver scritto a mano:
 - **Delegato.** Un filtro su una colonna arriva alla tua funzione come parametro quando lo chiedi.
 - **Servito ovunque.** La stessa funzione risponde a GraphQL, SQL (su HTTP, pgwire e Arrow Flight), Cypher (su HTTP e Bolt), gRPC, REST, JSON:API e MCP.
 
+
 I resolver di codice sono uno dei tre modi di scrivere la logica di business in Provisa. Vedi [La logica di business in Provisa](business-logic.md).
 
 ## Un primo resolver {: #an-example }
@@ -20,42 +21,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 Per servirlo:
 
 1. Aggiungi un'origine `python` e puntala al codice: un pacchetto PyPI, un commit Git, un caricamento o una cartella (vedi [Da dove viene il codice](#where-the-code-comes-from)).
-2. Salvala. Provisa installa il codice, lo legge e offre `churn_risk` come tabella con le colonne `score` e `reasons` e un parametro obbligatorio, `account_id`.
-3. Uno steward registra la tabella in un dominio, qui `accounts`, e la concede come qualsiasi altra.
+2. Salvala. Provisa installa il codice, lo legge e offre `regions` come tabella con le colonne `code` e `name`.
+3. Uno steward registra la tabella in un dominio, qui `sales`, e la concede come qualsiasi altra.
 
-Poi leggila. In GraphQL il parametro è un argomento di campo:
+Poi leggila in GraphQL:
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-In SQL è una condizione `_nf_`:
+Oppure in SQL:
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node funziona allo stesso modo, con tag JSDoc e tipi TypeScript: vedi [Node](#node).
@@ -83,11 +87,53 @@ Il tipo di riga dà le colonne:
 - La documentazione propria di un campo diventa la descrizione della sua colonna quando registri la tabella: un `Field(description=...)` di Pydantic, o un commento di documentazione su una proprietà TypeScript.
 - Un tipo di riga generico (`Any` o un `dict` in Python, `any`, `unknown` o un `Record` in TypeScript) non ha colonne da leggere. Provisa chiama la funzione una volta senza argomenti e propone colonne dalle righe restituite. Se la funzione ha un parametro obbligatorio non può essere chiamata così, e indichi tu i tipi delle colonne quando registri la tabella.
 
-I parametri della funzione diventano i parametri della tabella:
+### Parametri {: #parameters }
+
+I parametri di una funzione diventano i parametri della sua tabella. Questa valuta un account:
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+In GraphQL il parametro è un argomento di campo:
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+In SQL è una condizione `_nf_`:
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - Un parametro senza valore predefinito è obbligatorio. Una lettura che lo omette viene rifiutata prima che il tuo codice venga eseguito.
 - Un parametro con valore predefinito è facoltativo. Omettilo e si applica il tuo valore predefinito.
 - Uno steward può comunque rendere obbligatorio uno facoltativo.
+
+### Cosa arriva alla tua funzione {: #what-reaches-your-function }
+
+Una chiamata riceve gli argomenti della lettura e nient'altro della richiesta. Il valore di ogni parametro viene da un argomento di campo, da una condizione `_nf_`, da un filtro delegato a esso o dalle chiavi di un join. La tua funzione non vede mai chi chiede: identità e ruoli del chiamante restano a Provisa, che governa le righe che la tua funzione restituisce.
+
+La delega dei filtri si basa su questo. Un filtro nella query diventa il valore di un parametro, così la tua funzione può recuperare solo le righe richieste.
 
 ### Delega dei filtri {: #pushdown }
 

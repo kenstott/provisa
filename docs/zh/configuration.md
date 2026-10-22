@@ -912,32 +912,45 @@ views:
 
 ### 带历史的视图（时间旅行） {: #views-with-history-time-travel }
 
-物化视图可以保存其行的每一个版本，并按过去的某个时刻读取。 它声明如何保存这些版本，以及版本属于哪个键：
+表或物化视图可以保留其行的每个版本，并按过去的某个时间读取。为此你映射源的三列，三列要么全部声明，要么都不声明：
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| 字段 | 必填 | 说明 |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | 是 | `snapshot` 在每次刷新时追加整个结果；`delta` 只追加发生变化的部分 |
-| `bitemporal_key` | 是 | 版本所属的列 |
-| `bitemporal_source_time` | 否 | 保存每一行在数据源中发生变化的时刻的列：时间旅行据以读取的时钟 |
+| 字段 | 说明 |
+| ------- | ------------- |
+| `business_key` | 在各个版本之间标识同一事物的列，例如 `transaction_id`。一条记录的每个版本都共享这个键。 |
+| `valid_time` | 保存业务赋予该记录的日期的列：它何时商定、入账或生效。 |
+| `recorded_time` | 保存该记录这个版本何时录入或修改的列，例如 `updated_at`。 |
 
-**选择时钟。** 设置 `bitemporal_source_time` 时，版本按数据源自身的时间排序和读取：“截至上周二”指的是数据源中的上周二。不设置时，版本按 Provisa 落地每次变更的时间排序和读取，这跟随刷新节奏，而不是行在数据源中发生变化的时刻。两种选择都成立。加载时间适合刷新频繁的情况、数据源时间无关紧要的数据，以及本来就关心加载时间的读取，例如审计 Provisa 在什么时候持有什么数据。
+每一项都指向表或视图中已有的列。声明它们的视图须设置 `materialize: true`，由 Provisa 决定如何存储各个版本。`tables:` 下的条目接受同样的三个键。
 
-一个版本从它自己的时刻起有效，直到下一个版本的时刻。删除没有数据源变更时间，在 Provisa 记录它时生效。
+这两种时间在别处另有名称：记录时间（recorded time），在时态数据库文献中称为事务时间，在 SQL:2011 中称为系统时间；有效时间（valid time），在 SQL:2011 中称为应用时间，也叫生效日期。
+
+同一个版本的两种时间可以不同：
+
+| 示例 | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| 一笔 10月3日 的 100 元付款在 10月5日 更正为 120。 | 更正保留 10月3日。 | 更正得到 10月5日。 |
+| 10月3日 14:10 采集的现场测量值在 10月6日 录入。其中的一处笔误在 10月7日 修正。 | 10月3日 14:10，修正后保留。 | 10月6日。修正得到 10月7日。 |
+| 一笔交易在执行时入账，交易日期为 10月3日。10月4日 发现数量有误并作修改。 | 交易日期 10月3日，修改后保留。 | 10月3日 10:02。修改得到 10月4日。 |
+
+按 10月3日 记录的状态读取，这笔交易显示错误的数量；按现在所知读取，显示更正后的数量。
+
+一个版本从它的时间起生效，直到下一个版本的时间。删除在 Provisa 记录它时生效。
 
 **读取。** 普通读取返回每个键当前有效的版本。标头 `X-Provisa-As-Of` 按某一时刻或某一范围读取，范围以 ISO 8601 区间 `start/end` 给出：
 
@@ -973,6 +986,72 @@ X-Provisa-As-Recorded: 2026-10-01T00:00:00
 - 变更信号为 `native` 的 PostgreSQL：PostgreSQL 为每一行保存的提交时间（`pg_xact_commit_timestamp(xmin)`），由数据源自己的驱动在构建副本时读取。PostgreSQL 仅在 `track_commit_timestamp = on` 时保存它。启用它即可在原生信号下获得数据源时间；没有它时 `source_committed_at` 为空。开启或关闭该设置会重建副本。
 
 没有 Debezium 信封的 Kafka 主题不携带提交时间。
+
+### 按日历构建的视图 {: #views-on-a-calendar }
+
+物化视图可以从日历获取其计划：它在日历给出的每个窗口（一个营业日、一周、一个月、一个季度或一年）结束时构建，保留历史的视图会用该结束时间为每个版本加盖时间戳。配置在 `calendars:` 下声明其日历：
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| 字段 | 是否必需 | 说明 |
+| ------- | ---------- | ------------- |
+| `name` | 是 | 视图作为其 `calendar` 给出的名称 |
+| `version` | 是 | 版本标签。一个名称可以有多个版本，每个版本有各自的节假日。 |
+| `base_system` | 否 | `gregorian`（默认）、`fiscal` 或 `retail_445` |
+| `tz` | 否 | 日历中各天所在的 IANA 时区（默认 `UTC`） |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | 否 | 财年开始的月份和日期（默认 1 和 1） |
+| `retail_anchor` | 否 | 参考 4-4-5 年的第一天；`retail_445` 需要它 |
+| `week_start` | 否 | 一周开始的日子，0 = 星期一到 6 = 星期日（默认 0） |
+| `holidays` | 否 | 不是营业日的日期 |
+| `weekend` | 否 | 不是营业日的星期几，0 = 星期一（默认 `[5, 6]`） |
+| `day_close` | 否 | 营业日结束的本地时间，`"HH:MM"`。第 D 天于是从前一天结束时持续到 D 结束时。不设置时，一天在午夜结束。请加引号：YAML 会把不带引号的 `18:00` 读成数字。 |
+
+日历先于表存储，因此引用它的视图能找到它。`createCalendar` 变更会拒绝的条目，会以同样的 `invalid calendar: ...` 消息被拒绝，配置不会加载。模型导出会把每个日历写在 `calendars:` 下。
+
+视图用以下键指定其日历。`tables:` 下的条目以 `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` 和 `mv_expected_events` 接受它们。
+
+| 字段 | 说明 |
+| ------- | ------------- |
+| `calendar` | 日历的 `name` |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` 或 `annual`；第 n 个星期几，例如 `3WE`（第三个星期三）或 `LFR`（最后一个星期五）；或 RFC 5545 规则，例如 `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`：每日窗口只在营业日存在，因此周末或节假日不运行构建 |
+| `allowed_lateness` | 窗口结束后构建等待延迟提交的输入的秒数（默认 0） |
+| `expected_events` | 必须在窗口结束前保持新鲜的输入。省略时为视图读取的每个输入；`[]` 表示没有。 |
+
+引用了任何配置或 `createCalendar` 都未声明的日历的视图，会在事件循环启动时按名称被拒绝：`unknown calendar 'ledger'; registered: [...]`。
+
+**构建一个营业日。** `refreshMv` 变更的 `window` 参数（一个日期）会构建在该营业日结束时封存的视图：
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+构建追加的内容会以该日期的日历窗口结束时间加盖时间戳，与在结束时运行的构建本身所加的相同，因此按该结束时间的记录状态读取会返回它。以这种方式构建的带历史的视图，会重建自上次构建以来输入发生变化的日期，因此在下一天构建之前记录的更正会按其自身日期被采纳。未指定日历的视图会被拒绝（`schema.mv_window_needs_calendar`），其日历在某个日期没有窗口时（例如营业日粒度下的节假日）也会被拒绝。
 
 ### 只读查询视图 {: #query-only-views }
 

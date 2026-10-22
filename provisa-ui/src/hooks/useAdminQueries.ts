@@ -297,6 +297,7 @@ export interface CalendarSummary {
   weekStart: number;
   holidays: string[];
   weekend: number[];
+  dayClose: string | null; // REQ-2111: the local close of the day, "HH:MM"; null = midnight
 }
 const NO_CALENDARS: CalendarSummary[] = [];
 

@@ -68,12 +68,13 @@ async def _sql(client, sql: str, **headers):
     )
 
 
-def _view_input(amount: int, schema: str = "views") -> str:
+def _view_input(amount: int, recorded: str, schema: str = "views") -> str:
     """The view's input, with its one row's amount. It registers the view; with another amount
     and the schema the view is STORED under it changes it (same columns, so its history is
     kept). Registering a materialized view stores it under the schema it lands in, not the one
     written here, and an existing table is addressed by what is stored -- as the admin UI does,
-    which sends back the schema name it read (provisa-ui/src/pages/tables/helpers.ts)."""
+    which sends back the schema name it read (provisa-ui/src/pages/tables/helpers.ts). Its
+    recorded time is ``recorded`` (REQ-2109): each version is entered at its own."""
     visible = 'visibleTo: ["org_admin", "analyst", "developer"]'
     return f"""input: {{
         sourceId: "__derived__",
@@ -81,11 +82,15 @@ def _view_input(amount: int, schema: str = "views") -> str:
         schemaName: "{schema}",
         tableName: "bt_view",
         alias: "bt_view",
-        viewSql: "SELECT 1 AS id, {amount} AS amount",
+        viewSql: "SELECT 1 AS id, {amount} AS amount, TIMESTAMP '2026-01-01 00:00:00' AS booked_at, TIMESTAMP '{recorded}' AS entered_at",
         materialize: true,
-        mvBitemporalMode: "delta",
-        mvBitemporalKey: ["id"],
-        columns: [{{ name: "id", {visible} }}, {{ name: "amount", {visible} }}]
+        businessKey: ["id"],
+        validTime: "booked_at",
+        recordedTime: "entered_at",
+        columns: [
+            {{ name: "id", {visible} }}, {{ name: "amount", {visible} }},
+            {{ name: "booked_at", {visible} }}, {{ name: "entered_at", {visible} }}
+        ]
     }}"""
 
 
@@ -113,7 +118,9 @@ async def test_bitemporal_view_http_end_to_end(client):
     )
 
     reg = await _admin(
-        client, f"mutation {{ registerTable({_view_input(10)}) {{ success message }} }}"
+        client,
+        f"mutation {{ registerTable({_view_input(10, '2026-01-01 00:00:00')}) "
+        "{ success message } }",
     )
     assert reg["data"]["registerTable"]["success"], reg
     # REQ-1921: registered through the admin, the view starts as draft; released, it is built.
@@ -124,11 +131,15 @@ async def test_bitemporal_view_http_end_to_end(client):
 
     # (1) Persistence round-trip: the bitemporal config survives GraphQL -> DB -> read-back.
     tables = await _admin(
-        client, "query { tables { tableName schemaName mvBitemporalMode mvBitemporalKey } }"
+        client,
+        "query { tables { tableName schemaName businessKey validTime recordedTime } }",
     )
     row = next(t for t in tables["data"]["tables"] if t["tableName"] == "bt_view")
-    assert row["mvBitemporalMode"] == "delta"
-    assert row["mvBitemporalKey"] == ["id"]
+    assert (row["businessKey"], row["validTime"], row["recordedTime"]) == (
+        ["id"],
+        "booked_at",
+        "entered_at",
+    )
 
     # Rebuild so the view's read is wired to the reconstruction. The append log already holds the
     # first version: releasing the view built it. The refresh here finds nothing changed.
@@ -183,16 +194,14 @@ async def test_bitemporal_view_http_end_to_end(client):
     assert bad.status_code == 400, bad.text
     assert "as-of" in bad.text.lower() or "as_of" in bad.text.lower()
 
-    # (6) A second version. An instant after the first version and before the change is taken;
-    # then the view's row changes (same columns, so the log is kept and appended to) and the view
-    # is refreshed. The log now holds two versions of id 1, which is what bitemporal has to mean.
-    await asyncio.sleep(0.5)
-    between = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-    await asyncio.sleep(0.5)
+    # (6) A second version, recorded on 1 June: the view's row changes (same columns, so the log is
+    # kept and appended to) and the view is refreshed. The log now holds two versions of id 1,
+    # which is what bitemporal has to mean.
+    between = "2026-03-01T00:00:00"
     # The view is addressed by the schema it is stored under, read back above.
+    changed_input = _view_input(20, "2026-06-01 00:00:00", row["schemaName"])
     changed = await _admin(
-        client,
-        f"mutation {{ updateTable({_view_input(20, row['schemaName'])}) {{ success message }} }}",
+        client, f"mutation {{ updateTable({changed_input}) {{ success message }} }}"
     )
     assert changed["data"]["updateTable"]["success"], changed
     mv = state.mv_registry.get("view-bt_view")
@@ -215,8 +224,9 @@ async def test_bitemporal_view_http_end_to_end(client):
 
 
 def _corrected_input(amount: int, schema: str = "views") -> str:
-    """A view whose one row is valid from 30 September (its source time), with its amount: the
-    same row corrected keeps that source time."""
+    """A view whose one row is valid from 30 September, with its amount: the same row corrected
+    keeps that time. It is the view's valid time and, until reads move valid time to as_of,
+    its recorded time too: the clock its as_of reads on (REQ-2109)."""
     visible = 'visibleTo: ["org_admin", "analyst", "developer"]'
     return f"""input: {{
         sourceId: "__derived__",
@@ -226,9 +236,9 @@ def _corrected_input(amount: int, schema: str = "views") -> str:
         alias: "bt_corrected",
         viewSql: "SELECT 1 AS id, {amount} AS amount, TIMESTAMP '2026-09-30 00:00:00' AS valid_from",
         materialize: true,
-        mvBitemporalMode: "delta",
-        mvBitemporalKey: ["id"],
-        mvBitemporalSourceTime: "valid_from",
+        businessKey: ["id"],
+        validTime: "valid_from",
+        recordedTime: "valid_from",
         columns: [
             {{ name: "id", {visible} }}, {{ name: "amount", {visible} }},
             {{ name: "valid_from", {visible} }}

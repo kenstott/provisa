@@ -466,6 +466,7 @@ class Query:  # REQ-021, REQ-042
                 week_start=r["week_start"],
                 holidays=list(r["holidays"] or []),
                 weekend=list(r["weekend"] or [5, 6]),
+                day_close=r["day_close"],
             )
             for r in rows
         ]
@@ -1182,13 +1183,26 @@ class Query:  # REQ-021, REQ-042
         offers write operations (REQ-1924): an OpenAPI source's operations that are not GETs, a
         remote GraphQL source's mutations, a gRPC source's mutation methods. An OpenAPI source
         also offers each GET whose response declares no row schema. A database source
-        offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. Listing
+        offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. A code
+        source offers its ``@columns`` functions under schema ``code`` (REQ-2131). Listing
         them registers none: registration is the steward's curation step."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.executor.source_operation import OPERATION_SCHEMA, offered_operations
 
         source_type = (getattr(state, "source_types", None) or {}).get(source_id, "")
+        from provisa.codesource.source import CODE_SOURCE_TYPES
+
+        if source_type in CODE_SOURCE_TYPES:
+            # REQ-2131: a code source offers its @columns functions, each a batch column transform.
+            from provisa.codesource.columns import SCHEMA, offered
+
+            if schema_name != SCHEMA:
+                return []
+            return [
+                AvailableTableType(name=name, comment=comment)
+                for name, comment in await offered(state, source_id)
+            ]
         operation_schema = OPERATION_SCHEMA.get(source_type)
         if operation_schema is None:
             from provisa.api.admin.introspect import native_routines
@@ -1360,11 +1374,21 @@ class Query:  # REQ-021, REQ-042
     # ── Admin: Materialized Views ──
 
     @strawberry.field
+    def naming_conventions(self) -> list[str]:  # REQ-416
+        """The naming conventions the server takes for a table, a source or the deployment: the
+        one list the admin offers."""
+        from provisa.compiler.naming import PRESET_CONVENTIONS
+
+        return list(PRESET_CONVENTIONS)
+
+    @strawberry.field
     async def mv_list(self, info: StrawberryInfo) -> list[MVType]:
         """List all materialized views with status."""
         require_capability(info, "observability")
         from provisa.api.app import state
+        from provisa.mv.bitemporal_capture import logged_table_id
 
+        names = {row["id"]: row["table_name"] for row in state.tables}
         return [
             MVType(
                 id=mv.id,
@@ -1376,6 +1400,8 @@ class Query:  # REQ-021, REQ-042
                 last_refresh_at=mv.last_refresh_at,
                 row_count=mv.row_count,
                 last_error=mv.last_error,
+                allowed_lateness=mv.allowed_lateness,
+                version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
             for mv in state.mv_registry._mvs.values()
         ]

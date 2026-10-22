@@ -20,42 +20,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 提供服務的步驟：
 
 1. 新增一個 `python` 數據來源並指向程式碼：PyPI 套件、Git 提交、上載檔案或資料夾（見[程式碼從哪裡來](#where-the-code-comes-from)）。
-2. 儲存。Provisa 安裝並讀取程式碼，把 `churn_risk` 作為一張表提供出來，包含 `score` 和 `reasons` 兩欄和一個必填參數 `account_id`。
-3. 數據管家在一個網域（這裡是 `accounts`）中註冊該表，並像其他表一樣授予存取權限。
+2. 儲存。Provisa 安裝並讀取程式碼，把 `regions` 作為一張表提供出來，包含 `code` 和 `name` 兩欄。
+3. 數據管家在一個網域（這裡是 `sales`）中註冊該表，並像其他表一樣授予存取權限。
 
-然後讀取它。在 GraphQL 中，參數是欄位參數：
+然後在 GraphQL 中讀取它：
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-在 SQL 中，它是一個 `_nf_` 條件：
+或者在 SQL 中：
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node 的用法相同，使用 JSDoc 標籤和 TypeScript 類型：見 [Node](#node)。
@@ -83,11 +86,53 @@ Provisa 讀取程式碼本身的宣告：Python 中的 docstring 和類型提示
 - 註冊表時，欄位本身的文件會成為其欄的描述：Pydantic 的 `Field(description=...)`，或 TypeScript 屬性上的文件註解。
 - 寬鬆的行類型（Python 中的 `Any` 或 `dict`，TypeScript 中的 `any`、`unknown` 或 `Record`）沒有可讀取的欄。Provisa 會不帶參數呼叫函數一次，並根據返回的行建議欄。如果函數有必填參數，就無法這樣呼叫，你需要在註冊表時自行填寫欄類型。
 
-函數的參數成為表的參數：
+### 參數 {: #parameters }
+
+函數的參數成為其表的參數。下面這個函數為一個帳戶評分：
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+在 GraphQL 中，參數是欄位參數：
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+在 SQL 中，它是一個 `_nf_` 條件：
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - 沒有預設值的參數是必填的。省略它的讀取會在程式碼執行前被拒絕。
 - 有預設值的參數是選填的。省略時使用你的預設值。
 - 數據管家仍可把選填參數設為必填。
+
+### 函數能收到甚麼 {: #what-reaches-your-function }
+
+一次呼叫只收到讀取的參數，請求中的其他內容一概收不到。每個參數的值來自欄位參數、`_nf_` 條件、下推給它的篩選條件或 join 的鍵。你的函數永遠看不到是誰在提問：呼叫者的身份和角色留在 Provisa，由它管治函數傳回的列。
+
+下推正是建立在這一點之上。查詢中的篩選條件成為某個參數的值，因此函數可以只取所請求的列。
 
 ### 篩選下推 {: #pushdown }
 

@@ -203,6 +203,7 @@
     "accountEmailHint": "Почта для входа в Atlassian; токен API принадлежит этому аккаунту.",
     "apiToken": "Токен API",
     "apiTokenHint": "Создаётся на id.atlassian.com, Security, API tokens. Хранится в хранилище секретов.",
-    "siteAddressInvalid": "Введите полный адрес сайта, начинающийся с https://"
+    "siteAddressInvalid": "Введите полный адрес сайта, начинающийся с https://",
+    "namingInherit": "Наследовать (глобально)"
   }
 }

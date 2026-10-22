@@ -200,11 +200,13 @@ def build_through_a_stand_in_pipeline(monkeypatch, physical=None) -> list:
 
     built: list = []
 
-    async def _plan(_state, mv):
+    async def _plan(_state, mv, *, route_hint=None):
+        # route_hint: a shape read asks for the engine plan (governed_build.view_shape_sql); the
+        # stand-in's plan is always the engine's.
         built.append(mv)
         sql = physical(mv) if physical is not None else mv.sql
         assert sql is not None, f"{mv.id}: a stand-in plan needs the engine SQL it would run"
-        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None)
+        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None, columns=None)
 
     async def _resident(_state, _plan):
         return None

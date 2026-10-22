@@ -20,42 +20,45 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+class Region:
+    code: str
+    name: str
 
 
-def churn_risk(account_id: str) -> list[Risk]:
-    """Churn risk of one account.
+def regions() -> list[Region]:
+    """Sales regions.
 
     @table
     """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    return [
+        Region(code="emea", name="Europe, Middle East and Africa"),
+        Region(code="amer", name="Americas"),
+        Region(code="apac", name="Asia Pacific"),
+    ]
 ```
 
 提供服务的步骤：
 
 1. 添加一个 `python` 数据源并指向代码：PyPI 包、Git 提交、上传文件或文件夹（见[代码从哪里来](#where-the-code-comes-from)）。
-2. 保存。Provisa 安装并读取代码，把 `churn_risk` 作为一张表提供出来，包含 `score` 和 `reasons` 两列和一个必填参数 `account_id`。
-3. 数据管家在一个域（这里是 `accounts`）中注册该表，并像其他表一样授予访问权限。
+2. 保存。Provisa 安装并读取代码，把 `regions` 作为一张表提供出来，包含 `code` 和 `name` 两列。
+3. 数据管家在一个域（这里是 `sales`）中注册该表，并像其他表一样授予访问权限。
 
-然后读取它。在 GraphQL 中，参数是字段参数：
+然后在 GraphQL 中读取它：
 
 ```graphql
 {
-  churnRisk(account_id: "A-1042") {
-    score
-    reasons
+  regions {
+    code
+    name
   }
 }
 ```
 
-在 SQL 中，它是一个 `_nf_` 条件：
+或者在 SQL 中：
 
 ```sql
-SELECT score, reasons
-FROM accounts.churn_risk
-WHERE _nf_account_id = 'A-1042'
+SELECT code, name
+FROM sales.regions
 ```
 
 Node 的用法相同，使用 JSDoc 标签和 TypeScript 类型：见 [Node](#node)。
@@ -83,11 +86,53 @@ Provisa 读取代码自身的声明：Python 中的 docstring 和类型提示，
 - 注册表时，字段自身的文档会成为其列的描述：Pydantic 的 `Field(description=...)`，或 TypeScript 属性上的文档注释。
 - 宽松的行类型（Python 中的 `Any` 或 `dict`，TypeScript 中的 `any`、`unknown` 或 `Record`）没有可读取的列。Provisa 会不带参数调用函数一次，并根据返回的行建议列。如果函数有必填参数，就无法这样调用，你需要在注册表时自己填写列类型。
 
-函数的参数成为表的参数：
+### 参数 {: #parameters }
+
+函数的参数成为其表的参数。下面这个函数为一个账户打分：
+
+```python
+@dataclass
+class Risk:
+    score: float
+    reasons: list[str]
+
+
+def churn_risk(account_id: str) -> list[Risk]:
+    """Churn risk of one account.
+
+    @table
+    """
+    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+```
+
+在 GraphQL 中，参数是字段参数：
+
+```graphql
+{
+  churnRisk(account_id: "A-1042") {
+    score
+    reasons
+  }
+}
+```
+
+在 SQL 中，它是一个 `_nf_` 条件：
+
+```sql
+SELECT score, reasons
+FROM accounts.churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
 
 - 没有默认值的参数是必填的。省略它的读取会在代码运行前被拒绝。
 - 有默认值的参数是可选的。省略时使用你的默认值。
 - 数据管家仍可以把可选参数设为必填。
+
+### 函数能收到什么 {: #what-reaches-your-function }
+
+一次调用只收到读取的参数，请求中的其他内容一概收不到。每个参数的值来自字段参数、`_nf_` 条件、下推给它的过滤条件或 join 的键。你的函数永远看不到是谁在提问：调用者的身份和角色留在 Provisa，由它治理函数返回的行。
+
+下推正是建立在这一点之上。查询中的过滤条件成为某个参数的值，因此函数可以只取所请求的行。
 
 ### 过滤下推 {: #pushdown }
 
