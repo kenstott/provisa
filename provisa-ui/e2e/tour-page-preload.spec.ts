@@ -25,7 +25,7 @@ test.describe.configure({ timeout: 180_000 });
 // The guided tour hops between surfaces faster than a step's own destination can pay its
 // first-visit chunk fetch/data load, which used to show a step's popover over a page still
 // stuck on its own "Loading…" state (observed on both /tables and /relationships). The core tour
-// has been seen, so the navbar button opens the Deep Dives menu and a card runs its topic.
+// registers a table, so its /tables step is the one watched here.
 test("tour does not show a step's popover over a page still loading its data", async ({ page }) => {
   // Delay the TablesPage data query so its loading window is long enough to observe — without
   // this, the admin GraphQL resolver and route chunk are both already warm in a dev/test run
@@ -39,9 +39,9 @@ test("tour does not show a step's popover over a page still loading its data", a
     await route.continue();
   });
 
-  // A viewer who has not seen the tour: its button starts the core tour.
-  await page.goto("/sources");
-  await page.locator(".navbar-tour-btn").click();
+  // ?tour=1 starts the core tour from its top. The tour button would open the Deep Dives menu: the
+  // coverage fixture marks every page's tour as seen, so the welcome offer stays out of the way.
+  await page.goto("/sources?tour=1");
 
   const nextBtn = page.locator(".driver-popover-next-btn");
 
@@ -50,9 +50,12 @@ test("tour does not show a step's popover over a page still loading its data", a
   // has resolved and `highlight()` has actually run, so waiting on the label (not just "a popover
   // is visible") guarantees each click lands on the step it's meant to. The first label has the
   // larger budget: reaching it means the topic's prefetch and first route chunk have been paid.
+  // A step that acts before it shows (stepBuildSource saves a source live) pays a save round trip,
+  // and so has the first step's budget.
   for (let n = 1; n < TABLES_POSITION; n++) {
+    const acts = TOUR_STEPS.find((s) => s.key === TOUR_SCOPES.core[n - 1])!.actions !== undefined;
     await expect(nextBtn).toHaveText(`Next (${n}/${CORE_TOTAL})`, {
-      timeout: n === 1 ? 60000 : 5000,
+      timeout: n === 1 || acts ? 60000 : 5000,
     });
     await nextBtn.click(); // the last click enters the /tables step
   }
@@ -82,7 +85,9 @@ test("tour does not show a step's popover over a page still loading its data", a
   );
   // waitForFunction resolves only on a truthy value, so this is the object, never null.
   const { loading } = (await state.jsonValue()) as { loading: boolean };
-  expect(loading, "tour popover appeared while TablesPage was still on its loading state").toBe(false);
+  expect(loading, "tour popover appeared while TablesPage was still on its loading state").toBe(
+    false,
+  );
 
   await expect(page).toHaveURL(/\/tables/);
   await expect(page.locator('[data-tour="tables-add"]')).toBeVisible();

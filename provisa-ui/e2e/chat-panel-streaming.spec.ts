@@ -84,7 +84,10 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
    * when the model calls a CLIENT tool (useMcpChat.ts's loop: streamOnce returns `awaiting`, the
    * tool runs in the browser, and the next round streams into a fresh beginAssistantTurn()
    * placeholder) — present_choice is the one that waits on the user, so the test answers it between
-   * the rounds. The regression was round two's text accumulating onto round one's bubble.
+   * the rounds. The regression was round two's text accumulating onto round one's bubble. Text the
+   * model writes beside a tool call is never shown (chat.py: a round's text is sent only when the
+   * round ends without a call), so round one shows only its question, and round two's text is the
+   * only round text on screen.
    */
   test("each round of a client-tool turn streams into its own message bubble", async ({ page }) => {
     await page.goto("/sources");
@@ -110,7 +113,11 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
     // The prompt bubble names both sentences; only the assistant's bubbles are rounds.
     const PROMPT = "Follow these steps exactly";
     const roundOne = messages.filter({ hasText: "ROUND-ONE" }).filter({ hasNotText: PROMPT });
-    await expect(roundOne).toHaveCount(1);
+    // Round one's sentence was written beside its present_choice call, so it is not shown; the
+    // question is.
+    await expect(roundOne).toHaveCount(0);
+    const question = messages.filter({ hasText: "Proceed?" }).filter({ hasNotText: PROMPT });
+    await expect(question).toHaveCount(1);
     const beforeAnswer = await messages.count();
 
     await choice.getByRole("button", { name: "Yes", exact: true }).click();
@@ -118,14 +125,13 @@ test.describe("ChatPanel streaming does not freeze mid-reply", () => {
 
     const roundTwo = messages.filter({ hasText: "ROUND-TWO" }).filter({ hasNotText: PROMPT });
     await expect(roundTwo).toHaveCount(1);
-    // Round two did not land on round one's bubble, and round one's bubble kept its own text.
-    await expect(roundOne).toHaveCount(1);
-    await expect(roundOne).not.toContainText("ROUND-TWO");
+    // Round two did not land on an earlier bubble: the question kept its own text, and round one's
+    // hidden sentence did not surface with it.
+    await expect(question).not.toContainText("ROUND-TWO");
+    await expect(roundTwo).not.toContainText("ROUND-ONE");
     // Round two's bubble came after the answer: a new message, not an earlier one rewritten.
     const texts = await messages.allTextContents();
-    const oneAt = texts.findIndex((t) => t.includes("ROUND-ONE") && !t.includes(PROMPT));
     const twoAt = texts.findIndex((t) => t.includes("ROUND-TWO") && !t.includes(PROMPT));
     expect(twoAt).toBeGreaterThanOrEqual(beforeAnswer);
-    expect(twoAt).toBeGreaterThan(oneAt);
   });
 });
