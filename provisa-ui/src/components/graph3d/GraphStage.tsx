@@ -178,7 +178,12 @@ function GraphLegend({ graph }: { graph: GraphData }) {
         <span key={key} data-testid={`legend-${key}`}>
           <i
             className={`g3d-shape g3d-shape-${l.shape}`}
-            style={{ background: `var(--p3d-${l.colour})` }}
+            // A ring's colour is its border; every other shape is filled.
+            style={
+              l.shape === "torus"
+                ? { borderColor: `var(--p3d-${l.colour})` }
+                : { background: `var(--p3d-${l.colour})` }
+            }
           />
           {t(l.name)}
         </span>
