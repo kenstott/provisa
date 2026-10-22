@@ -46678,8 +46678,11 @@
     ADMISSION RULE (settled): what any consuming surface may offer is ONE predicate, core.glossary.live_term_ids,
     shared by the repository and the exporter. A term is LIVE only when it is (1) IN SERVICE: neither retired (a curator withdrew it) nor deprecated (the derivation lost its last column); (2) DEFINED: a term derived from a column name is a token, not a meaning, so an undefined term is a PROPOSAL
     awaiting a curator, never vocabulary an agent may ground a question on; and (3) GROUNDED: connected, over in-service terms, to a term holding a physical ref. The glossary is an entry point INTO the data,
-    so every term chain must terminate at a physical column: an abstract term wired to nothing physical
-    names no data and is not offered. Groundedness is a property of the term graph, not of any one row,
+    [SUPERSEDED by REQ-1387, 2026-10-22 -- a chain may also end at a
+    table, which a term now grounds with a reference that names no column (REQ-2141); GROUNDED TO A
+    TABLE below. Kept here for history; do not implement against it.] so every term chain must
+    terminate at a physical column: an abstract term wired to nothing physical
+    names no data and is not offered. [END SUPERSEDED BLOCK] Groundedness is a property of the term graph, not of any one row,
     so it is computed server-side and rides the admin payload as a `live` flag rather than being re-derived
     in the UI. Connectivity is STRUCTURAL and ignores definitions — an undefined rooted term still CONDUCTS
     grounding to its neighbours, it is merely not offered itself — but out-of-service terms do not conduct,
@@ -46722,7 +46725,10 @@
     (REQ-003/005/042) — and that it carries its own rate and query-complexity ceilings (REQ-369/1174).
     The card is the single explanation style: the NL page and the MCP explorer render their control explanations
     through the same component rather than as Mantine tooltips, with the control itself as the hover target
-    so the row keeps its shape.'
+    so the row keeps its shape. (Amended 2026-10-22, GROUNDED TO A TABLE:) A term is GROUNDED when it reaches, over in-service
+    terms, a term bound to a column or a table: a term reference with no column grounds its term in
+    the table itself (REQ-2141), and live_term_ids counts it as grounded. An abstract term wired to
+    nothing physical still names no data and is not offered.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -86889,7 +86895,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     /admin/ontology, and the docs. The view described here is that page's graph. The API path
     /admin/glossary and the identifiers in code (glossary_read, glossary_rw, the glossary tables and
     meta tables) keep their names for now. (Amended 2026-10-22, OWL ROLES:) Each term's node carries
-    a badge naming its OWL role, as REQ-2140 derives it from what the term grounds: Class (grounded
+    a badge naming its OWL role, as REQ-2141 derives it from what the term grounds: Class (grounded
     in a table or view), Property (grounded in a column; datatype or object property), or Concept
     (grounded in nothing, the abstract terms). A class term grounded in several tables with no
     declared same-entity identity between them is flagged on the page as a curation gap. The page
@@ -87313,7 +87319,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2138
   - REQ-2056
   target: "2027-Q1"
-- id: REQ-2140
+- id: REQ-2141
   status: proposed
   since: 2026-10
   group: 3. Source Registration & Data Modeling
