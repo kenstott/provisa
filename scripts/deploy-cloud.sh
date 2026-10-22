@@ -1026,6 +1026,30 @@ verify_sandbox_demo() {
     -H "x-org-provisa: $org" "$SITE/sandboxes/closing"
 }
 
+# The coordinator, which holds the control plane the sandbox reset changes, up and answering. It
+# powers itself off when idle (its front door starts it on a visitor's hit); a reset that reached
+# for its database then timed out. Started as deploy_sandbox_vm starts the sandbox VM, then
+# awaited on /health, which the API answers only once its lifespan, database included, is up.
+ensure_coordinator() {
+  local status
+  status="$(gcloud compute instances describe "$NODE" --zone "$ZONE" --project "$PROJECT" \
+    --format='value(status)')"
+  if [ "$status" != "RUNNING" ]; then
+    echo "== coordinator $NODE: $status; starting it for the sandbox reset"
+    gcloud compute instances start "$NODE" --zone "$ZONE" --project "$PROJECT" >/dev/null
+  fi
+  # A cold coordinator boots the VM, its database and the API's lifespan (~115s in engine-wake
+  # alone): longer than verify_api's budget after a plain restart.
+  local i code
+  for i in $(seq 1 300); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/health") || code="unreachable"
+    [ "$code" = "200" ] && { echo "== coordinator: $SITE/health -> 200 after $((i * 2))s"; return 0; }
+    sleep 2
+  done
+  echo "coordinator $NODE: $SITE/health -> $code (never reached 200 in 600s)" >&2
+  exit 1
+}
+
 deploy_sandbox_vm() {
   local status
   status="$(gcloud compute instances describe "$SANDBOX_NODE" --zone "$ZONE" --project "$PROJECT" \
@@ -1033,6 +1057,10 @@ deploy_sandbox_vm() {
   if [ -z "$status" ]; then
     echo "== sandbox VM: none ($SANDBOX_NODE); the tier runs on $NODE"
     return
+  fi
+  # Asked of the coordinator before NODE names the sandbox VM below.
+  if [ -f "$STAGE/api.tgz" ] || [ "$TARGET" = sandbox-reset ]; then
+    ensure_coordinator
   fi
   if [ "$status" != "RUNNING" ]; then
     echo "== sandbox VM: $status; starting it for the push"
