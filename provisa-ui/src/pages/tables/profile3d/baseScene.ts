@@ -123,6 +123,9 @@ export abstract class BaseScene<H> {
   protected abstract disposeContent(): void;
   /** Called once per frame before rendering. */
   protected onFrame(): void {}
+  /** Called once per frame after the labels are placed, before rendering (REQ-2128: a scene may
+   * hide labels that would collide). */
+  protected onLabelsPlaced(): void {}
 
   protected rampColor(t: number): THREE.Color {
     const x = Math.min(1, Math.max(0, t)) * 4;
@@ -319,6 +322,7 @@ export abstract class BaseScene<H> {
         (l.rotate ? ` rotate(${l.rotate}deg)` : "") +
         (l.alignEnd ? " translate(-100%,-50%)" : "");
     }
+    this.onLabelsPlaced();
     this.renderer.render(this.scene, this.camera);
   };
 }

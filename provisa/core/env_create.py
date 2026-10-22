@@ -46,6 +46,23 @@ if TYPE_CHECKING:
     from provisa.core.database import Database
 
 
+class HistoryBranchWithoutEnvironment(Exception):
+    """REQ-1554: the org's model repository already holds a branch named ``name`` and no
+    environment stands behind it. A branch is the history of exactly one environment and is never
+    reassigned, so a new environment of that name is refused rather than given another's history."""
+
+    code = "environments.branch_without_environment"
+
+    def __init__(self, org_id: str, name: str) -> None:
+        self.org_id = org_id
+        self.name = name
+        super().__init__(
+            f"environment name {name!r} already has a model-history branch with no environment "
+            "behind it; the branch must be removed from the org's model repository, or another "
+            "name chosen, before an environment of this name can be created"
+        )
+
+
 def _schema_sql() -> str:
     """The tenant DDL a new environment's schema is built from."""
     path = Path(__file__).parent / "schema.sql"
@@ -112,6 +129,7 @@ async def create_environment(
         data_mode=data_mode,
         mutation_handling=mutation_handling,
     )
+    owns_branch = False
     try:
         await provision_org(
             tenant_pool,
@@ -169,11 +187,18 @@ async def create_environment(
         # position is recorded against that same sha: the model was just copied, so an identical
         # tree writes no commit (REQ-1526) and the write-through would otherwise leave the
         # environment standing nowhere while its branch stood somewhere.
-        from provisa.core.env_repo import ensure_repo, start_branch, write_through
+        from provisa.core.env_repo import BranchExists, ensure_repo, start_branch, write_through
         from provisa.core.env_store import set_origin, set_position
         from provisa.core.environments import org_schema
 
-        started = start_branch(ensure_repo(org_id), name, from_env)
+        try:
+            started = start_branch(ensure_repo(org_id), name, from_env)
+        except BranchExists as exc:
+            # The reservation above refuses a name an environment holds, so this branch has none.
+            raise HistoryBranchWithoutEnvironment(org_id, name) from exc
+        # From here a branch of this name is this creation's: its first ref (just written, or the
+        # write-through's first commit below) goes with it if the creation fails.
+        owns_branch = True
         if started is not None:
             # No stamp: the copied model is projected just below, and that write-through records
             # the stamp when the tree it reads equals this one.
@@ -198,8 +223,13 @@ async def create_environment(
     except BaseException:
         # Compensating rollback, mirroring provision_org's own: an environment that exists and
         # holds part of a model is worse than one that was never created. The failure is re-raised,
-        # never swallowed.
+        # never swallowed. The branch this creation started goes too: left, it is the history of
+        # no environment, and the next creation of the name is refused by it (REQ-1554).
         await deprovision_org(tenant_pool, org_id, env=name)
         await forget_env(admin_db, org_id, name)
+        if owns_branch:
+            from provisa.core.env_repo import delete_branch
+
+            delete_branch(org_id, name)
         raise
     return report

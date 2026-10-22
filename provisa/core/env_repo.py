@@ -83,6 +83,14 @@ class RepositoryError(Exception):
     """The repository cannot answer the question asked of it."""
 
 
+class BranchExists(RepositoryError):
+    """``env`` already has a branch, which :func:`start_branch` never moves."""
+
+    def __init__(self, env: str) -> None:
+        self.env = env
+        super().__init__(f"{env!r} already has a branch; it cannot be started again")
+
+
 def repo_path(org_id: str) -> Path:
     """The org's bare repository, in its folder on the node (REQ-1992), refused by name while
     that folder is not ready. Embedded, because REQ-294 makes the distribution airgap-capable: an
@@ -206,7 +214,7 @@ def start_branch(repo: Repo, env: str, from_env: str) -> str | None:
     """
     ref = _branch_ref(env)
     if repo.refs.read_ref(ref) is not None:
-        raise RepositoryError(f"{env!r} already has a branch; it cannot be started again")
+        raise BranchExists(env)
     head = repo.refs.read_ref(_branch_ref(from_env))
     if head is None:
         return None

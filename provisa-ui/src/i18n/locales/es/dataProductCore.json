@@ -1,0 +1,28 @@
+{
+  "dataProductCore": {
+    "error": "No se pudo leer el producto de datos: {{error}}",
+    "tags": "Etiquetas",
+    "tagsEmpty": "Sin etiquetas.",
+    "profiles": "Perfiles",
+    "profilesHint": "Las tablas de resultados de perfil registradas para cada tabla miembro; abra una para leer sus resultados.",
+    "profilesEmpty": "Ninguna tabla miembro se ha perfilado.",
+    "scans": "comprueba {{table}}",
+    "aProduct": "producto de datos",
+    "direct": "directo",
+    "hops_one": "{{count}} salto",
+    "hops_other": "{{count}} saltos",
+    "paths_one": "{{count}} ruta",
+    "paths_other": "{{count}} rutas",
+    "through": "a través de {{tables}}",
+    "upstream": "Aguas arriba",
+    "downstream": "Aguas abajo",
+    "via": "mediante {{vias}}",
+    "metaQueries": "Consultas",
+    "metaQueriesHint": "Las lecturas que este panel ejecuta en el dominio meta, como usted. Copie una o ábrala en su explorador: la respuesta es la misma.",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copyQuery": "Copiar la consulta {{surface}}",
+    "openQuery": "Abrir la consulta {{surface}} en su explorador",
+    "unreadable": "Su rol no puede leer los productos de datos en el dominio meta."
+  }
+}

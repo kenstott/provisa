@@ -363,8 +363,35 @@ def build_federation_graph_incremental(
     if _LAST_FEDERATION.get("key") == top_key:
         return _LAST_FEDERATION["result"]  # type: ignore[return-value]
 
+    subdags = federation_subdags(
+        views,
+        commands=commands,
+        materialized_relations=mats,
+        extra_relations=extra_relations,
+        dialect=dialect,
+    )
+    result = merge_graphs([g for _, g in subdags])
+    _LAST_FEDERATION["key"] = top_key
+    _LAST_FEDERATION["result"] = result
+    return result
+
+
+def federation_subdags(
+    views: list[tuple[str, str]],
+    *,
+    commands: dict[str, dict] | None = None,
+    materialized_relations: set[str] | None = None,
+    extra_relations: list[str] | None = None,
+    dialect: str = "postgres",
+) -> list[tuple[str, LineageGraph]]:
+    """Each view's sub-DAG as the federation graph merges it: (view relation, its graph), its
+    references requalified and its outputs keyed ``<view relation>.<column>`` (REQ-1161). The
+    federation graph is their union; the lineage edge table (REQ-2129) folds each one on its own,
+    so the two never differ. A view whose SQL will not parse has none."""
+    mats = materialized_relations or set()
+    fp = _commands_fingerprint(commands)
     bare_to_full = _bare_to_full([r for r, _ in views], extra_relations or [])
-    graphs: list[LineageGraph] = []
+    out: list[tuple[str, LineageGraph]] = []
     for relation, sql in views:
         base = _cached_subdag(sql, dialect, commands, fp)
         if base is None:
@@ -373,11 +400,8 @@ def build_federation_graph_incremental(
         requalify_relations(g, bare_to_full)
         qualify_outputs(g, relation)
         mark_materialized(g, mats)
-        graphs.append(g)
-    result = merge_graphs(graphs)
-    _LAST_FEDERATION["key"] = top_key
-    _LAST_FEDERATION["result"] = result
-    return result
+        out.append((relation, g))
+    return out
 
 
 def clear_federation_cache() -> None:

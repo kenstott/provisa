@@ -67,6 +67,11 @@ WAKE_HOLD_SECONDS = 110  # raw-TCP clients: hold until boot completes or they gi
 STATUS_CACHE_TTL = 10.0
 START_DEBOUNCE_SECONDS = 30.0
 SPLICE_BUF = 65536
+#: How long a spliced connection may carry no byte either way before the proxy drops it. It must
+#: outlast the slowest request the app answers in one go: the UI server's own proxy timeout
+#: (ui.proxy_timeout, REQ-1448: 480 s, the engine wake a first query may wait on) and a demo
+#: sandbox's open. At 300 s it cut those first, and the visitor saw "Server disconnected".
+SPLICE_IDLE_SECONDS = 600
 DRAIN_TIMEOUT = 0.5  # bound on reading the rest of a request before closing; see _drain
 DRAIN_LIMIT = 1 << 20
 
@@ -258,7 +263,7 @@ def _splice(client: socket.socket, backend: socket.socket, activity: bool) -> No
         backend.setblocking(True)
         pairs = {client: backend, backend: client}
         while True:
-            readable, _, errored = select.select(list(pairs), [], list(pairs), 300)
+            readable, _, errored = select.select(list(pairs), [], list(pairs), SPLICE_IDLE_SECONDS)
             if errored or not readable:
                 return
             for sock in readable:

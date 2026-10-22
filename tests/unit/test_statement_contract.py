@@ -142,7 +142,8 @@ def _served(sql: str = _UPSERT, name: str = "embed_tickets") -> dict:
 def test_a_commands_write_enters_the_lineage_graph_naming_it():
     from provisa.lineage.commands import COMMAND_WRITE, command_write_graphs
 
-    (graph,) = command_write_graphs(_served())
+    ((name, graph),) = command_write_graphs(_served())
+    assert name == "embed_tickets"
     edges = {
         (e.source, e.target): [o for o in e.ops if o.kind == COMMAND_WRITE] for e in graph.edges
     }
