@@ -54,6 +54,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { PageLoading } from "../components/PageLoading";
 import { FormFooter } from "../components/form/FormLayout";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { matchesQuery } from "../lib/searchItems";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
@@ -366,19 +367,13 @@ export function DataProductsPage() {
   );
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredProducts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return q
-      ? dataProducts.filter(
-          (p) =>
-            p.id.toLowerCase().includes(q) ||
-            p.name.toLowerCase().includes(q) ||
-            p.domainId.toLowerCase().includes(q) ||
-            (p.ownerRole ?? "").toLowerCase().includes(q) ||
-            p.purpose.toLowerCase().includes(q),
-        )
-      : dataProducts;
-  }, [dataProducts, search]);
+  const filteredProducts = useMemo(
+    () =>
+      dataProducts.filter((p) =>
+        matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search),
+      ),
+    [dataProducts, search],
+  );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
       { key: "id", label: t("dataProductsTab.colId"), sortValue: (p) => p.id },

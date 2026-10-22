@@ -12,7 +12,7 @@
 // reloads the list, and selects the new view's row.
 
 import { describe, it, expect, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { render } from "../test-utils/render";
 import type { RegisteredTable } from "../types/admin";
@@ -205,6 +205,36 @@ const REGISTRATION: Registration = {
   pagingCeilingRows: null,
   rowRules: [],
 };
+
+describe("the Tables list's search", () => {
+  it("lists the tables matching any word of the search", async () => {
+    const before = TABLES.tables;
+    TABLES.tables = ["orders", "customers", "invoices"].map((name, i) =>
+      view(20 + i, name, {
+        sourceId: "sales-pg",
+        domainId: "sales",
+        schemaName: "public",
+        viewSql: null,
+      }),
+    );
+    try {
+      render(<TablesPage />, { initialEntries: ["/tables"] });
+      await waitFor(() =>
+        expect(document.querySelector('[data-table-row="sales-pg.customers"]')).not.toBeNull(),
+      );
+      fireEvent.change(screen.getByTestId("filter-input"), {
+        target: { value: "orders invoices" },
+      });
+      await waitFor(() =>
+        expect(document.querySelector('[data-table-row="sales-pg.customers"]')).toBeNull(),
+      );
+      expect(document.querySelector('[data-table-row="sales-pg.orders"]')).not.toBeNull();
+      expect(document.querySelector('[data-table-row="sales-pg.invoices"]')).not.toBeNull();
+    } finally {
+      TABLES.tables = before;
+    }
+  });
+});
 
 describe("a view handed over from the SQL editor", () => {
   it("is selected in the list once Save registers it", async () => {

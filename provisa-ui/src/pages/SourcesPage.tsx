@@ -128,6 +128,7 @@ import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
 import { SourceTypePicker } from "../components/SourceTypePicker";
 import { athenaHints } from "./sources/athena";
+import { matchesQuery } from "../lib/searchItems";
 
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -191,13 +192,7 @@ export function SourcesPage() {
     () =>
       sources.filter((s) => {
         if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
-        if (!sourceSearch.trim()) return true;
-        const q = sourceSearch.toLowerCase();
-        return (
-          s.id.toLowerCase().includes(q) ||
-          s.type.toLowerCase().includes(q) ||
-          (s.description ?? "").toLowerCase().includes(q)
-        );
+        return matchesQuery([s.id, s.type, s.description], sourceSearch);
       }),
     [sources, sourceSearch],
   );

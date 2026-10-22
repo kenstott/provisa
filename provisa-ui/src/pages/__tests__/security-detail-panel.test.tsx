@@ -33,8 +33,24 @@ const role = (id: string, detailsHidden = false) => ({
 });
 const ROLES = [role("analyst"), role("steward"), role("locked", true)];
 const RULES = [
-  { id: 1, tableId: null, domainId: "sales", actionName: null, roleId: "analyst", filterExpr: "a", description: "A" },
-  { id: 2, tableId: null, domainId: "sales", actionName: null, roleId: "steward", filterExpr: "b", description: "B" },
+  {
+    id: 1,
+    tableId: null,
+    domainId: "sales",
+    actionName: null,
+    roleId: "analyst",
+    filterExpr: "a",
+    description: "A",
+  },
+  {
+    id: 2,
+    tableId: null,
+    domainId: "sales",
+    actionName: null,
+    roleId: "steward",
+    filterExpr: "b",
+    description: "B",
+  },
 ];
 
 vi.mock("../../context/DomainFilterContext", () => ({
@@ -73,6 +89,25 @@ import { SecurityRlsPage } from "../security/SecurityRlsPage";
 
 const rowIn = (list: string, text: string) =>
   within(screen.getByTestId(list)).getByText(text).closest("tr")!;
+
+describe("the Security lists' search", () => {
+  it("lists the roles matching any word of the search", () => {
+    render(<SecurityRolesPage />);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst locked" } });
+    const list = within(screen.getByTestId("roles-list"));
+    expect(list.getByText("analyst")).toBeInTheDocument();
+    expect(list.getByText("locked")).toBeInTheDocument();
+    expect(list.queryByText("steward")).toBeNull();
+  });
+
+  it("lists the row rules matching any word of the search", () => {
+    render(<SecurityRlsPage />);
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst payroll" } });
+    const list = within(screen.getByTestId("rules-list"));
+    expect(list.getByText("analyst")).toBeInTheDocument();
+    expect(list.queryByText("steward")).toBeNull();
+  });
+});
 
 describe("SecurityRolesPage: the right-hand detail panel", () => {
   it("shows the chosen role in the panel, marks its row, swaps and closes", () => {

@@ -107,3 +107,42 @@ describe("ObservabilityTab subsystem trace switches", () => {
     expect(updateSettings).toHaveBeenCalledWith({ otel: settings.otel });
   });
 });
+
+describe("the trace feed's search", () => {
+  it("lists the traces matching any word of the search", async () => {
+    const trace = (span: string, name: string, status: string) => ({
+      ts: 1,
+      trace_id: `t-${span}`,
+      span_id: span,
+      name,
+      status,
+      duration_ms: 1,
+      attrs: {},
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              traces: [
+                trace("a", "query orders", "OK"),
+                trace("b", "query customers", "ERROR"),
+                trace("c", "refresh invoices", "OK"),
+              ],
+            }),
+          ),
+      ),
+    );
+    try {
+      render(<ObservabilityTab settings={makeSettings()} setSettings={vi.fn()} />);
+      await screen.findByTestId("trace-row-c");
+      fireEvent.change(screen.getByTestId("trace-filter"), { target: { value: "orders error" } });
+      expect(screen.getByTestId("trace-row-a")).toBeInTheDocument();
+      expect(screen.getByTestId("trace-row-b")).toBeInTheDocument();
+      expect(screen.queryByTestId("trace-row-c")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
