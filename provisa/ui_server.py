@@ -74,12 +74,20 @@ _API_VERIFY = not API_BASE_URL.startswith("https://")
 # open a demo, is proxied there. Unset, there is no sandbox tier, and the API refuses a sandbox org
 # by name.
 SANDBOX_API_URL = os.environ.get("PROVISA_SANDBOX_API_URL")
-# REQ-2068: the regions sandbox tier, which serves the demos whose models select regions
-# (PROVISA_SANDBOX_REGIONS_DEMOS, by name) and their sandboxes (an ``sbxr`` id).
-SANDBOX_REGIONS_API_URL = os.environ.get("PROVISA_SANDBOX_REGIONS_API_URL")
-SANDBOX_REGIONS_DEMOS = frozenset(
-    name for name in os.environ.get("PROVISA_SANDBOX_REGIONS_DEMOS", "").split(",") if name
-)
+# REQ-2068: the regions sandbox tier, which serves the demos whose models select regions and their
+# sandboxes (an ``sbxr`` id). It runs a node per visitor region: PROVISA_SANDBOX_REGIONS_NODES
+# names each node's API by its region (``us=https://...,warehouse=https://...``), and
+# PROVISA_SANDBOX_REGIONS_DEMOS each demo's node (``retail=us,banking=warehouse``).
+
+
+def _pairs(name: str) -> dict[str, str]:
+    """``key=value`` pairs, comma-separated, from environment variable ``name``."""
+    raw = os.environ.get(name, "")
+    return dict(pair.split("=", 1) for pair in raw.split(",") if pair)
+
+
+SANDBOX_REGIONS_NODES = _pairs("PROVISA_SANDBOX_REGIONS_NODES")
+SANDBOX_REGIONS_DEMOS = _pairs("PROVISA_SANDBOX_REGIONS_DEMOS")
 #: The API paths a demo sandbox is opened by (provisa/api/demo_sandbox_router.py): a visitor's,
 #: with no sign-in, and a signed-in person's own.
 DEMO_OPEN_PREFIXES = ("public/demos/", "sandboxes/")
@@ -116,24 +124,28 @@ def api_base_for(full_path: str, headers: Mapping[str, str]) -> str:
     from provisa.security.sni import org_from_host
 
     org = org_from_host(headers.get("host")) or headers.get("x-org-provisa")
-    if SANDBOX_REGIONS_API_URL is not None and _regions_tier(full_path, org):
-        return SANDBOX_REGIONS_API_URL
+    node = _regions_node(full_path, org)
+    if node is not None:
+        return node
     if full_path.startswith(DEMO_OPEN_PREFIXES) or (org is not None and is_sandbox_tier_org(org)):
         return SANDBOX_API_URL
     return API_BASE_URL
 
 
-def _regions_tier(full_path: str, org: str | None) -> bool:
-    """Whether the regions sandbox tier serves this request: one of its sandboxes, or opening one
-    of its demos (``public/demos/<name>``, ``sandboxes/<name>``)."""
-    from provisa.core.org_ids import is_regions_sandbox
+def _regions_node(full_path: str, org: str | None) -> str | None:
+    """The regions-tier node that serves this request, or None when the regions tier does not: one
+    of its sandboxes, by the region its id names, or opening one of its demos
+    (``public/demos/<name>``, ``sandboxes/<name>``), by the demo's node."""
+    from provisa.core.org_ids import regions_sandbox_region
 
-    if org is not None and is_regions_sandbox(org):
-        return True
+    region = None if org is None else regions_sandbox_region(org)
+    if region is not None:
+        return SANDBOX_REGIONS_NODES.get(region)
     for prefix in DEMO_OPEN_PREFIXES:
         if full_path.startswith(prefix):
-            return full_path[len(prefix) :].split("/", 1)[0] in SANDBOX_REGIONS_DEMOS
-    return False
+            demo = full_path[len(prefix) :].split("/", 1)[0]
+            return SANDBOX_REGIONS_NODES.get(SANDBOX_REGIONS_DEMOS.get(demo, ""))
+    return None
 
 
 # Upstream read budget for the proxy leg. A request that outlives it is reported as a 504
@@ -414,7 +426,7 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
                 await upstream.aread()
         except httpx.ConnectError:
             # Both sandbox tiers run on the sandbox VM (REQ-2068).
-            sandbox = base in (SANDBOX_API_URL, SANDBOX_REGIONS_API_URL)
+            sandbox = base == SANDBOX_API_URL or base in SANDBOX_REGIONS_NODES.values()
             if sandbox and sandbox_wake.SANDBOX_INSTANCE is not None:
                 return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE)
             return HTMLResponse("API unavailable", status_code=502)

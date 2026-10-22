@@ -73,6 +73,11 @@ def tier(tmp_path_factory):
     registry, stack = DemoRegistry(), _Stack()
     registry.start()
     stack.start()
+    # The tier's config declares every regions demo's regions (retail's and banking's): each is
+    # given a store, as each node of the tier is.
+    with psycopg.connect(stack.url(stack.engine_port, "provisa"), autocommit=True) as conn:
+        for region in ("ledger", "warehouse"):
+            conn.execute(f"CREATE DATABASE {region}_store")
     server = None
     try:
         registry.push(bundle)
@@ -97,6 +102,14 @@ def tier(tmp_path_factory):
                 "PROVISA_DEMO_US_ADDRESS": "http://127.0.0.1:2",
                 "PROVISA_DEMO_EU_PG_URL": stack.url(stack.engine_port, "eu_store", "+psycopg"),
                 "PROVISA_DEMO_US_PG_URL": stack.url(stack.engine_port, "us_store", "+psycopg"),
+                "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:3",
+                "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:4",
+                "PROVISA_DEMO_LEDGER_PG_URL": stack.url(
+                    stack.engine_port, "ledger_store", "+psycopg"
+                ),
+                "PROVISA_DEMO_WAREHOUSE_PG_URL": stack.url(
+                    stack.engine_port, "warehouse_store", "+psycopg"
+                ),
                 "REDIS_URL": f"redis://127.0.0.1:{stack.redis_port}/0",
                 "PROVISA_SANDBOX_TIER": "true",
                 "PROVISA_DEMO_BUNDLES": "retail",

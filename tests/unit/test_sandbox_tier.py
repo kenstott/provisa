@@ -86,34 +86,57 @@ def test_the_ui_server_sends_a_sandbox_and_a_demo_opening_to_the_sandbox_tier(mo
     assert route("auth/me", {"host": "cloud.provisa.dev"}) == main
 
 
-def test_a_regions_demo_and_its_sandboxes_reach_the_regions_tier(monkeypatch):
-    """REQ-2068: a demo whose model selects regions is opened by, and its sandboxes (an ``sbxr``
-    id) served by, the regions sandbox tier; every other demo and sandbox as before."""
+def test_a_regions_demo_and_its_sandboxes_reach_the_node_of_its_region(monkeypatch):
+    """REQ-2068: a demo whose model selects regions is opened by the regions tier's node of its
+    visitor region, and a sandbox (``sbxr`` + region + hex) is served by the node its id names;
+    every other demo and sandbox as before."""
     import provisa.ui_server as ui_server
 
+    us, warehouse = (
+        "http://provisa-sandbox-regions:8100",
+        "http://provisa-sandbox-regions-warehouse:8100",
+    )
     monkeypatch.setattr(ui_server, "API_BASE_URL", "http://provisa:8000")
     monkeypatch.setattr(ui_server, "SANDBOX_API_URL", "http://provisa-sandbox:8000")
-    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_API_URL", "http://provisa-sandbox-regions:8100")
-    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_DEMOS", frozenset({"retail"}))
-    tier, regions = "http://provisa-sandbox:8000", "http://provisa-sandbox-regions:8100"
+    monkeypatch.setattr(ui_server, "SANDBOX_REGIONS_NODES", {"us": us, "warehouse": warehouse})
+    monkeypatch.setattr(
+        ui_server, "SANDBOX_REGIONS_DEMOS", {"retail": "us", "banking": "warehouse"}
+    )
+    tier = "http://provisa-sandbox:8000"
     route = ui_server.api_base_for
-    assert route("public/demos/retail", {"host": "cloud.provisa.dev"}) == regions
-    assert route("sandboxes/retail", {"host": "cloud.provisa.dev"}) == regions
-    assert route("data/sql", {"host": "sbxr0123456789ab.provisa.dev"}) == regions
+    assert route("public/demos/retail", {"host": "cloud.provisa.dev"}) == us
+    assert route("sandboxes/retail", {"host": "cloud.provisa.dev"}) == us
+    assert route("public/demos/banking", {"host": "cloud.provisa.dev"}) == warehouse
+    assert route("data/sql", {"host": "sbxrus0123456789ab.provisa.dev"}) == us
+    assert route("data/sql", {"host": "sbxrwarehouse0123456789ab.provisa.dev"}) == warehouse
     assert route("public/demos/weblogs", {"host": "cloud.provisa.dev"}) == tier
     assert route("public/demos/retailer", {"host": "cloud.provisa.dev"}) == tier
     assert route("data/sql", {"host": "sbx0123456789ab.provisa.dev"}) == tier
 
 
-def test_a_regions_tier_mints_its_own_sandbox_ids(monkeypatch):
+def test_a_regions_node_mints_sandbox_ids_naming_its_region_and_reaps_only_its_own(monkeypatch):
     from provisa.api import demo_region_seed
-    from provisa.core.org_ids import is_regions_sandbox, is_sandbox_tier_org, is_template_org
+    from provisa.api.sandbox_tier import is_this_nodes_sandbox
+    from provisa.core.org_ids import (
+        is_regions_sandbox,
+        is_sandbox_tier_org,
+        is_template_org,
+        regions_sandbox_region,
+    )
 
     monkeypatch.setattr(demo_region_seed, "regional", lambda: True)
+    monkeypatch.setattr(demo_region_seed, "here", lambda: "warehouse")
     org = new_sandbox_org_id()
     assert is_regions_sandbox(org) and is_sandbox_tier_org(org) and not is_template_org(org)
+    assert regions_sandbox_region(org) == "warehouse"
+    assert is_this_nodes_sandbox(org)
+    assert not is_this_nodes_sandbox("sbxrus0123456789ab")
+    monkeypatch.setattr(demo_region_seed, "here", lambda: "us")
+    assert is_this_nodes_sandbox("sbxrus0123456789ab") and not is_this_nodes_sandbox(org)
     monkeypatch.setattr(demo_region_seed, "regional", lambda: False)
-    assert not is_regions_sandbox(new_sandbox_org_id())
+    plain = new_sandbox_org_id()
+    assert not is_regions_sandbox(plain) and is_this_nodes_sandbox(plain)
+    assert not is_this_nodes_sandbox(org)
 
 
 def test_with_no_sandbox_tier_everything_reaches_the_deployments_api(monkeypatch):
@@ -283,7 +306,7 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
     monkeypatch.setenv("PROVISA_RUNTIME_DEPS_CACHE", str(tmp_path))
     # A regions demo's model names the regions tier's stores and addresses (REQ-2068), as every
     # node of that tier is given them (first-launch.sh).
-    for region in ("EU", "US"):
+    for region in ("EU", "US", "LEDGER", "WAREHOUSE"):
         monkeypatch.setenv(
             f"PROVISA_DEMO_{region}_ADDRESS", f"https://{region.lower()}.invalid:8100"
         )
