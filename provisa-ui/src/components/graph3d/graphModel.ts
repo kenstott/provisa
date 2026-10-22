@@ -243,6 +243,15 @@ export interface GraphFilters {
   hiddenStatuses: TermStatus[];
 }
 
+/** REQ-2136: a view whose layers and filters run in its query, not after it: what the query reads.
+ * No domains, or no edge types, is every one. */
+export interface QueryScope {
+  layers: ReadonlySet<LayerId>;
+  domains: string[];
+  edgeTypes: string[];
+  hiddenStatuses: TermStatus[];
+}
+
 export const NO_FILTERS: GraphFilters = {
   domains: [],
   tags: [],

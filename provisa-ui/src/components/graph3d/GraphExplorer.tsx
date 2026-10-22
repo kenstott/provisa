@@ -12,7 +12,7 @@
 // on and off, filtered by domain, tag, sensitivity and a focus, under named presets that set the
 // layers and the layout. A layer the data has nothing in (the role cannot read it) is not offered.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
@@ -44,6 +44,7 @@ import {
   type LayerId,
   type Preset,
   type PresetId,
+  type QueryScope,
   type TermStatus,
 } from "./graphModel";
 import type { GraphHover } from "./graphScene";
@@ -69,6 +70,7 @@ export function GraphExplorer({
   search,
   settingsKey,
   exportName,
+  query,
   testId = "graph3d",
 }: {
   data: GraphData;
@@ -86,6 +88,10 @@ export function GraphExplorer({
   settingsKey: GraphKey;
   /** What the graph's exports are named after; the preset drawn is added ("ontology-taxonomy"). */
   exportName: string;
+  /** REQ-2136: the layers and the domain, edge type and status filters run in the view's query.
+   * The page reads ``data`` for the scope ``onScope`` reports; ``all`` (every layer, no filter)
+   * is what the controls choose from, since ``data`` holds only what the filters keep. */
+  query?: { all: GraphData; onScope: (s: QueryScope) => void };
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -94,21 +100,22 @@ export function GraphExplorer({
     if (!found) throw new Error(`No ${p} preset in this graph`);
     return found;
   };
-  const offered = useMemo(() => availableLayers(data, scope), [data, scope]);
-  const choices = useMemo(() => filterChoices(data), [data]);
+  const every = query?.all ?? data;
+  const offered = useMemo(() => availableLayers(every, scope), [every, scope]);
+  const choices = useMemo(() => filterChoices(every), [every]);
   const edgeTypes = useMemo(
     () =>
       [
         ...new Set(
-          data.edges.filter((e) => scope.typedKinds.includes(e.kind)).map((e) => e.label ?? ""),
+          every.edges.filter((e) => scope.typedKinds.includes(e.kind)).map((e) => e.label ?? ""),
         ),
       ]
         .filter(Boolean)
         .sort(),
-    [data, scope],
+    [every, scope],
   );
-  const hasStatus = useMemo(() => data.nodes.some((n) => n.status !== undefined), [data]);
-  const hasTerms = useMemo(() => data.nodes.some((n) => n.type === "term"), [data]);
+  const hasStatus = useMemo(() => every.nodes.some((n) => n.status !== undefined), [every]);
+  const hasTerms = useMemo(() => every.nodes.some((n) => n.type === "term"), [every]);
   // Everything the reader sets here is remembered for this graph (graphSettings.ts): the preset,
   // layers, toggles and filters. The focus is the page's (its search, or the product it opened on)
   // and the camera is where the reader left it, so neither is kept.
@@ -202,15 +209,44 @@ export function GraphExplorer({
   const move = (kind: CameraCommand["kind"], target: string | null) =>
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
 
+  // Tables are the tables of the columns drawn: without Columns, there are none to draw.
+  const on = useMemo(
+    () =>
+      new Set(
+        [...layers].filter((l) => offered.has(l) && (l !== "ownerTables" || layers.has("columns"))),
+      ),
+    [layers, offered],
+  );
+  // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
+  // carry no domain included.
+  const narrowed = useMemo(() => {
+    const all = (chosen: string[], among: string[]) =>
+      among.length > 0 && among.every((v) => chosen.includes(v)) ? [] : chosen;
+    return {
+      domains: all(filters.domains, choices.domains),
+      edgeTypes: all(filters.edgeTypes, edgeTypes),
+    };
+  }, [filters, choices, edgeTypes]);
+  // The scope the query reads, reported whenever it changes (a key, so an equal one is not news).
+  const onScope = query?.onScope;
+  const scopeKey = JSON.stringify([
+    [...on].sort(),
+    narrowed.domains,
+    narrowed.edgeTypes,
+    filters.hiddenStatuses,
+  ]);
+  useEffect(() => {
+    if (!onScope) return;
+    const [l, domains, types, statuses] = JSON.parse(scopeKey) as [
+      LayerId[],
+      string[],
+      string[],
+      TermStatus[],
+    ];
+    onScope({ layers: new Set(l), domains, edgeTypes: types, hiddenStatuses: statuses });
+  }, [onScope, scopeKey]);
+
   const shown = useMemo(() => {
-    // Tables are the tables of the columns drawn: without Columns, there are none to draw.
-    const on = new Set(
-      [...layers].filter((l) => offered.has(l) && (l !== "ownerTables" || layers.has("columns"))),
-    );
-    // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
-    // carry no domain included.
-    const all = (chosen: string[], every: string[]) =>
-      every.length > 0 && every.every((v) => chosen.includes(v)) ? [] : chosen;
     // The page's search, when it drives the focus: what it matches, by title or definition.
     const items = search === undefined ? null : searchItems(search);
     const matched =
@@ -223,11 +259,11 @@ export function GraphExplorer({
     // A search that matches nothing draws nothing.
     if (items !== null && items.length > 0 && matched?.length === 0)
       return { nodes: [], edges: [] };
+    // Under a query the domains, edge types and statuses are its own: ``data`` is what they keep.
     const narrowing = {
       ...filters,
       focus: matched ?? filters.focus,
-      domains: all(filters.domains, choices.domains),
-      edgeTypes: all(filters.edgeTypes, edgeTypes),
+      ...(query ? { domains: [], edgeTypes: [], hiddenStatuses: [] } : narrowed),
     };
     const g = visibleGraph(data, on, narrowing, expanded, scope);
     if (orphans) return g;
@@ -239,7 +275,7 @@ export function GraphExplorer({
     const kept = new Set(nodes.map((n) => n.id));
     // With an orphan go the edges that only placed it (its domain).
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
-  }, [data, layers, offered, filters, expanded, scope, choices, edgeTypes, orphans, search]);
+  }, [data, on, filters, narrowed, query, expanded, scope, orphans, search]);
   const layout = presetOf(preset).layout;
   const at = useMemo(
     () => layoutGraph(shown, layout, zero, attraction),

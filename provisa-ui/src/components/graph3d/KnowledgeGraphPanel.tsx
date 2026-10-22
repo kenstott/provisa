@@ -13,7 +13,7 @@
 // panel scrolls into view; its expand button opens the full graph on the Knowledge graph preset,
 // focused on the product. The Data Products page's own entry point opens it on the Product map.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Chip, Group, Loader, Modal, Text } from "@mantine/core";
 import { Network } from "lucide-react";
@@ -51,6 +51,7 @@ export function GraphModal({
   search,
   settingsKey,
   exportName,
+  query,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -66,6 +67,8 @@ export function GraphModal({
   settingsKey: GraphKey;
   /** What the graph's exports are named after. */
   exportName: string;
+  /** The view's query scope, as GraphExplorer takes it (the Ontology View's). */
+  query?: ComponentProps<typeof GraphExplorer>["query"];
 }) {
   return (
     <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
@@ -79,6 +82,7 @@ export function GraphModal({
           search={search}
           settingsKey={settingsKey}
           exportName={exportName}
+          query={query}
           testId="graph3d"
         />
       )}

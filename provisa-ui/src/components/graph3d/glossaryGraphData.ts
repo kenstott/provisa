@@ -14,8 +14,21 @@
 // glossary_term_edges_meta; and the data products with their datasets, the datasets' columns and
 // the terms those columns are -- turned into the graph's nodes and edges.
 
-import { rootQuery, type MetaReader, type Selection } from "../../api/metaGraph";
-import type { GraphData, GraphEdge, GraphNode, LayerId, TermStatus } from "./graphModel";
+import {
+  operation,
+  rootField,
+  type MetaReader,
+  type Selection,
+  type Where,
+} from "../../api/metaGraph";
+import type {
+  GraphData,
+  GraphEdge,
+  GraphNode,
+  LayerId,
+  QueryScope,
+  TermStatus,
+} from "./graphModel";
 
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
@@ -23,11 +36,66 @@ export const ENTERPRISE_DOMAIN = "*";
 /** A relationship declared from a table: its name is its alias, else its id. */
 const RELATIONSHIP: Selection = { fields: ["id", "alias", "target_table_id"] };
 
-const TERMS: Selection = {
-  fields: ["id", "name", "definition", "is_abstract", "deprecated", "retired", "live"],
-  rels: {
-    domains: { alias: "domains", sel: { fields: ["domain_id"] } },
-    refs: {
+/** The term standings ``hidden`` leaves out, as conditions on glossary_terms_meta's columns. */
+const NOT_STATUS: Record<TermStatus, Where> = {
+  retired: { retired: { eq: false } },
+  deprecated: { _or: [{ retired: { eq: true } }, { deprecated: { eq: false } }] },
+  live: { _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: false } }] },
+  proposed: {
+    _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: true } }],
+  },
+};
+
+const all = (conds: Where[]): Where | undefined =>
+  conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : { _and: conds };
+
+/** A row whose domain is one of ``domains``; every row when there are none. */
+const inDomains = (domains: string[], column = "domain_id"): Where | undefined =>
+  domains.length === 0 ? undefined : { [column]: { in: domains } };
+
+/** A relationship named by one of ``types``: by its alias, else (declared without one) its id. */
+const named = (types: string[]): Where | undefined =>
+  types.length === 0
+    ? undefined
+    : {
+        _or: [
+          { alias: { in: types } },
+          { _and: [{ alias: { is_null: true } }, { id: { in: types } }] },
+        ],
+      };
+
+function relationships(s: QueryScope): Selection["rels"] {
+  return s.layers.has("ownerTables") && s.layers.has("columns")
+    ? {
+        source_relationships: {
+          alias: "sourceRelationships",
+          sel: RELATIONSHIP,
+          where: named(s.edgeTypes),
+        },
+      }
+    : {};
+}
+
+function termsField(m: MetaReader, s: QueryScope): string | null {
+  const domainWhere: Where | undefined =
+    s.domains.length === 0
+      ? undefined
+      : {
+          // term_domains is the term's domains as |a|b| (glossary_term_domains_meta); an
+          // enterprise-wide term ("*") is in every one.
+          _or: [...s.domains, ENTERPRISE_DOMAIN].map((d) => ({
+            term_domains: { like: `%|${d}|%` },
+          })),
+        };
+  const rels: NonNullable<Selection["rels"]> = {};
+  if (s.layers.has("domains"))
+    rels.domains = {
+      alias: "domains",
+      sel: { fields: ["domain_id"] },
+      where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
+    };
+  if (s.layers.has("columns"))
+    rels.refs = {
       alias: "refs",
       sel: {
         fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
@@ -37,16 +105,87 @@ const TERMS: Selection = {
             sel: {
               fields: ["id"],
               rels: {
-                product: { alias: "product", sel: { fields: ["id", "name", "domain_id"] } },
-                source_relationships: { alias: "sourceRelationships", sel: RELATIONSHIP },
+                // With Data off, a column's product is read for its look alone: no product node.
+                product: {
+                  alias: "product",
+                  sel: { fields: s.layers.has("data") ? ["id", "name", "domain_id"] : ["id"] },
+                },
+                ...relationships(s),
               },
             },
           },
         },
       },
+      where: inDomains(s.domains),
+    };
+  return rootField(
+    m,
+    "glossary_terms",
+    {
+      fields: ["id", "name", "definition", "is_abstract", "deprecated", "retired", "live"],
+      rels,
     },
-  },
-};
+    all([...(domainWhere ? [domainWhere] : []), ...s.hiddenStatuses.map((st) => NOT_STATUS[st])]),
+  );
+}
+
+function productsField(m: MetaReader, s: QueryScope): string | null {
+  return rootField(
+    m,
+    "data_products",
+    {
+      fields: ["id", "name", "domain_id"],
+      rels: {
+        member_tables: {
+          alias: "memberTables",
+          sel: {
+            fields: ["id", "domain_id", "table_name"],
+            rels: {
+              table_columns: {
+                to: "table_columns",
+                sel: {
+                  fields: ["column_name", "column_key"],
+                  rels: { glossary_ref: { alias: "glossaryRef", sel: { fields: ["term_id"] } } },
+                },
+              },
+              ...relationships(s),
+            },
+          },
+          where: inDomains(s.domains),
+        },
+      },
+    },
+    inDomains(s.domains),
+  );
+}
+
+/** The Ontology View's one query for ``s``: its terms, the edges between them under the Ontology
+ * layer, and the data products under Data; null when the role cannot read the terms. A part the
+ * role cannot read is left out. */
+export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
+  const terms = termsField(m, s);
+  if (terms === null) return null;
+  const edges = s.layers.has("ontology")
+    ? rootField(
+        m,
+        "glossary_term_edges",
+        { fields: ["id", "from_term_id", "to_term_id", "rel_type"] },
+        s.edgeTypes.length === 0 ? undefined : { rel_type: { in: s.edgeTypes } },
+      )
+    : null;
+  const products = s.layers.has("data") ? productsField(m, s) : null;
+  return operation(
+    "Ontology",
+    [terms, edges, products].filter((f): f is string => f !== null),
+  );
+}
+
+/** What the Ontology View's query answers: a part not read is absent. */
+export interface OntologyRows {
+  glossary_terms: TermRow[];
+  glossary_term_edges?: TermEdgeRow[];
+  data_products?: ProductRow[];
+}
 
 export interface TermRow {
   id: number;
@@ -67,7 +206,7 @@ export interface TermRow {
         domain_id: string;
         table?: {
           id: number;
-          product?: { id: string; name: string; domain_id: string } | null;
+          product?: { id: string; name?: string; domain_id?: string } | null;
           source_relationships?: RelationshipRow[] | null;
         } | null;
       }[]
@@ -79,29 +218,6 @@ interface RelationshipRow {
   alias: string | null;
   target_table_id: number | null;
 }
-
-/** A data product with its datasets, their columns and the terms those columns are. */
-const PRODUCTS: Selection = {
-  fields: ["id", "name", "domain_id"],
-  rels: {
-    member_tables: {
-      alias: "memberTables",
-      sel: {
-        fields: ["id", "domain_id", "table_name"],
-        rels: {
-          table_columns: {
-            to: "table_columns",
-            sel: {
-              fields: ["column_name", "column_key"],
-              rels: { glossary_ref: { alias: "glossaryRef", sel: { fields: ["term_id"] } } },
-            },
-          },
-          source_relationships: { alias: "sourceRelationships", sel: RELATIONSHIP },
-        },
-      },
-    },
-  },
-};
 
 export interface ProductRow {
   id: string;
@@ -130,21 +246,6 @@ export interface TermEdgeRow {
   from_term_id: number;
   to_term_id: number;
   rel_type: string;
-}
-
-export function termsQuery(m: MetaReader): string | null {
-  return rootQuery(m, "GlossaryTerms", "glossary_terms", TERMS);
-}
-
-/** The data products with their datasets and columns; null when the role cannot read them. */
-export function productsQuery(m: MetaReader): string | null {
-  return rootQuery(m, "OntologyProducts", "data_products", PRODUCTS);
-}
-
-export function termEdgesQuery(m: MetaReader): string | null {
-  return rootQuery(m, "GlossaryTermEdges", "glossary_term_edges", {
-    fields: ["id", "from_term_id", "to_term_id", "rel_type"],
-  });
 }
 
 /** A term's standing (REQ-1387: proposed is in service and not live). The graph names a term by its
@@ -256,7 +357,9 @@ export function glossaryGraph(
       edge(tid, cid, "has_column", undefined, p ? ["data", "ownerTables"] : ["ownerTables"]);
       // glossary.py's physical refs: the term IS this column.
       edge(id, cid, "term_binding", "IS", held);
-      if (p) {
+      // A product read for its column's look alone (Data off) has neither name nor domain and is
+      // no node; under Data both are read.
+      if (p?.name !== undefined && p.domain_id !== undefined) {
         node({ id: `p:${p.id}`, type: "product", label: p.name, domains: [p.domain_id] });
         edge(`p:${p.id}`, tid, "member");
       }

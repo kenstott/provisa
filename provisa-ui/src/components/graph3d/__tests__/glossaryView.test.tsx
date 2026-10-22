@@ -49,10 +49,13 @@ vi.mock("../useProductGraph", () => ({
     return { schema: null, roots: new Map() };
   },
 }));
+// The view's one query (REQ-2136) stands for its scope here; the server below answers it as the
+// query's where would (ontologyQuery.test.ts holds the query text itself).
+const asked = vi.hoisted(() => ({ scopes: [] as Record<string, unknown>[] }));
 vi.mock("../glossaryGraphData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../glossaryGraphData")>()),
-  termsQuery: () => "query GlossaryTerms { x }",
-  termEdgesQuery: () => "query GlossaryTermEdges { x }",
+  ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
+    JSON.stringify({ ...s, layers: [...s.layers] }),
 }));
 const term = (id: number, name: string, over: object = {}) => ({
   id,
@@ -67,44 +70,74 @@ const term = (id: number, name: string, over: object = {}) => ({
   refs: [],
   ...over,
 });
+const TERMS = [
+  term(1, "Customer"),
+  term(2, "Party", { is_abstract: true }),
+  term(3, "Old customer", { deprecated: true, live: false }),
+  term(4, "Ancient", { retired: true, live: false }),
+  // No edge of any type: an orphan.
+  term(5, "Lonely", { domains: [{ domain_id: "finance" }] }),
+  term(7, "shift coverage"),
+  term(8, "shift start"),
+  term(9, "clinic"),
+  term(10, "referral"),
+  // No term edge, but a column it IS.
+  term(6, "Email address", {
+    refs: [
+      {
+        column_key: "10:email",
+        column_name: "email",
+        table_id: 10,
+        table_name: "customers",
+        domain_id: "sales",
+        table: { id: 10, product: null },
+      },
+    ],
+  }),
+];
+const EDGES = [
+  { id: 1, from_term_id: 1, to_term_id: 2, rel_type: "KIND_OF" },
+  { id: 2, from_term_id: 3, to_term_id: 1, rel_type: "REPLACES" },
+  { id: 3, from_term_id: 10, to_term_id: 9, rel_type: "RELATED_TO" },
+];
+type Term = ReturnType<typeof term>;
+const standing = (t: Term) =>
+  t.retired ? "retired" : t.deprecated ? "deprecated" : t.live ? "live" : "proposed";
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
-  dataGraphql: async (query: string) =>
-    query.includes("GlossaryTermEdges")
-      ? {
-          glossary_term_edges: [
-            { id: 1, from_term_id: 1, to_term_id: 2, rel_type: "KIND_OF" },
-            { id: 2, from_term_id: 3, to_term_id: 1, rel_type: "REPLACES" },
-            { id: 3, from_term_id: 10, to_term_id: 9, rel_type: "RELATED_TO" },
-          ],
-        }
-      : {
-          glossary_terms: [
-            term(1, "Customer"),
-            term(2, "Party", { is_abstract: true }),
-            term(3, "Old customer", { deprecated: true, live: false }),
-            term(4, "Ancient", { retired: true, live: false }),
-            // No edge of any type: an orphan.
-            term(5, "Lonely", { domains: [{ domain_id: "finance" }] }),
-            term(7, "shift coverage"),
-            term(8, "shift start"),
-            term(9, "clinic"),
-            term(10, "referral"),
-            // No term edge, but a column it IS.
-            term(6, "Email address", {
-              refs: [
-                {
-                  column_key: "10:email",
-                  column_name: "email",
-                  table_id: 10,
-                  table_name: "customers",
-                  domain_id: "sales",
-                  table: { id: 10, product: null },
-                },
-              ],
-            }),
-          ],
-        },
+  dataGraphql: async (query: string) => {
+    const s = JSON.parse(query) as {
+      layers: string[];
+      domains: string[];
+      edgeTypes: string[];
+      hiddenStatuses: string[];
+    };
+    asked.scopes.push(s);
+    const inDomains = (ds: string[]) =>
+      s.domains.length === 0 || ds.some((d) => d === "*" || s.domains.includes(d));
+    const terms = TERMS.filter(
+      (t) =>
+        !s.hiddenStatuses.includes(standing(t)) && inDomains(t.domains.map((d) => d.domain_id)),
+    ).map((t) => ({
+      ...t,
+      domains: s.layers.includes("domains")
+        ? t.domains.filter((d) => inDomains([d.domain_id]))
+        : undefined,
+      refs: s.layers.includes("columns")
+        ? t.refs.filter((r) => inDomains([r.domain_id]))
+        : undefined,
+    }));
+    return {
+      glossary_terms: terms,
+      ...(s.layers.includes("ontology")
+        ? {
+            glossary_term_edges: EDGES.filter(
+              (e) => s.edgeTypes.length === 0 || s.edgeTypes.includes(e.rel_type),
+            ),
+          }
+        : {}),
+    };
+  },
 }));
 
 import { GlossaryOntologyView, OntologyToggle } from "../GlossaryOntologyView";
@@ -128,6 +161,7 @@ function Page() {
 beforeEach(() => {
   made.scenes.length = 0;
   reads.roles.length = 0;
+  asked.scopes.length = 0;
 });
 
 describe("the Glossary page's Ontology View", () => {
@@ -137,7 +171,43 @@ describe("the Glossary page's Ontology View", () => {
     expect(made.scenes).toHaveLength(0);
     fireEvent.click(screen.getByTestId("glossary-ontology-toggle"));
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(reads.roles).toEqual(["analyst"]);
+    // As the user's role: what the controls choose from, then what they keep.
+    expect(new Set(reads.roles)).toEqual(new Set(["analyst"]));
+    expect(asked.scopes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("runs its layers, domains, edge types and statuses in its query, not after it", async () => {
+    render(<GlossaryOntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    // Every layer and no filter, for the controls' choices; then the defaults: retired hidden.
+    expect(asked.scopes[0]).toEqual({
+      layers: ["ontology", "domains", "data", "columns", "ownerTables"],
+      domains: [],
+      edgeTypes: [],
+      hiddenStatuses: [],
+    });
+    await waitFor(() =>
+      expect(asked.scopes.at(-1)).toEqual({
+        layers: ["columns", "domains", "ontology"],
+        domains: [],
+        edgeTypes: [],
+        hiddenStatuses: ["retired"],
+      }),
+    );
+    // The Taxonomy preset's edge types and layers are the query's.
+    fireEvent.click(screen.getByRole("radio", { name: "Taxonomy" }));
+    await waitFor(() =>
+      expect(asked.scopes.at(-1)).toMatchObject({
+        layers: ["ontology"],
+        edgeTypes: ["KIND_OF", "PART_OF"],
+      }),
+    );
+    // A domain left out is left out of the query's where.
+    fireEvent.click(screen.getByRole("radio", { name: "Ontology" }));
+    fireEvent.click(screen.getByTestId("ontology-filter-domain"));
+    fireEvent.click(await screen.findByTestId("ontology-filter-domain-option-finance"));
+    await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: ["sales"] }));
+    await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
   });
 
   it("shows proposed and deprecated terms and hides retired ones, until asked", async () => {
