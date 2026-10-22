@@ -210,12 +210,18 @@ def test_sqlserver_execute_registers_deadline_cancel() -> None:
 
 
 def test_oracle_execute_registers_deadline_cancel() -> None:
+    import oracledb
+
     from provisa.executor.drivers.oracle import OracleDriver
 
-    class _Desc:
+    class _Desc:  # a FetchInfo: its name and type
         name = "ID"
+        type_code = oracledb.DB_TYPE_NUMBER
 
     class _OraCursor(_FakeCursor):
+        def parse(self, _sql: str) -> None:  # a statement is described before it runs
+            self.description = [_Desc()]
+
         # fetch_lobs: the driver reads a LOB as its value, as python-oracledb's cursor takes it.
         def execute(self, sql: str, params: Any = None, *, fetch_lobs: bool = True) -> None:
             assert fetch_lobs is False
