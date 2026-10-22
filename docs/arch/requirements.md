@@ -15310,7 +15310,7 @@ Dictionary/ontology of business terms over the semantic layer. Every physical fi
 
 **Tests:** `tests/unit/test_glossary_normalize.py`, `tests/unit/test_glossary_repository.py`, `tests/unit/test_glossary_admin_surface.py`, `tests/unit/test_mcp_glossary_protocol.py`, `tests/unit/test_metadata_export_glossary.py`, `tests/unit/test_metadata_export_glossary_atlas.py`, `tests/unit/test_metadata_export_glossary_atlan.py`, `tests/unit/test_metadata_export_glossary_datahub.py`, `tests/unit/test_metadata_export_glossary_openmetadata.py`, `tests/unit/test_metadata_export_glossary_collibra.py`, `tests/unit/test_column_dependents.py`, `tests/integration/test_glossary_lifecycle.py`, `tests/steps/steps_business_glossary_ontology.py`, `provisa-ui/src/__tests__/GlossaryTab.test.tsx`, `provisa-ui/e2e/glossary.spec.ts`, `tests/steps/steps_business_glossary_ontology.py`, `tests/unit/test_glossary_meta_domains_grounded.py`
 
-**Docs:** [api-reference.md](../api-reference.md), [glossary.md](../glossary.md), [metadata-export.md](../metadata-export.md)
+**Docs:** [api-reference.md](../api-reference.md), [ontology.md](../ontology.md), [metadata-export.md](../metadata-export.md)
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -17742,7 +17742,7 @@ The exclude-from-metadata-export control says which columns it is for. Some colu
 
 **Tests:** `provisa-ui/src/__tests__/GlossaryTab.test.tsx`
 
-**Docs:** [glossary.md](../glossary.md)
+**Docs:** [ontology.md](../ontology.md)
 
 ### REQ-1582 · Business Glossary & Ontology {#REQ-1582}
 
@@ -17754,7 +17754,7 @@ A table name is cut at its connective when its concept is derived. An access-pat
 
 **Tests:** `tests/unit/test_glossary_normalize.py`
 
-**Docs:** [glossary.md](../glossary.md)
+**Docs:** [ontology.md](../ontology.md)
 
 ### REQ-1581 · Business Glossary & Ontology {#REQ-1581}
 
@@ -17768,7 +17768,7 @@ A derived glossary term names the column's BUSINESS name: its alias where the mo
 
 **Tests:** `tests/unit/test_glossary_alias_derivation.py`, `tests/integration/test_glossary_lifecycle.py`
 
-**Docs:** [glossary.md](../glossary.md)
+**Docs:** [ontology.md](../ontology.md)
 
 ### REQ-1584 · Business Glossary & Ontology {#REQ-1584}
 
@@ -17806,7 +17806,7 @@ A junction table is declarable as a first-class Cypher relationship, and its own
 
 **Tests:** `tests/unit/test_cypher_junction_relationships.py`, `tests/unit/test_mv_junction_pattern.py`, `tests/integration/test_glossary_meta_domain.py`, `provisa-ui/src/__tests__/GraphDropExpansion.test.ts`, `provisa-ui/src/__tests__/JunctionPanel.test.tsx`
 
-**Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [configuration.md](../configuration.md), [cypher.md](../cypher.md), [glossary.md](../glossary.md), [metadata-export.md](../metadata-export.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
+**Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [configuration.md](../configuration.md), [cypher.md](../cypher.md), [ontology.md](../ontology.md), [metadata-export.md](../metadata-export.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
 ## 10. UI & Admin Surfaces
 
@@ -26118,7 +26118,7 @@ SPARQL is a graph query language served over the semantic model, a peer of Cyphe
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-The Ontology page's filter controls are shorthand for a SPARQL query ([REQ-2135](#REQ-2135)) that scopes the graph. The page has a SPARQL button: it builds the SPARQL query equivalent to the current filter (search focus, edge types, domains, status, Orphans, Columns) and opens it in the SPARQL query surface, ready to edit and run. An export of the graph is that query as CONSTRUCT, serialized as Turtle, JSON-LD or N-Triples, and streamed. Terms only exports SKOS and OWL, with DCAT and DPROD for the links to columns, tables and data products. With instances extends the slice to the rows behind the grounded columns, read as the viewer. The server estimates the export's size first; past a limit it narrows the export or runs it as a background job. (Amended 2026-10-22, PHASING:) The SPARQL button is phase 5 of [REQ-2135](#REQ-2135)'s phasing, with the SPARQL tab: it comes after the SPARQL front end and endpoint, and can wait.
+The Ontology page's filter controls are shorthand for a SPARQL query ([REQ-2135](#REQ-2135)) that scopes the graph. [SUPERSEDED by REQ-2136, 2026-10-22 -- the SPARQL button is the "Open as query" control of every graph view (OPEN AS QUERY below). Kept here for history; do not implement against it.] The page has a SPARQL button: it builds the SPARQL query equivalent to the current filter (search focus, edge types, domains, status, Orphans, Columns) and opens it in the SPARQL query surface, ready to edit and run. [END SUPERSEDED BLOCK] An export of the graph is that query as CONSTRUCT, serialized as Turtle, JSON-LD or N-Triples, and streamed. Terms only exports SKOS and OWL, with DCAT and DPROD for the links to columns, tables and data products. With instances extends the slice to the rows behind the grounded columns, read as the viewer. The server estimates the export's size first; past a limit it narrows the export or runs it as a background job. (Amended 2026-10-22, PHASING:) [SUPERSEDED by REQ-2136, 2026-10-22 -- the SPARQL button is the "Open as query" control of every graph view (OPEN AS QUERY below). Kept here for history; do not implement against it.] The SPARQL button is phase 5 of [REQ-2135](#REQ-2135)'s phasing, with the SPARQL tab: it comes after the SPARQL front end and endpoint, and can wait. [END SUPERSEDED BLOCK] (Amended 2026-10-22, OPEN AS QUERY:) Every graph view (the Ontology page, the product graph, relations, terrain) has an "Open as query" (→) control. It opens the view's own query, with the view's filters inside the query rather than applied in the browser, ready to edit in the surface chosen: GraphQL (the exact query the view runs), SQL (its compiled semantic SQL), Cypher (where the query maps to Cypher), or SPARQL (once [REQ-2135](#REQ-2135)'s endpoint exists). The scenario's "clicks SPARQL" reads as opening the view as SPARQL.
 
 **Use case:** A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope into SPARQL to refine it.
 
