@@ -121,3 +121,27 @@ def test_a_relationship_s_condition_in_a_nested_where_is_refused_not_dropped(sch
             schema_and_ctx,
             '{ customers { id orders(where: { customer: { name: { eq: "x" } } }) { id } } }',
         )
+
+
+def test_an_empty_or_holds_for_no_row_and_an_empty_and_for_every_row(schema_and_ctx):
+    q = _compiled(schema_and_ctx, "{ customers(where: { _or: [] }) { id } }")
+    assert "WHERE FALSE" in q.sql
+    q = _compiled(schema_and_ctx, "{ customers(where: { _and: [] }) { id } }")
+    assert "WHERE TRUE" in q.sql
+
+
+def test_the_glossary_s_terms_and_edges_reach_each_other_both_ways():
+    from provisa.api._meta_seed import META_RELATIONSHIPS
+
+    by_alias = {r[9]: r for r in META_RELATIONSHIPS if r[0].startswith("meta:glossary_term")}
+    assert by_alias["edgesOut"][2:8] == (
+        "glossary_terms",
+        "id",
+        "from_term_id",
+        "one-to-many",
+        by_alias["edgesOut"][6],
+        "glossary_term_edges",
+    )
+    assert by_alias["edgesIn"][4] == "to_term_id"
+    assert by_alias["sourceTerm"][3] == "from_term_id"
+    assert by_alias["targetTerm"][3] == "to_term_id"

@@ -366,7 +366,8 @@ def _compile_where(
                 )
                 for sub in value
             ]
-            parts.append(f"({' AND '.join(sub_parts)})")
+            # None to hold: every row (REQ-2136, a where built from a view's state can be empty).
+            parts.append(f"({' AND '.join(sub_parts)})" if sub_parts else "TRUE")
             continue
         if key == "_or":
             sub_parts = [
@@ -381,7 +382,8 @@ def _compile_where(
                 )
                 for sub in value
             ]
-            parts.append(f"({' OR '.join(sub_parts)})")
+            # None of which to hold: no row.
+            parts.append(f"({' OR '.join(sub_parts)})" if sub_parts else "FALSE")
             continue
 
         join_meta = relationships.join(key) if relationships is not None else None
