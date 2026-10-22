@@ -128,18 +128,12 @@ export async function rootFields(role: string): Promise<RootFields> {
   const resp = await fetch("/data/graph-schema", { headers: { "X-Provisa-Role": role } });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
   const body = (await resp.json()) as {
-    node_labels: {
-      domain_id: string | null;
-      table_name: string | null;
-      graphql_field: string | null;
-    }[];
+    // Every table the role has a root field for, junctions included (they are no node label).
+    root_fields: { domain_id: string; table_name: string; graphql_field: string }[];
   };
-  const out: RootFields = new Map();
-  for (const n of body.node_labels) {
-    if (n.domain_id && n.table_name && n.graphql_field)
-      out.set(rootKey(n.domain_id, n.table_name), n.graphql_field);
-  }
-  return out;
+  return new Map(
+    body.root_fields.map((r) => [rootKey(r.domain_id, r.table_name), r.graphql_field]),
+  );
 }
 
 /** A relationship to follow: by its declared GraphQL alias, or (declared without one) by the

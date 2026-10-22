@@ -54,9 +54,16 @@ export type LayerId =
   | "ontology"
   | "relationships"
   | "outside"
-  | "lineage";
+  | "lineage"
+  // REQ-2130: the glossary's own layers.
+  | "domains"
+  | "data";
 
-export type LayoutKind = "force" | "lanes";
+/** Force; lineage lanes left to right (REQ-1667); or a top-down tree (REQ-2130's Taxonomy). */
+export type LayoutKind = "force" | "lanes" | "tree";
+
+/** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides proposed). */
+export type TermStatus = "live" | "proposed" | "deprecated" | "retired";
 
 export interface GraphNode {
   id: string;
@@ -71,6 +78,12 @@ export interface GraphNode {
   parent?: string;
   /** REQ-1667: the lineage lane the node stands in, when the data says (upstream negative). */
   lane?: number;
+  /** REQ-2130: a term's standing; deprecated is drawn dimmed. */
+  status?: TermStatus;
+  /** REQ-2130: drawn hollow (an abstract term). */
+  hollow?: boolean;
+  /** REQ-2130: said beside the node's name (why a term is a proposal). */
+  note?: string;
 }
 
 export interface GraphEdge {
@@ -89,8 +102,13 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
+export interface LayerDef {
+  nodes: NodeType[];
+  edges: EdgeKind[];
+}
+
 /** Each layer's node type and edge kinds; a node of the type is drawn whenever its layer is on. */
-export const LAYERS: Record<LayerId, { nodes: NodeType[]; edges: EdgeKind[] }> = {
+export const LAYERS = {
   products: { nodes: ["product", "domain"], edges: ["in_domain", "product_link"] },
   tables: { nodes: ["table"], edges: ["member", "has_column"] },
   commands: { nodes: ["command"], edges: ["command"] },
@@ -100,7 +118,7 @@ export const LAYERS: Record<LayerId, { nodes: NodeType[]; edges: EdgeKind[] }> =
   relationships: { nodes: [], edges: ["relationship"] },
   outside: { nodes: [], edges: ["relationship_outside"] },
   lineage: { nodes: [], edges: ["lineage", "column_lineage"] },
-};
+} satisfies Partial<Record<LayerId, LayerDef>>;
 
 export const LAYER_ORDER: LayerId[] = [
   "products",
@@ -114,14 +132,16 @@ export const LAYER_ORDER: LayerId[] = [
   "lineage",
 ];
 
-export type PresetId = "knowledge" | "ontology" | "productMap" | "lineage";
+export type PresetId = "knowledge" | "ontology" | "productMap" | "lineage" | "taxonomy";
 
 export interface Preset {
   layers: LayerId[];
   layout: LayoutKind;
+  /** The term edge types it draws; every type when absent. */
+  edgeTypes?: string[];
 }
 
-export const PRESETS: Record<PresetId, Preset> = {
+export const PRESETS = {
   // Every layer but relationships to tables outside the product.
   knowledge: { layers: LAYER_ORDER.filter((l) => l !== "outside"), layout: "force" },
   // Terms, their edges, the columns bound to them and the products that own those columns.
@@ -130,9 +150,48 @@ export const PRESETS: Record<PresetId, Preset> = {
   productMap: { layers: ["products"], layout: "force" },
   // Lineage edges alone, left to right in upstream lanes.
   lineage: { layers: ["lineage"], layout: "lanes" },
-};
+} satisfies Partial<Record<PresetId, Preset>>;
 
 export const PRESET_ORDER: PresetId[] = ["knowledge", "ontology", "productMap", "lineage"];
+
+/** What a graph is scoped to: its layers and presets (REQ-2128's product graph, REQ-2130's
+ * glossary), on the one engine. */
+export interface GraphScope {
+  layers: Partial<Record<LayerId, LayerDef>>;
+  layerOrder: LayerId[];
+  presets: Partial<Record<PresetId, Preset>>;
+  presetOrder: PresetId[];
+  /** The statuses hidden until the user shows them. */
+  hiddenStatuses: TermStatus[];
+}
+
+export const PRODUCT_SCOPE: GraphScope = {
+  layers: LAYERS,
+  layerOrder: LAYER_ORDER,
+  presets: PRESETS,
+  presetOrder: PRESET_ORDER,
+  hiddenStatuses: [],
+};
+
+/** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
+ * (an enterprise-wide term in every one, so it sits at the centre); off by default, the data the
+ * terms are bound to -- columns folded into their tables -- and the products owning those tables. */
+export const GLOSSARY_SCOPE: GraphScope = {
+  layers: {
+    ontology: { nodes: ["term"], edges: ["term_edge"] },
+    domains: { nodes: ["domain"], edges: ["in_domain"] },
+    data: { nodes: ["table", "product"], edges: ["term_binding", "has_column", "member"] },
+  },
+  layerOrder: ["ontology", "domains", "data"],
+  presets: {
+    // Every edge type, in a force layout.
+    ontology: { layers: ["ontology", "domains"], layout: "force" },
+    // The is-a and part-of hierarchy alone, as a tree from the top down.
+    taxonomy: { layers: ["ontology"], layout: "tree", edgeTypes: ["KIND_OF", "PART_OF"] },
+  },
+  presetOrder: ["ontology", "taxonomy"],
+  hiddenStatuses: ["retired"],
+};
 
 export interface GraphFilters {
   domains: string[];
@@ -140,26 +199,38 @@ export interface GraphFilters {
   sensitivities: string[];
   /** A product or term: only what is reached from it is drawn. */
   focus: string | null;
+  /** REQ-2130: the term edge types drawn; every type when empty. */
+  edgeTypes: string[];
+  /** REQ-2130: the term statuses not drawn. */
+  hiddenStatuses: TermStatus[];
 }
 
-export const NO_FILTERS: GraphFilters = { domains: [], tags: [], sensitivities: [], focus: null };
+export const NO_FILTERS: GraphFilters = {
+  domains: [],
+  tags: [],
+  sensitivities: [],
+  focus: null,
+  edgeTypes: [],
+  hiddenStatuses: [],
+};
 
-const LAYER_OF_EDGE = new Map<EdgeKind, LayerId>(
-  LAYER_ORDER.flatMap((l) => LAYERS[l].edges.map((k) => [k, l] as const)),
-);
-const LAYER_OF_NODE = new Map<NodeType, LayerId>(
-  LAYER_ORDER.flatMap((l) => LAYERS[l].nodes.map((t) => [t, l] as const)),
-);
+function layerOfEdge(scope: GraphScope, kind: EdgeKind): LayerId | undefined {
+  return scope.layerOrder.find((l) => scope.layers[l]?.edges.includes(kind));
+}
+
+function layerOfNode(scope: GraphScope, type: NodeType): LayerId | undefined {
+  return scope.layerOrder.find((l) => scope.layers[l]?.nodes.includes(type));
+}
 
 /** The layers ``data`` has anything in; a layer the user's role cannot read has nothing. */
-export function availableLayers(data: GraphData): Set<LayerId> {
+export function availableLayers(data: GraphData, scope: GraphScope): Set<LayerId> {
   const out = new Set<LayerId>();
   for (const e of data.edges) {
-    const l = LAYER_OF_EDGE.get(e.kind);
+    const l = layerOfEdge(scope, e.kind);
     if (l) out.add(l);
   }
   for (const n of data.nodes) {
-    const l = LAYER_OF_NODE.get(n.type);
+    const l = layerOfNode(scope, n.type);
     if (l) out.add(l);
   }
   return out;
@@ -191,6 +262,7 @@ function passes(n: GraphNode, f: GraphFilters): boolean {
   if (f.sensitivities.length > 0 && n.sensitivities !== undefined) {
     if (!n.sensitivities.some((x) => f.sensitivities.includes(x))) return false;
   }
+  if (n.status !== undefined && f.hiddenStatuses.includes(n.status)) return false;
   return true;
 }
 
@@ -201,9 +273,14 @@ export function visibleGraph(
   layers: ReadonlySet<LayerId>,
   filters: GraphFilters,
   expanded: ReadonlySet<string>,
+  scope: GraphScope,
 ): GraphData {
   const byId = new Map(data.nodes.map((n) => [n.id, n]));
-  const tablesOn = layers.has("tables");
+  const isOn = (type: NodeType) => {
+    const l = layerOfNode(scope, type);
+    return l !== undefined && layers.has(l);
+  };
+  const tablesOn = isOn("table");
   // A column folds into its table while the table is drawn and not expanded.
   const fold = (id: string): string => {
     const n = byId.get(id);
@@ -227,8 +304,11 @@ export function visibleGraph(
     else edges.set(id, { ...e, id, a, b });
   };
   for (const e of data.edges) {
-    const layer = LAYER_OF_EDGE.get(e.kind);
+    const layer = layerOfEdge(scope, e.kind);
     if (!layer || !layers.has(layer)) continue;
+    if (e.kind === "term_edge" && filters.edgeTypes.length > 0) {
+      if (!filters.edgeTypes.includes(e.label ?? "")) continue;
+    }
     // REQ-2129: a column's upstream columns are drawn once its table is expanded to its columns;
     // until then the product's relation-level lineage stands for them.
     if (e.kind === "column_lineage") {
@@ -239,7 +319,7 @@ export function visibleGraph(
   }
   const touched = new Set<string>();
   for (const e of edges.values()) touched.add(e.a).add(e.b);
-  if (!tablesOn && layers.has("products")) {
+  if (!tablesOn && isOn("product")) {
     for (const id of touched) {
       const n = byId.get(id);
       if (n?.type !== "column" || !n.parent) continue;
@@ -250,7 +330,7 @@ export function visibleGraph(
   const drawn = new Set<string>();
   for (const n of data.nodes) {
     if (fold(n.id) !== n.id) continue;
-    const layer = LAYER_OF_NODE.get(n.type);
+    const layer = layerOfNode(scope, n.type);
     if (layer && layers.has(layer)) drawn.add(n.id);
   }
   for (const e of edges.values()) drawn.add(e.a).add(e.b);
@@ -331,6 +411,43 @@ const PULL: Record<EdgeKind, number> = {
 
 const LANE_GAP = 4;
 
+const TREE_GAP = 3;
+/** Wider across than down: a level's names sit side by side. */
+const TREE_SPREAD = 5;
+
+/** REQ-2130: a top-down tree over the term edges (``a`` is a kind or part of ``b``): each term a
+ * level below the deepest term it is a kind or part of; a term in no edge on a row of its own. */
+function treeLayout(g: GraphData): Map<string, [number, number, number]> {
+  const links = g.edges
+    .filter((e) => e.kind === "term_edge")
+    .map((e) => [e.a, e.b] as [string, string]);
+  const parents = new Set(links.map(([, b]) => b));
+  const children = new Set(links.map(([a]) => a));
+  const roots = [...parents].filter((id) => !children.has(id));
+  const depth = lanesFrom(links, roots);
+  const levels = new Map<number, string[]>();
+  let deepest = 0;
+  for (const n of g.nodes) {
+    const d = depth.get(n.id);
+    if (d === undefined) continue;
+    deepest = Math.min(deepest, d);
+    levels.set(d, [...(levels.get(d) ?? []), n.id]);
+  }
+  const loose = g.nodes.filter((n) => !depth.has(n.id)).map((n) => n.id);
+  if (loose.length > 0) levels.set(deepest - 1, loose);
+  // Centred on its middle level, so the camera's view of the whole tree is centred too.
+  const all = [...levels.keys()];
+  const mid = (Math.min(...all) + Math.max(...all)) / 2;
+  const out = new Map<string, [number, number, number]>();
+  for (const [d, members] of levels) {
+    members.sort();
+    members.forEach((id, i) =>
+      out.set(id, [(i - (members.length - 1) / 2) * TREE_SPREAD, (d - mid) * TREE_GAP, 0]),
+    );
+  }
+  return out;
+}
+
 /** Each drawn node's place. Lanes: lineage left to right, members (``zero``) in lane 0. */
 export function layoutGraph(
   g: GraphData,
@@ -339,6 +456,7 @@ export function layoutGraph(
 ): Map<string, [number, number, number]> {
   const ids = g.nodes.map((n) => n.id);
   const radius = Math.max(6, Math.cbrt(ids.length) * 3);
+  if (layout === "tree") return treeLayout(g);
   if (layout === "force") {
     return forceLayout(
       ids,
@@ -384,6 +502,7 @@ export function panelGraph(data: GraphData, product: string): GraphData {
     new Set<LayerId>(["tables", "commands", "ontology"]),
     { ...NO_FILTERS, focus: product },
     new Set(),
+    PRODUCT_SCOPE,
   );
   const edges = g.edges.filter((e) => e.kind !== "term_edge");
   const kept = new Set([product]);

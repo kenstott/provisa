@@ -119,6 +119,7 @@ def _post_governed_introspection(
 def given_dialect_with_role(shared_data: dict) -> None:
     """Configure a dialect client bound to a non-admin (analyst) role."""
     role = {
+        "description": "Test role.",
         "id": "analyst",
         "domain_access": ["sales"],
         "capabilities": ["query_development"],

@@ -91,17 +91,43 @@ def _graph_schema(role: str) -> dict:
     return json.loads(bytes(response.body))
 
 
+def _root_fields(role: str) -> dict[str, dict]:
+    return {r["table_name"]: r for r in _graph_schema(role)["root_fields"]}
+
+
 def test_each_table_names_the_root_field_the_role_queries_it_by(state):
-    nodes = {n["table_name"]: n for n in _graph_schema("r")["node_labels"]}
+    roots = _root_fields("r")
     field_of = {info["table_id"]: field for field, info in state.table_path_maps["r"].items()}
     # Exactly the role's own root field -- domain-prefixed as this model names them (the prefix
     # is the domain's alias, "s__orders", which is why a client must not derive it).
-    assert nodes["orders"]["graphql_field"] == field_of[ORDERS]
-    assert nodes["orders"]["graphql_field"].endswith("__orders")
+    assert roots["orders"]["graphql_field"] == field_of[ORDERS]
+    assert roots["orders"]["graphql_field"].endswith("__orders")
     # The meta domain's view is listed with its field too.
-    assert nodes["data_products"]["domain_id"] == "meta"
-    assert nodes["data_products"]["graphql_field"] == field_of[PRODUCTS]
-    assert "__" in nodes["data_products"]["graphql_field"]
+    assert roots["data_products"]["domain_id"] == "meta"
+    assert roots["data_products"]["graphql_field"] == field_of[PRODUCTS]
+    assert "__" in roots["data_products"]["graphql_field"]
+    # Both are node labels here, unlike a junction (next test).
+    assert "Orders" in {n["table_label"] for n in _graph_schema("r")["node_labels"]}
+
+
+def test_a_table_that_is_no_node_label_still_names_its_root_field(state, monkeypatch):
+    # A junction a relationship traverses (glossary_term_edges under the term relationships) is
+    # dropped from the node labels; its root field is still the role's to query it by.
+    from provisa.api.rest import cypher_router
+
+    built = cypher_router._build_label_map
+
+    def without_orders(ctx, role_id, st):
+        label_map = built(ctx, role_id, st)
+        for label in [k for k, n in label_map.nodes.items() if n.table_id == ORDERS]:
+            del label_map.nodes[label]
+        return label_map
+
+    monkeypatch.setattr(cypher_router, "_build_label_map", without_orders)
+    body = _graph_schema("r")
+    assert "Orders" not in {n["table_label"] for n in body["node_labels"]}
+    field_of = {info["table_id"]: field for field, info in state.table_path_maps["r"].items()}
+    assert _root_fields("r")["orders"]["graphql_field"] == field_of[ORDERS]
 
 
 def test_the_path_map_carries_each_tables_id(state):

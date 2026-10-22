@@ -55,7 +55,12 @@ def _warehouse_awake():
     ensure_warehouse_running()
 
 
-_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+_ADMIN = {
+    "description": "Test role.",
+    "id": "admin",
+    "capabilities": ALL_DATA_CAPABILITIES,
+    "domain_access": ["*"],
+}
 _SRC = "e2e-dbx"  # source id → Unity Catalog e2e_dbx (compiler naming: hyphen → underscore)
 _SCHEMA = "public"
 _TABLE = "orders"

@@ -60,6 +60,7 @@ def _col(name: str, data_type: str = "varchar", nullable: bool = True) -> Column
 
 def _make_role(role_id: str, domain_access: list[str] | None = None) -> dict:
     return {
+        "description": "Test role.",
         "id": role_id,
         "domain_access": domain_access if domain_access is not None else ["*"],
         "capabilities": [],

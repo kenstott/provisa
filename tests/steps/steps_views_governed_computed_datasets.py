@@ -73,6 +73,7 @@ def _col(name: str, data_type: str = "varchar", nullable: bool = True) -> Column
 
 def _role(role_id: str) -> dict:
     return {
+        "description": "Test role.",
         "id": role_id,
         "domain_access": ["*"],
         "capabilities": [],
