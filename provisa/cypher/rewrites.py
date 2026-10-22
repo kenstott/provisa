@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Rewrites of Cypher text: a double-quoted Cypher string as a SQL string, an ISO timestamp
-string as a TIMESTAMP literal (REQ-409, REQ-410)."""
+"""Rewrites of Cypher text: a double-quoted Cypher string as a SQL string, an ISO timestamp string
+as a TIMESTAMP literal (REQ-409, REQ-410)."""
 
 # Requirements: REQ-409, REQ-410
 

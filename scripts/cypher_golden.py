@@ -27,15 +27,20 @@ AST otherwise, the label map, the parameters -- pickled under ``blobs/`` by cont
 it produced. A model's label map is built offline from its config (``model_label_map``), as the
 server builds one from its schema, for the role org_admin.
 
+A result that differs from that commit's, approved query by query, is held in approved.jsonl:
+captured from the checkout that produces it, each entry with the approval it was given.
+
 Usage, on a checkout of the commit to capture from:
 
     python scripts/cypher_golden.py capture-tests OUT tests/unit/test_cypher_*.py ...
     python scripts/cypher_golden.py capture-corpora OUT
 
 A result that differs from that commit's, approved query by query, is held in approved.jsonl:
-captured from the checkout that produces it, each entry with the approval it was given:
+captured from the checkout that produces it, each entry with the approval it was given -- a
+test's translations, or one statement over a model:
 
     python scripts/cypher_golden.py capture-approved-tests OUT APPROVAL tests/unit/...::test ...
+    python scripts/cypher_golden.py capture-approved OUT ORIGIN CONFIG CYPHER APPROVAL
 """
 
 from __future__ import annotations
@@ -416,8 +421,20 @@ def capture_corpora(out: Path) -> None:
             _translate_text(recorder, label_map, text, f"{origin}#{i}")
 
 
+def capture_approved(out: Path, origin: str, config: Path, text: str, approval: str) -> None:
+    """Hold a translation whose result differs from the commit the set was captured from, approved
+    as it is: captured from this checkout into approved.jsonl, with the approval it was given."""
+    recorder = Recorder(out, entries="approved.jsonl", approved=approval)
+    recorder.install()
+    _translate_text(recorder, model_label_map(config), text, origin)
+
+
 def main(argv: list[str]) -> int:
     command, out = argv[0], Path(argv[1])
+    if command == "capture-approved":
+        origin, config, text, approval = argv[2:6]
+        capture_approved(out, origin, Path(config), text, approval)
+        return 0
     if command == "capture-tests":
         return int(capture_tests(out, argv[2:]))
     if command == "capture-approved-tests":
