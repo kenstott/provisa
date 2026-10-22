@@ -25,6 +25,7 @@ from provisa.executor.drivers.zoned import (
     _DATETIMEOFFSET,
     _oracle_ltz,
     _oracle_output_type,
+    execute_instants,
     datetimeoffset,
     mssql_connection,
 )
@@ -58,10 +59,9 @@ def test_oracle_zoned_values_are_their_instants_in_utc():
     assert _oracle_ltz(None) is None
 
 
-def test_oracle_fetches_both_zoned_types_as_a_local_time_zone_value():
-    """python-oracledb's Thin mode ignores the session's NLS formats, so a TIMESTAMP WITH TIME
-    ZONE fetched as text lost its offset; fetched as a local time zone value, the database gives
-    the instant in the session's zone, UTC. Every other type is fetched as it is."""
+def test_oracle_reads_a_local_time_zone_value_in_the_sessions_utc():
+    """A local time zone value is given in the session's zone, UTC. A zoned value is cast to one in
+    the database (execute_instants), so the fetch asks for nothing of it; nor of any other type."""
     import oracledb
 
     class _Cursor:
@@ -74,14 +74,72 @@ def test_oracle_fetches_both_zoned_types_as_a_local_time_zone_value():
         def __init__(self, type_code):
             self.type_code = type_code
 
-    for zoned in (oracledb.DB_TYPE_TIMESTAMP_TZ, oracledb.DB_TYPE_TIMESTAMP_LTZ):
-        assert _oracle_output_type(_Cursor(), _Meta(zoned)) == (
-            oracledb.DB_TYPE_TIMESTAMP_LTZ,
-            100,
-            _oracle_ltz,
-        )
-    for plain in (oracledb.DB_TYPE_TIMESTAMP, oracledb.DB_TYPE_DATE, oracledb.DB_TYPE_VARCHAR):
+    assert _oracle_output_type(_Cursor(), _Meta(oracledb.DB_TYPE_TIMESTAMP_LTZ)) == (
+        oracledb.DB_TYPE_TIMESTAMP_LTZ,
+        100,
+        _oracle_ltz,
+    )
+    for plain in (
+        oracledb.DB_TYPE_TIMESTAMP_TZ,
+        oracledb.DB_TYPE_TIMESTAMP,
+        oracledb.DB_TYPE_DATE,
+        oracledb.DB_TYPE_VARCHAR,
+    ):
         assert _oracle_output_type(_Cursor(), _Meta(plain)) is None
+
+
+class _Described:
+    def __init__(self, name, type_code):
+        self.name, self.type_code = name, type_code
+
+
+class _StatementCursor:
+    """Runs statements, recording each; its description is the statement's result columns."""
+
+    def __init__(self, description):
+        self.ran: list[str] = []
+        self._description = description
+        self.description = None
+
+    def execute(self, sql, bound, **kw):
+        assert kw == {"fetch_lobs": False}
+        self.ran.append(sql)
+        self.description = self._description
+
+
+def test_a_zoned_column_is_cast_to_its_instant_in_the_database():
+    """python-oracledb hands a TIMESTAMP WITH TIME ZONE on as its wall time, its offset dropped,
+    whatever the fetch asks: the statement is run again with the column cast to TIMESTAMP WITH
+    LOCAL TIME ZONE, which the UTC session gives as the instant. Its names stay the statement's."""
+    import oracledb
+
+    sql = "SELECT TIMESTAMP '2024-01-02 03:04:05 +02:00', n FROM dual"
+    cur = _StatementCursor(
+        [
+            _Described("TIMESTAMP'2024-01-0203:04:05+02:00'", oracledb.DB_TYPE_TIMESTAMP_TZ),
+            _Described("N", oracledb.DB_TYPE_NUMBER),
+        ]
+    )
+    assert execute_instants(cur, sql, [], fetch_lobs=False) == [
+        "timestamp'2024-01-0203:04:05+02:00'",
+        "n",
+    ]
+    assert cur.ran == [
+        sql,
+        f"WITH provisa_zoned (c0, c1) AS ({sql}) SELECT "
+        "CAST(c0 AS TIMESTAMP WITH LOCAL TIME ZONE) AS c0, c1 FROM provisa_zoned",
+    ]
+
+
+def test_a_statement_with_no_zoned_column_runs_once():
+    import oracledb
+
+    cur = _StatementCursor([_Described("N", oracledb.DB_TYPE_NUMBER)])
+    assert execute_instants(cur, "SELECT n FROM t", [], fetch_lobs=False) == ["n"]
+    assert cur.ran == ["SELECT n FROM t"]
+    writes = _StatementCursor(None)
+    assert execute_instants(writes, "UPDATE t SET n = 1", [], fetch_lobs=False) is None
+    assert writes.ran == ["UPDATE t SET n = 1"]
 
 
 def test_an_instant_lands_and_reads_as_utc_with_its_zone_marked():

@@ -12,9 +12,10 @@
 it: SQL Server's ``datetimeoffset`` (pyodbc has no conversion for it) and Oracle's ``TIMESTAMP
 WITH TIME ZONE`` (python-oracledb hands it on with its offset dropped) and ``TIMESTAMP WITH LOCAL
 TIME ZONE`` (read in the session's zone). Each comes back as an aware datetime in UTC.
-python-oracledb's Thin mode, the default, ignores the session's NLS formats, so a TIMESTAMP WITH
-TIME ZONE fetched as text came without its offset: it is fetched as a local time zone value
-instead, which the database gives in the session's zone, UTC. Oracle's
+python-oracledb (Thin mode as Thick) hands a TIMESTAMP WITH TIME ZONE on as its wall time with its
+offset dropped, whatever type a fetch asks for, so the instant is taken in the database: a
+statement with such a column is run again with the column cast to TIMESTAMP WITH LOCAL TIME ZONE
+(:func:`execute_instants`), which the database gives in the session's zone, UTC. Oracle's
 INTERVAL YEAR TO MONTH, which python-oracledb hands on as its own ``IntervalYM``, is read here too,
 as the IR interval it is (ir_types.interval_value)."""
 
@@ -68,21 +69,55 @@ def _oracle_output_type(cursor: Any, metadata: Any) -> Any:
         return cursor.var(
             oracledb.DB_TYPE_INTERVAL_YM, arraysize=cursor.arraysize, outconverter=_oracle_ym
         )
-    # A zoned value is fetched as a local time zone one: the database gives the instant in the
-    # session's zone (UTC), and nothing is lost in a conversion on this side.
-    zoned = metadata.type_code
-    if zoned is oracledb.DB_TYPE_TIMESTAMP_TZ or zoned is oracledb.DB_TYPE_TIMESTAMP_LTZ:
+    # A local time zone value is given in the session's zone, UTC (a zoned one is cast to it,
+    # execute_instants).
+    if metadata.type_code is oracledb.DB_TYPE_TIMESTAMP_LTZ:
         return cursor.var(
             oracledb.DB_TYPE_TIMESTAMP_LTZ, arraysize=cursor.arraysize, outconverter=_oracle_ltz
         )
     return None
 
 
+#: The relation a statement with a zoned column is read from, and its columns' names in it.
+_ZONED_FROM, _ZONED_COLUMN = "provisa_zoned", "c{}"
+
+
+def _zoned_select(sql: str, description: Any) -> str | None:
+    """``sql`` with each TIMESTAMP WITH TIME ZONE column of its result (``description``) cast to
+    TIMESTAMP WITH LOCAL TIME ZONE, in the database; None when it has none. Its columns are named
+    in a subquery factoring, so a column named by an expression is read as any other."""
+    import oracledb  # pyright: ignore[reportMissingImports]
+
+    zoned = [d.type_code is oracledb.DB_TYPE_TIMESTAMP_TZ for d in description]
+    if not any(zoned):
+        return None
+    names = [_ZONED_COLUMN.format(i) for i in range(len(description))]
+    items = ", ".join(
+        f"CAST({name} AS TIMESTAMP WITH LOCAL TIME ZONE) AS {name}" if is_zoned else name
+        for name, is_zoned in zip(names, zoned)
+    )
+    return f"WITH {_ZONED_FROM} ({', '.join(names)}) AS ({sql}) SELECT {items} FROM {_ZONED_FROM}"
+
+
+def execute_instants(cursor: Any, sql: str, bound: Any, **kw: Any) -> list[str] | None:
+    """Run ``sql`` on ``cursor`` so a TIMESTAMP WITH TIME ZONE column is read as its instant: run
+    as given, and -- when its result has such a column -- once more with the column cast in the
+    database (:func:`_zoned_select`). The result's column names as the statement gives them
+    (lower case), or None for a statement that answers no rows."""
+    cursor.execute(sql, bound, **kw)
+    if not cursor.description:
+        return None
+    names = [d.name.lower() for d in cursor.description]
+    cast = _zoned_select(sql, cursor.description)
+    if cast is not None:
+        cursor.execute(cast, bound, **kw)
+    return names
+
+
 def oracle_connection(conn: Any) -> Any:
     """A python-oracledb connection that reads a zoned timestamp as the instant it is: the
-    session is in UTC, and a TIMESTAMP WITH TIME ZONE or WITH LOCAL TIME ZONE is fetched as a
-    local time zone value, which the session gives in UTC. A year-to-month interval is read as its
-    months."""
+    session is in UTC, the zone a local time zone value is given in (a zoned one is cast to it by
+    :func:`execute_instants`). A year-to-month interval is read as its months."""
     with conn.cursor() as cur:
         cur.execute("ALTER SESSION SET TIME_ZONE = 'UTC'")
     conn.outputtypehandler = _oracle_output_type
