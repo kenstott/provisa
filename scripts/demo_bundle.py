@@ -812,7 +812,7 @@ def _embedded_stores(work: Path) -> list[str]:
             for schema, table in con.execute(
                 "SELECT schema_name, table_name FROM duckdb_tables() ORDER BY 1, 2"
             ).fetchall():
-                rows = con.execute(f'SELECT count(*) FROM "{schema}"."{table}"').fetchone()[0]
+                rows = con.execute(f'SELECT count(*) FROM "{schema}"."{table}"').fetchall()[0][0]
                 lines.append(f"  {path.relative_to(work)} {schema}.{table}: {rows} rows")
         except (
             duckdb.Error
