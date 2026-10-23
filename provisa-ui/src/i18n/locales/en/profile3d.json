@@ -10,7 +10,7 @@
     "attractionLoose": "Loose",
     "attractionTight": "Tight",
     "grid": "Grid",
-    "resetSettings": "Reset view settings",
+    "resetSettings": "Set Defaults",
     "resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults.",
     "export": "Export",
     "exportImage": "Image",

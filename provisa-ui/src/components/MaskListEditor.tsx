@@ -29,7 +29,8 @@ import {
 } from "@mantine/core";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { GrantPicker } from "./GrantPicker";
-import { checkMasks, type MasksReport } from "../api/admin";
+import { RegexMaskFields } from "./RegexMaskFields";
+import { checkMasks, maskPresets, type MaskPreset, type MasksReport } from "../api/admin";
 import {
   EVERYONE,
   maskValueOf,
@@ -69,6 +70,17 @@ export function MaskListEditor({
   const [readers, setReaders] = useState<string[]>([]);
   const [report, setReport] = useState<MasksReport | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [presets, setPresets] = useState<MaskPreset[]>([]);
+
+  useEffect(() => {
+    let gone = false;
+    maskPresets()
+      .then((p) => !gone && setPresets(p))
+      .catch((e: unknown) => !gone && setProblem(e instanceof Error ? e.message : String(e)));
+    return () => {
+      gone = true;
+    };
+  }, []);
 
   useEffect(() => {
     // An empty list shows only its start button: nothing to check.
@@ -129,7 +141,11 @@ export function MaskListEditor({
           data-applies={report?.applies === i ? "true" : undefined}
           style={
             report?.applies === i
-              ? { outline: "2px solid var(--mantine-primary-color-filled)", borderRadius: 4, padding: 4 }
+              ? {
+                  outline: "2px solid var(--mantine-primary-color-filled)",
+                  borderRadius: 4,
+                  padding: 4,
+                }
               : { padding: 4 }
           }
         >
@@ -163,22 +179,17 @@ export function MaskListEditor({
             />
             <Group gap={6} wrap="nowrap" grow style={{ minWidth: 0 }}>
               {entry.mask?.type === "regex" && (
-                <>
-                  <TextInput
-                    aria-label={t("maskList.pattern")}
-                    placeholder={t("maskList.pattern")}
-                    value={entry.mask.pattern ?? ""}
-                    onChange={(e) => setMask(i, { pattern: e.currentTarget.value })}
-                    disabled={disabled}
-                  />
-                  <TextInput
-                    aria-label={t("maskList.replace")}
-                    placeholder={t("maskList.replace")}
-                    value={entry.mask.replace ?? ""}
-                    onChange={(e) => setMask(i, { replace: e.currentTarget.value })}
-                    disabled={disabled}
-                  />
-                </>
+                <RegexMaskFields
+                  entry={i}
+                  pattern={entry.mask.pattern ?? ""}
+                  replace={entry.mask.replace ?? ""}
+                  onChange={(patch) => setMask(i, patch)}
+                  presets={presets}
+                  verdicts={(report?.patterns ?? []).filter((v) => v.entry === i)}
+                  checked={report !== null}
+                  disabled={disabled}
+                  testId={`${testId}-regex-${i}`}
+                />
               )}
               {entry.mask?.type === "constant" && (
                 <TextInput

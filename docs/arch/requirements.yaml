@@ -2363,7 +2363,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   since: 2026-01
   scenario: 'Given a SQL-defined view registered in the Provisa config
 
@@ -2403,7 +2403,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/integration/test_schema_compiler_integration.py
   since: 2026-01
   scenario: 'Given a registered view with RLS rules and masking applied
@@ -2444,7 +2444,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/integration/test_registration_governance_integration.py
   since: 2026-01
   scenario: 'Given a view registered with materialize: true
@@ -2492,7 +2492,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/integration/test_schema_compiler_integration.py
   since: 2026-01
   scenario: 'Given a consumer who wants to expose aggregated or transformed data
@@ -21926,7 +21926,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/integration/test_security_integration_extra.py
   since: 2026-06
   scenario: 'Given a column masked for a role and referenced in the select list and in a JOIN ON
@@ -21968,7 +21968,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   since: 2026-06
   scenario: 'Given a masked column in queries against different source types
 
@@ -22003,7 +22003,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   since: 2026-06
   scenario: 'Given a masking rule configured with an incompatible type
 
@@ -22036,7 +22036,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   since: 2026-06
   scenario: 'Given various constant mask values (null, boolean, numeric, string with apostrophe)
 
@@ -22072,7 +22072,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/integration/test_security_integration_extra.py
   since: 2026-06
   scenario: 'Given a query with ORDER BY, LIMIT, GROUP BY, or other clauses
@@ -22106,7 +22106,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/integration/test_security_integration_extra.py
   since: 2026-06
   scenario: 'Given the same column with different masking rules per role
@@ -24556,7 +24556,7 @@
   - provisa/pgwire/_pipeline.py
   tests:
   - tests/integration/test_execution_routing.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_view_reinject.py
   since: 2026-03
   scenario: 'Given a materialized view covering a subset of a query''s joins
@@ -46754,7 +46754,7 @@
     history; do not implement against it.] a term reference with no column grounds its term in
     the table itself (REQ-2141), [END SUPERSEDED BLOCK] a term grounded in a table (REQ-2141) is
     grounded, and live_term_ids counts it as grounded. An abstract term wired to
-    nothing physical still names no data and is not offered.'
+    nothing physical still names no data and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after, rather than every refless term not flagged abstract.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -75658,7 +75658,7 @@
   - provisa/security/masking.py
   - provisa/compiler/stage2.py
   tests:
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/unit/test_inherited_roles.py
   scenario: 'Given a column with unmasked_to listing role A
 
@@ -77859,7 +77859,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/unit/test_inherited_roles.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
@@ -77888,7 +77888,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -77916,7 +77916,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -77943,7 +77943,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -77971,7 +77971,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -78414,7 +78414,7 @@
   - tests/unit/test_mv_registry.py
   - tests/unit/test_mv_lifecycle.py
   - tests/unit/test_mv_tenant_isolation.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   scenario: 'Given a registered materialized view with expose_in_sdl unset
 
     When a query matches its join pattern and the view is fresh
@@ -78441,7 +78441,7 @@
   - provisa/mv/registry.py
   - provisa/api/data/table_written.py
   tests:
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_refresh_mv_mutation.py
   - tests/unit/test_mv_registry.py
   scenario: 'Given a fresh materialized view over table orders
@@ -78471,7 +78471,7 @@
   - provisa/mv/view_reinject.py
   - provisa/pgwire/_pipeline.py
   tests:
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_mv_expose_and_rls_rewrite.py
   scenario: 'Given a compiled join query carrying an RLS WHERE predicate and a matching fresh MV
 
@@ -78499,7 +78499,7 @@
   - provisa/api/app_loaders.py
   - provisa/mv/models.py
   tests:
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_mv_expose_and_rls_rewrite.py
   scenario: 'Given an MV with expose_in_sdl true and an sdl_config
 
@@ -87403,7 +87403,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     BLOCK] A class term may
     ground many tables or views, and a table is grounded by at most one class term. A table without a
     primary key cannot be grounded as a class, and the grounding is refused, naming the table.
-    Grounding is additive and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C
+    [SUPERSEDED by REQ-2141, 2026-10-23 -- a term's roles are exclusive (EXCLUSIVE ROLES below): a term owning column refs is not grounded in a table, nor the reverse. Kept here for history; do not implement against it.] Grounding is additive [END SUPERSEDED BLOCK] and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C
     Direct Mapping: each row is an instance with the IRI {public URL}/id/{domain}/{table}/{primary
     key}, typed by its table, and a class term additionally types the instances of every table it
     grounds. Column-grounded property terms work exactly as today, across many tables, with no class
@@ -87415,7 +87415,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the Ontology page (REQ-2130). THE MAPPING: column lineage (logical columns through views) and
     native references are the mapping from data to the ontology, provenance in the manner of R2RML,
     and are not class assertions. Docs, the export and SPARQL use the words class, property, instance
-    and mapping; the curation UI keeps term, concrete, abstract and grounds, with the role badge.
+    and mapping; [SUPERSEDED by REQ-2141, 2026-10-23 -- the abstract flag is retired; the role is the only classification (ROLE ONLY below). Kept here for history; do not implement against it.] the curation UI keeps term, concrete, abstract and grounds, with the role badge. [END SUPERSEDED BLOCK]
     (Amended 2026-10-22, STORAGE-NEUTRAL:) A term may be grounded in one or more tables or views, and
     a table has at most one class term. How a table grounding is stored is the build's to decide.
     (Amended 2026-10-23, SAME ENTITY:) A relationship marked same entity joins two tables one class
@@ -87423,7 +87423,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     never through a junction or a function; any other is refused, naming the rule it breaks. While
     such a relationship stands on a table, the table's class term cannot be withdrawn or replaced;
     the change is refused, naming the relationship. A class grounded in several tables is a curation
-    gap until its same-entity relationships join all of them, every table reached from any one.
+    gap until its same-entity relationships join all of them, every table reached from any one. [SUPERSEDED by REQ-2141, 2026-10-23 -- a Class holds the key refs of its tables and of the foreign keys referring to them (TABLE PROPOSALS, KEYS ON THE CLASS below); only non-key refs are exclusive. Kept here for history; do not implement against it.] (Amended 2026-10-23, EXCLUSIVE ROLES:) A term is a Class (grounded in tables) or a Property (owning column refs), never both. [END SUPERSEDED BLOCK] Grounding a table on a term that owns column refs is refused by the API, the Polly tool and config load (glossary.term_is_property, naming the term and its columns); moving a column ref into, or a table save claiming a column for, a term grounded in tables is refused (glossary.term_is_class, naming the term and its tables). Each refusal says why, in every UI locale. This supersedes any reading in which a term grounded in both is a Class. Data from before the rule is reported, not changed: GET /admin/glossary/role-conflicts lists each term holding both, with its tables and columns. (Amended 2026-10-23, ROLE ONLY:) The role -- Class (grounded in tables), Property (owning column refs) or Concept (grounding neither) -- is the only classification of a term. The separate abstract flag is retired: whether a term is abstract is derived, true exactly when it is a Concept, wherever it is read (the meta views, the API, the export, the live and grounded rules), and never stored or written. Declared domains apply to a Concept only. The API, the Polly and MCP tools and config load refuse an abstract setting (glossary.abstract_is_derived), saying it is derived from grounding. (Amended 2026-10-23, TABLE PROPOSALS, KEYS ON THE CLASS:) The model follows the W3C Direct Mapping, dbt entities and Palantir link types: a table is a class, its primary key is the class's identity, and a foreign key is a reference to the parent class. On table sync each keyed table proposes a draft Class term named for its concept (its business name's concept) and is grounded in it; tables of one concept share one term. A curated class grounding (config class_term, the UI, Polly) is never re-pointed by sync, and grounding a table on a curated term replaces its proposal. A primary key has no term of its own: every column of it, a composite key's parts and a natural key included, puts its ref on its table's Class. Every column of a declared foreign key (the many side of a many-to-one or one-to-many relationship, or a junction's key, composite ones included) puts its ref on the target table's Class whatever it is called, role names included (manager_id to employees lands on employee); the role lives on the relationship's name. A primary key that is also a foreign key puts its ref on the parent's Class, and its table still proposes its own Class. A column with no declared relationship is a Property even when its name matches a class; when the phrase it derives is a Class's name, it takes its table's concept as a qualifier. Key refs are placed by derivation alone, on sync and when a relationship or a table's Class changes: grounding a table on a term moves its key refs, and the foreign keys referring to it, onto the term at once, and ungrounding sends them back to the table's proposed class. A ref move into a Class is refused (glossary.term_is_class), and so is a move of a key column, whatever the target (glossary.key_column_derived, naming the column, its table and its class). A Class holds only key refs: grounding a table on a term holding non-key column refs is refused (glossary.term_is_property). A keyed table whose concept is already a Property with non-key refs gets no proposal. GET /admin/glossary/role-conflicts reports both cases: each Class holding non-key refs, and each such table. A proposal is a grounding sync made (stored as such) on a term no one has curated (no definition, edge, expert or retirement); a grounding a configuration declared or a person made is curated, whatever its name. A proposal is derived: the config export does not state it, and it goes with its table on deletion, while a curated class is kept as a Concept.
   use_case: >-
     A curator grounds the word Customer in the tables that hold customers, and RDF tools, SPARQL and
     the graph see one class with its instances, its properties and the identity between its sources,
@@ -87447,3 +87447,52 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1584
   - REQ-1591
   target: "2027-Q1"
+- id: REQ-2142
+  status: complete
+  since: "2026-10"
+  group: 1. Access Governance & Security
+  category: Column Masking
+  feature: row-security-and-masking-two-layers
+  priority: MUST
+  type: behavioral
+  description: >-
+    Every regex a user gives Provisa, a mask's pattern and replacement among them, is written in
+    one universal dialect: the portable subset of literals, ., sets [...] with ranges and negation,
+    the greedy quantifiers * + ? {n} {n,} {n,m}, the anchors ^ and $ (the whole value), groups ( )
+    and (?: ), alternation |, and \d \s \w as their ASCII classes; a replacement is literal text
+    with $1-$9 and $$. A pattern or replacement outside it (lookaround, backreferences in the
+    pattern, lazy or possessive quantifiers, named groups, \b, Unicode or POSIX classes, inline
+    flags) is refused at save, by the API and by config load, naming the construct, where it is
+    and why it is not universal; there is no per-engine check at save. An alternation where an
+    earlier all-literal branch is a strict prefix of a later branch is refused, because engines
+    that take the longest branch (PostgreSQL, Snowflake) and those that take the first would mask
+    differently; an alternation whose branches can begin with the same character is accepted
+    with a warning. When a mask is lowered to SQL the pattern and replacement are translated into
+    each engine's flavour (Trino, Databricks/Spark, MySQL, Exasol, DuckDB, BigQuery, ClickHouse,
+    PostgreSQL, Snowflake, Oracle), every match replaced, and a value is masked the same way on
+    each. A regex mask fails closed: a value its pattern does not match anywhere is fully masked,
+    read as '****' on a text column and as NULL on any other, never in clear; NULL stays NULL. The
+    model has no column-wide constant mask to fall back to (a constant mask is one reader's entry).
+    The admin mask check reports each entry's verdict as it is edited, and the editor's presets are
+    universal.
+  use_case: >-
+    A mask is written once and holds wherever the query runs; a pattern that would mask
+    differently, or fail, on some engine is refused when it is written, not when a query reaches
+    that engine.
+  code:
+    - provisa/security/universal_regex.py
+    - provisa/security/mask_presets.py
+    - provisa/security/masking.py
+    - provisa/transpiler/transpile.py
+    - provisa/api/admin/masks_router.py
+    - provisa/core/models.py
+  tests:
+    - tests/unit/test_universal_regex.py
+    - tests/unit/test_regex_mask_every_match.py
+    - tests/unit/test_mask_list.py
+  scenario: |
+    Given a column masked for analysts with pattern ^\d{3}-?\d{2}-?(\d{4})$ and replacement ***-**-$1
+    When an analyst reads it through DuckDB, PostgreSQL, Trino or Snowflake
+    Then each engine runs the pattern in its own regex flavour and every analyst reads ***-**-6789 for 123-45-6789
+    And saving a mask with the pattern \d(?=\d{4}) is refused, naming the lookahead and why it is not universal
+    And a value the pattern does not match, such as 12-3456, reads as **** on every engine

@@ -179,7 +179,14 @@ export async function createGlossaryTerm(body: {
 
 export async function updateGlossaryTerm(
   termId: number,
-  body: { name?: string; definition?: string | null; export_excluded?: boolean; retired?: boolean },
+  body: {
+    name?: string;
+    definition?: string | null;
+    export_excluded?: boolean;
+    retired?: boolean;
+    // REQ-1591: an abstract term's declared domains; a rooted term's come from its refs.
+    domains?: string[];
+  },
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}`, {
     method: "PATCH",

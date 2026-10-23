@@ -26,9 +26,10 @@ in service, defined, and grounded in a physical column.
 # Requirements: REQ-1387, REQ-1591, REQ-2130
 
 from provisa.core import model_change
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import re
+from dataclasses import dataclass
 
 from sqlalchemy import delete as _delete, func, or_, select, update
 
@@ -38,7 +39,10 @@ from provisa.core.glossary import (
     live_term_ids,
     normalize_term,
     readable_term,
+    table_concept,
 )
+from provisa.compiler.sql_types import key_list
+from provisa.core.models import Cardinality
 from provisa.core.repositories import identity
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
@@ -49,6 +53,7 @@ from provisa.core.schema_org import (
     glossary_term_table_refs,
     glossary_terms,
     registered_tables,
+    relationships,
     table_columns,
 )
 
@@ -123,6 +128,208 @@ async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "se
 # ---------------------------------------------------------------------------
 
 
+async def _class_term_of(conn: "Connection", table_id: int) -> int | None:
+    row = (
+        await conn.execute_core(
+            select(glossary_term_table_refs.c.term_id).where(
+                glossary_term_table_refs.c.table_id == table_id
+            )
+        )
+    ).first()
+    return None if row is None else row.term_id
+
+
+async def _primary_keys(conn: "Connection", table_id: int) -> set[str]:
+    rows = (
+        await conn.execute_core(
+            select(table_columns.c.column_name).where(
+                (table_columns.c.table_id == table_id) & table_columns.c.is_primary_key
+            )
+        )
+    ).fetchall()
+    return {r.column_name for r in rows}
+
+
+async def _references(conn: "Connection", table_id: int) -> dict[str, int]:
+    """Each foreign-key column of ``table_id`` -- every part of a composite one -- with the table
+    it refers to, as declared relationships say: the many side of a many-to-one (its source
+    column) or a one-to-many (its target column), and a junction's two keys."""
+    rows = (
+        await conn.execute_core(
+            select(relationships).where(
+                (relationships.c.source_table_id == table_id)
+                | (relationships.c.target_table_id == table_id)
+                | (relationships.c.via_table_id == table_id)
+            )
+        )
+    ).fetchall()
+    out: dict[str, int] = {}
+    for r in rows:
+        if r.via_table_id is not None:
+            if r.via_table_id == table_id and r.target_table_id is not None:
+                out.update({c: r.source_table_id for c in key_list(r.via_source_column or "")})
+                out.update({c: r.target_table_id for c in key_list(r.via_target_column or "")})
+            continue
+        if r.target_table_id is None:
+            continue
+        if r.cardinality == Cardinality.many_to_one.value and r.source_table_id == table_id:
+            out.update({c: r.target_table_id for c in key_list(r.source_column)})
+        elif r.cardinality == Cardinality.one_to_many.value and r.target_table_id == table_id:
+            out.update({c: r.source_table_id for c in key_list(r.target_column or "")})
+    return out
+
+
+async def _key_targets(
+    conn: "Connection", table_id: int, *, assume: "dict[int, int] | None" = None
+) -> dict[str, int]:
+    """Where each key column of ``table_id`` puts its ref (REQ-2141, KEYS ON THE CLASS): a
+    primary-key column on its table's Class term, a foreign key -- by its declared many-to-one
+    relationship, whatever the column is called -- on the target table's Class term, which wins
+    for a primary key that is also a foreign key. A table with no Class contributes nothing.
+    ``assume`` maps a table to the Class it is about to have."""
+    assume = assume or {}
+
+    async def class_of(tid: int) -> int | None:
+        return assume[tid] if tid in assume else await _class_term_of(conn, tid)
+
+    out: dict[str, int] = {}
+    own = await class_of(table_id)
+    if own is not None:
+        out = {col: own for col in await _primary_keys(conn, table_id)}
+    for col, target in (await _references(conn, table_id)).items():
+        parent = await class_of(target)
+        if parent is not None:
+            out[col] = parent
+    return out
+
+
+async def _property_term(conn: "Connection", business: str, table_context: str | None) -> int:
+    """The Property term a column that is no key derives (REQ-1387): its normalized phrase; when
+    that names a Class, the phrase qualified with its own table's concept -- a column with no
+    declared relationship is not its Class's (REQ-2141). TermIsClass when that too is a Class."""
+    wanted = normalize_term(business, table_context=table_context)
+    term_id = await _find_or_create_term(conn, wanted)
+    if table_context is None or not await _term_table_ids(conn, term_id):
+        return term_id
+    concept = table_concept(table_context)
+    qualified = wanted if wanted.startswith(f"{concept} ") else f"{concept} {wanted}"
+    if qualified == wanted:
+        await refuse_property_on_class(conn, term_id)
+    term_id = await _find_or_create_term(conn, qualified)
+    await refuse_property_on_class(conn, term_id)
+    return term_id
+
+
+async def proposal_terms(conn: "Connection") -> set[int]:
+    """The terms grounding a table only as sync's proposals and carrying no curator work: derived
+    (REQ-2141). A term a configuration declared or a person grounded, or a curated one, is not."""
+    rows = (
+        await conn.execute_core(
+            select(glossary_term_table_refs.c.term_id, glossary_term_table_refs.c.proposed)
+        )
+    ).fetchall()
+    proposed = {r.term_id for r in rows if r.proposed} - {r.term_id for r in rows if not r.proposed}
+    if not proposed:
+        return set()
+    graph = await _load_graph(conn)
+    return {t for t in proposed if t in graph.terms and not _is_curated(graph, graph.terms[t])}
+
+
+async def _concept_of(conn: "Connection", table_id: int) -> str:
+    row = (
+        await conn.execute_core(
+            select(registered_tables.c.alias, registered_tables.c.table_name).where(
+                registered_tables.c.id == table_id
+            )
+        )
+    ).fetchone()
+    return table_concept(row.alias or row.table_name)
+
+
+async def _propose_class(conn: "Connection", table_id: int, concept: str) -> int | None:
+    """Ground a keyed table in a draft Class term named for its concept (REQ-2141): the term of
+    that name when it holds no non-key column ref (it may already ground other tables of the same
+    concept), else a new one. None -- no proposal -- when the concept is already a Property with
+    non-key refs; role_conflicts reports that table."""
+    row = (
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == concept))
+    ).fetchone()
+    if row is None:
+        term_id = await _find_or_create_term(conn, concept)
+    elif await _non_key_refs(conn, row.id, also_grounding=table_id):
+        return None
+    else:
+        term_id = row.id
+    await conn.execute_core(
+        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id, proposed=True)
+    )
+    return term_id
+
+
+async def rehome_keys(
+    conn: "Connection", table_ids: "set[int]", *, keep: "frozenset[int]" = frozenset()
+) -> None:
+    """Re-settle the key refs of ``table_ids`` and of every table referring to one of them
+    (REQ-2141): a key column's ref goes to the Class its key targets name; a ref on a Class that
+    is no longer its key goes back to the Property its name derives. A ref on a curated Property
+    stays, as a curated column term does. The terms refs leave are settled, but for ``keep``.
+    Run when a table's Class changes and when a relationship is saved or removed."""
+    referring = (
+        await conn.execute_core(
+            select(relationships.c.source_table_id).where(
+                relationships.c.target_table_id.in_(table_ids)
+            )
+        )
+    ).fetchall()
+    tables = set(table_ids) | {r.source_table_id for r in referring}
+    domains_before = await term_domains(conn)
+    graph = await _load_graph(conn)
+    left: set[int] = set()
+    for table_id in sorted(tables):
+        targets = await _key_targets(conn, table_id)
+        rows = (
+            await conn.execute_core(
+                select(
+                    glossary_term_refs.c.id,
+                    glossary_term_refs.c.term_id,
+                    glossary_term_refs.c.column_name,
+                    table_columns.c.alias,
+                    registered_tables.c.alias.label("table_alias"),
+                    registered_tables.c.table_name,
+                )
+                .join(
+                    table_columns,
+                    (table_columns.c.table_id == glossary_term_refs.c.table_id)
+                    & (table_columns.c.column_name == glossary_term_refs.c.column_name),
+                )
+                .join(registered_tables, glossary_term_refs.c.table_id == registered_tables.c.id)
+                .where(glossary_term_refs.c.table_id == table_id)
+            )
+        ).fetchall()
+        for r in rows:
+            node = graph.terms.get(r.term_id)
+            # a term just ungrounded (``keep``) held its refs as a Class
+            held_is_class = r.term_id in keep or bool(await _term_table_ids(conn, r.term_id))
+            target = targets.get(r.column_name)
+            if target is None:
+                if not held_is_class:
+                    continue  # a Property, where a column with no key belongs
+                target = await _property_term(
+                    conn, r.alias or r.column_name, r.table_alias or r.table_name
+                )
+            elif not held_is_class and node is not None and _is_curated(graph, node):
+                continue
+            if target != r.term_id:
+                await conn.execute_core(
+                    update(glossary_term_refs)
+                    .where(glossary_term_refs.c.id == r.id)
+                    .values(term_id=target)
+                )
+                left.add(r.term_id)
+    if left - keep:
+        await _settle_terms(conn, left - keep, domains_before=domains_before)
+
+
 async def sync_table_refs(
     conn: "Connection",
     table_id: int,
@@ -172,28 +379,38 @@ async def sync_table_refs(
             )
         )
     orphaned = {existing[c] for c in departed}
+    # REQ-2141 (TABLE PROPOSALS, KEYS ON THE CLASS): the table's Class term -- its grounding, or a
+    # draft proposed now from its concept -- and the key columns whose refs belong on a Class.
+    if await _class_term_of(conn, table_id) is None and table_context is not None:
+        if await _primary_keys(conn, table_id):
+            await _propose_class(conn, table_id, table_concept(table_context))
+    targets = await _key_targets(conn, table_id)
     graph = await _load_graph(conn) if existing else None
     for physical, business in columns:
+        target = targets.get(physical)
         wanted = normalize_term(business, table_context=table_context)
         held = existing.get(physical)
         if held is not None:
             assert graph is not None
             node = graph.terms.get(held)
-            if node is None or _is_curated(graph, node) or node["name"] == wanted:
-                # Holding this ref already proves the term concrete, regardless of which
-                # loader step created it first (glossary upsert can precede table sync and
-                # leave a config-declared stub abstract) -- a stale flag is corrected here too,
-                # not just on the fresh-link path below.
-                if node is not None and node["is_abstract"]:
-                    await conn.execute_core(
-                        update(glossary_terms)
-                        .where(glossary_terms.c.id == node["id"])
-                        .values(is_abstract=False)
-                    )
-                    node["is_abstract"] = False
+            if node is None or held == target:
+                continue
+            on_class = held in {t for t in targets.values()} or bool(
+                await _term_table_ids(conn, held)
+            )
+            if (
+                target is None
+                and not on_class
+                and (_is_curated(graph, node) or node["name"] == wanted)
+            ):
+                continue
+            if target is not None and not on_class and _is_curated(graph, node):
                 continue
             orphaned.add(held)
-        term_id = await _find_or_create_term(conn, wanted)
+        # a key is its Class's, whatever the column is called; any other column is a Property
+        term_id = (
+            target if target is not None else await _property_term(conn, business, table_context)
+        )
         await conn.upsert(
             glossary_term_refs,
             {"term_id": term_id, "table_id": table_id, "column_name": physical},
@@ -205,8 +422,37 @@ async def sync_table_refs(
         await _settle_terms(conn, orphaned, domains_before=domains_before)
 
 
-async def sweep_refless_terms(conn: "Connection", *, domains_before: "dict[int, set[str]]") -> None:
-    """Settle every rooted-born term whose refs are all gone (FK-cascade deletion paths).
+@dataclass(frozen=True)
+class RemovalSnapshot:
+    """What a deletion path reads BEFORE it removes rows its refs depend on (REQ-1591): every
+    term's domains, and the terms holding column refs. The sweep after it settles the terms that
+    held refs and hold none now; a term that never held one is a Concept and is not settled."""
+
+    domains: dict[int, set[str]]
+    held_refs: frozenset[int]
+
+
+async def before_ref_removal(conn: "Connection") -> RemovalSnapshot:
+    held = {
+        r.term_id
+        for r in (
+            await conn.execute_core(select(glossary_term_refs.c.term_id).distinct())
+        ).fetchall()
+    }
+    # REQ-2141: a Class holds its tables' keys, but only a proposal is derived and goes with
+    # them; a declared or curated Class is kept, a Concept again.
+    grounded = {
+        r.term_id
+        for r in (
+            await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
+        ).fetchall()
+    }
+    curated = grounded - await proposal_terms(conn)
+    return RemovalSnapshot(await term_domains(conn), frozenset(held - curated))
+
+
+async def sweep_refless_terms(conn: "Connection", *, before: RemovalSnapshot) -> None:
+    """Settle every term that held refs before a deletion and holds none now (FK-cascade paths).
 
     Table/source deletion and config purges remove registered_tables rows out of this
     repository's sight; the deletion paths call this afterwards so those terms still get
@@ -214,50 +460,45 @@ async def sweep_refless_terms(conn: "Connection", *, domains_before: "dict[int, 
     than FK cascade, because the SQLite backend runs without PRAGMA foreign_keys and its
     cascades never fire.
 
-    ``domains_before`` is :func:`term_domains` taken BEFORE the caller deleted the rows, and is
+    ``before`` is :func:`before_ref_removal`, taken BEFORE the caller deleted the rows, and is
     required rather than computed here (REQ-1591): a term's domains are derived by joining its
     refs to ``registered_tables``, so once the caller has removed the table row there is nothing
-    left to derive from and a snapshot taken here would already be empty. Requiring it makes the
-    ordering a caller cannot skip — a new deletion path has to take the snapshot to compile.
+    left to derive from and a snapshot taken here would already be empty. It also says which
+    terms held refs: a term with none is a Concept unless it lost them (REQ-2141). Requiring it
+    makes the ordering a caller cannot skip — a new deletion path has to take the snapshot to
+    compile.
     """
     await conn.execute_core(
         _delete(glossary_term_refs).where(
             ~glossary_term_refs.c.table_id.in_(select(registered_tables.c.id))
         )
     )
-    rows = (
-        await conn.execute_core(
-            select(glossary_terms.c.id)
-            .where(~glossary_terms.c.is_abstract, ~glossary_terms.c.deprecated)
-            .where(~glossary_terms.c.id.in_(select(glossary_term_refs.c.term_id).distinct()))
-        )
-    ).fetchall()
-    if rows:
-        await _settle_terms(conn, {r.id for r in rows}, domains_before=domains_before)
+    still = {
+        r.term_id
+        for r in (
+            await conn.execute_core(select(glossary_term_refs.c.term_id).distinct())
+        ).fetchall()
+    }
+    lost = set(before.held_refs) - still
+    if lost:
+        await _settle_terms(conn, lost, domains_before=before.domains)
 
 
 async def _find_or_create_term(conn: "Connection", name: str) -> int:
-    """Attach a column ref's term by name, creating it if needed.
-
-    A term this resolves to is by definition concrete -- it now holds a physical ref -- so a
-    stale ``is_abstract`` flag from a config-declared stub (glossary term upsert runs before
-    table sync, so a name shared with a not-yet-synced column is created abstract first) is
-    corrected here rather than left to contradict the ref it just gained.
-    """
+    """Attach a column ref's term by name, creating it if needed; a deprecated one is revived.
+    (Its role follows from the ref it gains: REQ-2141.)"""
     row = (
         await conn.execute_core(select(glossary_terms).where(glossary_terms.c.name == name))
     ).fetchone()
     if row is not None:
-        if row.deprecated or row.is_abstract:
+        if row.deprecated:
             await conn.execute_core(
-                update(glossary_terms)
-                .where(glossary_terms.c.id == row.id)
-                .values(deprecated=False, is_abstract=False)
+                update(glossary_terms).where(glossary_terms.c.id == row.id).values(deprecated=False)
             )
         return row.id
     term_id = await conn.upsert_returning(
         glossary_terms,
-        {"name": name, "is_abstract": False, "deprecated": False},
+        {"name": name, "deprecated": False},
         index_elements=["name"],
         returning="id",
         update_columns=["deprecated"],
@@ -285,7 +526,7 @@ async def _settle_terms(
     graph = await _load_graph(conn)
     for term_id in sorted(term_ids):
         node = graph.terms.get(term_id)
-        if node is None or node["is_abstract"] or node["deprecated"] or node["rooted"]:
+        if node is None or node["deprecated"] or node["rooted"]:
             continue
         if _is_curated(graph, node) or _dangling_grows(graph, term_id):
             await conn.execute_core(
@@ -301,6 +542,12 @@ async def _settle_terms(
             graph.remove(term_id)
             removed.add(term_id)
     return removed
+
+
+def _is_concept(node: dict) -> bool:
+    """A Concept, in service: rooted in no column and no table, and not a deprecated term that
+    lost its columns (REQ-2141)."""
+    return not node["rooted"] and not node["deprecated"]
 
 
 class _TermGraph:
@@ -319,7 +566,7 @@ class _TermGraph:
         excluded: frozenset[int] = frozenset(),
         extra_roots: frozenset[int] = frozenset(),
     ) -> set[int]:
-        """Abstract terms with no undirected path to any rooted (ref-holding) term.
+        """Concept terms (in service, rooted in nothing) with no undirected path to any rooted term.
 
         ``extra_roots`` counts the named terms as rooted regardless of refs — the settle
         baseline treats the candidate term as still-anchoring (it was rooted until the
@@ -346,7 +593,7 @@ class _TermGraph:
         return {
             tid
             for tid, node in self.terms.items()
-            if node["is_abstract"] and tid not in excluded and tid not in reached
+            if _is_concept(node) and tid not in excluded and tid not in reached
         }
 
 
@@ -356,7 +603,6 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             select(
                 glossary_terms.c.id,
                 glossary_terms.c.name,
-                glossary_terms.c.is_abstract,
                 glossary_terms.c.deprecated,
                 glossary_terms.c.retired,
                 glossary_terms.c.definition,
@@ -387,7 +633,6 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         r.id: {
             "id": r.id,
             "name": r.name,
-            "is_abstract": bool(r.is_abstract),
             "deprecated": bool(r.deprecated),
             "retired": bool(r.retired),
             "definition": r.definition,
@@ -527,6 +772,8 @@ async def list_terms(
         | {
             "ref_count": counts.get(r.id, 0),
             "table_count": table_counts.get(r.id, 0),
+            # REQ-2141: derived -- a term rooted in no column and no table is a Concept.
+            "is_abstract": not counts.get(r.id) and not table_counts.get(r.id),
             "identity_gap": r.id in gaps,
             "live": r.id in live,
             "grounded": r.id in grounded,
@@ -568,6 +815,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
             select(func.count()).where(glossary_term_table_refs.c.term_id == term_id)
         )
     ).scalar_one()
+    term["is_abstract"] = not term["ref_count"] and not term["table_count"]  # REQ-2141: derived
     term["identity_gap"] = term_id in await identity.identity_gap_ids(conn)
     other = glossary_terms.alias("other")
     outgoing = (
@@ -639,7 +887,6 @@ async def create_abstract_term(
         {
             "name": name,
             "definition": definition,
-            "is_abstract": True,
             "deprecated": False,
         },
         index_elements=["name"],
@@ -663,7 +910,7 @@ async def upsert_declared_term(
     present in the table -- whether auto-derived from a column ref or declared by a prior
     load of this same config -- gets its definition (re)set in place rather than rejected.
     This is also how a config entry grounds an already-physical term: naming an existing
-    rooted term adds a definition without touching its ``is_abstract`` flag or column refs.
+    rooted term adds a definition without touching its column refs.
     """
     model_change.name("upsert", "glossary term", name)  # REQ-1524
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
@@ -674,7 +921,6 @@ async def upsert_declared_term(
         {
             "name": name,
             "definition": definition,
-            "is_abstract": True,
             "deprecated": False,
         },
         index_elements=["name"],
@@ -763,6 +1009,10 @@ async def delete_term(conn: "Connection", term_id: int) -> bool:  # REQ-1918
         )
         if found.fetchone() is None:
             return False
+        # REQ-2141: a Class's tables are ungrounded first, so the primary-key refs it holds for
+        # them go back to their own terms rather than blocking the delete.
+        for table_id in sorted(await _term_table_ids(conn, term_id)):
+            await unground_table(conn, term_id, table_id)
         blocking = await guard(conn, ref)
         if blocking:
             raise TermDeleteRefused(term_id, blocking)
@@ -799,6 +1049,16 @@ async def move_ref(
         raise ValueError(f"term {to_term_id} does not exist")
     if row.term_id == to_term_id:
         return {"source_term_removed": False}
+    # REQ-2141: a key's ref is placed by derivation alone, and a Class takes no ref by hand.
+    key_class = (await _key_targets(conn, table_id)).get(column_name)
+    if key_class is not None:
+        table = (
+            await conn.execute_core(
+                select(*_TABLE_ADDRESS[:3]).where(registered_tables.c.id == table_id)
+            )
+        ).fetchone()
+        raise KeyColumnDerived(column_name, _address(table), await _term_name(conn, key_class))
+    await refuse_property_on_class(conn, to_term_id)
     # REQ-1591: before the move, so a losing term the settle keeps is stamped with the domains it
     # held rather than the empty set it is left with.
     domains_before = await term_domains(conn)
@@ -979,6 +1239,10 @@ async def export_graph(conn: "Connection") -> dict:
             )
         ).fetchall()
     ]
+    # REQ-2141: abstract is derived -- a term rooted in no column and no table is a Concept.
+    rooted = {r["term_id"] for r in refs} | {r["term_id"] for r in table_refs}
+    for term in terms:
+        term["is_abstract"] = term["id"] not in rooted
     return {
         "terms": terms,
         "refs": refs,
@@ -1015,12 +1279,200 @@ class TableAlreadyGrounded(ValueError):
         self.term_name = term_name
 
 
+# REQ-2141 (amended 2026-10-23): a term's ontology role is exclusive. It is a Class, grounded in
+# tables, or a Property, owning column refs -- never both, so a term names one thing.
+_ROLES_EXCLUSIVE = (
+    "a term is either a Class, grounded in tables, or a Property, owning column refs, never both"
+)
+
+
+class TermIsProperty(ValueError):
+    """A table grounding refused: the term owns column refs (it is a Property)."""
+
+    def __init__(self, term: str, columns: list[str]) -> None:
+        super().__init__(
+            f"term {term!r} owns column refs ({', '.join(columns)}), so it cannot ground a table: "
+            + _ROLES_EXCLUSIVE
+        )
+        self.term = term
+        self.columns = columns
+
+
+class KeyColumnDerived(ValueError):
+    """A move refused: the column is a key, whose ref is placed by derivation on its table's (or
+    its target's) Class term, never by hand (REQ-2141)."""
+
+    def __init__(self, column: str, table: str, cls: str) -> None:
+        super().__init__(
+            f"column {table}.{column} is a key: it follows its table's class ({cls!r}), and is "
+            "not moved by hand"
+        )
+        self.column = column
+        self.table = table
+        self.cls = cls
+
+
+class TermIsClass(ValueError):
+    """A column ref refused: the term is grounded in tables (it is a Class)."""
+
+    def __init__(self, term: str, tables: list[str]) -> None:
+        super().__init__(
+            f"term {term!r} grounds tables ({', '.join(tables)}), so it cannot own a column ref: "
+            + _ROLES_EXCLUSIVE
+        )
+        self.term = term
+        self.tables = tables
+
+
 _TABLE_ADDRESS = (
     registered_tables.c.source_id,
     registered_tables.c.schema_name,
     registered_tables.c.table_name,
     registered_tables.c.domain_id,
 )
+
+
+def _address(row: Any) -> str:
+    return f"{row.source_id}.{row.schema_name}.{row.table_name}"
+
+
+async def _term_name(conn: "Connection", term_id: int) -> str:
+    row = (
+        await conn.execute_core(select(glossary_terms.c.name).where(glossary_terms.c.id == term_id))
+    ).fetchone()
+    if row is None:
+        raise TermNotFound(f"term {term_id} not found")
+    return row.name
+
+
+async def _term_table_ids(conn: "Connection", term_id: int) -> set[int]:
+    rows = (
+        await conn.execute_core(
+            select(glossary_term_table_refs.c.table_id).where(
+                glossary_term_table_refs.c.term_id == term_id
+            )
+        )
+    ).fetchall()
+    return {r.table_id for r in rows}
+
+
+async def _non_key_refs(
+    conn: "Connection", term_id: int, *, also_grounding: int | None = None
+) -> list[str]:
+    """The column refs ``term_id`` holds that a Class may not (REQ-2141): every ref but the key
+    refs that target it -- its tables' primary keys (with ``also_grounding``, a table it is about
+    to ground) and the foreign keys referring to them. As source.schema.table.column."""
+    assume = {} if also_grounding is None else {also_grounding: term_id}
+    rows = (
+        await conn.execute_core(
+            select(
+                glossary_term_refs.c.table_id,
+                glossary_term_refs.c.column_name,
+                *_TABLE_ADDRESS[:3],
+            )
+            .join(registered_tables, glossary_term_refs.c.table_id == registered_tables.c.id)
+            .where(glossary_term_refs.c.term_id == term_id)
+            .order_by(*_TABLE_ADDRESS[:3], glossary_term_refs.c.column_name)
+        )
+    ).fetchall()
+    targets: dict[int, dict[str, int]] = {}
+    out = []
+    for r in rows:
+        if r.table_id not in targets:
+            targets[r.table_id] = await _key_targets(conn, r.table_id, assume=assume)
+        if targets[r.table_id].get(r.column_name) != term_id:
+            out.append(f"{_address(r)}.{r.column_name}")
+    return out
+
+
+async def _term_table_addresses(conn: "Connection", term_id: int) -> list[str]:
+    rows = (
+        await conn.execute_core(
+            select(*_TABLE_ADDRESS[:3])
+            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            .where(glossary_term_table_refs.c.term_id == term_id)
+            .order_by(*_TABLE_ADDRESS[:3])
+        )
+    ).fetchall()
+    return [_address(r) for r in rows]
+
+
+async def refuse_class_on_property(conn: "Connection", term_id: int, table_id: int) -> None:
+    """TermIsProperty when grounding ``table_id`` on ``term_id`` would leave it a Class holding
+    non-key column refs (REQ-2141)."""
+    columns = await _non_key_refs(conn, term_id, also_grounding=table_id)
+    if columns:
+        raise TermIsProperty(await _term_name(conn, term_id), columns)
+
+
+async def refuse_property_on_class(conn: "Connection", term_id: int) -> None:
+    """TermIsClass when ``term_id`` grounds tables: a non-key column ref is not a Class's
+    (REQ-2141)."""
+    tables = await _term_table_addresses(conn, term_id)
+    if tables:
+        raise TermIsClass(await _term_name(conn, term_id), tables)
+
+
+async def role_conflicts(conn: "Connection") -> dict:
+    """What breaks the roles' exclusivity (REQ-2141), reported and never changed:
+
+    - ``terms``: each Class holding column refs a Class may not -- refs other than its tables'
+      primary keys and the key columns landing on it by name -- with its tables and those columns;
+    - ``tables``: each keyed table with no Class term because its concept is already a Property
+      holding non-key refs, with that term and its columns."""
+    classes = (
+        await conn.execute_core(
+            select(glossary_terms.c.id, glossary_terms.c.name)
+            .where(glossary_terms.c.id.in_(select(glossary_term_table_refs.c.term_id)))
+            .order_by(glossary_terms.c.name)
+        )
+    ).fetchall()
+    terms = []
+    for r in classes:
+        columns = await _non_key_refs(conn, r.id)
+        if columns:
+            terms.append(
+                {
+                    "term_id": r.id,
+                    "term": r.name,
+                    "tables": await _term_table_addresses(conn, r.id),
+                    "columns": columns,
+                }
+            )
+    keyed = select(table_columns.c.table_id).where(table_columns.c.is_primary_key)
+    ungrounded = (
+        await conn.execute_core(
+            select(registered_tables.c.id, registered_tables.c.alias, *_TABLE_ADDRESS)
+            .where(registered_tables.c.id.in_(keyed))
+            .where(~registered_tables.c.id.in_(select(glossary_term_table_refs.c.table_id)))
+            .order_by(*_TABLE_ADDRESS[:3])
+        )
+    ).fetchall()
+    by_name = {
+        r.name: r.id
+        for r in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+    }
+    tables = []
+    for t in ungrounded:
+        concept = table_concept(t.alias or t.table_name)
+        term_id = by_name.get(concept)
+        if term_id is None:
+            continue
+        columns = await _non_key_refs(conn, term_id, also_grounding=t.id)
+        if columns:
+            tables.append(
+                {
+                    "table_id": t.id,
+                    "table": _address(t),
+                    "domain_id": t.domain_id,
+                    "concept": concept,
+                    "term_id": term_id,
+                    "columns": columns,
+                }
+            )
+    return {"terms": terms, "tables": tables}
 
 
 async def term_exists(conn: "Connection", term_id: int) -> bool:
@@ -1065,15 +1517,26 @@ async def _keyed_table(conn: "Connection", table_id: int) -> str:
     return address
 
 
+async def _home_key_refs(
+    conn: "Connection", table_id: int, *, keep: "frozenset[int]" = frozenset()
+) -> None:
+    """A table's Class changed: its key refs, and the foreign keys of the tables referring to
+    it, go where REQ-2141 puts them; the terms they leave are settled but for ``keep``."""
+    await rehome_keys(conn, {table_id}, keep=keep)
+
+
 async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     """Make ``term_id`` the class term of ``table_id``.
 
     Refused by name: a table without a primary key, whose rows are not identifiable instances,
-    and a table another term (or this one) already grounds -- a table has one class term.
+    a term holding column refs a Class may not (a Property, REQ-2141), and a table a curated
+    class (or this term) already grounds -- a table has one class term. A table's proposal gives
+    way. The table's key refs, and the foreign keys referring to it, move onto the term.
     """
     if not await term_exists(conn, term_id):
         raise TermNotFound(f"term {term_id} not found")
     address = await _keyed_table(conn, table_id)
+    await refuse_class_on_property(conn, term_id, table_id)
     held = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
@@ -1083,11 +1546,21 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
             .where(glossary_term_table_refs.c.table_id == table_id)
         )
     ).fetchone()
-    if held is not None:
+    if held is not None and (held.id == term_id or held.id not in await proposal_terms(conn)):
         raise TableAlreadyGrounded(address, held.id, held.name)
-    await conn.execute_core(
-        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id)
-    )
+    if held is not None:
+        # The table's proposal gives way to the curated class (REQ-2141).
+        await identity.refuse_term_change(conn, table_id)
+        await conn.execute_core(
+            update(glossary_term_table_refs)
+            .where(glossary_term_table_refs.c.table_id == table_id)
+            .values(term_id=term_id, proposed=False)
+        )
+    else:
+        await conn.execute_core(
+            glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id)
+        )
+    await _home_key_refs(conn, table_id)
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 
 
@@ -1097,6 +1570,7 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     the same configuration again changes nothing. Another term in its place is refused while a
     same-entity relationship stands on the one it has (identity.TableInIdentity)."""
     address = await _keyed_table(conn, table_id)
+    await refuse_class_on_property(conn, term_id, table_id)
     held = (
         await conn.execute_core(
             select(glossary_term_table_refs.c.term_id).where(
@@ -1108,10 +1582,14 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
         await identity.refuse_term_change(conn, table_id)
     await conn.upsert(
         glossary_term_table_refs,
-        {"term_id": term_id, "table_id": table_id},
+        {"term_id": term_id, "table_id": table_id, "proposed": False},
         index_elements=["table_id"],
-        update_columns=["term_id"],
+        update_columns=["term_id", "proposed"],
     )
+    await _home_key_refs(conn, table_id)
+    if held is not None and held.term_id != term_id:
+        # A proposal the configuration replaced keeps what else it holds, or goes (REQ-2141).
+        await _settle_terms(conn, {held.term_id}, domains_before=await term_domains(conn))
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 
 
@@ -1125,7 +1603,13 @@ async def unground_table(conn: "Connection", term_id: int, table_id: int) -> boo
             & (glossary_term_table_refs.c.table_id == table_id)
         )
     )
-    return (result.rowcount or 0) > 0
+    ungrounded = (result.rowcount or 0) > 0
+    if ungrounded:
+        # REQ-2141: the table goes back to its proposed class, as a sync would propose it.
+        if await _primary_keys(conn, table_id):
+            await _propose_class(conn, table_id, await _concept_of(conn, table_id))
+        await _home_key_refs(conn, table_id, keep=frozenset({term_id}))
+    return ungrounded
 
 
 async def get_term_by_ref(conn: "Connection", table_id: int, column_name: str) -> dict | None:
@@ -1192,10 +1676,17 @@ async def related_terms_for_tables(
     ).fetchall()
     live = await live_ids(conn)
     scope = await term_domains(conn)
+    graph = await _load_graph(conn)
     return [
-        dict(r._mapping) | {"live": r.id in live, "domains": sorted(scope.get(r.id, set()))}
+        dict(r._mapping)
+        | {
+            "live": r.id in live,
+            "domains": sorted(scope.get(r.id, set())),
+            "is_abstract": not graph.terms[r.id]["rooted"],  # REQ-2141: derived
+        }
         for r in rows
-        if (r.id in direct_ids or r.is_abstract) and readable_term(domains, scope.get(r.id, set()))
+        if (r.id in direct_ids or _is_concept(graph.terms[r.id]))
+        and readable_term(domains, scope.get(r.id, set()))
     ]
 
 

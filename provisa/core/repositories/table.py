@@ -863,11 +863,11 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
             raise TableDeleteRefused(table_id, row["table_name"], blocking)
         # REQ-1591: before the refs go. A term's domains are derived by joining its refs to this
         # very table, so the sweep that follows has nothing left to read them from.
-        domains_before = await glossary_repo.term_domains(conn)
+        refs_before = await glossary_repo.before_ref_removal(conn)
         await discard(conn, table_id)
         # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
         # abstract term hangs on them).
-        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+        await glossary_repo.sweep_refless_terms(conn, before=refs_before)
     return True
 
 

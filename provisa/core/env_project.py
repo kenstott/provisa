@@ -256,8 +256,11 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             for r in term_refs
             if r["table_id"] == table_id
         ]
+        # REQ-2141: a proposal is marked, so a deploy keeps it a proposal (derived, not declared)
         own_class = [
-            {"term": term_paths[r["term_id"]]} for r in table_terms if r["table_id"] == table_id
+            {"term": term_paths[r["term_id"]], **({"proposed": True} if r["proposed"] else {})}
+            for r in table_terms
+            if r["table_id"] == table_id
         ]
         tree[paths[table_id]] = entity(
             "registered_tables",

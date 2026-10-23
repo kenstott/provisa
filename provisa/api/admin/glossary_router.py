@@ -48,6 +48,17 @@ async def _notify(org_id: str, reason: str) -> None:
     await notify_model_changed(org_id, reason=reason)
 
 
+def _refuse_abstract(body: dict) -> None:
+    """REQ-2141: whether a term is abstract (a Concept) follows from what it grounds."""
+    if "is_abstract" in body:
+        raise ApiError(
+            400,
+            "glossary.abstract_is_derived",
+            "abstract is derived from grounding: a term with no column refs and no grounded "
+            "tables is a Concept",
+        )
+
+
 def _require_glossary_read(request: Request) -> None:
     """REQ-1590: may this caller SEE the glossary?
 
@@ -300,10 +311,11 @@ async def get_term(request: Request, term_id: int) -> dict:
 
 @router.post("/terms")
 async def create_abstract_term(request: Request) -> dict:
-    """Create an abstract term — a user concept with no physical refs."""
+    """Create a term with no physical refs -- a Concept until it grounds something."""
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
+    _refuse_abstract(body)
     domains = _declared_domains(request, body.get("domains"), current=set())
     pool = await _pool()
     async with pool.acquire() as conn:
@@ -326,6 +338,7 @@ async def update_term(request: Request, term_id: int) -> dict:
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
+    _refuse_abstract(body)
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -333,9 +346,10 @@ async def update_term(request: Request, term_id: int) -> dict:
         found = False
         try:
             if "domains" in body:
-                # REQ-1591: DECLARED domains, so only an abstract term takes them. A rooted term's
-                # domains are its refs' — writing rows for one would be a second answer that drifts
-                # the moment a column moves; the way to rescope it is to move the refs.
+                # REQ-1591: DECLARED domains, so only a Concept takes them (REQ-2141: no column refs
+                # and no tables). A Property's or a Class's domains are its refs' or its tables' —
+                # writing rows for one would be a second answer that drifts the moment a column
+                # moves; the way to rescope it is to move the refs.
                 existing = await glossary_repo.get_term(_conn, term_id)
                 if existing is None:
                     raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
@@ -343,7 +357,8 @@ async def update_term(request: Request, term_id: int) -> dict:
                     raise ApiError(
                         400,
                         "glossary.invalid",
-                        "a rooted term's domains come from its refs and cannot be set",
+                        "a term grounded in columns or tables takes its domains from them; only a "
+                        "Concept's domains can be set",
                     )
                 await glossary_repo.set_declared_domains(
                     _conn,
@@ -649,6 +664,20 @@ async def move_ref(request: Request) -> dict:
                 str(body["column_name"]),
                 int(body["to_term_id"]),
             )
+        except glossary_repo.TermIsClass as exc:
+            raise ApiError(
+                409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
+            ) from exc
+        except glossary_repo.KeyColumnDerived as exc:
+            raise ApiError(
+                409,
+                "glossary.key_column_derived",
+                str(exc),
+                # "class" is a keyword, so the param is passed by mapping
+                **cast(
+                    "dict[str, Any]", {"column": exc.column, "table": exc.table, "class": exc.cls}
+                ),
+            ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if moved is None:
@@ -797,6 +826,14 @@ async def ground_term_table(
         await glossary_repo.ground_table(conn, term_id, table_id)
     except glossary_repo.TableHasNoPrimaryKey as exc:
         raise ApiError(400, "glossary.table_no_primary_key", str(exc), table=exc.table) from exc
+    except glossary_repo.TermIsProperty as exc:
+        raise ApiError(
+            409,
+            "glossary.term_is_property",
+            str(exc),
+            term=exc.term,
+            columns=", ".join(exc.columns),
+        ) from exc
     except glossary_repo.TableAlreadyGrounded as exc:
         raise ApiError(
             409,
@@ -827,6 +864,31 @@ async def unground_term_table(
         raise ApiError(
             404, "glossary.table_ref_not_found", f"term {term_id} does not ground table {table_id}"
         )
+
+
+@router.get("/role-conflicts")
+async def role_conflicts(request: Request) -> dict:
+    """What breaks the exclusivity of a term's roles (REQ-2141), for the caller's domains: each
+    Class holding column refs a Class may not (``terms``), and each keyed table left without a
+    Class term because its concept is a Property (``tables``). It reports; it changes nothing."""
+    from provisa.core.glossary import readable_term
+
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        found = await glossary_repo.role_conflicts(_conn)
+        allowed = _authority(request)
+        if allowed is None:
+            return found
+        scopes = await glossary_repo.term_domains(_conn)
+        return {
+            "terms": [
+                t for t in found["terms"] if readable_term(allowed, scopes.get(t["term_id"], set()))
+            ],
+            "tables": [t for t in found["tables"] if t["domain_id"] in allowed],
+        }
 
 
 @router.get("/terms/{term_id}/tables")

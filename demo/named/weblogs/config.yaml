@@ -342,6 +342,16 @@ views:
 # meanings for a curator to split). The abstract terms below the derived ones are the shop's
 # ontology, grounded in the derived terms by their edges.
 glossary_terms:
+- name: access log
+  definition: A request nginx served, one line of its access log, known by the file it was read from
+    and where in it the line starts.
+  domains:
+  - shop
+- name: db log
+  definition: A record PostgreSQL wrote to its log, known by the file it was read from and where in it
+    the record starts.
+  domains:
+  - shop
 - name: access log status
   definition: The HTTP status code nginx returned for a request, as its access log records it.
   domains:
@@ -437,11 +447,6 @@ glossary_terms:
     rel_type: PART_OF
 - name: extra
   definition: Any field of a log record that none of its table's columns holds.
-  domains:
-  - shop
-- name: file
-  definition: The log file a record was read from, known by a checksum of its first bytes, so a renamed
-    or rotated copy is the same file.
   domains:
   - shop
 - name: file name
@@ -768,3 +773,6 @@ relationships:
 - {id: sql-to-request, alias: SERVED, cardinality: many-to-one, source_table_id: view_request_sql, source_column: request_id, target_table_id: access_log, target_column: request_id}
 - {id: page-to-sql, alias: RAN, cardinality: one-to-many, source_table_id: view_slowest_pages, source_column: request_id, target_table_id: view_request_sql, target_column: request_id}
 - {id: error-to-request, alias: FAILED_IN, cardinality: many-to-one, source_table_id: view_requests_with_db_errors, source_column: request_id, target_table_id: access_log, target_column: request_id}
+- {id: error-to-customer, alias: SIGNED_IN_AS, cardinality: many-to-one, source_table_id: view_requests_with_db_errors, source_column: customer_id, target_table_id: customers, target_column: id}
+- {id: erroring-customer, alias: IS_CUSTOMER, cardinality: many-to-one, source_table_id: view_customers_with_5xx, source_column: customer_id, target_table_id: customers, target_column: id}
+- {id: unbought-product, alias: IS_PRODUCT, cardinality: many-to-one, source_table_id: view_viewed_not_bought, source_column: product_id, target_table_id: products, target_column: id}

@@ -602,12 +602,11 @@ export function RelationshipsPage() {
               {showForm ? <X size={14} /> : t("relationshipsPage.addRelationship")}
             </Button>
           )}
-          <HelpBubble
-            title={t("relationshipsPage.purposeTitle")}
-            paragraphs={[t("relationshipsPage.purposeBody"), t("relationshipsPage.purposeAdd")]}
-            ariaLabel={t("relationshipsPage.purposeAria")}
-            testId="rels-purpose-help"
-          />
+          {canManage && rejectedCount > 0 && (
+            <Button variant="default" onClick={handleClearRejections}>
+              {t("relationshipsPage.clearRejections")}
+            </Button>
+          )}
           {/* Each icon is its own hover target. A row of "?" glyphs beside a row of icons
               would double the thing a reader is trying to decode. */}
           <HelpBubble
@@ -664,11 +663,12 @@ export function RelationshipsPage() {
               }
             />
           )}
-          {canManage && rejectedCount > 0 && (
-            <Button variant="default" onClick={handleClearRejections}>
-              {t("relationshipsPage.clearRejections")}
-            </Button>
-          )}
+          <HelpBubble
+            title={t("relationshipsPage.purposeTitle")}
+            paragraphs={[t("relationshipsPage.purposeBody"), t("relationshipsPage.purposeAdd")]}
+            ariaLabel={t("relationshipsPage.purposeAria")}
+            testId="rels-purpose-help"
+          />
         </div>
       </div>
 

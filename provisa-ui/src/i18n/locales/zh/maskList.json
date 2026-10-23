@@ -36,6 +36,54 @@
     "regexLabel": "正则表达式 {{pattern}} → {{replace}}",
     "truncateLabel": "截断到{{precision}}",
     "constantLabel": "常量 {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "常用掩码",
+    "presetsAria": "条目 {{n}} 的常用掩码",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "适用于所有引擎",
+    "universalHelp": "模式使用同一种正则方言；Provisa 会为每个引擎转换。 不匹配该模式的值会被完全掩码。",
+    "notUniversal": "并非所有引擎都支持：第 {{position}} 个字符处的{{construct}}",
+    "preset": {
+      "ssn_last4": "SSN，后 4 位",
+      "card_last4": "卡号，后 4 位",
+      "phone_last4": "电话，后 4 位",
+      "email_initial_domain": "电子邮件，首字母和域名",
+      "all_but_last4": "除最后 4 个字符外全部",
+      "digits_keep_separators": "数字，保留分隔符",
+      "zip3": "美国 ZIP，前 3 位",
+      "birth_year": "出生日期，仅年份",
+      "iban_last4": "IBAN，后 4 位",
+      "keep_first_last": "保留首尾字符"
+    },
+    "presetParam": {
+      "first": "开头",
+      "last": "结尾"
+    },
+    "construct": {
+      "lookahead": "先行断言 (?=…)",
+      "lookbehind": "后行断言 (?<=…)",
+      "backreference": "模式中的反向引用 \\1",
+      "lazy_quantifier": "惰性量词 (*?, +?)",
+      "possessive_quantifier": "占有量词 (*+, ++)",
+      "named_group": "命名分组 (?<name>…)",
+      "word_boundary": "单词边界 \\b",
+      "unicode_class": "Unicode 类 \\p{…}",
+      "posix_class": "POSIX 类 [[:…:]]",
+      "inline_flags": "内联标志 (?i)",
+      "unknown_escape": "并非所有引擎都识别的转义",
+      "open_bound": "开放上界 {n,}",
+      "bound_too_large": "过大的重复次数",
+      "unbalanced_paren": "未闭合的圆括号",
+      "unbalanced_bracket": "未闭合的方括号",
+      "empty_class": "空类 []",
+      "bad_range": "起点在终点之后的范围",
+      "nothing_to_repeat": "没有可重复内容的量词",
+      "replace_group_out_of_range": "引用模式中不存在的分组的 $n",
+      "replace_named_ref": "替换中的命名引用",
+      "replace_bad_escape": "替换不接受的转义",
+      "alternation_prefix": "其中一个是另一个前缀的备选项",
+      "alternation_overlap": "可能匹配相同文本的备选项",
+      "negated_class_escape_in_set": "[ ] 集合内的否定转义（如 \\D）"
+    }
   }
 }

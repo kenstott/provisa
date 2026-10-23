@@ -226,17 +226,23 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
 
 
 async def _class_terms(conn: "Connection") -> dict[int, str]:
-    """Each table's class term, by name -- how a configuration states it (REQ-2141)."""
-    return {
-        r.table_id: r.name
-        for r in (
-            await conn.execute_core(
-                select(glossary_term_table_refs.c.table_id, glossary_terms.c.name).join(
-                    glossary_terms, glossary_terms.c.id == glossary_term_table_refs.c.term_id
-                )
-            )
-        ).fetchall()
-    }
+    """Each table's class term, by name, as a configuration states it (REQ-2141): every grounding
+    a configuration declared or a person made. A proposal sync made, on a term no one has
+    curated, is derived and not stated."""
+    from provisa.core.repositories.glossary import proposal_terms
+
+    derived = await proposal_terms(conn)
+    rows = (
+        await conn.execute_core(
+            select(
+                glossary_term_table_refs.c.table_id,
+                glossary_term_table_refs.c.term_id,
+                glossary_term_table_refs.c.proposed,
+                glossary_terms.c.name,
+            ).join(glossary_terms, glossary_terms.c.id == glossary_term_table_refs.c.term_id)
+        )
+    ).fetchall()
+    return {r.table_id: r.name for r in rows if not (r.proposed and r.term_id in derived)}
 
 
 async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:

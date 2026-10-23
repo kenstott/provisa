@@ -82,7 +82,6 @@
     "relatedTermsLabel": "Связанные термины",
     "relatedTermsEmpty": "Нет связанных терминов",
     "relatedTermsLoading": "Загрузка связанных терминов…",
-    "relatedTermsAbstract": "абстрактный",
     "graphqlQueriesLabel": "Шаблоны доступа",
     "graphqlQueriesEmpty": "Нет таблиц или связей, доступных для запросов",
     "graphqlQueryAria": "Выполнить пример запроса GraphQL для {{table}}",
@@ -120,6 +119,7 @@
       "customPropertiesEmpty": "Нет пользовательских свойств"
     },
     "readOnly": "Только чтение",
-    "readOnlyHint": "У вас только data_product_read — org_admin может выдать data_product_rw для изменения."
+    "readOnlyHint": "У вас только data_product_read — org_admin может выдать data_product_rw для изменения.",
+    "relatedTermsConcept": "понятие"
   }
 }
