@@ -140,65 +140,6 @@ def _navigate_path(
     return target, False
 
 
-def _navigate_path_into_lists(
-    obj: dict,
-    parts: list[str],
-) -> tuple[dict, bool]:
-    """Walk obj down parts[:-1], entering the last list element when encountered."""
-    target = obj
-    for part in parts[:-1]:
-        cur = target.get(part)
-        if isinstance(cur, dict):
-            target = cur
-        elif isinstance(cur, list) and cur:
-            target = cur[-1]
-        else:
-            return target, True
-    return target, False
-
-
-def _seed_nested_path(
-    obj: dict,
-    nest_path: str,
-    nest_cols_for_path: list[tuple[int, ColumnRef]],
-    one_to_many_paths: set[str],
-    row: tuple,
-) -> None:
-    """Seed a single nested path into obj on first visit."""
-    parts = nest_path.split(".")
-    target, skip = _navigate_path(obj, parts)
-    if skip:
-        return
-    leaf = parts[-1]
-    if nest_path in one_to_many_paths:
-        target[leaf] = []
-    else:
-        all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
-        if all_none:
-            target[leaf] = None
-        else:
-            target[leaf] = {
-                col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path
-            }
-
-
-def _seed_all_nested_paths(
-    obj: dict,
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-    one_to_many_paths: set[str],
-    row: tuple,
-) -> None:
-    """Seed all nested paths in sorted order (parents before children)."""
-    for nest_path in sorted(nested_groups.keys()):
-        _seed_nested_path(
-            obj,
-            nest_path,
-            nested_groups[nest_path],
-            one_to_many_paths,
-            row,
-        )
-
-
 def _zip_absorbed_children(
     arr: list,
     oto_path: str,
@@ -237,58 +178,14 @@ def _zip_absorbed_children(
         arr.append(elem)
 
 
-def _append_regular_child(
-    arr: list,
-    new_item: dict,
-    oto_path: str,
-    one_to_many_paths: set[str],
-    absorbed_paths: set[str],
-) -> None:
-    """Seed deeper sub-paths on new_item then append to arr, skipping duplicates."""
-    if new_item in arr:
-        return
-    prefix = oto_path + "."
-    for deeper_path in sorted(
-        p for p in one_to_many_paths if p.startswith(prefix) and p not in absorbed_paths
-    ):
-        rel_parts = deeper_path[len(prefix) :].split(".")
-        sub_target = new_item
-        for sub_part in rel_parts[:-1]:
-            sub_target = sub_target.setdefault(sub_part, {})
-        sub_target.setdefault(rel_parts[-1], [])
-    arr.append(new_item)
-
-
-def _accumulate_oto_path(
-    oto_path: str,
-    row: tuple,
-    parent_obj: dict,
-    is_first_visit: bool,
-    one_to_many_paths: set[str],
-    absorbed_paths: set[str],
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-) -> None:
-    """Accumulate one row into the one-to-many array at oto_path in parent_obj."""
-    nest_cols_for_path = nested_groups[oto_path]
-    all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
-    child: dict = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path}
-    parts = oto_path.split(".")
-    target, skip = _navigate_path_into_lists(parent_obj, parts)
-    if skip:
-        return
-    arr = target.get(parts[-1])
-    if not isinstance(arr, list):
-        return
-    if all_none:
-        return
-    has_oto_parent = any(oto_path.startswith(p + ".") for p in one_to_many_paths if p != oto_path)
-    if any(isinstance(v, list) for v in child.values()):
-        if not is_first_visit and not has_oto_parent:
-            return
-        n = next((len(v) for v in child.values() if isinstance(v, list)), 0)
-        _zip_absorbed_children(arr, oto_path, child, absorbed_paths, nested_groups, row, n)
-    else:
-        _append_regular_child(arr, dict(child), oto_path, one_to_many_paths, absorbed_paths)
+def _parent_path(path: str, placed: dict[str, dict | None]) -> str:
+    """The nearest enclosing path of ``path`` placed in this row ("" is the root object)."""
+    parts = path.split(".")
+    for i in range(len(parts) - 1, 0, -1):
+        prefix = ".".join(parts[:i])
+        if prefix in placed:
+            return prefix
+    return ""
 
 
 def _serialize_with_one_to_many(
@@ -300,36 +197,75 @@ def _serialize_with_one_to_many(
     result_limit: int | None,
     root_field: str,
 ) -> dict:
-    """Serialize rows when at least one one-to-many path exists."""
+    """Serialize rows when at least one one-to-many path exists.
+
+    Each row is placed path by path, parents first: a to-many element is the one its own values
+    name under the element the row placed its parent in, at any depth (#285), and a to-one
+    object is its parent element's. An ARRAY_AGG path is unzipped once, when its parent element
+    is first placed; nothing below it comes from rows."""
     seen: dict[tuple, int] = {}
     result_rows: list[dict] = []
+    #: (the list it is in, its values) -> the element
+    elements: dict[tuple[int, tuple], dict] = {}
+    paths = sorted(p for p in nested_groups if p not in absorbed_paths)
 
     for row in rows:
         root_key = tuple(_to_hashable(_convert_value(row[idx])) for idx, _ in root_cols)
-        is_first_visit = root_key not in seen
-
-        if is_first_visit:
-            obj: dict = {}
-            for idx, col in root_cols:
-                obj[col.field_name] = _convert_value(row[idx])
-            _seed_all_nested_paths(obj, nested_groups, one_to_many_paths, row)
+        new_root = root_key not in seen
+        if new_root:
+            obj: dict = {col.field_name: _convert_value(row[idx]) for idx, col in root_cols}
             seen[root_key] = len(result_rows)
             result_rows.append(obj)
-
-        parent_idx = seen[root_key]
-        parent_obj = result_rows[parent_idx]
-        for oto_path in sorted(one_to_many_paths):
-            if oto_path in absorbed_paths:
+        placed: dict[str, dict | None] = {"": result_rows[seen[root_key]]}
+        fresh: dict[str, bool] = {"": new_root}
+        for path in paths:
+            parent = _parent_path(path, placed)
+            holder = placed[parent]
+            if holder is None:
+                placed[path], fresh[path] = None, False
                 continue
-            _accumulate_oto_path(
-                oto_path,
-                row,
-                parent_obj,
-                is_first_visit,
-                one_to_many_paths,
-                absorbed_paths,
-                nested_groups,
-            )
+            parts = (path[len(parent) + 1 :] if parent else path).split(".")
+            for part in parts[:-1]:
+                holder = holder.setdefault(part, {})
+            leaf = parts[-1]
+            cols = nested_groups[path]
+            values = {col.field_name: _convert_value(row[idx]) for idx, col in cols}
+            empty = all(row[idx] is None for idx, _ in cols)
+            if path in one_to_many_paths:
+                arr = holder.get(leaf)
+                if not isinstance(arr, list):
+                    arr = holder[leaf] = []
+                if any(isinstance(v, list) for v in values.values()):
+                    if fresh[parent]:
+                        n = next((len(v) for v in values.values() if isinstance(v, list)), 0)
+                        _zip_absorbed_children(
+                            arr, path, values, absorbed_paths, nested_groups, row, n
+                        )
+                    placed[path], fresh[path] = None, False
+                    continue
+                if empty:
+                    placed[path], fresh[path] = None, False
+                    continue
+                key = (id(arr), tuple(_to_hashable(v) for v in values.values()))
+                element = elements.get(key)
+                fresh[path] = element is None
+                if element is None:
+                    element = elements[key] = dict(values)
+                    arr.append(element)
+                placed[path] = element
+            else:
+                current = holder.get(leaf)
+                if empty:
+                    holder.setdefault(leaf, None)
+                    placed[path], fresh[path] = None, False
+                    continue
+                if isinstance(current, dict):
+                    current.update(values)
+                    fresh[path] = fresh[parent]
+                else:
+                    current = holder[leaf] = dict(values)
+                    fresh[path] = True
+                placed[path] = current
 
     if result_limit is not None:
         result_rows = result_rows[:result_limit]

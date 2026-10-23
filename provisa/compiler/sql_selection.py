@@ -44,6 +44,7 @@ from provisa.compiler.sql_where import (
     _explicit_limit,
     _extract_non_negative_int,
     _field_args,
+    _below_takes_lateral_args,
     _has_lateral_force_args,
     RelationshipConditions,
     where_names_relationship,
@@ -554,9 +555,13 @@ def _collect_nested_columns(
                     nested_join_meta.source_column_type,
                 )
             nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
-            _use_agg = not flat and not _has_lateral_force_args(nested_sel)
+            _below = _below_takes_lateral_args(nested_sel, ctx, nested_join_meta.target.type_name)
+            _use_agg = not flat and not _has_lateral_force_args(nested_sel) and not _below
             if (
-                nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)
+                nested_join_meta.default_limit is not None
+                or _has_lateral_force_args(nested_sel)
+                # A to-many field whose descendants are joined is joined as they are.
+                or (_below and nested_join_meta.cardinality == "one-to-many")
             ) and not _use_agg:
                 # Each lateral join repeats its parent's rows: the root is limited before it.
                 has_lateral = True

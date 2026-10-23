@@ -491,6 +491,27 @@ def _has_lateral_force_args(field_node: FieldNode) -> bool:
     return any(arg.name.value in _LATERAL_FORCE_ARGS for arg in field_node.arguments)
 
 
+def _below_takes_lateral_args(
+    field_node: FieldNode, ctx: CompilationContext, type_name: str
+) -> bool:
+    """Whether a relationship field anywhere below ``field_node`` (whose rows are of
+    ``type_name``) takes an argument only a LATERAL join applies: the aggregate subqueries apply
+    a nested field's limit alone, so its ancestors are joined as the first level is (#285)."""
+    if not field_node.selection_set:
+        return False
+    for sel in field_node.selection_set.selections:
+        if not isinstance(sel, FieldNode):
+            continue
+        join_meta = ctx.joins.get((type_name, sel.name.value))
+        if join_meta is None:
+            continue
+        if _has_lateral_force_args(sel) or _below_takes_lateral_args(
+            sel, ctx, join_meta.target.type_name
+        ):
+            return True
+    return False
+
+
 def _explicit_limit(field_node: FieldNode, variables: dict | None) -> int | None:
     for arg in field_node.arguments:
         if arg.name.value == "limit":
