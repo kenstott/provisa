@@ -99,6 +99,101 @@ def is_live_only(source_type: str | None) -> bool:
     return source_type in LIVE_ONLY_TYPES
 
 
+# REQ-1865: row fetch by keys -- each source type's declaration of how the full rows of a list of
+# primary keys are read from it, which row_materialize needs (a row is fetched by its key when it is
+# first read and when it goes stale). Each entry points at the type's fetch, ``module:attribute``; a
+# type with no entry does not support it, and row_materialize on its tables is refused by name.
+# ``tests/unit/test_row_fetch_by_keys.py`` holds this to the fetches ``load_keys`` is wired with.
+_KEYED_LOADERS = "provisa.events.source_loader"
+# A SQL source read through its own driver: ``SELECT ... WHERE (pk) IN (...)`` in its dialect.
+_DIRECT_DRIVER_KEYED: frozenset[str] = frozenset(
+    {
+        "athena",
+        "bigquery",
+        "cockroachdb",
+        "databricks",
+        "duckdb",
+        "exasol",
+        "fabric",
+        "greenplum",
+        "hiveserver2",
+        "mariadb",
+        "mysql",
+        "oracle",
+        "postgresql",
+        "redshift",
+        "saphana",
+        "singlestore",
+        "snowflake",
+        "sqlserver",
+        "synapse",
+        "tidb",
+        "trino",
+        "yugabytedb",
+    }
+)
+# A type reached through its connector's Calcite pgwire server, read by key over that server.
+_PGWIRE_BRIDGE_KEYED: frozenset[str] = frozenset(
+    {"cloudops", "files", "govdata", "jira", "salesforce", "servicenow", "sharepoint", "splunk"}
+)
+# A lake the engine scans in place: the key read is the engine's own ``WHERE (pk) IN (...)``.
+_ENGINE_TERMINAL_KEYED: frozenset[str] = frozenset({"delta_lake", "hive", "iceberg"})
+
+ROW_FETCH_BY_KEYS: dict[str, str] = {
+    "cassandra": f"{_KEYED_LOADERS}:make_cassandra_keyed_loader",
+    "clickhouse": f"{_KEYED_LOADERS}:make_clickhouse_keyed_loader",
+    "cosmosdb": "provisa.cosmosdb.loader:make_cosmosdb_keyed_loader",
+    "druid": f"{_KEYED_LOADERS}:make_druid_keyed_loader",
+    "elasticsearch": f"{_KEYED_LOADERS}:make_elasticsearch_keyed_loader",
+    "hive_s3": f"{_KEYED_LOADERS}:make_hive_s3_keyed_loader",
+    "kafka": f"{_KEYED_LOADERS}:make_kafka_keyed_loader",
+    "mongodb": f"{_KEYED_LOADERS}:make_mongodb_keyed_loader",
+    # Through its registered query_template, filtered on a property it projects.
+    "neo4j": f"{_KEYED_LOADERS}:make_neo4j_keyed_loader",
+    "pinot": f"{_KEYED_LOADERS}:make_pinot_keyed_loader",
+    "redis": f"{_KEYED_LOADERS}:make_redis_keyed_loader",
+    **{t: f"{_KEYED_LOADERS}:make_direct_keyed_loader" for t in _DIRECT_DRIVER_KEYED},
+    **{
+        t: "provisa.federation.pgwire_replica:make_pgwire_keyed_loader"
+        for t in _PGWIRE_BRIDGE_KEYED
+    },
+    **{t: f"{_KEYED_LOADERS}:SourceRowLoader.load_keys" for t in _ENGINE_TERMINAL_KEYED},
+}
+
+
+def supports_row_fetch_by_keys(source_type: str | None) -> bool:
+    """Whether ``source_type`` declares a row fetch by primary keys (``ROW_FETCH_BY_KEYS``)."""
+    return source_type in ROW_FETCH_BY_KEYS
+
+
+# Types refused row_materialize for a reason of their own, said before the missing fetch is.
+_ROW_MATERIALIZE_REFUSED: dict[str, str] = {
+    **{
+        t: "an API source is filtered by its own parameters, not replicated row by row"
+        for t in ("openapi", "graphql_remote", "grpc_remote")
+    },
+    "govdata": "a govdata source is read live on every request and is never replicated",
+}
+
+
+def row_materialize_refusal(table_name: str, source_type: str | None) -> str | None:
+    """Why ``table_name``, of a ``source_type`` source, may not set row_materialize (REQ-1865), or
+    None when it may: a type refused for a reason of its own says it; any other type without a
+    row fetch by keys is refused for that."""
+    reason = _ROW_MATERIALIZE_REFUSED.get(source_type or "")
+    if reason is not None:
+        return (
+            f"table {table_name!r}: row_materialize=True is refused for source type "
+            f"{source_type!r}: {reason}"
+        )
+    if not supports_row_fetch_by_keys(source_type):
+        return (
+            f"{table_name}: row_materialize needs row fetch by primary keys, which "
+            f"{source_type} sources don't support"
+        )
+    return None
+
+
 # REQ-2000: the ``qdrant`` dialect named above is registered with SQLGlot wherever this mapping is
 # read, so a Qdrant source's statements transpile and its writes find their dialect.
 import provisa.qdrant.dialect  # noqa: E402, F401
