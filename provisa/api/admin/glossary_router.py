@@ -668,6 +668,16 @@ async def move_ref(request: Request) -> dict:
             raise ApiError(
                 409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
             ) from exc
+        except glossary_repo.KeyColumnDerived as exc:
+            raise ApiError(
+                409,
+                "glossary.key_column_derived",
+                str(exc),
+                # "class" is a keyword, so the param is passed by mapping
+                **cast(
+                    "dict[str, Any]", {"column": exc.column, "table": exc.table, "class": exc.cls}
+                ),
+            ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if moved is None:
@@ -857,10 +867,10 @@ async def unground_term_table(
 
 
 @router.get("/role-conflicts")
-async def role_conflicts(request: Request) -> list[dict]:
-    """Each term the caller can read that is a Class and a Property at once -- grounded in tables
-    and owning column refs -- with both. A term's roles are exclusive (REQ-2141); this reports the
-    data that predates the rule and changes nothing."""
+async def role_conflicts(request: Request) -> dict:
+    """What breaks the exclusivity of a term's roles (REQ-2141), for the caller's domains: each
+    Class holding column refs a Class may not (``terms``), and each keyed table left without a
+    Class term because its concept is a Property (``tables``). It reports; it changes nothing."""
     from provisa.core.glossary import readable_term
 
     _require_glossary_read(request)
@@ -868,12 +878,17 @@ async def role_conflicts(request: Request) -> list[dict]:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        found = await glossary_repo.terms_holding_both(_conn)
+        found = await glossary_repo.role_conflicts(_conn)
         allowed = _authority(request)
         if allowed is None:
             return found
         scopes = await glossary_repo.term_domains(_conn)
-        return [t for t in found if readable_term(allowed, scopes.get(t["term_id"], set()))]
+        return {
+            "terms": [
+                t for t in found["terms"] if readable_term(allowed, scopes.get(t["term_id"], set()))
+            ],
+            "tables": [t for t in found["tables"] if t["domain_id"] in allowed],
+        }
 
 
 @router.get("/terms/{term_id}/tables")

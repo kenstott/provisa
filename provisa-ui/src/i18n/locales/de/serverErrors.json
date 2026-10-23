@@ -630,7 +630,8 @@
     "glossary": {
       "term_is_property": "Der Begriff '{{term}}' hat Spaltenverweise ({{columns}}) und ist damit eine Eigenschaft; er kann keine Tabelle verankern. Ein Begriff ist entweder eine Klasse, in Tabellen verankert, oder eine Eigenschaft mit Spaltenverweisen, nie beides.",
       "term_is_class": "Der Begriff '{{term}}' verankert Tabellen ({{tables}}) und ist damit eine Klasse; er kann keinen Spaltenverweis haben. Ein Begriff ist entweder eine Klasse, in Tabellen verankert, oder eine Eigenschaft mit Spaltenverweisen, nie beides.",
-      "abstract_is_derived": "„Abstrakt“ lässt sich nicht setzen: Es ergibt sich aus der Verankerung. Ein Begriff ohne Spaltenverweise und ohne verankerte Tabellen ist ein Konzept."
+      "abstract_is_derived": "„Abstrakt“ lässt sich nicht setzen: Es ergibt sich aus der Verankerung. Ein Begriff ohne Spaltenverweise und ohne verankerte Tabellen ist ein Konzept.",
+      "key_column_derived": "Diese Spalte ist ein Schlüssel; sie folgt der Klasse ihrer Tabelle. {{table}}.{{column}} bleibt bei '{{class}}' und wird nicht von Hand verschoben."
     }
   }
 }

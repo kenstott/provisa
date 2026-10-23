@@ -33,9 +33,10 @@ from provisa.core.schema_org import glossary_term_edges, sources
 
 CONFIG = Path(__file__).resolve().parents[2] / "demo" / "named" / "weblogs" / "config.yaml"
 
-#: Derived terms left undefined so the Glossary page shows them as Proposed: a log record's own
-#: bookkeeping, and "query", which joins two meanings for a curator to split.
-PROPOSED = {"line offset", "entry", "raw", "query"}
+#: Derived terms left undefined so the Glossary page shows them as Proposed: a log record's raw
+#: line, and "query", which joins two meanings for a curator to split. A record's bookkeeping key
+#: (file, line offset, entry) is its log table's Class, not terms of its own (REQ-2141).
+PROPOSED = {"raw", "query"}
 #: The shop's ontology: abstract terms, grounded in derived ones through their edges.
 ONTOLOGY = {
     "shop operations",
@@ -91,12 +92,13 @@ async def loaded(monkeypatch, tmp_path, control_plane):
     return terms, live, domains, edges
 
 
-async def test_the_derived_terms_are_approved_but_four_left_proposed(loaded):
+async def test_the_derived_terms_are_approved_but_two_left_proposed(loaded):
     terms, live, _domains, _edges = loaded
     derived = {name for name, t in terms.items() if not t.is_abstract}
     assert PROPOSED <= derived
     assert {name for name in derived if terms[name].id not in live} == PROPOSED
-    assert len(derived) == 73  # every column's business name, as the load derives it
+    # every non-key column's business name, and each keyed table's Class (REQ-2141)
+    assert len(derived) == 72
 
 
 async def test_the_views_name_their_columns_so_they_derive_the_shops_own_terms(loaded):

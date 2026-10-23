@@ -630,7 +630,8 @@
     "glossary": {
       "term_is_property": "Il termine '{{term}}' ha riferimenti di colonna ({{columns}}), quindi è una Proprietà e non può ancorare una tabella. Un termine è una Classe, ancorata a tabelle, oppure una Proprietà, con riferimenti di colonna, mai entrambe.",
       "term_is_class": "Il termine '{{term}}' ancora tabelle ({{tables}}), quindi è una Classe e non può avere un riferimento di colonna. Un termine è una Classe, ancorata a tabelle, oppure una Proprietà, con riferimenti di colonna, mai entrambe.",
-      "abstract_is_derived": "«Astratto» non si può impostare: deriva dall'ancoraggio. Un termine senza riferimenti di colonna né tabelle ancorate è un Concetto."
+      "abstract_is_derived": "«Astratto» non si può impostare: deriva dall'ancoraggio. Un termine senza riferimenti di colonna né tabelle ancorate è un Concetto.",
+      "key_column_derived": "Questa colonna è una chiave; segue la classe della sua tabella. {{table}}.{{column}} resta su '{{class}}' e non si sposta a mano."
     }
   }
 }

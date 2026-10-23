@@ -630,7 +630,8 @@
     "glossary": {
       "term_is_property": "El término '{{term}}' tiene referencias de columna ({{columns}}), así que es una Propiedad y no puede anclar una tabla. Un término es una Clase, anclada en tablas, o una Propiedad, con referencias de columna, nunca ambas.",
       "term_is_class": "El término '{{term}}' ancla tablas ({{tables}}), así que es una Clase y no puede tener una referencia de columna. Un término es una Clase, anclada en tablas, o una Propiedad, con referencias de columna, nunca ambas.",
-      "abstract_is_derived": "«Abstracto» no se puede establecer: se deriva del anclaje. Un término sin referencias de columna ni tablas ancladas es un Concepto."
+      "abstract_is_derived": "«Abstracto» no se puede establecer: se deriva del anclaje. Un término sin referencias de columna ni tablas ancladas es un Concepto.",
+      "key_column_derived": "Esta columna es una clave; sigue a la clase de su tabla. {{table}}.{{column}} permanece en '{{class}}' y no se mueve a mano."
     }
   }
 }

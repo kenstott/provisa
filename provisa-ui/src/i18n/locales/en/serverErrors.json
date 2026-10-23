@@ -630,7 +630,8 @@
     "glossary": {
       "term_is_property": "Term '{{term}}' owns column refs ({{columns}}), so it is a Property and cannot ground a table. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
       "term_is_class": "Term '{{term}}' grounds tables ({{tables}}), so it is a Class and cannot own a column ref. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
-      "abstract_is_derived": "Abstract cannot be set: it is derived from grounding. A term with no column refs and no grounded tables is a Concept."
+      "abstract_is_derived": "Abstract cannot be set: it is derived from grounding. A term with no column refs and no grounded tables is a Concept.",
+      "key_column_derived": "This column is a key; it follows its table's class. {{table}}.{{column}} stays on '{{class}}' and is not moved by hand."
     }
   }
 }

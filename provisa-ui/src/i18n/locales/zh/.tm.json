@@ -4518,6 +4518,7 @@
   "zh/serverErrors.json::serverErrors.functions.unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
   "zh/serverErrors.json::serverErrors.functions.written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
   "zh/serverErrors.json::serverErrors.glossary.abstract_is_derived": "Abstract cannot be set: it is derived from grounding. A term with no column refs and no grounded tables is a Concept.",
+  "zh/serverErrors.json::serverErrors.glossary.key_column_derived": "This column is a key; it follows its table's class. {{table}}.{{column}} stays on '{{class}}' and is not moved by hand.",
   "zh/serverErrors.json::serverErrors.glossary.term_is_class": "Term '{{term}}' grounds tables ({{tables}}), so it is a Class and cannot own a column ref. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
   "zh/serverErrors.json::serverErrors.glossary.term_is_property": "Term '{{term}}' owns column refs ({{columns}}), so it is a Property and cannot ground a table. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
   "zh/serverErrors.json::serverErrors.google_workspace.admin_not_a_user": "{{address}} is not a user of the organization's Google Workspace domain, so the directory cannot be listed as it. An administrator corrects the administrator address under Admin › Email.",

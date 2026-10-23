@@ -1146,6 +1146,12 @@ async def _load_after_tables(  # REQ-1919
     # 10.6 Class terms (REQ-2141): resolved by name, like the edges above, once every term the
     # config declares or derives exists and every table has its columns (a class needs a key).
     await _declare_class_terms(conn, config)
+    # The relationships this load replaced (step 10) and the class terms it declared re-settle
+    # every key ref on its Class (REQ-2141).
+    await glossary_repo.rehome_keys(
+        conn,
+        {r.id for r in (await conn.execute_core(select(registered_tables.c.id))).fetchall()},
+    )
     # 10.7 Same-entity relationships (REQ-2141): held to their rule once both their tables have
     # the class terms this config declares (the relationships were saved before them, at 10).
     await _check_identities(conn, config)
