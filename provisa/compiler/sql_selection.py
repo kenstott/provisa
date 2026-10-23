@@ -572,10 +572,10 @@ def _collect_nested_columns(
                 col_expr = _sql_str_literal(_nvc)
             else:
                 col_expr = f"{_q(parent_alias)}.{_q(nested_sql)}"
-            if nested_sel.alias or nested_name == "__typename":
-                select_parts.append(f"{col_expr} AS {_q(nested_response_key)}")
-            else:
-                select_parts.append(col_expr)
+            # Named by its response path (edges_out__target_term__id): the statement reads as the
+            # answer it is, each level's columns told apart.
+            path_alias = f"{nesting_path}.{nested_response_key}".replace(".", "__")
+            select_parts.append(f"{col_expr} AS {_q(path_alias)}")
             columns.append(
                 ColumnRef(
                     alias=parent_alias,
