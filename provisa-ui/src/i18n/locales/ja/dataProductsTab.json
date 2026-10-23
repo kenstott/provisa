@@ -92,6 +92,7 @@
     "openApiQueryAria": "{{table}} の REST リクエスト例を実行",
     "detail": {
       "field": {
+        "details": "詳細",
         "customProperties": "カスタムプロパティ",
         "relatedTables": "関連テーブル",
         "relationships": "リレーションシップ",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "入力",
       "inputPortsColTransform": "変換",
       "inputPortsColOutput": "出力",
-      "outputPortsHint": "このプロダクトのクエリ可能なサーフェス。所属するテーブル/カラムとコマンドが含まれ、クエリ例は下の「サンプルクエリとコマンド」にあります。",
+      "outputPortsHint": "このプロダクトのクエリ可能な範囲：メンバーテーブルとコマンド。それぞれのクエリ例は「アクセスパターン」にあります。",
       "customPropertiesEmpty": "カスタムプロパティはありません"
     },
     "readOnly": "読み取り専用",

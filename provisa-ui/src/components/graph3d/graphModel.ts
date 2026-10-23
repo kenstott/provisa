@@ -14,7 +14,7 @@
 // set of layers with a layout. Pure data: the scene only draws what this decides.
 
 import type { TermRole } from "../../api/glossary";
-import { ONTOLOGY_NEIGHBOURHOOD, PRODUCT_NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
+import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
 import { lanesFrom } from "../lineage/lineage-layout";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 
@@ -219,8 +219,8 @@ export const PRODUCT_SCOPE: GraphScope = {
   typedKinds: ["term_edge"],
   betweenDrawn: [],
   implicitLayers: [],
-  menus: false,
-  neighbourhood: PRODUCT_NEIGHBOURHOOD,
+  menus: true,
+  neighbourhood: NEIGHBOURHOOD,
 };
 
 /** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
@@ -253,7 +253,7 @@ export const GLOSSARY_SCOPE: GraphScope = {
   betweenDrawn: ["relationship"],
   implicitLayers: ["ontology"],
   menus: true,
-  neighbourhood: ONTOLOGY_NEIGHBOURHOOD,
+  neighbourhood: NEIGHBOURHOOD,
 };
 
 export interface GraphFilters {

@@ -15,7 +15,7 @@
 // the terms those columns are -- turned into the graph's nodes and edges.
 
 import { termRole } from "../../api/glossary";
-import { ONTOLOGY_NEIGHBOURHOOD } from "./neighbourhood";
+import { NEIGHBOURHOOD } from "./neighbourhood";
 import {
   operation,
   rootField,
@@ -146,7 +146,7 @@ const TERM_FIELDS = [
  * last level is read with its edges' ends alone, so an edge between two of them is drawn and
  * nothing past them is. With no search every term is read at level 0, its edges' ends by id. */
 function termSelection(s: QueryScope, level: number): Selection {
-  const depth = s.search.length > 0 ? ONTOLOGY_NEIGHBOURHOOD.depth : 0;
+  const depth = s.search.length > 0 ? NEIGHBOURHOOD.depth : 0;
   const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};

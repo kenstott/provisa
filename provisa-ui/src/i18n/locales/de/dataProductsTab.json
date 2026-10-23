@@ -92,6 +92,7 @@
     "openApiQueryAria": "Beispiel-REST-Anfrage für {{table}} ausführen",
     "detail": {
       "field": {
+        "details": "Details",
         "customProperties": "Benutzerdefinierte Eigenschaften",
         "relatedTables": "Verwandte Tabellen",
         "relationships": "Beziehungen",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "Eingabe(n)",
       "inputPortsColTransform": "Transformation",
       "inputPortsColOutput": "Ausgabe",
-      "outputPortsHint": "Die abfragbare Oberfläche dieses Produkts: seine Tabellen/Spalten und Befehle, mit Beispielabfragen weiter unten unter Beispielabfragen und Befehle.",
+      "outputPortsHint": "Die abfragbare Oberfläche dieses Produkts: seine Mitgliedstabellen und Befehle. Beispielabfragen für jede finden Sie unter Zugriffsmuster.",
       "customPropertiesEmpty": "Keine benutzerdefinierten Eigenschaften"
     },
     "readOnly": "Schreibgeschützt",
