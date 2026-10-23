@@ -181,11 +181,19 @@ class TermsMixin:  # REQ-2135
         ]
 
     def _predicate_branches(self, nm: NodeMapping, p: Predicate) -> list[exp.Select]:
-        if (p.property is None) == (p.rel_type is None):
+        if sum(x is not None for x in (p.property, p.rel_type, p.constant)) != 1:
             raise CypherTranslateError(
-                f"The predicate <{p.iri}> reads a property or an edge, and only one"
+                f"The predicate <{p.iri}> reads a property, an edge or a constant, and only one"
             )
         s_id = exp.alias_(_col(nm.id_column, "_s", quoted=True), alias="s_id")
+        if p.constant is not None:
+            return [
+                exp.select(
+                    s_id,
+                    exp.alias_(iri_term(p.iri), alias="p"),
+                    exp.alias_(iri_term(p.constant), alias="o"),
+                ).from_(_table(nm, "_s"))
+            ]
         if p.property is not None:
             column = nm.properties.get(p.property)
             if column is None:

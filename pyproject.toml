@@ -32,6 +32,9 @@ dependencies = [
     # Bounded to the release the suite runs on: an unbounded pin installed 30.23 into alpha.485's
     # image while every test ran 30.9, and a renamed scope attribute failed every query there.
     "sqlglot>=30.23,<30.24",
+    # REQ-2135: the SPARQL front end parses a query with rdflib and lowers its SPARQL algebra to
+    # the graph IR. BSD-3-Clause, as are its isodate and pyparsing (MIT).
+    "rdflib>=7.1,<8",
     # REQ-1494: the fake methods a column may name, checked when declared and, in the embedded
     # engine, computed seeded by the keyed digest of the value.
     "faker",
@@ -500,7 +503,7 @@ forbidden_modules = ["provisa.executor", "provisa.api"]
 name = "the graph back end imports no front end"
 type = "forbidden"
 source_modules = ["provisa.gql"]
-forbidden_modules = ["provisa.cypher"]
+forbidden_modules = ["provisa.cypher", "provisa.sparql_query"]
 
 [tool.ruff]
 target-version = "py312"

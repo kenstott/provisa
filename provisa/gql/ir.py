@@ -179,13 +179,15 @@ class PathFunction:
 @dataclass(frozen=True)
 class Predicate:
     """One mapped predicate a variable predicate may stand for (REQ-2135): ``iri`` names it in the
-    answer, and it reads either a property of the subject's label (``property``, a literal of
-    ``datatype``) or an edge of ``rel_type`` from it (its object the edge's target node)."""
+    answer, and it reads a property of the subject's label (``property``, a literal of
+    ``datatype``), an edge of ``rel_type`` from it (its object the edge's target node), or holds
+    for every subject of the label with one object, the IRI ``constant`` (``rdf:type`` a class)."""
 
     iri: str
     property: str | None = None
     rel_type: str | None = None
     datatype: str | None = None
+    constant: str | None = None
 
 
 @dataclass
@@ -280,6 +282,9 @@ class CypherAST:  # REQ-347, REQ-348, REQ-571
     union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)
     #: A CONSTRUCT's template (REQ-2135), in place of the RETURN: the answer is its triples.
     construct: list[TripleTemplate] | None = None
+    #: The ORDER BY, SKIP and LIMIT apply to the whole UNION (SPARQL's solution modifiers), not to
+    #: its first part as a Cypher statement's own do (REQ-2135).
+    modifiers_of_whole: bool = False
     comments: list[str] = field(
         default_factory=list
     )  # // comment text (without //) in source order
