@@ -641,7 +641,15 @@
       "status_by_action": "詞彙的狀態透過「棄用」「停用」或「恢復」更改，每項都需要原因。",
       "successor_required": "該詞彙仍有欄位或表；停用它會將其移到繼任者。請選擇一個。",
       "successor_role": "{{role}} 的繼任者必須是 {{role}} 或概念；「{{successor}}」是 {{successor_role}}。",
-      "no_retirement_history": "模型的歷史中沒有該詞彙的停用記錄。"
+      "no_retirement_history": "模型的歷史中沒有該詞彙的停用記錄。",
+      "finding": {
+        "unlinked_tables": "此類關聯到的表並非全部由同一實體關係連接：{{tables}}。",
+        "class_and_attribute": "此類還擁有不是其鍵的欄位：{{columns}}。",
+        "class_and_attribute_table": "表 {{table}} 沒有類：它的概念是該詞彙，而該詞彙擁有不是鍵的欄位（{{columns}}）。",
+        "tag_wrong_kind": "該詞彙帶有只有屬性才會傳給其欄位的標籤（{{tags}}）；它是 {{role}}。",
+        "retirement_blocked": "該詞彙原定於 {{retire_on}} 停用，但仍有數據。請指定接收數據的繼任者後再停用。",
+        "no_data": "該概念未連接到任何擁有數據的詞彙。"
+      }
     },
     "tag": {
       "not_on_terms": "標籤「{{tag}}」不能加在詞彙上；只有 pii 可以。",

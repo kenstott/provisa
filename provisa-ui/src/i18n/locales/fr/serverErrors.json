@@ -641,7 +641,15 @@
       "status_by_action": "Le statut d'un terme change par Déprécier, Retirer ou Restaurer, chacun avec une raison.",
       "successor_required": "Ce terme a encore des colonnes ou des tables ; le retirer les transfère à un successeur. Choisissez-en un.",
       "successor_role": "Le successeur d'un {{role}} doit être un {{role}} ou un concept ; « {{successor}} » est un {{successor_role}}.",
-      "no_retirement_history": "L'historique du modèle ne contient aucun retrait de ce terme."
+      "no_retirement_history": "L'historique du modèle ne contient aucun retrait de ce terme.",
+      "finding": {
+        "unlinked_tables": "Cette classe est ancrée dans des tables que les relations de même entité ne relient pas toutes : {{tables}}.",
+        "class_and_attribute": "Cette classe porte aussi des colonnes qui ne sont pas ses clés : {{columns}}.",
+        "class_and_attribute_table": "La table {{table}} n'a pas de classe : son concept est ce terme, qui porte des colonnes qui ne sont pas des clés ({{columns}}).",
+        "tag_wrong_kind": "Ce terme porte des étiquettes ({{tags}}) que seule une propriété transmet à ses colonnes ; c'est un(e) {{role}}.",
+        "retirement_blocked": "Ce terme devait être retiré le {{retire_on}} mais porte encore des données. Retirez-le avec un successeur qui les reprenne.",
+        "no_data": "Ce concept n'est relié à aucun terme qui porte des données."
+      }
     },
     "tag": {
       "not_on_terms": "Le tag « {{tag}} » ne se pose pas sur un terme ; seul pii le peut.",

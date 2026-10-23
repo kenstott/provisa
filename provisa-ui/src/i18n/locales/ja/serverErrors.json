@@ -641,7 +641,15 @@
       "status_by_action": "用語のステータスは「非推奨にする」「廃止する」「復元する」で変更し、それぞれに理由が必要です。",
       "successor_required": "この用語にはまだ列またはテーブルがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
       "successor_role": "{{role}} の後継は {{role}} か概念でなければなりません。「{{successor}}」は {{successor_role}} です。",
-      "no_retirement_history": "モデルの履歴にこの用語の廃止はありません。"
+      "no_retirement_history": "モデルの履歴にこの用語の廃止はありません。",
+      "finding": {
+        "unlinked_tables": "このクラスは、同一エンティティのリレーションシップがすべてを結んでいないテーブルにグラウンディングされています: {{tables}}。",
+        "class_and_attribute": "このクラスには、キーではない列もあります: {{columns}}。",
+        "class_and_attribute_table": "テーブル {{table}} にはクラスがありません。その概念はこの用語ですが、キーではない列を持っています（{{columns}}）。",
+        "tag_wrong_kind": "この用語には、プロパティだけが列に渡すタグ（{{tags}}）が付いています。この用語は {{role}} です。",
+        "retirement_blocked": "この用語は {{retire_on}} に廃止される予定でしたが、まだデータを持っています。データを引き継ぐ後継を指定して廃止してください。",
+        "no_data": "この概念は、データを持つどの用語にもつながっていません。"
+      }
     },
     "tag": {
       "not_on_terms": "タグ「{{tag}}」は用語には付けられません。付けられるのは pii だけです。",

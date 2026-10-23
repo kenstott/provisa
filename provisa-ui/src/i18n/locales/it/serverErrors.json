@@ -641,7 +641,15 @@
       "status_by_action": "Lo stato di un termine cambia con Depreca, Ritira o Ripristina, ognuno con un motivo.",
       "successor_required": "Questo termine ha ancora colonne o tabelle; ritirarlo le sposta su un successore. Sceglietene uno.",
       "successor_role": "Il successore di un {{role}} deve essere un {{role}} o un concetto; '{{successor}}' è un {{successor_role}}.",
-      "no_retirement_history": "La cronologia del modello non contiene alcun ritiro di questo termine."
+      "no_retirement_history": "La cronologia del modello non contiene alcun ritiro di questo termine.",
+      "finding": {
+        "unlinked_tables": "Questa classe è ancorata a tabelle che le relazioni di stessa entità non collegano tutte: {{tables}}.",
+        "class_and_attribute": "Questa classe ha anche colonne che non sono le sue chiavi: {{columns}}.",
+        "class_and_attribute_table": "La tabella {{table}} non ha classe: il suo concetto è questo termine, che ha colonne che non sono chiavi ({{columns}}).",
+        "tag_wrong_kind": "Questo termine porta etichette ({{tags}}) che solo una proprietà passa alle sue colonne; è un {{role}}.",
+        "retirement_blocked": "Questo termine doveva essere ritirato il {{retire_on}} ma ha ancora dati. Ritiratelo con un successore che li prenda.",
+        "no_data": "Questo concetto non è collegato a nessun termine che abbia dati."
+      }
     },
     "tag": {
       "not_on_terms": "Il tag '{{tag}}' non va su un termine; solo pii.",

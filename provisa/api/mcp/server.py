@@ -817,6 +817,13 @@ def build_mcp_server(state: Any):
         )
 
     @_tool
+    async def list_glossary_findings(role: str | None = None) -> list[dict]:
+        """What a curator should look at in the ontology: each term with its findings
+        ({kind, message, params}). A plain draft term is not a finding."""
+        resolved = _role(role)
+        return await tools.list_glossary_findings(state, resolved, _capability_request(resolved))
+
+    @_tool
     async def delete_glossary_term(term_id: int, role: str | None = None) -> dict:
         """Delete a glossary term. Irreversible."""
         resolved = _role(role)

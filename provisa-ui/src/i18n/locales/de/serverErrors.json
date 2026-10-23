@@ -641,7 +641,15 @@
       "status_by_action": "Der Status eines Begriffs ändert sich über Veralten, Ausmustern oder Wiederherstellen, jeweils mit einem Grund.",
       "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
       "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",
-      "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs."
+      "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs.",
+      "finding": {
+        "unlinked_tables": "Diese Klasse ist in Tabellen verankert, die Same-Entity-Beziehungen nicht alle verbinden: {{tables}}.",
+        "class_and_attribute": "Diese Klasse hat außerdem Spalten, die nicht ihre Schlüssel sind: {{columns}}.",
+        "class_and_attribute_table": "Die Tabelle {{table}} hat keine Klasse: Ihr Konzept ist dieser Begriff, der Spalten hat, die keine Schlüssel sind ({{columns}}).",
+        "tag_wrong_kind": "Dieser Begriff trägt Tags ({{tags}}), die nur eine Eigenschaft an ihre Spalten weitergibt; er ist eine {{role}}.",
+        "retirement_blocked": "Dieser Begriff sollte am {{retire_on}} ausgemustert werden, hat aber noch Daten. Mustern Sie ihn mit einem Nachfolger aus, der sie übernimmt.",
+        "no_data": "Dieses Konzept ist mit keinem Begriff verbunden, der Daten hat."
+      }
     },
     "tag": {
       "not_on_terms": "Das Tag '{{tag}}' kommt an keinen Begriff; nur pii.",

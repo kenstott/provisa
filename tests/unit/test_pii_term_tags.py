@@ -193,10 +193,11 @@ async def test_a_tag_stays_on_a_term_that_stops_being_a_property_and_is_reported
                 {"tag_id": "pii", "reason": "a home address"}
             ]
         monkeypatch.setattr(glossary_router, "_require_glossary_read", lambda request: None)
-        found = await glossary_router.role_conflicts(_request())
-        assert found["tags"] == [
-            {"term_id": ids["address"], "term": "home address", "tag_id": "pii", "role": "concept"}
-        ]
+        # REQ-2146: reported as a finding of the term (the role-conflicts report is folded in)
+        found = {e["term_id"]: e for e in await glossary_router.list_findings(_request())}
+        [finding] = [f for f in found[ids["address"]]["findings"] if f["kind"] == "tag_wrong_kind"]
+        assert found[ids["address"]]["term"] == "home address"
+        assert finding["params"] == {"tags": "pii", "role": "concept"}
 
 
 # --- curation ------------------------------------------------------------------------------------

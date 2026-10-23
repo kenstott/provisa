@@ -616,6 +616,22 @@ async def change_glossary_term_status(
     return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
 
 
+async def list_glossary_findings(state: Any, role: str, request: Any) -> list[dict]:  # REQ-2146
+    """What a curator should look at in the ontology: each term with its findings, each
+    {kind, message, params} -- unlinked_tables, class_and_attribute, tag_wrong_kind,
+    retirement_blocked, no_data. A plain draft term is not a finding."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import _authority, _require_glossary_read, term_findings
+    from provisa.core.glossary import readable_term
+    from provisa.core.glossary_findings import findings
+
+    _require_glossary_read(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        return await term_findings(conn, _authority(request), findings, readable_term)
+
+
 async def delete_glossary_term(
     state: Any, role: str, request: Any, term_id: int
 ) -> dict:  # REQ-1835

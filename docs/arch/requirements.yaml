@@ -87462,7 +87462,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     takes it: tagging a draft term is refused (tag.term_not_live, "Define <term> to mark it"),
     tagging a term that is not a Property is refused (tag.term_not_property), and clearing the
     definition of a tagged term is refused ("Unmark <tags> first, or keep a definition"). A term
-    that stops being a Property keeps its tag, and GET /admin/glossary/role-conflicts reports it.
+    that stops being a Property keeps its tag, [SUPERSEDED by REQ-2146, 2026-10-23 -- the role-conflicts report is folded into the findings endpoint, where this is a tag_wrong_kind finding. Kept here for history; do not implement against it.] and GET /admin/glossary/role-conflicts reports it. [END SUPERSEDED BLOCK] It is a tag_wrong_kind finding (REQ-2146).
     A term's tag is stored in tag_assignments with object_type term and its term_id. INHERITANCE:
     every column whose ref is on a defined, in-service term tagged pii carries pii, sensitive
     included (REQ-1943); a draft or retired term governs nothing, and a retired term holds no
@@ -87620,3 +87620,37 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When a curator retires "note" with the reason "Renamed." and the successor "remark"
     Then the three columns belong to "remark", which REPLACES "note"
     And "note" is retired, keeps its definition, and is offered nowhere
+- id: REQ-2146
+  status: complete
+  since: "2026-10"
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The ontology reports what a curator should look at as findings: GET /admin/glossary/findings
+    (glossary_read, scoped to the caller's domains) returns each term with its findings, each a kind,
+    a message code with its parameters, and a message. The kinds are unlinked_tables (a class grounded
+    in tables that same-entity relationships do not all join), class_and_attribute (a class holding
+    column refs that are not its keys, or a keyed table left without a class because its concept is
+    a property holding non-key refs), tag_wrong_kind (a term tag on a term that is not a property),
+    retirement_blocked (a deprecated term past its planned retirement that still holds columns or
+    tables, which only a successor can take, REQ-2144) and no_data (an in-service concept that
+    reaches no data). A plain draft term is not a finding. Each kind is one function in a registry,
+    so a kind is added by adding one. The term list carries each term's findings count, so a surface
+    filters on it without a second call; the Polly and MCP tool list_glossary_findings returns the
+    same. It reports and changes nothing; it replaces the role-conflicts report.
+  use_case: >-
+    A curator works one list of what needs attention in the ontology, rather than one report per
+    rule.
+  code:
+    - provisa/core/glossary_findings.py
+    - provisa/api/admin/glossary_router.py
+  tests:
+    - tests/unit/test_glossary_findings.py
+  scenario: |
+    Given a class grounded in two tables no same-entity relationship joins
+    When a curator opens the findings
+    Then the class is listed with an unlinked_tables finding naming both tables
+    And a term that is only an undefined draft is not listed

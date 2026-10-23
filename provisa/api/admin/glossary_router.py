@@ -1055,33 +1055,52 @@ async def applied_history(request: Request, term_id: int) -> dict:
     return history
 
 
-@router.get("/role-conflicts")
-async def role_conflicts(request: Request) -> dict:
-    """What breaks the exclusivity of a term's roles (REQ-2141), for the caller's domains: each
-    Class holding column refs a Class may not (``terms``), each keyed table left without a
-    Class term because its concept is a Property (``tables``), and each tag on a term that is no
-    longer a Property (``tags``, REQ-2145). It reports; it changes nothing."""
+@router.get("/findings")
+async def list_findings(request: Request) -> list[dict]:
+    """What a curator should look at, for the caller's domains (REQ-2146): each term with its
+    findings, ``[{kind, message, params}]``. It reports; it changes nothing."""
     from provisa.core.glossary import readable_term
+    from provisa.core.glossary_findings import findings
 
     _require_glossary_read(request)
     require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        found = await glossary_repo.role_conflicts(_conn)
-        allowed = _authority(request)
-        if allowed is None:
-            return found
-        scopes = await glossary_repo.term_domains(_conn)
-        return {
-            "terms": [
-                t for t in found["terms"] if readable_term(allowed, scopes.get(t["term_id"], set()))
-            ],
-            "tables": [t for t in found["tables"] if t["domain_id"] in allowed],
-            "tags": [
-                t for t in found["tags"] if readable_term(allowed, scopes.get(t["term_id"], set()))
-            ],
-        }
+        return await term_findings(_conn, _authority(request), findings, readable_term)
+
+
+async def term_findings(
+    conn: "Connection", allowed: Any, findings: Any, readable: Any
+) -> list[dict]:
+    """The findings of the terms ``allowed`` reads, with their names, by name -- shared by the
+    route and the MCP tool."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import glossary_terms
+
+    found = await findings(conn)
+    if not found:
+        return []
+    scopes = await glossary_repo.term_domains(conn)
+    names = {
+        r.id: r.name
+        for r in (
+            await conn.execute_core(
+                select(glossary_terms.c.id, glossary_terms.c.name).where(
+                    glossary_terms.c.id.in_(sorted(found))
+                )
+            )
+        ).fetchall()
+    }
+    return sorted(
+        (
+            {"term_id": term_id, "term": names[term_id], "findings": items}
+            for term_id, items in found.items()
+            if allowed is None or readable(allowed, scopes.get(term_id, set()))
+        ),
+        key=lambda t: t["term"],
+    )
 
 
 @router.get("/terms/{term_id}/tables")

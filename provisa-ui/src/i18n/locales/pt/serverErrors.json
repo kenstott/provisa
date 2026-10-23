@@ -641,7 +641,15 @@
       "status_by_action": "O status de um termo muda com Descontinuar, Retirar ou Restaurar, cada um com um motivo.",
       "successor_required": "Este termo ainda tem colunas ou tabelas; retirá-lo as move para um sucessor. Escolha um.",
       "successor_role": "O sucessor de um {{role}} deve ser um {{role}} ou um conceito; '{{successor}}' é um {{successor_role}}.",
-      "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo."
+      "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo.",
+      "finding": {
+        "unlinked_tables": "Esta classe está ancorada em tabelas que as relações de mesma entidade não unem todas: {{tables}}.",
+        "class_and_attribute": "Esta classe também tem colunas que não são suas chaves: {{columns}}.",
+        "class_and_attribute_table": "A tabela {{table}} não tem classe: seu conceito é este termo, que tem colunas que não são chaves ({{columns}}).",
+        "tag_wrong_kind": "Este termo tem etiquetas ({{tags}}) que só uma propriedade passa às suas colunas; ele é um {{role}}.",
+        "retirement_blocked": "Este termo deveria ser retirado em {{retire_on}}, mas ainda tem dados. Retire-o com um sucessor que os receba.",
+        "no_data": "Este conceito não está ligado a nenhum termo que tenha dados."
+      }
     },
     "tag": {
       "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",

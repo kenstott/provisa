@@ -359,6 +359,18 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "list_glossary_findings",
+        "description": (
+            "What a curator should look at in the ontology: each term with its findings, each "
+            "{kind, message, params}. Kinds: unlinked_tables (a class's tables not all joined "
+            "as one entity), class_and_attribute (a class holding non-key columns, or a table "
+            "left without a class), tag_wrong_kind (a term tag on a term that is not a "
+            "property), retirement_blocked (due for retirement but still holding data) and "
+            "no_data (a concept that reaches no data). A plain draft term is not a finding."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "create_glossary_term",
         "description": (
             "Create a new ontology term (name + definition). It starts a draft — "
@@ -992,7 +1004,8 @@ _SYSTEM = (
     "specifically (e.g. 'I wasn't able to do that — <what's missing>. Can you give me more detail "
     "and I'll try again?'). Never just stop or trail off without a closing message; the user should "
     "never have to guess whether you're still working or already gave up.\n\n"
-    "Manage the glossary with list_glossary_terms/create_glossary_term/update_glossary_"
+    "Manage the glossary with list_glossary_terms/list_glossary_findings/create_glossary_term/"
+    "update_glossary_"
     "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge, and ground a term "
     "to a whole table with ground_glossary_term_to_table/unground_glossary_term_from_table, "
     "and mark a Property term pii with tag_glossary_term/untag_glossary_term, "
@@ -1379,6 +1392,7 @@ async def _execute_tool(
         )
     if name in (
         "list_glossary_terms",
+        "list_glossary_findings",
         "create_glossary_term",
         "update_glossary_term",
         "delete_glossary_term",
@@ -1398,6 +1412,8 @@ async def _execute_tool(
             return await mcp_tools.list_glossary_terms(
                 state, role, request, args.get("q"), args.get("include_deprecated", True)
             )
+        if name == "list_glossary_findings":
+            return await mcp_tools.list_glossary_findings(state, role, request)
         if name == "create_glossary_term":
             return await mcp_tools.create_glossary_term(
                 state, role, request, args["name"], args.get("definition"), args.get("domains")

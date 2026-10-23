@@ -494,25 +494,19 @@ async def test_the_check_reports_a_class_holding_non_key_refs_and_changes_nothin
                 .where(glossary_term_table_refs.c.table_id == ids["customers"])
                 .values(term_id=note["id"])
             )
-        found = await glossary_router.role_conflicts(_request())
-        assert found == {
-            "terms": [
-                {
-                    "term_id": note["id"],
-                    "term": "note",
-                    "tables": ["__derived__.s.customers"],
-                    "columns": [
-                        "__derived__.s.accounts.note",
-                        "__derived__.s.customers.note",
-                        "__derived__.s.notes.id",
-                        "__derived__.s.notes.note",
-                    ],
-                }
-            ],
-            "tables": [],
-            "tags": [],
+        found = await glossary_router.list_findings(_request())
+        [entry] = [
+            e for e in found if any(f["kind"] == "class_and_attribute" for f in e["findings"])
+        ]
+        assert (entry["term_id"], entry["term"]) == (note["id"], "note")
+        [finding] = [f for f in entry["findings"] if f["kind"] == "class_and_attribute"]
+        assert finding["code"] == "glossary.finding.class_and_attribute"
+        assert finding["params"] == {
+            "tables": "__derived__.s.customers",
+            "columns": "__derived__.s.accounts.note, __derived__.s.customers.note, "
+            "__derived__.s.notes.id, __derived__.s.notes.note",
         }
-        assert await glossary_router.role_conflicts(_request()) == found  # nothing changed
+        assert await glossary_router.list_findings(_request()) == found  # nothing changed
 
 
 @pytest.mark.asyncio
@@ -544,15 +538,14 @@ async def test_a_table_whose_concept_is_a_property_gets_no_class_and_is_reported
                 )
                 == []
             )
-        found = await glossary_router.role_conflicts(_request())
-        [table] = found["tables"]
-        assert (table["table_id"], table["table"], table["concept"], table["term_id"]) == (
-            keyed.id,
-            "__derived__.t.notes",
-            "note",
-            ids_note,
-        )
-        assert "__derived__.s.customers.note" in table["columns"]
+        del keyed
+        found = {
+            e["term_id"]: e["findings"] for e in await glossary_router.list_findings(_request())
+        }
+        [finding] = [f for f in found[ids_note] if f["kind"] == "class_and_attribute"]
+        assert finding["code"] == "glossary.finding.class_and_attribute_table"
+        assert finding["params"]["table"] == "__derived__.t.notes"
+        assert "__derived__.s.customers.note" in finding["params"]["columns"]
 
 
 # --- the export admits a class term by the tables it publishes --------------------------------

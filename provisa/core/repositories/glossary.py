@@ -255,7 +255,7 @@ async def _derive_class(conn: "Connection", table_id: int, concept: str) -> int 
     """Ground a keyed table in a draft Class term named for its concept (REQ-2141): the term of
     that name when it holds no non-key column ref (it may already ground other tables of the same
     concept), else a new one. None -- no draft -- when the concept is already a Property with
-    non-key refs; role_conflicts reports that table."""
+    non-key refs; the class_and_attribute finding reports that table."""
     row = (
         await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == concept))
     ).fetchone()
@@ -785,6 +785,9 @@ async def list_terms(
     live = await live_ids(conn)
     grounded = await grounded_ids(conn)
     gaps = await identity.identity_gap_ids(conn)  # REQ-2130: grounded in tables not all joined
+    from provisa.core.glossary_findings import findings as _findings
+
+    found = await _findings(conn)  # REQ-2146: counted on the row, so a list filters on it
     scope = await term_domains(conn)
     return [
         dict(r._mapping)
@@ -794,6 +797,7 @@ async def list_terms(
             # REQ-2141: derived -- a term rooted in no column and no table is a Concept.
             "is_abstract": not counts.get(r.id) and not table_counts.get(r.id),
             "status": status_of(r, live),  # REQ-2144
+            "findings": len(found.get(r.id, [])),  # REQ-2146
             "identity_gap": r.id in gaps,
             "live": r.id in live,
             "grounded": r.id in grounded,
@@ -1214,8 +1218,8 @@ async def restore_term(conn: "Connection", term_id: int, *, by: "str | None") ->
 async def retire_due(conn: "Connection", today: "date") -> list[int]:
     """Retire every deprecated term whose planned retirement date has come (REQ-2144), keeping
     the deprecation's reason. A term that still holds columns or tables needs a successor to
-    take them, which a date cannot name: it stays deprecated, and is logged by name. Returns the
-    ids retired."""
+    take them, which a date cannot name: it stays deprecated, a retirement_blocked finding
+    (REQ-2146). Returns the ids retired."""
     due = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
@@ -1226,9 +1230,9 @@ async def retire_due(conn: "Connection", today: "date") -> list[int]:
     retired = []
     for r in due:
         if await term_role(conn, r.id) != "concept":
-            log.error(
-                "term %r is due for retirement but still holds columns or tables; retire it with "
-                "a successor (REQ-2144)",
+            log.warning(
+                "term %r is due for retirement but still holds columns or tables; it stays "
+                "deprecated, a retirement_blocked finding (REQ-2146)",
                 r.name,
             )
             continue
