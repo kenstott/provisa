@@ -37,6 +37,10 @@ async def test_live_terms_ground_classes_and_columns(control_plane, monkeypatch)
             assert table_terms == {ids["customers"]: "party"}
             assert column_terms[(ids["customers"], "note")] == [note["name"]]
 
-            await glossary_repo.set_retired(conn, ids["party"], True)
+            # Retired, party's table goes to its successor, which is not defined yet (REQ-2144).
+            client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
+            await glossary_repo.retire_term(
+                conn, ids["party"], reason="renamed", successor=client, by=None
+            )
             table_terms, _ = await glossary_repo.vocabulary_refs(conn)
             assert table_terms == {}
