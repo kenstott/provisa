@@ -79,7 +79,13 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
             else (col_name if col_name in graph_vars else None)
         )
 
-        if graph_var is None and table_ref and table_ref in graph_vars:
+        # ``n.*`` is the node n; a property of it (``n."city" AS c``) is a value, not the node.
+        if (
+            graph_var is None
+            and table_ref
+            and table_ref in graph_vars
+            and not _is_property_column(inner)
+        ):
             graph_var = table_ref
 
         if graph_var is not None:
@@ -273,7 +279,7 @@ def _extract_alias_mappings(
         sq_alias = subq.alias
         if not sq_alias or sq_alias in alias_map:
             continue
-        if isinstance(subq.this, exp.Union):
+        if isinstance(subq.this, exp.Union) or _is_domain_arm(subq.this):
             continue
         inner_table = subq.find(exp.Table)
         if inner_table:
@@ -285,6 +291,20 @@ def _extract_alias_mappings(
                     break
 
     return alias_map
+
+
+def _is_property_column(expr: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``expr`` is one named column (``n."city"``), not a node's star (``n.*``)."""
+    return isinstance(expr, exp.Column) and not isinstance(expr.this, exp.Star)
+
+
+def _is_domain_arm(body: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``body`` is an arm of a domain union (it carries ``__label``): what is left of the
+    union when a property narrows it to one type (#292). Its node is built from its own columns
+    (_build_domain_json), never as its table's row."""
+    return isinstance(body, exp.Select) and any(
+        getattr(e, "alias", None) == "__label" for e in body.expressions
+    )
 
 
 def _find_node_meta(
