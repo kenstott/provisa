@@ -626,6 +626,11 @@
       "database_not_connected": "Database niet verbonden",
       "description_missing": "Een afgeleide rol heeft een beschrijving nodig van waar hij voor is",
       "not_found": "Geen afgeleide rol van {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "De term '{{term}}' heeft kolomverwijzingen ({{columns}}) en is dus een Eigenschap; hij kan geen tabel verankeren. Een term is een Klasse, verankerd in tabellen, of een Eigenschap, met kolomverwijzingen, nooit allebei.",
+      "term_is_class": "De term '{{term}}' verankert tabellen ({{tables}}) en is dus een Klasse; hij kan geen kolomverwijzing hebben. Een term is een Klasse, verankerd in tabellen, of een Eigenschap, met kolomverwijzingen, nooit allebei.",
+      "abstract_is_derived": "'Abstract' kan niet worden ingesteld: het volgt uit de verankering. Een term zonder kolomverwijzingen en zonder verankerde tabellen is een Concept."
     }
   }
 }

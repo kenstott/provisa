@@ -39,7 +39,7 @@ from provisa.core.env_project import project
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import domains, registered_tables, sources
+from provisa.core.schema_org import domains, glossary_term_table_refs, registered_tables, sources
 
 SCHEMA = "org_default"
 
@@ -399,47 +399,93 @@ async def test_the_meta_terms_view_counts_a_table_as_grounding(control_plane, mo
 
 
 @pytest.mark.asyncio
-async def test_a_class_term_keeps_its_term_when_its_columns_depart(control_plane, monkeypatch):
-    """A derived term grounding a table is rooted by the table, so losing its columns does not
-    remove or deprecate it."""
+async def test_a_term_that_owns_column_refs_cannot_ground_a_table(control_plane, monkeypatch):
+    """REQ-2141: a term is a Class or a Property, never both -- a Property (it owns column refs)
+    is refused a table grounding, naming its columns and why."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, notified):
+        async with db.acquire() as conn:
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+        assert note is not None
+        with pytest.raises(ApiError) as err:
+            await _ground(note["id"], ids["customers"])
+        assert (err.value.status_code, err.value.code) == (409, "glossary.term_is_property")
+        assert err.value.params == {
+            "term": "note",
+            # notes.id is the notes table's "note" too (its business name in its table's context)
+            "columns": "__derived__.s.accounts.note, __derived__.s.customers.note, "
+            "__derived__.s.notes.id, __derived__.s.notes.note",
+        }
+        assert "a term is either a Class, grounded in tables, or a Property" in err.value.detail
+        assert notified == []
+        async with db.acquire() as conn:
+            assert await glossary_repo.term_tables(conn, note["id"]) == []
+
+
+@pytest.mark.asyncio
+async def test_a_column_ref_cannot_move_into_a_term_grounded_in_tables(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["customers"])
+        body = {"table_id": ids["accounts"], "column_name": "note", "to_term_id": ids["party"]}
+        with pytest.raises(ApiError) as err:
+            await glossary_router.move_ref(_with_json(_request(), body))
+        assert (err.value.status_code, err.value.code) == (409, "glossary.term_is_class")
+        assert err.value.params == {"term": "party", "tables": "__derived__.s.customers"}
+        assert "cannot own a column ref" in err.value.detail
+        async with db.acquire() as conn:
+            kept = await glossary_repo.get_term_by_ref(conn, ids["accounts"], "note")
+        assert kept is not None and kept["name"] == "note"
+
+
+@pytest.mark.asyncio
+async def test_a_column_named_for_a_class_term_is_not_claimed_by_it(control_plane, monkeypatch):
+    """A table saved with a column whose term would be a class term is refused, naming it."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["customers"])
+        named = _tbl("accounts", keyed=True).model_copy(
+            update={
+                "columns": [
+                    Column(name="id", data_type="integer", visible_to=[], is_primary_key=True),
+                    Column(name="party", data_type="text", visible_to=[]),
+                ]
+            }
+        )
+        async with db.acquire() as conn:
+            with pytest.raises(glossary_repo.TermIsClass) as err:
+                await table_repo.upsert(conn, named)
+        assert (err.value.term, err.value.tables) == ("party", ["__derived__.s.customers"])
+
+
+@pytest.mark.asyncio
+async def test_the_check_reports_a_term_holding_both_and_changes_nothing(
+    control_plane, monkeypatch
+):
+    """Data from before the rule: a term both grounding a table and owning column refs is
+    reported with both, and left as it is."""
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         async with db.acquire() as conn:
             note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
             assert note is not None
-            await glossary_repo.ground_table(conn, note["id"], ids["customers"])
-            await table_repo.upsert(
-                conn,
-                _tbl("accounts", keyed=True).model_copy(
-                    update={
-                        "columns": [
-                            Column(
-                                name="id", data_type="integer", visible_to=[], is_primary_key=True
-                            )
-                        ]
-                    }
-                ),
+            await conn.execute_core(
+                glossary_term_table_refs.insert().values(
+                    term_id=note["id"], table_id=ids["customers"]
+                )
             )
-            await table_repo.upsert(
-                conn,
-                _tbl("notes", keyed=False).model_copy(
-                    update={"columns": [Column(name="id", data_type="integer", visible_to=[])]}
-                ),
-            )
-            await table_repo.upsert(
-                conn,
-                _tbl("customers", keyed=True).model_copy(
-                    update={
-                        "columns": [
-                            Column(
-                                name="id", data_type="integer", visible_to=[], is_primary_key=True
-                            )
-                        ]
-                    }
-                ),
-            )
-            kept = await glossary_repo.get_term(conn, note["id"])
-            assert kept is not None and not kept["deprecated"]
-            assert [r for r in kept["refs"] if r["column_name"] == "note"] == []
+        await _ground(ids["party"], ids["accounts"])  # a Class alone is no conflict
+        found = await glossary_router.role_conflicts(_request())
+        assert found == [
+            {
+                "term_id": note["id"],
+                "term": "note",
+                "tables": ["__derived__.s.customers"],
+                "columns": [
+                    "__derived__.s.accounts.note",
+                    "__derived__.s.customers.note",
+                    "__derived__.s.notes.id",
+                    "__derived__.s.notes.note",
+                ],
+            }
+        ]
+        assert await glossary_router.role_conflicts(_request()) == found  # nothing changed
 
 
 # --- the export admits a class term by the tables it publishes --------------------------------
@@ -576,6 +622,28 @@ async def test_a_config_class_term_naming_nothing_or_on_an_unkeyed_table_is_refu
     async with cfg_db.acquire() as conn:
         with pytest.raises(ValueError, match="cfg.public.orders has no primary key"):
             await apply_config(_config(class_term="Booking", keyed=False), conn)
+
+
+@pytest.mark.asyncio
+async def test_a_config_class_term_that_owns_column_refs_is_refused(cfg_db):
+    """REQ-2141: the orders table's ``booking`` column makes ``booking`` a Property, so the same
+    config naming it the table's class term is refused, saying why."""
+    from provisa.core.config_loader import apply_config
+
+    config = _config(class_term="Booking")
+    [orders] = config.tables
+    config.tables[0] = orders.model_copy(
+        update={
+            "columns": [
+                *orders.columns,
+                orders.columns[0].model_copy(update={"name": "booking", "is_primary_key": False}),
+            ]
+        }
+    )
+    async with cfg_db.acquire() as conn:
+        with pytest.raises(ValueError, match="cfg.public.orders cannot have a class term") as err:
+            await apply_config(config, conn)
+    assert "term 'booking' owns column refs (cfg.public.orders.booking)" in str(err.value)
 
 
 @pytest.mark.asyncio

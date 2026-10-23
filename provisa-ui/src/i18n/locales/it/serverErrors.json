@@ -626,6 +626,11 @@
       "database_not_connected": "Database non connesso",
       "description_missing": "Un ruolo derivato ha bisogno di una descrizione di a cosa serve",
       "not_found": "Nessun ruolo derivato da {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "Il termine '{{term}}' ha riferimenti di colonna ({{columns}}), quindi è una Proprietà e non può ancorare una tabella. Un termine è una Classe, ancorata a tabelle, oppure una Proprietà, con riferimenti di colonna, mai entrambe.",
+      "term_is_class": "Il termine '{{term}}' ancora tabelle ({{tables}}), quindi è una Classe e non può avere un riferimento di colonna. Un termine è una Classe, ancorata a tabelle, oppure una Proprietà, con riferimenti di colonna, mai entrambe.",
+      "abstract_is_derived": "«Astratto» non si può impostare: deriva dall'ancoraggio. Un termine senza riferimenti di colonna né tabelle ancorate è un Concetto."
     }
   }
 }

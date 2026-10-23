@@ -626,6 +626,11 @@
       "database_not_connected": "Banco de dados não conectado",
       "description_missing": "Uma função derivada precisa de uma descrição da sua finalidade",
       "not_found": "Nenhuma função derivada de {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "O termo '{{term}}' tem referências de coluna ({{columns}}), portanto é uma Propriedade e não pode ancorar uma tabela. Um termo é uma Classe, ancorada em tabelas, ou uma Propriedade, com referências de coluna, nunca ambas.",
+      "term_is_class": "O termo '{{term}}' ancora tabelas ({{tables}}), portanto é uma Classe e não pode ter uma referência de coluna. Um termo é uma Classe, ancorada em tabelas, ou uma Propriedade, com referências de coluna, nunca ambas.",
+      "abstract_is_derived": "\"Abstrato\" não pode ser definido: deriva da ancoragem. Um termo sem referências de coluna nem tabelas ancoradas é um Conceito."
     }
   }
 }

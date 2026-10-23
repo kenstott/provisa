@@ -626,6 +626,11 @@
       "database_not_connected": "資料庫未連接",
       "description_missing": "派生角色需要說明其用途",
       "not_found": "沒有從 {{name}} 派生的角色"
+    },
+    "glossary": {
+      "term_is_property": "詞彙「{{term}}」擁有欄位引用（{{columns}}），因此是屬性，不能關聯到表。詞彙要麼是關聯到表的類，要麼是擁有欄位引用的屬性，絕不會同時是兩者。",
+      "term_is_class": "詞彙「{{term}}」關聯到表（{{tables}}），因此是類，不能擁有欄位引用。詞彙要麼是關聯到表的類，要麼是擁有欄位引用的屬性，絕不會同時是兩者。",
+      "abstract_is_derived": "「抽象」不能設定：它由關聯情況推導而來。沒有欄位引用、也沒有關聯表的詞彙是概念。"
     }
   }
 }

@@ -87403,7 +87403,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     BLOCK] A class term may
     ground many tables or views, and a table is grounded by at most one class term. A table without a
     primary key cannot be grounded as a class, and the grounding is refused, naming the table.
-    Grounding is additive and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C
+    [SUPERSEDED by REQ-2141, 2026-10-23 -- a term's roles are exclusive (EXCLUSIVE ROLES below): a term owning column refs is not grounded in a table, nor the reverse. Kept here for history; do not implement against it.] Grounding is additive [END SUPERSEDED BLOCK] and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C
     Direct Mapping: each row is an instance with the IRI {public URL}/id/{domain}/{table}/{primary
     key}, typed by its table, and a class term additionally types the instances of every table it
     grounds. Column-grounded property terms work exactly as today, across many tables, with no class
@@ -87423,7 +87423,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     never through a junction or a function; any other is refused, naming the rule it breaks. While
     such a relationship stands on a table, the table's class term cannot be withdrawn or replaced;
     the change is refused, naming the relationship. A class grounded in several tables is a curation
-    gap until its same-entity relationships join all of them, every table reached from any one.
+    gap until its same-entity relationships join all of them, every table reached from any one. (Amended 2026-10-23, EXCLUSIVE ROLES:) A term is a Class (grounded in tables) or a Property (owning column refs), never both. Grounding a table on a term that owns column refs is refused by the API, the Polly tool and config load (glossary.term_is_property, naming the term and its columns); moving a column ref into, or a table save claiming a column for, a term grounded in tables is refused (glossary.term_is_class, naming the term and its tables). Each refusal says why, in every UI locale. This supersedes any reading in which a term grounded in both is a Class. Data from before the rule is reported, not changed: GET /admin/glossary/role-conflicts lists each term holding both, with its tables and columns.
   use_case: >-
     A curator grounds the word Customer in the tables that hold customers, and RDF tools, SPARQL and
     the graph see one class with its instances, its properties and the identity between its sources,

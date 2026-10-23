@@ -649,6 +649,10 @@ async def move_ref(request: Request) -> dict:
                 str(body["column_name"]),
                 int(body["to_term_id"]),
             )
+        except glossary_repo.TermIsClass as exc:
+            raise ApiError(
+                409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
+            ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if moved is None:
@@ -797,6 +801,14 @@ async def ground_term_table(
         await glossary_repo.ground_table(conn, term_id, table_id)
     except glossary_repo.TableHasNoPrimaryKey as exc:
         raise ApiError(400, "glossary.table_no_primary_key", str(exc), table=exc.table) from exc
+    except glossary_repo.TermIsProperty as exc:
+        raise ApiError(
+            409,
+            "glossary.term_is_property",
+            str(exc),
+            term=exc.term,
+            columns=", ".join(exc.columns),
+        ) from exc
     except glossary_repo.TableAlreadyGrounded as exc:
         raise ApiError(
             409,
@@ -827,6 +839,26 @@ async def unground_term_table(
         raise ApiError(
             404, "glossary.table_ref_not_found", f"term {term_id} does not ground table {table_id}"
         )
+
+
+@router.get("/role-conflicts")
+async def role_conflicts(request: Request) -> list[dict]:
+    """Each term the caller can read that is a Class and a Property at once -- grounded in tables
+    and owning column refs -- with both. A term's roles are exclusive (REQ-2141); this reports the
+    data that predates the rule and changes nothing."""
+    from provisa.core.glossary import readable_term
+
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        found = await glossary_repo.terms_holding_both(_conn)
+        allowed = _authority(request)
+        if allowed is None:
+            return found
+        scopes = await glossary_repo.term_domains(_conn)
+        return [t for t in found if readable_term(allowed, scopes.get(t["term_id"], set()))]
 
 
 @router.get("/terms/{term_id}/tables")

@@ -26,7 +26,7 @@ in service, defined, and grounded in a physical column.
 # Requirements: REQ-1387, REQ-1591, REQ-2130
 
 from provisa.core import model_change
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import re
 
@@ -194,6 +194,8 @@ async def sync_table_refs(
                 continue
             orphaned.add(held)
         term_id = await _find_or_create_term(conn, wanted)
+        # REQ-2141: a column whose name is a class term's is not claimed by it.
+        await refuse_property_on_class(conn, term_id)
         await conn.upsert(
             glossary_term_refs,
             {"term_id": term_id, "table_id": table_id, "column_name": physical},
@@ -799,6 +801,7 @@ async def move_ref(
         raise ValueError(f"term {to_term_id} does not exist")
     if row.term_id == to_term_id:
         return {"source_term_removed": False}
+    await refuse_property_on_class(conn, to_term_id)
     # REQ-1591: before the move, so a losing term the settle keeps is stamped with the domains it
     # held rather than the empty set it is left with.
     domains_before = await term_domains(conn)
@@ -1015,12 +1018,117 @@ class TableAlreadyGrounded(ValueError):
         self.term_name = term_name
 
 
+# REQ-2141 (amended 2026-10-23): a term's ontology role is exclusive. It is a Class, grounded in
+# tables, or a Property, owning column refs -- never both, so a term names one thing.
+_ROLES_EXCLUSIVE = (
+    "a term is either a Class, grounded in tables, or a Property, owning column refs, never both"
+)
+
+
+class TermIsProperty(ValueError):
+    """A table grounding refused: the term owns column refs (it is a Property)."""
+
+    def __init__(self, term: str, columns: list[str]) -> None:
+        super().__init__(
+            f"term {term!r} owns column refs ({', '.join(columns)}), so it cannot ground a table: "
+            + _ROLES_EXCLUSIVE
+        )
+        self.term = term
+        self.columns = columns
+
+
+class TermIsClass(ValueError):
+    """A column ref refused: the term is grounded in tables (it is a Class)."""
+
+    def __init__(self, term: str, tables: list[str]) -> None:
+        super().__init__(
+            f"term {term!r} grounds tables ({', '.join(tables)}), so it cannot own a column ref: "
+            + _ROLES_EXCLUSIVE
+        )
+        self.term = term
+        self.tables = tables
+
+
 _TABLE_ADDRESS = (
     registered_tables.c.source_id,
     registered_tables.c.schema_name,
     registered_tables.c.table_name,
     registered_tables.c.domain_id,
 )
+
+
+def _address(row: Any) -> str:
+    return f"{row.source_id}.{row.schema_name}.{row.table_name}"
+
+
+async def _term_name(conn: "Connection", term_id: int) -> str:
+    row = (
+        await conn.execute_core(select(glossary_terms.c.name).where(glossary_terms.c.id == term_id))
+    ).fetchone()
+    if row is None:
+        raise TermNotFound(f"term {term_id} not found")
+    return row.name
+
+
+async def _term_columns(conn: "Connection", term_id: int) -> list[str]:
+    """The columns whose refs ``term_id`` owns, as source.schema.table.column."""
+    rows = (
+        await conn.execute_core(
+            select(glossary_term_refs.c.column_name, *_TABLE_ADDRESS[:3])
+            .join(registered_tables, glossary_term_refs.c.table_id == registered_tables.c.id)
+            .where(glossary_term_refs.c.term_id == term_id)
+            .order_by(*_TABLE_ADDRESS[:3], glossary_term_refs.c.column_name)
+        )
+    ).fetchall()
+    return [f"{_address(r)}.{r.column_name}" for r in rows]
+
+
+async def _term_table_addresses(conn: "Connection", term_id: int) -> list[str]:
+    rows = (
+        await conn.execute_core(
+            select(*_TABLE_ADDRESS[:3])
+            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            .where(glossary_term_table_refs.c.term_id == term_id)
+            .order_by(*_TABLE_ADDRESS[:3])
+        )
+    ).fetchall()
+    return [_address(r) for r in rows]
+
+
+async def refuse_class_on_property(conn: "Connection", term_id: int) -> None:
+    """TermIsProperty when ``term_id`` owns column refs (REQ-2141)."""
+    columns = await _term_columns(conn, term_id)
+    if columns:
+        raise TermIsProperty(await _term_name(conn, term_id), columns)
+
+
+async def refuse_property_on_class(conn: "Connection", term_id: int) -> None:
+    """TermIsClass when ``term_id`` grounds tables (REQ-2141)."""
+    tables = await _term_table_addresses(conn, term_id)
+    if tables:
+        raise TermIsClass(await _term_name(conn, term_id), tables)
+
+
+async def terms_holding_both(conn: "Connection") -> list[dict]:
+    """Each term that is a Class and a Property at once -- grounded in tables and owning column
+    refs -- with both, for the curator to resolve. It reports and changes nothing (REQ-2141)."""
+    both = (
+        await conn.execute_core(
+            select(glossary_terms.c.id, glossary_terms.c.name)
+            .where(glossary_terms.c.id.in_(select(glossary_term_table_refs.c.term_id)))
+            .where(glossary_terms.c.id.in_(select(glossary_term_refs.c.term_id)))
+            .order_by(glossary_terms.c.name)
+        )
+    ).fetchall()
+    return [
+        {
+            "term_id": r.id,
+            "term": r.name,
+            "tables": await _term_table_addresses(conn, r.id),
+            "columns": await _term_columns(conn, r.id),
+        }
+        for r in both
+    ]
 
 
 async def term_exists(conn: "Connection", term_id: int) -> bool:
@@ -1069,11 +1177,13 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     """Make ``term_id`` the class term of ``table_id``.
 
     Refused by name: a table without a primary key, whose rows are not identifiable instances,
-    and a table another term (or this one) already grounds -- a table has one class term.
+    a term that owns column refs (a Property, REQ-2141), and a table another term (or this one)
+    already grounds -- a table has one class term.
     """
     if not await term_exists(conn, term_id):
         raise TermNotFound(f"term {term_id} not found")
     address = await _keyed_table(conn, table_id)
+    await refuse_class_on_property(conn, term_id)
     held = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
@@ -1097,6 +1207,7 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     the same configuration again changes nothing. Another term in its place is refused while a
     same-entity relationship stands on the one it has (identity.TableInIdentity)."""
     address = await _keyed_table(conn, table_id)
+    await refuse_class_on_property(conn, term_id)
     held = (
         await conn.execute_core(
             select(glossary_term_table_refs.c.term_id).where(

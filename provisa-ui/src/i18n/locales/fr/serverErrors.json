@@ -626,6 +626,11 @@
       "database_not_connected": "Base de données non connectée",
       "description_missing": "Un rôle dérivé a besoin d'une description de ce à quoi il sert",
       "not_found": "Aucun rôle dérivé de {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "Le terme « {{term}} » possède des références de colonne ({{columns}}) : c'est une Propriété, il ne peut pas ancrer une table. Un terme est soit une Classe, ancrée dans des tables, soit une Propriété, qui possède des références de colonne, jamais les deux.",
+      "term_is_class": "Le terme « {{term}} » ancre des tables ({{tables}}) : c'est une Classe, il ne peut pas posséder de référence de colonne. Un terme est soit une Classe, ancrée dans des tables, soit une Propriété, qui possède des références de colonne, jamais les deux.",
+      "abstract_is_derived": "« Abstrait » ne peut pas être défini : il découle de l'ancrage. Un terme sans références de colonne ni tables ancrées est un Concept."
     }
   }
 }

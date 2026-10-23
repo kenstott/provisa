@@ -1198,7 +1198,11 @@ async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> Non
         assert row is not None, f"table {address} was upserted by this load"
         try:
             await glossary_repo.declare_class_term(conn, row.id, term_ids[name])
-        except (glossary_repo.TableHasNoPrimaryKey, TableInIdentity) as exc:
+        except (
+            glossary_repo.TableHasNoPrimaryKey,
+            glossary_repo.TermIsProperty,
+            TableInIdentity,
+        ) as exc:
             raise ValueError(f"table {address} cannot have a class term: {exc}") from exc
 
 
