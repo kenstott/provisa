@@ -264,8 +264,25 @@ def capture_tests(out: Path, test_args: list[str], approved: str | None = None) 
 def model_label_map(config_path: Path) -> Any:
     """The label map the server builds from ``config_path``'s model for org_admin, built offline:
     its tables (views among them), relationships and declared column types."""
-    from provisa.compiler import naming
     from provisa.compiler.context import build_context
+
+    schema_input, tables, relationships, column_types = model_inputs(config_path)
+    ctx = build_context(schema_input)
+    return _module("label_map").CypherLabelMap.from_schema(
+        ctx,
+        domain_access=["*"],
+        all_tables=tables,
+        all_relationships=relationships,
+        all_column_types=column_types,
+    )
+
+
+def model_inputs(config_path: Path, *, parameters: bool = False) -> tuple[Any, list, list, dict]:
+    """What the server's schema build is given from ``config_path``'s model for org_admin, built
+    offline: the schema input, and its tables, relationships and declared column types.
+    ``parameters``: a table's parameter columns are its arguments (the GraphQL golden reads them;
+    the Cypher golden's label maps were captured without them)."""
+    from provisa.compiler import naming
     from provisa.compiler.introspect import ColumnMetadata
     from provisa.compiler.schema_gen import SchemaInput
     from provisa.core.config_loader import read_config_with_includes, views_as_tables
@@ -294,6 +311,16 @@ def model_label_map(config_path: Path) -> Any:
                         "data_type": c["data_type"],
                         **({"is_primary_key": True} if c.get("is_primary_key") else {}),
                         **({"alias": c["alias"]} if c.get("alias") else {}),
+                        # A parameter of the table (core/parameters.py): an argument of its field.
+                        **{
+                            k: c[k]
+                            for k in (
+                                "native_filter_type",
+                                "native_filter_required",
+                                "required_by_steward",
+                            )
+                            if parameters and c.get(k) is not None
+                        },
                     }
                     for c in columns
                 ],
@@ -330,14 +357,7 @@ def model_label_map(config_path: Path) -> Any:
         domains=config.get("domains") or [],
         domain_prefix=(config.get("naming") or {}).get("domain_prefix", False),
     )
-    ctx = build_context(schema_input)
-    return _module("label_map").CypherLabelMap.from_schema(
-        ctx,
-        domain_access=["*"],
-        all_tables=tables,
-        all_relationships=relationships,
-        all_column_types=column_types,
-    )
+    return schema_input, tables, relationships, column_types
 
 
 def _tour_statements(tour: Path) -> list[str]:
