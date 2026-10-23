@@ -46726,8 +46726,11 @@
     The card is the single explanation style: the NL page and the MCP explorer render their control explanations
     through the same component rather than as Mantine tooltips, with the control itself as the hover target
     so the row keeps its shape. (Amended 2026-10-22, GROUNDED TO A TABLE:) A term is GROUNDED when it reaches, over in-service
-    terms, a term bound to a column or a table: a term reference with no column grounds its term in
-    the table itself (REQ-2141), and live_term_ids counts it as grounded. An abstract term wired to
+    terms, a term bound to a column or a table: [SUPERSEDED by REQ-1387, 2026-10-22 -- a table
+    grounding is not stored as a reference with no column (REQ-2141, STORAGE-NEUTRAL). Kept here for
+    history; do not implement against it.] a term reference with no column grounds its term in
+    the table itself (REQ-2141), [END SUPERSEDED BLOCK] a term grounded in a table (REQ-2141) is
+    grounded, and live_term_ids counts it as grounded. An abstract term wired to
     nothing physical still names no data and is not offered.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
@@ -87344,8 +87347,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     A term grounded in a table or view is a Class, whose instances are that table's rows. A term
     grounded in a column is a Property: a datatype property for a column of values, an object
     property for a reference column. A term grounded in nothing (an abstract term) is a Concept and
-    may be a superclass. TABLE-LEVEL GROUNDING is new: a term reference with no column grounds the
-    term in the table itself, so glossary_term_refs no longer requires column_name. A class term may
+    may be a superclass. TABLE-LEVEL GROUNDING is new: [SUPERSEDED by REQ-2141, 2026-10-22 --
+    the requirement does not fix how a table grounding is stored (STORAGE-NEUTRAL below). Kept here
+    for history; do not implement against it.] a term reference with no column grounds the
+    term in the table itself, so glossary_term_refs no longer requires column_name. [END SUPERSEDED
+    BLOCK] A class term may
     ground many tables or views, and a table is grounded by at most one class term. A table without a
     primary key cannot be grounded as a class, and the grounding is refused, naming the table.
     Grounding is additive and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C
@@ -87361,6 +87367,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     native references are the mapping from data to the ontology, provenance in the manner of R2RML,
     and are not class assertions. Docs, the export and SPARQL use the words class, property, instance
     and mapping; the curation UI keeps term, concrete, abstract and grounds, with the role badge.
+    (Amended 2026-10-22, STORAGE-NEUTRAL:) A term may be grounded in one or more tables or views, and
+    a table has at most one class term. How a table grounding is stored is the build's to decide.
   use_case: >-
     A curator grounds the word Customer in the tables that hold customers, and RDF tools, SPARQL and
     the graph see one class with its instances, its properties and the identity between its sources,
