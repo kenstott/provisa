@@ -337,3 +337,37 @@ def test_detect_procedure_unknown_proc_returns_none():
     from provisa.api.rest.cypher_router import _detect_procedure
 
     assert _detect_procedure("CALL db.unknown()") is None
+
+
+# ---------------------------------------------------------------------------
+# One statement per query
+# ---------------------------------------------------------------------------
+
+
+def test_two_statements_in_one_query_are_refused_never_joined():
+    """Once read as one MATCH (a)...MATCH (b) RETURN b: a cross join that answered only the second."""
+    with pytest.raises(CypherParseError, match="exactly one statement per query but got: 2"):
+        parse_cypher("MATCH (a:A) RETURN a.x; MATCH (b:B) RETURN b.y")
+    with pytest.raises(CypherParseError, match="but got: 3"):
+        parse_cypher("MATCH (a:A) RETURN a.x;\nMATCH (b:B) RETURN b.y;\nRETURN 1;")
+
+
+def test_a_semicolon_ending_the_one_statement_is_allowed():
+    alone = parse_cypher("MATCH (a:A) RETURN a.x")
+    assert parse_cypher("MATCH (a:A) RETURN a.x;") == alone
+    assert parse_cypher("MATCH (a:A) RETURN a.x ;\n// done\n") == parse_cypher(
+        "MATCH (a:A) RETURN a.x // done"
+    )
+
+
+def test_a_semicolon_in_a_string_or_a_comment_separates_nothing():
+    parse_cypher("MATCH (a:A) WHERE a.x = 'one; two' RETURN a.x")
+    parse_cypher('MATCH (a:A) WHERE a.x = "one; two" RETURN a.x')
+    parse_cypher("MATCH (a:A) // first; then\nRETURN a.x")
+
+
+def test_two_writes_in_one_query_are_refused():
+    from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
+
+    with pytest.raises(CypherWriteParseError, match="but got: 2"):
+        parse_cypher_write("CREATE (a:A {x: 1}); CREATE (b:A {x: 2})")

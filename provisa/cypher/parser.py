@@ -78,6 +78,7 @@ _TOKEN_SPEC = [
     ("LT", r"<"),
     ("GT", r">"),
     ("PIPE", r"\|"),
+    ("SEMICOLON", r";"),
     ("IDENT", r"[A-Za-z_]\w*"),
     ("NEWLINE", r"\n"),
     ("SKIP_WS", r"[ \t]+"),
@@ -104,7 +105,8 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
     comments: list[str] = []
     for m in _MASTER_RE.finditer(text):
         kind = m.lastgroup
-        if kind in ("SKIP_WS", "NEWLINE"):
+        # A semicolon ends the one statement a query holds (refuse_multiple_statements).
+        if kind in ("SKIP_WS", "NEWLINE", "SEMICOLON"):
             continue
         if kind == "COMMENT":
             comments.append(m.group()[2:].strip())  # strip leading //
@@ -820,12 +822,32 @@ def refuse_cypher_definition(query: str) -> None:
     refuse_definition_text(query)
 
 
+def refuse_multiple_statements(query: str) -> None:
+    """Raise for a query that holds more than one statement, in Neo4j's own words.
+
+    A query is one statement, as Neo4j takes it; a client that runs several (Neo4j Browser's
+    editor) splits them on ``;`` itself and sends each as its own query. A semicolon inside a
+    string or a comment separates nothing, and one that only ends the statement is allowed."""
+    statements = 0
+    ended = True
+    for m in _MASTER_RE.finditer(query):
+        kind = m.lastgroup
+        if kind == "SEMICOLON":
+            ended = True
+        elif kind not in ("SKIP_WS", "NEWLINE", "COMMENT"):
+            statements += ended
+            ended = False
+    if statements > 1:
+        raise CypherParseError(f"Expected exactly one statement per query but got: {statements}")
+
+
 def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
     """Parse a read-only Cypher query into a CypherAST.
 
     Raises CypherParseError for write clauses, APOC references, or unbounded
     variable-length patterns.
     """
+    refuse_multiple_statements(query)
     refuse_cypher_definition(query)
     # Reject write clauses (case-insensitive)
     tokens_raw = re.findall(r"\b\w+\b", query)
