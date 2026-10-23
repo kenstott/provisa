@@ -552,6 +552,21 @@ async def _optimize_and_route(
             dialect=None,
             reason=f"source {decision.source_id!r} cannot compute cosine_similarity",
         )
+    if decision.route == Route.DIRECT and not is_mutation:
+        from provisa.transpiler.engine_functions import uncomputable
+
+        # REQ-345: a Cypher read's map, list and quantifier functions are the engine's; a source
+        # whose own SQL lacks one is answered by the engine, as a similarity search is above.
+        _fn = uncomputable(governed_sql, state.source_dialects.get(decision.source_id) or "")
+        if _fn is not None:
+            from provisa.transpiler.router import RouteDecision
+
+            decision = RouteDecision(
+                route=Route.ENGINE,
+                source_id=None,
+                dialect=None,
+                reason=f"source {decision.source_id!r} cannot compute {_fn}",
+            )
     if decision.route == Route.ENGINE and not is_mutation:
         # REQ-2000: a live-only table the engine reads is read live for this statement -- its
         # part of it -- and handed to the engine; it has no replica.
