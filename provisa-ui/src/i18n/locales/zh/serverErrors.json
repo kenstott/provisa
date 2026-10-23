@@ -631,7 +631,36 @@
       "term_is_property": "术语“{{term}}”拥有列引用（{{columns}}），因此是属性，不能关联到表。术语要么是关联到表的类，要么是拥有列引用的属性，绝不会同时是两者。",
       "term_is_class": "术语“{{term}}”关联到表（{{tables}}），因此是类，不能拥有列引用。术语要么是关联到表的类，要么是拥有列引用的属性，绝不会同时是两者。",
       "abstract_is_derived": "“抽象”不能设置：它由关联情况推导而来。没有列引用、也没有关联表的术语是概念。",
-      "key_column_derived": "此列是键；它跟随其表的类。{{table}}.{{column}} 保留在“{{class}}”上，不能手动移动。"
+      "key_column_derived": "此列是键；它跟随其表的类。{{table}}.{{column}} 保留在“{{class}}”上，不能手动移动。",
+      "reason_required": "需要原因：请说明弃用或停用该术语的原因。",
+      "retire_on_past": "计划的停用日期 {{retire_on}} 已过。请选择今天或之后的日期。",
+      "retire_on_invalid": "计划的停用日期 {{retire_on}} 不是日期（请使用 YYYY-MM-DD）。",
+      "successor_is_self": "术语不能成为自己的继任者。",
+      "successor_retired": "继任者“{{successor}}”已停用。请选择一个仍在使用的术语。",
+      "term_not_live": "只有已发布的术语才能弃用；该术语为 {{status}}。",
+      "status_by_action": "术语的状态通过“弃用”“停用”或“恢复”更改，每项都需要原因。",
+      "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
+      "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",
+      "no_retirement_history": "模型的历史中没有该术语的停用记录。",
+      "finding": {
+        "unlinked_tables": "此类关联到的表并非全部由同一实体关系连接：{{tables}}。",
+        "class_and_attribute": "此类还拥有不是其键的列：{{columns}}。",
+        "class_and_attribute_table": "表 {{table}} 没有类：它的概念是该术语，而该术语拥有不是键的列（{{columns}}）。",
+        "tag_wrong_kind": "该术语带有只有属性才会传给其列的标签（{{tags}}）；它是 {{role}}。",
+        "retirement_blocked": "该术语原定于 {{retire_on}} 停用，但仍有数据。请指定接收数据的继任者后再停用。",
+        "no_data": "该概念未连接到任何拥有数据的术语。"
+      }
+    },
+    "tag": {
+      "not_on_terms": "标签“{{tag}}”不能加在术语上；只有 pii 可以。",
+      "term_not_live": "请先为“{{term}}”编写定义，再进行标记。",
+      "term_not_property": "标签“{{tag}}”只能加在属性术语（表示列的术语）上；“{{term}}”不是属性。",
+      "term_is_tagged": "请先移除 {{tags}}，或保留定义。",
+      "key_column": "列 {{column}} 是键：其含义是其表的类。请直接为该列加标签。",
+      "column_has_no_term": "列 {{column}} 没有可加标签的术语。",
+      "also_term_needs_column": "改为给术语加标签需要指定一列。",
+      "inherited_from_term": "此列是 PII，因为它表示 {{term}}。请取消该含义的标记，或者如果此列表示其他含义，请移动它。",
+      "move_loses": "此次移动会使列失去标签，之后这些列将不再带有它们。请确认失去每个标签，或将标签带到列移入的术语上。"
     }
   }
 }

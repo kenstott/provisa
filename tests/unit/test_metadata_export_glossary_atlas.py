@@ -67,6 +67,7 @@ def _term(term_id: int, name: str, **kwargs) -> GlossaryTermAsset:
         definition=f"What {name} means.",
         is_abstract=True,
         deprecated=False,
+        status="live",
         refs=(),
         experts=(),
         semantic_uri=f"provisa://{ORG}/terms/{name}",

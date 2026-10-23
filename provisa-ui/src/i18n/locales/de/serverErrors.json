@@ -631,7 +631,36 @@
       "term_is_property": "Der Begriff '{{term}}' hat Spaltenverweise ({{columns}}) und ist damit eine Eigenschaft; er kann keine Tabelle verankern. Ein Begriff ist entweder eine Klasse, in Tabellen verankert, oder eine Eigenschaft mit Spaltenverweisen, nie beides.",
       "term_is_class": "Der Begriff '{{term}}' verankert Tabellen ({{tables}}) und ist damit eine Klasse; er kann keinen Spaltenverweis haben. Ein Begriff ist entweder eine Klasse, in Tabellen verankert, oder eine Eigenschaft mit Spaltenverweisen, nie beides.",
       "abstract_is_derived": "„Abstrakt“ lässt sich nicht setzen: Es ergibt sich aus der Verankerung. Ein Begriff ohne Spaltenverweise und ohne verankerte Tabellen ist ein Konzept.",
-      "key_column_derived": "Diese Spalte ist ein Schlüssel; sie folgt der Klasse ihrer Tabelle. {{table}}.{{column}} bleibt bei '{{class}}' und wird nicht von Hand verschoben."
+      "key_column_derived": "Diese Spalte ist ein Schlüssel; sie folgt der Klasse ihrer Tabelle. {{table}}.{{column}} bleibt bei '{{class}}' und wird nicht von Hand verschoben.",
+      "reason_required": "Ein Grund ist erforderlich: Geben Sie an, warum der Begriff als veraltet markiert oder ausgemustert wird.",
+      "retire_on_past": "Das geplante Ausmusterungsdatum {{retire_on}} liegt in der Vergangenheit. Wählen Sie heute oder ein späteres Datum.",
+      "retire_on_invalid": "Das geplante Ausmusterungsdatum {{retire_on}} ist kein Datum (verwenden Sie JJJJ-MM-TT).",
+      "successor_is_self": "Ein Begriff kann nicht sein eigener Nachfolger sein.",
+      "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie einen Begriff, der in Gebrauch ist.",
+      "term_not_live": "Nur ein aktiver Begriff kann als veraltet markiert werden; dieser ist {{status}}.",
+      "status_by_action": "Der Status eines Begriffs ändert sich über Veralten, Ausmustern oder Wiederherstellen, jeweils mit einem Grund.",
+      "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
+      "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",
+      "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs.",
+      "finding": {
+        "unlinked_tables": "Diese Klasse ist in Tabellen verankert, die Same-Entity-Beziehungen nicht alle verbinden: {{tables}}.",
+        "class_and_attribute": "Diese Klasse hat außerdem Spalten, die nicht ihre Schlüssel sind: {{columns}}.",
+        "class_and_attribute_table": "Die Tabelle {{table}} hat keine Klasse: Ihr Konzept ist dieser Begriff, der Spalten hat, die keine Schlüssel sind ({{columns}}).",
+        "tag_wrong_kind": "Dieser Begriff trägt Tags ({{tags}}), die nur eine Eigenschaft an ihre Spalten weitergibt; er ist eine {{role}}.",
+        "retirement_blocked": "Dieser Begriff sollte am {{retire_on}} ausgemustert werden, hat aber noch Daten. Mustern Sie ihn mit einem Nachfolger aus, der sie übernimmt.",
+        "no_data": "Dieses Konzept ist mit keinem Begriff verbunden, der Daten hat."
+      }
+    },
+    "tag": {
+      "not_on_terms": "Das Tag '{{tag}}' kommt an keinen Begriff; nur pii.",
+      "term_not_live": "Definieren Sie '{{term}}', um ihn zu markieren.",
+      "term_not_property": "Das Tag '{{tag}}' kommt nur an einen Begriff, der eine Eigenschaft ist, also Spalten bedeutet; '{{term}}' ist keine.",
+      "term_is_tagged": "Entfernen Sie zuerst {{tags}}, oder behalten Sie eine Definition.",
+      "key_column": "Die Spalte {{column}} ist ein Schlüssel: Ihre Bedeutung ist die Klasse ihrer Tabelle. Taggen Sie die Spalte selbst.",
+      "column_has_no_term": "Die Spalte {{column}} hat keinen Begriff, der getaggt werden kann.",
+      "also_term_needs_column": "Statt der Spalte den Begriff zu taggen, setzt eine Spalte voraus.",
+      "inherited_from_term": "Diese Spalte ist PII, weil sie {{term}} bedeutet. Entfernen Sie die Markierung dieser Bedeutung, oder verschieben Sie die Spalte, wenn sie etwas anderes bedeutet.",
+      "move_loses": "Diese Verschiebung nimmt Spalten Tags weg, die sie danach nicht mehr tragen. Bestätigen Sie den Verlust jedes Tags, oder übertragen Sie die Tags auf den Begriff, zu dem die Spalten verschoben werden."
     }
   }
 }

@@ -750,10 +750,9 @@ def build_mcp_server(state: Any):
         name: str | None = None,
         definition: str | None = None,
         export_excluded: bool | None = None,
-        retired: bool | None = None,
         role: str | None = None,
     ) -> dict:
-        """Update an existing glossary term's fields."""
+        """Update an existing glossary term's fields (its status has its own tools)."""
         resolved = _role(role)
         return await tools.update_glossary_term(
             state,
@@ -763,8 +762,66 @@ def build_mcp_server(state: Any):
             name=name,
             definition=definition,
             export_excluded=export_excluded,
-            retired=retired,
         )
+
+    @_tool
+    async def deprecate_glossary_term(
+        term_id: int, reason: str, retire_on: str | None = None, role: str | None = None
+    ) -> dict:
+        """Deprecate a live ontology term, with a reason and an optional planned retirement date
+        (ISO). It stays in service until then, and is retired on that date."""
+        resolved = _role(role)
+        return await tools.change_glossary_term_status(
+            state,
+            resolved,
+            _capability_request(resolved),
+            term_id,
+            "deprecate",
+            {"reason": reason, "retire_on": retire_on},
+        )
+
+    @_tool
+    async def retire_glossary_term(
+        term_id: int,
+        reason: str,
+        successor: int | None = None,
+        confirm_tag_loss: list[str] | None = None,
+        carry_tags: bool = False,
+        role: str | None = None,
+    ) -> dict:
+        """Retire an ontology term, with a reason. Its columns or tables move to the successor
+        term (required when it has any), which gets the REPLACES edge to it. A move that would
+        take pii off a column is refused unless confirm_tag_loss names it or carry_tags puts it
+        on the successor."""
+        resolved = _role(role)
+        return await tools.change_glossary_term_status(
+            state,
+            resolved,
+            _capability_request(resolved),
+            term_id,
+            "retire",
+            {
+                "reason": reason,
+                "successor": successor,
+                "confirm_tag_loss": confirm_tag_loss or [],
+                "carry_tags": carry_tags,
+            },
+        )
+
+    @_tool
+    async def restore_glossary_term(term_id: int, role: str | None = None) -> dict:
+        """Restore a retired or deprecated ontology term: its status is computed again."""
+        resolved = _role(role)
+        return await tools.change_glossary_term_status(
+            state, resolved, _capability_request(resolved), term_id, "restore", {}
+        )
+
+    @_tool
+    async def list_glossary_findings(role: str | None = None) -> list[dict]:
+        """What a curator should look at in the ontology: each term with its findings
+        ({kind, message, params}). A plain draft term is not a finding."""
+        resolved = _role(role)
+        return await tools.list_glossary_findings(state, resolved, _capability_request(resolved))
 
     @_tool
     async def delete_glossary_term(term_id: int, role: str | None = None) -> dict:
@@ -813,6 +870,25 @@ def build_mcp_server(state: Any):
         resolved = _role(role)
         return await tools.unground_glossary_term_from_table(
             state, resolved, _capability_request(resolved), term_id, table_id
+        )
+
+    @_tool
+    async def tag_glossary_term(
+        term_id: int, tag_id: str, reason: str | None = None, role: str | None = None
+    ) -> dict:
+        """Put a tag (pii) on a glossary term that is a Property: every column the term holds, now
+        and later, carries it."""
+        resolved = _role(role)
+        return await tools.tag_glossary_term(
+            state, resolved, _capability_request(resolved), term_id, tag_id, reason
+        )
+
+    @_tool
+    async def untag_glossary_term(term_id: int, tag_id: str, role: str | None = None) -> dict:
+        """Take a tag off a glossary term."""
+        resolved = _role(role)
+        return await tools.untag_glossary_term(
+            state, resolved, _capability_request(resolved), term_id, tag_id
         )
 
     @_tool

@@ -338,7 +338,7 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         rows = _decompose(tree, existing, frozenset())
         assert [
             r for r in rows["glossary_term_table_refs"] if r["table_id"] == ids["customers"]
-        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "proposed": False}]
+        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "derived": False}]
 
 
 # --- grounded to a table (REQ-1387): the admission rule and the derived domains ---------------
@@ -360,7 +360,11 @@ async def test_a_term_grounded_only_in_a_table_is_grounded_and_live_once_defined
             assert {ids["party"], ids["ledger"]} <= grounded
             live = await glossary_repo.live_ids(conn)
             assert ids["ledger"] in live and ids["party"] not in live  # party has no definition
-            await glossary_repo.set_retired(conn, ids["party"], True)
+            # retired, party's table goes to its successor and party conducts no more (REQ-2144)
+            client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
+            await glossary_repo.retire_term(
+                conn, ids["party"], reason="renamed", successor=client, by=None
+            )
             assert ids["ledger"] not in await glossary_repo.grounded_ids(conn)
 
 
@@ -490,24 +494,19 @@ async def test_the_check_reports_a_class_holding_non_key_refs_and_changes_nothin
                 .where(glossary_term_table_refs.c.table_id == ids["customers"])
                 .values(term_id=note["id"])
             )
-        found = await glossary_router.role_conflicts(_request())
-        assert found == {
-            "terms": [
-                {
-                    "term_id": note["id"],
-                    "term": "note",
-                    "tables": ["__derived__.s.customers"],
-                    "columns": [
-                        "__derived__.s.accounts.note",
-                        "__derived__.s.customers.note",
-                        "__derived__.s.notes.id",
-                        "__derived__.s.notes.note",
-                    ],
-                }
-            ],
-            "tables": [],
+        found = await glossary_router.list_findings(_request())
+        [entry] = [
+            e for e in found if any(f["kind"] == "class_and_attribute" for f in e["findings"])
+        ]
+        assert (entry["term_id"], entry["term"]) == (note["id"], "note")
+        [finding] = [f for f in entry["findings"] if f["kind"] == "class_and_attribute"]
+        assert finding["code"] == "glossary.finding.class_and_attribute"
+        assert finding["params"] == {
+            "tables": "__derived__.s.customers",
+            "columns": "__derived__.s.accounts.note, __derived__.s.customers.note, "
+            "__derived__.s.notes.id, __derived__.s.notes.note",
         }
-        assert await glossary_router.role_conflicts(_request()) == found  # nothing changed
+        assert await glossary_router.list_findings(_request()) == found  # nothing changed
 
 
 @pytest.mark.asyncio
@@ -539,15 +538,14 @@ async def test_a_table_whose_concept_is_a_property_gets_no_class_and_is_reported
                 )
                 == []
             )
-        found = await glossary_router.role_conflicts(_request())
-        [table] = found["tables"]
-        assert (table["table_id"], table["table"], table["concept"], table["term_id"]) == (
-            keyed.id,
-            "__derived__.t.notes",
-            "note",
-            ids_note,
-        )
-        assert "__derived__.s.customers.note" in table["columns"]
+        del keyed
+        found = {
+            e["term_id"]: e["findings"] for e in await glossary_router.list_findings(_request())
+        }
+        [finding] = [f for f in found[ids_note] if f["kind"] == "class_and_attribute"]
+        assert finding["code"] == "glossary.finding.class_and_attribute_table"
+        assert finding["params"]["table"] == "__derived__.t.notes"
+        assert "__derived__.s.customers.note" in finding["params"]["columns"]
 
 
 # --- the export admits a class term by the tables it publishes --------------------------------
@@ -565,6 +563,9 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "definition": "A sale.",
                 "is_abstract": True,
                 "deprecated": False,
+                "deprecation_asserted": False,
+                "status_reason": None,
+                "retire_on": None,
                 "retired": False,
             },
             {
@@ -573,6 +574,9 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "definition": "A return.",
                 "is_abstract": True,
                 "deprecated": False,
+                "deprecation_asserted": False,
+                "status_reason": None,
+                "retire_on": None,
                 "retired": False,
             },
         ],

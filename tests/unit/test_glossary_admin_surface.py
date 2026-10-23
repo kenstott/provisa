@@ -162,7 +162,7 @@ async def test_export_excluded_toggle_round_trips_and_notifies(control_plane, mo
         assert len(notified) == 2
 
 
-async def test_retired_toggle_round_trips_and_hides_the_term_from_mcp_search(
+async def test_retiring_moves_the_columns_to_the_successor_and_hides_the_term_from_mcp_search(
     control_plane, monkeypatch
 ):
     from provisa.api.mcp import tools
@@ -180,17 +180,31 @@ async def test_retired_toggle_round_trips_and_hides_the_term_from_mcp_search(
         await glossary_router.update_term(
             _with_json(_request(), {"definition": "The buyer."}), customer
         )
-        await glossary_router.update_term(_with_json(_request(), {"retired": True}), customer)
+        client = (
+            await glossary_router.create_abstract_term(
+                _with_json(
+                    _request(), {"name": "client", "definition": "One who buys.", "domains": ["d"]}
+                )
+            )
+        )["id"]
+        # REQ-2144: the PATCH flag is gone; retire is its own action, with a reason
+        with pytest.raises(ApiError) as err:
+            await glossary_router.update_term(_with_json(_request(), {"retired": True}), customer)
+        assert err.value.code == "glossary.status_by_action"
+        retired = await glossary_router.retire_term(
+            _with_json(_request(), {"reason": "Renamed.", "successor": client}), customer
+        )
+        assert retired == {"ok": True, "term_id": customer, "status": "retired", "tag_changes": []}
         detail = await glossary_router.get_term(_request(), customer)
-        assert bool(detail["retired"]) is True
-        # Still curatable in the admin surface, but gone from the agent surface.
-        assert detail["refs"]
+        assert detail["status"] == "retired" and detail["refs"] == []
+        assert detail["status_reason"] == "Renamed."
         assert await tools.search_terms(state, "analyst", "customer") == []
-        await glossary_router.update_term(_with_json(_request(), {"retired": False}), customer)
-        assert [h["name"] for h in await tools.search_terms(state, "analyst", "customer")] == [
-            "customer"
+        assert [h["name"] for h in await tools.search_terms(state, "analyst", "client")] == [
+            "client"
         ]
-        assert len(notified) == 3
+        restored = await glossary_router.restore_term(_request(), customer)
+        assert restored["status"] == "draft"  # an empty Concept: its columns stayed on client
+        assert notified[-2:] == ["acme:ontology term retired", "acme:ontology term restored"]
 
 
 async def test_edge_type_is_correctable_in_place(control_plane, monkeypatch):
@@ -276,7 +290,8 @@ async def test_move_ref_and_missing_term_404(control_plane, monkeypatch):
                 {"table_id": row.id, "column_name": "order_dt", "to_term_id": customer},
             )
         )
-        assert moved == {"ok": True, "source_term_removed": True}
+        # REQ-2145: no column carried a tag through the term it left, so no tag changed.
+        assert moved == {"ok": True, "source_term_removed": True, "tag_changes": []}
         terms = await glossary_router.list_terms(_request(), domains=None)
         assert {t["name"] for t in terms} == {"customer"}
         with pytest.raises(ApiError) as err:

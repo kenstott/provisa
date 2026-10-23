@@ -631,7 +631,36 @@
       "term_is_property": "Le terme « {{term}} » possède des références de colonne ({{columns}}) : c'est une Propriété, il ne peut pas ancrer une table. Un terme est soit une Classe, ancrée dans des tables, soit une Propriété, qui possède des références de colonne, jamais les deux.",
       "term_is_class": "Le terme « {{term}} » ancre des tables ({{tables}}) : c'est une Classe, il ne peut pas posséder de référence de colonne. Un terme est soit une Classe, ancrée dans des tables, soit une Propriété, qui possède des références de colonne, jamais les deux.",
       "abstract_is_derived": "« Abstrait » ne peut pas être défini : il découle de l'ancrage. Un terme sans références de colonne ni tables ancrées est un Concept.",
-      "key_column_derived": "Cette colonne est une clé ; elle suit la classe de sa table. {{table}}.{{column}} reste sur « {{class}} » et ne se déplace pas à la main."
+      "key_column_derived": "Cette colonne est une clé ; elle suit la classe de sa table. {{table}}.{{column}} reste sur « {{class}} » et ne se déplace pas à la main.",
+      "reason_required": "Une raison est requise : indiquez pourquoi le terme est déprécié ou retiré.",
+      "retire_on_past": "La date de retrait prévue {{retire_on}} est passée. Choisissez aujourd'hui ou une date ultérieure.",
+      "retire_on_invalid": "La date de retrait prévue {{retire_on}} n'est pas une date (utilisez AAAA-MM-JJ).",
+      "successor_is_self": "Un terme ne peut pas être son propre successeur.",
+      "successor_retired": "Le successeur « {{successor}} » est retiré. Choisissez un terme en service.",
+      "term_not_live": "Seul un terme actif peut être déprécié ; celui-ci est {{status}}.",
+      "status_by_action": "Le statut d'un terme change par Déprécier, Retirer ou Restaurer, chacun avec une raison.",
+      "successor_required": "Ce terme a encore des colonnes ou des tables ; le retirer les transfère à un successeur. Choisissez-en un.",
+      "successor_role": "Le successeur d'un {{role}} doit être un {{role}} ou un concept ; « {{successor}} » est un {{successor_role}}.",
+      "no_retirement_history": "L'historique du modèle ne contient aucun retrait de ce terme.",
+      "finding": {
+        "unlinked_tables": "Cette classe est ancrée dans des tables que les relations de même entité ne relient pas toutes : {{tables}}.",
+        "class_and_attribute": "Cette classe porte aussi des colonnes qui ne sont pas ses clés : {{columns}}.",
+        "class_and_attribute_table": "La table {{table}} n'a pas de classe : son concept est ce terme, qui porte des colonnes qui ne sont pas des clés ({{columns}}).",
+        "tag_wrong_kind": "Ce terme porte des étiquettes ({{tags}}) que seule une propriété transmet à ses colonnes ; c'est un(e) {{role}}.",
+        "retirement_blocked": "Ce terme devait être retiré le {{retire_on}} mais porte encore des données. Retirez-le avec un successeur qui les reprenne.",
+        "no_data": "Ce concept n'est relié à aucun terme qui porte des données."
+      }
+    },
+    "tag": {
+      "not_on_terms": "Le tag « {{tag}} » ne se pose pas sur un terme ; seul pii le peut.",
+      "term_not_live": "Définissez « {{term}} » pour le marquer.",
+      "term_not_property": "Le tag « {{tag}} » ne se pose sur un terme que s'il est une Propriété, un terme qui désigne des colonnes ; « {{term}} » n'en est pas une.",
+      "term_is_tagged": "Retirez d'abord {{tags}}, ou gardez une définition.",
+      "key_column": "La colonne {{column}} est une clé : son sens est la classe de sa table. Taguez la colonne elle-même.",
+      "column_has_no_term": "La colonne {{column}} n'a pas de terme à taguer.",
+      "also_term_needs_column": "Taguer le terme à la place demande une colonne.",
+      "inherited_from_term": "Cette colonne est une donnée PII parce qu'elle signifie {{term}}. Retirez le marquage de ce sens, ou déplacez la colonne si elle signifie autre chose.",
+      "move_loses": "Ce déplacement retire des tags à des colonnes qui ne les porteraient plus. Confirmez la perte de chaque tag, ou reportez les tags sur le terme vers lequel les colonnes sont déplacées."
     }
   }
 }

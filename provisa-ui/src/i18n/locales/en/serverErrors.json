@@ -631,7 +631,36 @@
       "term_is_property": "Term '{{term}}' owns column refs ({{columns}}), so it is a Property and cannot ground a table. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
       "term_is_class": "Term '{{term}}' grounds tables ({{tables}}), so it is a Class and cannot own a column ref. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
       "abstract_is_derived": "Abstract cannot be set: it is derived from grounding. A term with no column refs and no grounded tables is a Concept.",
-      "key_column_derived": "This column is a key; it follows its table's class. {{table}}.{{column}} stays on '{{class}}' and is not moved by hand."
+      "key_column_derived": "This column is a key; it follows its table's class. {{table}}.{{column}} stays on '{{class}}' and is not moved by hand.",
+      "reason_required": "A reason is required: say why the term is being deprecated or retired.",
+      "retire_on_past": "The planned retirement date {{retire_on}} is in the past. Choose today or a later date.",
+      "retire_on_invalid": "The planned retirement date {{retire_on}} is not a date (use YYYY-MM-DD).",
+      "successor_is_self": "A term cannot be its own successor.",
+      "successor_retired": "The successor '{{successor}}' is retired. Choose a term that is in service.",
+      "term_not_live": "Only a live term can be deprecated; this one is {{status}}.",
+      "status_by_action": "A term's status changes through Deprecate, Retire or Restore, each with a reason.",
+      "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
+      "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
+      "no_retirement_history": "The model's history has no retirement of this term.",
+      "finding": {
+        "unlinked_tables": "This class is grounded in tables that same-entity relationships don't all join: {{tables}}.",
+        "class_and_attribute": "This class also holds columns that aren't its keys: {{columns}}.",
+        "class_and_attribute_table": "Table {{table}} has no class: its concept is this term, which holds columns that aren't keys ({{columns}}).",
+        "tag_wrong_kind": "This term carries tags ({{tags}}) only a property passes to its columns; it is a {{role}}.",
+        "retirement_blocked": "This term was due for retirement on {{retire_on}} but still holds data. Retire it with a successor to take it.",
+        "no_data": "This concept is connected to no term that holds data."
+      }
+    },
+    "tag": {
+      "not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",
+      "term_not_live": "Define '{{term}}' to mark it.",
+      "term_not_property": "Tag '{{tag}}' goes on a term only when it is a Property, one that means columns; '{{term}}' is not.",
+      "term_is_tagged": "Unmark {{tags}} first, or keep a definition.",
+      "key_column": "Column {{column}} is a key: its meaning is its table's class. Tag the column itself.",
+      "column_has_no_term": "Column {{column}} has no term to tag.",
+      "also_term_needs_column": "Tagging the term instead takes a column.",
+      "inherited_from_term": "This column is PII because it means {{term}}. Unmark that meaning, or move the column if it means something else.",
+      "move_loses": "This move takes tags off columns that would no longer carry them. Confirm the loss of each tag, or carry the tags to the term the columns move to."
     }
   }
 }

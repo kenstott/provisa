@@ -52,6 +52,7 @@ def _term(term_id: int, name: str, *, deprecated: bool = False) -> GlossaryTermA
         definition=f"definition of {name}",
         is_abstract=False,
         deprecated=deprecated,
+        status="live",
         experts=("alice",) if name == "customer" else (),
         semantic_uri=f"provisa://{ORG}/terms/{name}",
     )
@@ -190,6 +191,7 @@ def test_no_dataset_ever_gets_a_glossary_terms_aspect():
             definition="buyer",
             is_abstract=False,
             deprecated=False,
+            status="live",
             refs=(ref,),
             semantic_uri=f"provisa://{ORG}/terms/customer",
         )
