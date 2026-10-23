@@ -13,6 +13,8 @@ boundary is about translation logic, not DB execution.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -118,16 +120,30 @@ class TestUnknownType:
 
 
 class TestTranslation:
-    """The proxy lowers the request to a semantic SELECT, governs+routes it, executes the plan, and
-    keys each row by its proto field name. These patch the real pipeline seams (semantic-SQL → govern
-    → execute), not the retired GraphQL round-trip."""
+    """The proxy lowers the request to GraphQL text, compiles it, governs+routes the statement,
+    executes the plan, and keys each row by its proto field name. These patch the real pipeline
+    seams (lowering and compiling → govern → execute)."""
+
+    @staticmethod
+    @contextmanager
+    def _lowered():
+        """The request lowered to GraphQL and compiled to the statement the pipeline governs."""
+        compiled = SimpleNamespace(sql="SELECT id, name FROM pets", params=[])
+        with (
+            patch(
+                "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_graphql",
+                return_value=("{ pets(limit: 10) { id name } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[compiled],
+            ),
+        ):
+            yield
 
     @staticmethod
     def _patches(*, result=None, govern_side_effect=None):
-        semantic = patch(
-            "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_semantic_sql",
-            return_value=("SELECT id, name FROM pets", []),
-        )
+        semantic = TestTranslation._lowered()
         govern_kwargs = (
             {"side_effect": govern_side_effect}
             if govern_side_effect is not None

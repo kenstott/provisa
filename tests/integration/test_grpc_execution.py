@@ -361,6 +361,10 @@ class TestGrpcQueryExecution:
             aggregate_columns={
                 1: [("id", "integer"), ("region", "varchar"), ("amount", "numeric")]
             },
+            # The names each column is published under, as build_context registers them: the
+            # request is lowered to GraphQL by these names.
+            physical_to_gql={(1, c): c for c in ("id", "region", "amount")},
+            physical_to_sql={(1, c): c for c in ("id", "region", "amount")},
         )
 
         source_pool = SourcePool()

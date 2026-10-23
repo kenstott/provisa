@@ -185,6 +185,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         RelationshipConditions(
                             ctx, join_meta.target.type_name, use_catalog, sources
                         ),
+                        ctx.aggregate_columns,
                     )
                 )
                 if sel.selection_set:
@@ -447,6 +448,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 table.table_id,
                 ctx.exposed_to_physical,
                 RelationshipConditions(ctx, table.type_name, use_catalog, sources),
+                ctx.aggregate_columns,
             )
         )
     where_parts += native_arg_conditions(api_args)
@@ -655,7 +657,13 @@ def _compile_connection_field(  # REQ-218
         _conn_vvals = ctx.virtual_columns.get(table.table_id)
         where_parts.append(
             _compile_where(
-                args["where"], collector, None, _conn_vvals, table.table_id, ctx.exposed_to_physical
+                args["where"],
+                collector,
+                None,
+                _conn_vvals,
+                table.table_id,
+                ctx.exposed_to_physical,
+                column_types=ctx.aggregate_columns,
             )
         )
 
