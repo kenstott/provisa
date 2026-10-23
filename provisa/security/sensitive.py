@@ -67,7 +67,7 @@ def sensitive_assignments(
     """Each (table_id, table_name, column_name, base_tag_id, term_id) a sensitive tag is on a
     column at: a built-in sensitive tag, or one of the organisation's own with the option set,
     assigned to the column (term_id NULL) or to the defined, in-service glossary term its ref is on
-    (REQ-2143). One
+    (REQ-2145). One
     statement, so the environment's data choice (provisa.core.env_data) and the
     sensitive_coverage meta view read sensitivity alike; the tables are passed so another
     environment's schema can be addressed."""
@@ -116,7 +116,7 @@ async def sensitive_tag_ids(conn: "Connection", tags_table: Any = None) -> froze
 
 async def sensitive_columns(conn: "Connection", table_id: int) -> frozenset[str]:
     """The sensitive columns of table ``table_id``: those carrying a sensitive tag, on the column
-    or on its term (REQ-2143)."""
+    or on its term (REQ-2145)."""
     from provisa.core.term_tags import column_tag_ids
 
     ids = await sensitive_tag_ids(conn)
@@ -209,7 +209,7 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
         return None if row is None else int(row[0])
 
     for a in config.tag_assignments:
-        if a.object_type == "term" and base_tag_id(a.tag_id) in ids:  # REQ-2143
+        if a.object_type == "term" and base_tag_id(a.tag_id) in ids:  # REQ-2145
             if not await _term_holds(conn, a.term, base_tag_id(a.tag_id)):
                 out.append(f"term {a.term} (tag {a.tag_id})")
             continue
@@ -247,7 +247,7 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
 
 
 async def _term_holds(conn: "Connection", term: str | None, base: str) -> bool:
-    """Whether the glossary term named ``term`` already carries tag ``base`` (REQ-2143)."""
+    """Whether the glossary term named ``term`` already carries tag ``base`` (REQ-2145)."""
     from provisa.core.schema_org import glossary_terms
     from provisa.core.schema_org import tag_assignments as ta
 

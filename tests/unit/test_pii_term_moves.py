@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2143: a move a person makes of a column's ref, and the tags the column carries through its
+"""REQ-2145: a move a person makes of a column's ref, and the tags the column carries through its
 term.
 
 A move that takes a restricting tag (pii) off a column -- one it carried through the term it
@@ -17,7 +17,7 @@ the term the column moves to. A move the model makes by derivation (sync, key re
 and unground) changes no inherited tag. A column's own tags never change on a move.
 """
 
-# Requirements: REQ-2143
+# Requirements: REQ-2145
 
 from __future__ import annotations
 

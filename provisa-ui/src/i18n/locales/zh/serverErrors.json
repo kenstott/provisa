@@ -632,6 +632,17 @@
       "term_is_class": "术语“{{term}}”关联到表（{{tables}}），因此是类，不能拥有列引用。术语要么是关联到表的类，要么是拥有列引用的属性，绝不会同时是两者。",
       "abstract_is_derived": "“抽象”不能设置：它由关联情况推导而来。没有列引用、也没有关联表的术语是概念。",
       "key_column_derived": "此列是键；它跟随其表的类。{{table}}.{{column}} 保留在“{{class}}”上，不能手动移动。"
+    },
+    "tag": {
+      "not_on_terms": "标签“{{tag}}”不能加在术语上；只有 pii 可以。",
+      "term_not_live": "请先为“{{term}}”编写定义，再进行标记。",
+      "term_not_property": "标签“{{tag}}”只能加在属性术语（表示列的术语）上；“{{term}}”不是属性。",
+      "term_is_tagged": "请先移除 {{tags}}，或保留定义。",
+      "key_column": "列 {{column}} 是键：其含义是其表的类。请直接为该列加标签。",
+      "column_has_no_term": "列 {{column}} 没有可加标签的术语。",
+      "also_term_needs_column": "改为给术语加标签需要指定一列。",
+      "inherited_from_term": "此列是 PII，因为它表示 {{term}}。请取消该含义的标记，或者如果此列表示其他含义，请移动它。",
+      "move_loses": "此次移动会使列失去标签，之后这些列将不再带有它们。请确认失去每个标签，或将标签带到列移入的术语上。"
     }
   }
 }

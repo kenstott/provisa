@@ -555,7 +555,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                term_id  -- the glossary term, when the object is one
         FROM tag_assignments
     """,
-    # REQ-2143: every tag each column carries, its own and its glossary term's, each saying where
+    # REQ-2145: every tag each column carries, its own and its glossary term's, each saying where
     # it comes from -- computed here, never copied into tag_assignments.
     "effective_column_tags": """
         CREATE OR REPLACE VIEW effective_column_tags AS

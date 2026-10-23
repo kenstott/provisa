@@ -734,7 +734,7 @@ async def unground_glossary_term_from_table(
 
 async def tag_glossary_term(
     state: Any, role: str, request: Any, term_id: int, tag_id: str, reason: str | None = None
-) -> dict:  # REQ-2143
+) -> dict:  # REQ-2145
     """Put a tag (pii) on an ontology term that is a Property: every column the term holds, now
     and later, carries it. Says how many columns it covers."""
     require_role(role, state)
@@ -761,7 +761,7 @@ async def tag_glossary_term(
 
 async def untag_glossary_term(
     state: Any, role: str, request: Any, term_id: int, tag_id: str
-) -> dict:  # REQ-2143
+) -> dict:  # REQ-2145
     """Take a tag off an ontology term: its columns no longer carry it through the term."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id

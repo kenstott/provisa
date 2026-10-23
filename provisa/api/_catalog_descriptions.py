@@ -61,7 +61,7 @@ _META: dict[str, str] = {
     # REQ-2129
     "column_lineage_edges": "The model's column lineage — each column a view or command derives "
     "from another registered column, naming the view or command",
-    # REQ-2143
+    # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
     # REQ-2091
@@ -399,9 +399,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
         "product_id": "Tagged data product, when the object is a data product",  # REQ-2125
-        "term_id": "Tagged glossary term, when the object is a term",  # REQ-2143
+        "term_id": "Tagged glossary term, when the object is a term",  # REQ-2145
     },
-    # REQ-2143
+    # REQ-2145
     "effective_column_tags": {
         "id": "Identity of the row: the assignment, and for a term's tag the column it reaches",
         "column_key": "Synthesized column identity (table_id:column_name) of the column",

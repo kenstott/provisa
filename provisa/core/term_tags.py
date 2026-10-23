@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Tags a column carries through its glossary term (REQ-2143).
+"""Tags a column carries through its glossary term (REQ-2145).
 
 pii is on columns, and on a Property term. Only a term that is defined and in service -- live, or
 deprecated -- carries a tag; a draft (undefined) or retired term governs nothing. Every column whose
@@ -28,7 +28,7 @@ changes no inherited tag by construction: a draft governs nothing, and a key ref
 between Classes, which carry no tag. A column's own tags never change on a move.
 """
 
-# Requirements: REQ-2143
+# Requirements: REQ-2145
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ from sqlalchemy import func, select
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-#: The tags a term may carry (REQ-2143: pii only, for now).
+#: The tags a term may carry (REQ-2145: pii only, for now).
 TERM_TAGS = ("pii",)
 
 #: The tags whose loss on a move must be confirmed: the restricting ones (pii, now).

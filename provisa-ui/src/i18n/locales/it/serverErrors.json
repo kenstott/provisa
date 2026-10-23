@@ -632,6 +632,17 @@
       "term_is_class": "Il termine '{{term}}' ancora tabelle ({{tables}}), quindi è una Classe e non può avere un riferimento di colonna. Un termine è una Classe, ancorata a tabelle, oppure una Proprietà, con riferimenti di colonna, mai entrambe.",
       "abstract_is_derived": "«Astratto» non si può impostare: deriva dall'ancoraggio. Un termine senza riferimenti di colonna né tabelle ancorate è un Concetto.",
       "key_column_derived": "Questa colonna è una chiave; segue la classe della sua tabella. {{table}}.{{column}} resta su '{{class}}' e non si sposta a mano."
+    },
+    "tag": {
+      "not_on_terms": "Il tag '{{tag}}' non va su un termine; solo pii.",
+      "term_not_live": "Definisci '{{term}}' per contrassegnarlo.",
+      "term_not_property": "Il tag '{{tag}}' va su un termine solo quando è una Proprietà, un termine che significa colonne; '{{term}}' non lo è.",
+      "term_is_tagged": "Rimuovi prima {{tags}}, oppure mantieni una definizione.",
+      "key_column": "La colonna {{column}} è una chiave: il suo significato è la classe della sua tabella. Applica il tag alla colonna stessa.",
+      "column_has_no_term": "La colonna {{column}} non ha un termine a cui applicare il tag.",
+      "also_term_needs_column": "Applicare il tag al termine richiede una colonna.",
+      "inherited_from_term": "Questa colonna è PII perché significa {{term}}. Togli il contrassegno da quel significato, oppure sposta la colonna se significa altro.",
+      "move_loses": "Questo spostamento toglie tag a colonne che non li avrebbero più. Conferma la perdita di ogni tag, oppure porta i tag sul termine verso cui si spostano le colonne."
     }
   }
 }

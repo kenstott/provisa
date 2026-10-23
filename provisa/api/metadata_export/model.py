@@ -292,7 +292,7 @@ class ModelTag:  # REQ-1375, REQ-1377, REQ-1378
     relationship_id: str | None = None
     reason: str | None = None  # required for 'deprecated' at the mutation layer
     expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
-    # REQ-2143: the glossary term the column carries the tag through; None when the tag is on the
+    # REQ-2145: the glossary term the column carries the tag through; None when the tag is on the
     # asset itself.
     term: str | None = None
 

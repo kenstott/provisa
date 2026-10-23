@@ -413,9 +413,9 @@ def _model_tags(
     published_relationships: set[str],
     published_source_ids: set[str],
     glossary: dict | None = None,
-) -> list[ModelTag]:  # REQ-1377, REQ-1378, REQ-2143
+) -> list[ModelTag]:  # REQ-1377, REQ-1378, REQ-2145
     """Registry tags on published assets. Tags on withheld assets are withheld with them. A tag on
-    a glossary term is on every published column the term holds (REQ-2143), from ``glossary``
+    a glossary term is on every published column the term holds (REQ-2145), from ``glossary``
     (export_graph's), each saying the term it comes through."""
     tags: list[ModelTag] = []
     refs_by_term: dict[int, list[dict]] = {}

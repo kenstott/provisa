@@ -666,7 +666,7 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "DERIVED_TAGS",
         "derivedTags",
     ),
-    # REQ-2143: each column's tags, its term's included, and the tags on a term.
+    # REQ-2145: each column's tags, its term's included, and the tags on a term.
     (
         "meta:table_columns:effective_column_tags",
         _ADMIN,

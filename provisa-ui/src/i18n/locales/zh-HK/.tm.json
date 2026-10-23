@@ -7827,5 +7827,14 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/serverErrors.json::serverErrors.tag.not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",
+  "zh-HK/serverErrors.json::serverErrors.tag.term_not_live": "Define '{{term}}' to mark it.",
+  "zh-HK/serverErrors.json::serverErrors.tag.term_not_property": "Tag '{{tag}}' goes on a term only when it is a Property, one that means columns; '{{term}}' is not.",
+  "zh-HK/serverErrors.json::serverErrors.tag.term_is_tagged": "Unmark {{tags}} first, or keep a definition.",
+  "zh-HK/serverErrors.json::serverErrors.tag.key_column": "Column {{column}} is a key: its meaning is its table's class. Tag the column itself.",
+  "zh-HK/serverErrors.json::serverErrors.tag.column_has_no_term": "Column {{column}} has no term to tag.",
+  "zh-HK/serverErrors.json::serverErrors.tag.also_term_needs_column": "Tagging the term instead takes a column.",
+  "zh-HK/serverErrors.json::serverErrors.tag.inherited_from_term": "This column is PII because it means {{term}}. Unmark that meaning, or move the column if it means something else.",
+  "zh-HK/serverErrors.json::serverErrors.tag.move_loses": "This move takes tags off columns that would no longer carry them. Confirm the loss of each tag, or carry the tags to the term the columns move to."
 }

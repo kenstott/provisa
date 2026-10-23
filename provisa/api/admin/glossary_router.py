@@ -378,7 +378,7 @@ async def update_term(request: Request, term_id: int) -> dict:
                 )
             if "retired" in body:
                 found = await glossary_repo.set_retired(_conn, term_id, bool(body["retired"]))
-        except glossary_repo.TermIsTagged as exc:  # REQ-2143
+        except glossary_repo.TermIsTagged as exc:  # REQ-2145
             raise ApiError(
                 409, exc.code, str(exc), term=exc.term, tags=", ".join(exc.tags)
             ) from exc
@@ -669,7 +669,7 @@ async def move_ref(request: Request) -> dict:
         )
 
         try:
-            # REQ-2143: a move that takes a tag off the column, inherited from the term it leaves,
+            # REQ-2145: a move that takes a tag off the column, inherited from the term it leaves,
             # is undone unless each lost tag is confirmed or carried to the term it moves to.
             async with _conn.transaction():
                 table_ids = {int(body["table_id"])}
@@ -712,7 +712,7 @@ async def move_ref(request: Request) -> dict:
     await _notify(org_id, "ontology ref moved")
     # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
     # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
-    return {"ok": True, **moved, "tag_changes": changes}  # REQ-2143
+    return {"ok": True, **moved, "tag_changes": changes}  # REQ-2145
 
 
 @router.post("/terms/{term_id}/edges")
@@ -898,7 +898,7 @@ async def role_conflicts(request: Request) -> dict:
     """What breaks the exclusivity of a term's roles (REQ-2141), for the caller's domains: each
     Class holding column refs a Class may not (``terms``), each keyed table left without a
     Class term because its concept is a Property (``tables``), and each tag on a term that is no
-    longer a Property (``tags``, REQ-2143). It reports; it changes nothing."""
+    longer a Property (``tags``, REQ-2145). It reports; it changes nothing."""
     from provisa.core.glossary import readable_term
 
     _require_glossary_read(request)
@@ -960,7 +960,7 @@ async def remove_term_table(request: Request, term_id: int, table_id: int) -> di
     return {"ok": True}
 
 
-async def tag_term(  # REQ-2143
+async def tag_term(  # REQ-2145
     conn: "Connection", request: Request, term_id: int, tag_id: str, reason: str | None
 ) -> int:
     """Put tag ``tag_id`` on term ``term_id`` for a caller who may curate the term and assign the
@@ -1002,7 +1002,7 @@ async def tag_term(  # REQ-2143
     return await glossary_repo.term_column_count(conn, term_id)
 
 
-async def untag_term(  # REQ-2143
+async def untag_term(  # REQ-2145
     conn: "Connection", request: Request, term_id: int, tag_id: str
 ) -> bool:
     """Take tag ``tag_id`` off term ``term_id``, under the rights :func:`tag_term` asks."""

@@ -630,7 +630,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         await conn.execute_core(select(glossary_term_experts.c.term_id).distinct())
     ).fetchall()
     with_experts = {r.term_id for r in expert_rows}
-    # REQ-2143: a tag on a term is a curator's.
+    # REQ-2145: a tag on a term is a curator's.
     tagged = {
         r.term_id
         for r in (
@@ -694,7 +694,7 @@ def _is_curated(graph: _TermGraph, node: dict) -> bool:
     registration of the same column would put a blank term in its place. Such a term is
     deprecated instead — kept, out of service, and revived by ``_find_or_create_term`` if its
     column comes back. ``retired`` counts too: a curator's withdrawal is itself the work, and so
-    does a tag on the term (REQ-2143): sync never re-derives the term's columns away from it.
+    does a tag on the term (REQ-2145): sync never re-derives the term's columns away from it.
     """
     return bool(
         (node["definition"] or "").strip()
@@ -865,7 +865,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
         )
     ).fetchall()
     term["experts"] = [dict(r._mapping) for r in experts]
-    term["tags"] = await term_tags(conn, term_id)  # REQ-2143
+    term["tags"] = await term_tags(conn, term_id)  # REQ-2145
     term["live"] = term_id in await live_ids(conn)
     # REQ-1591: the same rule the list and the gates use, rather than reading the refs above —
     # those are empty for an abstract term and for a deprecated one whose columns have gone,
@@ -936,7 +936,7 @@ async def upsert_declared_term(
         await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
     ).fetchone()
     if held is not None:
-        await _refuse_clearing_tagged(conn, held.id, definition)  # REQ-2143
+        await _refuse_clearing_tagged(conn, held.id, definition)  # REQ-2145
     term_id = await conn.upsert_returning(
         glossary_terms,
         {
@@ -972,7 +972,7 @@ async def rename_term(conn: "Connection", term_id: int, new_name: str) -> bool:
 
 
 class TermIsTagged(ValueError):
-    """A definition cleared on a term that carries tags (REQ-2143): an undefined term governs
+    """A definition cleared on a term that carries tags (REQ-2145): an undefined term governs
     nothing, so clearing it would take the tags off every column the term means, unannounced."""
 
     code = "tag.term_is_tagged"
@@ -992,7 +992,7 @@ async def _refuse_clearing_tagged(conn: "Connection", term_id: int, definition: 
 
 
 async def set_definition(conn: "Connection", term_id: int, definition: str | None) -> bool:
-    await _refuse_clearing_tagged(conn, term_id, definition)  # REQ-2143
+    await _refuse_clearing_tagged(conn, term_id, definition)  # REQ-2145
     result = await conn.execute_core(
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(definition=definition)
     )
@@ -1514,7 +1514,7 @@ async def role_conflicts(conn: "Connection") -> dict:
                     "columns": columns,
                 }
             )
-    # REQ-2143: a tag stays on a term that has stopped being a Property, and is reported.
+    # REQ-2145: a tag stays on a term that has stopped being a Property, and is reported.
     tag_rows = (
         await conn.execute_core(
             select(tag_assignments.c.tag_id, glossary_terms.c.id, glossary_terms.c.name)
@@ -1543,7 +1543,7 @@ async def term_role(conn: "Connection", term_id: int) -> str:
 
 
 async def term_tags(conn: "Connection", term_id: int) -> list[dict]:
-    """The tags on the term (REQ-2143), each with its reason."""
+    """The tags on the term (REQ-2145), each with its reason."""
     rows = (
         await conn.execute_core(
             select(tag_assignments.c.tag_id, tag_assignments.c.reason)

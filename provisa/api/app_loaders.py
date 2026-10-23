@@ -1945,7 +1945,7 @@ _META_TABLES = [
     "tag_expiry",  # REQ-1375: expiring/expired assignments report (view-only, like roles_domain_access)
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
     "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
-    "effective_column_tags",  # REQ-2143: each column's tags with their provenance; view-only
+    "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
     "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
     "glossary_term_table_refs",  # REQ-2130: term -> table groundings, resolved likewise

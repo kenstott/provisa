@@ -632,6 +632,17 @@
       "term_is_class": "詞彙「{{term}}」關聯到表（{{tables}}），因此是類，不能擁有欄位引用。詞彙要麼是關聯到表的類，要麼是擁有欄位引用的屬性，絕不會同時是兩者。",
       "abstract_is_derived": "「抽象」不能設定：它由關聯情況推導而來。沒有欄位引用、也沒有關聯表的詞彙是概念。",
       "key_column_derived": "此欄位是鍵；它跟隨其表的類。{{table}}.{{column}} 保留在「{{class}}」上，不能手動移動。"
+    },
+    "tag": {
+      "not_on_terms": "標籤「{{tag}}」不能加在詞彙上；只有 pii 可以。",
+      "term_not_live": "請先為「{{term}}」編寫定義，再進行標記。",
+      "term_not_property": "標籤「{{tag}}」只能加在屬性詞彙（表示欄位的詞彙）上；「{{term}}」不是屬性。",
+      "term_is_tagged": "請先移除 {{tags}}，或保留定義。",
+      "key_column": "欄位 {{column}} 是鍵：其含義是其表的類。請直接為該欄位加標籤。",
+      "column_has_no_term": "欄位 {{column}} 沒有可加標籤的詞彙。",
+      "also_term_needs_column": "改為給詞彙加標籤需要指定一個欄位。",
+      "inherited_from_term": "此欄位是 PII，因為它表示 {{term}}。請取消該含義的標記，或者如果此欄位表示其他含義，請移動它。",
+      "move_loses": "此次移動會使欄位失去標籤，之後這些欄位將不再帶有它們。請確認失去每個標籤，或將標籤帶到欄位移入的詞彙上。"
     }
   }
 }

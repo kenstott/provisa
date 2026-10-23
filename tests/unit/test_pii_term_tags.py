@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2143: pii is on columns, and on a Property term, whose every column carries it.
+"""REQ-2145: pii is on columns, and on a Property term, whose every column carries it.
 
 Only a defined, in-service term (live or deprecated) carries a tag and passes it on; a draft or
 retired term governs nothing. Each column's tag says where it comes from. A column marked pii by
@@ -17,7 +17,7 @@ is curated work, and its definition cannot be cleared while it carries a tag. Wh
 through its term is what hides it.
 """
 
-# Requirements: REQ-2143
+# Requirements: REQ-2145
 
 from __future__ import annotations
 

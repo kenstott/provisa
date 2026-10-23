@@ -312,7 +312,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             continue
         fields = _fields(TagAssignment, row)
         fields.pop("table_id", None)  # a serial: the configuration names the table by table_ref
-        fields.pop("term_id", None)  # a serial: the configuration names the term (REQ-2143)
+        fields.pop("term_id", None)  # a serial: the configuration names the term (REQ-2145)
         tag_assignments.append(_written(TagAssignment.model_validate(fields)))
 
     class_terms = await _class_terms(conn)

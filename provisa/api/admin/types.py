@@ -671,7 +671,7 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     fake_why: JsonScalar | None = None
     # REQ-1494: the column is tagged pii.
     is_pii: bool = False
-    # REQ-2143: the glossary term the column is pii through, when it is; None when the column is
+    # REQ-2145: the glossary term the column is pii through, when it is; None when the column is
     # tagged itself or is not pii.
     pii_term: str | None = None
 
@@ -1053,9 +1053,9 @@ class TagAssignmentInput:  # REQ-1377
     # REQ-2094: purpose, bases (ids) and review_on given; reason is the field above. Left out,
     # the stored ones stand.
     why: JsonScalar | None = None
-    # REQ-2143: the glossary term an object_type "term" assignment is on.
+    # REQ-2145: the glossary term an object_type "term" assignment is on.
     term_id: int | None = None
-    # REQ-2143: on a column, put the tag on the column's term instead, so it covers every column
+    # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
     # with the same meaning, those to come included.
     also_term: bool = False
 
@@ -1288,7 +1288,7 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list[RelationshipParameterInput] = strawberry.field(default_factory=list)
     record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
-    # REQ-2143: a save that re-homes key refs off a tagged term takes the tags off those columns:
+    # REQ-2145: a save that re-homes key refs off a tagged term takes the tags off those columns:
     # each lost tag confirmed, or carried to the term the column moves to.
     confirm_tag_loss: list[str] = strawberry.field(default_factory=list)
     carry_tags: bool = False

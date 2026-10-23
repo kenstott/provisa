@@ -1384,7 +1384,7 @@ async def _execute_tool(
             return await mcp_tools.unground_glossary_term_from_table(
                 state, role, request, int(args["term_id"]), int(args["table_id"])
             )
-        if name == "tag_glossary_term":  # REQ-2143
+        if name == "tag_glossary_term":  # REQ-2145
             return await mcp_tools.tag_glossary_term(
                 state, role, request, int(args["term_id"]), args["tag_id"], args.get("reason")
             )

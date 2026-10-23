@@ -8,13 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A column is pii through its glossary term, on a real server (REQ-2143, REQ-1942, REQ-1943).
+"""A column is pii through its glossary term, on a real server (REQ-2145, REQ-1942, REQ-1943).
 
 The configuration marks the term "home address" pii, not any column. Both columns that mean it
 are then sensitive: the one declaring a fake is covered, and the one declaring none keeps a Test
 (fake) environment from being made, named, because it would show real values."""
 
-# Requirements: REQ-2143
+# Requirements: REQ-2145
 
 from __future__ import annotations
 

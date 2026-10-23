@@ -446,7 +446,7 @@ async def write_results(
 
 
 async def column_tags(conn: Any, table_id: int) -> dict[str, set[str]]:
-    """Each column's tags, its glossary term's included (REQ-2143)."""
+    """Each column's tags, its glossary term's included (REQ-2145)."""
     from provisa.core.term_tags import column_tag_ids
 
     return await column_tag_ids(conn, table_id)

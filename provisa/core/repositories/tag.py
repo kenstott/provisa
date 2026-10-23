@@ -182,7 +182,7 @@ async def assign(  # REQ-1377, REQ-1919
             "column_name": assignment.column_name,
             "relationship_id": assignment.relationship_id,
             "command_name": assignment.command_name,
-            "term_id": assignment.term_id,  # REQ-2143
+            "term_id": assignment.term_id,  # REQ-2145
             "object_key": assignment.object_key(),
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,
@@ -337,7 +337,7 @@ async def delete_param_value(conn: "Connection", tag_id: str, value: str) -> boo
 
 async def list_assignments(conn: "Connection") -> list[dict]:
     """All assignments, with the qualified table address joined in for table/column targets and
-    the term's name for a term (REQ-2143).
+    the term's name for a term (REQ-2145).
 
     ``table_ref`` ("source.schema.table") and ``term`` are the config-vocabulary identities the
     export builder resolves; DB serials never leave the repository layer.

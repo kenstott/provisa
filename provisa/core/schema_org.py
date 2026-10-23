@@ -603,7 +603,7 @@ tag_assignments = Table(
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
-    # REQ-2143: the glossary term a tag is on (pii on a Property term).
+    # REQ-2145: the glossary term a tag is on (pii on a Property term).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)

@@ -1087,7 +1087,7 @@ async def _load_after_tables(  # REQ-1919
         await tag_repo.upsert(conn, tg)
     for ta in config.tag_assignments:
         if ta.object_type == "term":
-            continue  # REQ-2143: placed once the glossary has settled, below
+            continue  # REQ-2145: placed once the glossary has settled, below
         await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta))
 
     # 7. RLS rules (tables + roles must exist first)
@@ -1163,7 +1163,7 @@ async def _load_after_tables(  # REQ-1919
     # same column names revives its terms instead of losing their definitions to an early sweep.
     await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
-    # 12. Tags on glossary terms (REQ-2143), once every term and its refs have settled.
+    # 12. Tags on glossary terms (REQ-2145), once every term and its refs have settled.
     for ta in config.tag_assignments:
         if ta.object_type == "term":
             await tag_repo.assign(conn, await _resolve_tag_assignment_term(conn, ta))
@@ -1171,7 +1171,7 @@ async def _load_after_tables(  # REQ-1919
 
 async def _resolve_tag_assignment_term(
     conn: "Connection", ta: TagAssignment
-) -> TagAssignment:  # REQ-2143
+) -> TagAssignment:  # REQ-2145
     """The term assignment with ``term_id`` resolved by its term's name, refused as the term's own
     tagging refuses it (provisa.core.term_tags.refuse_term_tag)."""
     from provisa.core.term_tags import TermTagRefused, refuse_term_tag

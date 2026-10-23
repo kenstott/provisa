@@ -632,6 +632,17 @@
       "term_is_class": "De term '{{term}}' verankert tabellen ({{tables}}) en is dus een Klasse; hij kan geen kolomverwijzing hebben. Een term is een Klasse, verankerd in tabellen, of een Eigenschap, met kolomverwijzingen, nooit allebei.",
       "abstract_is_derived": "'Abstract' kan niet worden ingesteld: het volgt uit de verankering. Een term zonder kolomverwijzingen en zonder verankerde tabellen is een Concept.",
       "key_column_derived": "Deze kolom is een sleutel; hij volgt de klasse van zijn tabel. {{table}}.{{column}} blijft bij '{{class}}' en wordt niet met de hand verplaatst."
+    },
+    "tag": {
+      "not_on_terms": "De tag '{{tag}}' gaat niet op een term; alleen pii.",
+      "term_not_live": "Definieer '{{term}}' om hem te markeren.",
+      "term_not_property": "De tag '{{tag}}' gaat alleen op een term die een Eigenschap is, een term die kolommen betekent; '{{term}}' is dat niet.",
+      "term_is_tagged": "Haal eerst {{tags}} weg, of houd een definitie.",
+      "key_column": "Kolom {{column}} is een sleutel: de betekenis ervan is de klasse van zijn tabel. Tag de kolom zelf.",
+      "column_has_no_term": "Kolom {{column}} heeft geen term om te taggen.",
+      "also_term_needs_column": "In plaats daarvan de term taggen vraagt een kolom.",
+      "inherited_from_term": "Deze kolom is PII omdat hij {{term}} betekent. Haal de markering van die betekenis weg, of verplaats de kolom als hij iets anders betekent.",
+      "move_loses": "Deze verplaatsing haalt tags weg van kolommen die ze daarna niet meer dragen. Bevestig het verlies van elke tag, of neem de tags mee naar de term waar de kolommen naartoe gaan."
     }
   }
 }

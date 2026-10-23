@@ -727,7 +727,7 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
                 f"fragment can name; a product tag is on the product itself"
             )
             continue
-        if term_id is not None and fragment is not None:  # REQ-2143
+        if term_id is not None and fragment is not None:  # REQ-2145
             problems.append(
                 f"{path!r} carries a tag on {fragment!r}, but a term has no parts a fragment can "
                 f"name; a term tag is on the term itself"

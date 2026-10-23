@@ -592,7 +592,7 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_columns_meta": ("table_id",),
     # REQ-2129: an edge is seen only where both of its columns are.
     "column_lineage_edges": ("source_table_id", "target_table_id"),
-    # REQ-2143: a column's tags are seen where the column is.
+    # REQ-2145: a column's tags are seen where the column is.
     "effective_column_tags": ("table_id",),
 }
 

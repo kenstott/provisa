@@ -632,6 +632,17 @@
       "term_is_class": "Le terme « {{term}} » ancre des tables ({{tables}}) : c'est une Classe, il ne peut pas posséder de référence de colonne. Un terme est soit une Classe, ancrée dans des tables, soit une Propriété, qui possède des références de colonne, jamais les deux.",
       "abstract_is_derived": "« Abstrait » ne peut pas être défini : il découle de l'ancrage. Un terme sans références de colonne ni tables ancrées est un Concept.",
       "key_column_derived": "Cette colonne est une clé ; elle suit la classe de sa table. {{table}}.{{column}} reste sur « {{class}} » et ne se déplace pas à la main."
+    },
+    "tag": {
+      "not_on_terms": "Le tag « {{tag}} » ne se pose pas sur un terme ; seul pii le peut.",
+      "term_not_live": "Définissez « {{term}} » pour le marquer.",
+      "term_not_property": "Le tag « {{tag}} » ne se pose sur un terme que s'il est une Propriété, un terme qui désigne des colonnes ; « {{term}} » n'en est pas une.",
+      "term_is_tagged": "Retirez d'abord {{tags}}, ou gardez une définition.",
+      "key_column": "La colonne {{column}} est une clé : son sens est la classe de sa table. Taguez la colonne elle-même.",
+      "column_has_no_term": "La colonne {{column}} n'a pas de terme à taguer.",
+      "also_term_needs_column": "Taguer le terme à la place demande une colonne.",
+      "inherited_from_term": "Cette colonne est une donnée PII parce qu'elle signifie {{term}}. Retirez le marquage de ce sens, ou déplacez la colonne si elle signifie autre chose.",
+      "move_loses": "Ce déplacement retire des tags à des colonnes qui ne les porteraient plus. Confirmez la perte de chaque tag, ou reportez les tags sur le terme vers lequel les colonnes sont déplacées."
     }
   }
 }

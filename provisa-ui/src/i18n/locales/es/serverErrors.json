@@ -632,6 +632,17 @@
       "term_is_class": "El término '{{term}}' ancla tablas ({{tables}}), así que es una Clase y no puede tener una referencia de columna. Un término es una Clase, anclada en tablas, o una Propiedad, con referencias de columna, nunca ambas.",
       "abstract_is_derived": "«Abstracto» no se puede establecer: se deriva del anclaje. Un término sin referencias de columna ni tablas ancladas es un Concepto.",
       "key_column_derived": "Esta columna es una clave; sigue a la clase de su tabla. {{table}}.{{column}} permanece en '{{class}}' y no se mueve a mano."
+    },
+    "tag": {
+      "not_on_terms": "La etiqueta '{{tag}}' no va en un término; solo pii.",
+      "term_not_live": "Defina '{{term}}' para marcarlo.",
+      "term_not_property": "La etiqueta '{{tag}}' va en un término solo cuando es una Propiedad, uno que significa columnas; '{{term}}' no lo es.",
+      "term_is_tagged": "Desmarque {{tags}} primero, o mantenga una definición.",
+      "key_column": "La columna {{column}} es una clave: su significado es la clase de su tabla. Etiquete la columna misma.",
+      "column_has_no_term": "La columna {{column}} no tiene un término que etiquetar.",
+      "also_term_needs_column": "Etiquetar el término en su lugar requiere una columna.",
+      "inherited_from_term": "Esta columna es PII porque significa {{term}}. Desmarque ese significado, o mueva la columna si significa otra cosa.",
+      "move_loses": "Este movimiento quita etiquetas a columnas que ya no las llevarían. Confirme la pérdida de cada etiqueta, o lleve las etiquetas al término al que se mueven las columnas."
     }
   }
 }

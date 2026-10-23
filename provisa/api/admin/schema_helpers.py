@@ -269,7 +269,7 @@ class TableListing:
 
     columns: dict[int, list[dict]]  # table id -> its columns, in order
     # table id -> its columns tagged pii (REQ-1494), each with the term it carries pii through,
-    # None when the column is tagged itself (REQ-2143)
+    # None when the column is tagged itself (REQ-2145)
     pii: dict[int, dict[str, str | None]]
     sources: dict[str, tuple[str, str | None]]  # source id -> (type, path)
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
@@ -317,7 +317,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     ).fetchall():
         columns.setdefault(r._mapping["table_id"], []).append(dict(r._mapping))
     # REQ-1494: the columns tagged pii -- marked in the editor's test-data mode when they declare
-    # no fake, since a test-data environment shows them as NULL. REQ-2143: a column carries pii
+    # no fake, since a test-data environment shows them as NULL. REQ-2145: a column carries pii
     # through its term too, and says which.
     from provisa.core.term_tags import effective_column_tags
 
@@ -414,7 +414,7 @@ async def _fetch_table_with_columns(
             synthetic_rule=r.get("synthetic_rule"),
             fake_why=r.get("fake_why"),  # REQ-2094
             is_pii=r["column_name"] in _pii,
-            pii_term=_pii.get(r["column_name"]),  # REQ-2143
+            pii_term=_pii.get(r["column_name"]),  # REQ-2145
         )
         for r in col_rows
     ]

@@ -632,6 +632,17 @@
       "term_is_class": "O termo '{{term}}' ancora tabelas ({{tables}}), portanto é uma Classe e não pode ter uma referência de coluna. Um termo é uma Classe, ancorada em tabelas, ou uma Propriedade, com referências de coluna, nunca ambas.",
       "abstract_is_derived": "\"Abstrato\" não pode ser definido: deriva da ancoragem. Um termo sem referências de coluna nem tabelas ancoradas é um Conceito.",
       "key_column_derived": "Esta coluna é uma chave; segue a classe da sua tabela. {{table}}.{{column}} permanece em '{{class}}' e não é movida manualmente."
+    },
+    "tag": {
+      "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",
+      "term_not_live": "Defina '{{term}}' para marcá-lo.",
+      "term_not_property": "A tag '{{tag}}' vai num termo só quando ele é uma Propriedade, um termo que significa colunas; '{{term}}' não é.",
+      "term_is_tagged": "Desmarque {{tags}} primeiro, ou mantenha uma definição.",
+      "key_column": "A coluna {{column}} é uma chave: o seu significado é a classe da sua tabela. Aplique a tag à própria coluna.",
+      "column_has_no_term": "A coluna {{column}} não tem um termo para receber a tag.",
+      "also_term_needs_column": "Aplicar a tag ao termo em vez disso requer uma coluna.",
+      "inherited_from_term": "Esta coluna é PII porque significa {{term}}. Desmarque esse significado, ou mova a coluna se ela significar outra coisa.",
+      "move_loses": "Esta movimentação retira tags de colunas que deixariam de tê-las. Confirme a perda de cada tag, ou leve as tags para o termo para o qual as colunas são movidas."
     }
   }
 }

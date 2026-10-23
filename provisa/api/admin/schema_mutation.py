@@ -933,12 +933,12 @@ async def save_relationship(
             return _refusal
         try:
             async with _conn.transaction():
-                tags_before = await inherited_snapshot(_conn)  # REQ-2143
+                tags_before = await inherited_snapshot(_conn)  # REQ-2145
                 await rel_repo.upsert(_conn, model)
                 # REQ-1494: the edge's two columns, both faked, must declare one fake; the save
                 # is undone when they do not.
                 await relationship_fake_refusal(_conn, input.id)
-                # REQ-2143: key refs it re-homed off a tagged term; undone when unconfirmed.
+                # REQ-2145: key refs it re-homed off a tagged term; undone when unconfirmed.
                 await tag_changes_of_moves(
                     _conn,
                     tags_before,
@@ -1191,7 +1191,7 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         "column": model.table_id is not None and model.column_name,
         "relationship": model.relationship_id,
         "command": model.command_name,
-        "term": model.term_id,  # REQ-2143
+        "term": model.term_id,  # REQ-2145
     }
     if model.object_type not in TAG_OBJECT_TYPES:
         return MutationResult(
@@ -1241,8 +1241,8 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
 ) -> None:
     """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
     domain of the column's table (REQ-1944), and on a term in the domains of the columns it holds
-    (REQ-2143). Any other assignment is a table editor's act."""
-    if object_type == "term":  # REQ-2143: what the term's columns are hidden by
+    (REQ-2145). Any other assignment is a table editor's act."""
+    if object_type == "term":  # REQ-2145: what the term's columns are hidden by
         from provisa.core.repositories import glossary as glossary_repo
 
         assert term_id is not None  # _assignment_target_problem: a term assignment names it
@@ -1261,7 +1261,7 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
 
 
-async def _on_columns_term(  # REQ-2143
+async def _on_columns_term(  # REQ-2145
     conn: "Connection", model: Any
 ) -> "tuple[Any, MutationResult | None]":
     """A column assignment made ``also_term``, as the assignment of its tag on the column's term
@@ -1301,7 +1301,7 @@ async def _on_columns_term(  # REQ-2143
     )
 
 
-async def _require_term_tagger(  # REQ-2143
+async def _require_term_tagger(  # REQ-2145
     info: StrawberryInfo, conn: "Connection", term_id: int
 ) -> None:
     """A tag on a term is curation of the term: the glossary's curation rights, as the glossary's
@@ -1313,7 +1313,7 @@ async def _require_term_tagger(  # REQ-2143
     await _require_term_curatable(conn, term_id, request)
 
 
-async def _term_tag_refused(  # REQ-2143
+async def _term_tag_refused(  # REQ-2145
     conn: "Connection", model: Any
 ) -> "MutationResult | None":
     """Why a term may not take the tag (provisa.core.term_tags.refuse_term_tag), or None."""
@@ -1328,7 +1328,7 @@ async def _term_tag_refused(  # REQ-2143
     return None
 
 
-def _tag_move_refusal(refused: Exception) -> "MutationResult":  # REQ-2143
+def _tag_move_refusal(refused: Exception) -> "MutationResult":  # REQ-2145
     """A move refused over the tags its columns would lose (tag.move_loses, with each column's
     change), or because a lost tag could not be carried to the term a column moved to."""
     from provisa.core.term_tags import TagLossRefused
@@ -1348,7 +1348,7 @@ def _tag_move_refusal(refused: Exception) -> "MutationResult":  # REQ-2143
     )
 
 
-async def _covers(conn: "Connection", model: Any) -> int | None:  # REQ-2143
+async def _covers(conn: "Connection", model: Any) -> int | None:  # REQ-2145
     """For a column, how many other columns its term holds -- those a tag on the term would
     also cover; for a term, how many columns it holds."""
     from provisa.core.repositories import glossary as glossary_repo
@@ -1491,7 +1491,7 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             relationship_id=r["relationship_id"],
             command_name=r["command_name"],
             table_ref=r["table_ref"],
-            term_id=r["term_id"],  # REQ-2143
+            term_id=r["term_id"],  # REQ-2145
             term=r["term"],
             reason=r["reason"],
             expires_on=r["expires_on"],
@@ -3096,7 +3096,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             column_name=input.column_name,
             relationship_id=input.relationship_id,
             command_name=input.command_name,
-            term_id=input.term_id,  # REQ-2143
+            term_id=input.term_id,  # REQ-2145
             reason=(input.reason or "").strip() or None,
             expires_on=(input.expires_on or "").strip() or None,
             why=input.why,  # REQ-2094
@@ -3136,11 +3136,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_not_found",
                     params={"tag": input.tag_id},
                 )
-            if input.also_term:  # REQ-2143
+            if input.also_term:  # REQ-2145
                 model, refused = await _on_columns_term(cast("Connection", conn), model)
                 if refused is not None:
                     return refused
-            if model.object_type == "term":  # REQ-2143
+            if model.object_type == "term":  # REQ-2145
                 assert model.term_id is not None
                 await _require_term_tagger(info, cast("Connection", conn), model.term_id)
                 refused = await _term_tag_refused(cast("Connection", conn), model)
@@ -3168,7 +3168,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
             if refused is not None:
                 return refused
-            covers = await _covers(cast("Connection", conn), model)  # REQ-2143
+            covers = await _covers(cast("Connection", conn), model)  # REQ-2145
         await _refresh_config_tags()
         if model.object_type == "table":
             await _rebuild_if_tag_filtered(model.tag_id)
@@ -3195,7 +3195,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             column_name=input.column_name,
             relationship_id=input.relationship_id,
             command_name=input.command_name,
-            term_id=input.term_id,  # REQ-2143
+            term_id=input.term_id,  # REQ-2145
         )
         problem = _assignment_target_problem(model)
         if problem is not None:
@@ -3206,7 +3206,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if refused is not None:
                 return refused
             tag_row = await tag_repo.get(cast("Connection", conn), input.tag_id)
-            if model.object_type == "term":  # REQ-2143
+            if model.object_type == "term":  # REQ-2145
                 assert model.term_id is not None
                 await _require_term_tagger(info, cast("Connection", conn), model.term_id)
             if tag_row is None:
@@ -3221,7 +3221,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.table_id,
                     input.term_id,
                 )
-            if model.object_type == "column":  # REQ-2143
+            if model.object_type == "column":  # REQ-2145
                 from provisa.core.term_tags import inherited_from
 
                 assert model.table_id is not None and model.column_name is not None
@@ -4489,7 +4489,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self,
         info: StrawberryInfo,
         id: str,
-        # REQ-2143: as on a save -- each tag a re-homed key ref loses, confirmed or carried.
+        # REQ-2145: as on a save -- each tag a re-homed key ref loses, confirmed or carried.
         confirm_tag_loss: list[str] | None = None,
         carry_tags: bool = False,
     ) -> MutationResult:

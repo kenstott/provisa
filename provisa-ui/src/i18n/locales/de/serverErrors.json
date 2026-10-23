@@ -632,6 +632,17 @@
       "term_is_class": "Der Begriff '{{term}}' verankert Tabellen ({{tables}}) und ist damit eine Klasse; er kann keinen Spaltenverweis haben. Ein Begriff ist entweder eine Klasse, in Tabellen verankert, oder eine Eigenschaft mit Spaltenverweisen, nie beides.",
       "abstract_is_derived": "„Abstrakt“ lässt sich nicht setzen: Es ergibt sich aus der Verankerung. Ein Begriff ohne Spaltenverweise und ohne verankerte Tabellen ist ein Konzept.",
       "key_column_derived": "Diese Spalte ist ein Schlüssel; sie folgt der Klasse ihrer Tabelle. {{table}}.{{column}} bleibt bei '{{class}}' und wird nicht von Hand verschoben."
+    },
+    "tag": {
+      "not_on_terms": "Das Tag '{{tag}}' kommt an keinen Begriff; nur pii.",
+      "term_not_live": "Definieren Sie '{{term}}', um ihn zu markieren.",
+      "term_not_property": "Das Tag '{{tag}}' kommt nur an einen Begriff, der eine Eigenschaft ist, also Spalten bedeutet; '{{term}}' ist keine.",
+      "term_is_tagged": "Entfernen Sie zuerst {{tags}}, oder behalten Sie eine Definition.",
+      "key_column": "Die Spalte {{column}} ist ein Schlüssel: Ihre Bedeutung ist die Klasse ihrer Tabelle. Taggen Sie die Spalte selbst.",
+      "column_has_no_term": "Die Spalte {{column}} hat keinen Begriff, der getaggt werden kann.",
+      "also_term_needs_column": "Statt der Spalte den Begriff zu taggen, setzt eine Spalte voraus.",
+      "inherited_from_term": "Diese Spalte ist PII, weil sie {{term}} bedeutet. Entfernen Sie die Markierung dieser Bedeutung, oder verschieben Sie die Spalte, wenn sie etwas anderes bedeutet.",
+      "move_loses": "Diese Verschiebung nimmt Spalten Tags weg, die sie danach nicht mehr tragen. Bestätigen Sie den Verlust jedes Tags, oder übertragen Sie die Tags auf den Begriff, zu dem die Spalten verschoben werden."
     }
   }
 }

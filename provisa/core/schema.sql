@@ -617,7 +617,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1660: explicit data-product-level tags, distinct from tags inherited/rolled up
     -- from member tables' own assignments (computed, not stored here).
     product_id      TEXT REFERENCES data_products(id) ON DELETE CASCADE,
-    -- REQ-2143: the glossary term a tag is on (pii on a Property term). Its reference to
+    -- REQ-2145: the glossary term a tag is on (pii on a Property term). Its reference to
     -- glossary_terms is declared after that table, below.
     term_id         INTEGER,
     object_key      TEXT NOT NULL,
@@ -716,7 +716,7 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     UNIQUE (name)
 );
 
--- REQ-2143: a tag on a glossary term, on a table that predates it. The term's deletion takes its
+-- REQ-2145: a tag on a glossary term, on a table that predates it. The term's deletion takes its
 -- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a
 -- column's.
 DO $$ BEGIN

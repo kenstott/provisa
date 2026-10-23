@@ -723,12 +723,12 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="pii",
         description="Personally identifiable information",
-        # REQ-2143: pii is on columns, and on a Property term, whose every column -- those it
+        # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
         applies_to=["column", "term"],
         is_system=True,
-        reason_policy="required",  # REQ-2143: a column marked pii by hand says why
+        reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
         sensitive=True,  # REQ-1943: set, and locked -- a system tag is never redefined
     ),
@@ -860,7 +860,7 @@ class TagAssignment(BaseModel):  # REQ-1377
     # the export builder (TableIndex resolves names, not DB serials). Filled from a DB join on
     # hydration; a YAML config may provide it instead of table_id and the loader resolves it.
     table_ref: str | None = None
-    # REQ-2143: a glossary term the tag is on (object_type "term"): its serial, and its name --
+    # REQ-2145: a glossary term the tag is on (object_type "term"): its serial, and its name --
     # the config-vocabulary identity, filled from a DB join on hydration and resolved by the
     # loader as table_ref is.
     term_id: int | None = None
