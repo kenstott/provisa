@@ -631,7 +631,17 @@
       "term_is_property": "术语“{{term}}”拥有列引用（{{columns}}），因此是属性，不能关联到表。术语要么是关联到表的类，要么是拥有列引用的属性，绝不会同时是两者。",
       "term_is_class": "术语“{{term}}”关联到表（{{tables}}），因此是类，不能拥有列引用。术语要么是关联到表的类，要么是拥有列引用的属性，绝不会同时是两者。",
       "abstract_is_derived": "“抽象”不能设置：它由关联情况推导而来。没有列引用、也没有关联表的术语是概念。",
-      "key_column_derived": "此列是键；它跟随其表的类。{{table}}.{{column}} 保留在“{{class}}”上，不能手动移动。"
+      "key_column_derived": "此列是键；它跟随其表的类。{{table}}.{{column}} 保留在“{{class}}”上，不能手动移动。",
+      "reason_required": "需要原因：请说明弃用或停用该术语的原因。",
+      "retire_on_past": "计划的停用日期 {{retire_on}} 已过。请选择今天或之后的日期。",
+      "retire_on_invalid": "计划的停用日期 {{retire_on}} 不是日期（请使用 YYYY-MM-DD）。",
+      "successor_is_self": "术语不能成为自己的继任者。",
+      "successor_retired": "继任者“{{successor}}”已停用。请选择一个仍在使用的术语。",
+      "term_not_live": "只有已发布的术语才能弃用；该术语为 {{status}}。",
+      "status_by_action": "术语的状态通过“弃用”“停用”或“恢复”更改，每项都需要原因。",
+      "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
+      "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",
+      "no_retirement_history": "模型的历史中没有该术语的停用记录。"
     }
   }
 }

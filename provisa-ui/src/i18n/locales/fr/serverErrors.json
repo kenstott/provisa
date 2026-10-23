@@ -631,7 +631,17 @@
       "term_is_property": "Le terme « {{term}} » possède des références de colonne ({{columns}}) : c'est une Propriété, il ne peut pas ancrer une table. Un terme est soit une Classe, ancrée dans des tables, soit une Propriété, qui possède des références de colonne, jamais les deux.",
       "term_is_class": "Le terme « {{term}} » ancre des tables ({{tables}}) : c'est une Classe, il ne peut pas posséder de référence de colonne. Un terme est soit une Classe, ancrée dans des tables, soit une Propriété, qui possède des références de colonne, jamais les deux.",
       "abstract_is_derived": "« Abstrait » ne peut pas être défini : il découle de l'ancrage. Un terme sans références de colonne ni tables ancrées est un Concept.",
-      "key_column_derived": "Cette colonne est une clé ; elle suit la classe de sa table. {{table}}.{{column}} reste sur « {{class}} » et ne se déplace pas à la main."
+      "key_column_derived": "Cette colonne est une clé ; elle suit la classe de sa table. {{table}}.{{column}} reste sur « {{class}} » et ne se déplace pas à la main.",
+      "reason_required": "Une raison est requise : indiquez pourquoi le terme est déprécié ou retiré.",
+      "retire_on_past": "La date de retrait prévue {{retire_on}} est passée. Choisissez aujourd'hui ou une date ultérieure.",
+      "retire_on_invalid": "La date de retrait prévue {{retire_on}} n'est pas une date (utilisez AAAA-MM-JJ).",
+      "successor_is_self": "Un terme ne peut pas être son propre successeur.",
+      "successor_retired": "Le successeur « {{successor}} » est retiré. Choisissez un terme en service.",
+      "term_not_live": "Seul un terme actif peut être déprécié ; celui-ci est {{status}}.",
+      "status_by_action": "Le statut d'un terme change par Déprécier, Retirer ou Restaurer, chacun avec une raison.",
+      "successor_required": "Ce terme a encore des colonnes ou des tables ; le retirer les transfère à un successeur. Choisissez-en un.",
+      "successor_role": "Le successeur d'un {{role}} doit être un {{role}} ou un concept ; « {{successor}} » est un {{successor_role}}.",
+      "no_retirement_history": "L'historique du modèle ne contient aucun retrait de ce terme."
     }
   }
 }

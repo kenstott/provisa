@@ -30,6 +30,8 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
+    from datetime import date as _date
+
     from provisa.core.database import Connection, Database
 
 router = APIRouter(prefix="/admin/glossary", tags=["admin", "glossary"])
@@ -46,6 +48,17 @@ async def _notify(org_id: str, reason: str) -> None:
     from provisa.api.metadata_export.publishing import notify_model_changed
 
     await notify_model_changed(org_id, reason=reason)
+
+
+def _refuse_status_fields(body: dict) -> None:
+    """REQ-2144: a term's status changes only through deprecate, retire and restore, each with
+    what it requires (a reason, and a date or a successor)."""
+    if "retired" in body or "status" in body:
+        raise ApiError(
+            400,
+            "glossary.status_by_action",
+            "a term is retired, deprecated or restored through its own action, with a reason",
+        )
 
 
 def _refuse_abstract(body: dict) -> None:
@@ -339,6 +352,7 @@ async def update_term(request: Request, term_id: int) -> dict:
     org_id = require_active_org_id(request)
     body = await request.json()
     _refuse_abstract(body)
+    _refuse_status_fields(body)
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -376,8 +390,6 @@ async def update_term(request: Request, term_id: int) -> dict:
                 found = await glossary_repo.set_export_excluded(
                     _conn, term_id, bool(body["export_excluded"])
                 )
-            if "retired" in body:
-                found = await glossary_repo.set_retired(_conn, term_id, bool(body["retired"]))
         except glossary_repo.TermIsTagged as exc:  # REQ-2143
             raise ApiError(
                 409, exc.code, str(exc), term=exc.term, tags=", ".join(exc.tags)
@@ -891,6 +903,156 @@ async def unground_term_table(
         raise ApiError(
             404, "glossary.table_ref_not_found", f"term {term_id} does not ground table {table_id}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Status (REQ-2144): deprecate, retire, restore -- each a curation act with its reason
+# ---------------------------------------------------------------------------
+
+
+_DONE = {"deprecate": "deprecated", "retire": "retired", "restore": "restored"}
+
+
+def _status_refused(exc: "glossary_repo.StatusRefused") -> ApiError:
+    return ApiError(400, f"glossary.{exc.code}", str(exc), **exc.params)
+
+
+def _iso_date(raw: Any) -> "_date | None":
+    import datetime
+
+    if raw is None:
+        return None
+    try:
+        return datetime.date.fromisoformat(str(raw))
+    except ValueError as exc:
+        raise ApiError(
+            400,
+            "glossary.retire_on_invalid",
+            f"retire_on {raw!r} is not an ISO date",
+            retire_on=raw,
+        ) from exc
+
+
+async def change_status(
+    conn: "Connection", term_id: int, action: str, body: dict, request: Request
+) -> list[dict]:
+    """Gate and apply one status action, shared by the routes and the MCP tools. A retirement's
+    move of the term's columns and tables to its successor goes through the tag move check
+    (REQ-2143, term_tags): its summary of what each moved column's tags did is returned."""
+    from datetime import date
+
+    from provisa.core.term_tags import (
+        TagLossRefused,
+        TermTagRefused,
+        inherited_snapshot,
+        tag_changes_of_moves,
+    )
+
+    await _require_term_curatable(conn, term_id, request)
+    by = _caller_id(request)
+    changes: list[dict] = []
+    try:
+        if action == "deprecate":
+            await glossary_repo.deprecate_term(
+                conn,
+                term_id,
+                reason=body.get("reason"),
+                retire_on=_iso_date(body.get("retire_on")),
+                by=by,
+                today=date.today(),
+            )
+        elif action == "retire":
+            successor = body.get("successor")
+            async with conn.transaction():
+                tags_before = await inherited_snapshot(conn)
+                await glossary_repo.retire_term(
+                    conn,
+                    term_id,
+                    reason=body.get("reason"),
+                    successor=None if successor is None else int(successor),
+                    by=by,
+                )
+                changes = await tag_changes_of_moves(
+                    conn,
+                    tags_before,
+                    confirm_tag_loss=body.get("confirm_tag_loss") or (),
+                    carry_tags=bool(body.get("carry_tags")),
+                )
+        else:
+            assert action == "restore"
+            await glossary_repo.restore_term(conn, term_id, by=by)
+    except glossary_repo.StatusRefused as exc:
+        raise _status_refused(exc) from exc
+    except glossary_repo.TermNotFound as exc:
+        raise ApiError(404, "glossary.term_not_found", str(exc)) from exc
+    except TagLossRefused as exc:
+        raise ApiError(409, exc.code, str(exc), columns=exc.columns) from exc
+    except TermTagRefused as exc:
+        raise ApiError(409, exc.code, str(exc), **exc.params) from exc
+    return changes
+
+
+async def _status_route(request: Request, term_id: int, action: str) -> dict:
+    org_id = require_active_org_id(request)
+    body = await request.json() if action != "restore" else {}
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        if not await glossary_repo.term_exists(_conn, term_id):
+            raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+        changes = await change_status(_conn, term_id, action, body, request)
+        status = (await glossary_repo.term_statuses(_conn))[term_id]
+    await _notify(org_id, f"ontology term {_DONE[action]}")
+    return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
+
+
+@router.post("/terms/{term_id}/deprecate")
+async def deprecate_term(request: Request, term_id: int) -> dict:
+    """Deprecate a live term: {reason, retire_on?}. It stays in service until retire_on."""
+    _require_glossary_rw(request)
+    return await _status_route(request, term_id, "deprecate")
+
+
+@router.post("/terms/{term_id}/retire")
+async def retire_term(request: Request, term_id: int) -> dict:
+    """Retire a term: {reason, successor?, confirm_tag_loss?, carry_tags?}. Its columns and
+    tables move to the successor (required when it has any), which gets the REPLACES edge."""
+    _require_glossary_rw(request)
+    return await _status_route(request, term_id, "retire")
+
+
+@router.post("/terms/{term_id}/restore")
+async def restore_term(request: Request, term_id: int) -> dict:
+    """Clear a retirement or a curator's deprecation."""
+    _require_glossary_rw(request)
+    return await _status_route(request, term_id, "restore")
+
+
+@router.get("/terms/{term_id}/applied-history")
+async def applied_history(request: Request, term_id: int) -> dict:
+    """A retired term's column and table refs as of the model-store commit before its
+    retirement (REQ-2144), read from the environment's repository; 404 when it holds none."""
+    from provisa.core.environments import PROD
+    from provisa.core.request_context import current_env
+    from provisa.core.term_history import applied_history as read_history
+
+    _require_glossary_read(request)
+    org_id = require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_readable(_conn, term_id, request)
+        term = await glossary_repo.get_term(_conn, term_id)
+    if term is None:
+        raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+    history = read_history(org_id, current_env.get() or PROD, term_id, term["name"])
+    if history is None:
+        raise ApiError(
+            404,
+            "glossary.no_retirement_history",
+            f"the model's history holds no retirement of term {term_id}",
+        )
+    return history
 
 
 @router.get("/role-conflicts")

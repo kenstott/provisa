@@ -345,10 +345,10 @@ _TOOLS: list[Any] = [
     {
         "name": "list_glossary_terms",
         "description": (
-            "Search/list the org's ontology terms. Each result's `live` field tells "
-            "you whether the term is admitted (grounded to a real column, or edge-connected to "
-            "one) or still 'proposed' (a draft with neither). Use this before create_glossary_"
-            "term to avoid proposing a duplicate."
+            "Search/list the org's ontology terms. Each result's `status` is draft (not "
+            "admitted: undefined, or grounded to no real column directly or through edges), "
+            "live (admitted), deprecated or retired. Use this before create_glossary_term to "
+            "avoid creating a duplicate."
         ),
         "input_schema": {
             "type": "object",
@@ -361,8 +361,8 @@ _TOOLS: list[Any] = [
     {
         "name": "create_glossary_term",
         "description": (
-            "Create a new ontology term (name + definition). It starts 'proposed' — "
-            "there is no separate flag to mark it finalized/live. A proposed term becomes live "
+            "Create a new ontology term (name + definition). It starts a draft — "
+            "there is no separate flag to mark it finalized/live. A draft term becomes live "
             "either automatically (a real column gets registered and lands on it) or by calling "
             "add_glossary_term_edge to connect it to a term that is already live. If the org runs "
             "multi-domain, pass at least one domain id."
@@ -380,11 +380,10 @@ _TOOLS: list[Any] = [
     {
         "name": "update_glossary_term",
         "description": (
-            "Rename a ontology term, change its definition, exclude it from exports, "
-            "or retire it. Only the fields you pass are changed. Prefer retiring (retired=true) "
-            "over deleting when the term carries curator work (a definition, a relationship, or "
-            "an expert) — deleting that outright is exactly the case delete_glossary_term warns "
-            "against."
+            "Rename a ontology term, change its definition, or exclude it from exports. Only "
+            "the fields you pass are changed. To withdraw a term that carries curator work (a "
+            "definition, a relationship, or an expert), retire it with retire_glossary_term "
+            "rather than deleting it."
         ),
         "input_schema": {
             "type": "object",
@@ -393,8 +392,52 @@ _TOOLS: list[Any] = [
                 "name": {"type": "string"},
                 "definition": {"type": "string"},
                 "export_excluded": {"type": "boolean"},
-                "retired": {"type": "boolean"},
             },
+            "required": ["term_id"],
+        },
+    },
+    {
+        "name": "deprecate_glossary_term",
+        "description": (
+            "Deprecate a live ontology term, with a reason and an optional planned retirement "
+            "date (ISO, not in the past). It stays in service until then and is retired on it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "reason": {"type": "string"},
+                "retire_on": {"type": "string"},
+            },
+            "required": ["term_id", "reason"],
+        },
+    },
+    {
+        "name": "retire_glossary_term",
+        "description": (
+            "Retire an ontology term, with a reason. Its columns or tables move to the successor "
+            "term id (required when it has any), which gets the REPLACES edge to it. A move that "
+            "would take pii off a column is refused unless confirm_tag_loss names the tag or "
+            "carry_tags puts it on the successor."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "reason": {"type": "string"},
+                "successor": {"type": "integer"},
+                "confirm_tag_loss": {"type": "array", "items": {"type": "string"}},
+                "carry_tags": {"type": "boolean"},
+            },
+            "required": ["term_id", "reason"],
+        },
+    },
+    {
+        "name": "restore_glossary_term",
+        "description": "Restore a retired or deprecated ontology term.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}},
             "required": ["term_id"],
         },
     },
@@ -417,7 +460,7 @@ _TOOLS: list[Any] = [
             "Connect two ontology terms with a typed relationship (e.g. 'broader', "
             "'narrower', 'synonym' — check list_glossary_terms/existing edges for the vocabulary "
             "this org already uses before inventing a new rel_type). This is also the mechanism "
-            "for finalizing a proposed term without waiting for a column: connect it to an "
+            "for finalizing a draft term without waiting for a column: connect it to an "
             "already-live term and it becomes live through that edge."
         ),
         "input_schema": {
@@ -953,6 +996,8 @@ _SYSTEM = (
     "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge, and ground a term "
     "to a whole table with ground_glossary_term_to_table/unground_glossary_term_from_table, "
     "and mark a Property term pii with tag_glossary_term/untag_glossary_term, "
+    "and change a term's status with deprecate_glossary_term/retire_glossary_term/"
+    "restore_glossary_term (each takes a reason, except restore), "
     "directly — these "
     "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
     "need no admin_mutation. Still always confirm with the user "
@@ -1343,6 +1388,9 @@ async def _execute_tool(
         "unground_glossary_term_from_table",
         "tag_glossary_term",
         "untag_glossary_term",
+        "deprecate_glossary_term",
+        "retire_glossary_term",
+        "restore_glossary_term",
     ):
         if request is None:
             raise ValueError(f"{name} requires a verified request context")
@@ -1363,7 +1411,16 @@ async def _execute_tool(
                 name=args.get("name"),
                 definition=args.get("definition"),
                 export_excluded=args.get("export_excluded"),
-                retired=args.get("retired"),
+            )
+        if name in ("deprecate_glossary_term", "retire_glossary_term", "restore_glossary_term"):
+            action = name.split("_", 1)[0]
+            body = {
+                k: args[k]
+                for k in ("reason", "retire_on", "successor", "confirm_tag_loss", "carry_tags")
+                if k in args
+            }
+            return await mcp_tools.change_glossary_term_status(
+                state, role, request, int(args["term_id"]), action, body
             )
         if name == "delete_glossary_term":
             return await mcp_tools.delete_glossary_term(state, role, request, int(args["term_id"]))

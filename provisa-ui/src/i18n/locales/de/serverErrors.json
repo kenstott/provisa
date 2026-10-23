@@ -631,7 +631,17 @@
       "term_is_property": "Der Begriff '{{term}}' hat Spaltenverweise ({{columns}}) und ist damit eine Eigenschaft; er kann keine Tabelle verankern. Ein Begriff ist entweder eine Klasse, in Tabellen verankert, oder eine Eigenschaft mit Spaltenverweisen, nie beides.",
       "term_is_class": "Der Begriff '{{term}}' verankert Tabellen ({{tables}}) und ist damit eine Klasse; er kann keinen Spaltenverweis haben. Ein Begriff ist entweder eine Klasse, in Tabellen verankert, oder eine Eigenschaft mit Spaltenverweisen, nie beides.",
       "abstract_is_derived": "„Abstrakt“ lässt sich nicht setzen: Es ergibt sich aus der Verankerung. Ein Begriff ohne Spaltenverweise und ohne verankerte Tabellen ist ein Konzept.",
-      "key_column_derived": "Diese Spalte ist ein Schlüssel; sie folgt der Klasse ihrer Tabelle. {{table}}.{{column}} bleibt bei '{{class}}' und wird nicht von Hand verschoben."
+      "key_column_derived": "Diese Spalte ist ein Schlüssel; sie folgt der Klasse ihrer Tabelle. {{table}}.{{column}} bleibt bei '{{class}}' und wird nicht von Hand verschoben.",
+      "reason_required": "Ein Grund ist erforderlich: Geben Sie an, warum der Begriff als veraltet markiert oder ausgemustert wird.",
+      "retire_on_past": "Das geplante Ausmusterungsdatum {{retire_on}} liegt in der Vergangenheit. Wählen Sie heute oder ein späteres Datum.",
+      "retire_on_invalid": "Das geplante Ausmusterungsdatum {{retire_on}} ist kein Datum (verwenden Sie JJJJ-MM-TT).",
+      "successor_is_self": "Ein Begriff kann nicht sein eigener Nachfolger sein.",
+      "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie einen Begriff, der in Gebrauch ist.",
+      "term_not_live": "Nur ein aktiver Begriff kann als veraltet markiert werden; dieser ist {{status}}.",
+      "status_by_action": "Der Status eines Begriffs ändert sich über Veralten, Ausmustern oder Wiederherstellen, jeweils mit einem Grund.",
+      "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
+      "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",
+      "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs."
     }
   }
 }

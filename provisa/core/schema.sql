@@ -702,19 +702,31 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     name            TEXT NOT NULL,
     definition      TEXT,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
-    -- Soft delete. A rooted term cannot be deleted (its refs are derived and would recreate
-    -- it on the next registration), so retiring is how a curator takes a term out of service:
-    -- it stays bound to its columns and stays editable in the admin surface, but no consuming
-    -- surface will ever surface or bind it — agent term search skips it and metadata export
-    -- withholds it. Set only by a curator; never written by the derived lifecycle, so a
-    -- retirement survives the column departing and re-registering.
+    -- Out of service, set only by a curator (REQ-2144). Retiring moves what the term holds --
+    -- its column refs, or its table groundings with their keys -- to a successor, and keeps the
+    -- term as an inert record (definition, edges, experts, the successor's REPLACES edge, the
+    -- reason). No consuming surface offers it, and it conducts nothing. Never written by the
+    -- derived lifecycle, so a retirement survives its old columns departing and re-registering.
     retired         BOOLEAN NOT NULL DEFAULT FALSE,
     -- Per-term opt-out from metadata export: the term (and any edge touching it) is
     -- withheld from every vendor snapshot while its curation stays intact locally.
     export_excluded BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2144: the parts of a term's status a curator asserts (draft and live are computed):
+    -- a deprecation of a live term, with its reason and an optional planned retirement date, on
+    -- which the scheduler retires it; a retirement's reason; and who asserted it, when.
+    deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason   TEXT,
+    retire_on       DATE,
+    status_by       TEXT,
+    status_at       TIMESTAMPTZ,
     tenant_id       UUID,
     UNIQUE (name)
 );
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retire_on DATE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 
 -- REQ-2143: a tag on a glossary term, on a table that predates it. The term's deletion takes its
 -- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a
@@ -749,14 +761,14 @@ CREATE TABLE IF NOT EXISTS glossary_term_table_refs (
     id          SERIAL PRIMARY KEY,
     term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
     table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
-    -- REQ-2141: TRUE when sync proposed this grounding from the table's concept; FALSE when a
-    -- configuration declared it or a person grounded it. A proposal whose term is not curated is
-    -- derived: the config export does not state it and it goes with its table.
-    proposed    BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2141: TRUE when sync derived this grounding from the table's concept; FALSE when a
+    -- configuration declared it or a person grounded it. A derived grounding whose term is not
+    -- curated is a draft: the config export does not state it and it goes with its table.
+    derived     BOOLEAN NOT NULL DEFAULT FALSE,
     tenant_id   UUID,
     UNIQUE (table_id)
 );
-ALTER TABLE glossary_term_table_refs ADD COLUMN IF NOT EXISTS proposed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_term_table_refs ADD COLUMN IF NOT EXISTS derived BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Closed, enum-typed relationship set (REQ-1387) — free-form edge types are not permitted.
 CREATE TABLE IF NOT EXISTS glossary_term_edges (

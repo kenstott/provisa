@@ -631,7 +631,17 @@
       "term_is_property": "O termo '{{term}}' tem referências de coluna ({{columns}}), portanto é uma Propriedade e não pode ancorar uma tabela. Um termo é uma Classe, ancorada em tabelas, ou uma Propriedade, com referências de coluna, nunca ambas.",
       "term_is_class": "O termo '{{term}}' ancora tabelas ({{tables}}), portanto é uma Classe e não pode ter uma referência de coluna. Um termo é uma Classe, ancorada em tabelas, ou uma Propriedade, com referências de coluna, nunca ambas.",
       "abstract_is_derived": "\"Abstrato\" não pode ser definido: deriva da ancoragem. Um termo sem referências de coluna nem tabelas ancoradas é um Conceito.",
-      "key_column_derived": "Esta coluna é uma chave; segue a classe da sua tabela. {{table}}.{{column}} permanece em '{{class}}' e não é movida manualmente."
+      "key_column_derived": "Esta coluna é uma chave; segue a classe da sua tabela. {{table}}.{{column}} permanece em '{{class}}' e não é movida manualmente.",
+      "reason_required": "É necessário um motivo: diga por que o termo está sendo descontinuado ou retirado.",
+      "retire_on_past": "A data de retirada planejada {{retire_on}} já passou. Escolha hoje ou uma data posterior.",
+      "retire_on_invalid": "A data de retirada planejada {{retire_on}} não é uma data (use AAAA-MM-DD).",
+      "successor_is_self": "Um termo não pode ser seu próprio sucessor.",
+      "successor_retired": "O sucessor '{{successor}}' está retirado. Escolha um termo em serviço.",
+      "term_not_live": "Apenas um termo ativo pode ser descontinuado; este está {{status}}.",
+      "status_by_action": "O status de um termo muda com Descontinuar, Retirar ou Restaurar, cada um com um motivo.",
+      "successor_required": "Este termo ainda tem colunas ou tabelas; retirá-lo as move para um sucessor. Escolha um.",
+      "successor_role": "O sucessor de um {{role}} deve ser um {{role}} ou um conceito; '{{successor}}' é um {{successor_role}}.",
+      "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo."
     }
   }
 }

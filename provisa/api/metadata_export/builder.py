@@ -636,6 +636,9 @@ def _glossary_assets(
                 definition=term.get("definition"),
                 is_abstract=bool(term["is_abstract"]),
                 deprecated=bool(term["deprecated"]),
+                status="deprecated" if term["deprecation_asserted"] else "live",  # REQ-2144
+                status_reason=term["status_reason"],
+                retire_on=term["retire_on"].isoformat() if term["retire_on"] else None,
                 refs=tuple(refs),
                 experts=tuple(experts_by_term.get(term["id"], [])),
                 semantic_uri=term_uri(org_id, term["name"]),

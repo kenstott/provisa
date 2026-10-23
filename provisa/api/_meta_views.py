@@ -693,6 +693,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
                     THEN TRUE ELSE FALSE END AS live,
                t.tenant_id,
                CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded,
+               CASE WHEN t.retired THEN 'retired'
+                    WHEN t.deprecated OR t.deprecation_asserted THEN 'deprecated'
+                    WHEN t.id IN (SELECT id FROM grounded)
+                     AND TRIM(COALESCE(t.definition, '')) <> '' THEN 'live'
+                    ELSE 'draft' END AS status,
+               t.status_reason, t.retire_on,
                CASE WHEN (SELECT COUNT(*) FROM glossary_term_table_refs r WHERE r.term_id = t.id)
                          > (SELECT COUNT(*) FROM identity_reach ir WHERE ir.term_id = t.id)
                     THEN TRUE ELSE FALSE END AS identity_gap,

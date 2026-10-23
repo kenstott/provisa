@@ -66,6 +66,7 @@ def _term(
         definition=definition,
         is_abstract=True,
         deprecated=deprecated,
+        status="live",
         refs=refs,
         semantic_uri=f"provisa://acme/terms/{name}",
     )

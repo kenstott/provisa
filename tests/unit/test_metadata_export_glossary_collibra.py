@@ -50,6 +50,7 @@ def _term(term_id: int, name: str, **overrides) -> GlossaryTermAsset:
         "definition": None,
         "is_abstract": False,
         "deprecated": False,
+        "status": "live",
         "semantic_uri": f"provisa://acme/terms/{name}",
     }
     fields.update(overrides)

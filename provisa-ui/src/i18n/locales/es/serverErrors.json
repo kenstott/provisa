@@ -631,7 +631,17 @@
       "term_is_property": "El término '{{term}}' tiene referencias de columna ({{columns}}), así que es una Propiedad y no puede anclar una tabla. Un término es una Clase, anclada en tablas, o una Propiedad, con referencias de columna, nunca ambas.",
       "term_is_class": "El término '{{term}}' ancla tablas ({{tables}}), así que es una Clase y no puede tener una referencia de columna. Un término es una Clase, anclada en tablas, o una Propiedad, con referencias de columna, nunca ambas.",
       "abstract_is_derived": "«Abstracto» no se puede establecer: se deriva del anclaje. Un término sin referencias de columna ni tablas ancladas es un Concepto.",
-      "key_column_derived": "Esta columna es una clave; sigue a la clase de su tabla. {{table}}.{{column}} permanece en '{{class}}' y no se mueve a mano."
+      "key_column_derived": "Esta columna es una clave; sigue a la clase de su tabla. {{table}}.{{column}} permanece en '{{class}}' y no se mueve a mano.",
+      "reason_required": "Se requiere un motivo: indique por qué el término se marca como obsoleto o se retira.",
+      "retire_on_past": "La fecha de retiro prevista {{retire_on}} ya pasó. Elija hoy o una fecha posterior.",
+      "retire_on_invalid": "La fecha de retiro prevista {{retire_on}} no es una fecha (use AAAA-MM-DD).",
+      "successor_is_self": "Un término no puede ser su propio sucesor.",
+      "successor_retired": "El sucesor '{{successor}}' está retirado. Elija un término en servicio.",
+      "term_not_live": "Solo un término activo puede marcarse como obsoleto; este está en estado {{status}}.",
+      "status_by_action": "El estado de un término cambia con Marcar obsoleto, Retirar o Restaurar, cada uno con un motivo.",
+      "successor_required": "Este término todavía tiene columnas o tablas; al retirarlo pasan a un sucesor. Elija uno.",
+      "successor_role": "El sucesor de un {{role}} debe ser un {{role}} o un concepto; '{{successor}}' es un {{successor_role}}.",
+      "no_retirement_history": "El historial del modelo no tiene ningún retiro de este término."
     }
   }
 }

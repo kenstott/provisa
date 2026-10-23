@@ -631,7 +631,17 @@
       "term_is_property": "Term '{{term}}' owns column refs ({{columns}}), so it is a Property and cannot ground a table. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
       "term_is_class": "Term '{{term}}' grounds tables ({{tables}}), so it is a Class and cannot own a column ref. A term is either a Class, grounded in tables, or a Property, owning column refs, never both.",
       "abstract_is_derived": "Abstract cannot be set: it is derived from grounding. A term with no column refs and no grounded tables is a Concept.",
-      "key_column_derived": "This column is a key; it follows its table's class. {{table}}.{{column}} stays on '{{class}}' and is not moved by hand."
+      "key_column_derived": "This column is a key; it follows its table's class. {{table}}.{{column}} stays on '{{class}}' and is not moved by hand.",
+      "reason_required": "A reason is required: say why the term is being deprecated or retired.",
+      "retire_on_past": "The planned retirement date {{retire_on}} is in the past. Choose today or a later date.",
+      "retire_on_invalid": "The planned retirement date {{retire_on}} is not a date (use YYYY-MM-DD).",
+      "successor_is_self": "A term cannot be its own successor.",
+      "successor_retired": "The successor '{{successor}}' is retired. Choose a term that is in service.",
+      "term_not_live": "Only a live term can be deprecated; this one is {{status}}.",
+      "status_by_action": "A term's status changes through Deprecate, Retire or Restore, each with a reason.",
+      "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
+      "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
+      "no_retirement_history": "The model's history has no retirement of this term."
     }
   }
 }

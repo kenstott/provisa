@@ -338,7 +338,7 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         rows = _decompose(tree, existing, frozenset())
         assert [
             r for r in rows["glossary_term_table_refs"] if r["table_id"] == ids["customers"]
-        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "proposed": False}]
+        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "derived": False}]
 
 
 # --- grounded to a table (REQ-1387): the admission rule and the derived domains ---------------
@@ -360,7 +360,11 @@ async def test_a_term_grounded_only_in_a_table_is_grounded_and_live_once_defined
             assert {ids["party"], ids["ledger"]} <= grounded
             live = await glossary_repo.live_ids(conn)
             assert ids["ledger"] in live and ids["party"] not in live  # party has no definition
-            await glossary_repo.set_retired(conn, ids["party"], True)
+            # retired, party's table goes to its successor and party conducts no more (REQ-2143)
+            client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
+            await glossary_repo.retire_term(
+                conn, ids["party"], reason="renamed", successor=client, by=None
+            )
             assert ids["ledger"] not in await glossary_repo.grounded_ids(conn)
 
 
@@ -566,6 +570,9 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "definition": "A sale.",
                 "is_abstract": True,
                 "deprecated": False,
+                "deprecation_asserted": False,
+                "status_reason": None,
+                "retire_on": None,
                 "retired": False,
             },
             {
@@ -574,6 +581,9 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "definition": "A return.",
                 "is_abstract": True,
                 "deprecated": False,
+                "deprecation_asserted": False,
+                "status_reason": None,
+                "retire_on": None,
                 "retired": False,
             },
         ],
