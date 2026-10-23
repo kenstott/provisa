@@ -22,6 +22,8 @@
     "properties": "プロパティ",
     "copyValue": "値をコピー",
     "resizePanel": "インスペクターパネルをリサイズ",
-    "junctionTable": "{{table}} 経由"
+    "junctionTable": "{{table}} 経由",
+    "openTable": "テーブルを開く",
+    "openRelationship": "リレーションシップを開く"
   }
 }

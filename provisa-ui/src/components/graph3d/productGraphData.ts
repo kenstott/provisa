@@ -93,7 +93,9 @@ function columnSel(f: ProductFilters): Selection {
                     alias: "edgesOut",
                     sel: {
                       fields: TERM_EDGE_FIELDS,
-                      rels: { target_term: { alias: "targetTerm", sel: { fields: ["id", "name"] } } },
+                      rels: {
+                        target_term: { alias: "targetTerm", sel: { fields: ["id", "name"] } },
+                      },
                     },
                     where: typed,
                   },
@@ -101,7 +103,9 @@ function columnSel(f: ProductFilters): Selection {
                     alias: "edgesIn",
                     sel: {
                       fields: TERM_EDGE_FIELDS,
-                      rels: { source_term: { alias: "sourceTerm", sel: { fields: ["id", "name"] } } },
+                      rels: {
+                        source_term: { alias: "sourceTerm", sel: { fields: ["id", "name"] } },
+                      },
                     },
                     where: typed,
                   },
@@ -360,7 +364,11 @@ export function productGraph(products: ProductRow[]): GraphData {
         : null;
   const sensitive: SensitiveRow[] | null = readable((c) => c.sensitivity)
     ? columns.flatMap(({ table, c }) =>
-        (c.sensitivity ?? []).map((x) => ({ column_key: c.column_key, table_id: table, tags: x.tags })),
+        (c.sensitivity ?? []).map((x) => ({
+          column_key: c.column_key,
+          table_id: table,
+          tags: x.tags,
+        })),
       )
     : null;
   return toGraphData(products, termEdges, sensitive);
@@ -525,7 +533,8 @@ export function toGraphData(
         }
       }
       for (const r of t.profile_results ?? []) {
-        node({ id: `r:${r.id}`, type: "profile", label: r.table_name });
+        // Its table is its parent: a profile is reached on its table's page.
+        node({ id: `r:${r.id}`, type: "profile", label: r.table_name, parent: tid });
         edge(`r:${r.id}`, tid, "profiled");
       }
       for (const rel of t.source_relationships ?? []) {

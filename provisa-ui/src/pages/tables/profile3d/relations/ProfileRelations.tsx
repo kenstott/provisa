@@ -13,7 +13,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Link } from "react-router-dom";
+import { entityHref } from "../../../../lib/entityHref";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import { AttractionSlider } from "../Attraction";
@@ -39,6 +41,8 @@ const STRENGTHS = ["0.1", "0.3", "0.5", "0.7"];
 interface Shared {
   /** What the view's exports are named after. */
   exportName: string;
+  /** The table whose columns the view relates; each column links to its row there. */
+  tableId: number;
   model: RelationsModel;
   edges: RelEdge[];
   attraction: number;
@@ -200,7 +204,15 @@ function RelationsDetail({ s, onFocus }: { s: Shared; onFocus: (id: string) => v
       {node && (
         <section data-testid="relations-detail" aria-live="polite">
           <div className="p3d-col-head">
-            <h4>{node.id}</h4>
+            <h4>
+              <Anchor
+                component={Link}
+                to={entityHref("column", node.id, s.tableId)}
+                data-testid="relations-title-link"
+              >
+                {node.id}
+              </Anchor>
+            </h4>
             <span className="p3d-kind">{t(`profileRelations.family_${node.family}`)}</span>
           </div>
           {links.length === 0 ? (
@@ -211,11 +223,10 @@ function RelationsDetail({ s, onFocus }: { s: Shared; onFocus: (id: string) => v
                 const other = e.a === node.id ? e.b : e.a;
                 const arrow = e.kind !== "dependence" ? "↔" : e.b === node.id ? "←" : "→";
                 return (
-                  <button
-                    type="button"
+                  <Link
                     key={e.id}
+                    to={entityHref("column", other, s.tableId)}
                     className="p3d-row p3d-row-link"
-                    onClick={() => s.setSelected(other)}
                     onMouseEnter={() => s.setHover({ kind: "edge", id: e.id })}
                     onMouseLeave={() => s.setHover(null)}
                     data-testid={`relations-link-${e.id}`}
@@ -231,7 +242,7 @@ function RelationsDetail({ s, onFocus }: { s: Shared; onFocus: (id: string) => v
                       />
                     </span>
                     <span className="p3d-num">{edgeValue(e)}</span>
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -405,6 +416,7 @@ export function ProfileRelations({
   const selected = model.nodes.some((n) => n.id === picked) ? picked : busiest.id;
   const s: Shared = {
     exportName: `${tableName}-relations`,
+    tableId,
     model,
     edges,
     attraction,

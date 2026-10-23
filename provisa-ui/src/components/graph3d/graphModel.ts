@@ -82,7 +82,8 @@ export interface GraphNode {
   tags?: string[];
   /** The sensitive tags on the node (or on any of a table's columns). */
   sensitivities?: string[];
-  /** A column's table: the column is drawn inside it until the table is expanded. */
+  /** The table a column or a profile belongs to: a column is drawn inside it until the table is
+   * expanded; a profile is reached on its page. */
   parent?: string;
   /** REQ-1667: the lineage lane the node stands in, when the data says (upstream negative). */
   lane?: number;

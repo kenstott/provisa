@@ -507,6 +507,14 @@
 .p3d-row-link {
   grid-template-columns: minmax(0, 1fr) 60px 40px;
 }
+/* A connection is a link to the thing it joins: a row as the others are, its name underlined
+   on hover as a link's is. */
+a.p3d-row {
+  text-decoration: none;
+}
+a.p3d-row:hover .p3d-row-name {
+  text-decoration: underline;
+}
 .p3d-row-compact {
   grid-template-columns: minmax(0, 1fr) auto;
 }

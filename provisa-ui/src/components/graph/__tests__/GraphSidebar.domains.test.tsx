@@ -22,6 +22,7 @@ const label = (domain: string, table: string): SchemaNodeLabel => ({
   domainLabel: domain,
   domainId: domain.toLowerCase(),
   tableLabel: table,
+  tableId: 1,
   properties: [],
   pkColumns: [],
   idColumn: null,

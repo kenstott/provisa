@@ -86,7 +86,14 @@ export function RelationshipsPage() {
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // `?relationship=<id>` (a graph's link, lib/entityHref) opens that relationship's panel.
+  const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("relationship"));
+  const linkedRelationship = searchParams.get("relationship");
+  const [seededRelationship, setSeededRelationship] = useState(linkedRelationship);
+  if (linkedRelationship !== seededRelationship) {
+    setSeededRelationship(linkedRelationship);
+    if (linkedRelationship !== null) setExpanded(linkedRelationship);
+  }
   const [editingRel, setEditingRel] = useState<RelForm | null>(null);
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");

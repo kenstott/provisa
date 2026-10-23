@@ -12,6 +12,8 @@ export interface SchemaNodeLabel {
   domainLabel: string | null;
   domainId: string | null;
   tableLabel: string;
+  /** The registered table the label reads. */
+  tableId: number;
   properties: string[];
   pkColumns: string[];
   idColumn: string | null;

@@ -228,3 +228,14 @@ describe("RelationshipsPage: the domain filter", () => {
     expect(both.getByText("orders.region_id")).toBeTruthy();
   });
 });
+
+// A graph's relationship links here: the page opens with that relationship in its panel.
+describe("RelationshipsPage opened on a relationship", () => {
+  it("shows the linked relationship and marks its row", () => {
+    render(<RelationshipsPage />, {
+      initialEntries: ["/relationships?relationship=orders-to-regions"],
+    });
+    expect(screen.getByTestId("relationships-split-title")).toHaveTextContent("orders-to-regions");
+    expect(rowOf("orders.region_id").className).toContain("row-selected");
+  });
+});
