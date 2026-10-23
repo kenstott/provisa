@@ -8,63 +8,72 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A term's To review section: one chip per finding, each opening to what was found and the act that
-// fixes it. A finding whose fix is not offered here says what was found alone.
+// A term's To review section: one chip per finding, each opening to what was found, in the reader's
+// language (serverErrors, by its code), and the acts that fix it. A finding whose fix is not
+// offered here says what was found alone.
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
-import type { FindingKind, TermFinding } from "./termFindings";
+import type { GlossaryFinding } from "../../api/glossary";
+import { serverMessage } from "../../i18n/serverMessage";
 
-export type FindingFixes = Partial<Record<FindingKind, (finding: TermFinding) => void>>;
+export interface FindingFix {
+  label: string;
+  run: () => void;
+  testId: string;
+}
 
 export function TermToReview({
   findings,
-  fixes,
+  fixesOf,
 }: {
-  findings: TermFinding[];
-  /** The act that fixes each kind, where the caller may take it. */
-  fixes: FindingFixes;
+  findings: GlossaryFinding[];
+  /** The acts that fix a finding, where the caller may take them. */
+  fixesOf: (finding: GlossaryFinding) => FindingFix[];
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState<FindingKind | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
   if (findings.length === 0) return null;
-  const shown = findings.find((f) => f.kind === open);
-  const fix = shown && fixes[shown.kind];
+  const shown = open === null ? undefined : findings[open];
   return (
     <Stack gap={6} data-testid="glossary-to-review">
       <Title order={5}>{t("glossaryTab.toReview")}</Title>
       <Group gap={6}>
-        {findings.map((f) => (
+        {findings.map((f, i) => (
           <Badge
-            key={f.kind}
+            key={`${f.code}-${i}`}
             component="button"
             type="button"
-            variant={open === f.kind ? "filled" : "light"}
+            variant={open === i ? "filled" : "light"}
             color="orange"
             style={{ cursor: "pointer" }}
-            aria-pressed={open === f.kind}
-            onClick={() => setOpen(open === f.kind ? null : f.kind)}
-            data-testid={`glossary-finding-${f.kind}`}
+            aria-pressed={open === i}
+            onClick={() => setOpen(open === i ? null : i)}
+            data-testid={`glossary-finding-${i}`}
+            data-kind={f.kind}
           >
             {t(`glossaryTab.finding_${f.kind}`)}
           </Badge>
         ))}
       </Group>
       {shown && (
-        <Paper withBorder p="xs" data-testid={`glossary-finding-${shown.kind}-detail`}>
+        <Paper withBorder p="xs" data-testid="glossary-finding-detail">
           <Stack gap={6} align="flex-start">
-            <Text size="sm">{t(`glossaryTab.findingMessage_${shown.kind}`, shown.params)}</Text>
-            {fix && (
-              <Button
-                size="xs"
-                variant="default"
-                onClick={() => fix(shown)}
-                data-testid={`glossary-finding-${shown.kind}-fix`}
-              >
-                {t(`glossaryTab.findingFix_${shown.kind}`)}
-              </Button>
-            )}
+            <Text size="sm">{serverMessage(shown, shown.message)}</Text>
+            <Group gap="xs">
+              {fixesOf(shown).map((fix) => (
+                <Button
+                  key={fix.testId}
+                  size="xs"
+                  variant="default"
+                  onClick={fix.run}
+                  data-testid={fix.testId}
+                >
+                  {fix.label}
+                </Button>
+              ))}
+            </Group>
           </Stack>
         </Paper>
       )}

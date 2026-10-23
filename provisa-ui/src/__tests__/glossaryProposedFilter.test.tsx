@@ -23,6 +23,8 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
+  // A term with no findings: the findings list names none.
+  fetchGlossaryFindings: vi.fn(async () => []),
 }));
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
@@ -58,6 +60,7 @@ const LIVE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: true,
@@ -72,6 +75,7 @@ const PROPOSED: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   live: false,
 };
 // Not live, but retired: curated away from the proposal state, so it must survive the filter too.

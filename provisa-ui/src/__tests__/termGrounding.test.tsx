@@ -13,7 +13,6 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
-import { termFindings } from "../components/admin/termFindings";
 
 const api = vi.hoisted(() => ({
   grounded: new Map<number, number[]>(),
@@ -114,6 +113,7 @@ const SUMMARY: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: true,
@@ -139,13 +139,11 @@ describe("a term's role", () => {
 });
 
 describe("a class whose tables are not all declared one entity", () => {
-  it("is marked To review in the list, its finding named in its panel", () => {
-    render(<TermListBadges term={{ ...SUMMARY, table_count: 2, identity_gap: true }} />);
+  it("is marked To review in the list when it has a finding", () => {
+    render(<TermListBadges term={{ ...SUMMARY, table_count: 2, findings: 1 }} />);
     expect(screen.getByTestId("glossary-review-1")).toHaveTextContent("To review");
     render(<TermListBadges term={{ ...SUMMARY, id: 2, table_count: 2 }} />);
     expect(screen.queryByTestId("glossary-review-2")).toBeNull();
-    expect(termFindings({ identity_gap: true })).toEqual([{ kind: "unlinked_tables", params: {} }]);
-    expect(termFindings({ identity_gap: false })).toEqual([]);
   });
 });
 

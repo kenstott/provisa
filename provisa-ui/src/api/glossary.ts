@@ -64,6 +64,8 @@ export interface GlossaryTermSummary {
   // REQ-1591: a rooted term's domains are DERIVED from its refs' tables, an abstract term's are
   // DECLARED. Empty means unscoped — reachable by any glossary-right holder.
   domains: string[];
+  // REQ-2146: how many findings the term has (GET /admin/glossary/findings lists them).
+  findings: number;
 }
 
 export interface GlossaryRef {
@@ -183,7 +185,6 @@ export async function updateGlossaryTerm(
     name?: string;
     definition?: string | null;
     export_excluded?: boolean;
-    retired?: boolean;
     // REQ-1591: an abstract term's declared domains; a rooted term's come from its refs.
     domains?: string[];
   },
@@ -312,6 +313,91 @@ export interface GlossaryTermTable {
   schema_name: string;
   table_name: string;
   domain_id: string;
+}
+
+/** A finding on a term (REQ-2146): its kind, the catalog code its message is worded by
+ * (serverErrors), the server's own words, and the values the message names. */
+export type FindingKind =
+  | "unlinked_tables"
+  | "class_and_attribute"
+  | "tag_wrong_kind"
+  | "retirement_blocked"
+  | "no_data";
+
+export interface GlossaryFinding {
+  kind: FindingKind;
+  code: string;
+  message: string;
+  params: Record<string, string>;
+}
+
+export interface TermFindings {
+  term_id: number;
+  term: string;
+  findings: GlossaryFinding[];
+}
+
+export async function fetchGlossaryFindings(): Promise<TermFindings[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/findings`);
+  if (!res.ok) throw await mutationError(res, "fetchGlossaryFindings");
+  return res.json();
+}
+
+/** What a move does to one column's tags (REQ-2145): those it would lose, those it would gain. */
+export interface ColumnTagChange {
+  column: string;
+  table: string;
+  loses: string[];
+  gains: string[];
+}
+
+/** A move refused because columns would lose tags unconfirmed (409 tag.move_loses): its message,
+ * and each moved column's change, for the reader to confirm or carry. */
+export class TagLossRefused extends Error {
+  readonly columns: ColumnTagChange[];
+  constructor(message: string, columns: ColumnTagChange[]) {
+    super(message);
+    this.columns = columns;
+  }
+}
+
+/** Retire a term (REQ-2144): its columns and tables move to ``successor``, which a term holding
+ * any must name. A move that takes tags off columns is refused (TagLossRefused) until each lost
+ * tag is confirmed or the tags are carried to the successor. */
+export async function retireGlossaryTerm(
+  termId: number,
+  body: {
+    reason: string;
+    successor: number | null;
+    confirm_tag_loss?: string[];
+    carry_tags?: boolean;
+  },
+): Promise<{ status: string; tag_changes: ColumnTagChange[] }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/retire`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 409) {
+    const data = await res.json();
+    if (data.code === "tag.move_loses") {
+      throw new TagLossRefused(
+        serverMessage(data, requestFailed("retireGlossaryTerm", res.status)),
+        data.params.columns,
+      );
+    }
+    throw new Error(serverMessage(data, requestFailed("retireGlossaryTerm", res.status)));
+  }
+  if (!res.ok) throw await mutationError(res, "retireGlossaryTerm");
+  return res.json();
+}
+
+/** Clear a term's retirement or a curator's deprecation. */
+export async function restoreGlossaryTerm(termId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/restore`, {
+    method: "POST",
+  });
+  if (!res.ok) throw await mutationError(res, "restoreGlossaryTerm");
 }
 
 export async function listTermTables(termId: number): Promise<GlossaryTermTable[]> {

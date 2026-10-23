@@ -26,6 +26,8 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
+  // A term with no findings: the findings list names none.
+  fetchGlossaryFindings: vi.fn(async () => []),
   listTermTables: vi.fn(async () => []),
 }));
 
@@ -55,6 +57,7 @@ const REVENUE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: true,
@@ -69,6 +72,7 @@ const CHURN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {

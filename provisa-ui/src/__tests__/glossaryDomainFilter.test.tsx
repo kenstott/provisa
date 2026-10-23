@@ -27,6 +27,8 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
+  // A term with no findings: the findings list names none.
+  fetchGlossaryFindings: vi.fn(async () => []),
   createGlossaryTerm: vi.fn(),
 }));
 
@@ -67,6 +69,7 @@ const ORDER: GlossaryTermSummary = {
   ref_count: 2,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: true,

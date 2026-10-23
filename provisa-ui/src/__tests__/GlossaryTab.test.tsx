@@ -38,6 +38,21 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   listTermTables: vi.fn(async () => []),
   groundTermTable: vi.fn(),
   ungroundTermTable: vi.fn(),
+  fetchGlossaryFindings: vi.fn(async () => []),
+  retireGlossaryTerm: vi.fn(),
+  restoreGlossaryTerm: vi.fn(),
+}));
+
+// A term's tag taken off from its To review finding.
+const unassignTag = vi.hoisted(() => vi.fn(async () => ({ success: true, message: "" })));
+vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useTagQueries")>()),
+  useUnassignTag: () => ({ unassignTag, loading: false }),
+}));
+const navigateTo = vi.hoisted(() => vi.fn());
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => navigateTo,
 }));
 
 // The term each column is, for Claim columns: read from the meta domain, here a fixture.
@@ -139,11 +154,18 @@ import {
   generateGlossaryDefinition,
   generateGlossaryRelationships,
   listGlossaryTerms,
+  fetchGlossaryFindings,
   moveGlossaryRef,
+  restoreGlossaryTerm,
+  retireGlossaryTerm,
   retypeGlossaryEdge,
+  TagLossRefused,
   updateGlossaryTerm,
 } from "../api/glossary";
 
+const mockRetire = vi.mocked(retireGlossaryTerm);
+const mockFindings = vi.mocked(fetchGlossaryFindings);
+const mockRestore = vi.mocked(restoreGlossaryTerm);
 const mockList = vi.mocked(listGlossaryTerms);
 const mockFetchTerm = vi.mocked(fetchGlossaryTerm);
 const mockUpdate = vi.mocked(updateGlossaryTerm);
@@ -164,6 +186,7 @@ const REVENUE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: true,
@@ -179,6 +202,7 @@ const CHURN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: true,
@@ -194,6 +218,7 @@ const MARGIN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: true,
@@ -210,6 +235,7 @@ const DANGLING: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
   export_excluded: false,
   retired: false,
   live: false,
@@ -273,6 +299,7 @@ const save = () => fireEvent.click(screen.getByTestId("glossary-edit-save"));
 
 describe("GlossaryTab", () => {
   beforeEach(() => {
+    mockFindings.mockResolvedValue([]);
     mockList.mockReset();
     mockFetchTerm.mockReset();
     mockUpdate.mockReset();
@@ -376,7 +403,7 @@ describe("GlossaryTab", () => {
   });
 
   it("lists only the terms To review when that filter is on", async () => {
-    mockList.mockResolvedValue([{ ...REVENUE, identity_gap: true }, CHURN]);
+    mockList.mockResolvedValue([{ ...REVENUE, findings: 1 }, CHURN]);
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-2");
     expect(screen.getByTestId("glossary-review-1")).toHaveTextContent(t("glossaryTab.toReview"));
@@ -761,16 +788,45 @@ describe("GlossaryTab", () => {
   // Soft delete: a rooted term cannot be deleted (its refs would recreate it), so retiring is
   // how a curator takes one out of service — server-side it drops out of agent term search
   // and metadata export.
-  it("retires the selected term and offers to restore it", async () => {
+  it("retires the selected term through its dialog, then offers to restore it", async () => {
+    mockRetire.mockReset();
     render(<GlossaryTab />);
-
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     const retire = await screen.findByTestId("glossary-retire-btn");
     expect(retire).toHaveTextContent(t("glossaryTab.retire"));
-
-    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true });
     fireEvent.click(retire);
-    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { retired: true }));
+
+    // It holds a column: it says what moves, and asks for a reason and a successor.
+    expect(await screen.findByTestId("glossary-retire-moves")).toHaveTextContent("orders.revenue");
+    const submit = screen.getByTestId("glossary-retire-submit");
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByTestId("glossary-retire-reason"), {
+      target: { value: "merged into Churn" },
+    });
+    expect(submit).toBeDisabled();
+    const successors = await openSelect("glossary-retire-successor");
+    fireEvent.click(within(successors).getByRole("option", { name: "Churn", hidden: true }));
+
+    // The move would take pii off the column: what it loses is shown, and the reader carries it.
+    mockRetire.mockRejectedValueOnce(
+      new TagLossRefused("loses tags", [
+        { column: "revenue", table: "erp.public.orders", loses: ["pii"], gains: [] },
+      ]),
+    );
+    fireEvent.click(screen.getByTestId("glossary-retire-submit"));
+    expect(await screen.findByTestId("glossary-tag-loss")).toHaveTextContent(
+      t("glossaryTab.loses", { tags: "pii" }),
+    );
+    mockRetire.mockResolvedValueOnce({ status: "retired", tag_changes: [] });
+    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true });
+    fireEvent.click(screen.getByTestId("glossary-tag-loss-carry"));
+    await waitFor(() =>
+      expect(mockRetire).toHaveBeenLastCalledWith(1, {
+        reason: "merged into Churn",
+        successor: 2,
+        carry_tags: true,
+      }),
+    );
     await waitFor(() =>
       expect(screen.getByTestId("glossary-retire-btn")).toHaveTextContent(
         t("glossaryTab.unretire"),
@@ -778,7 +834,80 @@ describe("GlossaryTab", () => {
     );
 
     fireEvent.click(screen.getByTestId("glossary-retire-btn"));
-    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { retired: false }));
+    await waitFor(() => expect(mockRestore).toHaveBeenCalledWith(1));
+  });
+
+  it("offers each finding's fix in the term's To review section", async () => {
+    mockFindings.mockResolvedValue([
+      {
+        term_id: 1,
+        term: "Revenue",
+        findings: [
+          {
+            kind: "unlinked_tables",
+            code: "glossary.finding.unlinked_tables",
+            message: "unlinked",
+            params: { tables: "erp.public.orders, crm.public.deals" },
+          },
+          {
+            kind: "tag_wrong_kind",
+            code: "glossary.finding.tag_wrong_kind",
+            message: "wrong kind",
+            params: { tags: "pii", role: "concept" },
+          },
+          {
+            kind: "retirement_blocked",
+            code: "glossary.finding.retirement_blocked",
+            message: "blocked",
+            params: { retire_on: "2026-10-01", role: "property" },
+          },
+        ],
+      },
+    ]);
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    const chips = await screen.findByTestId("glossary-to-review");
+
+    fireEvent.click(within(chips).getByTestId("glossary-finding-0"));
+    fireEvent.click(screen.getByTestId("glossary-finding-fix-same-entity"));
+    expect(navigateTo).toHaveBeenCalledWith("/relationships?search=orders%20deals");
+
+    fireEvent.click(within(chips).getByTestId("glossary-finding-1"));
+    fireEvent.click(screen.getByTestId("glossary-finding-fix-unmark-pii"));
+    await waitFor(() =>
+      expect(unassignTag).toHaveBeenCalledWith({ tagId: "pii", objectType: "term", termId: 1 }),
+    );
+
+    fireEvent.click(within(chips).getByTestId("glossary-finding-2"));
+    fireEvent.click(screen.getByTestId("glossary-finding-fix-retire"));
+    expect(await screen.findByTestId("glossary-retire-reason")).toBeInTheDocument();
+  });
+
+  it("moves anyway with each lost tag confirmed", async () => {
+    mockRetire.mockReset();
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    fireEvent.click(await screen.findByTestId("glossary-retire-btn"));
+    fireEvent.change(await screen.findByTestId("glossary-retire-reason"), {
+      target: { value: "obsolete" },
+    });
+    const successors = await openSelect("glossary-retire-successor");
+    fireEvent.click(within(successors).getByRole("option", { name: "Churn", hidden: true }));
+    mockRetire.mockRejectedValueOnce(
+      new TagLossRefused("loses tags", [
+        { column: "revenue", table: "erp.public.orders", loses: ["pii", "finance"], gains: [] },
+      ]),
+    );
+    fireEvent.click(screen.getByTestId("glossary-retire-submit"));
+    mockRetire.mockResolvedValueOnce({ status: "retired", tag_changes: [] });
+    fireEvent.click(await screen.findByTestId("glossary-tag-loss-move"));
+    await waitFor(() =>
+      expect(mockRetire).toHaveBeenLastCalledWith(1, {
+        reason: "obsolete",
+        successor: 2,
+        confirm_tag_loss: ["pii", "finance"],
+      }),
+    );
   });
 
   it("bulk-generates relationships and shows a count notification", async () => {

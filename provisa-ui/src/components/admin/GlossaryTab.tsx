@@ -41,8 +41,11 @@ import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
 import { TermListBadges } from "./TermRoleBadge";
-import { TermToReview } from "./TermToReview";
-import { termFindings, toReview } from "./termFindings";
+import { TermToReview, type FindingFix } from "./TermToReview";
+import { tableNames, toReview } from "./termFindings";
+import { RetireTermDialog } from "./RetireTermDialog";
+import { useUnassignTag } from "../../hooks/useTagQueries";
+import { refusalError } from "../../i18n/serverMessage";
 import { HelpBubble } from "../HelpBubble";
 import {
   GLOSSARY_EXPERT_KINDS,
@@ -52,8 +55,10 @@ import {
   fetchGlossaryTerm,
   generateAllGlossaryDefinitions,
   generateGlossaryRelationships,
+  fetchGlossaryFindings,
   listGlossaryTerms,
-  updateGlossaryTerm,
+  restoreGlossaryTerm,
+  type GlossaryFinding,
 } from "../../api/glossary";
 import { fetchOrgMembers } from "../../api/admin";
 import type { OrgMember } from "../../api/admin";
@@ -182,6 +187,26 @@ export function GlossaryTab() {
   }, [refreshList]);
 
   // ``quiet``: read again in place (after a Save), so an open form keeps what it holds.
+  // The open term's findings (REQ-2146), kept with the term they were read for.
+  const [found, setFound] = useState<{ termId: number; findings: GlossaryFinding[] } | null>(null);
+  const [retireOpen, setRetireOpen] = useState(false);
+  const { unassignTag } = useUnassignTag();
+  useEffect(() => {
+    if (detail === null) return;
+    let live = true;
+    void fetchGlossaryFindings().then((rows) => {
+      if (!live) return;
+      // The findings list names only the terms that have any: a term it leaves out has none.
+      const row = rows.find((r) => r.term_id === detail.id);
+      setFound({ termId: detail.id, findings: row ? row.findings : [] });
+    });
+    return () => {
+      live = false;
+    };
+  }, [detail]);
+  const findings =
+    found !== null && detail !== null && found.termId === detail.id ? found.findings : [];
+
   const loadDetail = useCallback(async (termId: number, quiet = false) => {
     if (!quiet) setDetailLoading(true);
     setActionError("");
@@ -622,12 +647,12 @@ export function GlossaryTab() {
                           detail.retired ? <ArchiveRestore size={14} /> : <Archive size={14} />
                         }
                         onClick={() =>
-                          void act(
-                            () => updateGlossaryTerm(detail.id, { retired: !detail.retired }),
-                            detail.retired
-                              ? t("glossaryTab.unretireDone")
-                              : t("glossaryTab.retireDone"),
-                          )
+                          detail.retired
+                            ? void act(
+                                () => restoreGlossaryTerm(detail.id),
+                                t("glossaryTab.unretireDone"),
+                              )
+                            : setRetireOpen(true)
                         }
                         data-testid="glossary-retire-btn"
                       >
@@ -665,21 +690,57 @@ export function GlossaryTab() {
 
                 {!editing && (
                   <TermToReview
-                    findings={termFindings(detail)}
-                    fixes={{
-                      // Same-entity relationships are declared on the Relationships page.
-                      unlinked_tables: (f) =>
-                        navigate(
-                          f.params.tables
-                            ? `/relationships?search=${encodeURIComponent(f.params.tables)}`
-                            : "/relationships",
-                        ),
-                      ...(canEdit
-                        ? {
-                            class_and_attribute: () => setEditing(true),
-                            no_data: () => setEditing(true),
-                          }
-                        : {}),
+                    findings={findings}
+                    fixesOf={(f): FindingFix[] => {
+                      const edit: FindingFix = {
+                        label: t("glossaryTab.edit"),
+                        run: () => setEditing(true),
+                        testId: "glossary-finding-fix-edit",
+                      };
+                      switch (f.kind) {
+                        case "unlinked_tables":
+                          // Same-entity relationships are declared on the Relationships page,
+                          // found there by the tables' names.
+                          return [
+                            {
+                              label: t("glossaryTab.findingFix_unlinked_tables"),
+                              run: () =>
+                                navigate(
+                                  `/relationships?search=${encodeURIComponent(tableNames(f.params.tables))}`,
+                                ),
+                              testId: "glossary-finding-fix-same-entity",
+                            },
+                          ];
+                        case "tag_wrong_kind":
+                          return canEdit
+                            ? f.params.tags.split(", ").map((tag) => ({
+                                label: t("glossaryTab.findingUnmark", { tag }),
+                                run: () =>
+                                  void act(async () => {
+                                    const r = await unassignTag({
+                                      tagId: tag,
+                                      objectType: "term",
+                                      termId: detail.id,
+                                    });
+                                    if (!r.success) throw refusalError(r);
+                                  }),
+                                testId: `glossary-finding-fix-unmark-${tag}`,
+                              }))
+                            : [];
+                        case "retirement_blocked":
+                          return canEdit
+                            ? [
+                                {
+                                  label: t("glossaryTab.findingFix_retirement_blocked"),
+                                  run: () => setRetireOpen(true),
+                                  testId: "glossary-finding-fix-retire",
+                                },
+                              ]
+                            : [];
+                        case "class_and_attribute":
+                        case "no_data":
+                          return canEdit ? [edit] : [];
+                      }
                     }}
                   />
                 )}
@@ -783,6 +844,19 @@ export function GlossaryTab() {
           />
         </FormLayout>
       </Modal>
+
+      {detail && retireOpen && (
+        <RetireTermDialog
+          term={detail}
+          terms={terms}
+          onClose={() => setRetireOpen(false)}
+          onRetired={() => {
+            setRetireOpen(false);
+            // Retired already: the term and the list are read again, and the reader told.
+            void act(async () => undefined, t("glossaryTab.retireDone"));
+          }}
+        />
+      )}
     </Stack>
   );
 }

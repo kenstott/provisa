@@ -8,30 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// What a term needs a curator to look at: each finding a kind, which names its message and its fix,
-// and the values the message names. A term with any finding is To review; a plain draft is not.
+// What a term needs a curator to look at (REQ-2146): the server's findings, each of a kind, which
+// names its chip and its fix. A term with any finding is To review; a plain draft is not one.
 
 import type { GlossaryTermSummary } from "../../api/glossary";
 
-export const FINDING_KINDS = [
-  "unlinked_tables",
-  "class_and_attribute",
-  "tag_wrong_kind",
-  "retirement_blocked",
-  "no_data",
-] as const;
-export type FindingKind = (typeof FINDING_KINDS)[number];
+export const toReview = (term: Pick<GlossaryTermSummary, "findings">): boolean => term.findings > 0;
 
-export interface TermFinding {
-  kind: FindingKind;
-  params: Record<string, string>;
-}
-
-/** A term's findings. Until the server lists them, the one it computes on every term: grounded in
- * several tables that same-entity relationships do not all join. */
-export function termFindings(term: Pick<GlossaryTermSummary, "identity_gap">): TermFinding[] {
-  return term.identity_gap ? [{ kind: "unlinked_tables", params: {} }] : [];
-}
-
-export const toReview = (term: Pick<GlossaryTermSummary, "identity_gap">): boolean =>
-  termFindings(term).length > 0;
+/** The table names in an unlinked_tables finding's ``tables`` (``source.schema.table, …``): what
+ * the Relationships page's search finds them by. */
+export const tableNames = (tables: string): string =>
+  tables
+    .split(", ")
+    .map((t) => t.slice(t.lastIndexOf(".") + 1))
+    .join(" ");

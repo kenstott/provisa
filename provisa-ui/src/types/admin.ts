@@ -158,13 +158,16 @@ export function tagParam(tagId: string): string | null {
 // REQ-1377: one tag on one object; exactly the fields implied by objectType are set.
 export interface TagAssignment {
   tagId: string;
-  objectType: TagObjectType;
+  // A glossary term's tags (REQ-2145) are assigned on its panel, not by TagControl.
+  objectType: TagObjectType | "term";
   sourceId?: string | null;
   tableId?: number | null;
   columnName?: string | null;
   relationshipId?: string | null;
   // Tracked function/webhook name (commands are named, not serial-keyed).
   commandName?: string | null;
+  // REQ-2145: the glossary term an objectType "term" assignment is on.
+  termId?: number | null;
   tableRef?: string | null;
   // Why this tag is on this object; required for 'deprecated'.
   reason?: string | null;
