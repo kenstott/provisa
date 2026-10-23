@@ -338,7 +338,7 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         rows = _decompose(tree, existing, frozenset())
         assert [
             r for r in rows["glossary_term_table_refs"] if r["table_id"] == ids["customers"]
-        ] == [{"table_id": ids["customers"], "term_id": ids["party"]}]
+        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "proposed": False}]
 
 
 # --- grounded to a table (REQ-1387): the admission rule and the derived domains ---------------
@@ -1045,3 +1045,41 @@ async def test_grounding_carries_the_keys_and_ungrounding_returns_them_to_the_pr
             assert await _term_of(conn, "buyers", "id") == "buyer"
             assert await _term_of(conn, "orders", "buyer_id") == "buyer"
             assert (await glossary_repo.get_term(conn, client))["is_abstract"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_declared_class_named_for_its_tables_concept_is_curated(cfg_db):
+    """A configuration declaring orders' class as "order" -- the very name sync proposes -- states
+    a curated grounding: the export keeps it, and deleting the table keeps the term."""
+    from provisa.core.config_loader import apply_config
+
+    async with cfg_db.acquire() as conn:
+        await apply_config(_config(class_term="Order"), conn)
+        assert await _class_term_of_orders(conn) == "order"
+        [order] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "order"]
+        orders = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(registered_tables.c.table_name == "orders")
+            )
+        ).fetchone()
+        await table_repo.delete(conn, orders.id)
+        kept = await glossary_repo.get_term(conn, order["id"])
+    assert kept is not None and kept["is_abstract"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_proposal_is_not_stated_by_the_export_and_goes_with_its_table(cfg_db):
+    from provisa.core.config_loader import apply_config
+
+    async with cfg_db.acquire() as conn:
+        await apply_config(_config(class_term=None), conn)
+        assert await _class_term_of_orders(conn) is None  # proposed "order", derived
+        [order] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "order"]
+        assert order["table_count"] == 1
+        orders = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(registered_tables.c.table_name == "orders")
+            )
+        ).fetchone()
+        await table_repo.delete(conn, orders.id)
+        assert await glossary_repo.get_term(conn, order["id"]) is None

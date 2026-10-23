@@ -220,6 +220,21 @@ async def _property_term(conn: "Connection", business: str, table_context: str |
     return term_id
 
 
+async def proposal_terms(conn: "Connection") -> set[int]:
+    """The terms grounding a table only as sync's proposals and carrying no curator work: derived
+    (REQ-2141). A term a configuration declared or a person grounded, or a curated one, is not."""
+    rows = (
+        await conn.execute_core(
+            select(glossary_term_table_refs.c.term_id, glossary_term_table_refs.c.proposed)
+        )
+    ).fetchall()
+    proposed = {r.term_id for r in rows if r.proposed} - {r.term_id for r in rows if not r.proposed}
+    if not proposed:
+        return set()
+    graph = await _load_graph(conn)
+    return {t for t in proposed if t in graph.terms and not _is_curated(graph, graph.terms[t])}
+
+
 async def _concept_of(conn: "Connection", table_id: int) -> str:
     row = (
         await conn.execute_core(
@@ -246,7 +261,7 @@ async def _propose_class(conn: "Connection", table_id: int, concept: str) -> int
     else:
         term_id = row.id
     await conn.execute_core(
-        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id)
+        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id, proposed=True)
     )
     return term_id
 
@@ -424,24 +439,15 @@ async def before_ref_removal(conn: "Connection") -> RemovalSnapshot:
             await conn.execute_core(select(glossary_term_refs.c.term_id).distinct())
         ).fetchall()
     }
-    # REQ-2141: a Class holds its tables' keys, but only a proposal -- the term named for one of
-    # its tables' concepts -- is derived and goes with them; a curated Class is kept, a Concept.
-    grounded = (
-        await conn.execute_core(
-            select(
-                glossary_terms.c.id,
-                glossary_terms.c.name,
-                registered_tables.c.alias,
-                registered_tables.c.table_name,
-            )
-            .join(
-                glossary_term_table_refs, glossary_term_table_refs.c.term_id == glossary_terms.c.id
-            )
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
-        )
-    ).fetchall()
-    proposed = {r.id for r in grounded if r.name == table_concept(r.alias or r.table_name)}
-    curated = {r.id for r in grounded} - proposed
+    # REQ-2141: a Class holds its tables' keys, but only a proposal is derived and goes with
+    # them; a declared or curated Class is kept, a Concept again.
+    grounded = {
+        r.term_id
+        for r in (
+            await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
+        ).fetchall()
+    }
+    curated = grounded - await proposal_terms(conn)
     return RemovalSnapshot(await term_domains(conn), frozenset(held - curated))
 
 
@@ -1540,7 +1546,7 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
             .where(glossary_term_table_refs.c.table_id == table_id)
         )
     ).fetchone()
-    if held is not None and (held.id == term_id or held.name != await _concept_of(conn, table_id)):
+    if held is not None and (held.id == term_id or held.id not in await proposal_terms(conn)):
         raise TableAlreadyGrounded(address, held.id, held.name)
     if held is not None:
         # The table's proposal gives way to the curated class (REQ-2141).
@@ -1548,7 +1554,7 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
         await conn.execute_core(
             update(glossary_term_table_refs)
             .where(glossary_term_table_refs.c.table_id == table_id)
-            .values(term_id=term_id)
+            .values(term_id=term_id, proposed=False)
         )
     else:
         await conn.execute_core(
@@ -1576,9 +1582,9 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
         await identity.refuse_term_change(conn, table_id)
     await conn.upsert(
         glossary_term_table_refs,
-        {"term_id": term_id, "table_id": table_id},
+        {"term_id": term_id, "table_id": table_id, "proposed": False},
         index_elements=["table_id"],
-        update_columns=["term_id"],
+        update_columns=["term_id", "proposed"],
     )
     await _home_key_refs(conn, table_id)
     if held is not None and held.term_id != term_id:

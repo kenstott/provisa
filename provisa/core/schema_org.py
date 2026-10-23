@@ -686,6 +686,8 @@ glossary_term_table_refs = Table(
     Column(
         "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
     ),
+    # REQ-2141: proposed by sync, not declared by config or grounded by a person (schema.sql).
+    Column("proposed", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id"),
 )

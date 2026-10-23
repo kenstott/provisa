@@ -566,7 +566,11 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 )
             for ref in nested["class_term"]:  # REQ-2130
                 rows["glossary_term_table_refs"].append(
-                    {"table_id": tid, "term_id": resolve_term(ref["term"], path)}
+                    {
+                        "table_id": tid,
+                        "term_id": resolve_term(ref["term"], path),
+                        "proposed": bool(ref.get("proposed", False)),
+                    }
                 )
             for link in nested["meta_links"]:
                 rows["table_meta_links"].append(
