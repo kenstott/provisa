@@ -140,6 +140,40 @@ async def test_atlas_captures_the_guid_of_every_published_entity(snapshot, monke
 
 
 @pytest.mark.asyncio
+async def test_atlas_and_so_purview_bind_each_data_product(monkeypatch):
+    """REQ-1634 STATUS: Atlas binds a product's entity under the product's URI, and Purview's
+    publish runs the Atlas pass first (its Data Map), so a Purview target holds each product it
+    published: a retirement is sent there (binds_products stays True for both)."""
+    from provisa.api.metadata_export.purview import PurviewExport
+    from provisa.core.models import DataProduct
+
+    model = ProvisaConfig(
+        sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
+        domains=[Domain(id="sales", description="Sales")],
+        tables=[
+            Table(
+                source_id="wh",
+                domain_id="sales",
+                schema_name="public",
+                table_name="orders",
+                product_id="prod",
+                columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
+            )
+        ],
+        data_products=[DataProduct(id="prod", domain_id="sales", name="Prod", status="live")],
+        roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
+    )
+    with_product = build_snapshot(model, org_id="acme", dialect="postgres", contexts={})
+    (product,) = with_product.data_products
+    monkeypatch.setattr(AtlasExport, "classification_merge", False)
+    _mock_atlas(monkeypatch)
+    result = await AtlasExport(_config("atlas")).publish(with_product)
+    assert result.ok, result.errors
+    assert product.semantic_uri in result.bindings
+    assert issubclass(PurviewExport, AtlasExport) and PurviewExport.binds_products
+
+
+@pytest.mark.asyncio
 async def test_atlas_prefers_the_stored_guid_over_the_laggy_search_index(snapshot, monkeypatch):
     """The basic-search index lags commits; the stored binding is the identity of record."""
     monkeypatch.setattr(AtlasExport, "classification_merge", False)
