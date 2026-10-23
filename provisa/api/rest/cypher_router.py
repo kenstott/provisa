@@ -756,6 +756,8 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "domain_label": n.domain_label,
                     "domain_id": n.domain_id,
                     "table_label": n.table_label,
+                    # The registered table the label reads, so a client can link a node to it.
+                    "table_id": n.table_id,
                     "properties": list(n.properties.keys()),
                     # REQ-392: singular primary-key column name (first designated PK), or null.
                     "pk": n.property_of(n.pk_columns[0]) if n.pk_columns else None,

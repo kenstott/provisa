@@ -24,7 +24,9 @@ import {
   TextInput,
   useComputedColorScheme,
 } from "@mantine/core";
-import { Braces, Check, ChevronRight, Copy, X } from "lucide-react";
+import { Braces, Check, ChevronRight, Copy, ExternalLink, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor } from "./graph-model";
 import { getStableNodeId } from "./stableNodeId";
@@ -55,6 +57,8 @@ interface InspectorProps {
   /** Save the edge's aliases; the server's refusal of them, or null when saved. */
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
   pkMap: Record<string, string[]>;
+  /** Each node label's registered table, which a node links to. */
+  labelToTableId: Record<string, number>;
 }
 
 // The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
@@ -84,6 +88,7 @@ export function Inspector({
   relationships,
   onSaveEdgeAlias,
   pkMap,
+  labelToTableId,
 }: InspectorProps) {
   const { t } = useTranslation();
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
@@ -254,6 +259,15 @@ export function Inspector({
     ? t("graphInspector.nodeProperties")
     : t("graphInspector.relationshipProperties");
   const chipLabel = isN ? typeName || label : label;
+  // The page of the item shown: a node's table, an edge's relationship. A node whose label reads
+  // no registered table, or an edge no declared relationship backs, has no page of its own.
+  const tableId = isN ? labelToTableId[label] : undefined;
+  const openHref =
+    tableId !== undefined
+      ? entityHref("table", tableId)
+      : matchedRel
+        ? entityHref("relationship", matchedRel.id)
+        : null;
 
   return (
     <div className="gf-inspector" style={{ width }}>
@@ -363,6 +377,25 @@ export function Inspector({
             ))}
           </Menu.Dropdown>
         </Menu>
+        {openHref && (
+          <Tip
+            text={isN ? t("graphInspector.openTable") : t("graphInspector.openRelationship")}
+            named
+          >
+            <ActionIcon
+              component={Link}
+              to={openHref}
+              variant="subtle"
+              size="sm"
+              aria-label={
+                isN ? t("graphInspector.openTable") : t("graphInspector.openRelationship")
+              }
+              data-testid="inspector-open"
+            >
+              <ExternalLink size={14} />
+            </ActionIcon>
+          </Tip>
+        )}
       </div>
 
       {!isN && (

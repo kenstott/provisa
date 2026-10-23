@@ -98,16 +98,16 @@ describe("a node's look", () => {
   });
 
   it("gives every kind one look whatever its status, so no node is see-through or resized", () => {
-    for (const status of ["live", "proposed", "deprecated", "retired"] as const)
+    for (const status of ["live", "draft", "deprecated", "retired"] as const)
       expect(nodeLook(n({ type: "term", status }))).toEqual(nodeLook(n({ type: "term" })));
   });
 });
 
 describe("a term's status on its label", () => {
-  it("is none when live, italic proposed, dimmed deprecated, dimmed and struck retired", () => {
+  it("is none when live, italic draft, dimmed deprecated, dimmed and struck retired", () => {
     expect(labelClass("live")).toBe("");
     expect(labelClass(undefined)).toBe("");
-    expect(labelClass("proposed")).toBe("g3d-label-proposed");
+    expect(labelClass("draft")).toBe("g3d-label-draft");
     expect(labelClass("deprecated")).toBe("g3d-label-deprecated");
     expect(labelClass("retired")).toBe("g3d-label-retired");
   });

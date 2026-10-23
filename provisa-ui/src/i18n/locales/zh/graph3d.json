@@ -64,7 +64,6 @@
     "layer_domains": "域",
     "layer_data": "数据",
     "show": "显示",
-    "status_proposed": "提议中",
     "status_deprecated": "已弃用",
     "status_retired": "已停用",
     "filterEdgeType": "边类型",
@@ -98,7 +97,6 @@
     "openAsQueryCompiling": "正在编译查询…",
     "openAsQueryNoCypher": "此查询没有 Cypher 形式。",
     "openAsQuerySparqlLater": "SPARQL 将在其端点可用后开放。",
-    "identityGap": "关联的表并未全部作为同一实体连接：{{tables}}",
     "layersMenu": "图层",
     "termsMenu": "术语",
     "menuAll": "全部",
@@ -109,6 +107,8 @@
     "look_concept": "概念",
     "look_property": "属性",
     "overBudget": "{{count}} 个匹配；请缩小搜索范围或选择一个域",
-    "domainCount": "{{domain}}（{{count}}）"
+    "domainCount": "{{domain}}（{{count}}）",
+    "unlinkedTables": "锚定在尚未关联为同一实体的表上：{{tables}}",
+    "status_draft": "草稿"
   }
 }

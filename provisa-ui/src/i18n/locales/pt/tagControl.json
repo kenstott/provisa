@@ -10,6 +10,17 @@
     "apply": "Aplicar",
     "cancel": "Cancelar",
     "editAssignment": "Editar atribuição",
-    "plannedRemoval": "Remoção prevista: {{date}}"
+    "plannedRemoval": "Remoção prevista: {{date}}",
+    "piiViaTerm": "Mesmo significado que {{term}}",
+    "piiSetHere": "Definido aqui: {{reason}}",
+    "piiAlsoTerm_one": "Marcar também a outra {{count}} coluna que significa '{{term}}'?",
+    "piiAlsoTerm_other": "Marcar também as outras {{count}} colunas que significam '{{term}}'?",
+    "piiAlsoTermNone": "Marcar '{{term}}', para cobrir cada coluna que o signifique, também as futuras?",
+    "piiYes": "Sim",
+    "piiJustThis": "Só esta",
+    "piiInherited": "Esta coluna é PII porque significa {{term}}.",
+    "piiUnmarkTerm": "Desmarcar {{term}}",
+    "piiMoveColumn": "Mover coluna…",
+    "piiOpenTerm": "Abrir '{{term}}'"
   }
 }

@@ -22,6 +22,8 @@
     "properties": "מאפיינים",
     "copyValue": "העתקת ערך",
     "resizePanel": "שינוי גודל חלונית הבחינה",
-    "junctionTable": "דרך {{table}}"
+    "junctionTable": "דרך {{table}}",
+    "openTable": "פתח את הטבלה שלו",
+    "openRelationship": "פתח את קשר הגומלין שלו"
   }
 }

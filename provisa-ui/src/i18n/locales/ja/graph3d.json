@@ -64,7 +64,6 @@
     "layer_domains": "ドメイン",
     "layer_data": "データ",
     "show": "表示",
-    "status_proposed": "提案中",
     "status_deprecated": "非推奨",
     "status_retired": "廃止",
     "filterEdgeType": "エッジの種類",
@@ -98,7 +97,6 @@
     "openAsQueryCompiling": "クエリをコンパイル中…",
     "openAsQueryNoCypher": "このクエリには Cypher 形式がありません。",
     "openAsQuerySparqlLater": "SPARQL はエンドポイントが利用可能になると開けます。",
-    "identityGap": "すべてが同一エンティティとして結合されていないテーブルに紐づいています: {{tables}}",
     "layersMenu": "レイヤー",
     "termsMenu": "用語",
     "menuAll": "すべて",
@@ -109,6 +107,8 @@
     "look_concept": "概念",
     "look_property": "プロパティ",
     "overBudget": "{{count}} 件一致。検索を絞り込むかドメインを選んでください",
-    "domainCount": "{{domain}}（{{count}}）"
+    "domainCount": "{{domain}}（{{count}}）",
+    "unlinkedTables": "同一エンティティとしてまだリンクされていないテーブルに基づいています: {{tables}}",
+    "status_draft": "下書き"
   }
 }

@@ -10,6 +10,17 @@
     "apply": "套用",
     "cancel": "取消",
     "editAssignment": "編輯指派",
-    "plannedRemoval": "計劃移除：{{date}}"
+    "plannedRemoval": "計劃移除：{{date}}",
+    "piiViaTerm": "與 {{term}} 含義相同",
+    "piiSetHere": "在此設定：{{reason}}",
+    "piiAlsoTerm_one": "同時標記另外 {{count}} 個表示「{{term}}」的欄位？",
+    "piiAlsoTerm_other": "同時標記另外 {{count}} 個表示「{{term}}」的欄位？",
+    "piiAlsoTermNone": "標記「{{term}}」，讓所有表示它的欄位（包括以後的）都被涵蓋？",
+    "piiYes": "是",
+    "piiJustThis": "僅此欄位",
+    "piiInherited": "此欄位是 PII，因為它表示 {{term}}。",
+    "piiUnmarkTerm": "取消標記 {{term}}",
+    "piiMoveColumn": "移動欄位…",
+    "piiOpenTerm": "開啟「{{term}}」"
   }
 }
