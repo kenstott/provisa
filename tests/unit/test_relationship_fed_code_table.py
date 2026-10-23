@@ -31,6 +31,7 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.executor.result import QueryResult
 from provisa.mongodb.pipeline_table import PipelineRead
+from provisa.transpiler.transpile import transpile
 from provisa.security.masking import MaskingRule, MaskType
 from tests.helpers import governed_for_role
 
@@ -163,7 +164,9 @@ async def _scored(
             "tenure_months INTEGER)"
         )
         db.executemany("INSERT INTO customers VALUES (?, ?, ?, ?, ?)", _CUSTOMERS)
-        cursor = db.execute(plan.replace('"public".', ""))
+        # The executor runs the governed statement in the engine's own SQL (a regex mask's
+        # universal call lowered, REQ-2142).
+        cursor = db.execute(transpile(plan, "duckdb").replace('"public".', ""))
         return QueryResult(
             rows=sorted(cursor.fetchall()), column_names=[d[0] for d in cursor.description]
         )

@@ -218,7 +218,7 @@ class TestApplyGovernanceMasking:
             table_map={"users": 1},
         )
         result = apply_governance("SELECT email FROM users", gov)
-        assert "REGEXP_REPLACE" in result
+        assert "PROVISA_REGEX_REPLACE" in result
         assert "email" in result
 
     def test_multiple_masked_columns(self):
@@ -232,7 +232,7 @@ class TestApplyGovernanceMasking:
             table_map={"users": 1},
         )
         result = apply_governance("SELECT email, phone FROM users", gov)
-        assert "REGEXP_REPLACE" in result
+        assert "PROVISA_REGEX_REPLACE" in result
         assert "***-****" in result
 
     def test_unmasked_columns_preserved_unchanged(self):
@@ -242,7 +242,7 @@ class TestApplyGovernanceMasking:
             table_map={"users": 1},
         )
         result = apply_governance("SELECT id FROM users", gov)
-        assert "REGEXP_REPLACE" not in result
+        assert "PROVISA_REGEX_REPLACE" not in result
         assert "id" in result
 
     def test_null_masking_constant_produces_null(self):

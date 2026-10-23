@@ -40,6 +40,9 @@ class MaskType(str, Enum):
     fake = "fake"
 
 
+# REQ-2142: the governed SQL's call for a regex mask, lowered per engine by the transpiler.
+UNIVERSAL_REGEX_REPLACE = "provisa_regex_replace"
+
 # the engine base types that support regex masking
 _STRING_TYPES = {"varchar", "char", "text", "varbinary"}
 
@@ -183,9 +186,9 @@ def build_mask_expression(  # REQ-040, REQ-263
         assert rule.replace is not None
         pattern = sql_literal(rule.pattern, "postgres")
         replace = sql_literal(rule.replace, "postgres")
-        # Every match ('g'), as apply_mask_to_value's re.sub does; the transpiler writes it in
-        # each engine's own form.
-        return f"REGEXP_REPLACE({column_ref}, {pattern}, {replace}, 'g')"
+        # REQ-2142: the pattern and replacement are universal; the transpiler lowers this call to
+        # the engine's own REGEXP_REPLACE, every match replaced, in its regex flavour.
+        return f"{UNIVERSAL_REGEX_REPLACE}({column_ref}, {pattern}, {replace})"
 
     if rule.mask_type == MaskType.constant:
         return _resolve_constant(rule.value, data_type)
@@ -213,34 +216,6 @@ def _resolve_constant_value(value: int | float | str | None, data_type: str):
         if upper == "MIN" and base in _INTEGER_BOUNDS:
             return _INTEGER_BOUNDS[base][0]
     return value
-
-
-def _convert_regexp_replacement(replace: str) -> str:
-    """Convert the engine REGEXP_REPLACE replacement syntax ($1, $$) to Python re.sub (\\g<1>, $)."""
-    out: list[str] = []
-    i = 0
-    while i < len(replace):
-        ch = replace[i]
-        if ch == "$" and i + 1 < len(replace):
-            nxt = replace[i + 1]
-            if nxt == "$":
-                out.append("$")
-                i += 2
-                continue
-            if nxt.isdigit():
-                j = i + 1
-                while j < len(replace) and replace[j].isdigit():
-                    j += 1
-                out.append(f"\\g<{replace[i + 1 : j]}>")
-                i = j
-                continue
-        if ch == "\\":
-            out.append("\\\\")  # escape literal backslash for re.sub
-            i += 1
-            continue
-        out.append(ch)
-        i += 1
-    return "".join(out)
 
 
 def _truncate_temporal(value, precision: str):
@@ -296,7 +271,10 @@ def apply_mask_to_value(rule: MaskingRule, value, data_type: str):  # REQ-040, R
         assert rule.replace is not None
         import re
 
-        return re.sub(rule.pattern, _convert_regexp_replacement(rule.replace), str(value))
+        from provisa.security.universal_regex import lower
+
+        pattern, replace = lower(rule.pattern, rule.replace, "python")
+        return re.sub(pattern, replace, str(value))
     if rule.mask_type == MaskType.truncate:
         assert rule.precision is not None
         return _truncate_temporal(value, rule.precision)

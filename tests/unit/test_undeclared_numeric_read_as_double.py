@@ -145,7 +145,7 @@ def test_a_null_constant_mask_is_cast():
 def test_a_regex_mask_has_made_the_column_text_and_is_not_cast():
     gov = _gov(ratio=MaskingRule(mask_type=MaskType.regex, pattern="[0-9]", replace="#"))
     governed = apply_governance("SELECT ratio FROM sales.orders", gov)
-    assert "CAST(" not in governed and "REGEXP_REPLACE(ratio" in governed
+    assert "CAST(" not in governed and "PROVISA_REGEX_REPLACE(ratio" in governed
     assert "CAST(" not in apply_governance("SELECT * FROM sales.orders", gov)
 
 

@@ -325,8 +325,13 @@ def transpile(
     # the seam agree on always-quoted.
     identify = target_dialect in ("snowflake", "oracle")
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
+    lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "exasol":
-        result = _exasol_stored_case(sqlglot.parse_one(pg_sql, read="postgres"))
+        result = _exasol_stored_case(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    elif lowered is not None:
+        result = lowered.sql(dialect=target_dialect, identify=identify)
     else:
         results = sqlglot.transpile(
             pg_sql, read="postgres", write=target_dialect, identify=identify
@@ -354,6 +359,38 @@ def transpile(
 
     trace_stage(f"transpile.{target_dialect}", result)
     return result
+
+
+def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142
+    """``pg_sql`` parsed with each regex mask's call (provisa_regex_replace, universal pattern and
+    replacement) made the target's REGEXP_REPLACE in its own regex flavour, every match replaced;
+    None when it has none."""
+    from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
+    from provisa.security.universal_regex import lower
+
+    if UNIVERSAL_REGEX_REPLACE not in pg_sql.lower():
+        return None
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    calls = [
+        node
+        for node in tree.find_all(exp.Anonymous)
+        if node.name.lower() == UNIVERSAL_REGEX_REPLACE
+    ]
+    if not calls:
+        return None
+    for node in calls:
+        value, pattern, replace = node.expressions
+        engine_pattern, engine_replace = lower(pattern.this, replace.this, target_dialect)
+        # Without flags sqlglot's REGEXP_REPLACE replaces every match, and it writes the
+        # target's spelling of that ('g' for PostgreSQL and DuckDB).
+        node.replace(
+            exp.RegexpReplace(
+                this=value,
+                expression=exp.Literal.string(engine_pattern),
+                replacement=exp.Literal.string(engine_replace),
+            )
+        )
+    return tree
 
 
 # Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere

@@ -231,5 +231,7 @@ def test_the_check_route_answers_the_report_for_the_list_as_edited(monkeypatch):
         "unreachable": [{"entry": 1, "covered_by": 0}],
         "unlisted_unmasked": True,
         "applies": 2,
+        "patterns": [],
+        "pattern_warnings": [],
     }
     assert asked == ["masking_config"]
