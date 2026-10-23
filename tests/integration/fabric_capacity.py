@@ -71,14 +71,11 @@ def ensure_capacity_resumed() -> None:
 
 
 def suspend_capacity() -> None:
-    """Pause the lane's capacity on Fabric test teardown so it stops billing. A failed pause leaves
-    billable compute running, so it fails the teardown loudly rather than being logged away."""
-    if not _product.capacity_configured():
-        raise RuntimeError(
-            "FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME are not set — the fabric lane cannot pause "
-            "its capacity on teardown (see this module's docstring)"
-        )
-    _product.suspend_capacity()
+    """Pause the lane's capacity on Fabric test teardown so it stops billing. Suspended only from
+    Active: a capacity still settling from the resume is waited out first, one already paused is
+    left so (``ensure_capacity_paused``). A failed pause leaves billable compute running, so it
+    fails the teardown loudly rather than being logged away."""
+    ensure_capacity_paused()
 
 
 _PAUSED_STATES = ("Paused", "Suspended")

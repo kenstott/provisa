@@ -13,7 +13,10 @@
 A Fabric capacity (F-SKU) is billable compute that operators pause between uses. A SQL warehouse on
 a Paused/Suspended capacity refuses the ODBC login outright (an 18456-style rejection that reads like
 broken credentials). The Fabric engine therefore resumes its capacity through the ARM control plane
-before connecting, and waits until it is Active.
+before connecting, and waits until it is Active -- in Azure and then in Fabric itself: ARM reports
+a resumed capacity Active before Fabric's data plane serves it, and a statement in between is
+refused "CapacityNotActive" (run 40024234397), so the wait ends only when Fabric's own capacity
+listing reports it Active too.
 
 Opt-in by configuration: ``FABRIC_CAPACITY_NAME`` + ``FABRIC_RESOURCE_GROUP`` name the capacity.
 A deployment that leaves both unset manages its capacity itself and this module does nothing; setting
@@ -37,6 +40,8 @@ log = logging.getLogger(__name__)
 
 _ARM = "https://management.azure.com"
 _ARM_SCOPE = f"{_ARM}/.default"
+_FABRIC_API = "https://api.fabric.microsoft.com/v1"
+_FABRIC_SCOPE = "https://api.fabric.microsoft.com/.default"
 _API_VERSION = "2023-11-01"
 _SUBSCRIPTIONS_API_VERSION = "2022-12-01"
 _RESUME_TIMEOUT_S = 600.0
@@ -64,6 +69,45 @@ def _client() -> httpx.Client:
 
     token = DefaultAzureCredential().get_token(_ARM_SCOPE).token
     return httpx.Client(headers={"Authorization": f"Bearer {token}"}, timeout=60.0)
+
+
+def _fabric_client() -> httpx.Client:
+    """A client of the Fabric REST API, under the engine's own Azure credential."""
+    from azure.identity import DefaultAzureCredential
+
+    token = DefaultAzureCredential().get_token(_FABRIC_SCOPE).token
+    return httpx.Client(headers={"Authorization": f"Bearer {token}"}, timeout=60.0)
+
+
+def _fabric_state(client: httpx.Client, name: str) -> str:
+    """The capacity's state as Fabric itself reports it (``GET /v1/capacities``), which is what
+    its data plane serves by. A capacity the listing does not show raises: the credential cannot
+    see it there, and readiness cannot be known."""
+    listed = client.get(f"{_FABRIC_API}/capacities").raise_for_status().json().get("value", [])
+    for capacity in listed:
+        if capacity.get("displayName") == name:
+            return capacity["state"]
+    raise RuntimeError(
+        f"Fabric capacity {name!r} is not in Fabric's capacity listing for the engine's Azure "
+        "credential, so whether Fabric serves it cannot be known: give the credential access to "
+        "the capacity in Fabric (a capacity admin or contributor)"
+    )
+
+
+def _await_fabric_active(name: str, deadline: float) -> None:
+    """Block until Fabric itself reports the capacity Active, or raise at ``deadline``."""
+    with _fabric_client() as client:
+        while True:
+            state = _fabric_state(client, name)
+            if state == _ACTIVE:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Fabric capacity {name!r} is Active in Azure but Fabric still reports "
+                    f"{state!r} after {_RESUME_TIMEOUT_S:.0f}s: its warehouse would refuse "
+                    "statements (CapacityNotActive)"
+                )
+            time.sleep(_POLL_S)
 
 
 def _locate(client: httpx.Client) -> tuple[str, str]:
@@ -114,7 +158,8 @@ def _request_resume(client: httpx.Client, url: str) -> bool:
 
 
 def ensure_capacity_resumed() -> None:
-    """Resume the configured capacity if it is not Active, and block until it is (or time out).
+    """Resume the configured capacity if it is not Active, and block until it is (or time out) --
+    in Azure, then in Fabric's own listing (``_await_fabric_active``).
 
     The resume is sent whenever the capacity is seen in a resumable state and no resume has been
     accepted yet — also when it was first seen mid-suspend and only settles at Paused during the
@@ -125,6 +170,7 @@ def ensure_capacity_resumed() -> None:
         resume_accepted = False
         while True:
             if state == _ACTIVE:
+                _await_fabric_active(os.environ["FABRIC_CAPACITY_NAME"], deadline)
                 return
             if state in _TERMINAL_FAILURE_STATES:
                 raise RuntimeError(
@@ -143,15 +189,3 @@ def ensure_capacity_resumed() -> None:
         f"Fabric capacity did not reach {_ACTIVE} within {_RESUME_TIMEOUT_S:.0f}s "
         f"(last state {state!r})"
     )
-
-
-def suspend_capacity() -> None:
-    """Suspend the configured capacity (test/ops teardown to stop billing)."""
-    with _client() as client:
-        url, _state_now = _locate(client)
-        client.post(
-            f"{url}/suspend",
-            params={"api-version": _API_VERSION},
-            content=b"",
-            headers={"Content-Length": "0"},
-        ).raise_for_status()

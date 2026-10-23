@@ -107,3 +107,13 @@ def test_an_unconfigured_capacity_is_a_misconfiguration(monkeypatch):
     monkeypatch.setattr(fabric_capacity._product, "capacity_configured", lambda: False)
     with pytest.raises(RuntimeError, match="FABRIC_RESOURCE_GROUP"):
         fabric_capacity.ensure_capacity_paused()
+
+
+@pytest.mark.parametrize("state", ["Paused", "Suspended", "Pausing"])
+def test_teardowns_suspend_sends_no_suspend_to_a_capacity_that_is_not_active(monkeypatch, state):
+    """Run 40024234397: a teardown suspended a capacity that was not Active and ARM refused it
+    (400), failing the test. The lane's suspend is the pause that suspends only from Active."""
+    client = _capacity(monkeypatch, [state, "Paused"])
+    monkeypatch.setattr(fabric_capacity, "_PAUSE_POLL_S", 0.0)
+    fabric_capacity.suspend_capacity()
+    assert client.posts == []
