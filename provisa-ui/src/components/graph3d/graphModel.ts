@@ -494,37 +494,72 @@ const TREE_GAP = 3;
 /** Wider across than down: a level's names sit side by side. */
 const TREE_SPREAD = 5;
 
-/** REQ-2130: a top-down tree over the term edges (``a`` is a kind or part of ``b``): each term a
- * level below the deepest term it is a kind or part of; a term in no edge on a row of its own. */
+/** The term edges that set a tree's levels: ``a`` is a kind or a part of ``b``. */
+const HIERARCHY = new Set(["KIND_OF", "PART_OF"]);
+
+/** REQ-2130: a top-down tree over the term edges -- the general above the specific, the whole
+ * above the part. Only KIND_OF and PART_OF set the levels: a term sits a level below the deepest
+ * term it is a kind or part of, under the first of those; a term in no such edge is a root, the
+ * roots side by side. A node joined to a term by any other edge (a column the term IS) hangs a
+ * level below that term, under it; any other node is a root too. */
 function treeLayout(g: GraphData): Map<string, [number, number, number]> {
-  const links = g.edges
-    .filter((e) => e.kind === "term_edge")
-    .map((e) => [e.a, e.b] as [string, string]);
-  const parents = new Set(links.map(([, b]) => b));
-  const children = new Set(links.map(([a]) => a));
-  const roots = [...parents].filter((id) => !children.has(id));
-  const depth = lanesFrom(links, roots);
-  const levels = new Map<number, string[]>();
-  let deepest = 0;
-  for (const n of g.nodes) {
-    const d = depth.get(n.id);
-    if (d === undefined) continue;
-    deepest = Math.min(deepest, d);
-    levels.set(d, [...(levels.get(d) ?? []), n.id]);
+  const terms = new Set(g.nodes.filter((n) => n.type === "term").map((n) => n.id));
+  const up = new Map<string, string[]>();
+  for (const e of g.edges)
+    if (e.kind === "term_edge" && HIERARCHY.has(e.label ?? "") && e.a !== e.b)
+      up.set(e.a, [...(up.get(e.a) ?? []), e.b].sort());
+  const depth = new Map<string, number>();
+  const visiting = new Set<string>();
+  // The longest path up to a root; an edge closing a cycle counts for nothing.
+  const depthOf = (id: string): number => {
+    const known = depth.get(id);
+    if (known !== undefined) return known;
+    visiting.add(id);
+    let d = 0;
+    for (const p of up.get(id) ?? []) if (!visiting.has(p)) d = Math.max(d, depthOf(p) + 1);
+    visiting.delete(id);
+    depth.set(id, d);
+    return d;
+  };
+  const parent = new Map<string, string>();
+  for (const id of [...terms].sort()) {
+    const d = depthOf(id);
+    const under = (up.get(id) ?? []).find((p) => depthOf(p) === d - 1);
+    if (under !== undefined) parent.set(id, under);
   }
-  const loose = g.nodes.filter((n) => !depth.has(n.id)).map((n) => n.id);
-  if (loose.length > 0) levels.set(deepest - 1, loose);
-  // Centred on its middle level, so the camera's view of the whole tree is centred too.
-  const all = [...levels.keys()];
-  const mid = (Math.min(...all) + Math.max(...all)) / 2;
-  const out = new Map<string, [number, number, number]>();
-  for (const [d, members] of levels) {
-    members.sort();
-    members.forEach((id, i) =>
-      out.set(id, [(i - (members.length - 1) / 2) * TREE_SPREAD, (d - mid) * TREE_GAP, 0]),
-    );
+  for (const e of [...g.edges].sort((x, y) => x.id.localeCompare(y.id))) {
+    const [term, other] = terms.has(e.a) ? [e.a, e.b] : [e.b, e.a];
+    if (!terms.has(term) || terms.has(other) || parent.has(other)) continue;
+    parent.set(other, term);
+    depth.set(other, depthOf(term) + 1);
   }
-  return out;
+  const children = new Map<string, string[]>();
+  for (const [child, p] of parent) children.set(p, [...(children.get(p) ?? []), child]);
+  const x = new Map<string, number>();
+  let next = 0;
+  // Leaves side by side; a node centred over its children.
+  const place = (id: string): number => {
+    const kids = (children.get(id) ?? []).sort();
+    const under = kids.map(place);
+    const at = under.length === 0 ? next++ : (under[0] + under[under.length - 1]) / 2;
+    x.set(id, at);
+    return at;
+  };
+  const ids = g.nodes.map((n) => n.id).sort();
+  for (const id of ids) if (!parent.has(id)) place(id);
+  const deepest = Math.max(0, ...ids.map((id) => depth.get(id) ?? 0));
+  // Centred, so the camera's view of the whole tree is centred too.
+  const mid = (next - 1) / 2;
+  return new Map(
+    ids.map((id) => [
+      id,
+      [
+        ((x.get(id) as number) - mid) * TREE_SPREAD,
+        (deepest / 2 - (depth.get(id) ?? 0)) * TREE_GAP,
+        0,
+      ],
+    ]),
+  );
 }
 
 /** Each drawn node's place. Lanes: lineage left to right, members (``zero``) in lane 0. */
