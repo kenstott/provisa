@@ -487,7 +487,17 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
                 },
             )
         )
-        if term.deprecated:
+        if term.in_deprecation:
+            deprecation: dict[str, Any] = {
+                "deprecated": True,
+                # REQ-2144: the curator's stated reason, when they gave one.
+                "note": term.status_reason or "Deprecated in the Provisa glossary.",
+                "actor": "urn:li:corpuser:provisa",
+            }
+            if term.retire_on:
+                # decommissionTime is DataHub's native removal date (epoch millis).
+                retire = datetime.fromisoformat(term.retire_on).replace(tzinfo=timezone.utc)
+                deprecation["decommissionTime"] = int(retire.timestamp() * 1000)
             proposals.append(
                 AspectProposal(
                     asset=AssetRefStub(term.semantic_uri),
@@ -495,11 +505,7 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
                     entity_type="glossaryTerm",
                     urn=urn,
                     aspect_name="deprecation",
-                    aspect={
-                        "deprecated": True,
-                        "note": "Deprecated in the Provisa glossary.",
-                        "actor": "urn:li:corpuser:provisa",
-                    },
+                    aspect=deprecation,
                 )
             )
         if term.term_id in related:

@@ -441,7 +441,7 @@ def glossary_rows(
                 "displayName": term.name,
                 "type": {"name": GLOSSARY_TERM_TYPE},
                 # Deprecation marker: Collibra status (module docstring).
-                "status": {"name": DEPRECATED_STATUS if term.deprecated else ACTIVE_STATUS},
+                "status": {"name": DEPRECATED_STATUS if term.in_deprecation else ACTIVE_STATUS},
                 "attributes": attributes,
                 "relations": {
                     f"{relation}:TARGET": term_relations.get(f"{relation}:TARGET", [])

@@ -34,7 +34,7 @@ def test_a_newer_push_replaces_only_its_own_refs_run():
     assert concurrency["cancel-in-progress"] is True
 
 
-def test_the_whole_run_is_one_job_in_one_suite_wide_queue():
+def test_the_whole_run_is_one_job_in_one_queue():
     jobs = _caller()["jobs"]
     # Besides the lanes, only the step that turns a dispatched short SHA into the full one
     # (actions/checkout fetches no short SHA): one API call, nothing checked out, no lane run,
@@ -47,7 +47,12 @@ def test_the_whole_run_is_one_job_in_one_suite_wide_queue():
     assert jobs["lanes"]["needs"] == "resolve-ref"
     lanes = jobs["lanes"]
     assert lanes["uses"] == "./.github/workflows/integration-suite-lanes.yml"
-    assert lanes["concurrency"]["group"] == "integration-suite"  # no ref: every branch shares it
+    # A full run (no tests named) shares the suite-wide group with every branch; a targeted run
+    # plans a few lanes and queues by its own ref.
+    assert lanes["concurrency"]["group"] == (
+        "${{ (inputs.tests || '') == '' && 'integration-suite' "
+        "|| format('integration-suite-targeted-{0}', github.ref) }}"
+    )
 
 
 def test_a_waiting_run_is_never_cancelled_by_another_branchs_run():

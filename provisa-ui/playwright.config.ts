@@ -163,7 +163,7 @@ const TRINO_SPECS = [
 // org schema (PROVISA_E2E_ORG_ID == PROVISA_E2E_TRINO_ORG_ID), which no ordinary core/trino run
 // sets up. Excluded from "core" the same way TRINO_SPECS is: a routine core-lane run has no Trino
 // backend at all and this spec would just fail on a missing PROVISA_E2E_TRINO_CONFIG.
-const SWAP_SPECS = ["**/engine-swap.spec.ts"];
+const SWAP_SPECS = ["**/engine-swap*.spec.ts"];
 // Specs whose sources only an amd64 host can boot (exasol/docker-db never turns healthy under an
 // arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
 // ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.

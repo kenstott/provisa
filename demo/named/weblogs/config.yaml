@@ -336,10 +336,10 @@ views:
   - {name: max_ms, data_type: double, description: The longest, visible_to: [org_admin, analyst]}
 # The glossary (REQ-1641, REQ-1387). Every column derives a term from its business name; one
 # declared here by that name gets its definition, and a defined, grounded term is live (approved,
-# core.glossary.live_term_ids). Four derived terms are left undefined on purpose, so the Glossary
-# page shows them as Proposed: line offset, entry and raw (a log record's own bookkeeping) and
-# query (which joins the access log's query string and the database log's query id -- two
-# meanings for a curator to split). The abstract terms below the derived ones are the shop's
+# core.glossary.live_term_ids). Two derived terms are left undefined on purpose, so the Ontology
+# page shows them as Draft: raw (a log record's own line) and query (which joins the access log's
+# query string and the database log's query id -- two meanings for a curator to split). A log
+# record's key (file, line offset, entry) is its log table's Class, not terms of its own. The abstract terms below the derived ones are the shop's
 # ontology, grounded in the derived terms by their edges.
 glossary_terms:
 - name: access log

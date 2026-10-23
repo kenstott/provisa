@@ -603,6 +603,8 @@ tag_assignments = Table(
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
+    # REQ-2145: the glossary term a tag is on (pii on a Property term).
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
@@ -619,7 +621,8 @@ tag_assignments = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
-        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product')",
+        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', "
+        "'term')",
         name="tag_assignments_object_type_check",
     ),
 )
@@ -657,6 +660,12 @@ glossary_terms = Table(
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),
     Column("export_excluded", Boolean, nullable=False, server_default=false()),
+    # REQ-2144: the asserted parts of a term's status (schema.sql).
+    Column("deprecation_asserted", Boolean, nullable=False, server_default=false()),
+    Column("status_reason", Text),
+    Column("retire_on", Date),
+    Column("status_by", Text),
+    Column("status_at", DateTime(timezone=True)),
     Column("tenant_id", Uuid),
     UniqueConstraint("name"),
 )
@@ -686,8 +695,8 @@ glossary_term_table_refs = Table(
     Column(
         "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
     ),
-    # REQ-2141: proposed by sync, not declared by config or grounded by a person (schema.sql).
-    Column("proposed", Boolean, nullable=False, server_default=false()),
+    # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
+    Column("derived", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id"),
 )

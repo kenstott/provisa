@@ -28,8 +28,10 @@ in service, defined, and grounded in a physical column.
 from provisa.core import model_change
 from typing import TYPE_CHECKING, Any
 
+import logging
 import re
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import delete as _delete, func, or_, select, update
 
@@ -55,7 +57,10 @@ from provisa.core.schema_org import (
     registered_tables,
     relationships,
     table_columns,
+    tag_assignments,
 )
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -220,19 +225,19 @@ async def _property_term(conn: "Connection", business: str, table_context: str |
     return term_id
 
 
-async def proposal_terms(conn: "Connection") -> set[int]:
-    """The terms grounding a table only as sync's proposals and carrying no curator work: derived
+async def draft_class_terms(conn: "Connection") -> set[int]:
+    """The terms grounding a table only as sync's drafts and carrying no curator work: derived
     (REQ-2141). A term a configuration declared or a person grounded, or a curated one, is not."""
     rows = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id, glossary_term_table_refs.c.proposed)
+            select(glossary_term_table_refs.c.term_id, glossary_term_table_refs.c.derived)
         )
     ).fetchall()
-    proposed = {r.term_id for r in rows if r.proposed} - {r.term_id for r in rows if not r.proposed}
-    if not proposed:
+    drafts = {r.term_id for r in rows if r.derived} - {r.term_id for r in rows if not r.derived}
+    if not drafts:
         return set()
     graph = await _load_graph(conn)
-    return {t for t in proposed if t in graph.terms and not _is_curated(graph, graph.terms[t])}
+    return {t for t in drafts if t in graph.terms and not _is_curated(graph, graph.terms[t])}
 
 
 async def _concept_of(conn: "Connection", table_id: int) -> str:
@@ -246,11 +251,11 @@ async def _concept_of(conn: "Connection", table_id: int) -> str:
     return table_concept(row.alias or row.table_name)
 
 
-async def _propose_class(conn: "Connection", table_id: int, concept: str) -> int | None:
+async def _derive_class(conn: "Connection", table_id: int, concept: str) -> int | None:
     """Ground a keyed table in a draft Class term named for its concept (REQ-2141): the term of
     that name when it holds no non-key column ref (it may already ground other tables of the same
-    concept), else a new one. None -- no proposal -- when the concept is already a Property with
-    non-key refs; role_conflicts reports that table."""
+    concept), else a new one. None -- no draft -- when the concept is already a Property with
+    non-key refs; the class_and_attribute finding reports that table."""
     row = (
         await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == concept))
     ).fetchone()
@@ -261,7 +266,7 @@ async def _propose_class(conn: "Connection", table_id: int, concept: str) -> int
     else:
         term_id = row.id
     await conn.execute_core(
-        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id, proposed=True)
+        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id, derived=True)
     )
     return term_id
 
@@ -350,7 +355,7 @@ async def sync_table_refs(
     deprecated term revives it); departed columns drop their refs and the affected
     terms are settled under the remove-or-deprecate rule, which keeps any term a
     curator has worked on. A re-aliased column re-derives, so the glossary follows the model --
-    but only while the term it currently points at is still an untouched proposal. Once a curator
+    but only while the term it currently points at is still an untouched draft. Once a curator
     has defined, related, or staffed that term, the link is their work and an alias edit does not
     move it. ``table_context`` is the
     table's business name -- it qualifies TOO-GENERIC phrases (employees.first_name ->
@@ -380,10 +385,10 @@ async def sync_table_refs(
         )
     orphaned = {existing[c] for c in departed}
     # REQ-2141 (TABLE PROPOSALS, KEYS ON THE CLASS): the table's Class term -- its grounding, or a
-    # draft proposed now from its concept -- and the key columns whose refs belong on a Class.
+    # draft derived now from its concept -- and the key columns whose refs belong on a Class.
     if await _class_term_of(conn, table_id) is None and table_context is not None:
         if await _primary_keys(conn, table_id):
-            await _propose_class(conn, table_id, table_concept(table_context))
+            await _derive_class(conn, table_id, table_concept(table_context))
     targets = await _key_targets(conn, table_id)
     graph = await _load_graph(conn) if existing else None
     for physical, business in columns:
@@ -439,7 +444,7 @@ async def before_ref_removal(conn: "Connection") -> RemovalSnapshot:
             await conn.execute_core(select(glossary_term_refs.c.term_id).distinct())
         ).fetchall()
     }
-    # REQ-2141: a Class holds its tables' keys, but only a proposal is derived and goes with
+    # REQ-2141: a Class holds its tables' keys, but only a draft is derived and goes with
     # them; a declared or curated Class is kept, a Concept again.
     grounded = {
         r.term_id
@@ -447,7 +452,7 @@ async def before_ref_removal(conn: "Connection") -> RemovalSnapshot:
             await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
         ).fetchall()
     }
-    curated = grounded - await proposal_terms(conn)
+    curated = grounded - await draft_class_terms(conn)
     return RemovalSnapshot(await term_domains(conn), frozenset(held - curated))
 
 
@@ -629,6 +634,17 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         await conn.execute_core(select(glossary_term_experts.c.term_id).distinct())
     ).fetchall()
     with_experts = {r.term_id for r in expert_rows}
+    # REQ-2145: a tag on a term is a curator's.
+    tagged = {
+        r.term_id
+        for r in (
+            await conn.execute_core(
+                select(tag_assignments.c.term_id)
+                .where(tag_assignments.c.object_type == "term")
+                .distinct()
+            )
+        ).fetchall()
+    }
     terms = {
         r.id: {
             "id": r.id,
@@ -637,6 +653,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             "retired": bool(r.retired),
             "definition": r.definition,
             "has_expert": r.id in with_experts,
+            "tagged": r.id in tagged,
             "ref_count": counts.get(r.id, 0),
             "rooted": counts.get(r.id, 0) > 0 or r.id in classes,
         }
@@ -680,12 +697,14 @@ def _is_curated(graph: _TermGraph, node: dict) -> bool:
     have come from a person; deleting the row would discard that silently and the next
     registration of the same column would put a blank term in its place. Such a term is
     deprecated instead — kept, out of service, and revived by ``_find_or_create_term`` if its
-    column comes back. ``retired`` counts too: a curator's withdrawal is itself the work.
+    column comes back. ``retired`` counts too: a curator's withdrawal is itself the work, and so
+    does a tag on the term (REQ-2145): sync never re-derives the term's columns away from it.
     """
     return bool(
         (node["definition"] or "").strip()
         or node["retired"]
         or node["has_expert"]
+        or node["tagged"]
         or any(node["id"] in edge for edge in graph.edges)
     )
 
@@ -766,6 +785,9 @@ async def list_terms(
     live = await live_ids(conn)
     grounded = await grounded_ids(conn)
     gaps = await identity.identity_gap_ids(conn)  # REQ-2130: grounded in tables not all joined
+    from provisa.core.glossary_findings import findings as _findings
+
+    found = await _findings(conn)  # REQ-2146: counted on the row, so a list filters on it
     scope = await term_domains(conn)
     return [
         dict(r._mapping)
@@ -774,6 +796,8 @@ async def list_terms(
             "table_count": table_counts.get(r.id, 0),
             # REQ-2141: derived -- a term rooted in no column and no table is a Concept.
             "is_abstract": not counts.get(r.id) and not table_counts.get(r.id),
+            "status": status_of(r, live),  # REQ-2144
+            "findings": len(found.get(r.id, [])),  # REQ-2146
             "identity_gap": r.id in gaps,
             "live": r.id in live,
             "grounded": r.id in grounded,
@@ -816,6 +840,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
         )
     ).scalar_one()
     term["is_abstract"] = not term["ref_count"] and not term["table_count"]  # REQ-2141: derived
+    term["status"] = status_of(row, await live_ids(conn))  # REQ-2144
     term["identity_gap"] = term_id in await identity.identity_gap_ids(conn)
     other = glossary_terms.alias("other")
     outgoing = (
@@ -850,6 +875,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
         )
     ).fetchall()
     term["experts"] = [dict(r._mapping) for r in experts]
+    term["tags"] = await term_tags(conn, term_id)  # REQ-2145
     term["live"] = term_id in await live_ids(conn)
     # REQ-1591: the same rule the list and the gates use, rather than reading the refs above —
     # those are empty for an abstract term and for a deprecated one whose columns have gone,
@@ -916,6 +942,11 @@ async def upsert_declared_term(
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
     if not name:
         raise ValueError("term name is required")
+    held = (
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
+    ).fetchone()
+    if held is not None:
+        await _refuse_clearing_tagged(conn, held.id, definition)  # REQ-2145
     term_id = await conn.upsert_returning(
         glossary_terms,
         {
@@ -950,26 +981,268 @@ async def rename_term(conn: "Connection", term_id: int, new_name: str) -> bool:
     return (result.rowcount or 0) > 0
 
 
+class TermIsTagged(ValueError):
+    """A definition cleared on a term that carries tags (REQ-2145): an undefined term governs
+    nothing, so clearing it would take the tags off every column the term means, unannounced."""
+
+    code = "tag.term_is_tagged"
+
+    def __init__(self, term: str, tags: list[str]) -> None:
+        super().__init__(f"Unmark {', '.join(tags)} first, or keep a definition")
+        self.term = term
+        self.tags = tags
+
+
+async def _refuse_clearing_tagged(conn: "Connection", term_id: int, definition: str | None) -> None:
+    if (definition or "").strip():
+        return
+    tags = [t["tag_id"] for t in await term_tags(conn, term_id)]
+    if tags:
+        raise TermIsTagged(await _term_name(conn, term_id), tags)
+
+
 async def set_definition(conn: "Connection", term_id: int, definition: str | None) -> bool:
+    await _refuse_clearing_tagged(conn, term_id, definition)  # REQ-2145
     result = await conn.execute_core(
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(definition=definition)
     )
     return (result.rowcount or 0) > 0
 
 
-async def set_retired(conn: "Connection", term_id: int, retired: bool) -> bool:
-    """Retire (or un-retire) a term: the soft delete for rooted terms.
+# ---------------------------------------------------------------------------
+# Status (REQ-2144): draft | live | deprecated | retired
+# ---------------------------------------------------------------------------
 
-    A rooted term cannot be deleted — ``sync_table_refs`` would recreate it from the same
-    column on the next registration — so retiring is how a curator takes one out of service.
-    The term keeps its refs and stays editable here; ``search_terms`` and the metadata export
-    both skip it, so no agent or downstream catalog can bind to it. Nothing in the derived
-    lifecycle writes this column, so the retirement survives a column departing and returning.
-    """
-    result = await conn.execute_core(
-        update(glossary_terms).where(glossary_terms.c.id == term_id).values(retired=retired)
+TERM_STATUSES = ("draft", "live", "deprecated", "retired")
+
+
+class StatusRefused(ValueError):
+    """A status change refused by name: ``code`` (glossary.<code>) and its ``params``."""
+
+    def __init__(self, code: str, message: str, **params: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
+
+
+def status_of(row: Any, live: "set[int]") -> str:
+    """A term's status from its row and the admission rule: retired and deprecated (automatic or
+    asserted) as stored, else live when admitted, else draft."""
+    if row.retired:
+        return "retired"
+    if row.deprecated or row.deprecation_asserted:
+        return "deprecated"
+    return "live" if row.id in live else "draft"
+
+
+async def term_statuses(conn: "Connection") -> dict[int, str]:
+    live = await live_ids(conn)
+    rows = (
+        await conn.execute_core(
+            select(
+                glossary_terms.c.id,
+                glossary_terms.c.retired,
+                glossary_terms.c.deprecated,
+                glossary_terms.c.deprecation_asserted,
+            )
+        )
+    ).fetchall()
+    return {r.id: status_of(r, live) for r in rows}
+
+
+def _reason(reason: "str | None") -> str:
+    text = (reason or "").strip()
+    if not text:
+        raise StatusRefused("reason_required", "a reason is required")
+    return text
+
+
+async def deprecate_term(
+    conn: "Connection",
+    term_id: int,
+    *,
+    reason: "str | None",
+    retire_on: "date | None",
+    by: "str | None",
+    today: "date",
+) -> None:
+    """A curator deprecates a live term (REQ-2144): it stays in service -- it still conducts the
+    admission rule -- until ``retire_on``, when the scheduler retires it."""
+    text = _reason(reason)
+    if retire_on is not None and retire_on < today:
+        raise StatusRefused(
+            "retire_on_past",
+            f"the planned retirement date {retire_on.isoformat()} is in the past",
+            retire_on=retire_on.isoformat(),
+        )
+    status = (await term_statuses(conn)).get(term_id)
+    if status is None:
+        raise TermNotFound(f"term {term_id} not found")
+    if status != "live":
+        raise StatusRefused(
+            "term_not_live", f"only a live term is deprecated; this one is {status}", status=status
+        )
+    await conn.execute_core(
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(
+            deprecation_asserted=True,
+            status_reason=text,
+            retire_on=retire_on,
+            status_by=by,
+            status_at=func.now(),
+        )
     )
+    model_change.name("deprecate", "glossary term", str(term_id))
+
+
+#: A retired term's successor takes its role (REQ-2144): a Class's is a Class or a Concept, a
+#: Property's a Property or a Concept.
+_SUCCESSOR_ROLES = {"class": {"class", "concept"}, "property": {"property", "concept"}}
+
+
+async def _move_to_successor(conn: "Connection", term_id: int, successor: int, role: str) -> None:
+    """Everything attached to a retiring term goes to its successor (REQ-2144): a Class's table
+    groundings, whose keys follow their tables, or a Property's column refs. THE move a retirement
+    makes; the move check on tags (ci-fix's) is called here."""
+    if role == "class":
+        tables = await _term_table_ids(conn, term_id)
+        await conn.execute_core(
+            update(glossary_term_table_refs)
+            .where(glossary_term_table_refs.c.term_id == term_id)
+            .values(term_id=successor, derived=False)
+        )
+        # the retiring term is kept, as the record of what it was, not settled away
+        await rehome_keys(conn, tables, keep=frozenset({term_id}))
+    else:
+        await conn.execute_core(
+            update(glossary_term_refs)
+            .where(glossary_term_refs.c.term_id == term_id)
+            .values(term_id=successor)
+        )
+
+
+async def retire_term(
+    conn: "Connection",
+    term_id: int,
+    *,
+    reason: "str | None",
+    successor: "int | None",
+    by: "str | None",
+) -> None:
+    """A curator retires a term (REQ-2144). Its column refs, or its table groundings with their
+    keys, move to ``successor`` -- required when anything is attached, and of a role that fits --
+    and the term is kept as an inert record: its definition, edges and experts, the REPLACES edge
+    successor -> term, and the reason. A successor that is the term itself, or retired, is
+    refused."""
+    text = _reason(reason)
+    statuses = await term_statuses(conn)
+    if term_id not in statuses:
+        raise TermNotFound(f"term {term_id} not found")
+    role = await term_role(conn, term_id)
+    if successor is None and role != "concept":
+        raise StatusRefused(
+            "successor_required",
+            f"the term holds {'tables' if role == 'class' else 'columns'}; retiring it moves them "
+            "to a successor, which is required",
+            role=role,
+        )
+    if successor is not None:
+        if successor == term_id:
+            raise StatusRefused("successor_is_self", "a term cannot succeed itself")
+        if successor not in statuses:
+            raise TermNotFound(f"term {successor} not found")
+        name = await _term_name(conn, successor)
+        if statuses[successor] == "retired":
+            raise StatusRefused(
+                "successor_retired", f"the successor {name!r} is retired", successor=name
+            )
+        successor_role = await term_role(conn, successor)
+        if role != "concept" and successor_role not in _SUCCESSOR_ROLES[role]:
+            raise StatusRefused(
+                "successor_role",
+                f"a {role}'s successor is a {role} or a concept; {name!r} is a {successor_role}",
+                role=role,
+                successor=name,
+                successor_role=successor_role,
+            )
+        if role != "concept":
+            await _move_to_successor(conn, term_id, successor, role)
+    await conn.execute_core(
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(
+            retired=True,
+            deprecation_asserted=False,
+            retire_on=None,
+            status_reason=text,
+            status_by=by,
+            status_at=func.now(),
+        )
+    )
+    if successor is not None:
+        await add_edge(conn, successor, term_id, "REPLACES")
+    model_change.name("retire", "glossary term", str(term_id))
+
+
+async def restore_term(conn: "Connection", term_id: int, *, by: "str | None") -> bool:
+    """Clear what a curator asserted -- a retirement or a deprecation (REQ-2144); the term's
+    status is computed again. A retired term comes back with its record -- definition, edges,
+    experts -- and nothing attached (its columns and tables went to its successor), less the
+    REPLACES edge its retirement wrote: an empty Concept, a draft. False when there is no such
+    term."""
+    result = await conn.execute_core(
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(
+            retired=False,
+            deprecation_asserted=False,
+            retire_on=None,
+            status_reason=None,
+            status_by=by,
+            status_at=func.now(),
+        )
+    )
+    # Back in service, it is replaced by nothing: the succession its retirement wrote goes, so
+    # it does not reach data through its successor -- it comes back an empty Concept, a draft.
+    await conn.execute_core(
+        _delete(glossary_term_edges).where(
+            (glossary_term_edges.c.to_term_id == term_id)
+            & (glossary_term_edges.c.rel_type == "REPLACES")
+        )
+    )
+    model_change.name("restore", "glossary term", str(term_id))
     return (result.rowcount or 0) > 0
+
+
+async def retire_due(conn: "Connection", today: "date") -> list[int]:
+    """Retire every deprecated term whose planned retirement date has come (REQ-2144), keeping
+    the deprecation's reason. A term that still holds columns or tables needs a successor to
+    take them, which a date cannot name: it stays deprecated, a retirement_blocked finding
+    (REQ-2146). Returns the ids retired."""
+    due = (
+        await conn.execute_core(
+            select(glossary_terms.c.id, glossary_terms.c.name)
+            .where(glossary_terms.c.deprecation_asserted & ~glossary_terms.c.retired)
+            .where(glossary_terms.c.retire_on <= today)
+        )
+    ).fetchall()
+    retired = []
+    for r in due:
+        if await term_role(conn, r.id) != "concept":
+            log.warning(
+                "term %r is due for retirement but still holds columns or tables; it stays "
+                "deprecated, a retirement_blocked finding (REQ-2146)",
+                r.name,
+            )
+            continue
+        await conn.execute_core(
+            update(glossary_terms)
+            .where(glossary_terms.c.id == r.id)
+            .values(retired=True, deprecation_asserted=False, status_at=func.now())
+        )
+        retired.append(r.id)
+    return retired
 
 
 async def set_export_excluded(conn: "Connection", term_id: int, excluded: bool) -> bool:
@@ -1241,8 +1514,10 @@ async def export_graph(conn: "Connection") -> dict:
     ]
     # REQ-2141: abstract is derived -- a term rooted in no column and no table is a Concept.
     rooted = {r["term_id"] for r in refs} | {r["term_id"] for r in table_refs}
+    statuses = await term_statuses(conn)  # REQ-2144
     for term in terms:
         term["is_abstract"] = term["id"] not in rooted
+        term["status"] = statuses[term["id"]]
     # REQ-1591: each term's domains, by the one rule -- a catalog that files terms by domain
     # (Purview's Unified Catalog) places them from these.
     domains = [
@@ -1480,7 +1755,59 @@ async def role_conflicts(conn: "Connection") -> dict:
                     "columns": columns,
                 }
             )
-    return {"terms": terms, "tables": tables}
+    # REQ-2145: a tag stays on a term that has stopped being a Property, and is reported.
+    tag_rows = (
+        await conn.execute_core(
+            select(tag_assignments.c.tag_id, glossary_terms.c.id, glossary_terms.c.name)
+            .join(glossary_terms, glossary_terms.c.id == tag_assignments.c.term_id)
+            .where(tag_assignments.c.object_type == "term")
+            .order_by(glossary_terms.c.name, tag_assignments.c.tag_id)
+        )
+    ).fetchall()
+    tagged = []
+    for r in tag_rows:
+        role = await term_role(conn, r.id)
+        if role != "property":
+            tagged.append({"term_id": r.id, "term": r.name, "tag_id": r.tag_id, "role": role})
+    return {"terms": terms, "tables": tables, "tags": tagged}
+
+
+async def term_role(conn: "Connection", term_id: int) -> str:
+    """The term's role (REQ-2141): ``class`` when it grounds tables, ``property`` when it holds
+    column refs, ``concept`` when it does neither."""
+    if await _term_table_ids(conn, term_id):
+        return "class"
+    held = (
+        await conn.execute_core(select(func.count()).where(glossary_term_refs.c.term_id == term_id))
+    ).scalar_one()
+    return "property" if held else "concept"
+
+
+async def term_tags(conn: "Connection", term_id: int) -> list[dict]:
+    """The tags on the term (REQ-2145), each with its reason."""
+    rows = (
+        await conn.execute_core(
+            select(tag_assignments.c.tag_id, tag_assignments.c.reason)
+            .where(tag_assignments.c.object_type == "term", tag_assignments.c.term_id == term_id)
+            .order_by(tag_assignments.c.tag_id)
+        )
+    ).fetchall()
+    return [dict(r._mapping) for r in rows]
+
+
+async def term_column_count(conn: "Connection", term_id: int) -> int:
+    """How many columns the term holds."""
+    return (
+        await conn.execute_core(select(func.count()).where(glossary_term_refs.c.term_id == term_id))
+    ).scalar_one()
+
+
+async def is_key_column(conn: "Connection", table_id: int, column_name: str) -> bool:
+    """Whether the column is a key -- a primary key's, or a declared foreign key's -- whose ref is
+    placed on a Class by derivation (REQ-2141)."""
+    return column_name in await _primary_keys(conn, table_id) or column_name in (
+        await _references(conn, table_id)
+    )
 
 
 async def term_exists(conn: "Connection", term_id: int) -> bool:
@@ -1538,7 +1865,7 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
 
     Refused by name: a table without a primary key, whose rows are not identifiable instances,
     a term holding column refs a Class may not (a Property, REQ-2141), and a table a curated
-    class (or this term) already grounds -- a table has one class term. A table's proposal gives
+    class (or this term) already grounds -- a table has one class term. A table's draft gives
     way. The table's key refs, and the foreign keys referring to it, move onto the term.
     """
     if not await term_exists(conn, term_id):
@@ -1554,15 +1881,15 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
             .where(glossary_term_table_refs.c.table_id == table_id)
         )
     ).fetchone()
-    if held is not None and (held.id == term_id or held.id not in await proposal_terms(conn)):
+    if held is not None and (held.id == term_id or held.id not in await draft_class_terms(conn)):
         raise TableAlreadyGrounded(address, held.id, held.name)
     if held is not None:
-        # The table's proposal gives way to the curated class (REQ-2141).
+        # The table's draft gives way to the curated class (REQ-2141).
         await identity.refuse_term_change(conn, table_id)
         await conn.execute_core(
             update(glossary_term_table_refs)
             .where(glossary_term_table_refs.c.table_id == table_id)
-            .values(term_id=term_id, proposed=False)
+            .values(term_id=term_id, derived=False)
         )
     else:
         await conn.execute_core(
@@ -1590,13 +1917,13 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
         await identity.refuse_term_change(conn, table_id)
     await conn.upsert(
         glossary_term_table_refs,
-        {"term_id": term_id, "table_id": table_id, "proposed": False},
+        {"term_id": term_id, "table_id": table_id, "derived": False},
         index_elements=["table_id"],
-        update_columns=["term_id", "proposed"],
+        update_columns=["term_id", "derived"],
     )
     await _home_key_refs(conn, table_id)
     if held is not None and held.term_id != term_id:
-        # A proposal the configuration replaced keeps what else it holds, or goes (REQ-2141).
+        # A draft the configuration replaced keeps what else it holds, or goes (REQ-2141).
         await _settle_terms(conn, {held.term_id}, domains_before=await term_domains(conn))
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 
@@ -1613,9 +1940,9 @@ async def unground_table(conn: "Connection", term_id: int, table_id: int) -> boo
     )
     ungrounded = (result.rowcount or 0) > 0
     if ungrounded:
-        # REQ-2141: the table goes back to its proposed class, as a sync would propose it.
+        # REQ-2141: the table goes back to its draft class, as a sync would derive it.
         if await _primary_keys(conn, table_id):
-            await _propose_class(conn, table_id, await _concept_of(conn, table_id))
+            await _derive_class(conn, table_id, await _concept_of(conn, table_id))
         await _home_key_refs(conn, table_id, keep=frozenset({term_id}))
     return ungrounded
 
@@ -1709,7 +2036,7 @@ async def search_terms(
 
     Only live terms are returned — see ``live_term_ids`` for the admission rule. This is the
     surface an agent binds a question to a column through, so anything it offers must be
-    in service, defined, and grounded in a physical column: an undefined term is a proposal,
+    in service, defined, and grounded in a physical column: an undefined term is a draft,
     a retired one was withdrawn, and an ungrounded one names no data.
 
     The gate runs after the match rather than inside it because groundedness is a property of

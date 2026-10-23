@@ -305,6 +305,9 @@ def _glossary(edges=None) -> dict:
             "definition": "A sale.",
             "is_abstract": False,
             "deprecated": False,
+            "deprecation_asserted": False,
+            "status_reason": None,
+            "retire_on": None,
         },
         {
             "id": 2,
@@ -312,6 +315,9 @@ def _glossary(edges=None) -> dict:
             "definition": "Names a sale.",
             "is_abstract": False,
             "deprecated": False,
+            "deprecation_asserted": False,
+            "status_reason": None,
+            "retire_on": None,
         },
         {
             "id": 3,
@@ -319,6 +325,9 @@ def _glossary(edges=None) -> dict:
             "definition": "A sale, in the field.",
             "is_abstract": True,
             "deprecated": False,
+            "deprecation_asserted": False,
+            "status_reason": None,
+            "retire_on": None,
         },
     ]
     return {

@@ -74,12 +74,16 @@ def _term(term_id: int, name: str, **kwargs) -> GlossaryTermAsset:
         definition=f"What {name} means.",
         is_abstract=True,
         deprecated=False,
+        status="live",
         refs=(),
         experts=(),
         semantic_uri=f"provisa://{ORG}/terms/{name}",
     )
     base.update(kwargs)
-    return GlossaryTermAsset(**base)
+    # REQ-2144: a deprecated term is one a curator deprecated -- its status.
+    if base.pop("deprecated"):
+        base["status"] = "deprecated"
+    return GlossaryTermAsset(deprecated=False, **base)
 
 
 def _snapshot(terms, edges=()) -> MetadataSnapshot:

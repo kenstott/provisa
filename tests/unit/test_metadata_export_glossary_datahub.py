@@ -56,7 +56,8 @@ def _term(term_id: int, name: str, *, deprecated: bool = False) -> GlossaryTermA
         name=name,
         definition=f"definition of {name}",
         is_abstract=False,
-        deprecated=deprecated,
+        deprecated=False,
+        status="deprecated" if deprecated else "live",
         experts=("alice",) if name == "customer" else (),
         semantic_uri=f"provisa://{ORG}/terms/{name}",
     )
@@ -398,3 +399,18 @@ def test_each_role_has_its_own_child_node_and_every_term_names_its_role():
         "customer": (f"{NODE_URN}.properties", "property"),
         "party": (f"{NODE_URN}.concepts", "concept"),
     }
+
+
+def test_a_curators_deprecation_carries_its_reason_and_retirement_date():
+    """REQ-2144: the status's reason is DataHub's deprecation note and retire_on its
+    decommission time."""
+    term = replace(
+        _term(1, "legacy_margin", deprecated=True),
+        status_reason="Use net margin.",
+        retire_on="2027-01-31",
+    )
+    (aspect,) = [
+        p.aspect for p in to_proposals(_snapshot([term])) if p.kind == "glossary_term_deprecation"
+    ]
+    assert aspect["note"] == "Use net margin."
+    assert aspect["decommissionTime"] == 1801353600000

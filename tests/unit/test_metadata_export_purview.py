@@ -349,6 +349,9 @@ def _term(term_id: int, name: str, **extra: Any) -> dict:
         "definition": f"what {name} means",
         "is_abstract": False,
         "deprecated": False,
+        "deprecation_asserted": False,
+        "status_reason": None,
+        "retire_on": None,
         **extra,
     }
 
@@ -392,10 +395,10 @@ def _relations(api, tid: str, category: str) -> set[tuple[str, str]]:
 
 async def test_terms_land_in_their_domain_with_parent_status_and_relationships(api, data_map):
     snapshot = _snapshot(glossary=_glossary())
-    # A deprecated term is withheld from the snapshot by the admission rule; the adapter still
-    # says EXPIRED for one handed to it.
+    # REQ-2144: a curator deprecated client; it is still in service, and EXPIRED in Purview.
     snapshot.glossary_terms = [
-        replace(t, deprecated=True) if t.name == "client" else t for t in snapshot.glossary_terms
+        replace(t, status="deprecated") if t.name == "client" else t
+        for t in snapshot.glossary_terms
     ]
     result = await _export().publish(snapshot)
     assert result.ok, result.errors

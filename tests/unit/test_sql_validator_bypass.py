@@ -377,6 +377,7 @@ class TestInverseRelationshipCollision:
             domain_id: str = ""
             column_presets: list = dc_field(default_factory=list)
             source_type: str = ""
+            original_table_name: str = ""  # as TableMeta: the name before a physical alias
 
         @dataclass
         class _Ctx:

@@ -108,8 +108,10 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 new_expressions.append(sel_expr)
                 continue
             # Find node meta: prefer alias_to_node lookup, then direct search
-            node_meta = alias_to_node.get(graph_var) or _find_node_meta(
-                graph_var, table_ref, label_map
+            node_meta = (
+                alias_to_node.get(graph_var)
+                or inner.meta.get("provisa_node")  # select_builder.NODE_OF_STAR
+                or _find_node_meta(graph_var, table_ref, label_map)
             )
             out_alias = alias_name or graph_var
             tbl = table_ref or graph_var

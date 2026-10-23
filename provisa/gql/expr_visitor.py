@@ -154,6 +154,12 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if isinstance(node.obj, MapLiteral):
+            # A map literal's key is its entry's own value; a key it has not is null (#287).
+            for key, value in node.obj.entries:
+                if key == node.name:
+                    return self.lower(value)
+            return exp.Null()
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
@@ -276,10 +282,19 @@ class ExprLowering:
         return _anon("element_at", base, idx)
 
     def _lower_Slice(self, node: Slice) -> exp.Expression:
+        # Cypher's list[a..b] is 0-based with b excluded; the engine's slice(list, start, length)
+        # starts at 1: start a + 1, length b - a.
         base = self.lower(node.obj)
-        start = self.lower(node.start) if node.start is not None else exp.Literal.number(1)
+        first = self.lower(node.start) if node.start is not None else exp.Literal.number(0)
+        if node.start is None:
+            start = exp.Literal.number(1)
+        elif isinstance(node.start, Literal) and node.start.kind == "number":
+            start = exp.Literal.number(int(cast("int | float", node.start.value)) + 1)
+        else:
+            start = exp.Add(this=first, expression=exp.Literal.number(1))
         if node.stop is not None:
-            length = exp.Sub(this=self.lower(node.stop), expression=start)
+            stop = self.lower(node.stop)
+            length = stop if node.start is None else exp.Sub(this=stop, expression=first.copy())
             return _anon("slice", base, start, length)
         return _anon("slice", base, start, _anon("cardinality", base))
 

@@ -37,6 +37,9 @@ async function nextRead(page: Page, match: (query: string) => boolean, act: () =
   return { query: (request.postDataJSON() as { query: string }).query, data: body.data };
 }
 
+/** The view's read: the Ontology operation, not the OntologyCount read it makes first. */
+const ontologyRead = (q: string) => /^query Ontology[\s({]/.test(q);
+
 /** The Ontology View filtered (Taxonomy's two edge types, Unconnected off): the query it read and its
  * answer. One root: the terms, each with the edges leaving it. */
 async function filteredView(page: Page) {
@@ -49,12 +52,12 @@ async function filteredView(page: Page) {
   // Taxonomy: two edge types; then Unconnected off, all in the query's where.
   await nextRead(
     page,
-    (q) => q.startsWith("query Ontology") && q.includes("relType"),
+    (q) => ontologyRead(q) && q.includes("relType"),
     () => page.getByTestId("ontology-preset").getByText("Taxonomy", { exact: true }).click(),
   );
   const viewed = await nextRead(
     page,
-    (q) => q.startsWith("query Ontology") && q.includes("edgesOut"),
+    (q) => ontologyRead(q) && q.includes("edgesOut"),
     async () => {
       await page.getByTestId("ontology-terms-menu").click();
       await page.getByTestId("ontology-terms-menu-option-unconnected").click();
@@ -102,6 +105,42 @@ test.describe("Open as query", () => {
     expect(run.data).toEqual(viewed.data);
   });
 
+  test("a searched view's query states its search and neighbourhood, and run answers what it read", async ({
+    page,
+  }) => {
+    await page.goto("/admin/ontology");
+    await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
+    await page.getByTestId("glossary-ontology-toggle").click();
+    await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
+      timeout: 60_000,
+    });
+    // REQ-2143: the search is the query's root filter, its neighbourhood read nested with it.
+    const viewed = await nextRead(
+      page,
+      (q) => ontologyRead(q) && q.includes("ilike"),
+      () => page.getByTestId("glossary-search").fill("species"),
+    );
+    expect(viewed.query).toContain('ilike: "%species%"');
+    const terms = (viewed.data as { glossary_terms: { name: string }[] }).glossary_terms;
+    expect(terms.map((t) => t.name)).toContain("species");
+
+    await page.getByTestId("ontology-open-as-query").click();
+    await page.getByTestId("ontology-open-as-graphql").click();
+    await page.waitForURL("**/query", { timeout: 60_000 });
+    const run = await nextRead(
+      page,
+      (q) => q === viewed.query,
+      async () => {
+        await expect(page.locator(".graphiql-execute-button")).toBeEnabled({ timeout: 60_000 });
+        await expect(page.locator(".graphiql-query-editor")).toContainText("query Ontology", {
+          timeout: 60_000,
+        });
+        await page.locator(".graphiql-execute-button").click();
+      },
+    );
+    expect(run.data).toEqual(viewed.data);
+  });
+
   test("its one Cypher pattern, run on the Cypher page, answers the same terms and edges", async ({
     page,
   }) => {
@@ -127,7 +166,13 @@ test.describe("Open as query", () => {
     await page.locator(".graph-run-btn").click();
     const response = await (await asked).response();
     expect(response?.status(), "the Cypher pattern is answered").toBe(200);
-    const body = (await response?.json()) as { error?: unknown; rows?: unknown };
+    // The Cypher page asks for each statement's own result (results: "each"); the pattern is one.
+    const { results } = (await response?.json()) as {
+      results: { status: number; body: { error?: unknown; rows?: unknown } }[];
+    };
+    expect(results, "one statement, one result").toHaveLength(1);
+    const [{ status, body }] = results;
+    expect(status, "the statement is answered").toBe(200);
     expect(body.error).toBeUndefined();
     // The same graph: every term the view read, and every edge type it drew between them.
     const said = strings(body.rows);

@@ -518,7 +518,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
         """Create or update one term; its catalog entry's name, or None when refused (reported)."""
         name = f"{glossary}/terms/{resource_id(term.name)}"
         labels = {"provisa-role": term.role}
-        if term.deprecated:
+        if term.in_deprecation:
             labels["provisa-deprecated"] = "true"
         body = {
             "displayName": term.name,

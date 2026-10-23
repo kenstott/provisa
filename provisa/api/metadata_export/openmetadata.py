@@ -888,6 +888,7 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
             definition=definition,
             is_abstract=True,
             deprecated=False,
+            status="live",
             semantic_uri=f"provisa://{snapshot.org_id}/glossary/roles/{role}",
         )
     for term in snapshot.glossary_terms:
@@ -1343,7 +1344,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         shows as ``Deprecated`` moves to ``Approved``. Any other status is the stewards'
         review workflow and is never touched.
         """
-        if plan.term.deprecated:
+        if plan.term.in_deprecation:
             if live_status == "Deprecated":
                 return
             value = "Deprecated"

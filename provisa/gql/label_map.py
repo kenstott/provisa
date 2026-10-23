@@ -123,6 +123,9 @@ class JunctionMapping:  # REQ-1586
     # REQ-1586: which nomination names the exposed type — see junction_rel_type.
     label_source: str = ""
     label_fixed: str = ""
+    #: A single-hop type alternation over this junction (``[r:A|B]``): the discriminator values
+    #: its rows may hold, one per type. Empty for a relationship's own mapping (``type_value``).
+    type_values: tuple[str, ...] = ()
 
 
 @dataclass

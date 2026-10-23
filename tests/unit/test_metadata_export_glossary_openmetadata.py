@@ -75,7 +75,8 @@ def _term(
         name=name,
         definition=definition,
         is_abstract=True,
-        deprecated=deprecated,
+        deprecated=False,
+        status="deprecated" if deprecated else "live",
         refs=refs,
         semantic_uri=f"provisa://acme/terms/{name}",
     )

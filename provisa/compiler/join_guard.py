@@ -43,6 +43,7 @@ as an equality on any other column of it does.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, replace
 from itertools import product
 from typing import Any
@@ -90,9 +91,14 @@ def form_of(side: exp.Expr) -> str:
     return shaped.sql(dialect="postgres", identify=True)
 
 
+@functools.lru_cache(maxsize=8192)
 def registered_form(template: str) -> str:
     """A registered relationship's side, written with ``{alias}`` for its table, as
-    :func:`form_of` writes a statement's."""
+    :func:`form_of` writes a statement's.
+
+    Kept by its text: the form is that text's alone, so a relationship saved with another side is
+    another text and its own form, and none can be served stale. Every statement's guard asks
+    for every registered relationship's (``sql_validator.computed_joins``), each a parse."""
     import sqlglot
 
     return form_of(sqlglot.parse_one(template.replace("{alias}", _ANY), read="postgres"))

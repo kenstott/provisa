@@ -297,15 +297,24 @@ async def test_retired_and_deprecated_terms_are_withheld_from_agent_search(contr
         await glossary_repo.set_definition(conn, customer["id"], "The buyer.")
         assert [t["name"] for t in await glossary_repo.search_terms(conn, "custom")] == ["customer"]
 
-        assert await glossary_repo.set_retired(conn, customer["id"], True)
+        # REQ-2144: retiring moves its column to the successor; the term is kept as a record.
+        client = await glossary_repo.create_abstract_term(
+            conn, "client", definition="One who buys.", domains=set()
+        )
+        await glossary_repo.retire_term(
+            conn, customer["id"], reason="renamed", successor=client, by=None
+        )
         assert await glossary_repo.search_terms(conn, "custom") == []
-        # The refs survive the soft delete: the term is out of service, not unbound.
         detail = await glossary_repo.get_term(conn, customer["id"])
-        assert detail is not None and [r["column_name"] for r in detail["refs"]] == ["cust_id"]
-        assert bool(detail["retired"]) is True
+        assert detail is not None and detail["refs"] == [] and detail["status"] == "retired"
+        assert [r["column_name"] for r in (await glossary_repo.get_term(conn, client))["refs"]] == [
+            "cust_id"
+        ]
 
-        assert await glossary_repo.set_retired(conn, customer["id"], False)
-        assert [t["name"] for t in await glossary_repo.search_terms(conn, "custom")] == ["customer"]
+        # Restored, it comes back with its record and nothing attached: a draft Concept.
+        assert await glossary_repo.restore_term(conn, customer["id"], by=None)
+        assert (await glossary_repo.get_term(conn, customer["id"]))["status"] == "draft"
+        assert await glossary_repo.search_terms(conn, "custom") == []
 
 
 @pytest.mark.asyncio
@@ -330,8 +339,11 @@ async def test_abstract_term_is_offered_only_while_a_chain_reaches_a_physical_re
         ]
 
         # Retiring the only term on the chain breaks the grounding: a withdrawn term must not
-        # keep its dependents reachable.
-        assert await glossary_repo.set_retired(conn, rooted["id"], True)
+        # keep its dependents reachable (its column goes to the successor; its edges stay).
+        successor = await glossary_repo.create_abstract_term(conn, "placed on", domains=set())
+        await glossary_repo.retire_term(
+            conn, rooted["id"], reason="split", successor=successor, by=None
+        )
         assert await glossary_repo.search_terms(conn, "business date") == []
 
 
@@ -368,16 +380,22 @@ async def test_column_removal_warning_states_each_terms_fate(control_plane):
 async def test_retirement_survives_re_registration(control_plane):
     """Re-registering the table leaves the retirement alone: nothing in the derived lifecycle
     writes ``retired``, unlike ``deprecated``, which _find_or_create_term clears whenever a
-    matching column reappears."""
+    matching column reappears. The column stays on the curated successor it moved to."""
     async with _conn(control_plane) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["cust_id", "order_dt"]))
         customer = await _term(conn, "customer")
         assert customer is not None
-        assert await glossary_repo.set_retired(conn, customer["id"], True)
+        client = await glossary_repo.create_abstract_term(
+            conn, "client", definition="One who buys.", domains=set()
+        )
+        await glossary_repo.retire_term(
+            conn, customer["id"], reason="renamed", successor=client, by=None
+        )
         await table_repo.upsert(conn, _tbl("orders", ["cust_id", "order_dt"]))
         still = await _term(conn, "customer")
         assert still is not None and still["id"] == customer["id"]
         assert bool(still["retired"]) is True and bool(still["deprecated"]) is False
+        assert still["ref_count"] == 0
         assert await glossary_repo.search_terms(conn, "custom") == []
 
 

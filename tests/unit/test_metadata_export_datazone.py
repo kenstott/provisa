@@ -504,6 +504,7 @@ def _glossary_snapshot(*, deprecated: bool = False) -> MetadataSnapshot:
                 definition="Anyone the business deals with.",
                 is_abstract=True,
                 deprecated=False,
+                status="live",
                 semantic_uri="provisa://acme/terms/party",
             ),
             GlossaryTermAsset(
@@ -511,7 +512,8 @@ def _glossary_snapshot(*, deprecated: bool = False) -> MetadataSnapshot:
                 name="order",
                 definition="A request to buy.",
                 is_abstract=False,
-                deprecated=deprecated,
+                deprecated=False,
+                status="deprecated" if deprecated else "live",
                 role="class",
                 tables=(orders,),
                 semantic_uri="provisa://acme/terms/order",

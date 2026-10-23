@@ -292,6 +292,9 @@ class ModelTag:  # REQ-1375, REQ-1377, REQ-1378
     relationship_id: str | None = None
     reason: str | None = None  # required for 'deprecated' at the mutation layer
     expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
+    # REQ-2145: the glossary term the column carries the tag through; None when the tag is on the
+    # asset itself.
+    term: str | None = None
 
 
 @dataclass
@@ -408,12 +411,25 @@ class GlossaryTermAsset:  # REQ-1387
     definition: str | None
     is_abstract: bool
     deprecated: bool
+    # REQ-2144: the term's status -- an exported term is admitted, so live, or deprecated when a
+    # curator deprecated it (in service until retire_on) -- for each catalog to map to its own
+    # (OpenMetadata Approved/Deprecated, Collibra Accepted/Deprecated, DataHub's deprecation).
+    status: str
+    status_reason: str | None = None
+    retire_on: str | None = None  # ISO date
     refs: tuple[AssetRef, ...] = ()
     tables: tuple[AssetRef, ...] = ()
     role: str = "concept"  # class | property | concept
     experts: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/terms/<term name>
     domains: tuple[str, ...] = ()  # REQ-1591: the term's domains, sorted
+
+    @property
+    def in_deprecation(self) -> bool:
+        """REQ-2144: deprecated in the catalogs -- a curator deprecated it (in service until
+        ``retire_on``). A term whose derivation lost its last column (``deprecated``) is out of
+        service and never exported, so the status is what each catalog's deprecation reflects."""
+        return self.status == "deprecated"
 
     def assigned_to(self) -> tuple[AssetRef, ...]:
         """The published assets a catalog assigns this term to (REQ-1389): a Class its tables,

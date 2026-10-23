@@ -179,7 +179,13 @@ async def dismiss(conn: Any, finding: dict, *, note: str, by: str | None, at: dt
 
 async def is_sensitive(conn: Any, finding: dict) -> bool:
     """Whether the finding is on a sensitive column (or a tag assignment on one)."""
-    from provisa.core.schema_org import registered_tables, tag_assignments, tags
+    from provisa.core.schema_org import (
+        glossary_term_refs,
+        glossary_terms,
+        registered_tables,
+        tag_assignments,
+        tags,
+    )
     from provisa.security.sensitive import sensitive_assignments
 
     kind, key = finding["object_type"], finding["object_key"]
@@ -192,7 +198,9 @@ async def is_sensitive(conn: Any, finding: dict) -> bool:
         tid, column = key.partition("#")[0].split(":", 1)
     else:
         return False
-    sens = sensitive_assignments(tag_assignments, registered_tables, tags).subquery()
+    sens = sensitive_assignments(
+        tag_assignments, registered_tables, tags, glossary_term_refs, glossary_terms
+    ).subquery()
     row = (
         await conn.execute_core(
             select(sens.c.table_id).where(sens.c.table_id == int(tid), sens.c.column_name == column)

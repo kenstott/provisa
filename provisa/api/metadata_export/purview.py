@@ -433,7 +433,7 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 "name": term.name,
                 "domain": placed[term.term_id],
                 "description": term.definition or "",
-                "status": "EXPIRED" if term.deprecated else "PUBLISHED",
+                "status": "EXPIRED" if term.in_deprecation else "PUBLISHED",
             }
             if term.term_id in parent:
                 body["parentId"] = term_id(by_id[parent[term.term_id]])

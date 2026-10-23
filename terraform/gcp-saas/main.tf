@@ -787,6 +787,7 @@ resource "google_compute_instance" "front_door" {
       set -euo pipefail
       mkdir -p /etc/provisa-front-door /opt/provisa-front-door
       printf '%s' '${base64encode(file("${path.module}/front-door/proxy.py"))}' | base64 -d > /opt/provisa-front-door/proxy.py
+      printf '%s' '${base64encode(file("${path.module}/front-door/binary-streams.js"))}' | base64 -d > /opt/provisa-front-door/binary-streams.js
       printf '%s' '${base64encode(local.front_door_config)}' | base64 -d > /etc/provisa-front-door/config.json
       ${local.front_door_tls_sync}
       ${local.front_door_tls_renew}

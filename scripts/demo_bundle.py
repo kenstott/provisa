@@ -824,6 +824,46 @@ def _replica_states(places: list[tuple[str, str | None]], demo_name: str) -> str
     return "\n".join(lines)
 
 
+#: The lines of a seeding node's log a failed seeding run shows.
+_NODE_LOG_TAIL = 150
+
+
+def _tail(log: Path, lines: int) -> str:
+    return "\n".join(log.read_text(errors="replace").splitlines()[-lines:])
+
+
+def _recreated(log: Path) -> str:
+    """Each store table the seeding node dropped and re-created over its rows, as it logged it
+    (store_writer.reconcile_table)."""
+    found = [line for line in log.read_text(errors="replace").splitlines() if "re-created" in line]
+    return "\n".join(found) or "  none"
+
+
+def _embedded_store(data_dir: Path, demo_name: str) -> str:
+    """The rows each table of the template org's embedded DuckDB store file holds, by schema: a
+    regions node keeps its replicas in its region's store, so a replica here was written to the
+    wrong one."""
+    import duckdb
+
+    from provisa.api.sandbox_tier import template_org_id
+
+    store = data_dir / "orgs" / template_org_id(demo_name) / "materialize.duckdb"
+    if not store.exists():
+        return f"  no file at {store}"
+    con = duckdb.connect(str(store), read_only=True)
+    try:
+        tables = con.execute(
+            "SELECT schema_name, table_name FROM duckdb_tables() ORDER BY 1, 2"
+        ).fetchall()
+        held = []
+        for schema, name in tables:
+            [(rows,)] = con.execute(f'SELECT count(*) FROM "{schema}"."{name}"').fetchall()
+            held.append(f"  {schema}.{name}: {rows} rows")
+        return "\n".join(held) or f"  no tables in {store}"
+    finally:
+        con.close()
+
+
 def _seed_node(
     work: Path,
     demo: Path,
@@ -859,28 +899,43 @@ def _seed_node(
         "OTEL_SDK_DISABLED": "true",
         **env,
     }
-    server = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(http_port),
-        ],
-        cwd=_REPO,
-        env=server_env,
-    )
+    node_log = work / f"seed-{control_plane}.log"
+    with node_log.open("w") as out:
+        server = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "main:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(http_port),
+            ],
+            cwd=_REPO,
+            env=server_env,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+        )
     try:
         deadline = time.monotonic() + timeout
         while not record.exists():
             if server.poll() is not None:
-                raise SystemExit(f"the seeding run exited early ({server.returncode})")
-            if time.monotonic() > deadline:
                 raise SystemExit(
-                    f"{demo.name} not seeded in {timeout:.0f}s; its template's replicas:\n"
+                    f"the seeding run exited early ({server.returncode}):\n"
+                    + _tail(node_log, _NODE_LOG_TAIL)
+                )
+            if time.monotonic() > deadline:
+                server.terminate()
+                server.wait(timeout=60)
+                raise SystemExit(
+                    f"{demo.name} not seeded in {timeout:.0f}s; the seeding node's log ends:\n"
+                    + _tail(node_log, _NODE_LOG_TAIL)
+                    + "\nits store tables re-created:\n"
+                    + _recreated(node_log)
+                    + "\nits embedded store file holds:\n"
+                    + _embedded_store(Path(server_env["PROVISA_DATA_DIR"]), demo.name)
+                    + "\nits template's replicas:\n"
                     + _replica_states(
                         [
                             (url, None),
@@ -903,6 +958,8 @@ def _seed_node(
     finally:
         server.terminate()
         server.wait(timeout=60)
+        # The node's whole log, into the build's own output: a run that seeded keeps it too.
+        print(f"--- seeding node {control_plane} ---\n{node_log.read_text(errors='replace')}")
         subprocess.run(
             [sys.executable, "-m", "provisa.core.control_plane_pg", "stop"]
             + [str(work / control_plane)],

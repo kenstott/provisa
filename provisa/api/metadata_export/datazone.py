@@ -395,7 +395,7 @@ class DataZoneExport(MetadataExport):  # REQ-2118
             fields = {
                 "name": term.name,
                 "longDescription": term.definition or "",
-                "status": "DISABLED" if term.deprecated else "ENABLED",
+                "status": "DISABLED" if term.in_deprecation else "ENABLED",
             }
             known = (self.stored_bindings.get(term.semantic_uri) or (None,))[0]
             if known is None:

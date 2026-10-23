@@ -446,17 +446,10 @@ async def write_results(
 
 
 async def column_tags(conn: Any, table_id: int) -> dict[str, set[str]]:
-    from provisa.core.schema_org import tag_assignments as ta
+    """Each column's tags, its glossary term's included (REQ-2145)."""
+    from provisa.core.term_tags import column_tag_ids
 
-    result = await conn.execute_core(
-        select(ta.c.column_name, ta.c.base_tag_id).where(
-            ta.c.object_type == "column", ta.c.table_id == table_id
-        )
-    )
-    tags: dict[str, set[str]] = {}
-    for column_name, base_tag_id in result.fetchall():
-        tags.setdefault(column_name, set()).add(base_tag_id)
-    return tags
+    return await column_tag_ids(conn, table_id)
 
 
 async def _comparison(

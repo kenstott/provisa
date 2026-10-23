@@ -226,9 +226,10 @@ class AtlanExport(AtlasExport):  # REQ-1069
     def _apply_deprecation(attributes: dict, term: GlossaryTermAsset) -> None:
         """The documented convention: DEPRECATED asserted while the term is deprecated,
         and cleared only when the live value is the one Provisa itself writes."""
-        if term.deprecated:
+        if term.in_deprecation:
             attributes["certificateStatus"] = TERM_DEPRECATION_STATUS
-            attributes["certificateStatusMessage"] = TERM_DEPRECATION_MESSAGE
+            # REQ-2144: the curator's stated reason, when they gave one.
+            attributes["certificateStatusMessage"] = term.status_reason or TERM_DEPRECATION_MESSAGE
         elif attributes.get("certificateStatus") == TERM_DEPRECATION_STATUS:
             # Bulk updates replace the full attribute map, so dropping the pair clears it.
             del attributes["certificateStatus"]

@@ -1236,7 +1236,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                     "qualifiedName": term_qn,
                     "longDescription": definition,
                     "shortDescription": _term_short_description(
-                        live.get("shortDescription"), term.deprecated
+                        live.get("shortDescription"), term.in_deprecation
                     ),
                     "anchor": {"glossaryGuid": glossary_guid},
                     "additionalAttributes": {
@@ -1261,7 +1261,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             "anchor": {"glossaryGuid": glossary_guid},
             "additionalAttributes": {ROLE_ATTRIBUTE: term.role},  # REQ-2141
         }
-        short = _term_short_description(None, term.deprecated)
+        short = _term_short_description(None, term.in_deprecation)
         if short:
             body["shortDescription"] = short
         created = await client.post(self._url(self.glossary_term_path), json=body, headers=headers)

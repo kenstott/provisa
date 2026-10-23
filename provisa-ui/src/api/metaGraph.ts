@@ -154,6 +154,7 @@ export type Cond =
   | { neq: unknown }
   | { in: unknown[] }
   | { like: string }
+  | { ilike: string }
   | { is_null: boolean };
 
 /** A where: every column condition holds, each of ``_and`` and any of ``_or``, and for each

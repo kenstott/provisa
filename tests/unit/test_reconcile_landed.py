@@ -361,3 +361,45 @@ async def test_a_runtime_without_the_key_hook_gets_no_key_plan(monkeypatch):
 
 async def no_synthetic_tables(_conn):
     return {}
+
+
+class _RecreatingRuntime(_FakeRuntime):
+    """A store whose replica of ``events`` had drifted: the reconcile re-created it, empty."""
+
+    async def reconcile_replica(self, *, schema, table, columns, pk_columns=None):
+        await super().reconcile_replica(
+            schema=schema, table=table, columns=columns, pk_columns=pk_columns
+        )
+        return "recreated" if table.endswith("__events") else "kept"
+
+
+@pytest.mark.asyncio
+async def test_a_replica_re_created_empty_is_recorded_unbuilt_and_built_again(monkeypatch):
+    """A reconcile that re-creates a replica's table drops its rows. Its record called it built,
+    with the rows and content hash of the build it dropped, so the next build of the same
+    content kept the empty table, and a TTL -1 replica was never asked for again (retail's eu
+    replicas held 0 rows of the thousands their builds recorded)."""
+    backend = DuckDBBackend(build_duckdb_engine())
+    backend._runtime = _RecreatingRuntime()
+    cfg = SimpleNamespace(sources=[_src("api", "openapi")], tables=[])
+    registered = [
+        _rtbl("api", "events", [_rcol("id", "bigint", pk=True)]),
+        _rtbl("api", "other", [_rcol("id", "bigint", pk=True)]),
+    ]
+    calls: list = []
+
+    async def _unbuild(_conn, key):
+        calls.append(("unbuild", key))
+        return True
+
+    async def _request_build(_conn, key, reason, **_kw):
+        calls.append(("request", key, reason))
+        return True
+
+    monkeypatch.setattr("provisa.federation.replica_state.unbuild", _unbuild)
+    monkeypatch.setattr("provisa.federation.replica_state.request_build", _request_build)
+    await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch))
+    assert calls == [
+        ("unbuild", ("api", "default", "events")),
+        ("request", ("api", "default", "events"), "model"),
+    ]

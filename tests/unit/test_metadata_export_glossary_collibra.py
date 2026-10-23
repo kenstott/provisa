@@ -56,10 +56,14 @@ def _term(term_id: int, name: str, **overrides) -> GlossaryTermAsset:
         "definition": None,
         "is_abstract": False,
         "deprecated": False,
+        "status": "live",
         "semantic_uri": f"provisa://acme/terms/{name}",
     }
     fields.update(overrides)
-    return GlossaryTermAsset(**fields)
+    # REQ-2144: a deprecated term is one a curator deprecated -- its status.
+    if fields.pop("deprecated"):
+        fields["status"] = "deprecated"
+    return GlossaryTermAsset(deprecated=False, **fields)
 
 
 @pytest.fixture
