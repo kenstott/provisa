@@ -7972,5 +7972,12 @@
   "ja/tagControl.json::tagControl.piiSetHere": "Set here: {{reason}}",
   "ja/glossaryTab.json::glossaryTab.moveOneUnnamed": "Move {{column}}?",
   "ja/glossaryTab.json::glossaryTab.piiPropertyOnly": "Only a property marks columns: a class or a concept means none.",
-  "ja/tagControl.json::tagControl.piiInherited": "This column is PII because it means {{term}}."
+  "ja/tagControl.json::tagControl.piiInherited": "This column is PII because it means {{term}}.",
+  "ja/chatPanel.json::chatPanel.choiceClosed": "(closed without choosing)",
+  "ja/codeSourceFields.json::codeSourceFields.workers": "Workers",
+  "ja/codeSourceFields.json::codeSourceFields.workersHint": "How many workers this source runs in each Provisa process. A column transform's batches run side by side across them, so more workers raise its throughput.",
+  "ja/serverErrors.json::serverErrors.functions.host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead.",
+  "ja/serverErrors.json::serverErrors.sandbox.demo_stores_failed": "This demo could not be started. Try again in a few minutes.",
+  "ja/settings.json::settings.commands.allow_host_code.label": "Allow host code commands",
+  "ja/settings.json::settings.commands.allow_host_code.help": "On: python and script commands may be registered and called. Each runs with the server's own access to its memory, credentials, files and network, and its code does not travel with the model. Off by default; use a code resolver instead."
 }

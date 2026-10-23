@@ -7973,5 +7973,12 @@
   "zh-HK/glossaryTab.json::glossaryTab.piiMarks_one": "Marks {{count}} column",
   "zh-HK/tagControl.json::tagControl.piiMoveColumn": "Move column…",
   "zh-HK/glossaryTab.json::glossaryTab.piiHelp": "Every column this term means carries PII, those to come too.",
-  "zh-HK/tagControl.json::tagControl.piiSetHere": "Set here: {{reason}}"
+  "zh-HK/tagControl.json::tagControl.piiSetHere": "Set here: {{reason}}",
+  "zh-HK/chatPanel.json::chatPanel.choiceClosed": "(closed without choosing)",
+  "zh-HK/codeSourceFields.json::codeSourceFields.workers": "Workers",
+  "zh-HK/codeSourceFields.json::codeSourceFields.workersHint": "How many workers this source runs in each Provisa process. A column transform's batches run side by side across them, so more workers raise its throughput.",
+  "zh-HK/serverErrors.json::serverErrors.functions.host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead.",
+  "zh-HK/serverErrors.json::serverErrors.sandbox.demo_stores_failed": "This demo could not be started. Try again in a few minutes.",
+  "zh-HK/settings.json::settings.commands.allow_host_code.label": "Allow host code commands",
+  "zh-HK/settings.json::settings.commands.allow_host_code.help": "On: python and script commands may be registered and called. Each runs with the server's own access to its memory, credentials, files and network, and its code does not travel with the model. Off by default; use a code resolver instead."
 }

@@ -7972,5 +7972,12 @@
   "he/glossaryTab.json::glossaryTab.piiPropertyOnly": "Only a property marks columns: a class or a concept means none.",
   "he/tagControl.json::tagControl.piiAlsoTermNone": "Mark '{{term}}', so every column that means it is covered, those to come too?",
   "he/tagControl.json::tagControl.piiViaTerm": "Same meaning as {{term}}",
-  "he/glossaryTab.json::glossaryTab.moveOneUnnamed": "Move {{column}}?"
+  "he/glossaryTab.json::glossaryTab.moveOneUnnamed": "Move {{column}}?",
+  "he/chatPanel.json::chatPanel.choiceClosed": "(closed without choosing)",
+  "he/codeSourceFields.json::codeSourceFields.workers": "Workers",
+  "he/codeSourceFields.json::codeSourceFields.workersHint": "How many workers this source runs in each Provisa process. A column transform's batches run side by side across them, so more workers raise its throughput.",
+  "he/serverErrors.json::serverErrors.functions.host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead.",
+  "he/serverErrors.json::serverErrors.sandbox.demo_stores_failed": "This demo could not be started. Try again in a few minutes.",
+  "he/settings.json::settings.commands.allow_host_code.label": "Allow host code commands",
+  "he/settings.json::settings.commands.allow_host_code.help": "On: python and script commands may be registered and called. Each runs with the server's own access to its memory, credentials, files and network, and its code does not travel with the model. Off by default; use a code resolver instead."
 }
