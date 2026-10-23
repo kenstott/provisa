@@ -33,11 +33,17 @@ interface Compiled {
 
 function compiledOf(raw: CompileResult | { queries: CompileResult[] }): Compiled {
   const results = "queries" in raw ? raw.queries : [raw];
-  const cypher = results.map((r) => r.compiled_cypher).filter((c): c is string => !!c);
+  // Each root field is its own Cypher statement, in the query's order, as it is its own SQL one;
+  // a root with no Cypher form is said in its place, and leaves the others theirs.
+  const translated = results.some((r) => !!r.compiled_cypher);
+  const cypher = results
+    .map((r) =>
+      r.compiled_cypher ? r.compiled_cypher : `// ${r.root_field}: ${r.cypher_error ?? ""}`.trim(),
+    )
+    .join(";\n\n");
   return {
     sql: results.map((r) => r.semantic_sql).join(";\n\n"),
-    // The server combines a query's roots into one Cypher statement when they combine.
-    cypher: cypher.length > 0 ? cypher[0] : null,
+    cypher: translated ? cypher : null,
     cypherError: results.map((r) => r.cypher_error).find((e): e is string => !!e) ?? null,
   };
 }
