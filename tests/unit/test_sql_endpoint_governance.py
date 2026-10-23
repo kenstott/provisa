@@ -789,3 +789,69 @@ async def test_a_statement_on_a_source_still_starting_answers_503_naming_it(
     assert resp.status_code == 503, resp.text
     assert resp.json()["code"] == "data.source_starting"
     assert resp.json()["params"] == {"source": "govdata"}
+
+
+@pytest.mark.asyncio
+class TestSQLEachStatement:
+    """``"results": "each"``: one result per statement, in order -- its rows, or the error that
+    stopped it, answered as the statement alone would be, the statements after it still run."""
+
+    async def _post(self, sql_client, sql: str):
+        rows = _make_query_result(rows=[(1,)], column_names=["id"])
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+        ):
+            return await sql_client.post(
+                "/data/sql", json={"sql": sql, "role": "org_admin", "results": "each"}
+            )
+
+    async def test_two_statements_give_two_results(self, sql_client):
+        resp = await self._post(sql_client, "SELECT id FROM orders; SELECT status FROM orders")
+        assert resp.status_code == 200, resp.text
+        results = resp.json()["results"]
+        assert [r["statement"] for r in results] == [
+            "SELECT id FROM orders",
+            "SELECT status FROM orders",
+        ]
+        assert all("error" not in r and r["columns"] == ["id"] for r in results)
+        assert all(r["data"] == [{"id": 1}] for r in results)
+
+    async def test_an_error_in_the_second_keeps_the_first_rows(self, sql_client):
+        resp = await self._post(sql_client, "SELECT id FROM orders; SELECT id FROM secret_table")
+        assert resp.status_code == 200, resp.text
+        first, second = resp.json()["results"]
+        assert first["data"] == [{"id": 1}]
+        assert second["error"]["status"] == 403
+        assert "secret_table" in str(second["error"]["body"])
+        assert "data" not in second
+
+    async def test_a_semicolon_in_a_string_does_not_split(self, sql_client):
+        resp = await self._post(sql_client, "SELECT id FROM orders WHERE status = 'a;b'")
+        assert resp.status_code == 200, resp.text
+        assert [r["statement"] for r in resp.json()["results"]] == [
+            "SELECT id FROM orders WHERE status = 'a;b'"
+        ]
+
+    async def test_the_default_still_answers_the_last_statement(self, sql_client):
+        rows = _make_query_result(rows=[(1,)], column_names=["id"])
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+        ):
+            resp = await sql_client.post(
+                "/data/sql",
+                json={"sql": "SELECT id FROM orders; SELECT id FROM orders", "role": "org_admin"},
+            )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data"]["sql"] == [{"id": 1}]
+        assert "results" not in resp.json()
+
+
+@pytest.mark.asyncio
+async def test_statements_are_split_as_data_sql_splits_them(sql_client):
+    resp = await sql_client.post(
+        "/data/sql/statements", json={"sql": "SELECT 'a;b'; SELECT 1 /* c;d */;"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"statements": ["SELECT 'a;b'", "SELECT 1 /* c;d */"]}

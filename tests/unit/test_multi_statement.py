@@ -137,3 +137,63 @@ async def test_govern_batch_final_plan_runs_leading_returns_final(monkeypatch):
 async def test_govern_batch_final_plan_empty_batch_raises(monkeypatch):
     with pytest.raises(ValueError, match="empty SQL batch"):
         await _pipeline.govern_batch_final_plan("   ", "admin", object(), deliver=None)
+
+
+# --------------------------------------------------------------------------- #
+# execute_sql_batch_each — the same loop, one outcome per statement
+# --------------------------------------------------------------------------- #
+def _stub_pipeline(monkeypatch, order: list[str], fails: str | None = None):
+    async def _no_cmd(stmt, role, state):
+        return None
+
+    async def _gar(stmt, role_id, **kw):
+        if stmt == fails:
+            raise PermissionError(f"refused: {stmt}")
+        return _pipeline._Plan(
+            route=Route.ENGINE,
+            sql=stmt,
+            source_id="pg",
+            dialect="trino",
+            physical_sql=stmt,
+            stamp=_pipeline._mint_stamp(),
+        )
+
+    async def _exec(plan, state=None):
+        order.append(plan.sql)
+        return QueryResult(rows=[(plan.sql,)], column_names=["s"])
+
+    monkeypatch.setattr("provisa.pgwire.function_call.maybe_invoke_registered_function", _no_cmd)
+    monkeypatch.setattr(_pipeline, "_govern_and_route", _gar)
+    monkeypatch.setattr(_pipeline, "_execute_plan", _exec)
+
+
+async def test_execute_sql_batch_each_answers_every_statement_in_order(monkeypatch):
+    order: list[str] = []
+    _stub_pipeline(monkeypatch, order)
+
+    outcomes = await _pipeline.execute_sql_batch_each("SELECT 'a;b'; SELECT 2", "admin", object())
+
+    assert order == ["SELECT 'a;b'", "SELECT 2"]
+    assert [o.statement for o in outcomes] == ["SELECT 'a;b'", "SELECT 2"]
+    assert [o.result.rows for o in outcomes if o.result] == [[("SELECT 'a;b'",)], [("SELECT 2",)]]
+    assert all(o.error is None for o in outcomes)
+
+
+async def test_execute_sql_batch_each_keeps_running_past_a_failed_statement(monkeypatch):
+    order: list[str] = []
+    _stub_pipeline(monkeypatch, order, fails="SELECT 2")
+
+    outcomes = await _pipeline.execute_sql_batch_each(
+        "SELECT 1; SELECT 2; SELECT 3", "admin", object()
+    )
+
+    assert order == ["SELECT 1", "SELECT 3"]
+    assert outcomes[0].result is not None and outcomes[0].result.rows == [("SELECT 1",)]
+    assert isinstance(outcomes[1].error, PermissionError) and outcomes[1].result is None
+    assert outcomes[2].result is not None and outcomes[2].result.rows == [("SELECT 3",)]
+
+
+async def test_execute_sql_batch_still_raises_a_failed_statement(monkeypatch):
+    _stub_pipeline(monkeypatch, [], fails="SELECT 2")
+    with pytest.raises(PermissionError):
+        await _pipeline.execute_sql_batch("SELECT 1; SELECT 2", "admin", object())

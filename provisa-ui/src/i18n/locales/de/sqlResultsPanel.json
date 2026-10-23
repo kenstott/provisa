@@ -101,6 +101,9 @@
     "provColumnsHeading": "Spalten",
     "provTypeNumber": "Zahl",
     "provTypeDate": "Datum",
-    "provTypeText": "Text"
+    "provTypeText": "Text",
+    "statementTab": "Ergebnis {{n}} · {{name}}",
+    "statementTabUnnamed": "Ergebnis {{n}}",
+    "statementFailed": "fehlgeschlagen"
   }
 }

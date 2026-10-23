@@ -101,6 +101,9 @@
     "provColumnsHeading": "कॉलम",
     "provTypeNumber": "संख्या",
     "provTypeDate": "तिथि",
-    "provTypeText": "पाठ"
+    "provTypeText": "पाठ",
+    "statementTab": "परिणाम {{n}} · {{name}}",
+    "statementTabUnnamed": "परिणाम {{n}}",
+    "statementFailed": "विफल"
   }
 }

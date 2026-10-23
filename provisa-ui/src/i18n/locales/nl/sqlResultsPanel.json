@@ -101,6 +101,9 @@
     "provColumnsHeading": "Kolommen",
     "provTypeNumber": "Getal",
     "provTypeDate": "Datum",
-    "provTypeText": "Tekst"
+    "provTypeText": "Tekst",
+    "statementTab": "Resultaat {{n}} · {{name}}",
+    "statementTabUnnamed": "Resultaat {{n}}",
+    "statementFailed": "mislukt"
   }
 }

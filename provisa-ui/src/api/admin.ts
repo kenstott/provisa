@@ -1607,6 +1607,24 @@ async function refusal(resp: Response, op: string): Promise<string> {
     : text || requestFailed(op, resp.status);
 }
 
+function sqlHeaders(
+  role: string,
+  statsEnabled: boolean,
+  timeTravel: TimeTravel | undefined,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    // REQ-273: the server trusts only this header to select the acting role — the body's
+    // `role` is a fallback for callers with no auth context at all. Without it here, the
+    // middleware's default-assigned role silently overrode the SQL Explorer's picker.
+    "X-Provisa-Role": role,
+    ...timeTravelHeaders(timeTravel),
+  };
+  if (statsEnabled) headers["X-Provisa-Stats"] = "true";
+  return headers;
+}
+
 export async function runSql(
   // A statement, or a statement with the values of its $1…$n placeholders. The values are
   // sent beside the text and bound by the server; they are never written into it.
@@ -1630,16 +1648,7 @@ export async function runSql(
   redirect?: ResultRedirect;
 }> {
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      // REQ-273: the server trusts only this header to select the acting role — the body's
-      // `role` is a fallback for callers with no auth context at all. Without it here, the
-      // middleware's default-assigned role silently overrode the SQL Explorer's picker.
-      "X-Provisa-Role": role,
-      ...timeTravelHeaders(timeTravel),
-    };
-    if (statsEnabled) headers["X-Provisa-Stats"] = "true";
+    const headers = sqlHeaders(role, statsEnabled, timeTravel);
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       // The acting role travels ONLY in X-Provisa-Role. Under "Role: All" that header is the
       // comma-separated set; a body `role` repeating it is refused as a mismatch (data.role_mismatch,
@@ -1698,6 +1707,89 @@ export async function runSql(
       rows: [],
       error: e instanceof Error ? e.message : String(e),
     };
+  }
+}
+
+/** One statement's answer in a batch answered one result per statement. */
+export interface StatementAnswer {
+  statement: string;
+  columns: string[];
+  column_types: string[] | null;
+  rows: Record<string, unknown>[];
+  warnings: StatementWarning[];
+  /** Why the statement failed, as it alone would have been refused; the others still ran. */
+  error?: string;
+  /** REQ-1194 / REQ-1224: landed in the results store, not in `rows`. */
+  redirect?: ResultRedirect;
+}
+
+/** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
+ * dollar-quoted block does not split). Nothing is run. */
+export async function splitSql(sql: string): Promise<string[]> {
+  const resp = await fetch(`${API_BASE_RAW}/data/sql/statements`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ sql }),
+  });
+  if (!resp.ok) throw new Error(await refusal(resp, "splitSql"));
+  return ((await resp.json()) as { statements: string[] }).statements;
+}
+
+interface EachEntry {
+  statement: string;
+  warnings: StatementWarning[];
+  data?: Record<string, unknown>[];
+  columns?: string[];
+  column_types?: string[] | null;
+  redirect?: Parameters<typeof toResultRedirect>[0];
+  error?: { status: number; body: unknown };
+}
+
+/** Run a batch answered one result per statement, in order: each governed and run on its own,
+ * in one request. `error` is the request's own failure (refused before any statement ran). */
+export async function runSqlEach(
+  sql: string,
+  role: string,
+  statsEnabled: boolean,
+  timeTravel?: TimeTravel,
+): Promise<{ answers: StatementAnswer[]; provisa_stats?: unknown; error?: string }> {
+  try {
+    const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
+      method: "POST",
+      headers: sqlHeaders(role, statsEnabled, timeTravel),
+      body: JSON.stringify({ sql, results: "each" }),
+    });
+    if (!resp.ok) return { answers: [], error: await refusal(resp, "runSql") };
+    const json = (await resp.json()) as { results: EachEntry[]; provisa_stats?: unknown };
+    const answers = await Promise.all(
+      json.results.map(async (e): Promise<StatementAnswer> => {
+        const empty = { statement: e.statement, columns: [], column_types: null, rows: [] };
+        if (e.error)
+          return {
+            ...empty,
+            warnings: e.warnings,
+            // Said as the same statement's refusal alone is said.
+            error: await refusal(
+              new Response(JSON.stringify(e.error.body), { status: e.error.status }),
+              "runSql",
+            ),
+          };
+        if (e.redirect)
+          return { ...empty, warnings: e.warnings, redirect: toResultRedirect(e.redirect) };
+        if (!Array.isArray(e.columns) || !Array.isArray(e.data))
+          throw new Error(`runSql: an answer for "${e.statement}" holds neither rows nor error`);
+        return {
+          statement: e.statement,
+          columns: e.columns,
+          column_types: e.column_types ?? null,
+          rows: e.data,
+          warnings: e.warnings,
+        };
+      }),
+    );
+    return { answers, provisa_stats: json.provisa_stats };
+  } catch (e) {
+    return { answers: [], error: e instanceof Error ? e.message : String(e) };
   }
 }
 

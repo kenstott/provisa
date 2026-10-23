@@ -7806,5 +7806,8 @@
   "es/tableSections.json::tableSections.noClassTerm": "No term",
   "es/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
   "es.json::pageError.title": "This page could not be shown",
-  "es.json::pageError.body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one."
+  "es.json::pageError.body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one.",
+  "es/sqlResultsPanel.json::sqlResultsPanel.statementTab": "Result {{n}} · {{name}}",
+  "es/sqlResultsPanel.json::sqlResultsPanel.statementTabUnnamed": "Result {{n}}",
+  "es/sqlResultsPanel.json::sqlResultsPanel.statementFailed": "failed"
 }
