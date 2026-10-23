@@ -406,6 +406,8 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_type_column TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_type_value TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_label_source TEXT;
+    -- REQ-2141: the same-entity flag reaches a relationships table that predates it.
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS same_entity BOOLEAN NOT NULL DEFAULT FALSE;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

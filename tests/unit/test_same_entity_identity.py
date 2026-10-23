@@ -276,3 +276,35 @@ async def test_a_class_grounded_in_tables_not_all_joined_is_a_gap_until_they_are
         await _mark(conn)
         assert await identity.identity_gap_ids(conn) == set()
         assert (await glossary_repo.get_term(conn, ids["patron"]))["identity_gap"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_relationships_table_that_predates_the_flag_gains_it_at_startup(
+    control_plane, monkeypatch
+):
+    """An existing control plane (one laid out before the flag) gains the column when schema.sql
+    applies at startup, its relationships not marked same entity."""
+    from provisa.core.db import init_schema
+    from tests.pg_control_plane import ORG, SCHEMA_SQL
+
+    async with _surface(control_plane, monkeypatch) as (db, ids):
+        with control_plane.engine().begin() as c:
+            c.exec_driver_sql(f'SET LOCAL search_path TO "{SCHEMA}"')
+            c.exec_driver_sql("ALTER TABLE relationships DROP COLUMN same_entity")
+            c.exec_driver_sql(
+                "INSERT INTO relationships (id, source_table_id, target_table_id, source_column,"
+                f" target_column, cardinality) VALUES ('older', {ids['customers']},"
+                f" {ids['crm_customers']}, 'id', 'id', 'one-to-one')"
+            )
+        await init_schema(control_plane.org(), SCHEMA_SQL, org_id=ORG)
+        with control_plane.engine().begin() as c:
+            column = c.exec_driver_sql(
+                "SELECT is_nullable, column_default FROM information_schema.columns"
+                f" WHERE table_schema = '{SCHEMA}' AND table_name = 'relationships'"
+                " AND column_name = 'same_entity'"
+            ).one()
+            assert (column.is_nullable, column.column_default) == ("NO", "false")
+            row = c.exec_driver_sql(
+                f"SELECT same_entity FROM \"{SCHEMA}\".relationships WHERE id = 'older'"
+            ).one()
+            assert row.same_entity is False
