@@ -85,7 +85,8 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
     // The data layer, off by default, adds the bound columns' tables.
     await expect(page.getByTestId("ontology-layer-data")).not.toBeChecked();
     await page.getByTestId("ontology-layer-data").evaluate((el: HTMLElement) => el.click());
-    await expect.poll(() => legend(page, "ontology-stage")).toContain("member table");
+    // In the Ontology View a table is a table (a cylinder), whether or not a product holds it.
+    await expect.poll(() => legend(page, "ontology-stage")).toContain("table");
   });
 
   test("Taxonomy keeps the is-a and part-of edges, and the view expands", async ({ page }) => {
