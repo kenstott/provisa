@@ -189,14 +189,13 @@ views:
            COUNT(DISTINCT c.borrower_id) AS borrowers,
            SUM(f.committed_eur) AS committed_eur,
            SUM(f.drawn_eur) AS drawn_eur,
-           ROUND(100 * SUM(f.committed_eur) / k.tier1_eur, 1) AS pct_of_tier1,
-           SUM(f.committed_eur) > 0.25 * k.tier1_eur AS over_limit
+           ROUND(100 * SUM(f.committed_eur) / (SELECT tier1_eur FROM "groupexposure"."capital" ORDER BY as_of DESC LIMIT 1), 1) AS pct_of_tier1,
+           SUM(f.committed_eur) > 0.25 * (SELECT tier1_eur FROM "groupexposure"."capital" ORDER BY as_of DESC LIMIT 1) AS over_limit
     FROM "groupexposure"."facilities" AS f
     JOIN "groupexposure"."counterparties" AS c ON c.borrower_id = f.borrower_id
     LEFT JOIN "groupexposure"."owners" AS o ON o.borrower_id = c.borrower_id
     LEFT JOIN "groupexposure"."owner_group" AS g ON g.lei = o.owner_lei
-    CROSS JOIN "groupexposure"."capital" AS k
-    GROUP BY COALESCE(g.group_name, c.name), g.group_entity, k.tier1_eur
+    GROUP BY COALESCE(g.group_name, c.name), g.group_entity
   columns:
   - {name: group_name, data_type: varchar, description: "The group's name on Wikidata, or the borrower's own when nothing owns it", visible_to: [org_admin, risk]}
   - {name: group_entity, data_type: varchar, description: "The group's Wikidata entity; empty for a borrower nothing owns", visible_to: [org_admin, risk]}
@@ -214,11 +213,10 @@ views:
   sql: >-
     SELECT c.borrower_id, c.name, c.sector,
            SUM(f.committed_eur) AS committed_eur,
-           ROUND(100 * SUM(f.committed_eur) / k.tier1_eur, 1) AS pct_of_tier1
+           ROUND(100 * SUM(f.committed_eur) / (SELECT tier1_eur FROM "groupexposure"."capital" ORDER BY as_of DESC LIMIT 1), 1) AS pct_of_tier1
     FROM "groupexposure"."facilities" AS f
     JOIN "groupexposure"."counterparties" AS c ON c.borrower_id = f.borrower_id
-    CROSS JOIN "groupexposure"."capital" AS k
-    GROUP BY c.borrower_id, c.name, c.sector, k.tier1_eur
+    GROUP BY c.borrower_id, c.name, c.sector
   columns:
   - {name: borrower_id, data_type: varchar, description: "The bank's id for the borrower", visible_to: [org_admin, risk]}
   - {name: name, data_type: varchar, description: The borrower's name, visible_to: [org_admin, risk]}
@@ -229,6 +227,7 @@ relationships:
 - {id: facility-to-counterparty, alias: LENT_TO, cardinality: many-to-one, source_table_id: facilities, source_column: borrower_id, target_table_id: counterparties, target_column: borrower_id}
 - {id: owner-to-counterparty, alias: OWNS, cardinality: many-to-one, source_table_id: owners, source_column: borrower_id, target_table_id: counterparties, target_column: borrower_id}
 - {id: owner-to-company, alias: OWNER_IS, cardinality: many-to-one, source_table_id: owners, source_column: owner_lei, target_table_id: owner_company, target_column: lei}
+- {id: owner-to-group, alias: OWNER_IN_GROUP, cardinality: many-to-one, source_table_id: owners, source_column: owner_lei, target_table_id: owner_group, target_column: lei}
 - {id: company-to-group, alias: IN_GROUP, cardinality: one-to-many, source_table_id: owner_company, source_column: lei, target_table_id: owner_group, target_column: lei}
 glossary_terms:
 - name: large exposure
