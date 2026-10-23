@@ -107,6 +107,8 @@
     "unconnectedHelp": "מונחים ללא קשר או עיגון מוצגים",
     "look_class": "מחלקה",
     "look_concept": "מושג",
-    "look_property": "תכונה"
+    "look_property": "תכונה",
+    "overBudget": "{{count}} התאמות; צמצמו את החיפוש או בחרו תחום",
+    "domainCount": "{{domain}} ({{count}})"
   }
 }

@@ -107,6 +107,8 @@
     "unconnectedHelp": "関係やグラウンディングが表示されていない用語",
     "look_class": "クラス",
     "look_concept": "概念",
-    "look_property": "プロパティ"
+    "look_property": "プロパティ",
+    "overBudget": "{{count}} 件一致。検索を絞り込むかドメインを選んでください",
+    "domainCount": "{{domain}}（{{count}}）"
   }
 }

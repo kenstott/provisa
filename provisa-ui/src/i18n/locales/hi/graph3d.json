@@ -107,6 +107,8 @@
     "unconnectedHelp": "ऐसे शब्द जिनका कोई संबंध या आधार नहीं दिखाया गया",
     "look_class": "वर्ग",
     "look_concept": "अवधारणा",
-    "look_property": "गुण"
+    "look_property": "गुण",
+    "overBudget": "{{count}} मिलान; खोज सीमित करें या कोई डोमेन चुनें",
+    "domainCount": "{{domain}} ({{count}})"
   }
 }

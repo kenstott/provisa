@@ -7956,5 +7956,7 @@
   "ja/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
   "ja/glossaryTab.json::glossaryTab.keyColumn": "Key",
   "ja/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class",
-  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds."
+  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
+  "ja/graph3d.json::graph3d.overBudget": "{{count}} match; narrow the search or pick a domain",
+  "ja/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})"
 }

@@ -115,12 +115,45 @@ def test_ilike_ignores_case(schema_and_ctx):
     assert q.params == ["%ann%"]
 
 
-def test_a_relationship_s_condition_in_a_nested_where_is_refused_not_dropped(schema_and_ctx):
-    with pytest.raises(ValueError, match="unsupported condition"):
-        _compiled(
-            schema_and_ctx,
-            '{ customers { id orders(where: { customer: { name: { eq: "x" } } }) { id } } }',
-        )
+def test_a_relationship_s_condition_in_a_nested_where_correlates_with_the_nested_rows(
+    schema_and_ctx,
+):
+    """A nested field's where states a relationship's condition as a root's does: EXISTS over the
+    target, correlated with the nested field's own rows (the Ontology View's edges to the terms
+    its filters keep)."""
+    q = _compiled(
+        schema_and_ctx,
+        '{ customers { id orders(where: { customer: { name: { eq: "x" } } }) { id } } }',
+    )
+    assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders" "t1" WHERE' in q.sql
+    assert (
+        'EXISTS (SELECT 1 FROM "public"."customers" "w1" WHERE "w1"."id" = "t1"."customer_id"'
+        ' AND ("w1"."name" = $1))'
+    ) in q.sql
+    assert q.params[0] == "x"
+
+
+def test_a_nested_where_s_exists_body_is_governed_with_the_target_s_row_rules(schema_and_ctx):
+    _, ctx = schema_and_ctx
+    q = _compiled(
+        schema_and_ctx,
+        '{ customers { id orders(where: { customer: { name: { eq: "x" } } }) { id } } }',
+    )
+    rls = RLSContext(rules={CUSTOMERS: "\"name\" = 'ann'"})
+    columns = {
+        ORDERS: [("id", "integer"), ("customer_id", "integer")],
+        CUSTOMERS: [("id", "integer"), ("name", "varchar")],
+    }
+    governed = governed_for_role(q.sql, ctx, "admin", rls=rls, column_types=columns)
+    exists = governed[governed.index("EXISTS") :]
+    assert '"w1"."name" = \'ann\'' in exists
+
+
+def test_a_nested_where_without_a_relationship_reads_its_rows_unaliased(schema_and_ctx):
+    q = _compiled(
+        schema_and_ctx, '{ customers { id orders(where: { status: { eq: "open" } }) { id } } }'
+    )
+    assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders" WHERE' in q.sql
 
 
 def test_an_empty_or_holds_for_no_row_and_an_empty_and_for_every_row(schema_and_ctx):

@@ -107,6 +107,8 @@
     "unconnectedHelp": "未顯示任何關係或依據的術語",
     "look_class": "類別",
     "look_concept": "概念",
-    "look_property": "屬性"
+    "look_property": "屬性",
+    "overBudget": "{{count}} 個相符；請收窄搜尋或選擇一個域",
+    "domainCount": "{{domain}}（{{count}}）"
   }
 }

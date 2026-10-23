@@ -107,6 +107,8 @@
     "unconnectedHelp": "Термины без показанных связей или привязки",
     "look_class": "класс",
     "look_concept": "понятие",
-    "look_property": "свойство"
+    "look_property": "свойство",
+    "overBudget": "Совпадений: {{count}}; уточните поиск или выберите домен",
+    "domainCount": "{{domain}} ({{count}})"
   }
 }

@@ -87496,3 +87496,54 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then each engine runs the pattern in its own regex flavour and every analyst reads ***-**-6789 for 123-45-6789
     And saving a mask with the pattern \d(?=\d{4}) is refused, naming the lookahead and why it is not universal
     And a value the pattern does not match, such as 12-3456, reads as **** on every engine
+- id: REQ-2143
+  status: in-progress
+  since: "2026-10"
+  group: 10. UI & Admin Surfaces
+  category: Glossary Admin
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The Ontology View reads, on the server, the graph it draws, and the query it reads is the one
+    Open as query exports. The page's search is the query's root filter: the terms whose name or
+    definition holds any of its items (a quoted phrase is one item), whatever the case, the items'
+    own wildcards taken literally. Each match is read with its neighbourhood, the same rule the view
+    draws by: what lies within two hops of a match along any edge drawn, both ways, a product or a
+    domain drawn where it is reached and never passed through, and a table passed through only when
+    entered as a product's member. The neighbourhood is one stated rule that the view's drawing and
+    the query share; the query reads each hop as a nested level of the terms an edge reaches, the
+    last level with its edges' ends alone, so it reads nothing past the neighbourhood. A search
+    therefore never stops a graph being opened as a query. Before it reads the graph the view counts
+    the terms its query would read at its root, by id; past a budget of 500 the graph is not read.
+    With no search and no domain chosen the view then draws its overview, each domain with the
+    number of terms in it, and picking a domain narrows the view to it; a search or a domain still
+    past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn.
+    The product graph and lineage follow the same pattern later.
+  use_case: >-
+    An ontology of thousands of terms opens at once, and a search shows the terms it matches and
+    what they touch, read by the server and exportable as the same query, rather than reading the
+    whole ontology into the browser and narrowing it there.
+  code:
+    - provisa-ui/src/components/graph3d/neighbourhood.ts
+    - provisa-ui/src/components/graph3d/graphModel.ts
+    - provisa-ui/src/components/graph3d/glossaryGraphData.ts
+    - provisa-ui/src/components/graph3d/GlossaryOntologyView.tsx
+    - provisa-ui/src/components/graph3d/GraphExplorer.tsx
+  tests:
+    - provisa-ui/src/components/graph3d/__tests__/ontologyQuery.test.ts
+    - provisa-ui/src/components/graph3d/__tests__/focusBudget.test.tsx
+    - provisa-ui/e2e/open-as-query.spec.ts
+  scenario: |
+    Given an ontology of 600 terms in two domains, sales holding 450
+    When the curator opens the Ontology View with no search
+    Then the view draws two domains, each named with its count, and no term
+    When the curator picks sales
+    Then the view draws the 450 sales terms
+    When the curator searches for "invoice"
+    Then the view draws the terms matching invoice and what lies within two hops of them
+    And Open as query offers the query that read them, and run it answers what the view drew
+  relates_to:
+  - REQ-2130
+  - REQ-2136
+  target: "2027-Q1"
