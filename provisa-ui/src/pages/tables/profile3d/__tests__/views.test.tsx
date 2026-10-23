@@ -11,21 +11,26 @@
 // REQ-2124: the relationships map, joint cloud and drift strata tabs. jsdom has no WebGL, so each
 // three.js scene is replaced by a recorder.
 
+import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
 
 type Calls = Record<string, ReturnType<typeof vi.fn>>;
-const made = vi.hoisted(() => ({ scenes: [] as { kind: string; calls: Calls }[] }));
+type Picked = { onSelect: (h: { kind: string; id: string }) => void };
+// Each scene's calls, and what it reports to the view (a node picked on the canvas).
+const made = vi.hoisted(() => ({
+  scenes: [] as { kind: string; calls: Calls; callbacks: Picked }[],
+}));
 const api = vi.hoisted(() => ({ fetchProfileRun: vi.fn() }));
 vi.mock("../../../../api/profiler", () => api);
 
 function recorder(kind: string, methods: string[]) {
   return class {
-    constructor() {
+    constructor(_canvas: unknown, _labels: unknown, callbacks: Picked) {
       const calls: Calls = {};
       for (const m of methods) calls[m] = vi.fn();
       Object.assign(this, calls);
-      made.scenes.push({ kind, calls });
+      made.scenes.push({ kind, calls, callbacks });
     }
   };
 }
@@ -125,10 +130,22 @@ describe("ProfileRelations", () => {
     expect(last("relations").setEdges.mock.calls.at(-1)?.[0]).toHaveLength(3);
   });
 
-  it("selects the other end of a relationship and zooms to it", async () => {
+  it("links its column and each relationship's other end to the column's row", async () => {
     render(<ProfileRelations tableId={7} results={RESULTS} tableName="orders" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    fireEvent.click(screen.getByTestId("relations-link-spearman:age|amount"));
+    expect(screen.getByTestId("relations-title-link")).toHaveAttribute(
+      "href",
+      "/tables?table=7&section=columns&column=amount",
+    );
+    const row = screen.getByTestId("relations-link-spearman:age|amount");
+    expect(row.tagName).toBe("A");
+    expect(row).toHaveAttribute("href", "/tables?table=7&section=columns&column=age");
+  });
+
+  it("selects a column picked on the canvas and zooms to it", async () => {
+    render(<ProfileRelations tableId={7} results={RESULTS} tableName="orders" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    act(() => made.scenes[0].callbacks.onSelect({ kind: "node", id: "age" }));
     expect(screen.getByTestId("relations-detail")).toHaveTextContent("age");
     fireEvent.click(screen.getByTestId("relations-focus"));
     await waitFor(() => expect(last("relations").focus).toHaveBeenCalledWith("age"));

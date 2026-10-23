@@ -22,6 +22,8 @@
     "properties": "Свойства",
     "copyValue": "Копировать значение",
     "resizePanel": "Изменить размер панели инспектора",
-    "junctionTable": "через {{table}}"
+    "junctionTable": "через {{table}}",
+    "openTable": "Открыть таблицу",
+    "openRelationship": "Открыть связь"
   }
 }

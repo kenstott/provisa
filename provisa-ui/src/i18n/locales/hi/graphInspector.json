@@ -22,6 +22,8 @@
     "properties": "प्रॉपर्टी",
     "copyValue": "मान कॉपी करें",
     "resizePanel": "इंस्पेक्टर पैनल का आकार बदलें",
-    "junctionTable": "{{table}} के माध्यम से"
+    "junctionTable": "{{table}} के माध्यम से",
+    "openTable": "इसकी तालिका खोलें",
+    "openRelationship": "इसका संबंध खोलें"
   }
 }

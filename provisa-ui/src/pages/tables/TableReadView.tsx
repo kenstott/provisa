@@ -10,7 +10,7 @@
 
 import { maskSpecLabel, maskToLabel } from "../../lib/masks";
 import { grantLabel } from "../../lib/grants";
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChartColumn, DatabaseZap, Eye, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import { Tip } from "../../components/Tip";
@@ -92,6 +92,8 @@ interface TableReadViewProps {
   onSectionChange?: (section: TableSection) => void;
   /** The column topic the Columns section opens on (a link's ``tab``); else its first. */
   columnTab?: ColumnTab;
+  /** A column a link names (``column``): its row is marked, and scrolled to once. */
+  column?: string;
 }
 
 export function TableReadView({
@@ -121,6 +123,7 @@ export function TableReadView({
   section: sectionIn,
   onSectionChange,
   columnTab,
+  column,
   onInvalidateCache,
   invalidating = false,
 }: TableReadViewProps) {
@@ -130,6 +133,11 @@ export function TableReadView({
   // is not offered Testing, here as in the editor.
   const shownTabs = COLUMN_TABS.filter((topic) => !(topic === "testing" && hidingOnly));
   const [tab, setTab] = useColumnTab(shownTabs, columnTab);
+  // The row a link names is brought into view when it is first shown, not at each render.
+  const linkedRow = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    linkedRow.current?.scrollIntoView({ block: "center" });
+  }, [column, section]);
 
   // The table's actions. In a detail panel they sit in its pinned head (PanelActions); under a
   // list row they stay in place. While the table is being edited they are not there: the form's
@@ -559,7 +567,12 @@ export function TableReadView({
                 <Table.Tbody>
                   {table.columns.map((c) => (
                     <Fragment key={c.id}>
-                      <Table.Tr>
+                      <Table.Tr
+                        ref={c.columnName === column ? linkedRow : undefined}
+                        className={c.columnName === column ? "row-selected" : undefined}
+                        data-linked={c.columnName === column || undefined}
+                        data-testid={`table-read-column-${c.columnName}`}
+                      >
                         <Table.Td>
                           {/* REQ-1387: glossary term summary card on column-name hover. */}
                           <ColumnGlossaryHover
@@ -639,6 +652,7 @@ export function TableReadView({
                             objectType="column"
                             tableId={table.id}
                             columnName={c.columnName}
+                            piiTerm={c.piiTerm}
                           />
                         </Table.Td>
                         {tab === "naming" && (

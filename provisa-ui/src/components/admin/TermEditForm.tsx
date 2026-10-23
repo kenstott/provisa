@@ -25,6 +25,7 @@ import {
   Button,
   Checkbox,
   Group,
+  Modal,
   MultiSelect,
   Select,
   Stack,
@@ -37,7 +38,10 @@ import { Trash2 } from "lucide-react";
 import {
   generateGlossaryDefinition,
   listTermTables,
+  TagLossRefused,
+  type ColumnTagChange,
   type GlossaryEdge,
+  type TagLossResolution,
   type GlossaryExpertKind,
   type GlossaryRelType,
   type GlossaryTermDetail,
@@ -50,8 +54,12 @@ import { DetailFields } from "../detail/DetailFields";
 import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { columnKey, columnTerms, type ColumnTerm } from "./claimColumns";
 import { GlossaryRelationships } from "./GlossaryRelationships";
-import { TermRoleBadge } from "./TermRoleBadge";
-import { changes, draftOf, type Change, type TermDraft } from "./termDraft";
+import { TagLossSummary } from "./TagLossSummary";
+import { tagLossTitle } from "./tagLoss";
+import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
+import { changes, draftOf, type Change, type TermDraft, type TermTags } from "./termDraft";
+import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
+import { refusalError } from "../../i18n/serverMessage";
 
 type Option = { value: string; label: string };
 
@@ -91,7 +99,27 @@ export function TermEditForm({
   const [read, setRead] = useState<{ termId: number; tables: number[] } | null>(null);
   const [draft, setDraft] = useState<TermDraft | null>(null);
   const [owners, setOwners] = useState<Map<string, ColumnTerm> | null>(null);
+  const { assignTag } = useAssignTag();
+  const { unassignTag } = useUnassignTag();
+  // The term's own tags, marked and unmarked as the tag picker does; a refusal is said by Save.
+  const termTags: TermTags = {
+    mark: async (tagId) => {
+      const r = await assignTag({ tagId, objectType: "term", termId: term.id });
+      if (!r.success) throw refusalError(r);
+    },
+    unmark: async (tagId) => {
+      const r = await unassignTag({ tagId, objectType: "term", termId: term.id });
+      if (!r.success) throw refusalError(r);
+    },
+  };
   const [refused, setRefused] = useState<{ field: Change["field"]; message: string } | null>(null);
+  // A column's move refused over the tags it takes off (REQ-2145): which change, and what it does.
+  const [loss, setLoss] = useState<{
+    at: number;
+    columns: ColumnTagChange[];
+    into: string;
+  } | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [edgeTermId, setEdgeTermId] = useState<string | null>(null);
@@ -190,17 +218,29 @@ export function TermEditForm({
       </Alert>
     ) : null;
 
-  const save = async () => {
+  /** Save's changes from ``start`` on, the first of them resolved as the reader chose. A move
+   * refused over its tags stops Save until the reader says how it goes ahead. */
+  const save = async (start = 0, resolve?: TagLossResolution) => {
     setSaving(true);
     setRefused(null);
     let removed = false;
     let done = true;
+    const list = changes(term, read.tables, draft, termTags);
     try {
-      for (const change of changes(term, read.tables, draft)) {
+      for (let i = start; i < list.length; i++) {
+        const change = list[i];
         try {
-          const result = await change.run();
+          const result = await change.run(i === start ? resolve : undefined);
           if (result && result.termRemoved) removed = true;
         } catch (e) {
+          if (e instanceof TagLossRefused && change.moveTo !== undefined) {
+            setLoss({
+              at: i,
+              columns: e.columns,
+              into: change.moveTo === term.id ? draft.name.trim() : nameOf(change.moveTo),
+            });
+            return;
+          }
           setRefused({ field: change.field, message: e instanceof Error ? e.message : String(e) });
           done = false;
           break;
@@ -210,6 +250,11 @@ export function TermEditForm({
       setSaving(false);
     }
     await onSaved(done, removed);
+  };
+  const resume = (resolve: TagLossResolution) => {
+    const at = (loss as { at: number }).at;
+    setLoss(null);
+    void save(at, resolve);
   };
 
   const generate = async () => {
@@ -292,6 +337,26 @@ export function TermEditForm({
               data-testid="glossary-export-excluded-checkbox"
             />
           </FormField>
+          {/* REQ-2145: pii on a Property covers every column it means; a Class or a Concept holds
+              none to cover, and a draft governs nothing until it is defined. */}
+          <FormField
+            size="short"
+            help={
+              role !== "property"
+                ? t("glossaryTab.piiPropertyOnly")
+                : !draft.definition.trim()
+                  ? t("serverErrors.tag.term_not_live", { term: draft.name.trim() })
+                  : t("glossaryTab.piiHelp")
+            }
+          >
+            <Checkbox
+              label={t("glossaryTab.piiLabel")}
+              checked={draft.pii}
+              disabled={role !== "property" || (!draft.definition.trim() && !draft.pii)}
+              onChange={(e) => set({ pii: e.currentTarget.checked })}
+              data-testid="glossary-pii-checkbox"
+            />
+          </FormField>
         </FormChecks>
         {domainsEnabled && term.is_abstract && (
           <FormField size="medium">
@@ -336,12 +401,9 @@ export function TermEditForm({
             value: <TermRoleBadge term={term} testId="glossary-detail-role" />,
           },
           {
-            label: t("glossaryTab.proposed"),
-            value: t(!term.live ? "detailFields.yes" : "detailFields.no"),
-          },
-          {
-            label: t("glossaryTab.deprecated"),
-            value: t(term.deprecated ? "detailFields.yes" : "detailFields.no"),
+            // Changed by Deprecate, Retire and Restore, each with a reason, not here.
+            label: t("glossaryTab.statusLabel"),
+            value: <TermStatusBadge status={term.status} testId="glossary-edit-status" />,
           },
         ]}
       />
@@ -561,13 +623,33 @@ export function TermEditForm({
 
       <FormLayout>
         <FormFooter
-          onSave={save}
+          onSave={() => save()}
           onCancel={onCancel}
           saving={saving}
           saveProps={{ disabled: !draft.name.trim(), "data-testid": "glossary-edit-save" }}
           cancelProps={{ "data-testid": "glossary-edit-cancel" }}
         />
       </FormLayout>
+      {loss && (
+        <Modal
+          opened
+          onClose={() => setLoss(null)}
+          title={tagLossTitle(t, loss.columns, loss.into)}
+        >
+          <TagLossSummary
+            columns={loss.columns}
+            into={loss.into}
+            saving={saving}
+            onMove={(confirm_tag_loss) => resume({ confirm_tag_loss })}
+            onCarry={() => resume({ carry_tags: true })}
+            onCancel={() => {
+              // What Save changed before the refused move stands: the term is read again.
+              setLoss(null);
+              void onSaved(false, false);
+            }}
+          />
+        </Modal>
+      )}
     </Stack>
   );
 }

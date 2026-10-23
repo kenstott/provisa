@@ -22,6 +22,8 @@
     "properties": "Properties",
     "copyValue": "Copy value",
     "resizePanel": "Resize inspector panel",
-    "junctionTable": "via {{table}}"
+    "junctionTable": "via {{table}}",
+    "openTable": "Open its table",
+    "openRelationship": "Open its relationship"
   }
 }

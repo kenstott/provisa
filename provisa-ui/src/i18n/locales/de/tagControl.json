@@ -10,6 +10,17 @@
     "apply": "Übernehmen",
     "cancel": "Abbrechen",
     "editAssignment": "Zuweisung bearbeiten",
-    "plannedRemoval": "Geplante Entfernung: {{date}}"
+    "plannedRemoval": "Geplante Entfernung: {{date}}",
+    "piiViaTerm": "Gleiche Bedeutung wie {{term}}",
+    "piiSetHere": "Hier gesetzt: {{reason}}",
+    "piiAlsoTerm_one": "Auch die {{count}} andere Spalte markieren, die „{{term}}“ bedeutet?",
+    "piiAlsoTerm_other": "Auch die {{count}} anderen Spalten markieren, die „{{term}}“ bedeuten?",
+    "piiAlsoTermNone": "„{{term}}“ markieren, damit jede Spalte mit dieser Bedeutung erfasst ist, auch künftige?",
+    "piiYes": "Ja",
+    "piiJustThis": "Nur diese",
+    "piiInherited": "Diese Spalte ist PII, weil sie {{term}} bedeutet.",
+    "piiUnmarkTerm": "{{term}} entmarkieren",
+    "piiMoveColumn": "Spalte verschieben…",
+    "piiOpenTerm": "„{{term}}“ öffnen"
   }
 }

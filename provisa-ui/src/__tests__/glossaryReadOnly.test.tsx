@@ -26,6 +26,8 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
+  // A term with no findings: the findings list names none.
+  fetchGlossaryFindings: vi.fn(async () => []),
   listTermTables: vi.fn(async () => []),
 }));
 
@@ -55,6 +57,11 @@ const REVENUE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
@@ -69,6 +76,11 @@ const CHURN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
+  status: "draft",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
@@ -87,6 +99,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
   edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn" }],
   experts: [{ user_id: "u1", kind: "expert" }],
+  tags: [],
 };
 
 /** Mount the tab and open Revenue. */

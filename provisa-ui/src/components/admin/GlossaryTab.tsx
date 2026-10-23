@@ -33,14 +33,29 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
-import { Archive, ArchiveRestore, BookOpen, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  BookOpen,
+  Hourglass,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { GlossaryOntologyView, OntologyToggle } from "../graph3d/GlossaryOntologyView";
 import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
 import { TermListBadges } from "./TermRoleBadge";
+import { TermToReview, type FindingFix } from "./TermToReview";
+import { tableNames, toReview } from "./termFindings";
+import { RetireTermDialog } from "./RetireTermDialog";
+import { DeprecateTermDialog } from "./DeprecateTermDialog";
+import { useUnassignTag } from "../../hooks/useTagQueries";
+import { refusalError } from "../../i18n/serverMessage";
 import { HelpBubble } from "../HelpBubble";
 import {
   GLOSSARY_EXPERT_KINDS,
@@ -50,8 +65,10 @@ import {
   fetchGlossaryTerm,
   generateAllGlossaryDefinitions,
   generateGlossaryRelationships,
+  fetchGlossaryFindings,
   listGlossaryTerms,
-  updateGlossaryTerm,
+  restoreGlossaryTerm,
+  type GlossaryFinding,
 } from "../../api/glossary";
 import { fetchOrgMembers } from "../../api/admin";
 import type { OrgMember } from "../../api/admin";
@@ -112,25 +129,24 @@ export function GlossaryTab() {
   const [showDeprecated, setShowDeprecated] = useState(() =>
     readStoredBool("glossary.showDeprecated", true),
   );
-  // Proposed (not yet live/retired/deprecated) terms are the raw output of the semantic layer's
-  // derivation, not curated — unchecking this narrows the list to terms a curator has admitted.
-  const [showProposed, setShowProposed] = useState(() =>
-    readStoredBool("glossary.showProposed", true),
-  );
-  // REQ-2130: narrow the list to the classes whose tables are not all declared one entity.
-  const [gapsOnly, setGapsOnly] = useState(false);
+  // Draft terms (not yet admitted) are the raw output of the semantic layer's derivation, not
+  // curated — unchecking this narrows the list to terms in service or past it.
+  const [showDraft, setShowDraft] = useState(() => readStoredBool("glossary.showDraft", true));
+  // REQ-2146: narrow the list to the terms with findings.
+  const [toReviewOnly, setToReviewOnly] = useState(false);
 
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
   }, [showDeprecated]);
 
   useEffect(() => {
-    writeStoredBool("glossary.showProposed", showProposed);
-  }, [showProposed]);
+    writeStoredBool("glossary.showDraft", showDraft);
+  }, [showDraft]);
 
   // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
   // a shared URL, or the back/forward buttons all resolve to the same term this state does.
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const raw = searchParams.get("term");
     const parsed = raw ? Number(raw) : NaN;
@@ -179,6 +195,27 @@ export function GlossaryTab() {
   }, [refreshList]);
 
   // ``quiet``: read again in place (after a Save), so an open form keeps what it holds.
+  // The open term's findings (REQ-2146), kept with the term they were read for.
+  const [found, setFound] = useState<{ termId: number; findings: GlossaryFinding[] } | null>(null);
+  const [retireOpen, setRetireOpen] = useState(false);
+  const [deprecateOpen, setDeprecateOpen] = useState(false);
+  const { unassignTag } = useUnassignTag();
+  useEffect(() => {
+    if (detail === null) return;
+    let live = true;
+    void fetchGlossaryFindings().then((rows) => {
+      if (!live) return;
+      // The findings list names only the terms that have any: a term it leaves out has none.
+      const row = rows.find((r) => r.term_id === detail.id);
+      setFound({ termId: detail.id, findings: row ? row.findings : [] });
+    });
+    return () => {
+      live = false;
+    };
+  }, [detail]);
+  const findings =
+    found !== null && detail !== null && found.termId === detail.id ? found.findings : [];
+
   const loadDetail = useCallback(async (termId: number, quiet = false) => {
     if (!quiet) setDetailLoading(true);
     setActionError("");
@@ -409,12 +446,9 @@ export function GlossaryTab() {
   const otherTermOptions = terms
     .filter((term) => term.id !== detail?.id)
     .map((term) => ({ value: String(term.id), label: term.name }));
-  // A term is "Proposed" (see the badge/alert below) exactly when it is none of live, retired or
-  // deprecated — mirrored here rather than added to the summary type, since the server already
-  // gives us the three booleans it derives that state from.
   const displayedTerms = (
-    showProposed ? terms : terms.filter((term) => term.live || term.retired || term.deprecated)
-  ).filter((term) => !gapsOnly || term.identity_gap);
+    showDraft ? terms : terms.filter((term) => term.status !== "draft")
+  ).filter((term) => !toReviewOnly || toReview(term));
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
@@ -515,27 +549,31 @@ export function GlossaryTab() {
             }}
             data-testid="glossary-list"
           >
-            <Group gap="md" px="xs" pb={6} wrap="nowrap">
+            {/* Each filter's label on one line; the filters wrap where a language's labels are long. */}
+            <Group gap="sm" px="xs" pb={6} wrap="wrap">
               <Checkbox
                 size="xs"
                 label={t("glossaryTab.deprecated")}
                 checked={showDeprecated}
                 onChange={(e) => setShowDeprecated(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-show-deprecated"
               />
               <Checkbox
                 size="xs"
-                label={t("glossaryTab.proposed")}
-                checked={showProposed}
-                onChange={(e) => setShowProposed(e.currentTarget.checked)}
-                data-testid="glossary-show-proposed"
+                label={t("glossaryTab.status_draft")}
+                checked={showDraft}
+                onChange={(e) => setShowDraft(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
+                data-testid="glossary-show-draft"
               />
               <Checkbox
                 size="xs"
-                label={t("glossaryTab.gapsOnly")}
-                checked={gapsOnly}
-                onChange={(e) => setGapsOnly(e.currentTarget.checked)}
-                data-testid="glossary-gaps-only"
+                label={t("glossaryTab.toReview")}
+                checked={toReviewOnly}
+                onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
+                data-testid="glossary-to-review-only"
               />
             </Group>
             <div style={{ flex: 1, overflow: "auto" }}>
@@ -584,11 +622,11 @@ export function GlossaryTab() {
                 {/* A term nothing consumes is the normal state of a freshly derived glossary, so
                     the panel says which of the two admission tests it still fails rather than
                     leaving the curator to infer it from a badge. */}
-                {!detail.live && !detail.retired && !detail.deprecated && (
-                  <Alert color="yellow" data-testid="glossary-proposed">
+                {detail.status === "draft" && (
+                  <Alert color="yellow" data-testid="glossary-draft">
                     {(detail.definition ?? "").trim()
-                      ? t("glossaryTab.proposedUngrounded")
-                      : t("glossaryTab.proposedUndefined")}
+                      ? t("glossaryTab.draftUngrounded")
+                      : t("glossaryTab.draftUndefined")}
                   </Alert>
                 )}
 
@@ -603,30 +641,53 @@ export function GlossaryTab() {
                     >
                       {t("glossaryTab.edit")}
                     </Button>
-                    <Tip
-                      text={
-                        detail.retired ? t("glossaryTab.unretireHint") : t("glossaryTab.retireHint")
-                      }
-                    >
-                      <Button
-                        variant="light"
-                        color={detail.retired ? "teal" : "orange"}
-                        leftSection={
-                          detail.retired ? <ArchiveRestore size={14} /> : <Archive size={14} />
-                        }
-                        onClick={() =>
-                          void act(
-                            () => updateGlossaryTerm(detail.id, { retired: !detail.retired }),
-                            detail.retired
-                              ? t("glossaryTab.unretireDone")
-                              : t("glossaryTab.retireDone"),
-                          )
-                        }
-                        data-testid="glossary-retire-btn"
-                      >
-                        {detail.retired ? t("glossaryTab.unretire") : t("glossaryTab.retire")}
-                      </Button>
-                    </Tip>
+                    {/* REQ-2144: each status change is an action with a reason. A live term can be
+                        deprecated; any term in service retired; a deprecation or a retirement
+                        undone. */}
+                    {detail.status === "live" && (
+                      <Tip text={t("glossaryTab.deprecateHint")}>
+                        <Button
+                          variant="light"
+                          color="gray"
+                          leftSection={<Hourglass size={14} />}
+                          onClick={() => setDeprecateOpen(true)}
+                          data-testid="glossary-deprecate-btn"
+                        >
+                          {t("glossaryTab.deprecate")}
+                        </Button>
+                      </Tip>
+                    )}
+                    {detail.status !== "retired" && (
+                      <Tip text={t("glossaryTab.retireHint")}>
+                        <Button
+                          variant="light"
+                          color="orange"
+                          leftSection={<Archive size={14} />}
+                          onClick={() => setRetireOpen(true)}
+                          data-testid="glossary-retire-btn"
+                        >
+                          {t("glossaryTab.retire")}
+                        </Button>
+                      </Tip>
+                    )}
+                    {(detail.status === "deprecated" || detail.status === "retired") && (
+                      <Tip text={t("glossaryTab.unretireHint")}>
+                        <Button
+                          variant="light"
+                          color="teal"
+                          leftSection={<ArchiveRestore size={14} />}
+                          onClick={() =>
+                            void act(
+                              () => restoreGlossaryTerm(detail.id),
+                              t("glossaryTab.unretireDone"),
+                            )
+                          }
+                          data-testid="glossary-restore-btn"
+                        >
+                          {t("glossaryTab.unretire")}
+                        </Button>
+                      </Tip>
+                    )}
                     <Tip
                       text={
                         detail.refs.length === 0 &&
@@ -654,6 +715,63 @@ export function GlossaryTab() {
                       </span>
                     </Tip>
                   </Group>
+                )}
+
+                {!editing && (
+                  <TermToReview
+                    findings={findings}
+                    fixesOf={(f): FindingFix[] => {
+                      const edit: FindingFix = {
+                        label: t("glossaryTab.edit"),
+                        run: () => setEditing(true),
+                        testId: "glossary-finding-fix-edit",
+                      };
+                      switch (f.kind) {
+                        case "unlinked_tables":
+                          // Same-entity relationships are declared on the Relationships page,
+                          // found there by the tables' names.
+                          return [
+                            {
+                              label: t("glossaryTab.findingFix_unlinked_tables"),
+                              run: () =>
+                                navigate(
+                                  `/relationships?search=${encodeURIComponent(tableNames(f.params.tables))}`,
+                                ),
+                              testId: "glossary-finding-fix-same-entity",
+                            },
+                          ];
+                        case "tag_wrong_kind":
+                          return canEdit
+                            ? f.params.tags.split(", ").map((tag) => ({
+                                label: t("glossaryTab.findingUnmark", { tag }),
+                                run: () =>
+                                  void act(async () => {
+                                    const r = await unassignTag({
+                                      tagId: tag,
+                                      objectType: "term",
+                                      termId: detail.id,
+                                    });
+                                    if (!r.success) throw refusalError(r);
+                                  }),
+                                testId: `glossary-finding-fix-unmark-${tag}`,
+                              }))
+                            : [];
+                        case "retirement_blocked":
+                          return canEdit
+                            ? [
+                                {
+                                  label: t("glossaryTab.findingFix_retirement_blocked"),
+                                  run: () => setRetireOpen(true),
+                                  testId: "glossary-finding-fix-retire",
+                                },
+                              ]
+                            : [];
+                        case "class_and_attribute":
+                        case "no_data":
+                          return canEdit ? [edit] : [];
+                      }
+                    }}
+                  />
                 )}
 
                 {editing ? (
@@ -755,6 +873,30 @@ export function GlossaryTab() {
           />
         </FormLayout>
       </Modal>
+
+      {detail && deprecateOpen && (
+        <DeprecateTermDialog
+          term={detail}
+          onClose={() => setDeprecateOpen(false)}
+          onDeprecated={() => {
+            setDeprecateOpen(false);
+            // Deprecated already: the term and the list are read again, and the reader told.
+            void act(async () => undefined, t("glossaryTab.deprecateDone"));
+          }}
+        />
+      )}
+      {detail && retireOpen && (
+        <RetireTermDialog
+          term={detail}
+          terms={terms}
+          onClose={() => setRetireOpen(false)}
+          onRetired={() => {
+            setRetireOpen(false);
+            // Retired already: the term and the list are read again, and the reader told.
+            void act(async () => undefined, t("glossaryTab.retireDone"));
+          }}
+        />
+      )}
     </Stack>
   );
 }

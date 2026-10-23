@@ -28,6 +28,7 @@ import type { Tag, TagAssignment, TagObjectType } from "../types/admin";
 import { TAG_PARAM_SEPARATOR, baseTagId, tagParam } from "../types/admin";
 import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hooks/useTagQueries";
 import { Tip, TipSurface } from "./Tip";
+import { ColumnPiiForm } from "./ColumnPiiForm";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by the five
 // taggable object surfaces (source, table, column, relationship, command).
@@ -42,9 +43,12 @@ interface TagControlProps {
   relationshipId?: string;
   commandName?: string;
   readOnly?: boolean;
+  /** A column's: the glossary term it is pii through (REQ-2145), shown on its pii pill. */
+  piiTerm?: string | null;
 }
 
 const DEPRECATED_TAG_ID = "deprecated";
+const PII_TAG_ID = "pii";
 
 function pillColor(tag: Tag): string {
   if (tag.isSystem) return tag.id === DEPRECATED_TAG_ID ? "red" : "indigo";
@@ -64,6 +68,7 @@ export function TagControl({
   relationshipId,
   commandName,
   readOnly,
+  piiTerm,
 }: TagControlProps) {
   const { t } = useTranslation();
   const { tags } = useTags();
@@ -106,11 +111,16 @@ export function TagControl({
             : commandName;
 
   const objectAssignments = tagAssignments.filter(matches);
+  // REQ-2145: pii on a column goes through its own flow -- on its term, or on the column alone.
+  const columnPii = (tag: Tag) => objectType === "column" && tag.id === PII_TAG_ID;
   // REQ-1467: keyed by base id — an assignment's tagId carries its parameter ("entity:customer"),
   // and the registry tag it belongs to is the base. (base_tag_id, object) is unique server-side,
   // so one object never has two entries under one key.
   const assignmentByTagId = new Map(objectAssignments.map((a) => [baseTagId(a.tagId), a]));
-  const assignedTags = tags.filter((tag) => assignmentByTagId.has(tag.id));
+  // A column pii through its term shows the tag as its own pills do, saying where it comes from.
+  const assignedTags = tags.filter(
+    (tag) => assignmentByTagId.has(tag.id) || (tag.id === PII_TAG_ID && !!piiTerm),
+  );
   // REQ-1443: a derived tag reports what the object's own registration already says, so there is
   // nothing to check or clear — the server refuses the assignment and offering it would put a
   // control on screen whose only outcome is an error.
@@ -150,6 +160,11 @@ export function TagControl({
   const handleCheck = (tag: Tag, checked: boolean) => {
     if (checked) {
       openForm(tag.id, assignmentByTagId.get(tag.id));
+      return;
+    }
+    // pii through the column's term is taken off the term, or the column moved: the picker asks.
+    if (columnPii(tag) && piiTerm && !assignmentByTagId.has(tag.id)) {
+      openForm(tag.id);
       return;
     }
     if (editingTagId === tag.id) closeForm();
@@ -193,7 +208,17 @@ export function TagControl({
             content={
               <Stack gap={0}>
                 <Text size="xs">{tag.description}</Text>
-                {assignment?.reason && <Text size="xs">{assignment.reason}</Text>}
+                {assignment?.reason &&
+                  (tag.id === PII_TAG_ID && objectType === "column" ? (
+                    <Text size="xs">
+                      {t("tagControl.piiSetHere", { reason: assignment.reason })}
+                    </Text>
+                  ) : (
+                    <Text size="xs">{assignment.reason}</Text>
+                  ))}
+                {tag.id === PII_TAG_ID && piiTerm && (
+                  <Text size="xs">{t("tagControl.piiViaTerm", { term: piiTerm })}</Text>
+                )}
                 {assignment?.expiresOn && (
                   <Text size="xs">
                     {t("tagControl.plannedRemoval", { date: assignment.expiresOn })}
@@ -210,7 +235,7 @@ export function TagControl({
             >
               {/* REQ-1467: the assignment's id carries the parameter ("entity:customer"); the
                   registry id alone would show every parameterized pill as the same word. */}
-              {assignment?.tagId ?? tag.id}
+              {assignment ? assignment.tagId : tag.id}
             </Badge>
           </TipSurface>
         );
@@ -241,6 +266,70 @@ export function TagControl({
                 const isEditing = editingTagId === tag.id;
                 const reasonRequired = tag.reasonPolicy === "required";
                 const expiresRequired = tag.expiresPolicy === "required";
+                const ownForm = (
+                  <Stack gap="0.25rem" pl="1.5rem">
+                    {tag.paramPolicy === "required" && (
+                      <Select
+                        size="xs"
+                        required
+                        label={t("tagControl.paramLabel")}
+                        placeholder={t("tagControl.paramPlaceholder")}
+                        comboboxProps={{ withinPortal: true, transitionProps: { duration: 0 } }}
+                        data={tag.paramValues.map((v) => ({
+                          value: v.value,
+                          label: v.description ? `${v.value} — ${v.description}` : v.value,
+                        }))}
+                        value={paramValue}
+                        onChange={setParamValue}
+                        data-testid={`tag-param-${tag.id}`}
+                      />
+                    )}
+                    {tag.reasonPolicy !== "hidden" && (
+                      <TextInput
+                        size="xs"
+                        label={t("tagControl.reasonLabel")}
+                        required={reasonRequired}
+                        placeholder={reasonRequired ? t("tagControl.reasonRequired") : undefined}
+                        value={reason}
+                        onChange={(e) => setReason(e.currentTarget.value)}
+                        data-testid={`tag-reason-${tag.id}`}
+                      />
+                    )}
+                    {tag.expiresPolicy !== "hidden" && (
+                      <TextInput
+                        size="xs"
+                        type="date"
+                        label={t("tagControl.expiresLabel")}
+                        required={expiresRequired}
+                        value={expiresOn}
+                        onChange={(e) => setExpiresOn(e.currentTarget.value)}
+                        data-testid={`tag-expires-${tag.id}`}
+                      />
+                    )}
+                    <Group gap="0.25rem">
+                      <Button
+                        size="compact-xs"
+                        disabled={
+                          (reasonRequired && reason.trim() === "") ||
+                          (expiresRequired && expiresOn.trim() === "") ||
+                          (tag.paramPolicy === "required" && !paramValue)
+                        }
+                        onClick={() => void handleApply(tag)}
+                        data-testid={`tag-apply-${tag.id}`}
+                      >
+                        {t("tagControl.apply")}
+                      </Button>
+                      <Button
+                        size="compact-xs"
+                        variant="default"
+                        onClick={closeForm}
+                        data-testid={`tag-cancel-${tag.id}`}
+                      >
+                        {t("tagControl.cancel")}
+                      </Button>
+                    </Group>
+                  </Stack>
+                );
                 return (
                   <Stack key={tag.id} gap="0.25rem">
                     <Group gap="0.25rem" wrap="nowrap">
@@ -248,7 +337,7 @@ export function TagControl({
                         size="xs"
                         label={tag.id}
                         description={tag.description}
-                        checked={!!assignment || isEditing}
+                        checked={!!assignment || isEditing || (columnPii(tag) && !!piiTerm)}
                         onChange={(e) => handleCheck(tag, e.currentTarget.checked)}
                         data-testid={`tag-option-${tag.id}`}
                       />
@@ -266,72 +355,22 @@ export function TagControl({
                         </Tip>
                       )}
                     </Group>
-                    {isEditing && (
-                      <Stack gap="0.25rem" pl="1.5rem">
-                        {tag.paramPolicy === "required" && (
-                          <Select
-                            size="xs"
-                            required
-                            label={t("tagControl.paramLabel")}
-                            placeholder={t("tagControl.paramPlaceholder")}
-                            comboboxProps={{ withinPortal: true, transitionProps: { duration: 0 } }}
-                            data={tag.paramValues.map((v) => ({
-                              value: v.value,
-                              label: v.description ? `${v.value} — ${v.description}` : v.value,
-                            }))}
-                            value={paramValue}
-                            onChange={setParamValue}
-                            data-testid={`tag-param-${tag.id}`}
+                    {isEditing &&
+                      (columnPii(tag) ? (
+                        <Stack gap="0.25rem" pl="1.5rem">
+                          <ColumnPiiForm
+                            tableId={tableId as number}
+                            columnName={columnName as string}
+                            inherited={!!piiTerm && !assignment}
+                            assign={assignTag}
+                            unassign={unassignTag}
+                            onDone={closeForm}
+                            ownForm={ownForm}
                           />
-                        )}
-                        {tag.reasonPolicy !== "hidden" && (
-                          <TextInput
-                            size="xs"
-                            label={t("tagControl.reasonLabel")}
-                            required={reasonRequired}
-                            placeholder={
-                              reasonRequired ? t("tagControl.reasonRequired") : undefined
-                            }
-                            value={reason}
-                            onChange={(e) => setReason(e.currentTarget.value)}
-                            data-testid={`tag-reason-${tag.id}`}
-                          />
-                        )}
-                        {tag.expiresPolicy !== "hidden" && (
-                          <TextInput
-                            size="xs"
-                            type="date"
-                            label={t("tagControl.expiresLabel")}
-                            required={expiresRequired}
-                            value={expiresOn}
-                            onChange={(e) => setExpiresOn(e.currentTarget.value)}
-                            data-testid={`tag-expires-${tag.id}`}
-                          />
-                        )}
-                        <Group gap="0.25rem">
-                          <Button
-                            size="compact-xs"
-                            disabled={
-                              (reasonRequired && reason.trim() === "") ||
-                              (expiresRequired && expiresOn.trim() === "") ||
-                              (tag.paramPolicy === "required" && !paramValue)
-                            }
-                            onClick={() => void handleApply(tag)}
-                            data-testid={`tag-apply-${tag.id}`}
-                          >
-                            {t("tagControl.apply")}
-                          </Button>
-                          <Button
-                            size="compact-xs"
-                            variant="default"
-                            onClick={closeForm}
-                            data-testid={`tag-cancel-${tag.id}`}
-                          >
-                            {t("tagControl.cancel")}
-                          </Button>
-                        </Group>
-                      </Stack>
-                    )}
+                        </Stack>
+                      ) : (
+                        ownForm
+                      ))}
                   </Stack>
                 );
               })}

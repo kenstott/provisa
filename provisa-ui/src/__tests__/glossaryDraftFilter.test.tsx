@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1387: a term is "Proposed" (see the badge next to it in the list) exactly when it is none
+// REQ-1387: a term is a draft (see the badge next to it in the list) exactly when it is none
 // of live, retired or deprecated — the raw output of the semantic layer's derivation, not yet
-// curated. The Proposed checkbox (checked = show, on by default) narrows the list to admitted
+// curated. The Draft checkbox (checked = show, on by default) narrows the list to admitted
 // terms client-side when unchecked, since the three booleans it filters on are already in every
 // GlossaryTermSummary the list fetch returns.
 
@@ -23,6 +23,8 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
+  // A term with no findings: the findings list names none.
+  fetchGlossaryFindings: vi.fn(async () => []),
 }));
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
@@ -58,51 +60,62 @@ const LIVE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
   grounded: true,
   domains: [],
 };
-// Neither live, retired nor deprecated — the Proposed badge's own condition.
-const PROPOSED: GlossaryTermSummary = {
+// A draft: not yet admitted, neither retired nor deprecated.
+const DRAFT: GlossaryTermSummary = {
   ...LIVE,
   id: 2,
   name: "Churn Velocity",
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
+  status: "draft",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   live: false,
 };
-// Not live, but retired: curated away from the proposal state, so it must survive the filter too.
+// Not live, but retired: curated away from the draft state, so it must survive the filter too.
 const RETIRED: GlossaryTermSummary = {
   ...LIVE,
   id: 3,
   name: "Legacy Metric",
   live: false,
   retired: true,
+  status: "retired",
 };
 
-describe("glossary proposed filter", () => {
+describe("glossary draft filter", () => {
   beforeEach(() => {
     mockList.mockReset();
-    mockList.mockResolvedValue([LIVE, PROPOSED, RETIRED]);
+    mockList.mockResolvedValue([LIVE, DRAFT, RETIRED]);
     window.localStorage.clear();
   });
 
-  it("shows proposed terms by default", async () => {
+  it("shows draft terms by default", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     expect(screen.getByTestId("glossary-item-2")).toBeInTheDocument();
     expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-show-proposed")).toBeChecked();
+    expect(screen.getByTestId("glossary-show-draft")).toBeChecked();
   });
 
-  it("hides only proposed terms when unchecked", async () => {
+  it("hides only draft terms when unchecked", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 
-    fireEvent.click(screen.getByTestId("glossary-show-proposed"));
+    fireEvent.click(screen.getByTestId("glossary-show-draft"));
 
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
     expect(screen.queryByTestId("glossary-item-2")).not.toBeInTheDocument();
@@ -114,7 +127,7 @@ describe("glossary proposed filter", () => {
     await screen.findByTestId("glossary-item-1");
     const callsBefore = mockList.mock.calls.length;
 
-    fireEvent.click(screen.getByTestId("glossary-show-proposed"));
+    fireEvent.click(screen.getByTestId("glossary-show-draft"));
 
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
     expect(mockList.mock.calls.length).toBe(callsBefore);
@@ -123,13 +136,13 @@ describe("glossary proposed filter", () => {
   it("remembers the choice in localStorage and restores it", async () => {
     const { unmount } = render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    fireEvent.click(screen.getByTestId("glossary-show-proposed"));
-    expect(window.localStorage.getItem(scopedKey("glossary.showProposed"))).toBe("false");
+    fireEvent.click(screen.getByTestId("glossary-show-draft"));
+    expect(window.localStorage.getItem(scopedKey("glossary.showDraft"))).toBe("false");
     unmount();
 
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    expect(screen.getByTestId("glossary-show-proposed")).not.toBeChecked();
+    expect(screen.getByTestId("glossary-show-draft")).not.toBeChecked();
     expect(screen.queryByTestId("glossary-item-2")).not.toBeInTheDocument();
   });
 });

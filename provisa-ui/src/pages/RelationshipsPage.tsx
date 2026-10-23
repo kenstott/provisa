@@ -13,7 +13,20 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Sparkles, Code2, Network, X } from "lucide-react";
-import { ActionIcon, Alert, Button, Group, Pagination, Table, Text, Title } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Pagination,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
+import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
+import { TagLossSummary } from "../components/admin/TagLossSummary";
+import { tagLossTitle } from "../components/admin/tagLoss";
 import { ErdModal } from "../components/erd/ErdModal";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
@@ -63,6 +76,20 @@ import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
 import { matchesQuery } from "../lib/searchItems";
 
+/** A refusal over the tags a re-homed key ref would lose (REQ-2145): each column's change. */
+function tagLossOf(result: MutationResult): ColumnTagChange[] | null {
+  return result.code === "tag.move_loses"
+    ? (result.params as { columns: ColumnTagChange[] }).columns
+    : null;
+}
+
+/** How the save goes ahead over those tags, as RelationshipInput takes it. */
+function tagLossInput(resolve?: TagLossResolution) {
+  return resolve
+    ? { confirmTagLoss: resolve.confirm_tag_loss ?? [], carryTags: resolve.carry_tags === true }
+    : {};
+}
+
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -86,8 +113,21 @@ export function RelationshipsPage() {
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // `?relationship=<id>` (a graph's link, lib/entityHref) opens that relationship's panel.
+  const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("relationship"));
+  const linkedRelationship = searchParams.get("relationship");
+  const [seededRelationship, setSeededRelationship] = useState(linkedRelationship);
+  if (linkedRelationship !== seededRelationship) {
+    setSeededRelationship(linkedRelationship);
+    if (linkedRelationship !== null) setExpanded(linkedRelationship);
+  }
   const [editingRel, setEditingRel] = useState<RelForm | null>(null);
+  // REQ-2145: a save or a delete that re-homes key refs off a tagged term, refused over the tags
+  // those columns would lose: what each loses and gains, and what to do again once resolved.
+  const [tagLoss, setTagLoss] = useState<{
+    columns: ColumnTagChange[];
+    retry: { kind: "add" } | { kind: "save" } | { kind: "delete"; id: string };
+  } | null>(null);
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
@@ -155,8 +195,13 @@ export function RelationshipsPage() {
   );
 
   const handleDelete = useCallback(
-    async (id: string) => {
-      const result = await deleteRelationship(id);
+    async (id: string, resolve?: TagLossResolution) => {
+      const result = await deleteRelationship(id, resolve);
+      const lost = tagLossOf(result);
+      if (lost) {
+        setTagLoss({ columns: lost, retry: { kind: "delete", id } });
+        return;
+      }
       if (refusal.refused(result, id)) return;
       setExpanded((prev) => (prev === id ? null : prev));
       setEditingRel(null);
@@ -164,111 +209,138 @@ export function RelationshipsPage() {
     [deleteRelationship, refusal],
   );
 
-  const handleAdd = useCallback(async () => {
-    if (!form.id || !form.sourceTableId) return;
-    if (form.targetType === "table" && !form.targetTableId) return;
-    if (form.targetType === "function" && !form.targetFunctionName) return;
-    setSaving("new");
-    setSaveProblem("");
-    let result: MutationResult;
-    try {
-      result = await upsertRelationship(
-        {
-          id: form.id,
-          sourceTableId: form.sourceTableId,
-          targetTableId: form.targetType === "table" ? form.targetTableId : "",
-          sourceColumn: form.sourceColumn,
-          targetColumn: form.targetType === "table" ? form.targetColumn : "",
-          cardinality: form.targetType === "function" ? "one-to-many" : form.cardinality,
-          materialize: form.materialize,
-          refreshInterval: parseInt(form.refreshInterval) || 300,
-          targetFunctionName: form.targetType === "function" ? form.targetFunctionName : null,
-          functionArg: form.targetType === "function" ? form.functionArg : null,
-          alias: form.alias || null,
-          graphqlAlias: form.graphqlAlias || null,
-          disableCypher: form.disableCypher,
-          sameEntity: form.sameEntity,
-          // REQ-1586: the junction declaration saves with the edge.
-          viaTable: form.viaTable,
-          viaSourceColumn: form.viaSourceColumn,
-          viaTargetColumn: form.viaTargetColumn,
-          viaTypeColumn: form.viaTypeColumn || null,
-          viaTypeValue: form.viaTypeValue || null,
-          viaLabelSource: form.viaLabelSource,
-          parameters: form.parameters,
-        },
-        true,
-      );
-    } catch (err) {
-      // A save that errors rather than answering a refusal still ends: the form says why.
-      setSaveProblem(err instanceof Error ? err.message : String(err));
-      return;
-    } finally {
-      setSaving(null);
-    }
-    if (!result.success) {
-      // Refused: the form stays open and says why.
-      setSaveProblem(serverMessage(result, result.message));
-      return;
-    }
-    // The relationship exists now, with everything else at its defaults: it is selected in the
-    // list and its detail opens in edit, where the rest is filled in.
-    setExpanded(form.id);
-    setEditingRel({ ...form, originalId: form.id });
-    setForm(EMPTY_FORM);
-    setShowForm(false);
-  }, [form, upsertRelationship]);
-
-  const handleEditSave = useCallback(async () => {
-    if (!editingRel?.id) return;
-    setSaving(editingRel.originalId || editingRel.id);
-    setSaveProblem("");
-    try {
-      const result = await upsertRelationship(
-        {
-          id: editingRel.id,
-          sourceTableId: editingRel.sourceTableId,
-          targetTableId: editingRel.targetType === "table" ? editingRel.targetTableId : "",
-          sourceColumn: editingRel.sourceColumn,
-          targetColumn: editingRel.targetType === "table" ? editingRel.targetColumn : "",
-          cardinality:
-            editingRel.targetType === "function" ? "one-to-many" : editingRel.cardinality,
-          materialize: editingRel.materialize,
-          refreshInterval: parseInt(editingRel.refreshInterval) || 300,
-          targetFunctionName:
-            editingRel.targetType === "function" ? editingRel.targetFunctionName : null,
-          functionArg: editingRel.targetType === "function" ? editingRel.functionArg : null,
-          alias: editingRel.alias || null,
-          graphqlAlias: editingRel.graphqlAlias || null,
-          disableCypher: editingRel.disableCypher,
-          sameEntity: editingRel.sameEntity,
-          // REQ-1586: the junction declaration saves with the edge.
-          viaTable: editingRel.viaTable,
-          viaSourceColumn: editingRel.viaSourceColumn,
-          viaTargetColumn: editingRel.viaTargetColumn,
-          viaTypeColumn: editingRel.viaTypeColumn || null,
-          viaTypeValue: editingRel.viaTypeValue || null,
-          viaLabelSource: editingRel.viaLabelSource,
-          // REQ-2099: the parameters the edge feeds save with it.
-          parameters: editingRel.parameters,
-        },
-        editingRel.id !== editingRel.originalId, // renamed: made anew, the old one deleted
-      );
+  const handleAdd = useCallback(
+    async (resolve?: TagLossResolution) => {
+      if (!form.id || !form.sourceTableId) return;
+      if (form.targetType === "table" && !form.targetTableId) return;
+      if (form.targetType === "function" && !form.targetFunctionName) return;
+      setSaving("new");
+      setSaveProblem("");
+      let result: MutationResult;
+      try {
+        result = await upsertRelationship(
+          {
+            id: form.id,
+            sourceTableId: form.sourceTableId,
+            targetTableId: form.targetType === "table" ? form.targetTableId : "",
+            sourceColumn: form.sourceColumn,
+            targetColumn: form.targetType === "table" ? form.targetColumn : "",
+            cardinality: form.targetType === "function" ? "one-to-many" : form.cardinality,
+            materialize: form.materialize,
+            refreshInterval: parseInt(form.refreshInterval) || 300,
+            targetFunctionName: form.targetType === "function" ? form.targetFunctionName : null,
+            functionArg: form.targetType === "function" ? form.functionArg : null,
+            alias: form.alias || null,
+            graphqlAlias: form.graphqlAlias || null,
+            disableCypher: form.disableCypher,
+            sameEntity: form.sameEntity,
+            // REQ-1586: the junction declaration saves with the edge.
+            viaTable: form.viaTable,
+            viaSourceColumn: form.viaSourceColumn,
+            viaTargetColumn: form.viaTargetColumn,
+            viaTypeColumn: form.viaTypeColumn || null,
+            viaTypeValue: form.viaTypeValue || null,
+            viaLabelSource: form.viaLabelSource,
+            parameters: form.parameters,
+            ...tagLossInput(resolve),
+          },
+          true,
+        );
+      } catch (err) {
+        // A save that errors rather than answering a refusal still ends: the form says why.
+        setSaveProblem(err instanceof Error ? err.message : String(err));
+        return;
+      } finally {
+        setSaving(null);
+      }
+      const lost = tagLossOf(result);
+      if (lost) {
+        setTagLoss({ columns: lost, retry: { kind: "add" } });
+        return;
+      }
       if (!result.success) {
+        // Refused: the form stays open and says why.
         setSaveProblem(serverMessage(result, result.message));
         return;
       }
-      if (editingRel.originalId && editingRel.originalId !== editingRel.id) {
-        await deleteRelationship(editingRel.originalId);
+      // The relationship exists now, with everything else at its defaults: it is selected in the
+      // list and its detail opens in edit, where the rest is filled in.
+      setExpanded(form.id);
+      setEditingRel({ ...form, originalId: form.id });
+      setForm(EMPTY_FORM);
+      setShowForm(false);
+    },
+    [form, upsertRelationship],
+  );
+
+  const handleEditSave = useCallback(
+    async (resolve?: TagLossResolution) => {
+      if (!editingRel?.id) return;
+      setSaving(editingRel.originalId || editingRel.id);
+      setSaveProblem("");
+      try {
+        const result = await upsertRelationship(
+          {
+            id: editingRel.id,
+            sourceTableId: editingRel.sourceTableId,
+            targetTableId: editingRel.targetType === "table" ? editingRel.targetTableId : "",
+            sourceColumn: editingRel.sourceColumn,
+            targetColumn: editingRel.targetType === "table" ? editingRel.targetColumn : "",
+            cardinality:
+              editingRel.targetType === "function" ? "one-to-many" : editingRel.cardinality,
+            materialize: editingRel.materialize,
+            refreshInterval: parseInt(editingRel.refreshInterval) || 300,
+            targetFunctionName:
+              editingRel.targetType === "function" ? editingRel.targetFunctionName : null,
+            functionArg: editingRel.targetType === "function" ? editingRel.functionArg : null,
+            alias: editingRel.alias || null,
+            graphqlAlias: editingRel.graphqlAlias || null,
+            disableCypher: editingRel.disableCypher,
+            sameEntity: editingRel.sameEntity,
+            // REQ-1586: the junction declaration saves with the edge.
+            viaTable: editingRel.viaTable,
+            viaSourceColumn: editingRel.viaSourceColumn,
+            viaTargetColumn: editingRel.viaTargetColumn,
+            viaTypeColumn: editingRel.viaTypeColumn || null,
+            viaTypeValue: editingRel.viaTypeValue || null,
+            viaLabelSource: editingRel.viaLabelSource,
+            // REQ-2099: the parameters the edge feeds save with it.
+            parameters: editingRel.parameters,
+            ...tagLossInput(resolve),
+          },
+          editingRel.id !== editingRel.originalId, // renamed: made anew, the old one deleted
+        );
+        const lost = tagLossOf(result);
+        if (lost) {
+          setTagLoss({ columns: lost, retry: { kind: "save" } });
+          return;
+        }
+        if (!result.success) {
+          setSaveProblem(serverMessage(result, result.message));
+          return;
+        }
+        if (editingRel.originalId && editingRel.originalId !== editingRel.id) {
+          await deleteRelationship(editingRel.originalId);
+        }
+        setEditingRel(null);
+      } catch (err) {
+        // A save that errors rather than answering a refusal still ends: the form says why.
+        setSaveProblem(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSaving(null);
       }
-      setEditingRel(null);
-    } catch (err) {
-      // A save that errors rather than answering a refusal still ends: the form says why.
-      setSaveProblem(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(null);
-    }
-  }, [editingRel, upsertRelationship, deleteRelationship]);
+    },
+    [editingRel, upsertRelationship, deleteRelationship],
+  );
+
+  // The refused save or delete again, as the reader resolved its tags.
+  const retryTagLoss = (resolve: TagLossResolution) => {
+    const retry = (tagLoss as NonNullable<typeof tagLoss>).retry;
+    setTagLoss(null);
+    if (retry.kind === "delete") void handleDelete(retry.id, resolve);
+    else if (retry.kind === "save") void handleEditSave(resolve);
+    else void handleAdd(resolve);
+  };
 
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
@@ -514,7 +586,7 @@ export function RelationshipsPage() {
         functions={functions}
         saving={saving}
         problem={saveProblem}
-        onSave={handleAdd}
+        onSave={() => handleAdd()}
         onCancel={() => setShowForm(false)}
       />
     </div>
@@ -554,7 +626,7 @@ export function RelationshipsPage() {
         setReverseForm(buildReverse(selectedRel));
       }}
       onDelete={() => handleDelete(String(selectedRel.id))}
-      onEditSave={handleEditSave}
+      onEditSave={() => handleEditSave()}
       saving={saving}
       problem={saveProblem}
       tables={tables}
@@ -870,6 +942,22 @@ export function RelationshipsPage() {
         />
       )}
       {refusal.dialog}
+      {tagLoss && (
+        <Modal
+          opened
+          onClose={() => setTagLoss(null)}
+          title={tagLossTitle(t, tagLoss.columns, null)}
+        >
+          <TagLossSummary
+            columns={tagLoss.columns}
+            into={null}
+            saving={saving !== null}
+            onMove={(confirm_tag_loss) => retryTagLoss({ confirm_tag_loss })}
+            onCarry={() => retryTagLoss({ carry_tags: true })}
+            onCancel={() => setTagLoss(null)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
