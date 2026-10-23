@@ -214,17 +214,17 @@ class TagLossRefused(ValueError):
 async def inherited_snapshot(
     conn: "Connection", table_ids: "Iterable[int] | None" = None
 ) -> dict[tuple[int, str], dict]:
-    """Each column's inherited tags and the term they come through, by (table_id, column_name):
-    ``{"tags": {base ids}, "term_id", "term"}`` -- the before of a move, for
-    :func:`tag_changes_of_moves`."""
+    """Each tagged column's tags, by (table_id, column_name): ``{"tags": {base ids it carries
+    through its term}, "carried": {every base id it carries}, "terms": {term_id: name}}`` -- the
+    before of a move, for :func:`tag_changes_of_moves`."""
     out: dict[tuple[int, str], dict] = {}
     for key, tags in (await effective_column_tags(conn, table_ids)).items():
         through = [t for t in tags if t["via"] == "term"]
-        if through:
-            out[key] = {
-                "tags": {t["base_tag_id"] for t in through},
-                "terms": {t["term_id"]: t["term"] for t in through},
-            }
+        out[key] = {
+            "tags": {t["base_tag_id"] for t in through},
+            "carried": {t["base_tag_id"] for t in tags},
+            "terms": {t["term_id"]: t["term"] for t in through},
+        }
     return out
 
 
@@ -241,8 +241,10 @@ async def tag_changes_of_moves(
     in the move's transaction, with ``before`` (:func:`inherited_snapshot` of the same tables taken
     before the move); a refusal raised here undoes the move with the transaction.
 
-    Returns each column whose inherited tags changed, as ``{column, table, loses, gains}``. A
-    column losing a restricting tag (``RESTRICTING_TAGS``) refuses the move
+    Returns each column whose inherited tags changed, as ``{column, table, loses, gains}`` -- a
+    column that keeps a tag through its own assignment is listed, its provenance having changed,
+    and needs no confirming. A column that stops carrying a restricting tag (``RESTRICTING_TAGS``)
+    altogether refuses the move
     (:class:`TagLossRefused`) unless ``confirm_tag_loss`` names every tag lost; with
     ``carry_tags`` the lost tags are put on the term each column moved to instead -- refused when
     that term may not take them (:class:`TermTagRefused`) -- so nothing is lost."""
@@ -256,18 +258,22 @@ async def tag_changes_of_moves(
             had = before.get(key, {}).get("tags", set())
             has = after.get(key, {}).get("tags", set())
             if had != has:
+                gone = before.get(key, {}).get("carried", set()) - after.get(key, {}).get(
+                    "carried", set()
+                )
                 out.append(
                     {
                         "table_id": key[0],
                         "column": key[1],
                         "loses": sorted(had - has),
                         "gains": sorted(has - had),
+                        "gone": sorted(gone),
                     }
                 )
         return out
 
     found = await changes()
-    lost = {t for c in found for t in c["loses"] if t in RESTRICTING_TAGS}
+    lost = {t for c in found for t in c["gone"] if t in RESTRICTING_TAGS}
     if lost and carry_tags:
         from provisa.core.models import TagAssignment
         from provisa.core.repositories import tag as tag_repo
@@ -279,7 +285,9 @@ async def tag_changes_of_moves(
                     reasons.setdefault(t["tag_id"], t["reason"])
         for c in found:
             moved_to = await glossary_repo.get_term_by_ref(conn, c["table_id"], c["column"])
-            for tag_id in c["loses"]:
+            for tag_id in c["gone"]:
+                if tag_id not in RESTRICTING_TAGS:
+                    continue
                 if moved_to is None:
                     raise TermTagRefused(
                         "tag.term_not_property",
@@ -298,7 +306,7 @@ async def tag_changes_of_moves(
                     ),
                 )
         found = await changes()
-        lost = {t for c in found for t in c["loses"] if t in RESTRICTING_TAGS}
+        lost = {t for c in found for t in c["gone"] if t in RESTRICTING_TAGS}
     names = {}
     if found:
         rows = (

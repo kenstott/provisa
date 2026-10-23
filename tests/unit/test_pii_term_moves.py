@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 2040d1b2-e990-4929-b23f-abf875e9e5b6
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -214,9 +215,17 @@ async def test_a_move_never_changes_a_columns_own_tags(control_plane, monkeypatc
                     reason="marked by hand",
                 ),
             )
-        # The pii it carried through its term is lost, and confirmed; its own pii stays.
-        moved = await _move(ids, confirm_tag_loss=["pii"])
-        assert [c["loses"] for c in moved["tag_changes"]] == [["pii"]]
+        # It still carries pii, its own: the inherited copy going is listed, and needs no
+        # confirming.
+        moved = await _move(ids)
+        assert moved["tag_changes"] == [
+            {
+                "column": "home_address",
+                "table": "__derived__.s.customers",
+                "loses": ["pii"],
+                "gains": [],
+            }
+        ]
         async with db.acquire() as conn:
             tags = (await effective_column_tags(conn, {ids["customers"]}))[
                 (ids["customers"], "home_address")
