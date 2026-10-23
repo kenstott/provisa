@@ -328,7 +328,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;d
 h2{margin:18px 0 8px;font-size:1.25rem}
 p{margin:0;color:#9aa3b5;font-size:.9rem;line-height:1.5}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-@media (prefers-reduced-motion: reduce){.mark{animation:none}#wake-canvas{display:none}}
+@media (prefers-reduced-motion: reduce){.mark{animation:none}}
 </style>
 </head><body>
 <canvas id="wake-canvas"></canvas>
@@ -347,14 +347,33 @@ p{margin:0;color:#9aa3b5;font-size:.9rem;line-height:1.5}
 (function(){
 var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 var canvas=document.getElementById("wake-canvas");
-if(reduce||!canvas||!canvas.getContext)return;
+if(!canvas||!canvas.getContext)return;
 var ctx=canvas.getContext("2d");
 var dpr=Math.min(window.devicePixelRatio||1,2);
-var W=0,H=0,cx=0,cy=0,spawnR=0,coreR=0;
+var W=0,H=0,cx=0,cy=0,spawnR=0,coreR=0,box=null;
 var mark=document.querySelector(".mark svg");
+var card=document.querySelector(".card");
 function markCenter(){
 if(mark){var r=mark.getBoundingClientRect();if(r.width)return{x:r.left+r.width/2,y:r.top+r.height/2};}
 return{x:W/2,y:H*0.4};
+}
+// Binary streams: each stream carries a few byte groups along the flow field. Glyphs come from
+// one offscreen sprite (0 and 1, in TONES colours from blue to teal, at a few alphas) drawn with
+// drawImage, so no fillText runs per frame.
+var CW=8,CH=13,TONES=4,ALPHAS=[0.1,0.18,0.27,0.36];
+var sprite=document.createElement("canvas");
+sprite.width=CW*dpr*ALPHAS.length*2;sprite.height=CH*dpr*TONES;
+var sc=sprite.getContext("2d");
+sc.scale(dpr,dpr);
+sc.font="11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+sc.textAlign="center";sc.textBaseline="middle";
+for(var ti=0;ti<TONES;ti++){
+var tt=ti/(TONES-1);
+var rgb=Math.round(99+(16-99)*tt)+","+Math.round(102+(185-102)*tt)+","+Math.round(241+(129-241)*tt);
+for(var ai=0;ai<ALPHAS.length;ai++)for(var b=0;b<2;b++){
+sc.fillStyle="rgba("+rgb+","+ALPHAS[ai]+")";
+sc.fillText(b?"1":"0",(ai*2+b)*CW+CW/2,ti*CH+CH/2);
+}
 }
 function resize(){
 W=canvas.clientWidth;H=canvas.clientHeight;
@@ -363,50 +382,104 @@ ctx.setTransform(dpr,0,0,dpr,0,0);
 var c=markCenter();cx=c.x;cy=c.y;
 spawnR=Math.max(W,H)*0.72;
 coreR=Math.max(56,Math.min(W,H)*0.13);
-ctx.fillStyle="#0f1117";ctx.fillRect(0,0,W,H);
+box=card?card.getBoundingClientRect():null;
 }
-window.addEventListener("resize",resize);
 resize();
-requestAnimationFrame(function(){var c=markCenter();cx=c.x;cy=c.y;});
-setTimeout(function(){var c=markCenter();cx=c.x;cy=c.y;},760);
-var N=Math.max(140,Math.min(320,Math.round((W*H)/5200)));
-var P=[];
-function spawn(p){
+var N=Math.max(50,Math.min(110,Math.round((W*H)/12000)));
+var S=[];
+function spawn(s){
 var a=Math.random()*Math.PI*2;
 var r=spawnR*(0.7+Math.random()*0.5);
-p.x=cx+Math.cos(a)*r;p.y=cy+Math.sin(a)*r*0.82;
-p.px=p.x;p.py=p.y;p.spd=0.6+Math.random()*1.1;p.life=0;
+s.x=cx+Math.cos(a)*r;s.y=cy+Math.sin(a)*r*0.82;
+s.spd=0.6+Math.random()*1.1;s.life=0;
+// 2 to 3 groups of 4 to 8 bits, a blank slot (-1) between groups.
+s.bits=[];
+var groups=2+Math.floor(Math.random()*2);
+for(var g=0;g<groups;g++){
+if(g)s.bits.push(-1);
+var len=4+Math.floor(Math.random()*5);
+for(var k=0;k<len;k++)s.bits.push(Math.random()<0.5?0:1);
 }
-for(var i=0;i<N;i++){var seed={};spawn(seed);P.push(seed);}
-function frame(){
-ctx.fillStyle="rgba(15,17,23,0.085)";ctx.fillRect(0,0,W,H);
-for(var i=0;i<P.length;i++){
-var p=P[i];
-var dx=cx-p.x,dy=cy-p.y;
+// Trail points, CW apart along the path the head has travelled; glyph k sits between k-1 and k.
+s.tx=[s.x];s.ty=[s.y];
+}
+function step(s){
+var dx=cx-s.x,dy=cy-s.y;
 var d=Math.sqrt(dx*dx+dy*dy)||1;
-var curl=Math.sin(p.x*0.012+p.y*0.01)*0.9;
+var curl=Math.sin(s.x*0.012+s.y*0.01)*0.9;
 var ang=Math.atan2(dy,dx)+curl*(d/spawnR);
-var v=p.spd*(0.6+(1-d/spawnR)*2.2);
-p.px=p.x;p.py=p.y;
-p.x+=Math.cos(ang)*v;p.y+=Math.sin(ang)*v;
-p.life++;
-var t=Math.max(0,Math.min(1,1-d/(spawnR*0.55)));
-var rr=Math.round(99+(16-99)*t);
-var gg=Math.round(102+(185-102)*t);
-var bb=Math.round(241+(129-241)*t);
-var alpha=0.22+t*0.6;
-ctx.strokeStyle="rgba("+rr+","+gg+","+bb+","+alpha+")";
-ctx.lineWidth=0.9+t*1.6;
-ctx.beginPath();ctx.moveTo(p.px,p.py);ctx.lineTo(p.x,p.y);ctx.stroke();
-if(d<coreR||p.life>900)spawn(p);
+var v=s.spd*(0.6+(1-d/spawnR)*2.2);
+s.x+=Math.cos(ang)*v;s.y+=Math.sin(ang)*v;
+s.life++;
+var hx=s.x-s.tx[0],hy=s.y-s.ty[0];
+if(hx*hx+hy*hy>=CW*CW){
+s.tx.unshift(s.x);s.ty.unshift(s.y);
+if(s.tx.length>s.bits.length+1){s.tx.pop();s.ty.pop();}
 }
-var pulse=0.55+0.45*Math.sin(Date.now()*0.002);
+if(Math.random()<0.12){var i=Math.floor(Math.random()*s.bits.length);if(s.bits[i]>=0)s.bits[i]^=1;}
+var n=s.tx.length-1,ex=s.tx[n]-cx,ey=s.ty[n]-cy;
+if((n===s.bits.length&&ex*ex+ey*ey<coreR*coreR)||s.life>1400)spawn(s);
+}
+function draw(s){
+var fin=Math.min(1,s.life/90);
+var hx=s.x-s.tx[0],hy=s.y-s.ty[0];
+var f=Math.sqrt(hx*hx+hy*hy)/CW;
+for(var k=0;k<s.bits.length;k++){
+var b=s.bits[k];
+if(b<0)continue;
+var x,y;
+if(k===0){x=s.x;y=s.y;}
+else{
+if(k>=s.tx.length)break;
+var u=1-f;
+x=s.tx[k-1]+(s.tx[k]-s.tx[k-1])*u;y=s.ty[k-1]+(s.ty[k]-s.ty[k-1])*u;
+}
+var dx=x-cx,dy=y-cy,d=Math.sqrt(dx*dx+dy*dy);
+var fout=Math.max(0,Math.min(1,(d-coreR*1.1)/(coreR*1.8)));
+// Glyphs also fade out over the text, so the heading and message stay readable.
+if(box){
+var ox=Math.max(box.left-x,x-box.right,0),oy=Math.max(box.top-y,y-box.bottom,0);
+fout*=Math.min(1,Math.sqrt(ox*ox+oy*oy)/40);
+}
+var a=fin*fout;
+if(a<0.08)continue;
+var ai=Math.min(ALPHAS.length-1,Math.floor(a*ALPHAS.length));
+var t=Math.max(0,Math.min(1,1-d/(spawnR*0.55)));
+var ti=Math.round(t*(TONES-1));
+ctx.drawImage(sprite,(ai*2+b)*CW*dpr,ti*CH*dpr,CW*dpr,CH*dpr,Math.round(x-CW/2),Math.round(y-CH/2),CW,CH);
+}
+}
+function glow(pulse){
 var g=ctx.createRadialGradient(cx,cy,0,cx,cy,coreR*1.3);
 g.addColorStop(0,"rgba(16,185,129,"+0.16*pulse+")");
 g.addColorStop(0.5,"rgba(52,120,180,"+0.06*pulse+")");
 g.addColorStop(1,"rgba(16,185,129,0)");
 ctx.fillStyle=g;
 ctx.beginPath();ctx.arc(cx,cy,coreR*1.3,0,Math.PI*2);ctx.fill();
+}
+function render(pulse){
+ctx.clearRect(0,0,W,H);
+for(var i=0;i<S.length;i++)draw(S[i]);
+glow(pulse);
+}
+// Start each stream part-way along its path, so the first frame is already flowing.
+for(var i=0;i<N;i++){
+var s={};spawn(s);
+for(var w=Math.floor(Math.random()*700);w>0;w--)step(s);
+S.push(s);
+}
+if(reduce){
+// Reduced motion: one static frame, redrawn only when the window changes size.
+render(1);
+window.addEventListener("resize",function(){resize();render(1);});
+return;
+}
+window.addEventListener("resize",resize);
+requestAnimationFrame(function(){var c=markCenter();cx=c.x;cy=c.y;});
+setTimeout(function(){var c=markCenter();cx=c.x;cy=c.y;box=card?card.getBoundingClientRect():null;},760);
+function frame(){
+for(var i=0;i<S.length;i++)step(S[i]);
+render(0.55+0.45*Math.sin(Date.now()*0.002));
 requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
