@@ -21,6 +21,7 @@ each function to avoid an app <-> app_startup import cycle.
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 import os
 
@@ -99,6 +100,10 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
     except Exception:
         _log.exception("admin warmup queries failed; serving anyway")
 
+    # REQ-1911: what the boot built (the model, schemas, caches) lives as long as the worker, so it
+    # moves to the permanent generation once, here: a full collection no longer walks it on every
+    # request's behalf (the stall round measured each gen-2 pass at ~400 ms with it in the heap).
+    gc.freeze()
     state.is_warm = True
     _log.warning("startup phase %-20s ready", "warmup")
 
