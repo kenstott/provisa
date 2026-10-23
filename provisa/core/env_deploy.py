@@ -569,7 +569,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                     {
                         "table_id": tid,
                         "term_id": resolve_term(ref["term"], path),
-                        "proposed": bool(ref.get("proposed", False)),
+                        "derived": bool(ref.get("derived", False)),
                     }
                 )
             for link in nested["meta_links"]:

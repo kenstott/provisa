@@ -631,7 +631,17 @@
       "term_is_property": "De term '{{term}}' heeft kolomverwijzingen ({{columns}}) en is dus een Eigenschap; hij kan geen tabel verankeren. Een term is een Klasse, verankerd in tabellen, of een Eigenschap, met kolomverwijzingen, nooit allebei.",
       "term_is_class": "De term '{{term}}' verankert tabellen ({{tables}}) en is dus een Klasse; hij kan geen kolomverwijzing hebben. Een term is een Klasse, verankerd in tabellen, of een Eigenschap, met kolomverwijzingen, nooit allebei.",
       "abstract_is_derived": "'Abstract' kan niet worden ingesteld: het volgt uit de verankering. Een term zonder kolomverwijzingen en zonder verankerde tabellen is een Concept.",
-      "key_column_derived": "Deze kolom is een sleutel; hij volgt de klasse van zijn tabel. {{table}}.{{column}} blijft bij '{{class}}' en wordt niet met de hand verplaatst."
+      "key_column_derived": "Deze kolom is een sleutel; hij volgt de klasse van zijn tabel. {{table}}.{{column}} blijft bij '{{class}}' en wordt niet met de hand verplaatst.",
+      "reason_required": "Een reden is verplicht: geef aan waarom de term wordt afgeschreven of buiten gebruik gesteld.",
+      "retire_on_past": "De geplande buitengebruikstelling {{retire_on}} ligt in het verleden. Kies vandaag of een latere datum.",
+      "retire_on_invalid": "De geplande buitengebruikstelling {{retire_on}} is geen datum (gebruik JJJJ-MM-DD).",
+      "successor_is_self": "Een term kan niet zijn eigen opvolger zijn.",
+      "successor_retired": "De opvolger '{{successor}}' is buiten gebruik. Kies een term die in gebruik is.",
+      "term_not_live": "Alleen een actieve term kan worden afgeschreven; deze is {{status}}.",
+      "status_by_action": "De status van een term verandert via Afschrijven, Buiten gebruik stellen of Herstellen, elk met een reden.",
+      "successor_required": "Deze term heeft nog kolommen of tabellen; buiten gebruik stellen verplaatst ze naar een opvolger. Kies er een.",
+      "successor_role": "De opvolger van een {{role}} moet een {{role}} of een concept zijn; '{{successor}}' is een {{successor_role}}.",
+      "no_retirement_history": "De geschiedenis van het model bevat geen buitengebruikstelling van deze term."
     },
     "tag": {
       "not_on_terms": "De tag '{{tag}}' gaat niet op een term; alleen pii.",

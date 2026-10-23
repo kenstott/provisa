@@ -474,7 +474,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "glossary_terms": {
         "id": "Term identifier",
         "name": "The term phrase, unique across the glossary",
-        "definition": "What the term means; a term without one is a proposal, never live",
+        "definition": "What the term means; a term without one is a draft, never live",
         "is_abstract": "True when the term is a Concept: it grounds no column and no table "
         "(derived from its grounding)",
         "deprecated": "True when the derivation lost its last column but the row was kept",
@@ -485,6 +485,10 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "or a whole table",
         "live": "True when the term is in service, defined, and connected over in-service "
         "edges to a term holding a physical ref",
+        "status": "draft (not admitted), live (admitted), deprecated (its column went, or a "
+        "curator deprecated it; in service until retired) or retired (out of service)",
+        "status_reason": "Why a curator deprecated or retired the term",
+        "retire_on": "The date a deprecated term is retired on, when a curator planned one",
         "tenant_id": _TENANT,
         # REQ-1387
         "grounded": "True when the term is connected over in-service edges to a term holding a "

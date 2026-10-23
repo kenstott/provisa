@@ -405,6 +405,12 @@ class GlossaryTermAsset:  # REQ-1387
     definition: str | None
     is_abstract: bool
     deprecated: bool
+    # REQ-2144: the term's status -- an exported term is admitted, so live, or deprecated when a
+    # curator deprecated it (in service until retire_on) -- for each catalog to map to its own
+    # (OpenMetadata Approved/Deprecated, Collibra Accepted/Deprecated, DataHub's deprecation).
+    status: str
+    status_reason: str | None = None
+    retire_on: str | None = None  # ISO date
     refs: tuple[AssetRef, ...] = ()
     experts: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/terms/<term name>

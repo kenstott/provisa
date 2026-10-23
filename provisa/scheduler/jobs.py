@@ -1145,6 +1145,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.auth.role_grants import register_org_role_grants
 
         register_org_role_grants(scheduler, org_id)
+        # REQ-2144: and its deprecated terms, retired on their planned date.
+        from provisa.scheduler.term_retirement import register_org as register_org_retirements
+
+        register_org_retirements(scheduler, org_id)
         # REQ-2091: and its sensitive columns' fakes and rules, checked for adequacy.
         from provisa.fakes.adequacy import register_org as register_org_fake_checks
 

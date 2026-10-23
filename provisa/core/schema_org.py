@@ -660,6 +660,12 @@ glossary_terms = Table(
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),
     Column("export_excluded", Boolean, nullable=False, server_default=false()),
+    # REQ-2144: the asserted parts of a term's status (schema.sql).
+    Column("deprecation_asserted", Boolean, nullable=False, server_default=false()),
+    Column("status_reason", Text),
+    Column("retire_on", Date),
+    Column("status_by", Text),
+    Column("status_at", DateTime(timezone=True)),
     Column("tenant_id", Uuid),
     UniqueConstraint("name"),
 )
@@ -689,8 +695,8 @@ glossary_term_table_refs = Table(
     Column(
         "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
     ),
-    # REQ-2141: proposed by sync, not declared by config or grounded by a person (schema.sql).
-    Column("proposed", Boolean, nullable=False, server_default=false()),
+    # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
+    Column("derived", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id"),
 )

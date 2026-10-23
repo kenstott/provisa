@@ -575,6 +575,25 @@ class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
         return v
 
 
+class GlossaryTermDeprecation(BaseModel):  # REQ-2144
+    """A curator's deprecation of a live term: why, and when it is retired, if planned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    retire_on: date | None = None
+
+
+class GlossaryTermRetirement(BaseModel):  # REQ-2144
+    """A curator's retirement of a term: why, and the term that succeeds it, if any (a REPLACES
+    edge from it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    successor: str | None = None
+
+
 class GlossaryTermConfig(BaseModel):  # REQ-1641
     """A config-declared glossary term, upserted the same way an admin curates one by hand.
 
@@ -591,6 +610,18 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
     definition: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
+    # REQ-2144: the asserted parts of its status, one at most; draft and live are computed.
+    deprecate: GlossaryTermDeprecation | None = None
+    retire: GlossaryTermRetirement | None = None
+    restore: bool = False
+
+    @model_validator(mode="after")
+    def _one_status_action(self) -> "GlossaryTermConfig":
+        if sum((self.deprecate is not None, self.retire is not None, self.restore)) > 1:
+            raise ValueError(
+                f"glossary term {self.name!r} states more than one of deprecate, retire and restore"
+            )
+        return self
 
     @model_validator(mode="before")
     @classmethod

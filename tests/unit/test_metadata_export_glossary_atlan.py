@@ -73,6 +73,7 @@ def _term(
         definition=definition,
         is_abstract=not refs,
         deprecated=deprecated,
+        status="live",
         refs=refs,
         semantic_uri=f"provisa://{ORG}/terms/{name}",
     )

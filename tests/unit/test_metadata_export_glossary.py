@@ -50,6 +50,9 @@ def _glossary() -> dict:
                 "definition": "buyer",
                 "is_abstract": False,
                 "deprecated": False,
+                "deprecation_asserted": False,
+                "status_reason": None,
+                "retire_on": None,
             },
             {
                 "id": 2,
@@ -57,6 +60,9 @@ def _glossary() -> dict:
                 "definition": None,
                 "is_abstract": False,
                 "deprecated": False,
+                "deprecation_asserted": False,
+                "status_reason": None,
+                "retire_on": None,
             },
             {
                 "id": 3,
@@ -64,6 +70,9 @@ def _glossary() -> dict:
                 "definition": "Any actor the business transacts with.",
                 "is_abstract": True,
                 "deprecated": False,
+                "deprecation_asserted": False,
+                "status_reason": None,
+                "retire_on": None,
             },
         ],
         "refs": [

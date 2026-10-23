@@ -631,7 +631,17 @@
       "term_is_property": "詞彙「{{term}}」擁有欄位引用（{{columns}}），因此是屬性，不能關聯到表。詞彙要麼是關聯到表的類，要麼是擁有欄位引用的屬性，絕不會同時是兩者。",
       "term_is_class": "詞彙「{{term}}」關聯到表（{{tables}}），因此是類，不能擁有欄位引用。詞彙要麼是關聯到表的類，要麼是擁有欄位引用的屬性，絕不會同時是兩者。",
       "abstract_is_derived": "「抽象」不能設定：它由關聯情況推導而來。沒有欄位引用、也沒有關聯表的詞彙是概念。",
-      "key_column_derived": "此欄位是鍵；它跟隨其表的類。{{table}}.{{column}} 保留在「{{class}}」上，不能手動移動。"
+      "key_column_derived": "此欄位是鍵；它跟隨其表的類。{{table}}.{{column}} 保留在「{{class}}」上，不能手動移動。",
+      "reason_required": "需要原因：請說明棄用或停用該詞彙的原因。",
+      "retire_on_past": "計劃的停用日期 {{retire_on}} 已過。請選擇今天或之後的日期。",
+      "retire_on_invalid": "計劃的停用日期 {{retire_on}} 不是日期（請使用 YYYY-MM-DD）。",
+      "successor_is_self": "詞彙不能成為自己的繼任者。",
+      "successor_retired": "繼任者「{{successor}}」已停用。請選擇一個仍在使用的詞彙。",
+      "term_not_live": "只有已發佈的詞彙才能棄用；該詞彙為 {{status}}。",
+      "status_by_action": "詞彙的狀態透過「棄用」「停用」或「恢復」更改，每項都需要原因。",
+      "successor_required": "該詞彙仍有欄位或表；停用它會將其移到繼任者。請選擇一個。",
+      "successor_role": "{{role}} 的繼任者必須是 {{role}} 或概念；「{{successor}}」是 {{successor_role}}。",
+      "no_retirement_history": "模型的歷史中沒有該詞彙的停用記錄。"
     },
     "tag": {
       "not_on_terms": "標籤「{{tag}}」不能加在詞彙上；只有 pii 可以。",
