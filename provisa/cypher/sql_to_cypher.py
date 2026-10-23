@@ -286,6 +286,23 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
                     node, scope, domain_to_label, join_to_rel, src_tgt_to_rel, _prop_map_for_label
                 )
                 return exp.column(key)
+            if isinstance(node, exp.In):
+                # SQL's IN (a, b) is Cypher's IN [a, b].
+                key = f"__in_{len(patterns)}"
+                patterns[key] = _remap(
+                    _cypher_in(
+                        node,
+                        lambda e: e.copy().transform(_qualified).sql(dialect="postgres"),
+                    )
+                )
+                return exp.column(key)
+            return _qualified(node)
+
+        def _qualified(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            # A column of the one table the root reads names no table in SQL; its Cypher names
+            # the root's variable.
+            if isinstance(node, exp.Column) and not node.table and not join_segments:
+                return exp.column(node.name, table=sql_base_alias)
             return node
 
         try:
@@ -376,6 +393,39 @@ def _junction_columns(
     return _cypher
 
 
+def _discriminator_values(
+    where: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    column: str,
+    table_alias: str,
+) -> tuple[set[str], exp.Expression] | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The discriminator values a junction root's own condition keeps, from a top-level
+    ``column = 'v'`` or ``column IN ('v', ...)``, with that conjunct; None when its condition
+    keeps no such set."""
+    if where is None:
+        return None
+    for c in _conjuncts(where.this):
+        target = c.this
+        if not (
+            isinstance(target, exp.Column)
+            and target.name == column
+            and (not target.table or target.table == table_alias)
+        ):
+            continue
+        if (
+            isinstance(c, exp.EQ)
+            and isinstance(c.expression, exp.Literal)
+            and c.expression.is_string
+        ):
+            return {c.expression.this}, c
+        if (
+            isinstance(c, exp.In)
+            and c.expressions
+            and all(isinstance(e, exp.Literal) and e.is_string for e in c.expressions)
+        ):
+            return {e.this for e in c.expressions}, c
+    return None
+
+
 def _junction_root_cypher(
     tree: exp.Select,
     from_tbl: exp.Table,
@@ -387,8 +437,9 @@ def _junction_root_cypher(
     """A root over a junction table (REQ-1586) as the relationships it holds (REQ-2136): one
     ``MATCH (a)-[r:TYPE]->(b)`` per relationship type the junction carries, put together with
     UNION ALL. Its two foreign keys are the end nodes' keys, its discriminator the type's own
-    value, and every other column an attribute of ``r``. None when the table is no junction, or
-    an ORDER BY or LIMIT would have to apply across several types."""
+    value, and every other column an attribute of ``r``. None when the table is no junction, when
+    its condition does not keep only types the role's graph declares (a row of another type is
+    no relationship), or when an ORDER BY or LIMIT would have to apply across several types."""
     from provisa.compiler.sql_types import key_list
 
     type_name = None
@@ -415,9 +466,37 @@ def _junction_root_cypher(
             rels.append(rel)
     if not rels:
         return None
+    table_alias = from_tbl.alias or from_tbl.name
+    type_columns = {rel.via.type_column for rel in rels if rel.via is not None}
+    if type_columns != {None}:
+        # A junction carrying several types is every relationship only for the rows whose type
+        # is one the role's graph declares: a row of another type is a row of the SQL answer and
+        # of no relationship. So the root is its relationships only when its own condition keeps
+        # the declared types alone; otherwise it has no Cypher form, never a shorter answer.
+        type_column = next(iter(type_columns))
+        if len(type_columns) != 1 or type_column is None:
+            return None
+        found = _discriminator_values(tree.args.get("where"), type_column, table_alias)
+        if found is None:
+            return None
+        kept, pinned = found
+        # Each branch is of one kept type, so the condition that kept it holds there already.
+        rest = [c for c in _conjuncts(tree.args["where"].this) if c is not pinned]
+        where_rest = None
+        for c in rest:
+            where_rest = c if where_rest is None else exp.And(this=where_rest, expression=c)
+        tree = tree.copy()
+        tree.set("where", exp.Where(this=where_rest) if where_rest is not None else None)
+        declared = {
+            (rel.via.type_value if rel.via.type_value is not None else rel.rel_type): rel
+            for rel in rels
+            if rel.via is not None
+        }
+        if not kept <= set(declared):
+            return None
+        rels = [declared[v] for v in sorted(kept)]
     if len(rels) > 1 and (tree.args.get("order") or tree.args.get("limit") or override_limit):
         return None
-    table_alias = from_tbl.alias or from_tbl.name
     select_exprs = tree.args.get("expressions") or []
     branches = []
     for rel in rels:
@@ -481,6 +560,14 @@ def _junction_root_cypher(
         if limit is not None:
             statement += f"\nLIMIT {limit}"
     return statement
+
+
+def _cypher_in(node: exp.In, render) -> str:
+    """``x IN (a, b)`` as Cypher's ``x IN [a, b]``, each part rendered by ``render``."""
+    if node.args.get("query") is not None or not node.expressions:
+        raise UntranslatableSubquery(f"IN over {node.sql()}")
+    items = ", ".join(_sql_to_cypher_expr(render(e)) for e in node.expressions)
+    return f"{_sql_to_cypher_expr(render(node.this))} IN [{items}]"
 
 
 def _conjuncts(node: exp.Expression) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -551,6 +638,12 @@ def _exists_pattern(
             key = f"__exists_{var}_{len(nested)}"
             nested[key] = _exists_pattern(
                 n, inner_scope, domain_to_label, join_to_rel, src_tgt_to_rel, prop_map_for_label
+            )
+            return exp.column(key)
+        if isinstance(n, exp.In):
+            key = f"__in_{var}_{len(nested)}"
+            nested[key] = _cypher_in(
+                n, lambda e: e.copy().transform(_cypher).sql(dialect="postgres")
             )
             return exp.column(key)
         if isinstance(n, exp.Column) and n.table in inner_scope:

@@ -144,6 +144,20 @@ def test_a_relationship_condition_is_a_pattern_predicate(model, con, query):
     assert "SELECT" not in cypher and "EXISTS {" in cypher
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "{ customers(where: { id: { in: [1, 3] } }) { id } }",
+        '{ customers(where: { name: { eq: "Bo" } }) { id } }',
+        '{ customers(where: { orders: { region: { in: ["eu"] } } }) { id } }',
+    ],
+)
+def test_a_condition_of_one_table_s_columns_and_lists(model, con, query):
+    # A column of the root's one table names its variable; SQL's IN (...) is Cypher's IN [...].
+    cypher = _same_rows(model, con, query)
+    assert " IN (" not in cypher and "WHERE id" not in cypher and "WHERE name" not in cypher
+
+
 def test_the_condition_is_on_the_root_s_rows_not_an_optional_match_s(model, con):
     cypher = _same_rows(
         model, con, "{ customers(where: { orders: {} }) { id name orders { id } } }"
@@ -241,10 +255,14 @@ def terms():
 
 
 @pytest.mark.parametrize(
-    "where",
-    ["", " WHERE \"rel_type\" IN ('kind_of')", ' WHERE "note" IS NOT NULL'],
+    "where, types",
+    [
+        (" WHERE \"rel_type\" IN ('kind_of', 'part_of')", ["KIND_OF", "PART_OF"]),
+        (" WHERE \"rel_type\" = 'kind_of'", ["KIND_OF"]),
+        (' WHERE "rel_type" IN (\'kind_of\') AND "note" IS NOT NULL', ["KIND_OF"]),
+    ],
 )
-def test_a_junction_root_is_its_relationships(terms, where):
+def test_a_junction_root_is_its_relationships(terms, where, types):
     lm, ctx, con = terms
     sql = (
         'SELECT "id", "from_term_id", "to_term_id", "rel_type" FROM "meta"."glossary_term_edges"'
@@ -252,13 +270,33 @@ def test_a_junction_root_is_its_relationships(terms, where):
     )
     cypher = semantic_sql_to_cypher(sql, lm, ctx)
     assert cypher is not None
-    assert "MATCH (a:GlossaryTerm)-[r:KIND_OF]->(b:GlossaryTerm)" in cypher
-    assert "UNION ALL" in cypher
+    for t in types:
+        assert f"MATCH (a:GlossaryTerm)-[r:{t}]->(b:GlossaryTerm)" in cypher
     sql_rows = _rows(con, sql)
     assert sql_rows and _cypher_rows(con, cypher, lm, None) == sql_rows, cypher
 
 
+@pytest.mark.parametrize(
+    "where",
+    [
+        "",  # every row: one of an undeclared type is no relationship
+        ' WHERE "note" IS NOT NULL',
+        " WHERE \"rel_type\" IN ('kind_of', 'antonym_of')",  # a type the graph does not declare
+    ],
+)
+def test_a_junction_root_not_kept_to_declared_types_has_no_cypher_form(terms, where):
+    lm, ctx, con = terms
+    con.execute(
+        "INSERT INTO provisa_admin.public.glossary_term_edges VALUES (10, 1, 3, 'antonym_of', 'x')"
+    )
+    sql = 'SELECT "id", "rel_type" FROM "meta"."glossary_term_edges"' + where
+    assert semantic_sql_to_cypher(sql, lm, ctx) is None
+
+
 def test_a_junction_root_with_an_order_across_its_types_has_no_cypher_form(terms):
     lm, ctx, _con = terms
-    sql = 'SELECT "id" FROM "meta"."glossary_term_edges" ORDER BY "id" LIMIT 2'
+    sql = (
+        'SELECT "id" FROM "meta"."glossary_term_edges" WHERE "rel_type" IN (\'kind_of\', '
+        "'part_of') ORDER BY \"id\" LIMIT 2"
+    )
     assert semantic_sql_to_cypher(sql, lm, ctx) is None
