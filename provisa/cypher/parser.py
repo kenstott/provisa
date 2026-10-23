@@ -822,21 +822,33 @@ def refuse_cypher_definition(query: str) -> None:
     refuse_definition_text(query)
 
 
+def split_cypher_statements(query: str) -> list[str]:
+    """The statements ``query`` holds, each its own text, in order -- split on ``;`` as Neo4j
+    Browser's editor splits them, by the tokenizer: a semicolon inside a string or a comment
+    separates nothing, and a part holding only comments or blanks is no statement."""
+    statements: list[str] = []
+    start = 0
+    holds = False
+    for m in _MASTER_RE.finditer(query):
+        kind = m.lastgroup
+        if kind == "SEMICOLON":
+            if holds:
+                statements.append(query[start : m.start()].strip())
+            start, holds = m.end(), False
+        elif kind not in ("SKIP_WS", "NEWLINE", "COMMENT"):
+            holds = True
+    if holds:
+        statements.append(query[start:].strip())
+    return statements
+
+
 def refuse_multiple_statements(query: str) -> None:
     """Raise for a query that holds more than one statement, in Neo4j's own words.
 
     A query is one statement, as Neo4j takes it; a client that runs several (Neo4j Browser's
-    editor) splits them on ``;`` itself and sends each as its own query. A semicolon inside a
-    string or a comment separates nothing, and one that only ends the statement is allowed."""
-    statements = 0
-    ended = True
-    for m in _MASTER_RE.finditer(query):
-        kind = m.lastgroup
-        if kind == "SEMICOLON":
-            ended = True
-        elif kind not in ("SKIP_WS", "NEWLINE", "COMMENT"):
-            statements += ended
-            ended = False
+    editor) splits them on ``;`` itself and sends each as its own query
+    (:func:`split_cypher_statements`). One that only ends the statement is allowed."""
+    statements = len(split_cypher_statements(query))
     if statements > 1:
         raise CypherParseError(f"Expected exactly one statement per query but got: {statements}")
 
