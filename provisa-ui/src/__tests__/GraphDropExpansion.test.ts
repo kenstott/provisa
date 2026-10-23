@@ -33,6 +33,7 @@ function rel(over: Partial<Relationship>): Relationship {
     computedCypherAlias: null,
     autoSuggested: false,
     disableCypher: false,
+    sameEntity: false,
     viaTableId: null,
     viaTableName: null,
     viaSourceColumn: null,

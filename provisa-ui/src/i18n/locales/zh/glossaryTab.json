@@ -100,6 +100,9 @@
     "roleHelp_concept": "既未锚定在表上，也未锚定在列上。",
     "groundedTablesTitle": "锚定的表",
     "groundedTablesPlaceholder": "此术语为其行命名的表",
-    "noGroundedTables": "未锚定在任何表上"
+    "noGroundedTables": "未锚定在任何表上",
+    "gapsOnly": "缺口",
+    "identityGap": "缺口",
+    "identityGapHelp": "关联到多张表，但它们并未全部作为同一实体连接：请在它们之间标记同一实体关系"
   }
 }

@@ -221,6 +221,7 @@ async def fetch_relationships(
         "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "
         "r.target_column, r.cardinality, r.materialize, r.refresh_interval, "
         "r.target_function_name, r.function_arg, r.alias, r.graphql_alias, r.disable_cypher, "
+        "r.same_entity, "  # REQ-2141
         # REQ-1586: the junction declaration travels with the edge — the compiler reads it to build
         # the two-hop join, and label_map reads via_label_source to name the exposed type.
         "r.via_table_id, r.via_source_column, r.via_target_column, r.via_type_column, "

@@ -406,6 +406,8 @@ relationships = Table(
     Column("graphql_alias", Text),
     Column("disable_cypher", Boolean, nullable=False, server_default=false()),
     Column("hide_target_meta", Boolean, nullable=False, server_default=false()),  # REQ-1132
+    # REQ-2141: the rows this edge joins are the same entity (repositories/identity.py).
+    Column("same_entity", Boolean, nullable=False, server_default=false()),
     # REQ-1586: junction declaration — see schema.sql for the shape and the completeness checks.
     Column("via_table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
     Column("via_source_column", Text),

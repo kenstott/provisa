@@ -57,6 +57,7 @@ const LIVE: GlossaryTermSummary = {
   deprecated: false,
   ref_count: 1,
   table_count: 0,
+  identity_gap: false,
   export_excluded: false,
   retired: false,
   live: true,
@@ -70,6 +71,7 @@ const PROPOSED: GlossaryTermSummary = {
   name: "Churn Velocity",
   ref_count: 0,
   table_count: 0,
+  identity_gap: false,
   live: false,
 };
 // Not live, but retired: curated away from the proposal state, so it must survive the filter too.

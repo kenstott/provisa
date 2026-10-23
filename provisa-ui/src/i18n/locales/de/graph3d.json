@@ -99,6 +99,7 @@
     "openAsQueryFocused": "Die Umgebung von Suche oder Fokus lässt sich noch nicht als eine Abfrage ausdrücken.",
     "openAsQueryCompiling": "Abfrage wird kompiliert…",
     "openAsQueryNoCypher": "Diese Abfrage hat keine Cypher-Form.",
-    "openAsQuerySparqlLater": "SPARQL ist verfügbar, sobald sein Endpunkt existiert."
+    "openAsQuerySparqlLater": "SPARQL ist verfügbar, sobald sein Endpunkt existiert.",
+    "identityGap": "In Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: {{tables}}"
   }
 }

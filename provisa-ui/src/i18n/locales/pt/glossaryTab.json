@@ -100,6 +100,9 @@
     "roleHelp_concept": "Não ancorado em tabelas nem em colunas.",
     "groundedTablesTitle": "Ancorado em tabelas",
     "groundedTablesPlaceholder": "Tabelas cujas linhas este termo nomeia",
-    "noGroundedTables": "Ancorado em nenhuma tabela"
+    "noGroundedTables": "Ancorado em nenhuma tabela",
+    "gapsOnly": "Lacunas",
+    "identityGap": "Lacuna",
+    "identityGapHelp": "Fundamentado em várias tabelas que não estão todas unidas como a mesma entidade: marque relações de mesma entidade entre elas"
   }
 }

@@ -41,6 +41,9 @@
     "deleteConsequence": "O relacionamento é removido do modelo. As consultas não podem mais fazer junções por ele.",
     "parametersFed": "Parâmetros alimentados",
     "parametersFedHelp": "Uma junção por esta relação passa ao destino estes valores de cada linha de origem.",
-    "parameterNotFed": "Não alimentado"
+    "parameterNotFed": "Não alimentado",
+    "sameEntity": "Mesma entidade",
+    "sameEntityHint": "As linhas unidas são a mesma coisa: um termo fundamenta as duas tabelas, unidas 1:1 por chaves",
+    "cardinalityOneToOne": "um-para-um"
   }
 }

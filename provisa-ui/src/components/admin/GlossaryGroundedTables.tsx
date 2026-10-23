@@ -29,10 +29,13 @@ const label = (t: { domain_id: string; table_name: string }) => `${t.domain_id}.
 export function GlossaryGroundedTables({
   termId,
   canEdit,
+  identityGap,
   onChanged,
 }: {
   termId: number;
   canEdit: boolean;
+  /** REQ-2130: the tables are not all joined by same-entity relationships (a curation gap). */
+  identityGap: boolean;
   /** After a table is grounded or ungrounded: the term's standing and role may have changed. */
   onChanged: () => void;
 }) {
@@ -59,7 +62,8 @@ export function GlossaryGroundedTables({
   const options = useMemo(() => {
     const byId = new Map<string, string>();
     for (const tb of tables)
-      if (!tb.draft) byId.set(String(tb.id), label({ domain_id: tb.domainId, table_name: tb.tableName }));
+      if (!tb.draft)
+        byId.set(String(tb.id), label({ domain_id: tb.domainId, table_name: tb.tableName }));
     // A grounded table the table list does not hold (outside the domains it is read for) is named.
     for (const g of grounded ?? []) byId.set(String(g.table_id), label(g));
     return [...byId.entries()]
@@ -93,6 +97,11 @@ export function GlossaryGroundedTables({
       {error && (
         <Alert color="red" data-testid="glossary-grounded-tables-error">
           {error}
+        </Alert>
+      )}
+      {identityGap && (
+        <Alert color="orange" data-testid="glossary-identity-gap">
+          {t("glossaryTab.identityGapHelp")}
         </Alert>
       )}
       {grounded === null ? (

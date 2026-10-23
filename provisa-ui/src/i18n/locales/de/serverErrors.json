@@ -449,7 +449,11 @@
       "version_log_updated": "Versionsprotokoll '{{mv}}' aktualisiert",
       "mv_window_held": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Ein anderer Build davon hält den Anspruch",
       "mv_window_unchanged": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Nichts, was sie liest, hat sich seit ihrem letzten Build geändert",
-      "landing_time_pipeline": "Tabelle '{{table}}' hält ihre Ankunftszeit in {{column}}, aber ihr Speicher lädt das Topic über seine eigene Pipeline, in der Provisa nicht sieht, wann jede Nachricht ankommt."
+      "landing_time_pipeline": "Tabelle '{{table}}' hält ihre Ankunftszeit in {{column}}, aber ihr Speicher lädt das Topic über seine eigene Pipeline, in der Provisa nicht sieht, wann jede Nachricht ankommt.",
+      "relationship_same_entity_direct": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: Sie verbindet über eine Zwischentabelle oder eine Funktion, nicht eine Zeile mit einer Zeile",
+      "relationship_same_entity_cardinality": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: Sie ist {{cardinality}}, und dieselbe Entität ist eine Zeile zu einer Zeile",
+      "relationship_same_entity_not_grounded": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{source}} und {{target}} sind nicht im selben Begriff verankert",
+      "relationship_same_entity_not_keys": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{columns}} ist weder der Primärschlüssel noch ein eindeutiger Schlüssel von {{table}}"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

@@ -22,6 +22,7 @@ from pydantic import AliasChoices, BaseModel
 import yaml
 from sqlalchemy import insert, select, update
 
+from provisa.core.repositories.identity import TableInIdentity
 from provisa.core.models import (
     ControlPlaneConfig,
     Domain,
@@ -1145,11 +1146,24 @@ async def _load_after_tables(  # REQ-1919
     # 10.6 Class terms (REQ-2141): resolved by name, like the edges above, once every term the
     # config declares or derives exists and every table has its columns (a class needs a key).
     await _declare_class_terms(conn, config)
+    # 10.7 Same-entity relationships (REQ-2141): held to their rule once both their tables have
+    # the class terms this config declares (the relationships were saved before them, at 10).
+    await _check_identities(conn, config)
 
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+
+
+async def _check_identities(conn: "Connection", config: ProvisaConfig) -> None:
+    from provisa.core.repositories.identity import stored_refusal
+
+    for rel in config.relationships:
+        if rel.same_entity:
+            refused = await stored_refusal(conn, rel.id)
+            if refused is not None:
+                raise ValueError(refused.message)
 
 
 async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> None:
@@ -1184,7 +1198,7 @@ async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> Non
         assert row is not None, f"table {address} was upserted by this load"
         try:
             await glossary_repo.declare_class_term(conn, row.id, term_ids[name])
-        except glossary_repo.TableHasNoPrimaryKey as exc:
+        except (glossary_repo.TableHasNoPrimaryKey, TableInIdentity) as exc:
             raise ValueError(f"table {address} cannot have a class term: {exc}") from exc
 
 

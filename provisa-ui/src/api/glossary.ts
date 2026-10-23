@@ -47,6 +47,8 @@ export interface GlossaryTermSummary {
   ref_count: number;
   // REQ-2130: the tables the term grounds (as a class term).
   table_count: number;
+  // REQ-2130/2141: grounded in several tables that same-entity relationships do not all join.
+  identity_gap: boolean;
   export_excluded: boolean;
   // Curator soft delete: the term keeps its refs but no consuming surface binds it —
   // agent term search skips it and metadata export withholds it.

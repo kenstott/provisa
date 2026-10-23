@@ -171,7 +171,16 @@ function termsField(m: MetaReader, s: QueryScope): string | null {
     m,
     "glossary_terms",
     {
-      fields: ["id", "name", "definition", "is_abstract", "deprecated", "retired", "live"],
+      fields: [
+        "id",
+        "name",
+        "definition",
+        "is_abstract",
+        "deprecated",
+        "retired",
+        "live",
+        "identity_gap",
+      ],
       rels,
     },
     all([...(kept ? [kept] : []), ...(s.orphans ? [] : [related(s)])]),
@@ -239,6 +248,9 @@ export interface TermRow {
   deprecated: boolean;
   retired: boolean;
   live: boolean;
+  // REQ-2130/2141: grounded in tables that same-entity relationships do not all join; absent
+  // when the role cannot read it.
+  identity_gap?: boolean;
   // One-to-many: null when the term has none (see rowsOf).
   domains?: { domain_id: string }[] | null;
   // Under Ontology: the edges leaving the term (null when none; see rowsOf).
@@ -380,6 +392,10 @@ export function glossaryGraph(
       abstract: t.is_abstract,
       // For the side panel only; a proposal with none has nothing said there.
       ...(t.definition ? { definition: t.definition } : {}),
+      // REQ-2130/2141: a class whose tables are not all declared one entity: a curation gap.
+      ...(t.identity_gap
+        ? { identityGap: (t.tables ?? []).map((g) => `${g.domain_id}.${g.table_name}`) }
+        : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),
     });

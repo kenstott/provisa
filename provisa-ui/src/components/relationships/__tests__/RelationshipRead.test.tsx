@@ -37,6 +37,7 @@ const base: Relationship = {
   computedCypherAlias: "HAS_BONDED_PAIRS",
   autoSuggested: false,
   disableCypher: false,
+  sameEntity: false,
   parameters: [],
   viaTableId: 9,
   viaTableName: "pet_relations",
@@ -98,6 +99,7 @@ describe("a relationship's read view", () => {
       ["Cardinality", "one-to-many"],
       ["Materialize", "Yes"],
       ["Exclude from Cypher", "No"],
+      ["Same entity", "No"],
       ["Refresh Interval (s)", "600"],
     ]);
     expect(fields("relationship-read-junction")).toEqual([

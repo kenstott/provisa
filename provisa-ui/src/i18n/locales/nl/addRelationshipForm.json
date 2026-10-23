@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "De edge noemen naar",
     "viaLabelSourceColumn": "Discriminatorwaarde",
     "viaLabelSourceTable": "Naam van koppeltabel",
-    "viaLabelSourceFixed": "Cypher-alias"
+    "viaLabelSourceFixed": "Cypher-alias",
+    "cardinalityOneToOne": "één-op-één"
   }
 }

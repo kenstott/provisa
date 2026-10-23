@@ -41,6 +41,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   domains: [],
   ref_count: 1,
   table_count: 0,
+  identity_gap: false,
   refs: [
     {
       table_id: 10,

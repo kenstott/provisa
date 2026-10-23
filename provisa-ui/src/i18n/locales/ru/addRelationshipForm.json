@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "Назвать ребро по",
     "viaLabelSourceColumn": "Значение дискриминатора",
     "viaLabelSourceTable": "Имя связующей таблицы",
-    "viaLabelSourceFixed": "Псевдоним Cypher"
+    "viaLabelSourceFixed": "Псевдоним Cypher",
+    "cardinalityOneToOne": "один к одному"
   }
 }

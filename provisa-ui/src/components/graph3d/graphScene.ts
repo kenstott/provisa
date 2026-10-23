@@ -422,7 +422,14 @@ export class GraphScene extends BaseScene<GraphHover> {
       // REQ-2130: a proposal says why beside its name; a deprecated term's name is dimmed too.
       const label = this.pin(
         node.label,
-        `p3d-label p3d-node-label g3d-label-${node.type} ${labelClass(node.status)}`.trim(),
+        [
+          "p3d-label p3d-node-label",
+          `g3d-label-${node.type}`,
+          labelClass(node.status),
+          node.identityGap ? "g3d-label-gap" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
         () => mesh.position.clone().add(new THREE.Vector3(0, r + 0.3, 0)),
       );
       this.nodes.push({ node, mesh, radius: r, label });

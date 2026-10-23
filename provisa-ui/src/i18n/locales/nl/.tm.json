@@ -7810,5 +7810,17 @@
   "nl/sqlResultsPanel.json::sqlResultsPanel.statementTabUnnamed": "Result {{n}}",
   "nl/sqlResultsPanel.json::sqlResultsPanel.statementFailed": "failed",
   "nl/graphSidebar.json::graphSidebar.notCounted": "Not counted: {{list}}",
-  "nl/serverErrors.json::serverErrors.cypher.count_unknown": "A count could not be made, so the total is unknown: {{statement}}: {{reason}}"
+  "nl/serverErrors.json::serverErrors.cypher.count_unknown": "A count could not be made, so the total is unknown: {{statement}}: {{reason}}",
+  "nl/serverErrors.json::serverErrors.schema.relationship_same_entity_direct": "Relationship '{{relationship}}' cannot be marked same entity: it joins through a junction or a function, not one row to one row",
+  "nl/serverErrors.json::serverErrors.schema.relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
+  "nl/serverErrors.json::serverErrors.schema.relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
+  "nl/serverErrors.json::serverErrors.schema.relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}",
+  "nl/relationshipRow.json::relationshipRow.sameEntity": "Same entity",
+  "nl/relationshipRow.json::relationshipRow.sameEntityHint": "The rows it joins are one real-world thing: one term grounds both tables, joined 1:1 on keys",
+  "nl/glossaryTab.json::glossaryTab.gapsOnly": "Gaps",
+  "nl/glossaryTab.json::glossaryTab.identityGap": "Gap",
+  "nl/glossaryTab.json::glossaryTab.identityGapHelp": "Grounded in several tables not all joined as the same entity: mark same-entity relationships between them",
+  "nl/graph3d.json::graph3d.identityGap": "Grounded in tables not all joined as the same entity: {{tables}}",
+  "nl/addRelationshipForm.json::addRelationshipForm.cardinalityOneToOne": "one-to-one",
+  "nl/relationshipRow.json::relationshipRow.cardinalityOneToOne": "one-to-one"
 }

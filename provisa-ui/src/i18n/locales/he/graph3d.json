@@ -99,6 +99,7 @@
     "openAsQueryFocused": "עדיין אי אפשר לבטא את סביבת החיפוש או המיקוד כשאילתה אחת.",
     "openAsQueryCompiling": "מהדר את השאילתה…",
     "openAsQueryNoCypher": "לשאילתה זו אין צורת Cypher.",
-    "openAsQuerySparqlLater": "SPARQL ייפתח כאשר נקודת הקצה שלו תהיה זמינה."
+    "openAsQuerySparqlLater": "SPARQL ייפתח כאשר נקודת הקצה שלו תהיה זמינה.",
+    "identityGap": "מעוגן בטבלאות שלא כולן מחוברות כאותה ישות: {{tables}}"
   }
 }

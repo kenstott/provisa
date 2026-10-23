@@ -41,6 +41,9 @@
     "deleteConsequence": "הקשר יוסר מהמודל. שאילתות לא יוכלו עוד לבצע צירוף דרכו.",
     "parametersFed": "פרמטרים מוזנים",
     "parametersFedHelp": "צירוף דרך קשר זה מעביר ליעד את הערכים האלה מכל שורת מקור.",
-    "parameterNotFed": "לא מוזן"
+    "parameterNotFed": "לא מוזן",
+    "sameEntity": "אותה ישות",
+    "sameEntityHint": "השורות שהוא מחבר הן אותו דבר: מונח אחד מעגן את שתי הטבלאות, 1:1 לפי מפתחות",
+    "cardinalityOneToOne": "אחד-לאחד"
   }
 }

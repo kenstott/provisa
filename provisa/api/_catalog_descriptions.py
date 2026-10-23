@@ -283,6 +283,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "graphql_alias": "Name the edge is exposed under in GraphQL, when it differs",
         "disable_cypher": "Whether the edge is hidden from Cypher traversal",
         "hide_target_meta": "Whether the target's metadata is withheld from consumers of the edge",
+        "same_entity": "Whether the rows the edge joins are the same entity, in two tables one term grounds",
         "source_json_key": "Key inside a JSON source column that carries the join value",
         "parameters": "Target parameters the edge feeds, each from a source column",
         "via_table_id": "Junction table the edge traverses through, for a junction-backed edge",
@@ -469,6 +470,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         # REQ-1387
         "grounded": "True when the term is connected over in-service edges to a term holding a "
         "physical ref, defined or not",
+        "identity_gap": "True when the term grounds several tables that same-entity "
+        "relationships do not all join: a curation gap",
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },

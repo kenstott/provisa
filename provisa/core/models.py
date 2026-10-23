@@ -1867,6 +1867,9 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     )
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
     hide_target_meta: bool = False  # REQ-1132: when True, suppress the TARGET's metadata from DEFAULT-tier meta discovery
+    # REQ-2141: the rows this edge joins are the same entity -- two tables one class term grounds,
+    # joined one-to-one on a key of each (repositories/identity.py).
+    same_entity: bool = False
     # REQ-1586: junction-backed edge. When via_table is set the join traverses that associative
     # table (source_column = via.via_source_column, via.via_target_column = target_column) and the
     # junction's remaining columns become the relationship's attributes. via_type_column/value

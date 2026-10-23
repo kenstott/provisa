@@ -85,6 +85,23 @@ const view = (layers: LayerId[], filters: GraphFilters = defaults) =>
   visibleGraph(G, new Set(layers), filters, new Set(), GLOSSARY_SCOPE);
 
 describe("the Ontology View's terms", () => {
+  it("marks a class whose tables are not all declared one entity, naming its tables", () => {
+    const tables = [
+      { table_id: 10, table_name: "customers", domain_id: "sales" },
+      { table_id: 11, table_name: "contacts", domain_id: "crm" },
+    ];
+    const g = glossaryGraph(
+      [
+        term(1, "Customer", { tables, identity_gap: true }),
+        term(2, "Order", { tables: tables.slice(0, 1), identity_gap: false }),
+      ],
+      [],
+    );
+    const node = (id: string) => g.nodes.find((n) => n.id === id);
+    expect(node("term:1")?.identityGap).toEqual(["sales.customers", "crm.contacts"]);
+    expect(node("term:2")?.identityGap).toBeUndefined();
+  });
+
   it("names a proposed term by its title, its standing marked by style alone", () => {
     expect(node(G, "term:3")).toMatchObject({ status: "proposed", label: "Loyalty tier" });
     expect(node(G, "term:4")).toMatchObject({ status: "proposed", label: "Concept" });

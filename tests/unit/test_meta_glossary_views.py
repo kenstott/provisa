@@ -31,6 +31,9 @@ CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_table_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, tenant_id TEXT);
+CREATE TABLE relationships (
+    id TEXT PRIMARY KEY, source_table_id INTEGER, target_table_id INTEGER,
+    same_entity BOOLEAN NOT NULL DEFAULT 0, tenant_id TEXT);
 CREATE TABLE glossary_term_edges (
     id TEXT PRIMARY KEY, from_term_id TEXT, to_term_id TEXT, rel_type TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_domains (
@@ -154,6 +157,27 @@ class TestGlossaryMetaViews:
         # Grounding is transitive over in-service edges: t-party publishes without a ref.
         assert (rows["t-party"]["ref_count"], rows["t-party"]["is_rooted"]) == (0, 0)
         assert rows["t-party"]["live"] == 1
+
+    def test_a_class_grounded_in_tables_not_all_joined_as_one_entity_is_a_gap(
+        self, db: sqlite3.Connection
+    ) -> None:
+        """REQ-2141/REQ-2130: three tables, one class term; 7 and 8 joined as the same entity,
+        9 not yet -- a gap until a same-entity relationship reaches 9 too."""
+        db.executemany(
+            "INSERT INTO glossary_term_table_refs VALUES (?, 't-party', ?, 'org1')",
+            [("g7", 7), ("g8", 8), ("g9", 9)],
+        )
+        db.execute("INSERT INTO glossary_term_table_refs VALUES ('g1', 't-user', 7, 'org1')")
+        db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1')")
+        # A relationship not marked same entity joins nothing as one.
+        db.execute("INSERT INTO relationships VALUES ('r79', 7, 9, 0, 'org1')")
+        gap = lambda: {  # noqa: E731
+            r["id"]: r["identity_gap"]
+            for r in db.execute("SELECT id, identity_gap FROM glossary_terms_meta")
+        }
+        assert gap() == {"t-user": 0, "t-party": 1, "t-old": 0}
+        db.execute("INSERT INTO relationships VALUES ('r98', 9, 8, 1, 'org1')")
+        assert gap()["t-party"] == 0
 
     def test_a_retired_or_excluded_term_is_returned_with_its_flag_not_withheld(
         self, db: sqlite3.Connection

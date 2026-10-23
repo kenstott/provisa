@@ -100,6 +100,9 @@
     "roleHelp_concept": "No anclado en tablas ni en columnas.",
     "groundedTablesTitle": "Anclado en tablas",
     "groundedTablesPlaceholder": "Tablas cuyas filas nombra este término",
-    "noGroundedTables": "No anclado en ninguna tabla"
+    "noGroundedTables": "No anclado en ninguna tabla",
+    "gapsOnly": "Brechas",
+    "identityGap": "Brecha",
+    "identityGapHelp": "Fundamentado en varias tablas no todas unidas como la misma entidad: marque relaciones de misma entidad entre ellas"
   }
 }

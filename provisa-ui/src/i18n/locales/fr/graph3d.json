@@ -99,6 +99,7 @@
     "openAsQueryFocused": "Le voisinage de la recherche ou du focus ne s’exprime pas encore en une seule requête.",
     "openAsQueryCompiling": "Compilation de la requête…",
     "openAsQueryNoCypher": "Cette requête n’a pas de forme Cypher.",
-    "openAsQuerySparqlLater": "SPARQL s’ouvrira quand son point d’accès existera."
+    "openAsQuerySparqlLater": "SPARQL s’ouvrira quand son point d’accès existera.",
+    "identityGap": "Ancré dans des tables qui ne sont pas toutes jointes comme même entité : {{tables}}"
   }
 }

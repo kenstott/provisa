@@ -100,6 +100,9 @@
     "roleHelp_concept": "既未錨定在表上，也未錨定在欄上。",
     "groundedTablesTitle": "錨定的表",
     "groundedTablesPlaceholder": "此術語為其行命名的表",
-    "noGroundedTables": "未錨定在任何表上"
+    "noGroundedTables": "未錨定在任何表上",
+    "gapsOnly": "缺口",
+    "identityGap": "缺口",
+    "identityGapHelp": "關聯到多張表，但它們並未全部作為同一實體連接：請在它們之間標記同一實體關係"
   }
 }

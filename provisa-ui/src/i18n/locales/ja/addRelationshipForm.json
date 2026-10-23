@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "エッジの名前の取得元",
     "viaLabelSourceColumn": "識別子の値",
     "viaLabelSourceTable": "ジャンクションテーブル名",
-    "viaLabelSourceFixed": "Cypher エイリアス"
+    "viaLabelSourceFixed": "Cypher エイリアス",
+    "cardinalityOneToOne": "一対一"
   }
 }

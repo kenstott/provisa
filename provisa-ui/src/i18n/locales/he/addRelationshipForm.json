@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "מתן שם לקשת לפי",
     "viaLabelSourceColumn": "ערך מבחין",
     "viaLabelSourceTable": "שם טבלת הצומת",
-    "viaLabelSourceFixed": "כינוי Cypher"
+    "viaLabelSourceFixed": "כינוי Cypher",
+    "cardinalityOneToOne": "אחד-לאחד"
   }
 }

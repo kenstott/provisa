@@ -814,6 +814,8 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
     disable_cypher: bool = False
+    # REQ-2141: the rows this edge joins are the same entity.
+    same_entity: bool = False
     # REQ-1586: junction declaration. via_table_name names the associative table this edge
     # traverses; via_label_source names where the exposed Cypher type comes from. The ERD keys
     # its nodes by registered-table id, so it needs the id as well as the name (REQ-1588).
@@ -1265,6 +1267,8 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     alias: str | None = None  # e.g. WORKS_FOR; unique per (source_table, alias)
     graphql_alias: str | None = None
     disable_cypher: bool = False  # when True, exclude from Cypher graph edges
+    # REQ-2141: mark the rows this edge joins as the same entity (repositories/identity.py).
+    same_entity: bool = False
     # REQ-1586: junction declaration — the associative table this edge traverses, its two key
     # columns, an optional discriminator, and which source names the exposed Cypher type.
     via_table: str = ""  # registered table name of the junction; empty = FK/PK-backed edge

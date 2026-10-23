@@ -328,6 +328,7 @@ export function RelationshipDetail({
                 data={[
                   { value: "many-to-one", label: t("relationshipRow.cardinalityManyToOne") },
                   { value: "one-to-many", label: t("relationshipRow.cardinalityOneToMany") },
+                  { value: "one-to-one", label: t("relationshipRow.cardinalityOneToOne") },
                 ]}
                 value={editingRel.cardinality}
                 onChange={(v) => setEditingRel({ ...editingRel, cardinality: v ?? "many-to-one" })}
@@ -352,6 +353,18 @@ export function RelationshipDetail({
                 onChange={(e) =>
                   setEditingRel({ ...editingRel, disableCypher: e.currentTarget.checked })
                 }
+              />
+            </FormField>
+            {/* REQ-2141: the server holds the rule (one term grounds both tables, 1:1 on keys)
+                and says why when it refuses. */}
+            <FormField size="short" help={t("relationshipRow.sameEntityHint")}>
+              <Checkbox
+                label={t("relationshipRow.sameEntity")}
+                checked={editingRel.sameEntity}
+                onChange={(e) =>
+                  setEditingRel({ ...editingRel, sameEntity: e.currentTarget.checked })
+                }
+                data-testid="relationship-same-entity"
               />
             </FormField>
           </FormChecks>

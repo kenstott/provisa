@@ -68,6 +68,11 @@
   opacity: 0.45;
   text-decoration: line-through;
 }
+/* REQ-2130: a class grounded in tables not all declared one entity, marked after its name. */
+.g3d-label-gap::after {
+  content: " \26A0";
+  color: var(--mantine-color-orange-5);
+}
 /* The legend's key to a node's look: its shape, in its colour. */
 .g3d-shape {
   display: inline-block;

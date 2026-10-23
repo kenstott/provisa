@@ -39,6 +39,7 @@ from provisa.core.glossary import (
     normalize_term,
     readable_term,
 )
+from provisa.core.repositories import identity
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
     glossary_term_domains,
@@ -519,12 +520,14 @@ async def list_terms(
     # groundedness, which is a property of the graph and not of any one row.
     live = await live_ids(conn)
     grounded = await grounded_ids(conn)
+    gaps = await identity.identity_gap_ids(conn)  # REQ-2130: grounded in tables not all joined
     scope = await term_domains(conn)
     return [
         dict(r._mapping)
         | {
             "ref_count": counts.get(r.id, 0),
             "table_count": table_counts.get(r.id, 0),
+            "identity_gap": r.id in gaps,
             "live": r.id in live,
             "grounded": r.id in grounded,
             "domains": sorted(scope.get(r.id, set())),
@@ -565,6 +568,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
             select(func.count()).where(glossary_term_table_refs.c.term_id == term_id)
         )
     ).scalar_one()
+    term["identity_gap"] = term_id in await identity.identity_gap_ids(conn)
     other = glossary_terms.alias("other")
     outgoing = (
         await conn.execute_core(
@@ -1090,8 +1094,18 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
 async def declare_class_term(conn: "Connection", table_id: int, term_id: int) -> None:
     """A configuration's statement of ``table_id``'s class term (REQ-2141): the declarative model
     is the source of truth, so it replaces whatever term grounded the table before, and loading
-    the same configuration again changes nothing."""
+    the same configuration again changes nothing. Another term in its place is refused while a
+    same-entity relationship stands on the one it has (identity.TableInIdentity)."""
     address = await _keyed_table(conn, table_id)
+    held = (
+        await conn.execute_core(
+            select(glossary_term_table_refs.c.term_id).where(
+                glossary_term_table_refs.c.table_id == table_id
+            )
+        )
+    ).first()
+    if held is not None and held.term_id != term_id:
+        await identity.refuse_term_change(conn, table_id)
     await conn.upsert(
         glossary_term_table_refs,
         {"term_id": term_id, "table_id": table_id},
@@ -1102,7 +1116,9 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
 
 
 async def unground_table(conn: "Connection", term_id: int, table_id: int) -> bool:
-    """Withdraw ``term_id`` as ``table_id``'s class term; False when it was not."""
+    """Withdraw ``term_id`` as ``table_id``'s class term; False when it was not. Refused while a
+    same-entity relationship stands on it (identity.TableInIdentity)."""
+    await identity.refuse_term_change(conn, table_id)
     result = await conn.execute_core(
         _delete(glossary_term_table_refs).where(
             (glossary_term_table_refs.c.term_id == term_id)
