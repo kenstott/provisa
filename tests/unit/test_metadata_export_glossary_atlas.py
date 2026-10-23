@@ -448,3 +448,27 @@ async def test_a_term_leaving_the_snapshot_is_never_deleted(fake):
     assert result.ok
     assert [method for method, _ in fake.requests if method == "DELETE"] == []
     assert fake.terms["term-live"]["name"] == "Margin"  # untouched, bindings prune separately
+
+
+async def test_every_term_carries_its_role_and_a_stewards_attributes_stand(fake):
+    """REQ-2141: the role rides the term's additionalAttributes under provisaRole, on create
+    and on update; any other entry in the map is a steward's and stands."""
+    fake.terms["term-live"] = {
+        "guid": "term-live",
+        "name": "order",
+        "qualifiedName": f"order@{GLOSSARY_QN}",
+        "additionalAttributes": {"owner_team": "finance"},
+    }
+    export = _export()
+    export.stored_bindings = {
+        GLOSSARY_URI: ("glossary-live", GLOSSARY_QN),
+        f"provisa://{ORG}/terms/order": ("term-live", f"order@{GLOSSARY_QN}"),
+    }
+    order = _term(1, "order", is_abstract=False, role="class")
+    result = await export.publish(_snapshot([order, _term(2, "party")]))
+    assert result.ok, result.errors
+    ((guid, updated),) = fake.term_puts[:1]
+    assert guid == "term-live"
+    assert updated["additionalAttributes"] == {"owner_team": "finance", "provisaRole": "class"}
+    (created,) = fake.term_creates
+    assert created["additionalAttributes"] == {"provisaRole": "concept"}

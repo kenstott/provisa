@@ -233,3 +233,9 @@ async def test_provisa_assigns_its_terms_as_semantic_assignments_it_sourced(publ
         assert [
             (a["guid"], a["relationshipAttributes"]["attributes"]["source"]) for a in assigned
         ] == [(entity["guid"], ASSIGNMENT_SOURCE)]
+
+
+async def test_each_term_carries_its_role(published):
+    """REQ-2141: the role rides the term's additionalAttributes under provisaRole."""
+    order = await _entity("AtlasGlossaryTerm", f"{CLASS_TERM}@{_glossary_qn(ORG)}")
+    assert order["attributes"]["additionalAttributes"]["provisaRole"] == "class"

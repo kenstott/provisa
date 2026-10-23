@@ -514,3 +514,31 @@ async def test_human_assignments_stand_and_provisas_stale_ones_are_removed(monke
     # The departed term is sent with its live attributes, unchanged.
     assert by_guid["t-margin"]["attributes"] == live["t-margin"]["attributes"]
     assert fake.deleted == []
+
+
+async def test_every_term_carries_its_role_and_a_stewards_attributes_stand(monkeypatch):
+    """REQ-2141: the role rides additionalAttributes under provisaRole; a steward's entries in
+    the map stand."""
+    live = {
+        "t-order": {
+            "guid": "t-order",
+            "attributes": {
+                "qualifiedName": f"order@{GLOSSARY_QN}",
+                "name": "order",
+                "additionalAttributes": {"owner_team": "finance"},
+            },
+            "relationshipAttributes": {"anchor": {"typeName": GLOSSARY_TYPE, "guid": "g-1"}},
+        }
+    }
+    fake = _FakeAtlan(glossary_guid="g-1", live_terms=live)
+    fake.install(monkeypatch)
+    export = _export(bindings={f"provisa://{ORG}/terms/order": ("t-order", "order@x")})
+    order = replace(_term(1, "order"), role="class")
+    result = await export.publish(_snapshot([order, _term(2, "party")]))
+    assert result.ok, result.errors
+    by_name = {e["attributes"]["name"]: e["attributes"] for e in _bulk_entities(fake)}
+    assert by_name["order"]["additionalAttributes"] == {
+        "owner_team": "finance",
+        "provisaRole": "class",
+    }
+    assert by_name["party"]["additionalAttributes"] == {"provisaRole": "concept"}

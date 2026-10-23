@@ -138,6 +138,15 @@ def glossary_node_urn(org_id: str) -> str:
     return f"urn:li:glossaryNode:{PLATFORM}.{org_id}"
 
 
+# REQ-2141: each ontology role groups its terms under its own child node of the org's node.
+ROLE_NODES = {"class": "Classes", "property": "Properties", "concept": "Concepts"}
+
+
+def role_node_urn(org_id: str, role: str) -> str:
+    """The child node of the org's Provisa node that holds the terms of one role (REQ-2141)."""
+    return f"{glossary_node_urn(org_id)}.{ROLE_NODES[role].lower()}"
+
+
 def glossary_term_urn(org_id: str, name: str) -> str:
     """A term URN inside the org's Provisa node. Name-derived, so a rename mints a new URN."""
     return f"urn:li:glossaryTerm:{PLATFORM}.{org_id}.{name}"
@@ -360,13 +369,20 @@ def _lineage_aspects(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     return proposals
 
 
+_ROLE_DEFINITIONS = {
+    "class": "Terms whose instances are the rows of the tables they ground.",
+    "property": "Terms that name the values of the columns they ground.",
+    "concept": "Terms grounded in no table or column, related to the terms that are.",
+}
+
+
 def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # REQ-1387
     """The term graph as native glossary aspects, all inside the org's Provisa node.
 
     Every URN emitted here is minted by ``glossary_node_urn`` / ``glossary_term_urn`` — the
     adapter never addresses a glossary entity outside its own namespace, and it emits only
-    UPSERTs, never deletes. Datasets and schema fields get NO ``glossaryTerms`` aspect from
-    this adapter: term-to-asset assignment is human-owned (REQ-1389).
+    UPSERTs, never deletes. Each term sits in the child node of its ontology role --
+    Classes, Properties or Concepts -- and carries the role as ``provisaRole`` (REQ-2141).
 
     Edge mapping (module docstring documents the reasoning): ``KIND_OF`` →
     ``isRelatedTerms`` on the subtype; ``PART_OF`` → ``hasRelatedTerms`` on the whole (edge
@@ -392,12 +408,28 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
                 "name": f"Provisa ({snapshot.org_id})",
                 "definition": (
                     "Business glossary published and owned by Provisa for org "
-                    f"{snapshot.org_id!r}. Terms in this node are managed in Provisa; "
-                    "term-to-asset assignment is curated in DataHub."
+                    f"{snapshot.org_id!r}. Terms in this node are managed in Provisa, "
+                    "grouped by their role in the ontology."
                 ),
             },
         )
     ]
+    for role in sorted({term.role for term in snapshot.glossary_terms}):
+        role_urn = role_node_urn(snapshot.org_id, role)
+        proposals.append(
+            AspectProposal(
+                asset=AssetRefStub(role_urn),
+                kind="glossary_node",
+                entity_type="glossaryNode",
+                urn=role_urn,
+                aspect_name="glossaryNodeInfo",
+                aspect={
+                    "name": ROLE_NODES[role],
+                    "definition": _ROLE_DEFINITIONS[role],
+                    "parentNode": node_urn,
+                },
+            )
+        )
     term_by_id = {term.term_id: term for term in snapshot.glossary_terms}
     related: dict[int, dict[str, list[str]]] = {}
 
@@ -433,6 +465,7 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
             # REQ-1389: the stable Provisa term id rides the binding so the NEXT publish can
             # recognize a renamed term (new name-derived URN) and deprecate the old URN.
             "provisaTermId": str(term.term_id),
+            "provisaRole": term.role,  # REQ-2141
         }
         if term.experts:
             custom["provisaExperts"] = ", ".join(term.experts)
@@ -448,7 +481,7 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
                     # GlossaryTermInfo.definition is a required string in DataHub's model
                     # (REQ-1387) — a Provisa term without a definition publishes it empty.
                     "definition": term.definition or "",
-                    "parentNode": node_urn,
+                    "parentNode": role_node_urn(snapshot.org_id, term.role),
                     "termSource": "INTERNAL",
                     "customProperties": custom,
                 },

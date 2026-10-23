@@ -27,6 +27,7 @@ from provisa.api.metadata_export.collibra import (
     DEFINITION_ATTRIBUTE,
     DEPRECATED_STATUS,
     GLOSSARY_TERM_TYPE,
+    ROLE_ATTRIBUTE,
     TERM_RELATION_TYPES,
     URI_ATTRIBUTE,
     CollibraExport,
@@ -396,3 +397,11 @@ async def test_a_stewards_relation_stands_and_provisas_stale_ones_are_withdrawn(
     assert result.ok, result.errors
     assert recorded["assigned"] == []
     assert sorted(recorded["withdrawn"]) == ["rel-margin", "rel-stale"]
+
+
+def test_every_term_row_carries_its_role():
+    """REQ-2141: the role rides the Provisa-authored 'Provisa Role' attribute type."""
+    snapshot = _with_table([_term(1, "order", role="class"), _term(2, "party")])
+    rows = {r["name"]: r for r in glossary_rows(snapshot, COMMUNITY, GLOSSARY_DOMAIN)}
+    assert rows["order"]["attributes"][ROLE_ATTRIBUTE] == [{"value": "class"}]
+    assert rows["party"]["attributes"][ROLE_ATTRIBUTE] == [{"value": "concept"}]

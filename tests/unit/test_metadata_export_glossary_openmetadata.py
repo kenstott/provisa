@@ -47,6 +47,11 @@ from provisa.api.metadata_export.openmetadata import (
 from provisa.core.models import MetadataExportTarget
 
 GLOSSARY = "provisa_acme"
+# REQ-2141: a top-level term sits beneath its role's group term.
+CONCEPTS = f"{GLOSSARY}.Concepts"
+CLASSES = f"{GLOSSARY}.Classes"
+PROPERTIES = f"{GLOSSARY}.Properties"
+ROLE_GROUPS = {"Classes", "Properties", "Concepts"}
 
 # Steward curation living on a Provisa term inside OpenMetadata: the publish must carry it.
 STEWARD_TERM_TAG = {
@@ -101,6 +106,8 @@ def _mock_transport(monkeypatch, live_terms: dict[str, dict] | None = None):
 
     async def _put(self, url, json=None, headers=None, params=None):
         calls.append(("PUT", url, json))
+        if "/metadata/types/" in url:
+            return httpx.Response(200, json={}, request=httpx.Request("PUT", url))
         if url.endswith("/glossaries"):
             body = {"id": "gid-1", "fullyQualifiedName": json["name"]}
         elif "glossary" not in json:
@@ -114,6 +121,10 @@ def _mock_transport(monkeypatch, live_terms: dict[str, dict] | None = None):
     async def _get(self, url, params=None, headers=None):
         calls.append(("GET", url, params))
         request = httpx.Request("GET", url)
+        if "/metadata/types/name/" in url:
+            return httpx.Response(
+                200, json={"id": f"type-{url.rsplit('/', 1)[-1]}"}, request=request
+            )
         fqn = url.rsplit("/name/", 1)[-1]
         if fqn in live:
             return httpx.Response(200, json=live[fqn], request=request)
@@ -139,8 +150,11 @@ def _glossary_puts(calls) -> list[dict]:
 
 
 def _term_puts(calls) -> list[dict]:
+    """PUTs of Provisa terms; the role group terms are left out."""
     return [
-        body for method, url, body in calls if method == "PUT" and url.endswith("/glossaryTerms")
+        body
+        for method, url, body in calls
+        if method == "PUT" and url.endswith("/glossaryTerms") and body["name"] not in ROLE_GROUPS
     ]
 
 
@@ -184,7 +198,7 @@ async def test_term_put_lands_in_the_provisa_glossary_and_captures_the_binding(m
     # REQ-1389: the vendor's own id, keyed by the canonical Provisa URN.
     assert result.bindings["provisa://acme/terms/Customer"] == (
         "uuid-Customer",
-        f"{GLOSSARY}.Customer",
+        f"{CONCEPTS}.Customer",
     )
 
 
@@ -193,7 +207,7 @@ async def test_renamed_term_is_rebound_by_patch_on_the_stored_uuid(monkeypatch):
     calls = _mock_transport(monkeypatch)
     exporter = OpenMetadataExport(_export_config())
     # Last publish landed this URN under the old vendor name.
-    exporter.stored_bindings = {"provisa://acme/terms/Customer": ("uuid-old", f"{GLOSSARY}.Cust")}
+    exporter.stored_bindings = {"provisa://acme/terms/Customer": ("uuid-old", f"{CONCEPTS}.Cust")}
     result = await exporter.publish(_snapshot([_term(1, "Customer")]))
     assert result.ok
     # Glossary terms allow rename via PATCH (unlike tables): the stored UUID is patched,
@@ -206,7 +220,7 @@ async def test_renamed_term_is_rebound_by_patch_on_the_stored_uuid(monkeypatch):
     ]
     assert result.bindings["provisa://acme/terms/Customer"] == (
         "uuid-Customer",
-        f"{GLOSSARY}.Customer",
+        f"{CONCEPTS}.Customer",
     )
 
 
@@ -214,8 +228,8 @@ async def test_renamed_term_is_rebound_by_patch_on_the_stored_uuid(monkeypatch):
 async def test_reparented_term_is_moved_by_patch_using_the_new_parents_uuid(monkeypatch):
     calls = _mock_transport(monkeypatch)
     exporter = OpenMetadataExport(_export_config())
-    # Dog used to sit at the glossary root; the snapshot now nests it under Animal.
-    exporter.stored_bindings = {"provisa://acme/terms/Dog": ("uuid-old", f"{GLOSSARY}.Dog")}
+    # Dog used to sit at its role group's top; the snapshot now nests it under Animal.
+    exporter.stored_bindings = {"provisa://acme/terms/Dog": ("uuid-old", f"{CONCEPTS}.Dog")}
     result = await exporter.publish(
         _snapshot(
             [_term(1, "Animal"), _term(2, "Dog")],
@@ -228,7 +242,7 @@ async def test_reparented_term_is_moved_by_patch_using_the_new_parents_uuid(monk
             "https://catalog.example/api/v1/glossaryTerms/uuid-old",
             [
                 {
-                    "op": "add",
+                    "op": "replace",
                     "path": "/parent",
                     "value": {"id": "uuid-Animal", "type": "glossaryTerm"},
                 }
@@ -253,7 +267,8 @@ async def test_unbound_vendor_terms_are_never_touched_and_nothing_is_deleted(mon
     # Every write is scoped to the Provisa glossary's collections; no other glossary is
     # addressed anywhere.
     for method, url, body in calls:
-        assert "/api/v1/glossar" in url
+        # The glossary's collections, and the declaration of the role property (REQ-2141).
+        assert "/api/v1/glossar" in url or "/api/v1/metadata/types/" in url
         if method == "PUT" and url.endswith("/glossaryTerms"):
             assert body["glossary"] == GLOSSARY
 
@@ -269,12 +284,12 @@ async def test_kind_of_becomes_the_parent_child_hierarchy_parents_first(monkeypa
     )
     assert result.ok
     animal, dog = _term_puts(calls)
-    assert animal["name"] == "Animal" and "parent" not in animal
+    assert animal["name"] == "Animal" and animal["parent"] == CONCEPTS
     assert dog["name"] == "Dog"
-    assert dog["parent"] == f"{GLOSSARY}.Animal"
+    assert dog["parent"] == f"{CONCEPTS}.Animal"
     assert result.bindings["provisa://acme/terms/Dog"] == (
         "uuid-Dog",
-        f"{GLOSSARY}.Animal.Dog",
+        f"{CONCEPTS}.Animal.Dog",
     )
 
 
@@ -299,8 +314,8 @@ async def test_synonym_related_and_part_of_edges_map_to_native_fields(monkeypatc
     # RELATED_TO and PART_OF ride relatedTerms, deferred until every endpoint exists.
     assert all("relatedTerms" not in body for body in puts[:4])
     second_pass = {body["name"]: body for body in puts[4:]}
-    assert second_pass["Client"]["relatedTerms"] == [f"{GLOSSARY}.Order"]
-    assert second_pass["OrderLine"]["relatedTerms"] == [f"{GLOSSARY}.Order"]
+    assert second_pass["Client"]["relatedTerms"] == [f"{CONCEPTS}.Order"]
+    assert second_pass["OrderLine"]["relatedTerms"] == [f"{CONCEPTS}.Order"]
     assert set(second_pass) == {"Client", "OrderLine"}
 
 
@@ -324,8 +339,8 @@ async def test_undeprecated_term_moves_back_to_approved_and_steward_status_is_le
     monkeypatch,
 ):
     live = {
-        f"{GLOSSARY}.Customer": {"id": "uuid-Customer", "entityStatus": "Deprecated"},
-        f"{GLOSSARY}.Draft": {"id": "uuid-Draft", "entityStatus": "In Review"},
+        f"{CONCEPTS}.Customer": {"id": "uuid-Customer", "entityStatus": "Deprecated"},
+        f"{CONCEPTS}.Draft": {"id": "uuid-Draft", "entityStatus": "In Review"},
     }
     calls = _mock_transport(monkeypatch, live)
     result = await OpenMetadataExport(_export_config()).publish(
@@ -345,7 +360,7 @@ async def test_undeprecated_term_moves_back_to_approved_and_steward_status_is_le
 @pytest.mark.asyncio
 async def test_merge_carries_steward_tags_reviewers_and_foreign_related_terms(monkeypatch):
     live = {
-        f"{GLOSSARY}.Customer": {
+        f"{CONCEPTS}.Customer": {
             "id": "uuid-Customer",
             "entityStatus": "Approved",
             "tags": [STEWARD_TERM_TAG],
@@ -429,11 +444,11 @@ async def test_a_class_term_is_assigned_to_its_tables_and_a_property_to_its_colu
     terms = [i for i, (m, url, _) in enumerate(calls) if url.endswith("/glossaryTerms")]
     assert max(terms) < min(order)
     body = _table_put(calls)
-    assert body["tags"] == [_label(f"{GLOSSARY}.order")]
+    assert body["tags"] == [_label(f"{CLASSES}.order")]
     (column,) = body["columns"]
-    assert column["tags"] == [_label(f"{GLOSSARY}.customer")]
+    assert column["tags"] == [_label(f"{PROPERTIES}.customer")]
     # The Concept grounds nothing, so nothing carries it.
-    assert f"{GLOSSARY}.party" not in jsonlib.dumps(body)
+    assert f"{CONCEPTS}.party" not in jsonlib.dumps(body)
 
 
 @pytest.mark.asyncio
@@ -443,12 +458,12 @@ async def test_human_assignments_survive_and_provisas_stale_ones_are_withdrawn(m
     Automated label Provisa made for a term no longer assigned there is withdrawn."""
     live_table = {
         "tags": [
-            _label(f"{GLOSSARY}.order", "Manual"),  # the steward assigned it by hand
-            _label(f"{GLOSSARY}.retired_term"),  # Provisa's, no longer assigned
+            _label(f"{CLASSES}.order", "Manual"),  # the steward assigned it by hand
+            _label(f"{CLASSES}.retired_term"),  # Provisa's, no longer assigned
             _label("Business Glossary.Revenue", "Manual"),  # a steward glossary
             _label("Vendor Glossary.Auto", "Automated"),  # another system's automation
         ],
-        "columns": [{"name": "customer_id", "tags": [_label(f"{GLOSSARY}.customer")]}],
+        "columns": [{"name": "customer_id", "tags": [_label(f"{PROPERTIES}.customer")]}],
     }
     calls = _mock_transport(monkeypatch, live_terms={ORDERS_FQN: live_table})
     result = await OpenMetadataExport(_export_config()).publish(
@@ -457,19 +472,19 @@ async def test_human_assignments_survive_and_provisas_stale_ones_are_withdrawn(m
     assert result.ok, result.errors
     body = _table_put(calls)
     assert body["tags"] == [
-        _label(f"{GLOSSARY}.order", "Manual"),
+        _label(f"{CLASSES}.order", "Manual"),
         _label("Business Glossary.Revenue", "Manual"),
         _label("Vendor Glossary.Auto", "Automated"),
     ]
     (column,) = body["columns"]
-    assert column["tags"] == [_label(f"{GLOSSARY}.customer")]
+    assert column["tags"] == [_label(f"{PROPERTIES}.customer")]
 
 
 @pytest.mark.asyncio
 async def test_a_term_whose_upsert_failed_keeps_its_live_assignments(monkeypatch):
     """An assignment is never withdrawn because a request failed: the term's live Automated
     label rides through, and no new label names a term that was not upserted."""
-    live_table = {"tags": [_label(f"{GLOSSARY}.order")], "columns": []}
+    live_table = {"tags": [_label(f"{CLASSES}.order")], "columns": []}
     calls = _mock_transport(monkeypatch, live_terms={ORDERS_FQN: live_table})
     put = httpx.AsyncClient.put
 
@@ -484,7 +499,7 @@ async def test_a_term_whose_upsert_failed_keeps_its_live_assignments(monkeypatch
         _assignment_snapshot([_class(1, "order")])
     )
     assert not result.ok
-    assert _table_put(calls)["tags"] == [_label(f"{GLOSSARY}.order")]
+    assert _table_put(calls)["tags"] == [_label(f"{CLASSES}.order")]
 
 
 @pytest.mark.asyncio
@@ -497,3 +512,40 @@ async def test_term_without_definition_publishes_the_required_empty_description(
     (body,) = _term_puts(calls)
     # CreateGlossaryTerm requires the field; an undefined term must not be withheld.
     assert body["description"] == ""
+
+
+@pytest.mark.asyncio
+async def test_top_level_terms_sit_beneath_their_roles_group_and_carry_the_role(monkeypatch):
+    """REQ-2141: Classes, Properties and Concepts are group terms of the Provisa glossary,
+    upserted before the terms beneath them; every Provisa term carries its role in the
+    provisaRole custom property, declared on the glossaryTerm type first."""
+    calls = _mock_transport(monkeypatch)
+    result = await OpenMetadataExport(_export_config()).publish(
+        _assignment_snapshot([_class(1, "order"), _property(2, "customer"), _term(3, "party")])
+    )
+    assert result.ok, result.errors
+    assert result.published["glossary_group"] == 3
+    puts = [b for m, url, b in calls if m == "PUT" and url.endswith("/glossaryTerms")]
+    groups = [b for b in puts if b["name"] in ROLE_GROUPS]
+    assert sorted(b["name"] for b in groups) == ["Classes", "Concepts", "Properties"]
+    assert all("parent" not in b and "extension" not in b for b in groups)
+    assert max(map(puts.index, groups)) < min(puts.index(b) for b in _term_puts(calls))
+    terms = {b["name"]: (b["parent"], b["extension"]) for b in _term_puts(calls)}
+    assert terms == {
+        "order": (CLASSES, {"provisaRole": "class"}),
+        "customer": (PROPERTIES, {"provisaRole": "property"}),
+        "party": (CONCEPTS, {"provisaRole": "concept"}),
+    }
+    declared = [b for m, url, b in calls if m == "PUT" and "/metadata/types/" in url]
+    assert declared[0]["name"] == "provisaRole"
+    assert not any("glossary/roles" in uri for uri in result.bindings)
+
+
+@pytest.mark.asyncio
+async def test_a_stewards_custom_properties_stand_beside_the_role(monkeypatch):
+    live = {f"{CONCEPTS}.party": {"id": "uuid-party", "extension": {"owner_team": "finance"}}}
+    calls = _mock_transport(monkeypatch, live)
+    result = await OpenMetadataExport(_export_config()).publish(_snapshot([_term(3, "party")]))
+    assert result.ok, result.errors
+    (body,) = _term_puts(calls)
+    assert body["extension"] == {"owner_team": "finance", "provisaRole": "concept"}

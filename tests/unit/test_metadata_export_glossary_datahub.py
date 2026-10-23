@@ -30,6 +30,7 @@ import httpx
 from provisa.api.metadata_export.datahub import (
     PROVISA_ACTOR,
     DataHubExport,
+    role_node_urn,
     glossary_node_urn,
     glossary_term_urn,
     to_proposals,
@@ -125,7 +126,12 @@ def test_terms_publish_under_the_orgs_own_provisa_node():
     assert term.urn == glossary_term_urn(ORG, "customer")
     assert term.aspect["name"] == "customer"
     assert term.aspect["definition"] == "definition of customer"
-    assert term.aspect["parentNode"] == NODE_URN
+    # REQ-2141: the term sits in its role's child node, which sits in the org's node.
+    assert term.aspect["parentNode"] == role_node_urn(ORG, "concept") == f"{NODE_URN}.concepts"
+    concepts = next(p for p in proposals if p.urn == role_node_urn(ORG, "concept"))
+    assert concepts.aspect["name"] == "Concepts"
+    assert concepts.aspect["parentNode"] == NODE_URN
+    assert term.aspect["customProperties"]["provisaRole"] == "concept"
     assert term.aspect["customProperties"]["provisaUri"] == f"provisa://{ORG}/terms/customer"
     assert term.aspect["customProperties"]["provisaTermId"] == "1"
     assert term.aspect["customProperties"]["provisaExperts"] == "alice"
@@ -319,7 +325,7 @@ def test_every_glossary_proposal_is_an_upsert_in_the_provisa_namespace_never_a_d
 async def test_publish_captures_each_terms_urn_as_its_binding(monkeypatch):
     result, _ = await _publish(_export(), _snapshot([_term(7, "customer")]), monkeypatch)
     assert result.ok
-    assert result.published["glossary_node"] == 1
+    assert result.published["glossary_node"] == 2  # the org's node and its Concepts node
     assert result.published["glossary_term"] == 1
     assert result.bindings[f"provisa://{ORG}/terms/customer"] == (
         glossary_term_urn(ORG, "customer"),
@@ -367,3 +373,28 @@ async def test_an_unrenamed_term_and_a_foreign_urn_are_never_touched(monkeypatch
     assert result.ok
     assert not [p for p in posted if p["proposal"]["aspectName"] == "deprecation"]
     assert foreign not in {p["proposal"]["entityUrn"] for p in posted}
+
+
+def test_each_role_has_its_own_child_node_and_every_term_names_its_role():
+    """REQ-2141: Classes, Properties and Concepts are child nodes of the org's Provisa node,
+    each holding the terms of its role, and every term carries the role as a property."""
+    proposals = to_proposals(
+        _snapshot([_class(1, "order"), _property(2, "customer"), _term(3, "party")])
+    )
+    nodes = {p.urn: p.aspect for p in proposals if p.aspect_name == "glossaryNodeInfo"}
+    assert {urn: aspect.get("parentNode") for urn, aspect in nodes.items()} == {
+        NODE_URN: None,
+        f"{NODE_URN}.classes": NODE_URN,
+        f"{NODE_URN}.properties": NODE_URN,
+        f"{NODE_URN}.concepts": NODE_URN,
+    }
+    terms = {
+        p.aspect["name"]: (p.aspect["parentNode"], p.aspect["customProperties"]["provisaRole"])
+        for p in proposals
+        if p.aspect_name == "glossaryTermInfo"
+    }
+    assert terms == {
+        "order": (f"{NODE_URN}.classes", "class"),
+        "customer": (f"{NODE_URN}.properties", "property"),
+        "party": (f"{NODE_URN}.concepts", "concept"),
+    }

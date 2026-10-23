@@ -78,7 +78,7 @@ from provisa.api.metadata_export.provider import (
     MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_export.model import AssetKind, junction_payload
+from provisa.api.metadata_export.model import AssetKind, GlossaryTermAsset, junction_payload
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
@@ -87,7 +87,6 @@ if TYPE_CHECKING:
         ColumnAsset,
         DataProductAsset,
         DataQualityAssertion,
-        GlossaryTermAsset,
         MetadataSnapshot,
         TableAsset,
     )
@@ -112,6 +111,17 @@ _STEWARD_EMAIL_DOMAIN = "provisa.invalid"
 # table at three columns — an approved relationship carries eight fields, so a table-cp form
 # would have to drop five of them.
 RELATIONSHIP_PROPERTY = "provisaRelationships"
+
+# REQ-2141: the custom property every Provisa glossary term carries its ontology role under, and
+# the group terms the roles' top-level terms sit beneath (OpenMetadata's glossary has no node
+# other than a term, so a role's group is a term of the Provisa glossary). A term with a KIND_OF
+# parent stays beneath that parent, so the KIND_OF tree is kept whole.
+ROLE_PROPERTY = "provisaRole"
+ROLE_GROUPS = {
+    "class": ("Classes", "Terms whose instances are the rows of the tables they ground."),
+    "property": ("Properties", "Terms that name the values of the columns they ground."),
+    "concept": ("Concepts", "Terms grounded in no table or column, related to those that are."),
+}
 
 # REQ-1389: PUT-body fields of a table the exporter never authors. A PUT replaces the fields
 # sent — and clears the ones it does not send — so anything live under these keys would be
@@ -867,6 +877,23 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
             seen.add(cursor)
             cursor = parent[cursor]
 
+    # REQ-2141: each top-level term goes beneath its role's group term.
+    groups: dict[str, int] = {}
+    for group_id, role in enumerate(sorted({t.role for t in snapshot.glossary_terms}), start=1):
+        name, definition = ROLE_GROUPS[role]
+        groups[role] = -group_id
+        by_id[-group_id] = GlossaryTermAsset(
+            term_id=-group_id,
+            name=name,
+            definition=definition,
+            is_abstract=True,
+            deprecated=False,
+            semantic_uri=f"provisa://{snapshot.org_id}/glossary/roles/{role}",
+        )
+    for term in snapshot.glossary_terms:
+        if term.term_id not in parent:
+            parent[term.term_id] = groups[term.role]
+
     def _fqn(term_id: int) -> str:
         chain = [by_id[term_id].name]
         cursor = term_id
@@ -884,7 +911,7 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
         return depth
 
     plans: list[TermPlan] = []
-    for term in sorted(snapshot.glossary_terms, key=lambda t: (_depth(t.term_id), t.term_id)):
+    for term in sorted(by_id.values(), key=lambda t: (_depth(t.term_id), t.term_id)):
         body: dict[str, Any] = {
             "glossary": gname,
             "name": term.name,
@@ -895,6 +922,8 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
         }
         if term.term_id in parent:
             body["parent"] = _fqn(parent[term.term_id])
+        if term.term_id > 0:  # a Provisa term, not a role's group term
+            body["extension"] = {ROLE_PROPERTY: term.role}
         synonyms = sorted(by_id[target].name for target in synonym_ids.get(term.term_id, []))
         if synonyms:
             body["synonyms"] = synonyms
@@ -954,28 +983,37 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         return None
 
     async def _register_relationship_property(self, client: httpx.AsyncClient) -> None:
-        """Declare the custom property the relationship extension is stored under.
+        """Declare the custom property the relationship extension is stored under."""
+        await self._register_property(
+            client,
+            "table",
+            RELATIONSHIP_PROPERTY,
+            "Relationships a Provisa steward approved on this table, as a JSON array.",
+        )
+
+    async def _register_property(
+        self, client: httpx.AsyncClient, entity: str, name: str, description: str
+    ) -> None:
+        """Declare a string custom property on an entity type.
 
         OpenMetadata rejects an extension field the entity type does not declare, so the
-        property has to exist before the first table that carries one. Both the type ids are
+        property has to exist before the first entity that carries one. Both the type ids are
         the server's, so they are read rather than assumed; the PUT itself is an upsert.
         """
         ids: dict[str, str] = {}
-        for name, category in (("table", "entity"), ("string", "field")):
+        for type_name, category in ((entity, "entity"), ("string", "field")):
             response = await client.get(
                 self._url(f"/api/v1/metadata/types/name/{name}"),
                 params={"category": category},
                 headers=self._headers(),
             )
             response.raise_for_status()
-            ids[name] = response.json()["id"]
+            ids[type_name] = response.json()["id"]
         response = await client.put(
-            self._url(f"/api/v1/metadata/types/{ids['table']}"),
+            self._url(f"/api/v1/metadata/types/{ids[entity]}"),
             json={
-                "name": RELATIONSHIP_PROPERTY,
-                "description": (
-                    "Relationships a Provisa steward approved on this table, as a JSON array."
-                ),
+                "name": name,
+                "description": description,
                 "propertyType": {"id": ids["string"], "type": "type"},
             },
             headers=self._headers(),
@@ -1378,6 +1416,26 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         result.published["glossary"] = result.published.get("glossary", 0) + 1
         plans, plan_errors = to_term_plans(snapshot)
         result.errors.extend(plan_errors)
+        try:
+            # REQ-2141: the role rides a custom property, declared before the first term.
+            await self._register_property(
+                client,
+                "glossaryTerm",
+                ROLE_PROPERTY,
+                "The term's role in the ontology: class, property or concept.",
+            )
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(ROLE_PROPERTY),
+                    message=(
+                        f"custom property {ROLE_PROPERTY}: {exc}. Terms were published "
+                        "without their role."
+                    ),
+                )
+            )
+            for plan in plans:
+                plan.body.pop("extension", None)
         # fqn -> server-assigned UUID and live entity, harvested in the first pass and
         # consumed by rebinds and the relatedTerms pass.
         term_ids: dict[str, str] = {}
@@ -1391,7 +1449,9 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 live_by_fqn[plan.fqn] = live
                 for field in _CARRIED_TERM_FIELDS:
                     if live.get(field) is not None:
-                        plan.body[field] = live[field]
+                        # The role is Provisa's own key in the extension; the rest stand.
+                        ours = plan.body.get(field) if field == "extension" else None
+                        plan.body[field] = {**live[field], **ours} if ours else live[field]
             # relatedTerms a steward linked OUTSIDE the Provisa glossary are theirs and
             # ride through; inside it, the snapshot's edges are the source of truth and
             # land in the second pass.
@@ -1419,6 +1479,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 continue
             body = response.json()
             term_ids[plan.fqn] = body["id"]
+            if plan.term.term_id < 0:
+                # REQ-2141: a role's group term -- Provisa's structure, not a Provisa term.
+                result.published["glossary_group"] = result.published.get("glossary_group", 0) + 1
+                continue
             outcome.term_fqns[plan.term.term_id] = body["fullyQualifiedName"]
             # REQ-1389: capture the vendor's own id for this term, keyed by the canonical
             # Provisa URN, so the next publish can rebind by identity.

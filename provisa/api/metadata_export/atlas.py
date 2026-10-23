@@ -833,6 +833,11 @@ GLOSSARY_NAME = "Provisa Glossary"
 # snapshot and preserves whatever a steward wrote after it.
 DEPRECATION_MARKER = "[DEPRECATED]"
 
+# REQ-2141: the key a term's ontology role rides under in the glossary term's
+# ``additionalAttributes`` map, the free-form map Atlas's own glossary model carries for this.
+# Provisa owns only this key; every other entry in the map is a steward's.
+ROLE_ATTRIBUTE = "provisaRole"
+
 # REQ-1387: the closed Provisa term-edge set onto Atlas's native term relations.
 #   KIND_OF             → isA             (Atlas's classifies/isA taxonomy pair, seen from
 #                                          the child)
@@ -1234,6 +1239,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         live.get("shortDescription"), term.deprecated
                     ),
                     "anchor": {"glossaryGuid": glossary_guid},
+                    "additionalAttributes": {
+                        **(live.get("additionalAttributes") or {}),
+                        ROLE_ATTRIBUTE: term.role,
+                    },
                 }
                 update = await client.put(
                     self._url(f"{self.glossary_term_path}/{guid}"),
@@ -1250,6 +1259,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             "qualifiedName": term_qn,
             "longDescription": definition,
             "anchor": {"glossaryGuid": glossary_guid},
+            "additionalAttributes": {ROLE_ATTRIBUTE: term.role},  # REQ-2141
         }
         short = _term_short_description(None, term.deprecated)
         if short:

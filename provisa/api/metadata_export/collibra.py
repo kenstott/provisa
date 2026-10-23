@@ -161,6 +161,9 @@ DATA_QUALITY_ATTRIBUTE = "Provisa Data Quality"
 GLOSSARY_TERM_TYPE = "Business Term"
 GLOSSARY_DOMAIN_TYPE = "Glossary"
 DEFINITION_ATTRIBUTE = "Definition"
+# REQ-2141: the term's ontology role -- class, property or concept -- a Provisa-authored custom
+# attribute type like ``Provisa URI``, set on Provisa's own terms only.
+ROLE_ATTRIBUTE = "Provisa Role"
 # REQ-1389: Collibra's out-of-the-box relation between a business asset (a Business Term is one)
 # and the data asset it means, looked up from the target as "<head> <role> <tail>".
 ASSIGNMENT_RELATION = ("Business Asset", "represents", "Data Asset")
@@ -423,6 +426,7 @@ def glossary_rows(
     for term in snapshot.glossary_terms:
         attributes: dict[str, Any] = {
             URI_ATTRIBUTE: [{"value": term.semantic_uri}],  # REQ-1385: binding key
+            ROLE_ATTRIBUTE: [{"value": term.role}],  # REQ-2141
         }
         if term.definition is not None:
             # Provisa-authored on Provisa's own term (REQ-1389), so set-replacement of the

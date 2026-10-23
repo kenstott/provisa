@@ -38,6 +38,7 @@ import httpx
 
 from provisa.api.metadata_export.atlas import (
     ASSIGNMENT_SOURCE,
+    ROLE_ATTRIBUTE,
     SEMANTIC_ASSIGNMENT,
     AtlasEntity,
     AtlasExport,
@@ -243,6 +244,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
             # userDescription belongs to humans in Atlan's UI and is never written.
             "longDescription": term.definition or "",
             "provisaUri": term.semantic_uri,
+            "additionalAttributes": {ROLE_ATTRIBUTE: term.role},  # REQ-2141
         }
         self._apply_deprecation(attributes, term)
         return AtlasEntity(
@@ -303,6 +305,11 @@ class AtlanExport(AtlasExport):  # REQ-1069
             attributes["name"] = term.name
             attributes["longDescription"] = term.definition or ""
             attributes["provisaUri"] = term.semantic_uri
+            # REQ-2141: Provisa's own key in the map; a steward's entries stand.
+            attributes["additionalAttributes"] = {
+                **(attributes.get("additionalAttributes") or {}),
+                ROLE_ATTRIBUTE: term.role,
+            }
             self._apply_deprecation(attributes, term)
         entity = AtlasEntity(
             asset=AssetRefStub(label),

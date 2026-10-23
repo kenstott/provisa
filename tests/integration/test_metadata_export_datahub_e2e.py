@@ -32,6 +32,7 @@ from provisa.api.metadata_export.datahub import (
     PROVISA_ACTOR,
     data_product_urn,
     glossary_term_urn,
+    role_node_urn,
 )
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
@@ -161,7 +162,14 @@ async def _the_view_carries_its_column_lineage(published: dict) -> None:
 async def _the_glossary_term_lands_under_the_org_node(published: dict) -> None:
     term = await _aspect(glossary_term_urn(ORG, GLOSSARY_TERM), "glossaryTermInfo")
     assert term["definition"] == GLOSSARY_DEFINITION
-    assert term["parentNode"] == f"urn:li:glossaryNode:provisa.{ORG}"
+    # REQ-2141: in its role's child node of the org's node, carrying its role.
+    assert term["parentNode"] == role_node_urn(ORG, "property")
+    assert term["customProperties"]["provisaRole"] == "property"
+    order = await _aspect(glossary_term_urn(ORG, CLASS_TERM), "glossaryTermInfo")
+    assert order["parentNode"] == role_node_urn(ORG, "class")
+    classes = await _aspect(role_node_urn(ORG, "class"), "glossaryNodeInfo")
+    assert classes["name"] == "Classes"
+    assert classes["parentNode"] == f"urn:li:glossaryNode:provisa.{ORG}"
 
 
 async def _provisa_assigns_its_terms_attributed_to_its_actor(published: dict) -> None:

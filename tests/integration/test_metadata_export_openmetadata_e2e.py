@@ -221,8 +221,19 @@ async def test_provisa_assigns_its_terms_as_automated_glossary_labels(published,
     def _assigned(tags: list[dict]) -> set[tuple[str, str]]:
         return {(t["tagFQN"], t["labelType"]) for t in tags if t["source"] == "Glossary"}
 
-    assert _assigned(table["tags"]) == {(f"{glossary}.{CLASS_TERM}", "Automated")}
+    assert _assigned(table["tags"]) == {(f"{glossary}.Classes.{CLASS_TERM}", "Automated")}
     columns = {c["name"]: c for c in table["columns"]}
     assert _assigned(columns["customer_id"].get("tags") or []) == {
-        (f"{glossary}.{GLOSSARY_TERM}", "Automated")
+        (f"{glossary}.Properties.{GLOSSARY_TERM}", "Automated")
     }
+
+
+async def test_each_term_sits_in_its_roles_group_and_carries_its_role(published, token):
+    """REQ-2141: the Class term beneath the Classes group term, with provisaRole set."""
+    term = await _get(
+        token,
+        f"/api/v1/glossaryTerms/name/provisa_{ORG}.Classes.{CLASS_TERM}",
+        fields="extension,parent",
+    )
+    assert term["parent"]["fullyQualifiedName"] == f"provisa_{ORG}.Classes"
+    assert term["extension"]["provisaRole"] == "class"
