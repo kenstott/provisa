@@ -33,6 +33,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("front-door")
@@ -315,6 +316,11 @@ UPDATING_TEXT = (
     "automatically.",
 )
 
+#: The waking page's binary streams (REQ-1333): the one renderer the app's splash also runs
+#: (provisa-ui/splash/binary-streams.js). Terraform writes it beside this file; in the repository
+#: it is a symlink to the UI's copy.
+BINARY_STREAMS_JS = (Path(__file__).resolve().parent / "binary-streams.js").read_text()
+
 WAKE_HTML = """\
 <!doctype html><html><head><title>Provisa &mdash; waking up</title>
 <meta http-equiv="refresh" content="8">
@@ -344,148 +350,26 @@ p{margin:0;color:#9aa3b5;font-size:.9rem;line-height:1.5}
 <p>__MESSAGE__</p>
 </div>
 <script>
+__BINARY_STREAMS__
+</script>
+<script>
 (function(){
-var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 var canvas=document.getElementById("wake-canvas");
 if(!canvas||!canvas.getContext)return;
-var ctx=canvas.getContext("2d");
-var dpr=Math.min(window.devicePixelRatio||1,2);
-var W=0,H=0,cx=0,cy=0,spawnR=0,coreR=0,box=null;
 var mark=document.querySelector(".mark svg");
 var card=document.querySelector(".card");
-function markCenter(){
-if(mark){var r=mark.getBoundingClientRect();if(r.width)return{x:r.left+r.width/2,y:r.top+r.height/2};}
-return{x:W/2,y:H*0.4};
-}
-// Binary streams: each stream carries a few byte groups along the flow field. Glyphs come from
-// one offscreen sprite (0 and 1, in TONES colours from blue to teal, at a few alphas) drawn with
-// drawImage, so no fillText runs per frame.
-var CW=8,CH=13,TONES=4,ALPHAS=[0.1,0.18,0.27,0.36];
-var sprite=document.createElement("canvas");
-sprite.width=CW*dpr*ALPHAS.length*2;sprite.height=CH*dpr*TONES;
-var sc=sprite.getContext("2d");
-sc.scale(dpr,dpr);
-sc.font="11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
-sc.textAlign="center";sc.textBaseline="middle";
-for(var ti=0;ti<TONES;ti++){
-var tt=ti/(TONES-1);
-var rgb=Math.round(99+(16-99)*tt)+","+Math.round(102+(185-102)*tt)+","+Math.round(241+(129-241)*tt);
-for(var ai=0;ai<ALPHAS.length;ai++)for(var b=0;b<2;b++){
-sc.fillStyle="rgba("+rgb+","+ALPHAS[ai]+")";
-sc.fillText(b?"1":"0",(ai*2+b)*CW+CW/2,ti*CH+CH/2);
-}
-}
-function resize(){
-W=canvas.clientWidth;H=canvas.clientHeight;
-canvas.width=W*dpr;canvas.height=H*dpr;
-ctx.setTransform(dpr,0,0,dpr,0,0);
-var c=markCenter();cx=c.x;cy=c.y;
-spawnR=Math.max(W,H)*0.72;
-coreR=Math.max(56,Math.min(W,H)*0.13);
-box=card?card.getBoundingClientRect():null;
-}
-resize();
-var N=Math.max(50,Math.min(110,Math.round((W*H)/12000)));
-var S=[];
-function spawn(s){
-var a=Math.random()*Math.PI*2;
-var r=spawnR*(0.7+Math.random()*0.5);
-s.x=cx+Math.cos(a)*r;s.y=cy+Math.sin(a)*r*0.82;
-s.spd=0.6+Math.random()*1.1;s.life=0;
-// 2 to 3 groups of 4 to 8 bits, a blank slot (-1) between groups.
-s.bits=[];
-var groups=2+Math.floor(Math.random()*2);
-for(var g=0;g<groups;g++){
-if(g)s.bits.push(-1);
-var len=4+Math.floor(Math.random()*5);
-for(var k=0;k<len;k++)s.bits.push(Math.random()<0.5?0:1);
-}
-// Trail points, CW apart along the path the head has travelled; glyph k sits between k-1 and k.
-s.tx=[s.x];s.ty=[s.y];
-}
-function step(s){
-var dx=cx-s.x,dy=cy-s.y;
-var d=Math.sqrt(dx*dx+dy*dy)||1;
-var curl=Math.sin(s.x*0.012+s.y*0.01)*0.9;
-var ang=Math.atan2(dy,dx)+curl*(d/spawnR);
-var v=s.spd*(0.6+(1-d/spawnR)*2.2);
-s.x+=Math.cos(ang)*v;s.y+=Math.sin(ang)*v;
-s.life++;
-var hx=s.x-s.tx[0],hy=s.y-s.ty[0];
-if(hx*hx+hy*hy>=CW*CW){
-s.tx.unshift(s.x);s.ty.unshift(s.y);
-if(s.tx.length>s.bits.length+1){s.tx.pop();s.ty.pop();}
-}
-if(Math.random()<0.12){var i=Math.floor(Math.random()*s.bits.length);if(s.bits[i]>=0)s.bits[i]^=1;}
-var n=s.tx.length-1,ex=s.tx[n]-cx,ey=s.ty[n]-cy;
-if((n===s.bits.length&&ex*ex+ey*ey<coreR*coreR)||s.life>1400)spawn(s);
-}
-function draw(s){
-var fin=Math.min(1,s.life/90);
-var hx=s.x-s.tx[0],hy=s.y-s.ty[0];
-var f=Math.sqrt(hx*hx+hy*hy)/CW;
-for(var k=0;k<s.bits.length;k++){
-var b=s.bits[k];
-if(b<0)continue;
-var x,y;
-if(k===0){x=s.x;y=s.y;}
-else{
-if(k>=s.tx.length)break;
-var u=1-f;
-x=s.tx[k-1]+(s.tx[k]-s.tx[k-1])*u;y=s.ty[k-1]+(s.ty[k]-s.ty[k-1])*u;
-}
-var dx=x-cx,dy=y-cy,d=Math.sqrt(dx*dx+dy*dy);
-var fout=Math.max(0,Math.min(1,(d-coreR*1.1)/(coreR*1.8)));
-// Glyphs also fade out over the text, so the heading and message stay readable.
-if(box){
-var ox=Math.max(box.left-x,x-box.right,0),oy=Math.max(box.top-y,y-box.bottom,0);
-fout*=Math.min(1,Math.sqrt(ox*ox+oy*oy)/40);
-}
-var a=fin*fout;
-if(a<0.08)continue;
-var ai=Math.min(ALPHAS.length-1,Math.floor(a*ALPHAS.length));
-var t=Math.max(0,Math.min(1,1-d/(spawnR*0.55)));
-var ti=Math.round(t*(TONES-1));
-ctx.drawImage(sprite,(ai*2+b)*CW*dpr,ti*CH*dpr,CW*dpr,CH*dpr,Math.round(x-CW/2),Math.round(y-CH/2),CW,CH);
-}
-}
-function glow(pulse){
-var g=ctx.createRadialGradient(cx,cy,0,cx,cy,coreR*1.3);
-g.addColorStop(0,"rgba(16,185,129,"+0.16*pulse+")");
-g.addColorStop(0.5,"rgba(52,120,180,"+0.06*pulse+")");
-g.addColorStop(1,"rgba(16,185,129,0)");
-ctx.fillStyle=g;
-ctx.beginPath();ctx.arc(cx,cy,coreR*1.3,0,Math.PI*2);ctx.fill();
-}
-function render(pulse){
-ctx.clearRect(0,0,W,H);
-for(var i=0;i<S.length;i++)draw(S[i]);
-glow(pulse);
-}
-// Start each stream part-way along its path, so the first frame is already flowing.
-for(var i=0;i<N;i++){
-var s={};spawn(s);
-for(var w=Math.floor(Math.random()*700);w>0;w--)step(s);
-S.push(s);
-}
-if(reduce){
-// Reduced motion: one static frame, redrawn only when the window changes size.
-render(1);
-window.addEventListener("resize",function(){resize();render(1);});
-return;
-}
-window.addEventListener("resize",resize);
-requestAnimationFrame(function(){var c=markCenter();cx=c.x;cy=c.y;});
-setTimeout(function(){var c=markCenter();cx=c.x;cy=c.y;box=card?card.getBoundingClientRect():null;},760);
-function frame(){
-for(var i=0;i<S.length;i++)step(S[i]);
-render(0.55+0.45*Math.sin(Date.now()*0.002));
-requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
+provisaBinaryStreams(canvas,{
+center:function(){
+var r=mark&&mark.getBoundingClientRect();
+if(r&&r.width)return{x:r.left+r.width/2,y:r.top+r.height/2};
+return{x:canvas.clientWidth/2,y:canvas.clientHeight*0.4};
+},
+avoid:function(){return card;},
+reduce:window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches
+});
 })();
 </script>
-</body></html>"""
+</body></html>""".replace("__BINARY_STREAMS__", BINARY_STREAMS_JS)
 
 
 def _wants_html(request: bytes) -> bool:
