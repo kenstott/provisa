@@ -653,7 +653,6 @@ glossary_terms = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", Text, nullable=False),
     Column("definition", Text),
-    Column("is_abstract", Boolean, nullable=False, server_default=false()),
     Column("deprecated", Boolean, nullable=False, server_default=false()),
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),

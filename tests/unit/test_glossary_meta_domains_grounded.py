@@ -54,7 +54,7 @@ async def _seed(conn) -> None:
     )
     terms = [
         dict(id=ROOTED, name="Customer", definition="A buyer"),
-        dict(id=ABSTRACT, name="Party", definition="Anyone", is_abstract=True),
+        dict(id=ABSTRACT, name="Party", definition="Anyone"),  # a Concept: grounds nothing
         dict(id=BARE, name="Lead", definition="A prospect"),
         dict(id=UNDEFINED, name="Account", definition=""),
         dict(id=RETIRED, name="Client", definition="Old word", retired=True),

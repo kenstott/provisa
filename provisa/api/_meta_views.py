@@ -646,7 +646,11 @@ _META_TABLE_VIEWS: dict[str, str] = {
             JOIN same_entity_edges se ON se.a = ir.table_id
             JOIN glossary_term_table_refs gt ON gt.term_id = ir.term_id AND gt.table_id = se.b
         )
-        SELECT t.id, t.name, t.definition, t.is_abstract, t.deprecated, t.retired,
+        SELECT t.id, t.name, t.definition,
+               CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
+                      OR EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = t.id)
+                    THEN FALSE ELSE TRUE END AS is_abstract,
+               t.deprecated, t.retired,
                t.export_excluded,
                (SELECT COUNT(*) FROM glossary_term_refs r WHERE r.term_id = t.id) AS ref_count,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)

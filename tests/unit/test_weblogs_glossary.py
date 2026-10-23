@@ -17,6 +17,8 @@ its abstract terms (the shop's ontology) are live, grounded through their edges.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import contextlib
 from pathlib import Path
 
@@ -27,7 +29,7 @@ from provisa.core import secrets_store
 from provisa.core.config_loader import apply_config, parse_config_dict, read_config_with_includes
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.models import DERIVED_SOURCE_ID
-from provisa.core.schema_org import glossary_term_edges, glossary_terms, sources
+from provisa.core.schema_org import glossary_term_edges, sources
 
 CONFIG = Path(__file__).resolve().parents[2] / "demo" / "named" / "weblogs" / "config.yaml"
 
@@ -74,13 +76,10 @@ async def loaded(monkeypatch, tmp_path, control_plane):
         # against.
         await conn.execute_core(insert(sources).values(id=DERIVED_SOURCE_ID, type="trino"))
         await apply_config(parse_config_dict(read_config_with_includes(CONFIG)), conn)
+        # REQ-2141: abstract is derived (a term grounding no column and no table), as listed.
         terms = {
-            r.name: r
-            for r in (
-                await conn.execute_core(
-                    select(glossary_terms.c.id, glossary_terms.c.name, glossary_terms.c.is_abstract)
-                )
-            ).fetchall()
+            t["name"]: SimpleNamespace(id=t["id"], name=t["name"], is_abstract=t["is_abstract"])
+            for t in await glossary_repo.list_terms(conn)
         }
         live = await glossary_repo.live_ids(conn)
         domains = await glossary_repo.term_domains(conn)

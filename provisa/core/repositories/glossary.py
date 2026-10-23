@@ -29,6 +29,7 @@ from provisa.core import model_change
 from typing import TYPE_CHECKING, Any
 
 import re
+from dataclasses import dataclass
 
 from sqlalchemy import delete as _delete, func, or_, select, update
 
@@ -180,17 +181,6 @@ async def sync_table_refs(
             assert graph is not None
             node = graph.terms.get(held)
             if node is None or _is_curated(graph, node) or node["name"] == wanted:
-                # Holding this ref already proves the term concrete, regardless of which
-                # loader step created it first (glossary upsert can precede table sync and
-                # leave a config-declared stub abstract) -- a stale flag is corrected here too,
-                # not just on the fresh-link path below.
-                if node is not None and node["is_abstract"]:
-                    await conn.execute_core(
-                        update(glossary_terms)
-                        .where(glossary_terms.c.id == node["id"])
-                        .values(is_abstract=False)
-                    )
-                    node["is_abstract"] = False
                 continue
             orphaned.add(held)
         term_id = await _find_or_create_term(conn, wanted)
@@ -207,8 +197,23 @@ async def sync_table_refs(
         await _settle_terms(conn, orphaned, domains_before=domains_before)
 
 
-async def sweep_refless_terms(conn: "Connection", *, domains_before: "dict[int, set[str]]") -> None:
-    """Settle every rooted-born term whose refs are all gone (FK-cascade deletion paths).
+@dataclass(frozen=True)
+class RemovalSnapshot:
+    """What a deletion path reads BEFORE it removes rows its refs depend on (REQ-1591): every
+    term's domains, and the terms holding column refs. The sweep after it settles the terms that
+    held refs and hold none now; a term that never held one is a Concept and is not settled."""
+
+    domains: dict[int, set[str]]
+    held_refs: frozenset[int]
+
+
+async def before_ref_removal(conn: "Connection") -> RemovalSnapshot:
+    held = (await conn.execute_core(select(glossary_term_refs.c.term_id).distinct())).fetchall()
+    return RemovalSnapshot(await term_domains(conn), frozenset(r.term_id for r in held))
+
+
+async def sweep_refless_terms(conn: "Connection", *, before: RemovalSnapshot) -> None:
+    """Settle every term that held refs before a deletion and holds none now (FK-cascade paths).
 
     Table/source deletion and config purges remove registered_tables rows out of this
     repository's sight; the deletion paths call this afterwards so those terms still get
@@ -216,50 +221,45 @@ async def sweep_refless_terms(conn: "Connection", *, domains_before: "dict[int, 
     than FK cascade, because the SQLite backend runs without PRAGMA foreign_keys and its
     cascades never fire.
 
-    ``domains_before`` is :func:`term_domains` taken BEFORE the caller deleted the rows, and is
+    ``before`` is :func:`before_ref_removal`, taken BEFORE the caller deleted the rows, and is
     required rather than computed here (REQ-1591): a term's domains are derived by joining its
     refs to ``registered_tables``, so once the caller has removed the table row there is nothing
-    left to derive from and a snapshot taken here would already be empty. Requiring it makes the
-    ordering a caller cannot skip — a new deletion path has to take the snapshot to compile.
+    left to derive from and a snapshot taken here would already be empty. It also says which
+    terms held refs: a term with none is a Concept unless it lost them (REQ-2141). Requiring it
+    makes the ordering a caller cannot skip — a new deletion path has to take the snapshot to
+    compile.
     """
     await conn.execute_core(
         _delete(glossary_term_refs).where(
             ~glossary_term_refs.c.table_id.in_(select(registered_tables.c.id))
         )
     )
-    rows = (
-        await conn.execute_core(
-            select(glossary_terms.c.id)
-            .where(~glossary_terms.c.is_abstract, ~glossary_terms.c.deprecated)
-            .where(~glossary_terms.c.id.in_(select(glossary_term_refs.c.term_id).distinct()))
-        )
-    ).fetchall()
-    if rows:
-        await _settle_terms(conn, {r.id for r in rows}, domains_before=domains_before)
+    still = {
+        r.term_id
+        for r in (
+            await conn.execute_core(select(glossary_term_refs.c.term_id).distinct())
+        ).fetchall()
+    }
+    lost = set(before.held_refs) - still
+    if lost:
+        await _settle_terms(conn, lost, domains_before=before.domains)
 
 
 async def _find_or_create_term(conn: "Connection", name: str) -> int:
-    """Attach a column ref's term by name, creating it if needed.
-
-    A term this resolves to is by definition concrete -- it now holds a physical ref -- so a
-    stale ``is_abstract`` flag from a config-declared stub (glossary term upsert runs before
-    table sync, so a name shared with a not-yet-synced column is created abstract first) is
-    corrected here rather than left to contradict the ref it just gained.
-    """
+    """Attach a column ref's term by name, creating it if needed; a deprecated one is revived.
+    (Its role follows from the ref it gains: REQ-2141.)"""
     row = (
         await conn.execute_core(select(glossary_terms).where(glossary_terms.c.name == name))
     ).fetchone()
     if row is not None:
-        if row.deprecated or row.is_abstract:
+        if row.deprecated:
             await conn.execute_core(
-                update(glossary_terms)
-                .where(glossary_terms.c.id == row.id)
-                .values(deprecated=False, is_abstract=False)
+                update(glossary_terms).where(glossary_terms.c.id == row.id).values(deprecated=False)
             )
         return row.id
     term_id = await conn.upsert_returning(
         glossary_terms,
-        {"name": name, "is_abstract": False, "deprecated": False},
+        {"name": name, "deprecated": False},
         index_elements=["name"],
         returning="id",
         update_columns=["deprecated"],
@@ -287,7 +287,7 @@ async def _settle_terms(
     graph = await _load_graph(conn)
     for term_id in sorted(term_ids):
         node = graph.terms.get(term_id)
-        if node is None or node["is_abstract"] or node["deprecated"] or node["rooted"]:
+        if node is None or node["deprecated"] or node["rooted"]:
             continue
         if _is_curated(graph, node) or _dangling_grows(graph, term_id):
             await conn.execute_core(
@@ -303,6 +303,12 @@ async def _settle_terms(
             graph.remove(term_id)
             removed.add(term_id)
     return removed
+
+
+def _is_concept(node: dict) -> bool:
+    """A Concept, in service: rooted in no column and no table, and not a deprecated term that
+    lost its columns (REQ-2141)."""
+    return not node["rooted"] and not node["deprecated"]
 
 
 class _TermGraph:
@@ -321,7 +327,7 @@ class _TermGraph:
         excluded: frozenset[int] = frozenset(),
         extra_roots: frozenset[int] = frozenset(),
     ) -> set[int]:
-        """Abstract terms with no undirected path to any rooted (ref-holding) term.
+        """Concept terms (in service, rooted in nothing) with no undirected path to any rooted term.
 
         ``extra_roots`` counts the named terms as rooted regardless of refs — the settle
         baseline treats the candidate term as still-anchoring (it was rooted until the
@@ -348,7 +354,7 @@ class _TermGraph:
         return {
             tid
             for tid, node in self.terms.items()
-            if node["is_abstract"] and tid not in excluded and tid not in reached
+            if _is_concept(node) and tid not in excluded and tid not in reached
         }
 
 
@@ -358,7 +364,6 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             select(
                 glossary_terms.c.id,
                 glossary_terms.c.name,
-                glossary_terms.c.is_abstract,
                 glossary_terms.c.deprecated,
                 glossary_terms.c.retired,
                 glossary_terms.c.definition,
@@ -389,7 +394,6 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         r.id: {
             "id": r.id,
             "name": r.name,
-            "is_abstract": bool(r.is_abstract),
             "deprecated": bool(r.deprecated),
             "retired": bool(r.retired),
             "definition": r.definition,
@@ -529,6 +533,8 @@ async def list_terms(
         | {
             "ref_count": counts.get(r.id, 0),
             "table_count": table_counts.get(r.id, 0),
+            # REQ-2141: derived -- a term rooted in no column and no table is a Concept.
+            "is_abstract": not counts.get(r.id) and not table_counts.get(r.id),
             "identity_gap": r.id in gaps,
             "live": r.id in live,
             "grounded": r.id in grounded,
@@ -570,6 +576,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
             select(func.count()).where(glossary_term_table_refs.c.term_id == term_id)
         )
     ).scalar_one()
+    term["is_abstract"] = not term["ref_count"] and not term["table_count"]  # REQ-2141: derived
     term["identity_gap"] = term_id in await identity.identity_gap_ids(conn)
     other = glossary_terms.alias("other")
     outgoing = (
@@ -641,7 +648,6 @@ async def create_abstract_term(
         {
             "name": name,
             "definition": definition,
-            "is_abstract": True,
             "deprecated": False,
         },
         index_elements=["name"],
@@ -665,7 +671,7 @@ async def upsert_declared_term(
     present in the table -- whether auto-derived from a column ref or declared by a prior
     load of this same config -- gets its definition (re)set in place rather than rejected.
     This is also how a config entry grounds an already-physical term: naming an existing
-    rooted term adds a definition without touching its ``is_abstract`` flag or column refs.
+    rooted term adds a definition without touching its column refs.
     """
     model_change.name("upsert", "glossary term", name)  # REQ-1524
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
@@ -676,7 +682,6 @@ async def upsert_declared_term(
         {
             "name": name,
             "definition": definition,
-            "is_abstract": True,
             "deprecated": False,
         },
         index_elements=["name"],
@@ -982,6 +987,10 @@ async def export_graph(conn: "Connection") -> dict:
             )
         ).fetchall()
     ]
+    # REQ-2141: abstract is derived -- a term rooted in no column and no table is a Concept.
+    rooted = {r["term_id"] for r in refs} | {r["term_id"] for r in table_refs}
+    for term in terms:
+        term["is_abstract"] = term["id"] not in rooted
     return {
         "terms": terms,
         "refs": refs,
@@ -1303,10 +1312,17 @@ async def related_terms_for_tables(
     ).fetchall()
     live = await live_ids(conn)
     scope = await term_domains(conn)
+    graph = await _load_graph(conn)
     return [
-        dict(r._mapping) | {"live": r.id in live, "domains": sorted(scope.get(r.id, set()))}
+        dict(r._mapping)
+        | {
+            "live": r.id in live,
+            "domains": sorted(scope.get(r.id, set())),
+            "is_abstract": not graph.terms[r.id]["rooted"],  # REQ-2141: derived
+        }
         for r in rows
-        if (r.id in direct_ids or r.is_abstract) and readable_term(domains, scope.get(r.id, set()))
+        if (r.id in direct_ids or _is_concept(graph.terms[r.id]))
+        and readable_term(domains, scope.get(r.id, set()))
     ]
 
 

@@ -661,3 +661,86 @@ async def test_the_term_list_and_detail_count_its_tables_beside_its_columns(
         assert note is not None and note["table_count"] == 0 and note["ref_count"] >= 1
         detail = await glossary_router.get_term(_request(), ids["party"])
         assert (detail["table_count"], detail["ref_count"]) == (2, 0)
+
+
+# --- abstract is derived from grounding: the role is the only classification (REQ-2141) ------
+
+
+@pytest.mark.asyncio
+async def test_abstract_is_derived_for_each_role(control_plane, monkeypatch):
+    """A Concept grounds nothing and is abstract; a Property (column refs) and a Class (tables)
+    are not -- in the list, the detail and the meta view alike."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["customers"])  # party: a Class; ledger: a Concept
+        async with db.acquire() as conn:
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+            assert note is not None  # note: a Property
+            listed = {t["name"]: t["is_abstract"] for t in await glossary_repo.list_terms(conn)}
+            detail = {
+                name: (await glossary_repo.get_term(conn, ids.get(name, note["id"])))["is_abstract"]
+                for name in ("party", "ledger", "note")
+            }
+            exported = {
+                t["name"]: t["is_abstract"]
+                for t in (await glossary_repo.export_graph(conn))["terms"]
+            }
+        expected = {"party": False, "ledger": True, "note": False}
+        assert {n: listed[n] for n in expected} == expected
+        assert detail == expected
+        assert {n: exported[n] for n in expected} == expected
+        # ungrounded, the Class is a Concept again
+        await glossary_router.remove_term_table(_request(), ids["party"], ids["customers"])
+        async with db.acquire() as conn:
+            party = await glossary_repo.get_term(conn, ids["party"])
+        assert party is not None and party["is_abstract"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_api_refuses_to_set_abstract(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (_db, ids, notified):
+        for call in (
+            lambda: glossary_router.create_abstract_term(
+                _with_json(_request(), {"name": "thing", "domains": ["sales"], "is_abstract": True})
+            ),
+            lambda: glossary_router.update_term(
+                _with_json(_request(), {"is_abstract": False}), ids["ledger"]
+            ),
+        ):
+            with pytest.raises(ApiError) as err:
+                await call()
+            assert (err.value.status_code, err.value.code) == (400, "glossary.abstract_is_derived")
+            assert "abstract is derived from grounding" in err.value.detail
+        assert notified == []
+
+
+def test_config_refuses_to_declare_abstract():
+    from provisa.core.models import GlossaryTermConfig
+
+    with pytest.raises(ValueError, match="'buyer': abstract is derived from grounding"):
+        GlossaryTermConfig.model_validate(
+            {"name": "buyer", "domains": ["sales"], "is_abstract": True}
+        )
+    assert GlossaryTermConfig.model_validate({"name": "buyer", "domains": ["sales"]}).name
+
+
+@pytest.mark.asyncio
+async def test_declared_domains_apply_to_a_concept_only(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        with control_plane.engine().begin() as c:
+            c.exec_driver_sql(f'SET LOCAL search_path TO "{SCHEMA}"')
+            c.execute(insert(domains).values(id="finance", description=""))
+        await glossary_router.update_term(
+            _with_json(_request(), {"domains": ["finance"]}), ids["ledger"]
+        )
+        async with db.acquire() as conn:
+            assert (await glossary_repo.term_domains(conn))[ids["ledger"]] == {"finance"}
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+        assert note is not None
+        await _ground(ids["party"], ids["customers"])
+        for term_id in (note["id"], ids["party"]):  # a Property, then a Class
+            with pytest.raises(ApiError) as err:
+                await glossary_router.update_term(
+                    _with_json(_request(), {"domains": ["finance"]}), term_id
+                )
+            assert (err.value.status_code, err.value.code) == (400, "glossary.invalid")
+            assert "only a Concept's domains can be set" in err.value.detail

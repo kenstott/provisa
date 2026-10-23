@@ -457,7 +457,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "id": "Term identifier",
         "name": "The term phrase, unique across the glossary",
         "definition": "What the term means; a term without one is a proposal, never live",
-        "is_abstract": "True when the term names a concept with no column of its own",
+        "is_abstract": "True when the term is a Concept: it grounds no column and no table "
+        "(derived from its grounding)",
         "deprecated": "True when the derivation lost its last column but the row was kept",
         "retired": "True when a curator took the term out of service",
         "export_excluded": "True when the term is withheld from consuming surfaces",

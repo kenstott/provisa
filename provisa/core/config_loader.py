@@ -1064,7 +1064,7 @@ async def _resolve_tag_assignment_table(
 
 
 async def _load_after_tables(  # REQ-1919
-    conn: "Connection", config: ProvisaConfig, *, domains_before: Any, defer_unregistered: bool
+    conn: "Connection", config: ProvisaConfig, *, refs_before: Any, defer_unregistered: bool
 ) -> None:
     """The apply's steps after the tables: what refers to tables."""
 
@@ -1153,7 +1153,7 @@ async def _load_after_tables(  # REQ-1919
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
 
 async def _check_identities(conn: "Connection", config: ProvisaConfig) -> None:
@@ -1218,7 +1218,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
     # snapshot step 11's sweep needs is taken here — before the column replace in _upsert_tables
     # removes the very rows it reads.
-    domains_before = await glossary_repo.term_domains(conn)
+    refs_before = await glossary_repo.before_ref_removal(conn)
 
     # 0. Regions and their stores (REQ-1921/1922), before the sources and tables that name them.
     from provisa.core.repositories import region as region_repo
@@ -1296,7 +1296,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     failed_feeds = await _check_change_feeds(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
     await _load_after_tables(
-        conn, config, domains_before=domains_before, defer_unregistered=defer_unregistered
+        conn, config, refs_before=refs_before, defer_unregistered=defer_unregistered
     )
     return failed_feeds
 
@@ -1909,6 +1909,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         calendars,
         data_products,
         domains,
+        glossary_term_refs,
         glossary_terms,
         kafka_sources,
         metrics,
@@ -1930,7 +1931,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         return [r[0] for r in (await conn.execute_core(statement)).fetchall()]
 
     # REQ-1591: taken before the tables go — a term's domains are derived from its refs.
-    domains_before = await glossary_repo.term_domains(conn)
+    refs_before = await glossary_repo.before_ref_removal(conn)
 
     seeded_sources = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
     internal = select(registered_tables.c.id).where(
@@ -1992,7 +1993,13 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         ),
         (
             "glossary_term",
-            await _ids(select(glossary_terms.c.id).where(glossary_terms.c.is_abstract.is_(True))),
+            # A term holding no column ref is the config's or a curator's (a Concept or a Class);
+            # a Property is derived from its columns and goes with its tables (REQ-2141).
+            await _ids(
+                select(glossary_terms.c.id).where(
+                    glossary_terms.c.id.not_in(select(glossary_term_refs.c.term_id))
+                )
+            ),
         ),
         (
             "tag",
@@ -2041,7 +2048,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         await discard(conn, ObjectRef("region", region_id))
     for store_id in await _ids(select(stores.c.id)):
         await discard(conn, ObjectRef("store", store_id))
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
 
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG

@@ -698,7 +698,6 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     definition      TEXT,
-    is_abstract     BOOLEAN NOT NULL DEFAULT FALSE,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
     -- Soft delete. A rooted term cannot be deleted (its refs are derived and would recreate
     -- it on the next registration), so retiring is how a curator takes a term out of service:
