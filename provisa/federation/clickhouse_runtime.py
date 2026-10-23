@@ -592,6 +592,20 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
             ),
         )
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` (``schema`` is the database) exists, from ClickHouse's own
+        listing (``system.tables``). Absent is False; a listing that cannot be read raises."""
+        from provisa.federation.clickhouse_store import _lit
+
+        def _run() -> bool:
+            rows, _ = self._backend.query(
+                f"SELECT 1 FROM system.tables WHERE database = {_lit(schema)} "
+                f"AND name = {_lit(table)}"
+            )
+            return bool(rows)
+
+        return await self._land_guard.run(_run)
+
     async def land_table(
         self,
         *,

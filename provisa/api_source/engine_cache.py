@@ -27,7 +27,7 @@ Execution model for OpenAPI/REST sources:
 
 # Requirements: REQ-280, REQ-309, REQ-318, REQ-327
 
-# complexity-gate: allow-ble=3 reason="three failures are logged, not raised: planner statistics (best-effort by REQ-275), the TTL drop of an expired cache table (post-answer housekeeping on a background worker), and table_exists (pending: telling a missing table from a failed probe needs a per-engine catalog listing); every other cache failure fails the read"
+# complexity-gate: allow-ble=2 reason="two failures are logged, not raised: planner statistics (best-effort by REQ-275) and the TTL drop of an expired cache table (post-answer housekeeping on a background worker); every other cache failure fails the read"
 
 from __future__ import annotations
 
@@ -327,41 +327,34 @@ def table_known_live(loc: CacheLocation, table_name: str) -> bool:  # REQ-318, R
     return expiry is not None and time.monotonic() < expiry
 
 
-def table_exists(  # REQ-318, REQ-309, REQ-327
-    conn, loc: CacheLocation, table_name: str, ttl: int | None = None
+async def table_exists(  # REQ-318, REQ-309, REQ-327
+    engine, loc: CacheLocation, table_name: str, ttl: int | None = None
 ) -> bool:
+    """Whether the cache table is landed, asked of the catalog of the store it lands in
+    (``EngineRuntime.landed_table_exists``): absent is False, and a catalog that cannot be read
+    raises -- never read as a table that is not there, which would fetch and land it again over
+    a store that is failing."""
     key = (loc.catalog, loc.schema, table_name)
     expiry = _TABLE_EXISTS_CACHE.get(key)
     if expiry is not None and time.monotonic() < expiry:
         return True
 
-    sql = f"SELECT 1 FROM {_table_ref(loc, table_name, conn.dialect)} LIMIT 1"
-    try:
-        conn.execute(sql)
-        conn.fetchall()
-        # Cache the positive result; expire before the engine drops the table
-        from provisa.core.cache_ttl import NEVER_EXPIRES
-
-        if ttl == NEVER_EXPIRES:
-            _TABLE_EXISTS_CACHE[key] = math.inf  # REQ-2031: never dropped
-        elif ttl is not None and ttl > _TABLE_EXISTS_SAFETY_MARGIN:
-            _TABLE_EXISTS_CACHE[key] = time.monotonic() + ttl - _TABLE_EXISTS_SAFETY_MARGIN
-        elif ttl is not None:
-            _TABLE_EXISTS_CACHE[key] = time.monotonic() + max(ttl - 5, 1)
-        else:
-            # No TTL known — cache for 60s as a safe default
-            _TABLE_EXISTS_CACHE[key] = time.monotonic() + 60
-        return True
-    except Exception as exc:
+    if not await engine.landed_table_exists(schema=loc.schema, table=table_name):
         _TABLE_EXISTS_CACHE.pop(key, None)
-        log.debug(
-            "[API CACHE] table_exists=False: %s.%s.%r — %s",
-            loc.catalog,
-            loc.schema,
-            table_name,
-            exc,
-        )
         return False
+    # Cache the positive result; expire before the engine drops the table
+    from provisa.core.cache_ttl import NEVER_EXPIRES
+
+    if ttl == NEVER_EXPIRES:
+        _TABLE_EXISTS_CACHE[key] = math.inf  # REQ-2031: never dropped
+    elif ttl is not None and ttl > _TABLE_EXISTS_SAFETY_MARGIN:
+        _TABLE_EXISTS_CACHE[key] = time.monotonic() + ttl - _TABLE_EXISTS_SAFETY_MARGIN
+    elif ttl is not None:
+        _TABLE_EXISTS_CACHE[key] = time.monotonic() + max(ttl - 5, 1)
+    else:
+        # No TTL known — cache for 60s as a safe default
+        _TABLE_EXISTS_CACHE[key] = time.monotonic() + 60
+    return True
 
 
 _IR_TO_SQLALCHEMY: dict[str, Any] = {

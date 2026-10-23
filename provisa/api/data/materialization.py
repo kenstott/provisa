@@ -1203,7 +1203,7 @@ async def _mat_api_ep_table(
 
     with state.federation_engine.isolated_sync() as _c:
         ensure_cache_schema(_c, _cache_loc)
-        _cache_hit = table_exists(_c, _cache_loc, cache_tbl, ttl=ttl)
+    _cache_hit = await table_exists(state.federation_engine, _cache_loc, cache_tbl, ttl=ttl)
     if _cache_hit:
         log.warning(
             "[MAT] the engine cache hit for %s → %s.%s.%s",

@@ -1580,7 +1580,16 @@ async def test_a_first_read_of_a_table_with_a_parameter_column_is_stored_once_an
     def isolated_sync():
         yield EngineSession(con, dialect="duckdb", placeholder="?")
 
-    engine = SimpleNamespace(isolated_sync=isolated_sync)
+    async def landed_table_exists(*, schema: str, table: str) -> bool:
+        # The store is this DuckDB connection: its own catalog says what is landed.
+        return bool(
+            con.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE schema_name = ? AND table_name = ?",
+                [schema, table],
+            ).fetchall()
+        )
+
+    engine = SimpleNamespace(isolated_sync=isolated_sync, landed_table_exists=landed_table_exists)
     state = SimpleNamespace(
         api_sources={"src": ApiSource(id="src", type="openapi", base_url="https://pay.test")},
         org_id="default",

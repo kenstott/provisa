@@ -152,3 +152,28 @@ def test_a_statement_sent_the_moment_a_stream_is_read_answers(server):
         assert sum(b.num_rows for b in batches) == 3
         rows, _ = server.query("SELECT 1")
         assert rows == [(1,)]
+
+
+async def test_whether_a_table_is_landed_is_read_from_the_servers_system_tables(server):
+    """REQ-318, on a ClickHouse server: absent is False, landed is True, and a listing that
+    cannot be read raises -- never read as a table that is not there."""
+    from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+
+    runtime = ClickHouseFederationRuntime(server)
+    await runtime.land_table(schema=SCHEMA, table="lte_landed", columns=COLUMNS, rows=_rows(2))
+    assert await runtime.landed_table_exists(schema=SCHEMA, table="lte_landed") is True
+    assert await runtime.landed_table_exists(schema=SCHEMA, table="lte_never") is False
+    assert await runtime.landed_table_exists(schema="provisa_no_such_db", table="x") is False
+
+    # Credentials the server refuses: no listing can be read through them, and the refusal is
+    # raised (the client connects when it is built), never read as a table that is not there.
+    with pytest.raises(Exception):  # noqa: B017 -- the server's own error, whatever its class
+        broken = ClickHouseFederationRuntime.__new__(ClickHouseFederationRuntime)
+        broken._land_guard = runtime._land_guard
+        broken._backend = _ServerBackend(
+            host=os.environ["CLICKHOUSE_HOST"],
+            port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
+            username=os.environ.get("CLICKHOUSE_USER", "default"),
+            password="not-the-password",
+        )
+        await broken.landed_table_exists(schema=SCHEMA, table="lte_landed")
