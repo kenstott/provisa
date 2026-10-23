@@ -107,6 +107,8 @@
     "unconnectedHelp": "Terms with no relationship or grounding shown",
     "look_class": "class",
     "look_concept": "concept",
-    "look_property": "property"
+    "look_property": "property",
+    "overBudget": "{{count}} match; narrow the search or pick a domain",
+    "domainCount": "{{domain}} ({{count}})"
   }
 }

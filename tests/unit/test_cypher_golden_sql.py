@@ -35,7 +35,8 @@ import cypher_golden  # noqa: E402
 
 _ENTRIES = [
     json.loads(line)
-    for line in (cypher_golden.GOLDEN / "entries.jsonl").read_text().splitlines()
+    for name in ("entries.jsonl", "approved.jsonl")
+    for line in (cypher_golden.GOLDEN / name).read_text().splitlines()
     if line.strip()
 ]
 

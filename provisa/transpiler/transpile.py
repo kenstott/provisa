@@ -223,7 +223,71 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+    return _rewrite_list_functions_for_duckdb(
+        _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+    )
+
+
+#: A Cypher read's list functions as the IR names them (gql/expr_visitor, Trino's names) whose
+#: DuckDB function differs in name or arguments.
+_DUCKDB_LIST_FUNCTIONS = frozenset(
+    {"ELEMENT_AT", "SLICE", "CARDINALITY", "ANY_MATCH", "ALL_MATCH", "NONE_MATCH", "SEQUENCE"}
+)
+
+
+def _rewrite_list_functions_for_duckdb(sql: str) -> str:
+    """A Cypher read's list functions as DuckDB computes them: a list index ``element_at(l, i)``
+    (1-based, negative from the end) is ``list_extract`` and a map key ``element_at(m, 'k')``
+    ``map_extract_value`` (DuckDB's element_at is a map's alone, and answers a list of the
+    value); ``slice(l, start, length)`` is ``list_slice(l, start, start + length - 1)``; a list's
+    ``cardinality`` is ``len``; ``any_match`` / ``all_match`` / ``none_match`` are the list's
+    predicate values or'd or and'd (on an empty list any is false, all and none true);
+    ``sequence`` is ``generate_series`` (both inclusive)."""
+    if not any(name in sql.upper() for name in _DUCKDB_LIST_FUNCTIONS):
+        return sql
+    tree = sqlglot.parse_one(sql, read="duckdb")
+
+    def _fn(name: str, *args: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.Anonymous(this=name, expressions=list(args))
+
+    def _predicates(args: list) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return _fn("list_transform", *args)
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if not isinstance(node, exp.Anonymous) or node.name.upper() not in _DUCKDB_LIST_FUNCTIONS:
+            return node
+        # Recurse first: transform is pre-order and skips a replaced node's children.
+        args = [a.transform(_transform) for a in node.expressions]
+        name = node.name.upper()
+        if name == "ELEMENT_AT":
+            key = args[1]
+            is_key = isinstance(key, exp.Literal) and key.is_string
+            return _fn("map_extract_value" if is_key else "list_extract", *args)
+        if name == "SLICE":
+            start, length = args[1], args[2]
+            end = exp.Sub(
+                this=exp.Add(this=start.copy(), expression=length), expression=exp.Literal.number(1)
+            )
+            return _fn("list_slice", args[0], start, end)
+        if name == "CARDINALITY":
+            return _fn("len", *args)
+        if name == "SEQUENCE":
+            return _fn("generate_series", *args)
+        if name == "ANY_MATCH":
+            return exp.Coalesce(
+                this=_fn("list_bool_or", _predicates(args)), expressions=[exp.false()]
+            )
+        if name == "ALL_MATCH":
+            return exp.Coalesce(
+                this=_fn("list_bool_and", _predicates(args)), expressions=[exp.true()]
+            )
+        return exp.Not(
+            this=exp.Coalesce(
+                this=_fn("list_bool_or", _predicates(args)), expressions=[exp.false()]
+            )
+        )
+
+    return tree.transform(_transform).sql(dialect="duckdb")
 
 
 def _rewrite_json_agg_for_duckdb(sql: str) -> str:

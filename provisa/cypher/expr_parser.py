@@ -127,7 +127,8 @@ _true = pp.CaselessKeyword("TRUE").set_parse_action(lambda: Literal(True, "boole
 _false = pp.CaselessKeyword("FALSE").set_parse_action(lambda: Literal(False, "boolean"))
 _null = pp.CaselessKeyword("NULL").set_parse_action(lambda: Literal(None, "null"))
 _param = pp.Combine(
-    pp.Suppress("$") + pp.Word(pp.alphas + "_", pp.alphanums + "_")
+    # A parameter's name may be a number ($0, $1) as well as a name.
+    pp.Suppress("$") + pp.Word(pp.alphanums + "_")
 ).set_parse_action(lambda t: Parameter(str(t[0])))
 _variable = _ident.copy().set_parse_action(lambda t: Variable(str(t[0])))
 

@@ -19,7 +19,13 @@ import {
   type Introspection,
   type MetaReader,
 } from "../../../api/metaGraph";
-import { ontologyQuery } from "../glossaryGraphData";
+import {
+  flatTerms,
+  ontologyCountQuery,
+  ontologyQuery,
+  termEdges,
+  type TermRow,
+} from "../glossaryGraphData";
 import type { LayerId, QueryScope } from "../graphModel";
 
 const scalar: GraphqlType = { kind: "SCALAR", name: "String" };
@@ -123,6 +129,7 @@ const scope = (layers: LayerId[], over: Partial<QueryScope> = {}): QueryScope =>
   edgeTypes: [],
   hiddenStatuses: [],
   orphans: true,
+  search: [],
   tags: [],
   sensitivities: [],
   ...over,
@@ -242,5 +249,93 @@ describe("the Ontology View's query", () => {
     const m = reader();
     m.roots.delete(rootKey("meta", "glossary_terms"));
     expect(ontologyQuery(m, scope(["ontology"]))).toBeNull();
+  });
+});
+
+describe("REQ-2143: the Ontology View's query under a search", () => {
+  const searched = (items: string[], over: Partial<QueryScope> = {}) =>
+    squash(
+      ontologyQuery(
+        reader(),
+        scope(["ontology", "domains", "columns"], { search: items, ...over }),
+      ),
+    );
+
+  it("reads at its root the terms the search matches, by name or definition, any case", () => {
+    const q = searched(["cust", "lost order"]);
+    expect(q).toContain(
+      "m__glossaryTerms(where: { _or: [" +
+        '{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }, ' +
+        '{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] })',
+    );
+    // A pattern's own wildcards are the text's: 50% matches "50%", not "50" and anything.
+    expect(searched(["50%_x"])).toContain('{ name: { ilike: "%50\\\\%\\\\_x%" } }');
+  });
+
+  it("reads each match's neighbourhood both ways, two hops deep and no further", () => {
+    const q = searched(["cust"]);
+    // A match and the terms a hop from it (by an edge leaving it or one reaching it) are read with
+    // what they touch; the terms two hops off with their edges' ends alone.
+    expect(q.match(/refs: refs/g)).toHaveLength(3);
+    expect(q.match(/domains: domains/g)).toHaveLength(3);
+    expect(q).toContain("edges_in: edgesIn");
+    expect(q).toContain("source_term: sourceTerm");
+    // The deepest level: an edge's end by its id.
+    expect(q).toContain("target_term: targetTerm { id: id }");
+    // Without a search: one level, the edges' ends by id, and no edges read the other way.
+    const flat = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
+    expect(flat.match(/refs: refs/g)).toHaveLength(1);
+    expect(flat).not.toContain("edges_in: edgesIn");
+  });
+
+  it("counts what its root would read, by id with each term's domains", () => {
+    const q = squash(ontologyCountQuery(reader(), scope(["ontology"], { search: ["cust"] })));
+    expect(q).toContain("query OntologyCount");
+    expect(q).toContain('{ name: { ilike: "%cust%" } }');
+    expect(q).toContain("{ id: id domains: domains { domain_id: domainId } }");
+  });
+});
+
+describe("REQ-2143: a nested read, flattened", () => {
+  const term = (id: number, over: Partial<TermRow> = {}): TermRow => ({
+    id,
+    name: `t${id}`,
+    definition: null,
+    ref_count: 0,
+    deprecated: false,
+    retired: false,
+    live: true,
+    ...over,
+  });
+
+  it("holds each term once, at its fullest, and each edge once", () => {
+    // 1 matched; 2 a hop off (read in full); 3 two hops off (its edge's end alone at 2's level).
+    const two = term(2, {
+      refs: [],
+      edges_out: [
+        { id: 9, from_term_id: 2, to_term_id: 3, rel_type: "KIND_OF", target_term: term(3) },
+      ],
+    });
+    const rows = [
+      term(1, {
+        refs: [],
+        edges_out: [
+          { id: 8, from_term_id: 1, to_term_id: 2, rel_type: "PART_OF", target_term: two },
+        ],
+        edges_in: [
+          { id: 8, from_term_id: 1, to_term_id: 2, rel_type: "PART_OF", source_term: { id: 1 } },
+        ],
+      }),
+      // 2 read again at the root (a match too), with less.
+      term(2),
+    ];
+    const terms = flatTerms(rows);
+    expect(terms.map((t) => t.id).sort()).toEqual([1, 2, 3]);
+    expect(terms.find((t) => t.id === 2)?.refs).toEqual([]);
+    expect(
+      termEdges(terms)
+        .map((e) => e.id)
+        .sort(),
+    ).toEqual([8, 9]);
   });
 });

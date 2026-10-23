@@ -28,12 +28,34 @@ from provisa.gql.translator_helpers import (
     _join_alias,
     _make_rel_joins,
     via_alias_for,
+    via_column,
     _node_table_expr,
     _src_col_expr_for_rm,
     _tgt_col_expr_for_rm,
 )
 
 from provisa.gql.translator_types import CypherTranslateError
+
+
+def _alternation_refused(rel: "RelPattern") -> CypherTranslateError:
+    return CypherTranslateError(
+        f"Relationship type alternation :{'|'.join(rel.types)} on a single hop is supported only "
+        "for types that are rows of one junction table, told apart by its type column, between "
+        "the same two node labels; write one pattern per type instead"
+    )
+
+
+def _refuse_optional_branches(clause: MatchClause, candidates: list) -> None:
+    """An OPTIONAL hop that reaches several relationships has no form here: each is its own UNION
+    branch of LEFT JOINs, so a row with none of them would come back once per relationship, and a
+    row with one would come back with a null row from each other. A wrong row count is refused."""
+    if clause.optional and len(candidates) > 1:
+        names = sorted({rm.rel_type for rm, _ in candidates})
+        raise CypherTranslateError(
+            f"OPTIONAL MATCH over a hop that reaches several relationships ({', '.join(names)}) "
+            "is not supported: name the relationship type, or split the query into one "
+            "OPTIONAL MATCH per type"
+        )
 
 
 class _RelJoinMixin:  # mixin for _Translator
@@ -56,6 +78,8 @@ class _RelJoinMixin:  # mixin for _Translator
         _lateral_bound: set[str]
         _lateral_conditions: list[exp.Expression]
         _rel_var_types: dict[str, str]
+        _rel_var_type_exprs: dict[str, exp.Expression]
+        _alternation_types: dict[int, dict[str, str]]
         _rel_var_endpoints: dict[str, tuple[str, NodeMapping, str, NodeMapping, bool]]
         _rel_var_via: dict[str, tuple[str, JunctionMapping]]
         _rel_step_endpoints: dict[int, tuple]
@@ -345,6 +369,7 @@ class _RelJoinMixin:  # mixin for _Translator
         joins: "list[dict]",
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Apply primary and extra JOIN candidates to joins/from_expr."""
+        _refuse_optional_branches(clause, candidates)
         join_type = "LEFT" if clause.optional else "INNER"
         tgt_alias = tgt_nm.table_name
         if src_var and src_var in self._cte_sources:
@@ -405,7 +430,15 @@ class _RelJoinMixin:  # mixin for _Translator
                 join_type,
                 rel.variable,
             )
-            self._extra_path_branches.append((from_expr, joins_before + extra_joins, {}))
+            # The branch is of its own relationship type, which its type(r) names.
+            self._extra_path_branches.append(
+                (
+                    from_expr,
+                    joins_before + extra_joins,
+                    {},
+                    {rel.variable: extra_rm.rel_type} if rel.variable else {},
+                )
+            )
 
         return from_expr, joins
 
@@ -423,6 +456,7 @@ class _RelJoinMixin:  # mixin for _Translator
         joins: "list[dict]",
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build and register joins for a resolved set of rel candidates."""
+        _refuse_optional_branches(clause, candidates)
         join_type = "LEFT" if clause.optional else "INNER"
         if src_var and src_var in self._cte_sources:
             src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
@@ -497,7 +531,15 @@ class _RelJoinMixin:  # mixin for _Translator
                 join_type,
                 rel.variable,
             )
-            self._extra_path_branches.append((from_expr, joins_before + extra_joins, {}))
+            # The branch is of its own relationship type, which its type(r) names.
+            self._extra_path_branches.append(
+                (
+                    from_expr,
+                    joins_before + extra_joins,
+                    {},
+                    {rel.variable: extra_rm.rel_type} if rel.variable else {},
+                )
+            )
 
         return from_expr, joins
 
@@ -520,15 +562,8 @@ class _RelJoinMixin:  # mixin for _Translator
         src_var = src_node.variable
         tgt_var = tgt_node.variable
 
-        # A single-hop pattern resolves exactly one relationship mapping, so an alternation would
-        # silently collapse to its first type and answer a question nobody asked. Say so instead;
-        # the caller writes one pattern per type. Variable-length hops take a different path
-        # (path_functions) and do carry the full type list.
-        if len(rel.types) > 1 and not rel.variable_length:
-            raise CypherTranslateError(
-                "Relationship type alternation is only supported on a variable-length hop; "
-                f"write one pattern per type instead of :{('|').join(rel.types)}"
-            )
+        # Variable-length hops take a different path (path_functions) and carry the full list.
+        alternation = len(rel.types) > 1 and not rel.variable_length
 
         rel_mapping = self._resolve_early_rel_mapping(rel)
         src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
@@ -560,7 +595,11 @@ class _RelJoinMixin:  # mixin for _Translator
         bidir = rel.direction == "none"
         backward = rel.direction == "left"
 
-        if rel.types:
+        if alternation:
+            candidates = self._alternation_candidates(
+                rel, bidir, backward, src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit
+            )
+        elif rel.types:
             candidates = self._resolve_typed_rel_candidates(
                 rel, bidir, backward, src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit
             )
@@ -576,6 +615,7 @@ class _RelJoinMixin:  # mixin for _Translator
                 self._rel_var_types[rel.variable] = ""
             return from_expr, joins, True
 
+        tgt_alias = self._node_alias(tgt_node, tgt_nm, as_source=False)
         from_expr, joins = self._build_candidate_joins(
             rel,
             candidates,
@@ -583,12 +623,92 @@ class _RelJoinMixin:  # mixin for _Translator
             src_nm,
             tgt_nm,
             self._node_alias(src_node, src_nm, as_source=True),
-            self._node_alias(tgt_node, tgt_nm, as_source=False),
+            tgt_alias,
             clause,
             from_expr,
             joins,
         )
+        if alternation:
+            self._name_alternation_types(rel, candidates[0][0], tgt_alias)
         return from_expr, joins, False
+
+    def _alternation_candidates(
+        self,
+        rel: "RelPattern",
+        bidir: bool,
+        backward: bool,
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+        src_nm_explicit: bool,
+        tgt_nm_explicit: bool,
+    ) -> "list[tuple]":
+        """``[r:A|B]`` on one hop: types that are rows of one junction, told apart by its type
+        column, between the same two ends the same way round, are one join of that junction
+        whose type column holds any of their values. Other alternations are refused by name."""
+        found = []
+        for rel_type in rel.types:
+            one = self._resolve_typed_rel_candidates(
+                dataclasses.replace(rel, types=[rel_type]),
+                bidir,
+                backward,
+                src_nm,
+                tgt_nm,
+                src_nm_explicit,
+                tgt_nm_explicit,
+            )
+            if len(one) != 1:
+                raise _alternation_refused(rel)
+            found.append(one[0])
+        mappings = [rm for rm, _ in found]
+        shared = {
+            (
+                rm.source_label,
+                rm.target_label,
+                rm.join_source_column,
+                rm.join_target_column,
+                rm.via.catalog_name,
+                rm.via.schema_name,
+                rm.via.table_name,
+                rm.via.source_columns,
+                rm.via.target_columns,
+                rm.via.type_column,
+            )
+            if rm.via is not None and rm.via.type_column and rm.via.type_value
+            else None
+            for rm in mappings
+        }
+        if None in shared or len(shared) != 1 or len({bwd for _, bwd in found}) != 1:
+            raise _alternation_refused(rel)
+        primary = mappings[0]
+        assert primary.via is not None
+        values = tuple(rm.via.type_value for rm in mappings if rm.via is not None)
+        combined = dataclasses.replace(
+            primary, via=dataclasses.replace(primary.via, type_values=values)
+        )
+        self._alternation_types[id(combined)] = {
+            rm.via.type_value: rm.rel_type for rm in mappings if rm.via is not None
+        }
+        return [(combined, found[0][1])]
+
+    def _name_alternation_types(
+        self, rel: "RelPattern", combined: "RelationshipMapping", tgt_alias: str
+    ) -> None:
+        """An alternation's type(r) is the type its row's discriminator names."""
+        via = combined.via
+        assert via is not None and via.type_column is not None
+        column = via_column(via_alias_for(combined, rel.variable or tgt_alias), via.type_column)
+        named = exp.Case(
+            this=column,
+            ifs=[
+                exp.If(this=exp.Literal.string(value), true=exp.Literal.string(rel_type))
+                for value, rel_type in self._alternation_types[id(combined)].items()
+            ],
+        )
+        if rel.variable:
+            self._rel_var_type_exprs[rel.variable] = named
+        step = self._rel_step_endpoints.get(id(rel))
+        if step is not None:
+            self._rel_step_endpoints[id(rel)] = (named, *step[1:])
 
     # complexity-gate: allow-cc=54 reason="relocated verbatim from translator.py; CC is the per-MATCH-clause FROM/JOIN assembly dispatch (first-node vs rel-step vs standalone vs domain-union across optional/varlen/lateral cases); decomposition is separately-tracked debt"
     def _build_from_joins(
@@ -760,12 +880,19 @@ class _RelJoinMixin:  # mixin for _Translator
         if self._extra_path_branches:
             primary_aliases = {_join_alias(j["table"]): j for j in joins}
             patched: list[tuple] = []
-            for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
+            for (
+                extra_from,
+                extra_joins,
+                extra_path_steps_map,
+                rel_types,
+            ) in self._extra_path_branches:
                 branch_aliases = {_join_alias(j["table"]) for j in extra_joins}
                 supplement = [
                     pj for alias, pj in primary_aliases.items() if alias not in branch_aliases
                 ]
-                patched.append((extra_from, extra_joins + supplement, extra_path_steps_map))
+                patched.append(
+                    (extra_from, extra_joins + supplement, extra_path_steps_map, rel_types)
+                )
             self._extra_path_branches = patched
 
         return from_expr, joins

@@ -461,12 +461,12 @@ def test_type_alternation_parses_both_spellings(spelling: str) -> None:
     assert ast.match_clauses[0].pattern.rels[0].types == ["KIND_OF", "RELATED_TO"]
 
 
-def test_a_single_hop_refuses_type_alternation() -> None:
-    """REQ-1586: one hop resolves one relationship mapping, so an alternation has no answer.
+def test_a_single_hop_alternation_naming_an_undeclared_type_is_refused() -> None:
+    """REQ-1586: a single-hop alternation is one junction's rows of each type it names, so a type
+    the graph does not declare (RELATED_TO here) is refused, never dropped.
 
-    Silently taking the first type would draw KIND_OF edges and report them as though they were the
-    whole set — the exact failure a junction table makes easy, since one junction backs several
-    types between the same two tables. Say so instead; the caller writes one pattern per type.
+    Silently taking the declared types would draw KIND_OF edges and report them as though they were
+    the whole set. Say so instead; the caller writes one pattern per type.
     """
     lm = _label_map()
     ast = parse_cypher("MATCH (t:GlossaryTerm)-[r:KIND_OF|RELATED_TO]->(b:GlossaryTerm) RETURN r")

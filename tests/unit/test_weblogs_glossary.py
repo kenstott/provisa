@@ -17,6 +17,8 @@ its abstract terms (the shop's ontology) are live, grounded through their edges.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import contextlib
 from pathlib import Path
 
@@ -27,13 +29,14 @@ from provisa.core import secrets_store
 from provisa.core.config_loader import apply_config, parse_config_dict, read_config_with_includes
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.models import DERIVED_SOURCE_ID
-from provisa.core.schema_org import glossary_term_edges, glossary_terms, sources
+from provisa.core.schema_org import glossary_term_edges, sources
 
 CONFIG = Path(__file__).resolve().parents[2] / "demo" / "named" / "weblogs" / "config.yaml"
 
-#: Derived terms left undefined so the Glossary page shows them as Proposed: a log record's own
-#: bookkeeping, and "query", which joins two meanings for a curator to split.
-PROPOSED = {"line offset", "entry", "raw", "query"}
+#: Derived terms left undefined so the Glossary page shows them as Proposed: a log record's raw
+#: line, and "query", which joins two meanings for a curator to split. A record's bookkeeping key
+#: (file, line offset, entry) is its log table's Class, not terms of its own (REQ-2141).
+PROPOSED = {"raw", "query"}
 #: The shop's ontology: abstract terms, grounded in derived ones through their edges.
 ONTOLOGY = {
     "shop operations",
@@ -74,13 +77,10 @@ async def loaded(monkeypatch, tmp_path, control_plane):
         # against.
         await conn.execute_core(insert(sources).values(id=DERIVED_SOURCE_ID, type="trino"))
         await apply_config(parse_config_dict(read_config_with_includes(CONFIG)), conn)
+        # REQ-2141: abstract is derived (a term grounding no column and no table), as listed.
         terms = {
-            r.name: r
-            for r in (
-                await conn.execute_core(
-                    select(glossary_terms.c.id, glossary_terms.c.name, glossary_terms.c.is_abstract)
-                )
-            ).fetchall()
+            t["name"]: SimpleNamespace(id=t["id"], name=t["name"], is_abstract=t["is_abstract"])
+            for t in await glossary_repo.list_terms(conn)
         }
         live = await glossary_repo.live_ids(conn)
         domains = await glossary_repo.term_domains(conn)
@@ -92,12 +92,13 @@ async def loaded(monkeypatch, tmp_path, control_plane):
     return terms, live, domains, edges
 
 
-async def test_the_derived_terms_are_approved_but_four_left_proposed(loaded):
+async def test_the_derived_terms_are_approved_but_two_left_proposed(loaded):
     terms, live, _domains, _edges = loaded
     derived = {name for name, t in terms.items() if not t.is_abstract}
     assert PROPOSED <= derived
     assert {name for name in derived if terms[name].id not in live} == PROPOSED
-    assert len(derived) == 73  # every column's business name, as the load derives it
+    # every non-key column's business name, and each keyed table's Class (REQ-2141)
+    assert len(derived) == 72
 
 
 async def test_the_views_name_their_columns_so_they_derive_the_shops_own_terms(loaded):

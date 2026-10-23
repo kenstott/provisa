@@ -21,7 +21,17 @@ import { useAuth } from "../../context/AuthContext";
 import { dataGraphql } from "../../api/metaGraph";
 import { GraphExplorer } from "./GraphExplorer";
 import { GLOSSARY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
-import { glossaryGraph, ontologyQuery, termEdges, type OntologyRows } from "./glossaryGraphData";
+import {
+  flatTerms,
+  glossaryGraph,
+  ontologyCountQuery,
+  ontologyQuery,
+  overviewGraph,
+  termEdges,
+  type CountRow,
+  type OntologyRows,
+} from "./glossaryGraphData";
+import { NODE_BUDGET } from "./neighbourhood";
 import { GraphModal } from "./KnowledgeGraphPanel";
 import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
@@ -39,21 +49,29 @@ const EVERYTHING: QueryScope = {
   orphans: true,
   tags: [],
   sensitivities: [],
+  search: [],
 };
 
-/** The ontology as ``scope`` reads it, in one query (REQ-2136); null when the role cannot read the
- * glossary. */
-async function loadOntology(
-  role: string,
-  scope: QueryScope,
-): Promise<{ data: GraphData; query: string } | null> {
-  const query = ontologyQuery(await metaReader(role), scope);
-  if (query === null) return null;
+/** What a read of the ontology came to: the graph and the query that read it, or -- past the
+ * budget -- how many terms it would have read, with each term's domains. */
+type Loaded =
+  | { data: GraphData; query: string; over?: undefined }
+  | { over: number; rows: CountRow[]; query: string };
+
+/** The ontology as ``scope`` reads it, in one query (REQ-2136): its terms counted first, and read
+ * only within the budget (REQ-2143); null when the role cannot read the glossary. */
+async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
+  const m = await metaReader(role);
+  const query = ontologyQuery(m, scope);
+  const count = ontologyCountQuery(m, scope);
+  if (query === null || count === null) return null;
+  const counted = (await dataGraphql<{ glossary_terms: CountRow[] }>(count, {}, role))
+    .glossary_terms;
+  if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
   const rows = await dataGraphql<OntologyRows>(query, {}, role);
-  return {
-    data: glossaryGraph(rows.glossary_terms, termEdges(rows.glossary_terms), rows.data_products),
-    query,
-  };
+  // A search's neighbourhood is read nested, a level to each hop: each term once, flat.
+  const terms = flatTerms(rows.glossary_terms);
+  return { data: glossaryGraph(terms, termEdges(terms), rows.data_products), query };
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
@@ -89,6 +107,14 @@ export function OntologyToggle({
 export function GlossaryOntologyView({ search }: { search: string }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
+  const said = useCallback(
+    (domain: string, count: number) =>
+      t("graph3d.domainCount", {
+        domain: domain === "*" ? t("glossaryTab.enterpriseDomainLabel") : domain,
+        count,
+      }),
+    [t],
+  );
   const [read, setRead] = useState<{ all: GraphData | null; error: string | null; done: boolean }>({
     all: null,
     error: null,
@@ -97,7 +123,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
   // What the controls keep, read afresh whenever they change; the last read is drawn meanwhile.
   const [scope, setScope] = useState<QueryScope | null>(null);
   // The scoped read: what is drawn, and the query that read it (Open as query's).
-  const [scoped, setScoped] = useState<{ data: GraphData; query: string } | null>(null);
+  const [scoped, setScoped] = useState<Loaded | null>(null);
   const [open, setOpen] = useState(false);
   // Polly's glossary tools change the ontology server-side (ChatPanel's provisa:glossary-changed):
   // the view reads it again, as the term list does.
@@ -111,7 +137,15 @@ export function GlossaryOntologyView({ search }: { search: string }) {
     if (actingRoles === null) return;
     let cancelled = false;
     loadOntology(actingRoles, EVERYTHING).then(
-      (all) => !cancelled && setRead({ all: all?.data ?? null, error: null, done: true }),
+      (all) =>
+        !cancelled &&
+        setRead({
+          // Past the budget the choices are the overview's: the domains.
+          all:
+            all === null ? null : all.over === undefined ? all.data : overviewGraph(all.rows, said),
+          error: null,
+          done: true,
+        }),
       (e: unknown) =>
         !cancelled &&
         setRead({ all: null, error: e instanceof Error ? e.message : String(e), done: true }),
@@ -119,7 +153,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
     return () => {
       cancelled = true;
     };
-  }, [actingRoles, t, changes]);
+  }, [actingRoles, said, changes]);
   useEffect(() => {
     if (actingRoles === null || scope === null) return;
     let cancelled = false;
@@ -133,6 +167,32 @@ export function GlossaryOntologyView({ search }: { search: string }) {
     };
   }, [actingRoles, scope, changes]);
   const onScope = useCallback((s: QueryScope) => setScope(s), []);
+  // REQ-2143: past the budget, the whole ontology unsearched is its overview -- each domain with
+  // its count, picked to narrow to it -- and a search or a domain still past it is said.
+  const overview =
+    scoped?.over !== undefined &&
+    scope !== null &&
+    scope.search.length === 0 &&
+    scope.domains.length === 0;
+  const drawn: GraphData =
+    scoped === null
+      ? EMPTY
+      : scoped.over === undefined
+        ? scoped.data
+        : overview
+          ? overviewGraph(scoped.rows, said)
+          : EMPTY;
+  const notice =
+    scoped?.over !== undefined && !overview
+      ? t("graph3d.overBudget", { count: scoped.over })
+      : null;
+  const asQuery = (all: GraphData) => ({
+    all,
+    onScope,
+    text: scoped?.query ?? null,
+    notice,
+    overview,
+  });
 
   if (read.error) {
     return (
@@ -156,8 +216,8 @@ export function GlossaryOntologyView({ search }: { search: string }) {
       style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
     >
       <GraphExplorer
-        data={scoped?.data ?? EMPTY}
-        query={{ all: read.all, onScope, text: scoped?.query ?? null }}
+        data={drawn}
+        query={asQuery(read.all)}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         zero={[]}
@@ -171,8 +231,8 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         opened={open}
         onClose={() => setOpen(false)}
         title={t("graph3d.ontologyTitle")}
-        data={scoped?.data ?? EMPTY}
-        query={{ all: read.all, onScope, text: scoped?.query ?? null }}
+        data={drawn}
+        query={asQuery(read.all)}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         focus={null}

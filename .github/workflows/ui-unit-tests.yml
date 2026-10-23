@@ -39,6 +39,11 @@ jobs:
       - name: Type check
         run: npx tsc -b --noEmit
 
+      # eslint over the whole package, e2e/ included. No workflow ran it before, so e2e files went
+      # past max-lines and kept unused imports unseen.
+      - name: Lint
+        run: npx eslint .
+
       - name: Unit tests
         run: npx vitest run
 

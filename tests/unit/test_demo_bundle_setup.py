@@ -1007,3 +1007,24 @@ def test_every_demos_relational_store_is_one_the_build_dumps():
         and not str(service.get("image", "")).startswith(builder.POSTGRES_IMAGES)
     }
     assert unknown == {}
+
+
+def test_a_seeding_run_that_never_finished_names_the_tables_it_re_created_and_its_file(tmp_path):
+    import duckdb
+
+    from provisa.api.sandbox_tier import template_org_id
+
+    log = tmp_path / "seed.log"
+    log.write_text(
+        "INFO: started\n"
+        "WARNING: store table s.t re-created, its rows dropped: columns ['a'], key ['a']; "
+        "declared columns ['a'], key []\n"
+    )
+    assert builder._recreated(log) == log.read_text().splitlines()[1]
+    assert "no file at" in builder._embedded_store(tmp_path, "retail")
+    store = tmp_path / "orgs" / template_org_id("retail") / "materialize.duckdb"
+    store.parent.mkdir(parents=True)
+    con = duckdb.connect(str(store))
+    con.execute('CREATE SCHEMA "r"; CREATE TABLE "r"."t" AS SELECT 1 AS a UNION ALL SELECT 2')
+    con.close()
+    assert builder._embedded_store(tmp_path, "retail") == "  r.t: 2 rows"

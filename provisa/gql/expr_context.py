@@ -149,6 +149,11 @@ class TranslatorExprContext:
                 if name in info[1].native_filter_columns:
                     return _col(f"_nf_{name}", info[0])
             return _col(name, info[0] if info else var)
+        if isinstance(obj, exp.Column) and obj.table and obj.name in t._map_vars:
+            # A map literal a WITH carries: its key is the column that WITH carries it in (#287).
+            if name not in t._map_vars[obj.name]:
+                return exp.Null()
+            return exp.column(f"{obj.name}.{name}", table=obj.table, quoted=True)
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)
@@ -163,6 +168,7 @@ class TranslatorExprContext:
             or var in t._all_rels_rel_vars
             or var in t._all_rels_node_vars
             or var in t._map_unwind_vars
+            or var in t._map_vars
         ):
             return False
         via_bound = t._rel_var_via.get(var)
@@ -261,8 +267,16 @@ class TranslatorExprContext:
                 return None
             return exp.Array(expressions=[exp.Literal.string(k) for k in sorted(nm.properties)])
         if name == "type":
+            named = t._rel_var_type_exprs.get(var)
+            if named is not None:
+                return named.copy()  # an alternation: the type its row's discriminator names
             rel_type = t._rel_var_types.get(var)
-            return exp.Literal.string(rel_type) if rel_type is not None else None
+            if rel_type is None:
+                return None
+            from provisa.gql.translator import _type_literal
+
+            # Marked with its variable: an extra UNION branch names its own type (_of_branch).
+            return _type_literal(var, rel_type)
         return None
 
     def _graph_json_fn(self, name: str, var: str) -> exp.Expression | None:
@@ -492,10 +506,11 @@ class TranslatorExprContext:
         inner_ast = parse_cypher(b)
         inner_tr = _Translator(inner_ast, self._t._lm, self._t._params)
         inner_tr._var_table.update(self._t._var_table)
-        # The outer statement's nodes are its row, which the inner statement goes on from (#160).
-        inner_tr._lateral_bound = {
-            v for v, (_, nm) in self._t._var_table.items() if nm is not None
-        } - set(self._t._cte_sources)
+        # A node a WITH carries is held in that WITH's rows, under its name there.
+        inner_tr._cte_sources = set(self._t._cte_sources)
+        # The outer statement's nodes are its row, which the inner statement goes on from (#160),
+        # a WITH's carried nodes included.
+        inner_tr._lateral_bound = {v for v, (_, nm) in self._t._var_table.items() if nm is not None}
         inner_select, inner_params, _ = inner_tr.translate()
 
         for p in inner_params:

@@ -56,6 +56,9 @@ vi.mock("../glossaryGraphData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../glossaryGraphData")>()),
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
+  // The count read before it (REQ-2143): the same scope, answered with the terms' ids.
+  ontologyCountQuery: (_m: unknown, s: { layers: Set<string> }) =>
+    JSON.stringify({ ...s, layers: [...s.layers], count: true }),
 }));
 const term = (id: number, name: string, over: object = {}) => ({
   id,
@@ -112,8 +115,9 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
       edgeTypes: string[];
       hiddenStatuses: string[];
       orphans: boolean;
+      count?: boolean;
     };
-    asked.scopes.push(s);
+    if (!s.count) asked.scopes.push(s);
     const inDomains = (ds: string[]) =>
       s.domains.length === 0 || ds.some((d) => d === "*" || s.domains.includes(d));
     const kept = TERMS.filter(
@@ -145,6 +149,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
           ? edges.filter((e) => e.from_term_id === t.id)
           : undefined,
       }));
+    if (s.count) return { glossary_terms: terms.map((t) => ({ id: t.id, domains: t.domains })) };
     return { glossary_terms: terms };
   },
 }));
@@ -210,6 +215,7 @@ describe("the Glossary page's Ontology View", () => {
       orphans: true,
       tags: [],
       sensitivities: [],
+      search: [],
     });
     await waitFor(() =>
       expect(asked.scopes.at(-1)).toEqual({
@@ -220,6 +226,7 @@ describe("the Glossary page's Ontology View", () => {
         orphans: true,
         tags: [],
         sensitivities: [],
+        search: [],
       }),
     );
     // The Taxonomy preset's edge types and layers are the query's.

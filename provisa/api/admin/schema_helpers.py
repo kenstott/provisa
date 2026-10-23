@@ -268,7 +268,9 @@ class TableListing:
     tables -- took the listing past 26s on ~70 tables."""
 
     columns: dict[int, list[dict]]  # table id -> its columns, in order
-    pii: dict[int, set[str]]  # table id -> its columns tagged pii (REQ-1494)
+    # table id -> its columns tagged pii (REQ-1494), each with the term it carries pii through,
+    # None when the column is tagged itself (REQ-2145)
+    pii: dict[int, dict[str, str | None]]
     sources: dict[str, tuple[str, str | None]]  # source id -> (type, path)
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
     endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
@@ -303,7 +305,6 @@ def _openapi_operations(source_id: str) -> tuple[str, dict[str, Any]] | None:
 async def table_listing(conn, rows: list[dict]) -> TableListing:
     """What ``rows`` (registered tables) need beside themselves, one query per kind."""
     from provisa.core.repositories import write_grant as write_grant_repo
-    from provisa.core.schema_org import tag_assignments as _ta
 
     ids = [r["id"] for r in rows]
     columns: dict[int, list[dict]] = {}
@@ -316,18 +317,17 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     ).fetchall():
         columns.setdefault(r._mapping["table_id"], []).append(dict(r._mapping))
     # REQ-1494: the columns tagged pii -- marked in the editor's test-data mode when they declare
-    # no fake, since a test-data environment shows them as NULL.
-    pii: dict[int, set[str]] = {}
-    for r in (
-        await conn.execute_core(
-            select(_ta.c.table_id, _ta.c.column_name).where(
-                _ta.c.object_type == "column",
-                _ta.c.table_id.in_(ids),
-                _ta.c.base_tag_id == "pii",
+    # no fake, since a test-data environment shows them as NULL. REQ-2145: a column carries pii
+    # through its term too, and says which.
+    from provisa.core.term_tags import effective_column_tags
+
+    pii: dict[int, dict[str, str | None]] = {}
+    for (table_id, column), tags in (await effective_column_tags(conn, set(ids))).items():
+        through = [t for t in tags if t["base_tag_id"] == "pii"]
+        if through:
+            pii.setdefault(table_id, {})[column] = next(
+                (t["term"] for t in through if t["via"] == "term"), None
             )
-        )
-    ).fetchall():
-        pii.setdefault(r.table_id, set()).add(r.column_name)
     # REQ-1997: the source's path too -- where its file is decides whether it takes writes.
     source_rows = (
         await conn.execute_core(
@@ -366,7 +366,7 @@ async def _fetch_table_with_columns(
     col_rows = listing.columns.get(row["id"], [])
     from provisa.compiler.naming import apply_gql_name, apply_sql_name
 
-    _pii = listing.pii.get(row["id"], set())
+    _pii = listing.pii.get(row["id"], {})
 
     # REQ-1360: metadata-only implicit measure/dimension annotations, gated by the
     # table's own enable_aggregates/enable_group_by flags.
@@ -414,6 +414,7 @@ async def _fetch_table_with_columns(
             synthetic_rule=r.get("synthetic_rule"),
             fake_why=r.get("fake_why"),  # REQ-2094
             is_pii=r["column_name"] in _pii,
+            pii_term=_pii.get(r["column_name"]),  # REQ-2145
         )
         for r in col_rows
     ]

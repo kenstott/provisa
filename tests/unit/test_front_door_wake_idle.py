@@ -33,7 +33,8 @@ from pathlib import Path
 
 import pytest
 
-PROXY_PATH = Path(__file__).resolve().parents[2] / "terraform/gcp-saas/front-door/proxy.py"
+REPO = Path(__file__).resolve().parents[2]
+PROXY_PATH = REPO / "terraform/gcp-saas/front-door/proxy.py"
 
 CONFIG = {
     "project": "provisa-cloud",
@@ -63,6 +64,10 @@ def proxy(tmp_path, monkeypatch):
     )
     module_path = tmp_path / "front_door_proxy.py"
     module_path.write_text(source)
+    # The waking page's renderer sits beside the proxy, as terraform writes it.
+    (tmp_path / "binary-streams.js").write_text(
+        (PROXY_PATH.parent / "binary-streams.js").read_text()
+    )
 
     spec = importlib.util.spec_from_file_location("front_door_proxy_under_test", module_path)
     assert spec is not None and spec.loader is not None
@@ -420,22 +425,28 @@ def test_the_page_and_the_api_answer_say_which(proxy, monkeypatch, waking, headi
 
 
 def test_the_waking_page_draws_binary_streams_from_one_sprite(proxy):
+    """The page inlines the one renderer the app's splash also runs, and starts it on its own
+    canvas, converging on the mark and fading over the card's text."""
+    shared = (Path(proxy.__file__).resolve().parent / "binary-streams.js").read_text()
+    assert shared == (REPO / "provisa-ui" / "splash" / "binary-streams.js").read_text()
     html = proxy.WAKE_HTML
-    script = html[html.index("<script>") : html.index("</script>")]
+    assert shared in html and "__BINARY_STREAMS__" not in html
     # 0 and 1 are rendered once into an offscreen sprite; frames only copy from it.
-    assert 'sc.fillText(b?"1":"0"' in script
-    assert script.count("fillText(") == 1
-    assert "ctx.drawImage(sprite," in script
+    assert 'sc.fillText(b ? "1" : "0"' in shared
+    assert shared.count("fillText(") == 1
+    assert "ctx.drawImage(" in shared and "sprite," in shared
+    assert "provisaBinaryStreams(canvas,{" in html
+    assert "avoid:function(){return card;}" in html
     # Self-contained: the front door serves this with the coordinator down.
     assert "http://" not in html and "https://" not in html and "@font-face" not in html
 
 
 def test_reduced_motion_gets_one_static_frame(proxy):
     html = proxy.WAKE_HTML
-    script = html[html.index("<script>") : html.index("</script>")]
-    assert '"(prefers-reduced-motion: reduce)"' in script
-    start = script.index("if(reduce){")
-    static = script[start : script.index("return;", start)]
+    assert 'reduce:window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)")' in html
+    shared = (Path(proxy.__file__).resolve().parent / "binary-streams.js").read_text()
+    start = shared.index("if (options.reduce) {")
+    static = shared[start : shared.index("return", start)]
     assert "render(1);" in static
     assert "requestAnimationFrame" not in static
     # The canvas stays visible under reduced motion; only the logo's rise is turned off.

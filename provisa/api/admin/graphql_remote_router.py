@@ -369,7 +369,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         # snapshot has to be taken while the rows the wipe below removes are still there.
         from provisa.core.repositories import glossary as glossary_repo
 
-        domains_before = await glossary_repo.term_domains(conn)
+        refs_before = await glossary_repo.before_ref_removal(conn)
         unchanged: list[dict] = []
         for t in tables:
             # A table already registered keeps the name it is registered under.
@@ -435,7 +435,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
             {t.get("registered_name") or apply_sql_name(t["name"]) for t in tables},
         )
         # REQ-1387: settle only the terms whose fields truly departed.
-        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+        await glossary_repo.sweep_refless_terms(conn, before=refs_before)
         return [*table_repo.kept_report(kept), *unchanged]
 
 

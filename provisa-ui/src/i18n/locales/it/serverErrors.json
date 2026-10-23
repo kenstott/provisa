@@ -626,6 +626,41 @@
       "database_not_connected": "Database non connesso",
       "description_missing": "Un ruolo derivato ha bisogno di una descrizione di a cosa serve",
       "not_found": "Nessun ruolo derivato da {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "Il termine '{{term}}' ha riferimenti di colonna ({{columns}}), quindi è una Proprietà e non può ancorare una tabella. Un termine è una Classe, ancorata a tabelle, oppure una Proprietà, con riferimenti di colonna, mai entrambe.",
+      "term_is_class": "Il termine '{{term}}' ancora tabelle ({{tables}}), quindi è una Classe e non può avere un riferimento di colonna. Un termine è una Classe, ancorata a tabelle, oppure una Proprietà, con riferimenti di colonna, mai entrambe.",
+      "abstract_is_derived": "«Astratto» non si può impostare: deriva dall'ancoraggio. Un termine senza riferimenti di colonna né tabelle ancorate è un Concetto.",
+      "key_column_derived": "Questa colonna è una chiave; segue la classe della sua tabella. {{table}}.{{column}} resta su '{{class}}' e non si sposta a mano.",
+      "reason_required": "È richiesto un motivo: spiegate perché il termine viene deprecato o ritirato.",
+      "retire_on_past": "La data di ritiro prevista {{retire_on}} è passata. Scegliete oggi o una data successiva.",
+      "retire_on_invalid": "La data di ritiro prevista {{retire_on}} non è una data (usate AAAA-MM-GG).",
+      "successor_is_self": "Un termine non può essere il proprio successore.",
+      "successor_retired": "Il successore '{{successor}}' è ritirato. Scegliete un termine in servizio.",
+      "term_not_live": "Solo un termine attivo può essere deprecato; questo è {{status}}.",
+      "status_by_action": "Lo stato di un termine cambia con Depreca, Ritira o Ripristina, ognuno con un motivo.",
+      "successor_required": "Questo termine ha ancora colonne o tabelle; ritirarlo le sposta su un successore. Sceglietene uno.",
+      "successor_role": "Il successore di un {{role}} deve essere un {{role}} o un concetto; '{{successor}}' è un {{successor_role}}.",
+      "no_retirement_history": "La cronologia del modello non contiene alcun ritiro di questo termine.",
+      "finding": {
+        "unlinked_tables": "Questa classe è ancorata a tabelle che le relazioni di stessa entità non collegano tutte: {{tables}}.",
+        "class_and_attribute": "Questa classe ha anche colonne che non sono le sue chiavi: {{columns}}.",
+        "class_and_attribute_table": "La tabella {{table}} non ha classe: il suo concetto è questo termine, che ha colonne che non sono chiavi ({{columns}}).",
+        "tag_wrong_kind": "Questo termine porta etichette ({{tags}}) che solo una proprietà passa alle sue colonne; è un {{role}}.",
+        "retirement_blocked": "Questo termine doveva essere ritirato il {{retire_on}} ma ha ancora dati. Ritiratelo con un successore che li prenda.",
+        "no_data": "Questo concetto non è collegato a nessun termine che abbia dati."
+      }
+    },
+    "tag": {
+      "not_on_terms": "Il tag '{{tag}}' non va su un termine; solo pii.",
+      "term_not_live": "Definisci '{{term}}' per contrassegnarlo.",
+      "term_not_property": "Il tag '{{tag}}' va su un termine solo quando è una Proprietà, un termine che significa colonne; '{{term}}' non lo è.",
+      "term_is_tagged": "Rimuovi prima {{tags}}, oppure mantieni una definizione.",
+      "key_column": "La colonna {{column}} è una chiave: il suo significato è la classe della sua tabella. Applica il tag alla colonna stessa.",
+      "column_has_no_term": "La colonna {{column}} non ha un termine a cui applicare il tag.",
+      "also_term_needs_column": "Applicare il tag al termine richiede una colonna.",
+      "inherited_from_term": "Questa colonna è PII perché significa {{term}}. Togli il contrassegno da quel significato, oppure sposta la colonna se significa altro.",
+      "move_loses": "Questo spostamento toglie tag a colonne che non li avrebbero più. Conferma la perdita di ogni tag, oppure porta i tag sul termine verso cui si spostano le colonne."
     }
   }
 }

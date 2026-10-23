@@ -1064,7 +1064,7 @@ async def _resolve_tag_assignment_table(
 
 
 async def _load_after_tables(  # REQ-1919
-    conn: "Connection", config: ProvisaConfig, *, domains_before: Any, defer_unregistered: bool
+    conn: "Connection", config: ProvisaConfig, *, refs_before: Any, defer_unregistered: bool
 ) -> None:
     """The apply's steps after the tables: what refers to tables."""
 
@@ -1086,6 +1086,8 @@ async def _load_after_tables(  # REQ-1919
             continue
         await tag_repo.upsert(conn, tg)
     for ta in config.tag_assignments:
+        if ta.object_type == "term":
+            continue  # REQ-2145: placed once the glossary has settled, below
         await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta))
 
     # 7. RLS rules (tables + roles must exist first)
@@ -1146,14 +1148,111 @@ async def _load_after_tables(  # REQ-1919
     # 10.6 Class terms (REQ-2141): resolved by name, like the edges above, once every term the
     # config declares or derives exists and every table has its columns (a class needs a key).
     await _declare_class_terms(conn, config)
+    # The relationships this load replaced (step 10) and the class terms it declared re-settle
+    # every key ref on its Class (REQ-2141).
+    await glossary_repo.rehome_keys(
+        conn,
+        {r.id for r in (await conn.execute_core(select(registered_tables.c.id))).fetchall()},
+    )
     # 10.7 Same-entity relationships (REQ-2141): held to their rule once both their tables have
     # the class terms this config declares (the relationships were saved before them, at 10).
     await _check_identities(conn, config)
+    # 10.8 Term statuses (REQ-2144): what the config asserts of each declared term's status,
+    # once its edges, refs and class groundings make its admission what it will be.
+    await _declare_term_statuses(conn, config)
 
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    await glossary_repo.sweep_refless_terms(conn, before=refs_before)
+
+    # 12. Tags on glossary terms (REQ-2145), once every term and its refs have settled.
+    for ta in config.tag_assignments:
+        if ta.object_type == "term":
+            await tag_repo.assign(conn, await _resolve_tag_assignment_term(conn, ta))
+
+
+async def _resolve_tag_assignment_term(
+    conn: "Connection", ta: TagAssignment
+) -> TagAssignment:  # REQ-2145
+    """The term assignment with ``term_id`` resolved by its term's name, refused as the term's own
+    tagging refuses it (provisa.core.term_tags.refuse_term_tag)."""
+    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+
+    if not ta.term:
+        raise ValueError(f"tag assignment {ta.tag_id!r} on a term names no term")
+    name = ta.term.strip().lower()  # REQ-1844: every term name in the catalog is lowercase
+    row = (
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"tag assignment {ta.tag_id!r} names term {ta.term!r}, which does not exist in this "
+            "config or the catalog"
+        )
+    try:
+        await refuse_term_tag(conn, row.id, ta.tag_id)
+    except TermTagRefused as refused:
+        raise ValueError(f"tag {ta.tag_id!r} cannot go on term {ta.term!r}: {refused}") from None
+    return ta.model_copy(update={"term_id": row.id})
+
+
+async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> None:
+    import datetime
+
+    stated = [
+        t
+        for t in config.glossary_terms
+        if t.deprecate is not None or t.retire is not None or t.restore
+    ]
+    if not stated:
+        return
+    term_ids = {
+        row.name: row.id
+        for row in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+    }
+    statuses = await glossary_repo.term_statuses(conn)
+    today = datetime.date.today()
+    for gt in stated:
+        term_id = term_ids[gt.name.strip().lower()]
+        try:
+            if gt.restore:
+                if statuses[term_id] in ("deprecated", "retired"):
+                    await glossary_repo.restore_term(conn, term_id, by=None)
+            elif gt.retire is not None:
+                successor = None
+                if gt.retire.successor is not None:
+                    named = gt.retire.successor.strip().lower()
+                    if named not in term_ids:
+                        raise ValueError(
+                            f"glossary term {gt.name!r} names {gt.retire.successor!r} as its "
+                            "successor, which does not exist in this config or the catalog"
+                        )
+                    successor = term_ids[named]
+                if statuses[term_id] != "retired":
+                    await glossary_repo.retire_term(
+                        conn, term_id, reason=gt.retire.reason, successor=successor, by=None
+                    )
+            elif gt.deprecate is not None:
+                # Loading the same configuration again changes nothing: a deprecation already
+                # stated stands, and one its planned date has retired stays retired.
+                if statuses[term_id] == "live":
+                    await glossary_repo.deprecate_term(
+                        conn,
+                        term_id,
+                        reason=gt.deprecate.reason,
+                        retire_on=gt.deprecate.retire_on,
+                        by=None,
+                        today=today,
+                    )
+                elif statuses[term_id] == "draft":
+                    raise glossary_repo.StatusRefused(
+                        "term_not_live", "only a live term is deprecated; this one is draft"
+                    )
+        except glossary_repo.StatusRefused as exc:
+            raise ValueError(f"glossary term {gt.name!r}: {exc}") from exc
 
 
 async def _check_identities(conn: "Connection", config: ProvisaConfig) -> None:
@@ -1198,7 +1297,11 @@ async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> Non
         assert row is not None, f"table {address} was upserted by this load"
         try:
             await glossary_repo.declare_class_term(conn, row.id, term_ids[name])
-        except (glossary_repo.TableHasNoPrimaryKey, TableInIdentity) as exc:
+        except (
+            glossary_repo.TableHasNoPrimaryKey,
+            glossary_repo.TermIsProperty,
+            TableInIdentity,
+        ) as exc:
             raise ValueError(f"table {address} cannot have a class term: {exc}") from exc
 
 
@@ -1214,7 +1317,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
     # snapshot step 11's sweep needs is taken here — before the column replace in _upsert_tables
     # removes the very rows it reads.
-    domains_before = await glossary_repo.term_domains(conn)
+    refs_before = await glossary_repo.before_ref_removal(conn)
 
     # 0. Regions and their stores (REQ-1921/1922), before the sources and tables that name them.
     from provisa.core.repositories import region as region_repo
@@ -1292,7 +1395,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     failed_feeds = await _check_change_feeds(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
     await _load_after_tables(
-        conn, config, domains_before=domains_before, defer_unregistered=defer_unregistered
+        conn, config, refs_before=refs_before, defer_unregistered=defer_unregistered
     )
     return failed_feeds
 
@@ -1905,6 +2008,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         calendars,
         data_products,
         domains,
+        glossary_term_refs,
         glossary_terms,
         kafka_sources,
         metrics,
@@ -1926,7 +2030,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         return [r[0] for r in (await conn.execute_core(statement)).fetchall()]
 
     # REQ-1591: taken before the tables go — a term's domains are derived from its refs.
-    domains_before = await glossary_repo.term_domains(conn)
+    refs_before = await glossary_repo.before_ref_removal(conn)
 
     seeded_sources = SEEDED_SOURCE_IDS - {DERIVED_SOURCE_ID}
     internal = select(registered_tables.c.id).where(
@@ -1988,7 +2092,13 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         ),
         (
             "glossary_term",
-            await _ids(select(glossary_terms.c.id).where(glossary_terms.c.is_abstract.is_(True))),
+            # A term holding no column ref is the config's or a curator's (a Concept or a Class);
+            # a Property is derived from its columns and goes with its tables (REQ-2141).
+            await _ids(
+                select(glossary_terms.c.id).where(
+                    glossary_terms.c.id.not_in(select(glossary_term_refs.c.term_id))
+                )
+            ),
         ),
         (
             "tag",
@@ -2037,7 +2147,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         await discard(conn, ObjectRef("region", region_id))
     for store_id in await _ids(select(stores.c.id)):
         await discard(conn, ObjectRef("store", store_id))
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
 
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG

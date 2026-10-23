@@ -626,6 +626,41 @@
       "database_not_connected": "Base de datos no conectada",
       "description_missing": "Un rol derivado necesita una descripción de para qué sirve",
       "not_found": "No hay ningún rol derivado de {{name}}"
+    },
+    "glossary": {
+      "term_is_property": "El término '{{term}}' tiene referencias de columna ({{columns}}), así que es una Propiedad y no puede anclar una tabla. Un término es una Clase, anclada en tablas, o una Propiedad, con referencias de columna, nunca ambas.",
+      "term_is_class": "El término '{{term}}' ancla tablas ({{tables}}), así que es una Clase y no puede tener una referencia de columna. Un término es una Clase, anclada en tablas, o una Propiedad, con referencias de columna, nunca ambas.",
+      "abstract_is_derived": "«Abstracto» no se puede establecer: se deriva del anclaje. Un término sin referencias de columna ni tablas ancladas es un Concepto.",
+      "key_column_derived": "Esta columna es una clave; sigue a la clase de su tabla. {{table}}.{{column}} permanece en '{{class}}' y no se mueve a mano.",
+      "reason_required": "Se requiere un motivo: indique por qué el término se marca como obsoleto o se retira.",
+      "retire_on_past": "La fecha de retiro prevista {{retire_on}} ya pasó. Elija hoy o una fecha posterior.",
+      "retire_on_invalid": "La fecha de retiro prevista {{retire_on}} no es una fecha (use AAAA-MM-DD).",
+      "successor_is_self": "Un término no puede ser su propio sucesor.",
+      "successor_retired": "El sucesor '{{successor}}' está retirado. Elija un término en servicio.",
+      "term_not_live": "Solo un término activo puede marcarse como obsoleto; este está en estado {{status}}.",
+      "status_by_action": "El estado de un término cambia con Marcar obsoleto, Retirar o Restaurar, cada uno con un motivo.",
+      "successor_required": "Este término todavía tiene columnas o tablas; al retirarlo pasan a un sucesor. Elija uno.",
+      "successor_role": "El sucesor de un {{role}} debe ser un {{role}} o un concepto; '{{successor}}' es un {{successor_role}}.",
+      "no_retirement_history": "El historial del modelo no tiene ningún retiro de este término.",
+      "finding": {
+        "unlinked_tables": "Esta clase está anclada en tablas que las relaciones de misma entidad no unen todas: {{tables}}.",
+        "class_and_attribute": "Esta clase también tiene columnas que no son sus claves: {{columns}}.",
+        "class_and_attribute_table": "La tabla {{table}} no tiene clase: su concepto es este término, que tiene columnas que no son claves ({{columns}}).",
+        "tag_wrong_kind": "Este término lleva etiquetas ({{tags}}) que solo una propiedad pasa a sus columnas; es un {{role}}.",
+        "retirement_blocked": "Este término debía retirarse el {{retire_on}} pero todavía tiene datos. Retírelo con un sucesor que los reciba.",
+        "no_data": "Este concepto no está conectado con ningún término que tenga datos."
+      }
+    },
+    "tag": {
+      "not_on_terms": "La etiqueta '{{tag}}' no va en un término; solo pii.",
+      "term_not_live": "Defina '{{term}}' para marcarlo.",
+      "term_not_property": "La etiqueta '{{tag}}' va en un término solo cuando es una Propiedad, uno que significa columnas; '{{term}}' no lo es.",
+      "term_is_tagged": "Desmarque {{tags}} primero, o mantenga una definición.",
+      "key_column": "La columna {{column}} es una clave: su significado es la clase de su tabla. Etiquete la columna misma.",
+      "column_has_no_term": "La columna {{column}} no tiene un término que etiquetar.",
+      "also_term_needs_column": "Etiquetar el término en su lugar requiere una columna.",
+      "inherited_from_term": "Esta columna es PII porque significa {{term}}. Desmarque ese significado, o mueva la columna si significa otra cosa.",
+      "move_loses": "Este movimiento quita etiquetas a columnas que ya no las llevarían. Confirme la pérdida de cada etiqueta, o lleve las etiquetas al término al que se mueven las columnas."
     }
   }
 }

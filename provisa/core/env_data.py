@@ -343,6 +343,8 @@ async def uncovered_sensitive(conn: "Connection", schema: str) -> list[str]:
         _table("tag_assignments", schema),
         _table("registered_tables", schema),
         _table("tags", schema),
+        _table("glossary_term_refs", schema),
+        _table("glossary_terms", schema),
     ).subquery()
     result = await conn.execute_core(
         select(sens.c.table_name, sens.c.column_name)

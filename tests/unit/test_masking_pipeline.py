@@ -11,7 +11,9 @@
 """Column-level masking through the pipeline (REQ-087 through REQ-091).
 
 Tests the full masking pipeline: config → compile → govern (compiler/stage2) → execute.
-Uses mocked execution to verify SQL transformations without a live DB.
+A regex mask is written in the governed SQL as the universal provisa_regex_replace (REQ-2142) and
+lowered to each engine's own form at transpile; the regex cases lower it and run it on DuckDB, so
+the value a reader gets is what is asserted.
 """
 
 from __future__ import annotations
@@ -25,12 +27,15 @@ from provisa.compiler.sql_gen import (
     TableMeta,
 )
 from provisa.security.masking import (
+    UNIVERSAL_REGEX_REPLACE,
     MaskType,
     MaskingRule,
     MaskingValidationError,
     validate_masking_rule,
 )
+from provisa.transpiler.transpile import transpile
 
+import duckdb
 import pytest
 
 from tests.helpers import governed_for_role
@@ -67,6 +72,35 @@ def _ctx_with_customers_and_orders():
         ),
     }
     return ctx
+
+
+def _regex_masks(governed: str) -> int:
+    """How many regex masks ``governed`` applies: each is the universal call (REQ-2142)."""
+    return governed.lower().count(f"{UNIVERSAL_REGEX_REPLACE}(")
+
+
+def _lowered_for_postgres(governed: str) -> str:
+    """``governed`` as PostgreSQL runs it: every universal call lowered to REGEXP_REPLACE."""
+    sql = transpile(governed, "postgres")
+    assert UNIVERSAL_REGEX_REPLACE not in sql.lower()
+    assert sql.upper().count("REGEXP_REPLACE(") == _regex_masks(governed)
+    return sql
+
+
+def _read_on_duckdb(governed: str, *ddl: str) -> list[tuple]:
+    """The rows a reader of ``governed`` gets: lowered to DuckDB's SQL and run over the tables
+    ``ddl`` creates and fills in the ``public`` schema."""
+    conn = duckdb.connect()
+    conn.execute("CREATE SCHEMA public")
+    for statement in ddl:
+        conn.execute(statement)
+    return conn.execute(transpile(governed, "duckdb")).fetchall()
+
+
+_CUSTOMERS = (
+    "CREATE TABLE public.customers (id INTEGER, email VARCHAR, name VARCHAR, region VARCHAR)",
+    "INSERT INTO public.customers VALUES (7, 'alice@example.com', 'Ada Lovelace', 'east')",
+)
 
 
 # --- Full Pipeline Tests ---
@@ -106,7 +140,7 @@ class TestAdminSeesRawData:
         result = governed_for_role(compiled.sql, ctx, "admin", masking_rules=rules)
         # Admin SQL unchanged — raw columns
         assert result == compiled.sql
-        assert "REGEXP_REPLACE" not in result
+        assert _regex_masks(result) == 0
 
 
 class TestAnalystRegexMasking:
@@ -140,11 +174,12 @@ class TestAnalystRegexMasking:
             }
         }
         result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
-        assert "REGEXP_REPLACE" in result
+        assert _regex_masks(result) == 1
         assert 'AS "email"' in result
         # region not masked
         assert '"region"' in result
-        assert result.count("REGEXP_REPLACE") == 1
+        _lowered_for_postgres(result)
+        assert _read_on_duckdb(result, *_CUSTOMERS) == [("al***@example.com", "east")]
 
     def test_analyst_name_initials_masked(self):
         compiled = CompiledQuery(
@@ -173,8 +208,10 @@ class TestAnalystRegexMasking:
             }
         }
         result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
-        assert "REGEXP_REPLACE" in result
+        assert _regex_masks(result) == 1
         assert 'AS "name"' in result
+        _lowered_for_postgres(result)
+        assert _read_on_duckdb(result, *_CUSTOMERS) == [("A. L.",)]
 
 
 class TestMaskedViewerConstantMasking:
@@ -295,10 +332,16 @@ class TestJoinedTableMasking:
             }
         }
         result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
-        assert "REGEXP_REPLACE" in result
+        assert _regex_masks(result) == 1
         assert 'AS "email"' in result
         # Root table columns unchanged
         assert '"t0"."id"' in result
+        _lowered_for_postgres(result)
+        orders = (
+            "CREATE TABLE public.orders (id INTEGER, customer_id INTEGER)",
+            "INSERT INTO public.orders VALUES (1, 7)",
+        )
+        assert _read_on_duckdb(result, *_CUSTOMERS, *orders) == [(1, "al***@example.com")]
 
 
 class TestDifferentMasksPerRole:
@@ -338,11 +381,14 @@ class TestDifferentMasksPerRole:
         }
 
         analyst_result = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=rules)
-        assert "REGEXP_REPLACE" in analyst_result
+        assert _regex_masks(analyst_result) == 1
+        _lowered_for_postgres(analyst_result)
+        assert _read_on_duckdb(analyst_result, *_CUSTOMERS) == [("al***@example.com",)]
 
         viewer_result = governed_for_role(compiled.sql, ctx, "masked_viewer", masking_rules=rules)
         assert "'***@***.***'" in viewer_result
-        assert "REGEXP_REPLACE" not in viewer_result
+        assert _regex_masks(viewer_result) == 0
+        assert _read_on_duckdb(viewer_result, *_CUSTOMERS) == [("***@***.***",)]
 
 
 class TestTypeValidationAtConfigTime:

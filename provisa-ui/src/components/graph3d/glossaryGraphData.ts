@@ -15,6 +15,7 @@
 // the terms those columns are -- turned into the graph's nodes and edges.
 
 import { termRole } from "../../api/glossary";
+import { ONTOLOGY_NEIGHBOURHOOD } from "./neighbourhood";
 import {
   operation,
   rootField,
@@ -117,75 +118,165 @@ function related(s: QueryScope): Where {
   };
 }
 
-function termsField(m: MetaReader, s: QueryScope): string | null {
+/** A search item as an ILIKE pattern: anywhere in the text, its own % _ and \\ taken literally. */
+const anywhere = (item: string) => `%${item.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/** REQ-2143: the terms the page's search matches, searchItems' rule -- any item, in the name or the
+ * definition, whatever its case. */
+export function searchWhere(items: string[]): Where {
+  const any: Where[] = [];
+  for (const i of items)
+    any.push({ name: { ilike: anywhere(i) } }, { definition: { ilike: anywhere(i) } });
+  return { _or: any };
+}
+
+const TERM_FIELDS = [
+  "id",
+  "name",
+  "definition",
+  "ref_count",
+  "deprecated",
+  "retired",
+  "live",
+  "identity_gap",
+];
+
+/** A term's selection at ``level`` hops from the search's matches. Under a search the terms a term's
+ * edges reach are read with it, a level further, to the neighbourhood's depth: a term at the
+ * last level is read with its edges' ends alone, so an edge between two of them is drawn and
+ * nothing past them is. With no search every term is read at level 0, its edges' ends by id. */
+function termSelection(s: QueryScope, level: number): Selection {
+  const depth = s.search.length > 0 ? ONTOLOGY_NEIGHBOURHOOD.depth : 0;
+  const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
+  const end = (side: "target_term" | "source_term", alias: string) => ({
+    [side]: { alias, sel: last ? { fields: ["id"] } : termSelection(s, level + 1) },
+  });
+  const edgeWhere = (other: "target_term" | "source_term"): Where | undefined =>
+    all([
+      ...(s.edgeTypes.length === 0 ? [] : [{ rel_type: { in: s.edgeTypes } }]),
+      // Under a search the term an edge reaches is read: one the filters leave out is not.
+      ...(depth > 0 && kept ? [{ [other]: kept }] : []),
+    ]);
   // A term's edges are read with it, from the term they leave (each edge once), so the view is one
   // query: terms with their edges to other terms. An edge to a term not read has no end to draw.
-  if (s.layers.has("ontology"))
+  if (s.layers.has("ontology")) {
     rels.edges_out = {
       alias: "edgesOut",
       sel: {
         fields: ["id", "from_term_id", "to_term_id", "rel_type"],
-        rels: { target_term: { alias: "targetTerm", sel: { fields: ["id"] } } },
+        rels: end("target_term", "targetTerm"),
       },
-      where: s.edgeTypes.length === 0 ? undefined : { rel_type: { in: s.edgeTypes } },
+      where: edgeWhere("target_term"),
     };
-  // A class term's tables are the ontology's: what the term names the rows of.
-  if (s.layers.has("ontology"))
-    rels.tables = {
-      alias: "tables",
-      sel: { fields: ["table_id", "table_name", "domain_id"] },
-      where: inDomains(s.domains),
-    };
-  if (s.layers.has("domains"))
-    rels.domains = {
-      alias: "domains",
-      sel: { fields: ["domain_id"] },
-      where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
-    };
-  if (s.layers.has("columns"))
-    rels.refs = {
-      alias: "refs",
-      sel: {
-        fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
-        rels: {
-          table: {
-            to: "registered_tables",
-            sel: {
-              fields: ["id"],
-              rels: {
-                // With Data off, a column's product is read for its look alone: no product node.
-                product: {
-                  alias: "product",
-                  sel: { fields: s.layers.has("data") ? ["id", "name", "domain_id"] : ["id"] },
+    // Under a search a match's neighbourhood runs both ways: the edges reaching it too.
+    if (depth > 0)
+      rels.edges_in = {
+        alias: "edgesIn",
+        sel: {
+          fields: ["id", "from_term_id", "to_term_id", "rel_type"],
+          rels: end("source_term", "sourceTerm"),
+        },
+        where: edgeWhere("source_term"),
+      };
+  }
+  // What a term touches is a hop past it: the last level's is past the neighbourhood.
+  if (!last || depth === 0) {
+    // A class term's tables are the ontology's: what the term names the rows of.
+    if (s.layers.has("ontology"))
+      rels.tables = {
+        alias: "tables",
+        sel: { fields: ["table_id", "table_name", "domain_id"] },
+        where: inDomains(s.domains),
+      };
+    if (s.layers.has("domains"))
+      rels.domains = {
+        alias: "domains",
+        sel: { fields: ["domain_id"] },
+        where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
+      };
+    if (s.layers.has("columns"))
+      rels.refs = {
+        alias: "refs",
+        sel: {
+          fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
+          rels: {
+            table: {
+              to: "registered_tables",
+              sel: {
+                fields: ["id"],
+                rels: {
+                  // With Data off, a column's product is read for its look alone: no product node.
+                  product: {
+                    alias: "product",
+                    sel: { fields: s.layers.has("data") ? ["id", "name", "domain_id"] : ["id"] },
+                  },
+                  ...relationships(s),
                 },
-                ...relationships(s),
               },
             },
           },
         },
-      },
-      where: inDomains(s.domains),
-    };
-  return rootField(
+        where: inDomains(s.domains),
+      };
+  }
+  return { fields: TERM_FIELDS, rels };
+}
+
+/** The terms ``s`` reads at the root: those its filters keep, and under a search those it matches. */
+function rootWhere(s: QueryScope): Where | undefined {
+  const kept = termKept(s);
+  return all([
+    ...(kept ? [kept] : []),
+    ...(s.orphans ? [] : [related(s)]),
+    ...(s.search.length > 0 ? [searchWhere(s.search)] : []),
+  ]);
+}
+
+function termsField(m: MetaReader, s: QueryScope): string | null {
+  return rootField(m, "glossary_terms", termSelection(s, 0), rootWhere(s));
+}
+
+/** REQ-2143: how many terms the view's query would read at its root -- the matches under a search,
+ * else every term the filters keep -- read as their ids alone, before the graph is. */
+export function ontologyCountQuery(m: MetaReader, s: QueryScope): string | null {
+  // Each term's domains with it: the overview counts the terms in each.
+  const field = rootField(
     m,
     "glossary_terms",
-    {
-      fields: [
-        "id",
-        "name",
-        "definition",
-        "ref_count",
-        "deprecated",
-        "retired",
-        "live",
-        "identity_gap",
-      ],
-      rels,
-    },
-    all([...(kept ? [kept] : []), ...(s.orphans ? [] : [related(s)])]),
+    { fields: ["id"], rels: { domains: { alias: "domains", sel: { fields: ["domain_id"] } } } },
+    rootWhere(s),
   );
+  return field === null ? null : operation("OntologyCount", [field]);
+}
+
+/** What the count read answers: each term's id and domains. */
+export interface CountRow {
+  id: number;
+  domains?: { domain_id: string }[] | null;
+}
+
+/** REQ-2143: the overview drawn when the whole ontology is past the budget -- each domain, named
+ * with the number of terms in it; ``label`` words a domain and its count. */
+export function overviewGraph(
+  rows: CountRow[],
+  label: (domain: string, count: number) => string,
+): GraphData {
+  const counts = new Map<string, number>();
+  for (const r of rows)
+    for (const d of r.domains ?? []) counts.set(d.domain_id, (counts.get(d.domain_id) ?? 0) + 1);
+  return {
+    nodes: [...counts]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([d, n]) => ({
+        id: `d:${d}`,
+        type: "domain" as const,
+        label: label(d, n),
+        domains: [d],
+      })),
+    edges: [],
+  };
 }
 
 function productsField(m: MetaReader, s: QueryScope): string | null {
@@ -231,9 +322,36 @@ export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
   );
 }
 
-/** The edges the terms were read with: each from the term it leaves. */
-export const termEdges = (terms: TermRow[]): TermEdgeRow[] =>
-  terms.flatMap((t) => t.edges_out ?? []);
+/** Every term the query read, at whatever level of a search's neighbourhood, once: a term read at
+ * two levels keeps what the fuller read holds. */
+export function flatTerms(rows: TermRow[]): TermRow[] {
+  const byId = new Map<number, TermRow>();
+  const visit = (t: TermRow) => {
+    const seen = byId.get(t.id);
+    // The fuller read: a nearer level reads what a term touches, the last its edges' ends alone.
+    if (!seen || Object.keys(t).length > Object.keys(seen).length) byId.set(t.id, t);
+    for (const e of t.edges_out ?? [])
+      if (e.target_term && "name" in e.target_term) visit(e.target_term as TermRow);
+    for (const e of t.edges_in ?? [])
+      if (e.source_term && "name" in e.source_term) visit(e.source_term as TermRow);
+  };
+  rows.forEach(visit);
+  return [...byId.values()];
+}
+
+/** The edges the terms were read with, each once: from the term it leaves or the one it reaches. */
+export function termEdges(terms: TermRow[]): TermEdgeRow[] {
+  const out = new Map<string, TermEdgeRow>();
+  for (const t of terms)
+    for (const e of [...(t.edges_out ?? []), ...(t.edges_in ?? [])])
+      out.set(`${e.from_term_id}>${e.to_term_id}:${e.rel_type}`, {
+        id: e.id,
+        from_term_id: e.from_term_id,
+        to_term_id: e.to_term_id,
+        rel_type: e.rel_type,
+      });
+  return [...out.values()];
+}
 
 /** What the Ontology View's query answers: a part not read is absent. */
 export interface OntologyRows {
@@ -256,7 +374,9 @@ export interface TermRow {
   // One-to-many: null when the term has none (see rowsOf).
   domains?: { domain_id: string }[] | null;
   // Under Ontology: the edges leaving the term (null when none; see rowsOf).
-  edges_out?: (TermEdgeRow & { target_term?: { id: number } | null })[] | null;
+  // Under a search, the term an edge reaches is read in full to the neighbourhood's depth.
+  edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
+  edges_in?: (TermEdgeRow & { source_term?: TermRow | { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
   tables?: { table_id: number; table_name: string; domain_id: string }[] | null;
   refs?:
