@@ -154,7 +154,7 @@ flowchart TD
 flowchart TD
     REST[REST and JSON:API] --> GQL[GraphQL]
     GQL --> SEM[Semantic SQL]
-    GRPC[gRPC] --> SEM
+    GRPC[gRPC] --> GQL
     CY[Cypher] --> GP[Graph pattern form]
     SP[SPARQL] --> GP
     GP --> SEM
@@ -168,7 +168,7 @@ flowchart TD
 
 ### 前端 {: #front-ends }
 
-前端解析一種語言，並以模型的術語說明它讀取的內容。GraphQL 直接編譯為語義 SQL。OpenAPI 文件描述的 REST 端點和 JSON:API 端點，會根據每個請求建構一條 GraphQL 查詢，再以同樣方式編譯。gRPC 把資料表請求直接轉換為語義 SQL，不經過 GraphQL。Cypher 和 SPARQL 被解析為兩種圖語言共用的同一種圖模式形式，再由這種形式編譯為語義 SQL。你針對模型的資料表編寫的 SQL 本身就是語義 SQL，因此它從下一個階段進入。沒有任何前端決定誰可以讀取甚麼。
+前端解析一種語言，並以模型的術語說明它讀取的內容。GraphQL 直接編譯為語義 SQL。OpenAPI 文件描述的 REST 端點、JSON:API 端點和 gRPC，會根據每個請求建構一條 GraphQL 查詢，再以同樣方式編譯。唯一的例外是 JSON:API 的 `page[total]`，即總資料列數，它由 JSON:API 傳輸層自行組成。Cypher 和 SPARQL 被解析為兩種圖語言共用的同一種圖模式形式，再由這種形式編譯為語義 SQL。你針對模型的資料表編寫的 SQL 本身就是語義 SQL，因此它從下一個階段進入。沒有任何前端決定誰可以讀取甚麼。
 
 ### 語義 SQL {: #semantic-sql }
 
