@@ -42,8 +42,15 @@ class Route(str, Enum):
     API = "api"
 
 
-# API sources — route through API caller pipeline
-API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api", "grpc_remote"}
+# API sources — route through API caller pipeline; each one's access path is its connector's call
+API_SOURCES: set[str] = {
+    "openapi",
+    "graphql_api",
+    "grpc_api",
+    "grpc_remote",
+    "graphql_remote",
+    "sparql",
+}
 
 # REQ-2100: code sources, whose function is their access path; their rows are landed (REQ-863).
 CODE_SOURCES: frozenset[str] = frozenset({"node", "python"})
