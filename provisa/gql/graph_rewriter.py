@@ -24,7 +24,7 @@ from typing import cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.translator_types import GraphVarKind
+from provisa.gql.translator_types import NODE_COLUMN, GraphVarKind
 from provisa.gql.label_map import CypherLabelMap, NodeMapping
 
 
@@ -84,13 +84,16 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
 
         if graph_var is not None:
             kind = graph_vars[graph_var]
-            # EDGE, PATH, and PASSTHROUGH expressions are pre-built, and a MAP is a property column
-            # (REQ-1991); pass through.
+            # EDGE, PATH, and PASSTHROUGH expressions are pre-built, a MAP is a property column
+            # (REQ-1991), a SPARQL TERM is its own JSON term and the depth limit's CUT flag a
+            # number (REQ-2135); pass through.
             if kind in (
                 GraphVarKind.EDGE,
                 GraphVarKind.PATH,
                 GraphVarKind.PASSTHROUGH,
                 GraphVarKind.MAP,
+                GraphVarKind.TERM,
+                GraphVarKind.CUT,
             ):
                 new_expressions.append(sel_expr)
                 continue
@@ -119,7 +122,15 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 rewritten = _build_row_cast(tbl, node_meta)
             else:
                 domain_props = _extract_domain_props_from_union(sql_ast, tbl)
-                rewritten = _build_domain_json(tbl, domain_props)
+                rewritten = (
+                    # Each arm carries the node as one value already (translator_union).
+                    exp.Column(
+                        this=exp.Identifier(this=NODE_COLUMN, quoted=True),
+                        table=exp.Identifier(this=tbl),
+                    )
+                    if domain_props == [NODE_COLUMN]
+                    else _build_domain_json(tbl, domain_props)
+                )
             new_expressions.append(cast(exp.Expression, exp.alias_(rewritten, out_alias)))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         else:
             new_expressions.append(cast(exp.Expression, sel_expr))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

@@ -19,6 +19,8 @@ Seis valores de `impl_kind` são suportados:
 | `grpc` | gRPC unário; ponte JSON sem proto |
 | `python` | Callable Python em processo (`module:attr`) |
 
+`script` e `python` são código de host: rodam no próprio host do servidor, e uma implantação só os permite quando seu operador liga o código de host (veja [Código de host](#host-code)).
+
 O endereçamento (o `name` no catálogo e o `function_name`) é desacoplado do `binding` (transporte e
 localização). Troque o binding e a governança, o lineage e os contratos com quem chama o command permanecem
 inalterados.
@@ -71,6 +73,8 @@ etc.).
 ## Escrevendo um command {: #authoring-a-command }
 
 ### Arquivo de configuração {: #config-file }
+
+Este exemplo é um comando `python`, então ele só carrega onde o código de host é permitido (veja [Código de host](#host-code)).
 
 ```yaml
 functions:
@@ -280,6 +284,31 @@ Veja [Lineage](lineage.md) para saber como nós de command aparecem no DAG e com
 ## Lista de permissões de egresso {: #egress-allowlist }
 
 Comandos `http` e `grpc` chamam endpoints externos. Todo host de destino precisa constar na `udf_egress_allowlist` do deployment. O loopback (`localhost`, `127.0.0.1`, `::1`) é sempre permitido. Sem allowlist, toda saída externa é negada com HTTP 403, e não há padrão silencioso.
+
+## Código de host {: #host-code }
+
+Um comando `python` chama um `module:attr` dentro do processo do servidor, e um comando `script` roda um subprocesso no host do servidor. Qualquer um dos dois roda com tudo o que o servidor alcança: sua memória, suas credenciais, seus arquivos e sua rede. Um código malicioso, com defeito ou voraz pode ler qualquer parte disso, esgotar os recursos do servidor ou derrubá-lo. A entrada do comando no modelo guarda só uma referência ao código (`module:attr`, ou o caminho do script), então o código em si não viaja com o modelo quando o modelo é promovido para outro ambiente.
+
+A configuração de implantação `commands.allow_host_code` rege os dois tipos. Ela vem desligada por padrão. Enquanto estiver desligada:
+
+- registrar um comando de qualquer um dos dois tipos é recusado, seja pela API de administração, seja por um arquivo de configuração;
+- atualizar um comando para qualquer um dos dois tipos é recusado;
+- chamar um comando existente de qualquer um dos dois tipos é recusado, com HTTP 403 e o código
+  `functions.host_code_refused`.
+
+A configuração pertence ao operador, nunca a uma organização. Ela fica na página Configurações de implantação, em Segurança, e também pode ser definida no arquivo de configuração ou no ambiente:
+
+```yaml
+server:
+  commands:
+    allow_host_code: true
+```
+
+```bash
+PROVISA_COMMANDS_ALLOW_HOST_CODE=true
+```
+
+As [fontes de código](code-sources.md) são a alternativa governada: seu código roda em um sandbox, é fixado em uma versão e é promovido com o modelo.
 
 ## Rastreamento de invocação {: #invocation-tracing }
 

@@ -48,13 +48,13 @@ def resolve_projected_property(query_template: str, column: str) -> str:
     if ast.return_clause is None:
         raise ProjectionFilterError(f"query_template has no RETURN clause: {query_template!r}")
     for item in ast.return_clause.items:
-        if item.alias == column or (item.alias is None and item.expression == column):
+        if item.alias == column or (item.alias is None and item.name == column):
             # The parser reconstructs expression text by joining tokens with a single space
             # (token-for-token, not a verbatim substring of the source) -- tidy "o . prop" back to
             # "o.prop" so the wrapped Cypher this feeds into reads and executes identically to
             # hand-written text, never leaving a token-join artifact in what's sent to Neo4j.
-            return re.sub(r"\s*\.\s*", ".", item.expression)
-    projected = [i.alias or i.expression for i in ast.return_clause.items]
+            return re.sub(r"\s*\.\s*", ".", item.name)
+    projected = [i.alias or i.name for i in ast.return_clause.items]
     raise ProjectionFilterError(
         f"column {column!r} is not among query_template's projected elements {projected!r} -- "
         "a keyed filter can only bind to something the projection already returns"

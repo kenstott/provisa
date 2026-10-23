@@ -64,7 +64,6 @@
     "layer_domains": "Domini",
     "layer_data": "Dati",
     "show": "Mostra",
-    "status_proposed": "Proposto",
     "status_deprecated": "Deprecato",
     "status_retired": "Ritirato",
     "filterEdgeType": "Tipi di arco",
@@ -98,7 +97,6 @@
     "openAsQueryCompiling": "Compilazione della query…",
     "openAsQueryNoCypher": "Questa query non ha forma Cypher.",
     "openAsQuerySparqlLater": "SPARQL si aprirà quando il suo endpoint sarà disponibile.",
-    "identityGap": "Ancorato a tabelle non tutte unite come stessa entità: {{tables}}",
     "layersMenu": "Livelli",
     "termsMenu": "Termini",
     "menuAll": "tutti",
@@ -109,6 +107,8 @@
     "look_concept": "concetto",
     "look_property": "proprietà",
     "overBudget": "{{count}} corrispondenze; restringi la ricerca o scegli un dominio",
-    "domainCount": "{{domain}} ({{count}})"
+    "domainCount": "{{domain}} ({{count}})",
+    "unlinkedTables": "Ancorato a tabelle non ancora collegate come la stessa entità: {{tables}}",
+    "status_draft": "Bozza"
   }
 }

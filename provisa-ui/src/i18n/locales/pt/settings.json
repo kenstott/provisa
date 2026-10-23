@@ -265,6 +265,10 @@
       "port": {
         "label": "Porta da API HTTP",
         "help": "A porta em que a API HTTP escuta. Requer reinicialização; pede confirmação antes de salvar porque a interface e todos os clientes precisam acompanhar a mudança."
+      },
+      "public_url": {
+        "label": "Endereço público",
+        "help": "O endereço pelo qual esta implantação é conhecida, como https://data.example.com. A IRI de cada sujeito no SPARQL e nas exportações RDF começa por ele, então ele deve permanecer o mesmo enquanto essas IRIs forem usadas. Sem valor, uma consulta que retorna a IRI de um sujeito é recusada."
       }
     },
     "tls": {
@@ -867,6 +871,16 @@
       "allow_host_code": {
         "label": "Permitir comandos de código do host",
         "help": "Ativado: comandos python e script podem ser registrados e chamados. Cada um é executado com o acesso completo do servidor à sua memória, credenciais, arquivos e rede, e seu código não acompanha o modelo. Desativado por padrão; use um resolvedor de código em vez disso."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Caminho de grafo mais profundo",
+        "help": "O máximo de saltos que um caminho de comprimento variável do Cypher ou um caminho de propriedades do SPARQL percorre quando a consulta não define seu próprio limite. Um resultado cortado nessa profundidade indica isso."
+      },
+      "union_limit": {
+        "label": "Máximo de predicados que um predicado variável abrange",
+        "help": "Um padrão SPARQL cujo predicado é uma variável lê cada predicado mapeado que poderia corresponder, um ramo para cada. Uma consulta que precisa de mais ramos é recusada, indicando o limite."
       }
     }
   }

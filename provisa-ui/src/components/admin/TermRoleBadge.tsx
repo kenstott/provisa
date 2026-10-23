@@ -13,10 +13,40 @@
 
 import { useTranslation } from "react-i18next";
 import { Badge, Group } from "@mantine/core";
-import { termRole, type GlossaryTermSummary, type TermRole } from "../../api/glossary";
+import {
+  termRole,
+  type GlossaryTermSummary,
+  type TermRole,
+  type TermStatus,
+} from "../../api/glossary";
 import { Tip } from "../Tip";
+import { toReview } from "./termFindings";
 
 const COLOUR: Record<TermRole, string> = { class: "grape", property: "blue", concept: "gray" };
+
+const STATUS_COLOUR: Record<TermStatus, string> = {
+  draft: "yellow",
+  live: "green",
+  deprecated: "gray",
+  retired: "orange",
+};
+
+/** A term's lifecycle status (REQ-2144); a draft says what keeps it from service. */
+export function TermStatusBadge({ status, testId }: { status: TermStatus; testId?: string }) {
+  const { t } = useTranslation();
+  const badge = (
+    <Badge
+      size="xs"
+      variant="light"
+      color={STATUS_COLOUR[status]}
+      data-status={status}
+      data-testid={testId}
+    >
+      {t(`glossaryTab.status_${status}`)}
+    </Badge>
+  );
+  return status === "draft" ? <Tip text={t("glossaryTab.draftHelp")}>{badge}</Tip> : badge;
+}
 
 export function TermRoleBadge({
   term,
@@ -56,27 +86,15 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
         dangling={termRole(term) === "concept" && !term.grounded}
         testId={`glossary-role-${term.id}`}
       />
-      {term.identity_gap && (
-        <Tip text={t("glossaryTab.identityGapHelp")}>
-          <Badge size="xs" variant="light" color="orange" data-testid={`glossary-gap-${term.id}`}>
-            {t("glossaryTab.identityGap")}
-          </Badge>
-        </Tip>
-      )}
-      {term.deprecated && (
-        <Badge size="xs" color="gray" variant="light">
-          {t("glossaryTab.deprecated")}
+      {/* What it needs looked at is in its panel's To review section; the list marks it only. */}
+      {toReview(term) && (
+        <Badge size="xs" variant="light" color="orange" data-testid={`glossary-review-${term.id}`}>
+          {t("glossaryTab.toReview")}
         </Badge>
       )}
-      {term.retired && (
-        <Badge size="xs" color="orange" variant="light">
-          {t("glossaryTab.retired")}
-        </Badge>
-      )}
-      {!term.live && !term.retired && !term.deprecated && (
-        <Badge size="xs" color="yellow" variant="light">
-          {t("glossaryTab.proposed")}
-        </Badge>
+      {/* A live term is the ordinary case: the list marks the others. */}
+      {term.status !== "live" && (
+        <TermStatusBadge status={term.status} testId={`glossary-status-${term.id}`} />
       )}
       {termRole(term) === "property" && (
         <Badge size="xs" variant="default">

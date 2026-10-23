@@ -11,7 +11,6 @@ Lo que cambia respecto a un resolver escrito a mano:
 - **Delegado.** Un filtro sobre una columna llega a su función como parámetro cuando usted lo pide.
 - **Servido en todas partes.** La misma función responde a GraphQL, SQL (sobre HTTP, pgwire y Arrow Flight), Cypher (sobre HTTP y Bolt), gRPC, REST, JSON:API y MCP.
 
-
 Los resolvers de código son una de las tres formas de escribir lógica de negocio en Provisa. Vea [La lógica de negocio en Provisa](business-logic.md).
 
 ## Un primer resolver {: #an-example }
@@ -75,6 +74,7 @@ Provisa lee las propias declaraciones de su código: docstrings y anotaciones de
 | `@table` | Una tabla. La función devuelve una lista o un iterable, y cada elemento es una fila. |
 | `@command` | Un comando, ejecutado a petición. |
 | `@stream` | Una tabla en vivo. La función es un generador, y cada fila se envía a medida que se produce. |
+| `@columns` | Una transformación de columnas: entra un lote de filas, sale un resultado por fila. Vea [Transformaciones de columnas](#column-transforms). |
 
 - Una función sin etiqueta se ignora.
 - Una etiqueta que Provisa no conoce se rechaza, igual que un tipo que no puede mapear. El rechazo enumera todos los problemas a la vez, para que los corrija de una pasada.
@@ -213,6 +213,46 @@ def churn_score(
 ```
 
 Unida a una tabla de clientes, se llama con un `loader` como `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. La segunda clave solo lleva `customer_id`, así que su plan y su región toman los valores por defecto. La función devuelve `{"9f2c...": [...], "41ab...": [...], ...}`.
+
+### Transformaciones de columnas: `@columns` {: #column-transforms }
+
+Una función etiquetada `@columns` calcula columnas nuevas a partir de las columnas de filas que ya tiene: divide una dirección en sus partes, clasifica una descripción o enriquece un nombre. Recibe un lote de filas y devuelve un resultado por fila, en el mismo orden.
+
+Cada parámetro es una columna de entrada, dada como una lista de los valores de ese lote en orden de filas. La función devuelve una lista con un objeto por fila de entrada, y los campos del objeto son las columnas de salida. En Python:
+
+```python
+@dataclass
+class Address:
+    street: str
+    city: str
+    country: str
+
+
+def clean_address(raw_address: list[str]) -> list[Address]:
+    """Each raw address of the batch, as its parts.
+
+    @columns
+    """
+    ...
+```
+
+En TypeScript, declárela como `clean_address(raw_address: string[]): Promise<Address[]>` con `@columns` en su JSDoc.
+
+La registra como un comando, de una en una como cualquier otro: en la página **Commands**, elija el origen, y se ofrecen sus funciones `@columns` para elegir. La declaración de la función aporta las columnas de entrada y de salida. Regístrela en un dominio con los roles que pueden usarla.
+
+Aplíquela en una lista de select, y sus columnas de salida ocupan el lugar de la llamada:
+
+```sql
+SELECT id, clean_address(raw_address) FROM suppliers
+```
+
+Esto responde `id, street, city, country`. Cambie el nombre de las salidas en una consulta externa si necesita otros nombres. La llamada tiene que ser un elemento de la propia lista de select de la sentencia: Provisa ejecuta la función sobre las filas una vez leídas, así que una llamada en un `WHERE`, un `JOIN`, un `GROUP BY` o dentro de otra expresión se rechaza, igual que un alias sobre la llamada. Cada columna de salida es un paso con nombre del linaje de la proyección.
+
+Las filas van a la función en lotes de 1.000. Una función que no guarda estado entre llamadas permite que los lotes se ejecuten en paralelo, repartidos entre los workers del origen: establezca **Workers** en el formulario del origen (`workers` en su mapping, vea [Modo dev y workers](#workers)) para ejecutar más de uno, y cada worker añadido aumenta el rendimiento. Un lote respondido con un número de resultados distinto del de filas recibidas se rechaza, nombrando la función.
+
+La función puede llamar a los servicios de Provisa, entre ellos el servicio de LLM, de modo que una sola llamada al modelo puede limpiar, clasificar o enriquecer un lote entero. Cada llamada se mide y se limita contra el origen como cualquiera de sus otras llamadas ([Llamar a un modelo](#calling-a-model)).
+
+Una vista que aplica una transformación de columnas se aterriza, la declare o no como vista materializada: Provisa la construye como construye una vista materializada, llamando a la función sobre las filas de la vista por lotes y almacenando el resultado, y la vista se lee de esa tabla almacenada. Una sentencia puede entonces filtrar, unir o agrupar por las columnas de salida como por cualquier otra. Las salidas se vuelven a calcular cada vez que se actualiza la vista, según declare su frescura. No tienen un calendario propio.
 
 ### De dónde viene el código {: #where-the-code-comes-from }
 

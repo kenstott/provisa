@@ -982,18 +982,18 @@ Gibt alle nachverfolgten DB-Funktionen und Webhooks zurück.
 {
   "functions": [
     {
-      "name": "random_python_set",
-      "implKind": "python",
-      "binding": {"callable": "demo.py_functions:random_dataset"},
+      "name": "random_grpc_set",
+      "implKind": "grpc",
+      "binding": {"target": "localhost:50071", "method": "/provisa.demo.RandomData/GetRandomSet"},
       "returns": "",
       "returnSchema": {
         "type": "array",
         "items": {"type": "object", "properties": {"id": {"type": "integer"}, "region": {"type": "string"}}}
       },
-      "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+      "arguments": [],
       "visibleTo": ["admin"],
       "domainId": "pet-store",
-      "description": "Demo Python command returning random rows",
+      "description": "Demo gRPC command returning random rows",
       "kind": "query"
     }
   ],
@@ -1033,12 +1033,14 @@ Registriert eine nachverfolgte Funktion (Command).
 | `implKind` | Was ausgeführt wird | `binding`-Felder |
 | --- | --- | --- |
 | `source_procedure` | Stored Procedure auf einer registrierten Quelle (Standard) | `sourceId`, `schemaName`, `functionName` |
-| `script` | Serverseitiges Skript | `script` |
+| `script` | Serverseitiges Skript (Host-Code) | `script` |
 | `http` | Ausgehender HTTP-Aufruf | `url`, `method` |
 | `grpc` | Ausgehender gRPC-Aufruf an einen externen Server | `target`, `method` |
-| `python` | Von Provisa gehosteter Python-Callable | `callable` (z. B. `"demo.py_functions:random_dataset"`) |
+| `python` | Von Provisa gehosteter Python-Callable (Host-Code) | `callable` (z. B. `"demo.py_functions:random_dataset"`) |
 
-Die Demo-Commands `random_python_set` (`implKind: python`) und `random_grpc_set` (`implKind: grpc`) zeigen set-returning Commands mit `returnSchema` in der Praxis; beide befinden sich in `config/provisa-install.yaml`.
+`script` und `python` sind Host-Code. Solange die Deployment-Einstellung `commands.allow_host_code` aus ist, wie es standardmäßig der Fall ist, wird das Registrieren, Aktualisieren oder Aufrufen eines solchen Commands mit HTTP 403 und dem Code `functions.host_code_refused` abgelehnt (siehe [Host-Code](commands.md#host-code)).
+
+Der Demo-Command `random_grpc_set` (`implKind: grpc`) zeigt einen set-returning Command mit `returnSchema` in der Praxis; er befindet sich in `config/provisa-install.yaml`.
 
 #### `PUT /admin/actions/functions/{name}`
 
@@ -1339,7 +1341,7 @@ Die Normalisierung wendet fünf Regeln in Reihenfolge an:
 4. Ein nachgestelltes **Proxy-Token** entfernen (`identifier`, `code`, `index` oder `reference`). Eine Spalte, die nach ihrem Schlüssel oder Code benannt ist, verweist über einen Platzhalterwert auf das zugrunde liegende Konzept, daher sollte der Begriff das Konzept selbst sein. Das letzte verbleibende Token wird nie entfernt.
 5. Eine **zu generische Formulierung** mit dem Konzept der Tabelle qualifizieren. Wenn die vollständig normalisierte Formulierung ein bloßes Attributwort ist (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name` und Ähnliches), wird der Begriff zu `<table concept> <phrase>`: `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. Ein gemeinsamer Begriff `name` über nicht verwandte Tabellen hinweg würde unterschiedliche Bedeutungen zusammenführen; die Qualifizierung verbindet stattdessen jede Spalte mit ihrem umschließenden Konzept. Das Tabellenkonzept ist der Geschäftsname der Tabelle, normalisiert mit einem singularen Kopfnomen (`order_lines` → `order line`).
 
-Native-Filter-Pseudospalten (mit `_nf_`-Präfix, oder jede Spalte, die `native_filter_type` trägt) sind Abfrageparameter-Mechanik, keine Geschäftsfelder, und leiten keine Begriffe ab.
+Native-Filter-Pseudospalten (mit `_nf_`-Präfix, oder jede Spalte, die `native_filter_type` trägt) sind Abfrageparameter-Mechanik und leiten keine Begriffe ab.
 
 Da `id`, `key`, `pk` und `sk` alle vor der Proxy-Prüfung zu `identifier` expandieren, landen drei physisch unterschiedliche Spaltennamen auf exakt demselben Begriff:
 
@@ -1352,30 +1354,38 @@ Da `id`, `key`, `pk` und `sk` alle vor der Proxy-Prüfung zu `identifier` expand
 
 Die ersten drei fallen zu einem Begriff zusammen. `transaction amount` behält beide Token, weil `amount` kein Platzhalter ist. Eine bloße `id`-Spalte ohne vorangehende Token lässt sich nicht kürzen; sie wird zu `identifier` normalisiert, damit der Begriff nicht leer ist.
 
+Schlüsselspalten erhalten keinen normalisierten Begriff. Jede Spalte eines Primärschlüssels legt ihre Referenz auf den Klassen-Begriff ihrer Tabelle, und jede Spalte eines deklarierten Fremdschlüssels legt ihre Referenz auf die Klasse der Zieltabelle, wie auch immer sie heißt. Eine Tabelle mit Schlüssel ohne Klasse schlägt eine Klasse im Entwurf vor, benannt nach ihrem Konzept. Siehe [Ontologie](ontology.md#classes-properties-and-concepts) für die Rollen und dafür, wie Schlüssel platziert werden.
+
 ### Lebenszyklus {: #lifecycle }
 
-Begriffe werden **aus der Zugehörigkeit zur semantischen Schicht abgeleitet**; Benutzer legen sie nicht nach Bedarf an. Das Tabellen-Repository ist der einzige Schreibweg: `sync_table_refs` läuft in jedem Upsert eines Spaltensatzes, und `sweep_refless_terms` läuft nach jedem Löschpfad.
+Begriffe werden **aus der Zugehörigkeit zur semantischen Schicht abgeleitet**. Das Tabellen-Repository ist der einzige Schreibweg: Es gleicht bei jedem Speichern die Spalten einer Tabelle ab und erledigt die Begriffe, die eine Löschung ohne Referenzen zurücklässt.
 
-**Wenn eine Spalte hinzugefügt wird:** Provisa sucht den normalisierten Begriff nach Name. Existiert er bereits, erhält die Spalte eine Referenz darauf (und wurde der Begriff als veraltet markiert, wird er wiederbelebt, und `deprecated` wird zurück auf `False` gesetzt). Existiert noch kein Begriff, wird einer erstellt.
+**Wenn eine Spalte hinzugefügt wird:** Provisa sucht ihren Begriff nach Name. Existiert der Begriff, erhält die Spalte eine Referenz darauf, und ein Begriff, der durch den Verlust seiner letzten Spalte veraltet war, wird wiederbelebt. Existiert noch kein Begriff, wird einer im Entwurf erstellt.
 
-**Wenn eine Spalte wegfällt** (Schemaänderung oder Entfernen einer Tabelle), wird ihre Referenz gelöscht und der Begriff nach einer Regel „entfernen oder als veraltet markieren“ **erledigt**. Ein verwurzelter Begriff ohne verbleibende Referenzen wird samt Kanten und Expertenzuordnungen gleich entfernt, außer das Entfernen ließe einen abstrakten Begriff ohne Pfad durch den Begriffsgraphen zu einem verwurzelten Begriff zurück. Dann wird der Begriff **als veraltet markiert** (`deprecated=True`) statt gelöscht, sodass der abstrakte Begriff seinen Anker im Graphen behält.
+**Wenn eine Spalte wegfällt** (Schemaänderung oder Entfernen einer Tabelle), wird ihre Referenz gelöscht und der Begriff **erledigt**. Ein nicht kuratierter Begriff ohne verbleibende Referenzen wird samt seinen Kanten entfernt. Ein kuratierter Begriff (einer mit Definition, Kante, Experte, Tag oder Außerdienststellung) wird als veraltet markiert und behalten, ebenso jeder Begriff, dessen Entfernen ein Konzept ohne Pfad zu Daten zurückließe.
 
-Abstrakte Begriffe werden nie automatisch entfernt; sie existieren außerhalb des physischen Lebenszyklus und werden nur explizit über die Admin-API gelöscht.
-
-**Wiederbelebung:** Erscheint der normalisierte Name eines als veraltet markierten Begriffs erneut (eine Spalte wird neu registriert), wird die Markierung entfernt, und seine Referenzen sammeln sich wieder an.
+Jeder Begriff hat einen Status: `draft`, `live`, `deprecated` oder `retired`. Die Liste, das Detail und die Meta-Ansicht führen ihn. Ein Kurator ändert ihn nur über die unten beschriebenen Statusaktionen; ein `PATCH`, der einen Status setzt, wird abgelehnt. Siehe [Ontologie](ontology.md#status) für die Bedeutung jedes Status.
 
 ### Kuratierungs-Endpunkte {: #curation-endpoints }
 
-Alle Endpunkte liegen unter `/admin/glossary`. Sie erfordern `org_admin`-Zugriff und eine konfigurierte Org. Jede Mutation löst eine Metadaten-Veröffentlichung aus.
+Alle Endpunkte liegen unter `/admin/glossary` und brauchen eine konfigurierte Org. Lesen erfordert das Recht `glossary_read`, jede Änderung `glossary_rw`, innerhalb der Domänen, die der Aufrufer erreichen darf. Jede Änderung löst eine Metadaten-Veröffentlichung aus.
 
 | Methode | Pfad | Beschreibung |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | Begriffe auflisten. Query-Parameter: `q` (Name-/Definitionssuche), `include_deprecated` (Standard `true`) |
-| `GET` | `/admin/glossary/terms/{term_id}` | Begriffsdetail abrufen: Definition, physische Referenzen, typisierte Kanten, Experten |
-| `POST` | `/admin/glossary/terms` | Einen abstrakten Begriff erstellen — Benutzervokabular ohne physische Referenzen |
-| `PATCH` | `/admin/glossary/terms/{term_id}` | Umbenennen, Definition setzen oder Exportausschluss umschalten |
-| `DELETE` | `/admin/glossary/terms/{term_id}` | Einen Begriff ohne physische Referenzen löschen |
-| `POST` | `/admin/glossary/refs/move` | Eine physische Referenz zu einem anderen Begriff verschieben (Konsolidierung) |
+| `GET` | `/admin/glossary/terms` | Begriffe auflisten, jeder mit seinem `status` und der Anzahl `findings`. Query-Parameter: `q` (Name-/Definitionssuche), `include_deprecated` (Standard `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | Begriffsdetail abrufen: Definition, Status, physische Referenzen, typisierte Kanten, Experten, Tags |
+| `POST` | `/admin/glossary/terms` | Ein Konzept erstellen, einen Begriff ohne Spalten oder Tabellen |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | Umbenennen, die Definition setzen, die Domänen eines Konzepts setzen oder den Exportausschluss umschalten |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | Einen Begriff löschen, der keine Spalten hält |
+| `POST` | `/admin/glossary/refs/move` | Die Referenz einer Spalte zu einem anderen Begriff verschieben |
+| `GET` | `/admin/glossary/terms/{term_id}/tables` | Die Tabellen auflisten, in denen eine Klasse verankert ist |
+| `POST` | `/admin/glossary/terms/{term_id}/tables` | Eine Tabelle im Begriff verankern, der damit zur Klasse der Tabelle wird |
+| `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | Die Verankerung einer Tabelle lösen; ihre Schlüssel kehren zu ihrer vorgeschlagenen Klasse zurück |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | Einen aktiven Begriff als veraltet markieren |
+| `POST` | `/admin/glossary/terms/{term_id}/retire` | Einen Begriff außer Dienst stellen und seine Spalten oder Tabellen auf einen Nachfolger verschieben |
+| `POST` | `/admin/glossary/terms/{term_id}/restore` | Eine Außerdienststellung oder die Veraltet-Markierung eines Kurators aufheben |
+| `GET` | `/admin/glossary/terms/{term_id}/applied-history` | Die Spalten und Tabellen eines außer Dienst gestellten Begriffs zum Stand des Commits vor seiner Außerdienststellung |
+| `GET` | `/admin/glossary/findings` | Jeder Begriff mit Befunden, samt seinen Befunden |
 | `POST` | `/admin/glossary/terms/{term_id}/edges` | Eine typisierte Beziehungskante zwischen zwei Begriffen hinzufügen |
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Eine Kante entfernen (Query-Parameter: `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | Einen Benutzer als Experte oder Autor für einen Begriff kennzeichnen |
@@ -1383,6 +1393,8 @@ Alle Endpunkte liegen unter `/admin/glossary`. Sie erfordern `org_admin`-Zugriff
 | `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Einen Definitionsentwurf für einen Begriff mit dem KI-Modell der Org erstellen — gibt nur Text zurück, nichts wird persistiert, bis gespeichert wird |
 | `POST` | `/admin/glossary/definitions/generate` | Definitionen für jeden Begriff ohne eine solche generieren und persistieren — überschreibt nie von Menschen verfassten Text |
 | `POST` | `/admin/glossary/relationships/generate` | Typisierte Kanten über das gesamte Glossar hinweg mit dem KI-Modell der Org vorschlagen und persistieren |
+
+Die Rolle eines Begriffs wird daraus abgeleitet, worin er verankert ist, und nie gesetzt. Ein `PATCH` oder Erstellen, das `is_abstract` setzt, wird abgelehnt (`glossary.abstract_is_derived`).
 
 **Body für `POST /admin/glossary/terms`:**
 
@@ -1396,7 +1408,7 @@ Alle Endpunkte liegen unter `/admin/glossary`. Sie erfordern `org_admin`-Zugriff
 {"to_term_id": 42, "rel_type": "KIND_OF"}
 ```
 
-Gültige `rel_type`-Werte: `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`.
+Gültige `rel_type`-Werte: `KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`.
 
 **Body für `POST /admin/glossary/terms/{term_id}/experts`:**
 
@@ -1412,9 +1424,56 @@ Gültige `kind`-Werte: `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Das Verschieben einer Referenz erledigt den Begriff, der sie verliert, nach der Regel „entfernen oder als veraltet markieren“. Nutzen Sie das, um zwei Begriffe zusammenzuführen, die die Normalisierung getrennt gehalten hat, etwa wenn eine Quelle eine unübliche Abkürzung verwendet, die die Erweiterungstabelle nicht abdeckt.
+Das Verschieben einer Referenz erledigt den Begriff, der sie verliert. Nutzen Sie das, um zwei Begriffe zusammenzuführen, die die Normalisierung getrennt gehalten hat, etwa wenn eine Quelle eine unübliche Abkürzung verwendet, die die Erweiterungstabelle nicht abdeckt.
 
-Das Löschen eines verwurzelten Begriffs (mit physischen Referenzen) gibt `400 glossary.invalid` zurück. Entfernen oder verschieben Sie zuerst alle Referenzen.
+Ein Verschieben in eine Klasse wird abgelehnt (`glossary.term_is_class`), ebenso das Verschieben einer Schlüsselspalte, egal wohin (`glossary.key_column_derived`, mit Angabe der Spalte, ihrer Tabelle und ihrer Klasse).
+
+Würde das Verschieben der Spalte `pii` entziehen, wird es mit `409 tag.move_loses` abgelehnt, mit jeder Spalte und den Tags, die sie verliert (`loses`) und gewinnt (`gains`). Senden Sie das Verschieben erneut, mit `confirm_tag_loss`, das jeden verlorenen Tag nennt, oder mit `carry_tags: true`, um die verlorenen Tags auf den Begriff zu setzen, zu dem die Spalte wechselt:
+
+```json
+{"table_id": 7, "column_name": "email", "to_term_id": 12, "confirm_tag_loss": ["pii"]}
+```
+
+Außerdienststellung sowie das Speichern oder Löschen einer Beziehung, das Schlüsselreferenzen umsiedelt, nehmen dieselben zwei Felder.
+
+Das Löschen eines Begriffs, der noch Spalten hält, gibt `400 glossary.invalid` zurück und nennt die Tabellen. Stellen Sie ihn zuerst außer Dienst oder verschieben Sie seine Spalten. Das Löschen einer Klasse löst zuerst die Verankerung ihrer Tabellen, sodass deren Schlüssel zu ihren vorgeschlagenen Klassen zurückkehren.
+
+**`POST /admin/glossary/terms/{term_id}/deprecate`-Body:**
+
+```json
+{"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
+```
+
+`reason` ist Pflicht. `retire_on` ist optional und darf nicht in der Vergangenheit liegen; an diesem Datum stellt der Scheduler der Org den Begriff außer Dienst. Nur ein aktiver Begriff kann als veraltet markiert werden.
+
+**`POST /admin/glossary/terms/{term_id}/retire`-Body:**
+
+```json
+{"reason": "Merged into customer", "successor": 12}
+```
+
+`successor` ist Pflicht, wenn der Begriff Spalten oder Tabellen hält. Der Nachfolger einer Eigenschaft muss eine Eigenschaft oder ein Konzept sein, der einer Klasse eine Klasse oder ein Konzept. Die Spalten des Begriffs, oder seine Tabellen samt ihren Schlüsseln, gehen an den Nachfolger, der eine `REPLACES`-Kante zum außer Dienst gestellten Begriff erhält. Die Antwort listet die Tag-Änderungen jeder verschobenen Spalte. Jede Ablehnung ist ein `400`, der die Regel nennt: `glossary.reason_required`, `glossary.successor_required`, `glossary.successor_is_self`, `glossary.successor_retired` oder `glossary.successor_role`.
+
+**`GET /admin/glossary/findings`-Antwort:**
+
+```json
+[
+  {
+    "term_id": 3,
+    "term": "customer",
+    "findings": [
+      {
+        "kind": "unlinked_tables",
+        "code": "glossary.finding.unlinked_tables",
+        "message": "the class is grounded in tables that same-entity relationships do not all join",
+        "params": {"tables": "pg.public.customers, crm.public.contacts"}
+      }
+    ]
+  }
+]
+```
+
+Die Arten sind `unlinked_tables`, `class_and_attribute`, `tag_wrong_kind`, `retirement_blocked` und `no_data`. Ein Begriff ohne Befunde wird ausgelassen, und ein gewöhnlicher Entwurf ist kein Befund. Der Endpunkt meldet nur und ändert nichts.
 
 **`PATCH /admin/glossary/terms/{term_id}` — Feld `export_excluded`:**
 
@@ -1422,11 +1481,11 @@ Das Löschen eines verwurzelten Begriffs (mit physischen Referenzen) gibt `400 g
 {"export_excluded": true}
 ```
 
-Das Setzen von `export_excluded` auf `true` hält den Begriff von allen Metadaten-Export-Snapshots zurück, unabhängig von seinen physischen Referenzen oder seinem abstrakten Status. Das Zurücksetzen auf `false` stellt den Begriff bei der nächsten Veröffentlichung wieder im Snapshot her. Kuratierungsdaten (Definition, Kanten, Experten) sind davon unberührt.
+Das Setzen von `export_excluded` auf `true` hält den Begriff von allen Metadaten-Export-Snapshots zurück, unabhängig von seinen Referenzen oder seiner Rolle. Das Zurücksetzen auf `false` stellt den Begriff bei der nächsten Veröffentlichung wieder im Snapshot her. Kuratierungsdaten (Definition, Kanten, Experten) sind davon unberührt.
 
 ### KI-unterstützte Kuratierung {: #ai-assisted-curation }
 
-Das konfigurierte KI-Modell der Org kann Definitionen entwerfen und in einer einzigen Operation Beziehungskanten über das gesamte Glossar hinweg vorschlagen. Beide Batch-Aktionen erfordern `org_admin`-Zugriff und eine konfigurierte Org.
+Das konfigurierte KI-Modell der Org kann Definitionen entwerfen und in einer einzigen Operation Beziehungskanten über das gesamte Glossar hinweg vorschlagen. Beide Batch-Aktionen erfordern das Recht `glossary_rw` und eine konfigurierte Org.
 
 **`POST /admin/glossary/definitions/generate`**
 
@@ -1492,10 +1551,11 @@ Der Begriffsgraph des Glossars ist in jedem von `build_snapshot` erstellten `Met
 
 Der Export wendet dieselben Filter wie der Rest des Snapshots an:
 
-- Ein als `export_excluded` markierter Begriff wird vollständig zurückgehalten, unabhängig von seinen physischen Referenzen, seinem abstrakten Status oder ob der Katalog der Org konfiguriert ist.
-- Ein verwurzelter Begriff wird nur veröffentlicht, wenn mindestens eine seiner physischen Referenzen zu einer Spalte gehört, die sowohl den **Data-Product**-Filter (das `data_product`-Flag der Tabelle muss `true` sein) als auch den technischen Spaltenfilter (Spalten mit dem Tag `technical` werden zurückgehalten) besteht.
-- Ein verwurzelter Begriff, dessen Referenzen alle durch diese Filter zurückgehalten werden, wird mit ihnen zurückgehalten.
-- Abstrakte Begriffe werden bedingungslos veröffentlicht: sie sind Benutzervokabular, nicht an physische Spalten gebunden.
+- Nur aktive Begriffe werden veröffentlicht: in Gebrauch, definiert und mit einem Begriff verbunden, dessen Spalte oder Tabelle veröffentlicht wird.
+- Eine Spalte wird veröffentlicht, wenn sie sowohl den **Data-Product**-Filter (das `data_product`-Flag der Tabelle muss `true` sein) als auch den **technischen** Spaltenfilter (Spalten mit dem Tag `technical` werden zurückgehalten) besteht. Ein Begriff, dessen Referenzen alle so zurückgehalten werden, gilt für den Export nicht als verankert.
+- Ein Konzept wird veröffentlicht, wenn es über den Beziehungsgraphen einen veröffentlichten Begriff erreicht.
+- Ein als `export_excluded` markierter Begriff wird vollständig zurückgehalten.
+- Ein veralteter Begriff wird mit seinem `status`, `status_reason` und `retire_on` veröffentlicht, damit jeder Katalog ihn seiner eigenen Veraltet-Markierung zuordnen kann.
 - Eine Kante zwischen zwei Begriffen wird nur veröffentlicht, wenn beide Endpunkt-Begriffe veröffentlicht werden.
 
 Jeder Anbieter-Adapter veröffentlicht den Begriffsgraphen nativ, in einen Glossar-Container, der Provisa gehört und den es idempotent anlegt, nie in ein bestehendes Katalogglossar:

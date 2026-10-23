@@ -259,7 +259,7 @@
       "table_not_found": "找不到資料表 {{table_id}}"
     },
     "replication": {
-      "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：{{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
+      "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
       "no_whole_copy": "來源 {{source}} 的資料表 {{schema}}.{{table}} 沒有可建置的完整複本：它按列複製，或者帶有參數欄。",
       "page_limit_reached": "未建置 {{table}} 的複本：其端點的分頁在 max_pages={{max_pages}} 處停止，而端點在第 {{max_pages}} 頁之後仍有資料（已讀取 {{rows}} 列）。複本是整張資料表，因此不會在上限處截斷。請提高端點的 max_pages 或頁面大小。",
       "row_limit_reached": "未建置 {{table}} 的複本：其讀取在 max_rows={{max_rows}}（graphql_remote.max_rows）處停止，而遠端在 {{rows}} 列之後仍有資料。複本是整張資料表，因此不會在上限處截斷。請提高 graphql_remote.max_rows。",
@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "結果在 {{limit}} 行處被截斷，這是適用於此次讀取的行數限制（{{kind}}）：符合的行多於傳回的行。",
       "rows_cut_unchecked": "結果有 {{limit}} 行，即適用於此次讀取的行數限制（{{kind}}）。無法檢查是否還有更多符合的行：{{reason}}",
-      "approximate_index": "最相似的行是透過近似向量索引找到的：可能缺少一行比最後傳回的行稍微更相似的行。"
+      "approximate_index": "最相似的行是透過近似向量索引找到的：可能缺少一行比最後傳回的行稍微更相似的行。",
+      "path_cut": "一條沒有上限的路徑在圖深度上限 {{limit}} 跳處被截斷：更長的路徑未包含在結果中。"
     },
     "wikipedia": {
       "no_pages": "至少指定一個起始頁面",

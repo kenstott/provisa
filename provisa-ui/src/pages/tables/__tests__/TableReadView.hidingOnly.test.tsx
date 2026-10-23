@@ -479,3 +479,32 @@ describe("TableReadView — Query shows every stored setting", () => {
     for (const text of ["revenue", "region", "year = 2026"]) expect(query).toHaveTextContent(text);
   });
 });
+
+// A graph's column links to its row: the Columns section opens on the table, the column's row
+// marked and scrolled to.
+describe("TableReadView opened on a column", () => {
+  it("marks the named column's row and scrolls it into view", () => {
+    const column = (name: string) =>
+      ({
+        id: name.length,
+        columnName: name,
+        visibleTo: [],
+        masks: [],
+        scope: "domain",
+      }) as unknown as RegisteredTable["columns"][number];
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    renderView(false, makeTable({ id: 7, columns: [column("id"), column("email")] }), {
+      // The page holds the section: a link sets it to Columns.
+      section: "columns",
+      onSectionChange: vi.fn(),
+      column: "email",
+    });
+    const row = screen.getByTestId("table-read-column-email");
+    expect(row).toHaveAttribute("data-linked", "true");
+    expect(row).toHaveClass("row-selected");
+    expect(screen.getByTestId("table-read-column-id")).not.toHaveAttribute("data-linked");
+    expect(scrolled).toHaveBeenCalledWith({ block: "center" });
+    expect(scrolled.mock.contexts[0]).toBe(row);
+  });
+});

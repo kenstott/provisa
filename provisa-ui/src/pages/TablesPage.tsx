@@ -167,8 +167,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [seededTable, setSeededTable] = useState<string | null>(null);
   if (tableParam !== seededTable) {
     setSeededTable(tableParam);
-    if (tableParam !== null) setExpanded(Number(tableParam));
+    if (tableParam !== null) {
+      setExpanded(Number(tableParam));
+      // A graph's column link names the Columns section too (lib/entityHref).
+      const named = searchParams.get("section");
+      if (named && (TABLE_SECTIONS as string[]).includes(named)) setSection(named as TableSection);
+    }
   }
+  // `?column=<name>` with `?table=`: that column's row is marked and brought into view.
+  const columnParam = searchParams.get("column");
   // `?open=<source>.<table>` opens that table's detail panel by its name -- a demo tour's step
   // names a table so, whatever id the org gave it -- on `section` and, in Columns, `tab`.
   const openParam = searchParams.get("open");
@@ -899,6 +906,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             section={section}
             onSectionChange={setSection}
             columnTab={linkedColumnTab}
+            column={
+              tableParam !== null && Number(tableParam) === t.id
+                ? (columnParam ?? undefined)
+                : undefined
+            }
             profileColumnsTable={
               // REQ-1934: this table's profile, if its columns table is registered.
               tables.find(
@@ -1365,7 +1377,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               return (
                 <Group gap="sm" justify="flex-end" py="sm">
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.firstPage")}
                     onClick={() => setPage(0)}
                     disabled={page === 0}
@@ -1373,7 +1385,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     «
                   </ActionIcon>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.prevPage")}
                     onClick={() => setPage((p) => p - 1)}
                     disabled={page === 0}
@@ -1384,7 +1396,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     {translate("tablesPage.pageOf", { page: page + 1, totalPages })}
                   </Text>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.nextPage")}
                     onClick={() => setPage((p) => p + 1)}
                     disabled={page >= totalPages - 1}
@@ -1392,7 +1404,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     ›
                   </ActionIcon>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.lastPage")}
                     onClick={() => setPage(totalPages - 1)}
                     disabled={page >= totalPages - 1}

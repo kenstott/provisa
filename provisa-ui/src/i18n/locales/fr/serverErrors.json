@@ -259,7 +259,7 @@
       "table_not_found": "Table {{table_id}} introuvable"
     },
     "replication": {
-      "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
+      "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
       "no_whole_copy": "La table {{schema}}.{{table}} de la source {{source}} n'a pas de copie complète à construire : elle est répliquée ligne par ligne ou comporte une colonne de paramètre.",
       "page_limit_reached": "La réplique de {{table}} n'a pas été construite : la pagination de son point de terminaison s'arrête à max_pages={{max_pages}}, et le point de terminaison avait encore des données après la page {{max_pages}} ({{rows}} lignes lues). Une réplique est la table entière ; elle n'est donc pas tronquée à la limite. Augmentez max_pages ou la taille de page du point de terminaison.",
       "row_limit_reached": "La réplique de {{table}} n'a pas été construite : une lecture s'arrête à max_rows={{max_rows}} (graphql_remote.max_rows), et le service distant avait encore des données après {{rows}} lignes. Une réplique est la table entière ; elle n'est donc pas tronquée à la limite. Augmentez graphql_remote.max_rows.",
@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "La réponse a été coupée à {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}) : plus de lignes correspondent que celles renvoyées.",
       "rows_cut_unchecked": "La réponse compte {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}). Impossible de vérifier si d'autres lignes correspondent : {{reason}}",
-      "approximate_index": "Les lignes les plus similaires ont été trouvées au moyen d'un index vectoriel approximatif : une ligne légèrement plus similaire que la dernière renvoyée peut manquer."
+      "approximate_index": "Les lignes les plus similaires ont été trouvées au moyen d'un index vectoriel approximatif : une ligne légèrement plus similaire que la dernière renvoyée peut manquer.",
+      "path_cut": "Un chemin sans borne supérieure a été coupé à la limite de profondeur du graphe de {{limit}} sauts : les chemins plus longs manquent dans la réponse."
     },
     "wikipedia": {
       "no_pages": "Indiquez au moins une page de départ",

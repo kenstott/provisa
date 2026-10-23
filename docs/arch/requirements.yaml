@@ -26736,7 +26736,7 @@
     optimization stage, never the pre-optimization governed SQL. Consequence: when hot-CTE inlining collapses
     a federated (multi-source) query to a single remaining live source, routing observes one source and
     selects DIRECT execution instead of Trino federation; the VALUES CTEs are then lowered in the chosen
-    route''s dialect (source dialect for direct pushdown, Trino for federated).'
+    route''s dialect (source dialect for direct pushdown, Trino for federated). (Amended 2026-10-23, ONE CANONICAL SHAPE) The stages are CQL | GQL | SQL -> semantic SQL -> governed SQL -> optimized SQL -> plan/route -> native. SEMANTIC SQL: a read compiles to one canonical CTE pipeline, the same for every engine and built from the declared relationships alone. A root CTE reads the root with its where, order, limit and offset. Each to-many level is a CTE that joins its target to its parent''s CTE on the relationship''s keys, applies its where, takes its per-parent order, limit and offset with ROW_NUMBER() OVER (PARTITION BY the parent key ORDER BY ...), the target''s key appended to break ties, and groups by the parent key into JSON_AGG(json_object(...) ORDER BY ...). A level''s parent key is the parent table''s primary key; where it has none, the relationship''s source columns where they are unique; otherwise the parent CTE''s row number, which the parent CTE carries for it. A to-one relationship is a LEFT JOIN on its keys, inside the level''s CTE when nested. The final SELECT reads the root CTE and LEFT JOINs each level''s CTE on the parent key, a missing level being an empty list. A relationship condition in a where is EXISTS, or a semi-join against a CTE where that is the natural form. A junction relationship is read through its two key joins and its type condition. A nested column is named by its response path. distinct_on is DISTINCT ON. Equivalent GraphQL, Cypher and SPARQL reads compile to the same canonical semantic SQL; the Cypher that Open as query exports, run back through the Cypher front end, yields the same semantic SQL as the GraphQL it was exported from. The Cypher translator''s own shapes (a CTE per WITH stage) are aligned to this form as follow-on work. GOVERNED SQL: governance operates on the semantic SQL whole. Every CTE body is governed as every SELECT is, so each level''s RLS and masks apply at its own depth, and a level''s projection is governed as a non-final read: REQ-1961''s final-projection rule applies to the final SELECT alone, which never exposes a level''s parent key or row number. [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- the optimized stage runs before routing and cannot know the engine. Kept here for history; do not implement against it.] OPTIMIZED SQL: materialized-view re-injection, hot VALUES inlining, CTE materialization hints, and a per-parent LATERAL join only where it is a performance choice for the route. [END SUPERSEDED BLOCK] PLAN/ROUTE: engine routing, including a statement sent to the engine for a function or form its source cannot compute (engine-only functions, window functions). NATIVE: the dialect lowering -- the JSON aggregate and object function spellings, the empty list (CAST(''[]'' AS JSON) and its engine forms), DISTINCT ON as ROW_NUMBER() where the dialect has none, and the DuckDB list functions. The compiler''s earlier forms move as follows: the per-parent LEFT JOIN LATERAL for a nested field with arguments and the root guard subquery under it become the semantic CTE levels [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- LATERAL is a native lowering. Kept here for history; do not implement against it.] (LATERAL kept only as an optimized-stage choice) [END SUPERSEDED BLOCK]; the DISTINCT ON versus ROW_NUMBER choice by source type moves to native; the COALESCE to an empty JSON list moves to native; a to-one read as a LIMIT 1 JSON subquery inside a level becomes a LEFT JOIN inside the level; the flat rows view is its own emitter from the same walk; the Trino correlated-subquery decorrelation is no longer needed for GraphQL reads, and stays in native for SQL a caller writes. A corpus of GraphQL reads (end-to-end specs, demo tours, the Ontology view at every scope) checks both that each answer is the same before and after, on DuckDB, PostgreSQL and Trino, and that its GraphQL and its exported Cypher compile to the same semantic SQL. (Amended 2026-10-23, OPTIMIZED IS ENGINE-INDEPENDENT) No stage before routing may assume an engine. The optimized stage runs before routing and holds engine-independent rewrites only: materialized-view re-injection, hot VALUES inlining, predicate and limit pushdown, and pruning the levels and columns a read does not use. CTE materialization hints (such as PostgreSQL''s MATERIALIZED) and a per-parent LATERAL join chosen for performance are native lowerings for the routed engine. An optimization that pays off only on some engines is a native lowering for those engines.'
   use_case: 'Direct single-source execution is materially faster than Trino federation. Today the route
     is decided on the governed SQL BEFORE hot-CTE inlining runs (inlining is nested inside the Route.TRINO
     branch), so a query whose second source is fully inlined still executes federated. Correct phase ordering
@@ -74803,6 +74803,7 @@
   - tests/unit/federation/test_replica_builds.py
   - tests/integration/test_replica_build_locks_pg.py
   - tests/unit/test_query_residency.py
+  - tests/unit/test_pg_foreign_table_import_race.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
   docs:
   - arch/vectors.md
@@ -87315,7 +87316,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     REST profile-runs route, where governance.safe_run applies the profiled table's column rules.
     Their read moves to GraphQL, and they gain the control, only once that governance is expressed as
     the result tables' own column rules, never by loosening it. While a search focus (a neighbourhood
-    traversal) is set, the GraphQL target is disabled; Cypher and SQL carry the focus.
+    traversal) is set, the GraphQL target is disabled; Cypher and SQL carry the focus. (Amended 2026-10-24, AN EXPORT IS EXACT OR REFUSED) A GraphQL read exports to Cypher only where an exact Cypher form exists; otherwise the export is refused, naming the construct with no Cypher form, never a near answer. A to-many field's own order, offset and limit are each parent's: the export reads them per parent in a CALL that orders and cuts that parent's rows (a parent with none keeps one row of nulls). Refused, as the first list of boundaries: a to-many field's condition beside its relationship; its distinct_on; an ordering by anything but a column; nulls placed otherwise than Cypher places them (last ascending, first descending); an offset or limit that is no literal.
   use_case: >-
     A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog
     tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope
@@ -87419,6 +87420,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2141
   status: proposed
+  docs:
+  - admin-graphql.md
+  - api-reference.md
+  - ontology.md
   since: 2026-10
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -87489,6 +87494,45 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1387
   - REQ-1584
   - REQ-1591
+  target: "2027-Q1"
+- id: REQ-2140
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The named demo "groupexposure" joins company data to public linked data by an identifier both
+    share. A Prague bank's own database, read live, holds its corporate loans and records the
+    company that owns each borrower by its Legal Entity Identifier (LEI). The bank, its borrowers
+    and its loans are fictional; the owners and their groups are real, so no real company is shown
+    breaching a limit. A sparql source (REQ-1683) on Wikidata's public query service finds each owner
+    by its LEI (P1278) and the group at the top of its chain of parent organizations (P749, one
+    property path). The question is one neither side answers alone: which corporate groups is the
+    bank over its large-exposure limit to (25% of Tier 1, EU CRR Article 395) once each borrower is
+    counted with the group that owns it? No borrower alone is near the limit; two groups are over it,
+    and a joint venture with two owning groups counts in both. The tour and the card say the bank and
+    its borrowers are fictional. The Wikidata tables are landed when the bundle is built (cache_ttl
+    -1, replicate 0, as govdata's are), so the sandbox never calls the public endpoint, and every
+    call names Provisa in its User-Agent, as Wikidata's policy asks. Its tour follows the settled demo
+    shape: the scenario, how the pieces fit, then the solution in SQL, GraphQL and REST; its
+    integration test captures the card's data.
+  use_case: >-
+    A risk or data buyer sees their own records joined to a public knowledge graph by an identifier
+    they already hold, and an answer appear that neither source gives alone.
+  scenario: |-
+    Given the groupexposure demo started from its bundle
+    When a visitor walks its tour to the end
+    Then no single borrower is over the large-exposure limit, the Veolia and Vinci groups are over it,
+    the joint venture counts in both of its groups, every predesigned query answers rows joining the
+    bank's facilities to Wikidata's groups, and no request leaves the demo for Wikidata
+  relates_to:
+  - REQ-1683
+  - REQ-2138
+  - REQ-2031
+  - REQ-2042
   target: "2027-Q1"
 - id: REQ-2142
   status: complete
@@ -87592,6 +87636,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2144
   status: complete
+  docs:
+  - api-reference.md
+  - ontology.md
   since: "2026-10"
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -87643,6 +87690,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And "note" is retired, keeps its definition, and is offered nowhere
 - id: REQ-2145
   status: in-progress
+  docs:
+  - admin-graphql.md
+  - api-reference.md
+  - ontology.md
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Governance
@@ -87716,6 +87767,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2146
   status: complete
+  docs:
+  - api-reference.md
+  - ontology.md
   since: "2026-10"
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology

@@ -10,6 +10,17 @@
     "apply": "החלה",
     "cancel": "ביטול",
     "editAssignment": "עריכת שיוך",
-    "plannedRemoval": "הסרה מתוכננת: {{date}}"
+    "plannedRemoval": "הסרה מתוכננת: {{date}}",
+    "piiViaTerm": "אותה משמעות כמו {{term}}",
+    "piiSetHere": "הוגדר כאן: {{reason}}",
+    "piiAlsoTerm_one": "לסמן גם את העמודה האחרת ({{count}}) שמשמעותה '{{term}}'?",
+    "piiAlsoTerm_other": "לסמן גם את {{count}} העמודות האחרות שמשמעותן '{{term}}'?",
+    "piiAlsoTermNone": "לסמן את '{{term}}', כך שכל עמודה שזו משמעותה תכוסה, גם עתידיות?",
+    "piiYes": "כן",
+    "piiJustThis": "רק זו",
+    "piiInherited": "עמודה זו היא PII כי משמעותה {{term}}.",
+    "piiUnmarkTerm": "בטל סימון של {{term}}",
+    "piiMoveColumn": "העבר עמודה…",
+    "piiOpenTerm": "פתח את '{{term}}'"
   }
 }

@@ -56,9 +56,9 @@
 .g3d-sw-term {
   background: var(--p3d-cool);
 }
-/* REQ-2130: a term's status is on its name alone (nodeLook's labelClass): live as is, proposed
+/* REQ-2130: a term's status is on its name alone (nodeLook's labelClass): live as is, draft
    italic, deprecated dimmed, retired dimmed and struck through. */
-.g3d-label-proposed {
+.g3d-label-draft {
   font-style: italic;
 }
 .g3d-label-deprecated {
@@ -69,7 +69,7 @@
   text-decoration: line-through;
 }
 /* REQ-2130: a class grounded in tables not all declared one entity, marked after its name. */
-.g3d-label-gap::after {
+.g3d-label-unlinked::after {
   content: " \26A0";
   color: var(--mantine-color-orange-5);
 }

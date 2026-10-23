@@ -26,6 +26,7 @@ import logging
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import source_to_catalog
+from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
 from provisa.security.rights import Capability, reaches_all_domains
@@ -436,7 +437,15 @@ async def _build_source_pools_and_enums(
                     # REQ-2100: a code source is no database another source can share.
                     else f"code:{src.id}"
                     if src.type.value in CODE_DIRECT_SOURCES
-                    else f"{resolved_host}:{src.port}/{src.database}"
+                    # REQ-863: one database under one login, never two logins' grants as one.
+                    else colocation_key(
+                        resolved_host,
+                        src.port,
+                        src.database,
+                        src.username,
+                        resolved_pw,
+                        {k: resolve_secrets(v) for k, v in src.federation_hints.items()},
+                    )
                 )
                 # Best-effort: an unreachable/misconfigured source must not abort startup —
                 # the engine-routed path still works. See startup_resilience.

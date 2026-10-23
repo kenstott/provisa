@@ -2071,3 +2071,41 @@ async def search_terms(
         if term is not None:
             out.append(term)
     return out
+
+
+async def vocabulary_refs(  # REQ-2135, REQ-2141
+    conn: "Connection",
+) -> tuple[dict[int, str], dict[tuple[int, str], list[str]]]:
+    """What the live terms ground, for SPARQL's vocabulary: each grounded table's class term by
+    table id, and the terms of each (table id, column) a term reference names, in name order. A
+    term no consuming surface may offer (the shared admission rule) grounds nothing here."""
+    live = await live_ids(conn)
+    names = {
+        r.id: r.name
+        for r in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+        if r.id in live
+    }
+    table_terms = {
+        r.table_id: names[r.term_id]
+        for r in (
+            await conn.execute_core(
+                select(glossary_term_table_refs.c.table_id, glossary_term_table_refs.c.term_id)
+            )
+        ).fetchall()
+        if r.term_id in names
+    }
+    column_terms: dict[tuple[int, str], list[str]] = {}
+    for r in (
+        await conn.execute_core(
+            select(
+                glossary_term_refs.c.table_id,
+                glossary_term_refs.c.column_name,
+                glossary_term_refs.c.term_id,
+            )
+        )
+    ).fetchall():
+        if r.term_id in names:
+            column_terms.setdefault((r.table_id, r.column_name), []).append(names[r.term_id])
+    return table_terms, {k: sorted(v) for k, v in column_terms.items()}

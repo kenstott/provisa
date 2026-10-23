@@ -20,12 +20,13 @@ into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlat
 
 from __future__ import annotations
 
-import re
+import copy
 from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
+from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr, Term
+from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -34,17 +35,36 @@ from provisa.gql.translator_helpers import (  # REQ-1586
 from provisa.gql.translator_helpers import via_column as _via_column  # REQ-1586
 
 if TYPE_CHECKING:
+    from provisa.gql.ir import CypherAST, PathPattern
     from provisa.gql.translator import _Translator
 
 
-# The single-hop pattern a pattern comprehension supports: (src)-[:REL]->(tgt[:Label]). Whitespace is
-# permissive because the clause parser re-joins tokens with spaces (e.g. ``( p ) - [ : REL ] -> ( c )``).
-_PC_RE = re.compile(
-    r"\(\s*([A-Za-z_]\w*)\s*(?::[A-Za-z_]\w*)?\s*\)"
-    r"\s*-\s*\[\s*(?::\s*([A-Za-z_]\w+))?\s*\]\s*->\s*"
-    r"\(\s*([A-Za-z_]\w*)\s*(?::\s*([A-Za-z_]\w+))?\s*\)",
-    re.IGNORECASE,
-)
+def _comprehension_hop(pattern: PathPattern) -> tuple[str, str | None, str, str | None] | None:
+    """``(source var, rel type, target var, target label)`` of the first hop of ``pattern`` a
+    pattern comprehension reads: ``(a[:L])-[[:T]]->(b[:L])``, both ends named, one label or none
+    each, the relationship unnamed, of one type or none, one hop to the right, and nothing inline."""
+    for i, rel in enumerate(pattern.rels):
+        src, tgt = pattern.nodes[i], pattern.nodes[i + 1]
+        if (
+            src.variable
+            and tgt.variable
+            and len(src.labels) <= 1
+            and len(tgt.labels) <= 1
+            and not src.properties
+            and not tgt.properties
+            and rel.variable is None
+            and len(rel.types) <= 1
+            and rel.direction == "right"
+            and not rel.variable_length
+            and not rel.properties
+        ):
+            return (
+                src.variable,
+                rel.types[0] if rel.types else None,
+                tgt.variable,
+                (tgt.labels[0] if tgt.labels else None),
+            )
+    return None
 
 
 # Graph-aware functions resolve against traversal state (var → id column, rel type, JSON shape, …).
@@ -87,7 +107,14 @@ class TranslatorExprContext:
 
     # -- symbol leaves ----------------------------------------------------- #
 
+    def resolve_term(self, node: Term) -> exp.Expression:
+        return self._t._term_sql(node)
+
     def resolve_variable(self, name: str) -> exp.Expression:
+        # REQ-2135: a variable a triple binds is the column of its term.
+        term = self._t._term_vars.get(name)
+        if term is not None:
+            return term.copy()
         # A CALL-subquery return var is qualified with its CROSS JOIN LATERAL alias; otherwise a bare
         # variable denotes its query-scope alias (CTE-sourced vars keep their mapped alias).
         lateral = self._t._call_var_to_lateral.get(name)
@@ -103,6 +130,9 @@ class TranslatorExprContext:
         # inside CTE ``alias`` — resolve to that qualified column. Returning the bare CTE table alias
         # instead makes the engine read the whole-row struct (rendered client-side as [object Object]).
         if meta is None and alias != name and name in self._t._cte_sources:
+            return _col(name, alias)
+        # An UNWIND variable is its UNNEST's column, not the alias's whole row (a struct).
+        if meta is None and alias in self._t._unwind_aliases:
             return _col(name, alias)
         return exp.column(alias)
 
@@ -195,6 +225,17 @@ class TranslatorExprContext:
             agg = self._agg_node(lname, args[0])
             if agg is not None:
                 return agg
+        if lname == "group_concat":
+            # REQ-2135: SPARQL's GROUP_CONCAT, each engine's own string aggregate over the values'
+            # text, the separator its second argument. Ordered by the text, since an engine
+            # (Trino's LISTAGG) requires an order, and so the string is the same each time.
+            if distinct:
+                raise CypherTranslateError("GROUP_CONCAT(DISTINCT ...) is not supported")
+            text = exp.Cast(this=args[0], to=exp.DataType.build("VARCHAR"))
+            return exp.GroupConcat(
+                this=exp.Order(this=text, expressions=[exp.Ordered(this=text.copy())]),
+                separator=args[1],
+            )
         # Build the raw call; Cypher→engine renames/casts are applied once, post-lowering, by the same
         # AST transform the old path uses (`_rewrite_cypher_fn_node`). DISTINCT is carried on aggregates.
         call = exp.Anonymous(this=name, expressions=args)
@@ -411,10 +452,12 @@ class TranslatorExprContext:
         # joined back to src — the same "embedded query addressed out as a subquery" shape.
         from provisa.gql.expr_visitor import ExprLowering
 
-        m = _PC_RE.search(node.pattern)
-        if m is None:
-            raise NotImplementedError(f"unsupported pattern comprehension: {node.pattern!r}")
-        src_var, rel_type, tgt_var, tgt_label = m.group(1), m.group(2), m.group(3), m.group(4)
+        hop = _comprehension_hop(node.pattern)
+        if hop is None:
+            raise NotImplementedError(
+                "unsupported pattern comprehension: a pattern of one hop, (a)-[:T]->(b), is read"
+            )
+        src_var, rel_type, tgt_var, tgt_label = hop
         t = self._t
         rel = t._lm.relationships.get(rel_type.upper()) if rel_type else None
         if rel is None and rel_type and rel_type not in t._lm.aliases:
@@ -435,12 +478,12 @@ class TranslatorExprContext:
                 rel = cands[0] if cands else None
         if rel is None:
             raise NotImplementedError(
-                f"unresolved relationship in pattern comprehension: {node.pattern!r}"
+                f"unresolved relationship in pattern comprehension: {src_var}-[{rel_type or ''}]->{tgt_var}"
             )
         tgt_nm = t._lm.nodes.get(rel.target_label)
         if tgt_nm is None:
             raise NotImplementedError(
-                f"unresolved target node in pattern comprehension: {node.pattern!r}"
+                f"unresolved target node in pattern comprehension: {src_var}-[{rel_type or ''}]->{tgt_var}"
             )
 
         # Lower the projection (and predicate) with the target var temporarily in scope.
@@ -490,20 +533,13 @@ class TranslatorExprContext:
 
     # -- recursion helper -------------------------------------------------- #
 
-    def _translate_embedded(self, body: str, kind: str) -> exp.Expression:
-        """Translate an embedded Cypher body against the correlated outer scope (same recursion the
-        text path used): parse, run a fresh ``_Translator`` seeded with the outer ``_var_table``,
-        merge parameters back, and return the inner SELECT as an AST."""
-        from provisa.cypher.parser import parse_cypher
+    def _translate_embedded(self, body: CypherAST, kind: str) -> exp.Expression:
+        """Translate an embedded statement against the correlated outer scope: a fresh
+        ``_Translator`` over its own copy, seeded with the outer ``_var_table``, parameters merged
+        back; returns the inner SELECT as an AST."""
         from provisa.gql.translator import _Translator
 
-        b = body.strip()
-        if kind in ("EXISTS", "COUNT") and "RETURN" not in b.upper():
-            b = b + " RETURN 1"
-        elif kind == "COLLECT" and "RETURN" not in b.upper():
-            b = b + " RETURN *"
-
-        inner_ast = parse_cypher(b)
+        inner_ast = copy.deepcopy(body)
         inner_tr = _Translator(inner_ast, self._t._lm, self._t._params)
         inner_tr._var_table.update(self._t._var_table)
         # A node a WITH carries is held in that WITH's rows, under its name there.

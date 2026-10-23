@@ -259,7 +259,7 @@
       "table_not_found": "Tabella {{table_id}} non trovata"
     },
     "replication": {
-      "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
+      "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: [{{content_type}}] {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
       "no_whole_copy": "La tabella {{schema}}.{{table}} della sorgente {{source}} non ha una copia completa da creare: è replicata riga per riga oppure ha una colonna parametro.",
       "page_limit_reached": "La replica di {{table}} non è stata creata: la paginazione del suo endpoint si ferma a max_pages={{max_pages}} e l'endpoint aveva altri dati dopo la pagina {{max_pages}} ({{rows}} righe lette). Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta max_pages o la dimensione di pagina dell'endpoint.",
       "row_limit_reached": "La replica di {{table}} non è stata creata: una lettura si ferma a max_rows={{max_rows}} (graphql_remote.max_rows) e il remoto aveva altri dati dopo {{rows}} righe. Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta graphql_remote.max_rows.",
@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "La risposta è stata troncata a {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}): corrispondono più righe di quelle restituite.",
       "rows_cut_unchecked": "La risposta ha {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}). Non è stato possibile verificare se corrispondono altre righe: {{reason}}",
-      "approximate_index": "Le righe più simili sono state trovate tramite un indice vettoriale approssimato: potrebbe mancare una riga leggermente più simile dell'ultima restituita."
+      "approximate_index": "Le righe più simili sono state trovate tramite un indice vettoriale approssimato: potrebbe mancare una riga leggermente più simile dell'ultima restituita.",
+      "path_cut": "Un percorso senza limite superiore è stato troncato al limite di profondità del grafo di {{limit}} salti: i percorsi più lunghi mancano dalla risposta."
     },
     "wikipedia": {
       "no_pages": "Indicare almeno una pagina di partenza",

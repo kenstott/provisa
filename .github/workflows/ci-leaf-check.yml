@@ -193,7 +193,7 @@ jobs:
           mkdocs --version
           python -c "import material, pymdownx; print('mkdocs-material and pymdown-extensions')"
 
-  # A round trip on a key of this run's own (key-suffix): the real cache is never touched.
+  # A round trip on a key of this run's own (key-prefix): the real cache is never touched.
   # One job, one round trip through the cache service: a key nobody saved misses; the jars are
   # saved under it; the local copies are removed; the same key then hits and brings them back.
   # It was two jobs (save, then a fresh runner restores). Run 38046755990 showed why it cannot
@@ -211,7 +211,7 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
-          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
       - name: A key nobody saved misses, and the pin names its jars
         env:
           HIT: ${{ steps.restore.outputs.cache-hit }}
@@ -229,7 +229,7 @@ jobs:
         with:
           phase: save
           cache-hit: ${{ steps.restore.outputs.cache-hit }}
-          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
       - name: Remove the local jars
         env:
           JARS: ${{ steps.restore.outputs.jars }}
@@ -240,7 +240,7 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
-          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
       - name: The saved key hits and every jar is back
         env:
           HIT: ${{ steps.again.outputs.cache-hit }}
@@ -254,7 +254,7 @@ jobs:
         with:
           phase: save
           cache-hit: ${{ steps.again.outputs.cache-hit }}
-          key-suffix: -leafcheck-${{ github.run_id }}-${{ github.run_attempt }}
+          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
 
   release-metadata:
     name: action / release-metadata

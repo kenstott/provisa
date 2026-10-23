@@ -638,7 +638,9 @@ class TestScheduledTasks:
         )
         result = data["data"]["createScheduledTask"]
         assert result["success"] is False
-        assert result["message"] == "id, name, and cron are required"
+        assert (
+            result["message"] == "id, name, and a cron schedule or a table to fire on are required"
+        )
 
     async def test_create_scheduled_task_webhook_missing_name(self, client):
         data = await _gql(

@@ -18,10 +18,19 @@ import type { GraphData } from "../graphModel";
 import { DATA } from "./fixture";
 
 type Calls = Record<string, ReturnType<typeof vi.fn>>;
-const made = vi.hoisted(() => ({ scenes: [] as Calls[] }));
+// Each scene's calls, and what it reports to the view (a node picked on the canvas).
+const made = vi.hoisted(() => ({
+  scenes: [] as Calls[],
+  callbacks: [] as { onSelect: (h: { kind: string; id: string }) => void }[],
+}));
 vi.mock("../graphScene", () => ({
   GraphScene: class {
-    constructor() {
+    constructor(
+      _canvas: unknown,
+      _labels: unknown,
+      callbacks: { onSelect: (h: { kind: string; id: string }) => void },
+    ) {
+      made.callbacks.push(callbacks);
       const calls: Calls = {};
       for (const m of [
         "setTheme",
@@ -92,6 +101,7 @@ const kinds = (g: GraphData) => [...new Set(g.edges.map((e) => e.kind))].sort();
 
 beforeEach(() => {
   made.scenes.length = 0;
+  made.callbacks.length = 0;
   observed.fire.length = 0;
   reads.calls.length = 0;
   reads.data = DATA;
@@ -165,6 +175,25 @@ describe("the Knowledge Graph panel", () => {
     expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("customer_360");
   });
 
+  it("links the detail's title and each connection to its own page", async () => {
+    panel();
+    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
+    expect(screen.getByTestId("graph3d-title-link")).toHaveAttribute(
+      "href",
+      "/data-products?product=c360",
+    );
+    const rows = screen
+      .getByTestId("graph3d-detail")
+      .querySelectorAll<HTMLElement>('[data-testid^="graph3d-link-"]');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.tagName).toBe("A");
+    // The product's command and its tag, each on its own page.
+    const hrefs = [...rows].map((r) => r.getAttribute("href"));
+    expect(hrefs).toContain("/commands?command=refresh");
+    expect(hrefs).toContain("/admin/tags?tag=gold");
+  });
+
   it("opens as its query under its own product's focus, and not under one the reader picks", async () => {
     panel();
     fireEvent.click(await screen.findByTestId("kg-panel-expand"));
@@ -217,7 +246,8 @@ describe("the Knowledge Graph panel", () => {
     fireEvent.click(await screen.findByTestId("kg-panel-expand"));
     // The panel's scene, then the expanded graph's.
     await waitFor(() => expect(made.scenes).toHaveLength(2));
-    fireEvent.click(screen.getByTestId("graph3d-link-member:p:c360>t:customers"));
+    // The table picked on the canvas (a connection row is a link to the table's page).
+    act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "t:customers" }));
     fireEvent.click(screen.getByTestId("graph3d-columns"));
     await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(2));
     expect(nodeIds(drawn(last().setData.mock.calls[1]))).toContain("c:customers.email");

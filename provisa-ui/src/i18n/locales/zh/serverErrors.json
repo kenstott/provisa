@@ -259,7 +259,7 @@
       "table_not_found": "未找到表 {{table_id}}"
     },
     "replication": {
-      "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：{{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
+      "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：[{{content_type}}] {{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
       "no_whole_copy": "源 {{source}} 的表 {{schema}}.{{table}} 没有可构建的完整副本：它按行复制，或者带有参数列。",
       "page_limit_reached": "未构建 {{table}} 的副本：其端点的分页在 max_pages={{max_pages}} 处停止，而端点在第 {{max_pages}} 页之后仍有数据（已读取 {{rows}} 行）。副本是整张表，因此不会在上限处截断。请提高端点的 max_pages 或页面大小。",
       "row_limit_reached": "未构建 {{table}} 的副本：其读取在 max_rows={{max_rows}}（graphql_remote.max_rows）处停止，而远程端在 {{rows}} 行之后仍有数据。副本是整张表，因此不会在上限处截断。请提高 graphql_remote.max_rows。",
@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "结果在 {{limit}} 行处被截断，这是适用于此次读取的行数限制（{{kind}}）：匹配的行多于返回的行。",
       "rows_cut_unchecked": "结果有 {{limit}} 行，即适用于此次读取的行数限制（{{kind}}）。无法检查是否还有更多匹配的行：{{reason}}",
-      "approximate_index": "最相似的行是通过近似向量索引找到的：可能缺少一行比最后返回的行稍微更相似的行。"
+      "approximate_index": "最相似的行是通过近似向量索引找到的：可能缺少一行比最后返回的行稍微更相似的行。",
+      "path_cut": "一条没有上限的路径在图深度上限 {{limit}} 跳处被截断：更长的路径未包含在结果中。"
     },
     "wikipedia": {
       "no_pages": "至少指定一个起始页面",

@@ -44,7 +44,7 @@ _OWNED = {
     r"msodbcsql18": "mssql-odbc",
     r"pip install[^\n]*mkdocs": "docs-site-deps",
     r"security import\b": "apple-signing",
-    r"key: trino-plugins-": "trino-plugins",
+    r"key: (\$\{\{ inputs.key-prefix \}\})?trino-plugins-": "trino-plugins",
     r"gh release create": "ensure-release",
 }
 

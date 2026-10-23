@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
 import {
@@ -238,6 +238,25 @@ export function AdminPage() {
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
+  // `?domain=<id>` (a graph's domain link, lib/entityHref): that domain's row is marked, on the
+  // page that holds it, and brought into view.
+  const [searchParams] = useSearchParams();
+  const linkedDomain = searchParams.get("domain");
+  const [seededDomain, setSeededDomain] = useState<string | null>(null);
+  if (linkedDomain !== seededDomain && userDomains.length > 0) {
+    setSeededDomain(linkedDomain);
+    const at = domainSortGroup.items.findIndex(
+      (item) => item.type === "row" && item.row.id === linkedDomain,
+    );
+    if (at >= 0 && domainSortGroup.groupBy.length === 0) setDomainPage(Math.floor(at / PAGE_SIZE));
+  }
+  useEffect(() => {
+    if (linkedDomain === null) return;
+    document
+      .querySelector(`[data-testid="domain-row-${CSS.escape(linkedDomain)}"]`)
+      ?.scrollIntoView({ block: "center" });
+    // Again once the rows are drawn: the list waits on the settings saying domains are on.
+  }, [linkedDomain, domainPage, activeTab, settings, userDomains]);
 
   const closeAddDomain = () => {
     setAddingDomain(false);
@@ -457,7 +476,7 @@ export function AdminPage() {
                           colSpan={6}
                           rowKey={(d) => d.id}
                           render={(d) => (
-                            <ListRow>
+                            <ListRow selected={d.id === linkedDomain} testId={`domain-row-${d.id}`}>
                               <Table.Td>{d.id}</Table.Td>
                               <Table.Td>{d.description || "—"}</Table.Td>
                               <Table.Td>

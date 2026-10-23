@@ -23,6 +23,16 @@ class GraphVarKind(str, Enum):
     PATH = "PATH"
     PASSTHROUGH = "PASSTHROUGH"  # pre-built JSON from rel/node union subquery
     MAP = "MAP"  # a map property: a declared object column, returned as a map (REQ-1991)
+    # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
+    # column off the rows and reports it beside them.
+    CUT = "CUT"
+    # REQ-2135: an RDF term, one JSON value (provisa.gql.terms); a subject's IRI is built from it
+    # outside SQL (provisa.gql.iri).
+    TERM = "TERM"
+
+
+# The column a statement carries when one of its paths is bounded by the depth limit.
+CUT_COLUMN = "__cut"
 
 
 class CypherTranslateError(Exception):
@@ -43,3 +53,8 @@ class CypherCrossSourceError(CypherTranslateError):
     """Raised when a Cypher query spans multiple incompatible data sources."""
 
     pass
+
+
+#: The column a domain union's arm carries a node returned bare in: one JSON value, its id, its
+#: label and its own type's properties (each as text, as a property column is).
+NODE_COLUMN = "__node"

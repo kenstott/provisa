@@ -259,7 +259,7 @@
       "table_not_found": "Tabela {{table_id}} não encontrada"
     },
     "replication": {
-      "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
+      "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
       "no_whole_copy": "A tabela {{schema}}.{{table}} da origem {{source}} não tem uma cópia completa para compilar: ela é replicada linha a linha ou tem uma coluna de parâmetro.",
       "page_limit_reached": "A réplica de {{table}} não foi compilada: a paginação do endpoint para em max_pages={{max_pages}}, e o endpoint tinha mais dados após a página {{max_pages}} ({{rows}} linhas lidas). Uma réplica é a tabela inteira, portanto não é cortada no limite. Aumente max_pages ou o tamanho de página do endpoint.",
       "row_limit_reached": "A réplica de {{table}} não foi compilada: uma leitura para em max_rows={{max_rows}} (graphql_remote.max_rows), e o remoto tinha mais dados após {{rows}} linhas. Uma réplica é a tabela inteira, portanto não é cortada no limite. Aumente graphql_remote.max_rows.",
@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "A resposta foi cortada em {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}): há mais linhas correspondentes do que as devolvidas.",
       "rows_cut_unchecked": "A resposta tem {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}). Não foi possível verificar se há mais linhas correspondentes: {{reason}}",
-      "approximate_index": "As linhas mais semelhantes foram encontradas por meio de um índice vetorial aproximado: pode faltar uma linha um pouco mais semelhante do que a última retornada."
+      "approximate_index": "As linhas mais semelhantes foram encontradas por meio de um índice vetorial aproximado: pode faltar uma linha um pouco mais semelhante do que a última retornada.",
+      "path_cut": "Um caminho sem limite superior foi cortado no limite de profundidade do grafo de {{limit}} saltos: caminhos mais longos estão ausentes da resposta."
     },
     "wikipedia": {
       "no_pages": "Informe pelo menos uma página inicial",

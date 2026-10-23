@@ -168,6 +168,8 @@ function toAssignmentInput(input: TagAssignment) {
     columnName: input.columnName ?? null,
     relationshipId: input.relationshipId ?? null,
     commandName: input.commandName ?? null,
+    termId: input.termId ?? null,
+    alsoTerm: input.alsoTerm ?? false,
     reason: input.reason ?? null,
     expiresOn: input.expiresOn ?? null,
   };

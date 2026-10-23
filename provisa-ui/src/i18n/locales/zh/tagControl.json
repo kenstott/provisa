@@ -10,6 +10,17 @@
     "apply": "应用",
     "cancel": "取消",
     "editAssignment": "编辑分配",
-    "plannedRemoval": "计划移除：{{date}}"
+    "plannedRemoval": "计划移除：{{date}}",
+    "piiViaTerm": "与 {{term}} 含义相同",
+    "piiSetHere": "在此设置：{{reason}}",
+    "piiAlsoTerm_one": "同时标记另外 {{count}} 个表示“{{term}}”的列？",
+    "piiAlsoTerm_other": "同时标记另外 {{count}} 个表示“{{term}}”的列？",
+    "piiAlsoTermNone": "标记“{{term}}”，让所有表示它的列（包括以后的）都被涵盖？",
+    "piiYes": "是",
+    "piiJustThis": "仅此列",
+    "piiInherited": "此列是 PII，因为它表示 {{term}}。",
+    "piiUnmarkTerm": "取消标记 {{term}}",
+    "piiMoveColumn": "移动列…",
+    "piiOpenTerm": "打开“{{term}}”"
   }
 }

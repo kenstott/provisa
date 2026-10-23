@@ -66,8 +66,10 @@ def test_first_column_fallback():
     assert _resolve_id_column("Thing", ["ref", "name", "code"], {}) == "ref"
 
 
-def test_empty_columns_returns_hard_fallback():
-    assert _resolve_id_column("Ghost", [], {}) == "id"
+def test_a_table_with_no_column_is_refused_naming_it():
+    # No identity is invented for a node with no column (no "id" it does not have).
+    with pytest.raises(ValueError, match="'Ghost' has no column to identify its rows by"):
+        _resolve_id_column("Ghost", [], {})
 
 
 def test_type_not_in_target_pk_uses_column_heuristic():

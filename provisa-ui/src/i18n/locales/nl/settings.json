@@ -265,6 +265,10 @@
       "port": {
         "label": "HTTP API-poort",
         "help": "De poort waarop de HTTP API luistert. Opnieuw opstarten vereist; met bevestiging omdat de UI en elke client een wijziging moeten volgen."
+      },
+      "public_url": {
+        "label": "Openbaar adres",
+        "help": "Het adres waaronder deze installatie bekend is, zoals https://data.example.com. Elke IRI van een subject in SPARQL en RDF-exports begint ermee, dus het moet gelijk blijven zolang die IRI's worden gebruikt. Zonder waarde wordt een query die de IRI van een subject teruggeeft geweigerd."
       }
     },
     "tls": {
@@ -867,6 +871,16 @@
       "allow_host_code": {
         "label": "Hostcode-opdrachten toestaan",
         "help": "Aan: python- en script-opdrachten mogen worden geregistreerd en aangeroepen. Elke opdracht draait met de volledige toegang van de server tot zijn geheugen, inloggegevens, bestanden en netwerk, en de code gaat niet mee met het model. Standaard uit; gebruik in plaats daarvan een code-resolver."
+      }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Diepste grafpad",
+        "help": "Het maximale aantal hops dat een Cypher-pad met variabele lengte of een SPARQL-eigenschapspad doorloopt als de query zelf geen grens stelt. Een resultaat dat op deze diepte is afgekapt, meldt dat."
+      },
+      "union_limit": {
+        "label": "Maximaal aantal predicaten van een variabel predicaat",
+        "help": "Een SPARQL-patroon met een variabele als predicaat leest elk gekoppeld predicaat dat zou kunnen passen, met één tak per predicaat. Een query die meer takken nodig heeft, wordt geweigerd met vermelding van de grens."
       }
     }
   }

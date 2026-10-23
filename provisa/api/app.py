@@ -31,6 +31,7 @@ from pathlib import Path
 from fastapi import FastAPI, Response
 from starlette.requests import HTTPConnection
 
+from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
@@ -1407,7 +1408,7 @@ async def _load_and_build(
         _resolve_pk_from_sources,
     )
 
-    pg_host, pg_port, pg_database, pg_user = await _init_control_planes(
+    pg_host, pg_port, pg_database, pg_user, pg_password = await _init_control_planes(
         config_path, initialise=apply
     )
     # REQ-1992: the deployment org's folder on this node, ready before anything writes for it
@@ -1718,7 +1719,9 @@ async def _load_and_build(
             _naming_override.get("default_domain", _default),
         )
 
-    state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
+    state.source_dsns["provisa-admin"] = colocation_key(
+        pg_host, pg_port, pg_database, pg_user, pg_password
+    )
 
     from provisa.federation.replica_routing import kept_sources as _kept_sources
 
@@ -2607,7 +2610,9 @@ async def _build_org_runtime(
         await _seed_built_in_sources(
             host or "", port, database, username or "", org_id=org_id, env=env
         )
-        state.source_dsns["provisa-admin"] = f"{host}:{port}/{database}"
+        state.source_dsns["provisa-admin"] = colocation_key(
+            host or "", port, database, username or "", _pw or ""
+        )
 
         # REQ-1919 (DEMO ORGANISATIONS ARE THEIR CONFIG): a demo organisation is defined by its
         # demo configuration — the deployment's file — and every build of its runtime rebuilds its
@@ -4802,6 +4807,11 @@ def create_app() -> FastAPI:
         app.include_router(cypher_router)
     except ImportError:
         pass
+
+    # REQ-2135: the SPARQL 1.1 Protocol endpoint, beside Cypher's.
+    from provisa.api.rest.sparql_router import router as sparql_router
+
+    app.include_router(sparql_router)
 
     # Neo4j Browser compatibility layer (Query API v2 + discovery)
     try:

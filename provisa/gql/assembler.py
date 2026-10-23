@@ -25,7 +25,7 @@ from typing import Any
 from sqlalchemy import select
 
 from provisa.core.schema_org import node_ids, rel_ids
-from provisa.gql.translator_types import GraphVarKind
+from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind
 
 
 class CypherAssemblyError(Exception):
@@ -55,6 +55,40 @@ class Edge:  # REQ-350
 class Path:  # REQ-350
     nodes: list[Node]
     edges: list[Edge]
+
+
+def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
+    """The rows without the cut column. When a path bounded by the depth limit was cut there, the
+    statement says so through its warnings (REQ-1350), on whichever surface answers it: onto the
+    plan's own list (``of_plan``) and the request's collector, or the collector alone where the
+    rows came from no one plan. A statement with no such path carries no cut column."""
+    cut = False
+    out: list[dict] = []
+    for row in rows:
+        key = next((k for k in row if k.lower() == CUT_COLUMN), None)
+        if key is None:
+            out.append(row)
+            continue
+        cut = cut or bool(row[key])
+        out.append({k: v for k, v in row.items() if k != key})
+    if cut:
+        from provisa.core import settings_registry
+        from provisa.core.statement_warnings import ServerWarning, tell, warn
+
+        limit = settings_registry.value("graph.depth_limit")
+        warning = ServerWarning(
+            code="statement.path_cut",
+            params={"limit": limit},
+            message=(
+                f"A path with no upper bound was cut at the graph depth limit of {limit} "
+                "hops: paths longer than that are missing from the answer."
+            ),
+        )
+        if of_plan is None:
+            warn(warning)
+        else:
+            tell(warning, of_plan)
+    return out
 
 
 def assemble_rows(  # REQ-349, REQ-350
@@ -97,8 +131,9 @@ def _assemble_row(row: dict, graph_vars: dict[str, GraphVarKind]) -> dict:
 def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if value is None:
         return None
-    if kind == GraphVarKind.MAP:
+    if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
+        # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
         if isinstance(value, str):
             try:
                 return json.loads(value)

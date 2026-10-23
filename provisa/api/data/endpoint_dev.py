@@ -276,7 +276,8 @@ async def _each_body(
 ):
     """A batch's answer, one entry per statement in order: its statement and warnings, and its
     rows (with columns and their types), the handle of the results store it landed in, or the
-    error that stopped it."""
+    error that stopped it. Each row is its values in column order, so two columns of one name
+    (``SELECT a.id, b.id``) each keep their own."""
     import time as _time
 
     from provisa.api.json_response import OrjsonResponse
@@ -296,7 +297,7 @@ async def _each_body(
         if o.result.redirect is not None:
             entry["redirect"] = o.result.redirect
         else:
-            entry["data"] = [dict(zip(o.result.column_names, row)) for row in o.result.rows]
+            entry["data"] = [list(row) for row in o.result.rows]
             entry["columns"] = list(o.result.column_names)
             entry["column_types"] = _column_types(o.result)
         entries.append(entry)

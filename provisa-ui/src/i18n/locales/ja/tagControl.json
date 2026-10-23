@@ -10,6 +10,17 @@
     "apply": "適用",
     "cancel": "キャンセル",
     "editAssignment": "割り当てを編集",
-    "plannedRemoval": "削除予定: {{date}}"
+    "plannedRemoval": "削除予定: {{date}}",
+    "piiViaTerm": "{{term}} と同じ意味",
+    "piiSetHere": "ここで設定: {{reason}}",
+    "piiAlsoTerm_one": "「{{term}}」を意味する他の {{count}} 列にも付けますか?",
+    "piiAlsoTerm_other": "「{{term}}」を意味する他の {{count}} 列にも付けますか?",
+    "piiAlsoTermNone": "「{{term}}」に付けて、それを意味するすべての列 (今後のものも) を対象にしますか?",
+    "piiYes": "はい",
+    "piiJustThis": "この列だけ",
+    "piiInherited": "この列は {{term}} を意味するため PII です。",
+    "piiUnmarkTerm": "{{term}} の印を外す",
+    "piiMoveColumn": "列を移動…",
+    "piiOpenTerm": "「{{term}}」を開く"
   }
 }

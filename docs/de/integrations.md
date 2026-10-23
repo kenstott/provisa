@@ -245,17 +245,19 @@ Ein **Command** ist eine registrierte getrackte Funktion oder ein Webhook, also 
 | `grpc` | Ausgehender gRPC-Aufruf an einen externen Server | `target`, `method` |
 | `python` | Von Provisa gehosteter Python-Callable | `callable` (z. B. `demo.py_functions:random_dataset`) |
 
-Wenn ein Command ein `return_schema` (JSON Schema mit `type: array, items: object`) deklariert, ist er set-returning, und jede Oberfläche projiziert ihn als typisierte Zeilenmenge. Die Demo-Commands `random_python_set` (impl_kind `python`) und `random_grpc_set` (impl_kind `grpc`) veranschaulichen sowohl einen gehosteten Callable als auch eine externe gRPC-Brücke, die Zeilen mit Zufallswerten liefert; beide sind in `config/provisa-install.yaml` registriert.
+`script` und `python` sind Host-Code und nur erlaubt, wo der Betreiber `commands.allow_host_code` einschaltet (siehe [Host-Code](commands.md#host-code)).
+
+Wenn ein Command ein `return_schema` (JSON Schema mit `type: array, items: object`) deklariert, ist er set-returning, und jede Oberfläche projiziert ihn als typisierte Zeilenmenge. Der Demo-Command `random_grpc_set` (impl_kind `grpc`) ist eine externe gRPC-Brücke, die Zeilen mit Zufallswerten liefert; er ist in `config/provisa-install.yaml` registriert.
 
 ### Protokollmatrix {: #protocol-matrix }
 
 | Oberfläche | Syntax | Beispiel |
 | --------- | -------- | --------- |
-| GraphQL | `kind=query` → Query-Feld; `kind=mutation` → Mutation-Feld; domänenpräfixiert bei `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
-| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` oder `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
-| Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
-| Bolt (Neo4j Browser / Treiber) | `CALL fn(args)` — positionale Argumente werden auf deklarierte Argumentnamen abgebildet | `CALL random_python_set(3, 7)` |
-| Provisa gRPC (Port 50051) | Unärer `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
+| GraphQL | `kind=query` → Query-Feld; `kind=mutation` → Mutation-Feld; domänenpräfixiert bei `domain_prefix: true` | `{ ps__random_grpc_set { id region amount } }` |
+| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` oder `SELECT fn(args)` | `SELECT * FROM random_grpc_set()` |
+| Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_grpc_set() YIELD id, region, amount` |
+| Bolt (Neo4j Browser / Treiber) | `CALL fn(args)` — positionale Argumente werden auf deklarierte Argumentnamen abgebildet | `CALL random_grpc_set()` |
+| Provisa gRPC (Port 50051) | Unärer `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_grpc_set","args_json":"{}"}' ... ProvisaService/CallCommand` |
 
 Das Feld `kind` steuert nur die GraphQL-Platzierung. Die SQL-, Cypher-, Bolt- und gRPC-Oberflächen akzeptieren `query`- und `mutation`-Commands identisch.
 

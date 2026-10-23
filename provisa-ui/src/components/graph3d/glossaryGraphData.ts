@@ -43,7 +43,7 @@ const NOT_STATUS: Record<TermStatus, Where> = {
   retired: { retired: { eq: false } },
   deprecated: { _or: [{ retired: { eq: true } }, { deprecated: { eq: false } }] },
   live: { _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: false } }] },
-  proposed: {
+  draft: {
     _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: true } }],
   },
 };
@@ -430,13 +430,13 @@ export interface TermEdgeRow {
   rel_type: string;
 }
 
-/** A term's standing (REQ-1387: proposed is in service and not live). The graph names a term by its
+/** A term's standing (REQ-1387: a draft is in service and not live). The graph names a term by its
  * title and marks its standing by style; it carries neither the term's definition nor reasons. */
 export function standing(t: TermRow): TermStatus {
   if (t.retired) return "retired";
   if (t.deprecated) return "deprecated";
   if (t.live) return "live";
-  return "proposed";
+  return "draft";
 }
 
 /**
@@ -522,7 +522,7 @@ export function glossaryGraph(
       ...(t.definition ? { definition: t.definition } : {}),
       // REQ-2130/2141: a class whose tables are not all declared one entity: a curation gap.
       ...(t.identity_gap
-        ? { identityGap: (t.tables ?? []).map((g) => `${g.domain_id}.${g.table_name}`) }
+        ? { unlinkedTables: (t.tables ?? []).map((g) => `${g.domain_id}.${g.table_name}`) }
         : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),

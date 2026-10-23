@@ -113,6 +113,11 @@ const SUMMARY: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
@@ -138,21 +143,18 @@ describe("a term's role", () => {
 });
 
 describe("a class whose tables are not all declared one entity", () => {
-  it("is badged a gap in the list, and the term editor says what to declare", async () => {
-    render(<TermListBadges term={{ ...SUMMARY, table_count: 2, identity_gap: true }} />);
-    expect(screen.getByTestId("glossary-gap-1")).toHaveTextContent("Gap");
+  it("is marked To review in the list when it has a finding", () => {
+    render(<TermListBadges term={{ ...SUMMARY, table_count: 2, findings: 1 }} />);
+    expect(screen.getByTestId("glossary-review-1")).toHaveTextContent("To review");
     render(<TermListBadges term={{ ...SUMMARY, id: 2, table_count: 2 }} />);
-    expect(screen.queryByTestId("glossary-gap-2")).toBeNull();
-    api.grounded.set(1, [10, 11]);
-    render(<GlossaryGroundedTables termId={1} identityGap canEdit onChanged={vi.fn()} />);
-    expect(await screen.findByTestId("glossary-identity-gap")).toHaveTextContent("same entity");
+    expect(screen.queryByTestId("glossary-review-2")).toBeNull();
   });
 });
 
 describe("a term's Grounded in tables", () => {
   it("grounds and lets go of each table as it is chosen, and says so", async () => {
     const changed = vi.fn();
-    render(<GlossaryGroundedTables termId={1} identityGap={false} canEdit onChanged={changed} />);
+    render(<GlossaryGroundedTables termId={1} canEdit onChanged={changed} />);
     const select = await screen.findByTestId("glossary-grounded-tables-select");
     fireEvent.click(select);
     fireEvent.click(await screen.findByRole("option", { name: "sales.customers", hidden: true }));
@@ -166,7 +168,7 @@ describe("a term's Grounded in tables", () => {
   it("says why the server refused, and keeps what was grounded", async () => {
     api.refuse = "table orders has no primary key";
     const changed = vi.fn();
-    render(<GlossaryGroundedTables termId={1} identityGap={false} canEdit onChanged={changed} />);
+    render(<GlossaryGroundedTables termId={1} canEdit onChanged={changed} />);
     fireEvent.click(await screen.findByTestId("glossary-grounded-tables-select"));
     fireEvent.click(await screen.findByRole("option", { name: "sales.orders", hidden: true }));
     expect(await screen.findByTestId("glossary-grounded-tables-error")).toHaveTextContent(
@@ -177,9 +179,7 @@ describe("a term's Grounded in tables", () => {
 
   it("is listed, not chosen, to a reader who may not curate", async () => {
     api.grounded.set(1, [10, 11]);
-    render(
-      <GlossaryGroundedTables termId={1} identityGap={false} canEdit={false} onChanged={vi.fn()} />,
-    );
+    render(<GlossaryGroundedTables termId={1} canEdit={false} onChanged={vi.fn()} />);
     expect(await screen.findByTestId("glossary-grounded-tables-list")).toHaveTextContent(
       "sales.customers, sales.orders",
     );

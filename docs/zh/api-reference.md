@@ -982,18 +982,18 @@ DSN 在被接受之前会先针对联邦引擎校验，所以不可用的 DSN �
 {
   "functions": [
     {
-      "name": "random_python_set",
-      "implKind": "python",
-      "binding": {"callable": "demo.py_functions:random_dataset"},
+      "name": "random_grpc_set",
+      "implKind": "grpc",
+      "binding": {"target": "localhost:50071", "method": "/provisa.demo.RandomData/GetRandomSet"},
       "returns": "",
       "returnSchema": {
         "type": "array",
         "items": {"type": "object", "properties": {"id": {"type": "integer"}, "region": {"type": "string"}}}
       },
-      "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+      "arguments": [],
       "visibleTo": ["admin"],
       "domainId": "pet-store",
-      "description": "Demo Python command returning random rows",
+      "description": "Demo gRPC command returning random rows",
       "kind": "query"
     }
   ],
@@ -1033,12 +1033,14 @@ DSN 在被接受之前会先针对联邦引擎校验，所以不可用的 DSN �
 | `implKind` | 运行内容 | `binding` 字段 |
 | --- | --- | --- |
 | `source_procedure` | 已注册数据源上的存储过程（默认） | `sourceId`、`schemaName`、`functionName` |
-| `script` | 服务端脚本 | `script` |
+| `script` | 服务端脚本（宿主代码） | `script` |
 | `http` | 出站 HTTP 调用 | `url`、`method` |
 | `grpc` | 到外部服务器的出站 gRPC 调用 | `target`、`method` |
-| `python` | Provisa 托管的 Python 可调用对象 | `callable`（例如 `"demo.py_functions:random_dataset"`） |
+| `python` | Provisa 托管的 Python 可调用对象（宿主代码） | `callable`（例如 `"demo.py_functions:random_dataset"`） |
 
-演示命令 `random_python_set`（`implKind: python`）和 `random_grpc_set`（`implKind: grpc`）实际展示了带 `returnSchema` 的可返回集合的命令；两者都在 `config/provisa-install.yaml` 中。
+`script` 和 `python` 属于宿主代码。只要部署设置 `commands.allow_host_code` 处于关闭状态（默认即关闭），注册、更新或调用这类命令都会被拒绝，返回 HTTP 403 和代码 `functions.host_code_refused`（参见 [宿主代码](commands.md#host-code)）。
+
+演示命令 `random_grpc_set`（`implKind: grpc`）实际展示了带 `returnSchema` 的可返回集合的命令；它在 `config/provisa-install.yaml` 中。
 
 #### `PUT /admin/actions/functions/{name}`
 
@@ -1339,7 +1341,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 4. 剥除末尾的**代理标记**（`identifier`、`code`、`index` 或 `reference`）。以键或代码命名的列是通过一个代替值指向底层概念的，因此术语应该是概念本身。最后剩余的标记从不会被剥除。
 5. 用表的概念限定**过于泛化的短语**。当完整的规范化短语是一个裸属性词（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 及类似词）时，术语会变为 `<table concept> <phrase>`：`employees.first_name` → `employee first name`，`orders.id` → `order identifier`。若在不相关的表之间共用一个 `name` 术语，会把不同的含义混为一谈；限定操作则将每一列与其所属概念关联起来。表概念是该表的业务名称，并规范化为单数中心名词（`order_lines` → `order line`）。
 
-原生过滤器伪列（以 `_nf_` 为前缀，或任何携带 `native_filter_type` 的列）是查询参数机制，不是业务字段，不会派生任何术语。
+原生过滤器伪列（以 `_nf_` 为前缀，或任何携带 `native_filter_type` 的列）是查询参数机制，不会派生任何术语。
 
 由于 `id`、`key`、`pk`、`sk` 在代理检查之前都会展开为 `identifier`，三个物理上不同的列名会落在完全相同的术语上：
 
@@ -1352,30 +1354,38 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 
 前三个会合并为同一个术语。`transaction amount` 保留两个词元，因为 `amount` 不是替代词。单独的 `id` 列前面没有词元，无法裁剪，所以规范化为 `identifier`，以免术语为空。
 
+键列不会得到规范化术语。主键的每一列都把引用放在其所属表的类术语上，已声明外键的每一列都把引用放在目标表的类上，无论这一列叫什么名字。一张有键但没有类的表会提议一个草稿类，以它的概念命名。角色以及键如何放置，参见 [本体](ontology.md#classes-properties-and-concepts)。
+
 ### 生命周期 {: #lifecycle }
 
-术语**由语义层的成员关系推导而来**，不由用户按需创建。表仓库是唯一的写入路径：`sync_table_refs` 在每次列集 upsert 内运行，`sweep_refless_terms` 在任何删除路径之后运行。
+术语**由语义层的成员关系推导而来**。表仓库是唯一的写入路径：每次保存时它都会核对表的列，并处置删除操作留下的没有引用的术语。
 
-**添加一列时：** Provisa 按名称查找规范化术语。如果已存在，该列会获得对它的引用（如果该术语曾被弃用，则会被恢复，`deprecated` 会被设回 `False`）。如果尚不存在术语，则创建一个。
+**添加一列时：** Provisa 按名称查找它的术语。如果术语存在，该列会获得对它的引用，因失去最后一列而被弃用的术语会被恢复。如果尚不存在术语，则创建一个草稿术语。
 
-**当某列移除时**（模式变更或删除表），其引用会被删除，术语按“删除或弃用”规则**处置**。没有剩余引用的根术语会连同其边和专家分配被直接删除，除非删除它会让某个抽象术语在术语图中再也没有通往任何根术语的路径。在这种情况下，该术语会被**弃用**（标记 `deprecated=True`）而不是删除，从而让抽象术语保留它在图中的锚点。
+**当某列移除时**（模式变更或删除表），其引用会被删除，术语会被**处置**。没有剩余引用的未整理术语会连同其边一起被删除。已整理的术语（具有定义、边、专家、标签或停用记录的术语）会被弃用并保留；删除后会让某个概念失去通往数据路径的术语也同样如此。
 
-抽象术语从不会被自动移除；它们存在于物理生命周期之外，只能通过管理 API 显式删除。
-
-**恢复：** 如果一个已弃用术语的规范化名称再次出现（某列被重新注册），该术语会被取消弃用标记，其引用重新开始累积。
+每个术语有一个状态：`draft`、`live`、`deprecated` 或 `retired`。列表、详情和元视图都带有它。整理人只能通过下面的状态操作改变它；设置状态的 `PATCH` 会被拒绝。每个状态的含义参见 [本体](ontology.md#status)。
 
 ### 策展端点 {: #curation-endpoints }
 
-所有端点都在 `/admin/glossary` 下。它们需要 `org_admin` 访问权限和一个已配置的组织。每次变更都会触发一次元数据发布。
+所有端点都在 `/admin/glossary` 下，需要一个已配置的组织。读取需要 `glossary_read` 权利，每次变更需要 `glossary_rw`，范围限于调用者可触达的网域。每次变更都会触发一次元数据发布。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | 列出术语。查询参数：`q`（名称/定义搜索）、`include_deprecated`（默认 `true`） |
-| `GET` | `/admin/glossary/terms/{term_id}` | 获取术语详情：定义、物理引用、类型化边、专家 |
-| `POST` | `/admin/glossary/terms` | 创建一个抽象术语——没有物理引用的用户词汇 |
-| `PATCH` | `/admin/glossary/terms/{term_id}` | 重命名、设置定义，或切换导出排除状态 |
-| `DELETE` | `/admin/glossary/terms/{term_id}` | 删除一个没有物理引用的术语 |
-| `POST` | `/admin/glossary/refs/move` | 将一个物理引用移动到另一个术语（合并） |
+| `GET` | `/admin/glossary/terms` | 列出术语，每个术语带有其 `status` 和 `findings` 数量。查询参数：`q`（名称/定义搜索）、`include_deprecated`（默认 `true`） |
+| `GET` | `/admin/glossary/terms/{term_id}` | 获取术语详情：定义、状态、物理引用、类型化边、专家、标签 |
+| `POST` | `/admin/glossary/terms` | 创建一个概念，即没有列或表的术语 |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | 重命名、设置定义、设置概念的网域，或切换导出排除状态 |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | 删除一个不持有任何列的术语 |
+| `POST` | `/admin/glossary/refs/move` | 将一列的引用移动到另一个术语 |
+| `GET` | `/admin/glossary/terms/{term_id}/tables` | 列出类所锚定的表 |
+| `POST` | `/admin/glossary/terms/{term_id}/tables` | 把一张表锚定到该术语上，使其成为该表的类 |
+| `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | 解除一张表的锚定；它的键回到它提议的类 |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | 弃用一个生效的术语 |
+| `POST` | `/admin/glossary/terms/{term_id}/retire` | 停用一个术语，把它的列或表移到继任术语上 |
+| `POST` | `/admin/glossary/terms/{term_id}/restore` | 撤销停用或整理人所作的弃用 |
+| `GET` | `/admin/glossary/terms/{term_id}/applied-history` | 已停用术语在停用前那次提交时的列和表 |
+| `GET` | `/admin/glossary/findings` | 每个有发现项的术语及其发现项 |
 | `POST` | `/admin/glossary/terms/{term_id}/edges` | 在两个术语之间添加一条类型化关系边 |
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | 移除一条边（查询参数：`to_term_id`、`rel_type`） |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | 将某用户标记为某术语的专家或作者 |
@@ -1383,6 +1393,8 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 | `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | 使用组织的 AI 模型为单个术语起草定义——仅返回文本，保存前不会持久化 |
 | `POST` | `/admin/glossary/definitions/generate` | 为每个尚无定义的术语生成并持久化定义——从不覆盖人工撰写的文本 |
 | `POST` | `/admin/glossary/relationships/generate` | 使用组织的 AI 模型为整个术语表提出并持久化类型化边 |
+
+术语的角色由它所锚定的对象推导而来，从不设置。设置 `is_abstract` 的 `PATCH` 或创建请求会被拒绝（`glossary.abstract_is_derived`）。
 
 **`POST /admin/glossary/terms` 请求体：**
 
@@ -1396,7 +1408,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 {"to_term_id": 42, "rel_type": "KIND_OF"}
 ```
 
-有效的 `rel_type` 取值：`KIND_OF`、`RELATED_TO`、`PART_OF`、`SYNONYM_OF`。
+有效的 `rel_type` 值：`KIND_OF`、`PART_OF`、`SYNONYM_OF`、`RELATED_TO`、`VALID_VALUE_OF`、`DERIVED_FROM`、`REPLACES`、`PREFERRED_TERM_FOR`、`TRANSLATION_OF`、`ANTONYM_OF`。
 
 **`POST /admin/glossary/terms/{term_id}/experts` 请求体：**
 
@@ -1412,9 +1424,56 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-移动引用后，失去它的那个术语会按“删除或弃用”规则处置。可以用它合并规范化没能合并的两个术语，例如某个数据源使用了扩展表未覆盖的非标准缩写时。
+移动引用后，失去它的那个术语会被处置。可以用它合并规范化没能合并的两个术语，例如某个数据源使用了扩展表未覆盖的非标准缩写时。
 
-删除一个有根术语（拥有物理引用的术语）会返回 `400 glossary.invalid`。请先移除或移动所有引用。
+移入类的操作会被拒绝（`glossary.term_is_class`），移动键列也会被拒绝，无论目标是什么（`glossary.key_column_derived`，并指明该列、它的表和它的类）。
+
+如果移动会去掉列上的 `pii`，会以 `409 tag.move_loses` 拒绝，并列出每一列失去（`loses`）和获得（`gains`）的标签。重新发送移动请求，用 `confirm_tag_loss` 列出每个丢失的标签，或用 `carry_tags: true` 把丢失的标签放到该列要去的术语上：
+
+```json
+{"table_id": 7, "column_name": "email", "to_term_id": 12, "confirm_tag_loss": ["pii"]}
+```
+
+停用，以及会重新安置键引用的关系保存或删除，都接受同样这两个字段。
+
+删除一个仍持有列的术语会返回 `400 glossary.invalid`，并指明相关的表。请先停用它，或移走它的列。删除一个类会先解除其表的锚定，使这些表的键回到各自提议的类。
+
+**`POST /admin/glossary/terms/{term_id}/deprecate` 请求体：**
+
+```json
+{"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
+```
+
+`reason` 为必填。`retire_on` 为可选，且不能早于今天；到了那一天，组织的调度器会停用该术语。只有生效的术语可以被弃用。
+
+**`POST /admin/glossary/terms/{term_id}/retire` 请求体：**
+
+```json
+{"reason": "Merged into customer", "successor": 12}
+```
+
+当术语持有列或表时，`successor` 为必填。属性的继任术语必须是属性或概念，类的继任术语必须是类或概念。术语的列，或它的表及其键，会移到继任术语上，继任术语会获得一条指向被停用术语的 `REPLACES` 边。响应会列出每个被移动列的标签变化。每次拒绝都是一个指明规则的 `400`：`glossary.reason_required`、`glossary.successor_required`、`glossary.successor_is_self`、`glossary.successor_retired` 或 `glossary.successor_role`。
+
+**`GET /admin/glossary/findings` 响应：**
+
+```json
+[
+  {
+    "term_id": 3,
+    "term": "customer",
+    "findings": [
+      {
+        "kind": "unlinked_tables",
+        "code": "glossary.finding.unlinked_tables",
+        "message": "the class is grounded in tables that same-entity relationships do not all join",
+        "params": {"tables": "pg.public.customers, crm.public.contacts"}
+      }
+    ]
+  }
+]
+```
+
+类型有 `unlinked_tables`、`class_and_attribute`、`tag_wrong_kind`、`retirement_blocked` 和 `no_data`。没有发现项的术语不会列出，普通的草稿也不算发现项。该端点只报告，不改变任何东西。
 
 **`PATCH /admin/glossary/terms/{term_id}` —— `export_excluded` 字段：**
 
@@ -1422,11 +1481,11 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 {"export_excluded": true}
 ```
 
-将 `export_excluded` 设置为 `true` 会将该术语从所有元数据导出快照中排除，无论其物理引用或抽象状态如何。将其设回 `false` 会在下一次发布时将该术语恢复到快照中。策展数据（定义、边、专家）不受影响。
+将 `export_excluded` 设置为 `true` 会将该术语从所有元数据导出快照中排除，无论其引用或角色如何。将其设回 `false` 会在下一次发布时将该术语恢复到快照中。策展数据（定义、边、专家）不受影响。
 
 ### AI 辅助策展 {: #ai-assisted-curation }
 
-组织配置的 AI 模型可以在一次操作中为整个术语表起草定义并提出关系边。这两个批量操作都需要 `org_admin` 访问权限和一个已配置的组织。
+组织配置的 AI 模型可以在一次操作中为整个术语表起草定义并提出关系边。这两个批量操作都需要 `glossary_rw` 权利和一个已配置的组织。
 
 **`POST /admin/glossary/definitions/generate`**
 
@@ -1492,10 +1551,11 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 
 导出应用与快照其余部分相同的过滤规则：
 
-- 标记为 `export_excluded` 的术语会被彻底排除，无论其物理引用、抽象状态，或组织的目录是否已配置。
-- 只有当一个有根术语的至少一个物理引用属于同时通过**数据产品**过滤（表的 `data_product` 标志必须为 `true`）和**技术**列过滤（标记为 `technical` 的列被排除）的列时，该术语才会发布。
-- 一个所有引用都被这些过滤规则排除的有根术语，也随之被排除。
-- 抽象术语无条件发布：它们是用户词汇，不绑定到物理列。
+- 只有生效的术语会发布：在用、已定义，并且连接到一个其列或表会发布的术语。
+- 一列同时通过**数据产品**过滤（表的 `data_product` 标志必须为 `true`）和**技术**列过滤（标记为 `technical` 的列被排除）时才会发布。所有引用都以这种方式被排除的术语，在导出时不算已锚定。
+- 概念通过关系图触达一个已发布的术语时才会发布。
+- 标记为 `export_excluded` 的术语会被彻底排除。
+- 已弃用的术语发布时会带上它的 `status`、`status_reason` 和 `retire_on`，以便每个目录把它对应到自己的弃用标记上。
 - 两个术语之间的边只有在两端术语都发布时才会发布。
 
 每个供应商适配器都以原生方式发布术语图，写入一个归 Provisa 所有、以幂等方式创建的术语表容器，从不写入已有的目录术语表：

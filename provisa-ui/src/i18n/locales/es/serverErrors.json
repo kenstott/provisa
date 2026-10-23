@@ -259,7 +259,7 @@
       "table_not_found": "No se encontró la tabla {{table_id}}"
     },
     "replication": {
-      "answer_not_json": "La respuesta leída para la réplica de {{table}} no es JSON válido: {{cause}} (en los {{kib}} KiB anteriores al byte {{before_byte}} de la respuesta).",
+      "answer_not_json": "La respuesta leída para la réplica de {{table}} no es JSON válido: [{{content_type}}] {{cause}} (en los {{kib}} KiB anteriores al byte {{before_byte}} de la respuesta).",
       "no_whole_copy": "La tabla {{schema}}.{{table}} del origen {{source}} no tiene una copia completa que compilar: se replica fila a fila o tiene una columna de parámetro.",
       "page_limit_reached": "No se compiló la réplica de {{table}}: la paginación de su endpoint se detiene en max_pages={{max_pages}} y el endpoint tenía más datos después de la página {{max_pages}} ({{rows}} filas leídas). Una réplica es la tabla completa, así que no se corta en el límite. Aumente max_pages o el tamaño de página del endpoint.",
       "row_limit_reached": "No se compiló la réplica de {{table}}: una lectura se detiene en max_rows={{max_rows}} (graphql_remote.max_rows) y el remoto tenía más datos después de {{rows}} filas. Una réplica es la tabla completa, así que no se corta en el límite. Aumente graphql_remote.max_rows.",
@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "La respuesta se cortó en {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}): coinciden más filas de las devueltas.",
       "rows_cut_unchecked": "La respuesta tiene {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}). No se pudo comprobar si coinciden más filas: {{reason}}",
-      "approximate_index": "Las filas más similares se encontraron mediante un índice vectorial aproximado: puede faltar una fila algo más similar que la última devuelta."
+      "approximate_index": "Las filas más similares se encontraron mediante un índice vectorial aproximado: puede faltar una fila algo más similar que la última devuelta.",
+      "path_cut": "Una ruta sin límite superior se cortó en el límite de profundidad del grafo de {{limit}} saltos: faltan en la respuesta las rutas más largas."
     },
     "wikipedia": {
       "no_pages": "Indique al menos una página de inicio",

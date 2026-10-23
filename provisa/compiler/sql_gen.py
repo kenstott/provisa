@@ -66,6 +66,7 @@ from provisa.compiler.sql_where import (
     _explicit_limit,
     _extract_value,
     _has_joins,
+    _below_takes_lateral_args,
     _has_lateral_force_args,
 )
 from provisa.compiler.sql_selection import (
@@ -160,9 +161,13 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             sources.add_table(join_meta.target)
 
             src_expr, tgt_expr = join_exprs(join_meta, root_alias, join_alias, ctx, table.table_id)
-            _use_agg = not flat and not _has_lateral_force_args(sel)
+            _below = _below_takes_lateral_args(sel, ctx, join_meta.target.type_name)
+            _use_agg = not flat and not _has_lateral_force_args(sel) and not _below
             if (
-                join_meta.default_limit is not None or _has_lateral_force_args(sel)
+                join_meta.default_limit is not None
+                or _has_lateral_force_args(sel)
+                # A to-many field whose descendants are joined is joined as they are.
+                or (_below and join_meta.cardinality == "one-to-many")
             ) and not _use_agg:
                 # A lateral join repeats each root row once per joined row, so the root's own
                 # WHERE, ORDER BY and LIMIT are applied to the root rows before it.
@@ -188,7 +193,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         join_alias,
                         join_meta.target.type_name,
                         join_meta.target,
-                        sel_name,
+                        # The field's response key: the path its rows are answered under.
+                        sel.alias.value if sel.alias else sel_name,
                         ctx,
                         select_parts,
                         columns,
@@ -252,7 +258,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         join_alias,
                         join_meta.target.type_name,
                         join_meta.target,
-                        sel_name,
+                        # The field's response key: the path its rows are answered under.
+                        sel.alias.value if sel.alias else sel_name,
                         ctx,
                         select_parts,
                         columns,

@@ -11,7 +11,6 @@ Was sich von einem Resolver unterscheidet, den Sie selbst schreiben:
 - **Heruntergereicht.** Ein Filter auf eine Spalte erreicht Ihre Funktion als Parameter, wenn Sie danach fragen.
 - **Überall bedient.** Dieselbe Funktion beantwortet GraphQL, SQL (über HTTP, pgwire und Arrow Flight), Cypher (über HTTP und Bolt), gRPC, REST, JSON:API und MCP.
 
-
 Code-Resolver sind eine von drei Arten, Geschäftslogik in Provisa zu schreiben. Siehe [Geschäftslogik in Provisa](business-logic.md).
 
 ## Ein erster Resolver {: #an-example }
@@ -75,6 +74,7 @@ Provisa liest die eigenen Deklarationen Ihres Codes: Docstrings und Type Hints i
 | `@table` | Einer Tabelle. Die Funktion gibt eine Liste oder ein Iterable zurück, und jedes Element ist eine Zeile. |
 | `@command` | Einem Befehl, der auf Anfrage ausgeführt wird. |
 | `@stream` | Einer Live-Tabelle. Die Funktion ist ein Generator, und jede Zeile wird gesendet, sobald sie geliefert wird. |
+| `@columns` | Einer Spaltentransformation: ein Stapel Zeilen hinein, ein Ergebnis pro Zeile heraus. Siehe [Spaltentransformationen](#column-transforms). |
 
 - Eine Funktion ohne Tag wird ignoriert.
 - Ein Tag, das Provisa nicht kennt, wird abgelehnt, ebenso ein Typ, den es nicht abbilden kann. Die Ablehnung listet alle Probleme auf einmal, sodass Sie sie in einem Durchgang beheben.
@@ -213,6 +213,46 @@ def churn_score(
 ```
 
 Mit einer Kundentabelle verknüpft, wird sie mit einem `loader` wie `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` aufgerufen. Der zweite Schlüssel trägt nur `customer_id`, sodass Plan und Region die Standardwerte erhalten. Die Funktion gibt `{"9f2c...": [...], "41ab...": [...], ...}` zurück.
+
+### Spaltentransformationen: `@columns` {: #column-transforms }
+
+Eine mit `@columns` markierte Funktion berechnet neue Spalten aus den Spalten von Zeilen, die Sie bereits haben: Sie zerlegt eine Adresse in ihre Teile, klassifiziert eine Beschreibung oder reichert einen Namen an. Sie nimmt einen Stapel Zeilen und gibt ein Ergebnis pro Zeile zurück, in derselben Reihenfolge.
+
+Jeder Parameter ist eine Eingabespalte, übergeben als Liste der Werte dieses Stapels in Zeilenreihenfolge. Die Funktion gibt eine Liste mit einem Objekt pro Eingabezeile zurück, und die Felder des Objekts sind die Ausgabespalten. In Python:
+
+```python
+@dataclass
+class Address:
+    street: str
+    city: str
+    country: str
+
+
+def clean_address(raw_address: list[str]) -> list[Address]:
+    """Each raw address of the batch, as its parts.
+
+    @columns
+    """
+    ...
+```
+
+In TypeScript deklarieren Sie sie als `clean_address(raw_address: string[]): Promise<Address[]>` mit `@columns` in ihrem JSDoc.
+
+Sie registrieren sie als Befehl, einzeln wie jeden anderen: Wählen Sie auf der Seite **Commands** die Quelle, und ihre `@columns`-Funktionen werden zur Auswahl angeboten. Die Deklaration der Funktion liefert die Ein- und Ausgabespalten. Registrieren Sie sie in einer Domäne mit den Rollen, die sie verwenden dürfen.
+
+Wenden Sie sie in einer Select-Liste an, und ihre Ausgabespalten treten an die Stelle des Aufrufs:
+
+```sql
+SELECT id, clean_address(raw_address) FROM suppliers
+```
+
+Das ergibt `id, street, city, country`. Benennen Sie die Ausgaben in einer äußeren Abfrage um, wenn Sie andere Namen brauchen. Der Aufruf muss ein Element der eigenen Select-Liste der Anweisung sein: Provisa führt die Funktion auf den Zeilen aus, sobald sie gelesen sind, daher wird ein Aufruf in einem `WHERE`, einem `JOIN`, einem `GROUP BY` oder innerhalb eines anderen Ausdrucks abgelehnt, ebenso ein Alias auf dem Aufruf. Jede Ausgabespalte ist ein benannter Schritt der Lineage der Projektion.
+
+Die Zeilen gehen in Stapeln zu 1.000 an die Funktion. Eine Funktion, die zwischen Aufrufen keinen Zustand hält, lässt die Stapel nebeneinander laufen, über die Worker der Quelle verteilt: Setzen Sie **Workers** im Formular der Quelle (`workers` in ihrem Mapping, siehe [Dev-Modus und Worker](#workers)), um mehr als einen auszuführen, und jeder zusätzliche Worker erhöht den Durchsatz. Ein Stapel, der mit einer anderen Anzahl von Ergebnissen beantwortet wird, als er Zeilen erhalten hat, wird abgelehnt, mit Nennung der Funktion.
+
+Die Funktion kann die Dienste von Provisa aufrufen, darunter den LLM-Dienst, sodass ein Modellaufruf einen ganzen Stapel bereinigen, klassifizieren oder anreichern kann. Jeder Aufruf wird gemessen und gegen die Quelle begrenzt wie jeder ihrer anderen Aufrufe ([Ein Modell aufrufen](#calling-a-model)).
+
+Eine View, die eine Spaltentransformation anwendet, wird gelandet, ob Sie sie als materialisierte View deklarieren oder nicht: Provisa baut sie, wie es eine materialisierte View baut, ruft die Funktion stapelweise auf den Zeilen der View auf und speichert das Ergebnis, und die View wird aus dieser gespeicherten Tabelle gelesen. Eine Anweisung kann dann auf den Ausgabespalten filtern, joinen oder gruppieren wie auf jeder anderen. Die Ausgaben werden bei jeder Aktualisierung der View neu berechnet, wie ihre Aktualitätsdeklaration es vorgibt. Einen eigenen Zeitplan haben sie nicht.
 
 ### Woher der Code kommt {: #where-the-code-comes-from }
 

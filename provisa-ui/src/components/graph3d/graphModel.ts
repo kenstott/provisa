@@ -67,11 +67,12 @@ export type LayerId =
 /** Force; lineage lanes left to right (REQ-1667); or a top-down tree (REQ-2130's Taxonomy). */
 export type LayoutKind = "force" | "lanes" | "tree";
 
-/** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides proposed). */
-export type TermStatus = "live" | "proposed" | "deprecated" | "retired";
+/** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides draft). */
+export type { TermStatus } from "../../api/glossary";
+import type { TermStatus } from "../../api/glossary";
 
 /** Every standing a term can have, in the order a reader picks them. */
-export const TERM_STATUSES: TermStatus[] = ["live", "proposed", "deprecated", "retired"];
+export const TERM_STATUSES: TermStatus[] = ["live", "draft", "deprecated", "retired"];
 
 export interface GraphNode {
   id: string;
@@ -82,7 +83,8 @@ export interface GraphNode {
   tags?: string[];
   /** The sensitive tags on the node (or on any of a table's columns). */
   sensitivities?: string[];
-  /** A column's table: the column is drawn inside it until the table is expanded. */
+  /** The table a column or a profile belongs to: a column is drawn inside it until the table is
+   * expanded; a profile is reached on its page. */
   parent?: string;
   /** REQ-1667: the lineage lane the node stands in, when the data says (upstream negative). */
   lane?: number;
@@ -93,7 +95,7 @@ export interface GraphNode {
   role?: TermRole;
   /** REQ-2130/2141: a class grounded in tables not all joined as the same entity (a curation
    * gap): its tables, marked on its name and named in the side panel. */
-  identityGap?: string[];
+  unlinkedTables?: string[];
   /** A column a data product holds (coloured apart from one it does not, nodeLook). */
   inProduct?: boolean;
   /** A term's definition: read in the side panel, never drawn on the graph. */

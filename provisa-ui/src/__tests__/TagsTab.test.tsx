@@ -128,6 +128,13 @@ describe("TagsTab", () => {
     ];
   });
 
+  it("opens on a linked tag: its scope, found and marked", () => {
+    render(<TagsTab />, { initialEntries: ["/admin/tags?tag=audit"] });
+    const row = screen.getByTestId("tags-row-audit");
+    expect(row.className).toContain("row-selected");
+    expect(screen.getAllByTestId(/^tags-row-/)).toHaveLength(1);
+  });
+
   it("finds tags matching any word of the search", () => {
     render(<TagsTab />);
     fireEvent.click(

@@ -982,18 +982,18 @@ DSN 在被接受之前會先針對聯邦引擎驗證，所以不可用的 DSN �
 {
   "functions": [
     {
-      "name": "random_python_set",
-      "implKind": "python",
-      "binding": {"callable": "demo.py_functions:random_dataset"},
+      "name": "random_grpc_set",
+      "implKind": "grpc",
+      "binding": {"target": "localhost:50071", "method": "/provisa.demo.RandomData/GetRandomSet"},
       "returns": "",
       "returnSchema": {
         "type": "array",
         "items": {"type": "object", "properties": {"id": {"type": "integer"}, "region": {"type": "string"}}}
       },
-      "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
+      "arguments": [],
       "visibleTo": ["admin"],
       "domainId": "pet-store",
-      "description": "Demo Python command returning random rows",
+      "description": "Demo gRPC command returning random rows",
       "kind": "query"
     }
   ],
@@ -1033,12 +1033,14 @@ DSN 在被接受之前會先針對聯邦引擎驗證，所以不可用的 DSN �
 | `implKind` | 執行內容 | `binding` 欄位 |
 | --- | --- | --- |
 | `source_procedure` | 已註冊數據來源上的預存程序（預設） | `sourceId`、`schemaName`、`functionName` |
-| `script` | 伺服器端指令碼 | `script` |
+| `script` | 伺服器端指令碼（主機程式碼） | `script` |
 | `http` | 對外 HTTP 呼叫 | `url`、`method` |
 | `grpc` | 對外部伺服器的 gRPC 呼叫 | `target`、`method` |
-| `python` | 由 Provisa 託管的 Python 可呼叫項 | `callable`（例如 `"demo.py_functions:random_dataset"`） |
+| `python` | 由 Provisa 託管的 Python 可呼叫項（主機程式碼） | `callable`（例如 `"demo.py_functions:random_dataset"`） |
 
-示範命令 `random_python_set`（`implKind: python`）與 `random_grpc_set`（`implKind: grpc`）展示了帶 `returnSchema` 的集合傳回命令實例；兩者都在 `config/provisa-install.yaml` 中。
+`script` 與 `python` 屬於主機程式碼。只要部署設定 `commands.allow_host_code` 處於關閉狀態（預設即關閉），登記、更新或呼叫這類命令都會被拒絕，傳回 HTTP 403 及代碼 `functions.host_code_refused`（參閱 [主機程式碼](commands.md#host-code)）。
+
+示範命令 `random_grpc_set`（`implKind: grpc`）展示了帶 `returnSchema` 的集合傳回命令實例；它在 `config/provisa-install.yaml` 中。
 
 #### `PUT /admin/actions/functions/{name}`
 
@@ -1339,7 +1341,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 4. 移除結尾的**代理權杖**（`identifier`、`code`、`index` 或 `reference`）。以索引鍵或代碼命名的欄位，是透過一個替代值指向底層概念，因此術語應該就是那個概念本身。最後剩下的權杖永遠不會被移除。
 5. 以資料表的概念修飾**過於一般化的片語**。當完整的正規化片語只是一個裸屬性詞（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 之類）時，術語會變成 `<table concept> <phrase>`：`employees.first_name` → `employee first name`、`orders.id` → `order identifier`。若讓一個共用的 `name` 術語橫跨互不相關的資料表，會把不同的意義合併在一起；修飾則把每個欄位連結到其所屬概念。資料表概念即該資料表的業務名稱，並正規化為單數主名詞（`order_lines` → `order line`）。
 
-原生篩選的虛擬欄位（以 `_nf_` 為前綴，或任何帶有 `native_filter_type` 的欄位）屬於查詢參數機制，而非業務欄位，不會推導出任何術語。
+原生篩選的虛擬欄位（以 `_nf_` 為前綴，或任何帶有 `native_filter_type` 的欄位）屬於查詢參數機制，不會推導出任何術語。
 
 由於 `id`、`key`、`pk` 與 `sk` 在代理檢查之前都會展開為 `identifier`，三個實體上不同的欄位名稱會落在完全相同的術語上：
 
@@ -1352,30 +1354,38 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 
 首三個會合併為同一個術語。`transaction amount` 保留兩個詞元，因為 `amount` 不是替代詞。單獨的 `id` 資料行前面沒有詞元，無法裁剪，所以正規化為 `identifier`，以免術語為空。
 
+鍵欄位不會得到正規化術語。主鍵的每個欄位都把參照放在其所屬資料表的類術語上，已宣告外鍵的每個欄位都把參照放在目標資料表的類上，無論這個欄位叫甚麼名字。一張有鍵但沒有類的資料表會提議一個草稿類，以它的概念命名。角色以及鍵如何放置，參閱 [本體](ontology.md#classes-properties-and-concepts)。
+
 ### 生命週期 {: #lifecycle }
 
-術語**由語義層的成員關係推導而來**，不由使用者按需建立。資料表儲存庫是唯一的寫入路徑：`sync_table_refs` 在每次資料行集 upsert 內執行，`sweep_refless_terms` 在任何刪除路徑之後執行。
+術語**由語義層的成員關係推導而來**。資料表儲存庫是唯一的寫入路徑：每次儲存時它都會核對資料表的欄位，並處置刪除操作留下的沒有參照的術語。
 
-**新增欄位時：** Provisa 依名稱查找正規化後的術語。若已存在，該欄位會取得一個指向它的參照（若該術語先前已淘汰，則會復原，`deprecated` 會設回 `False`）。若尚無術語，則建立一個。
+**新增欄位時：** Provisa 依名稱查找它的術語。若術語存在，該欄位會取得一個指向它的參照，因失去最後一個欄位而被棄用的術語會被復原。若尚無術語，則建立一個草稿術語。
 
-**當某資料行移除時**（結構描述變更或刪除資料表），其參照會被刪除，術語按「刪除或棄用」規則**處置**。沒有剩餘參照的根術語會連同其邊及專家指派被直接刪除，除非刪除它會令某個抽象術語在術語圖中再沒有通往任何根術語的路徑。在這種情況下，該術語會被**棄用**（標記 `deprecated=True`）而不是刪除，從而令抽象術語保留它在圖中的錨點。
+**當某欄位移除時**（結構描述變更或刪除資料表），其參照會被刪除，術語會被**處置**。沒有剩餘參照的未整理術語會連同其邊一併刪除。已整理的術語（具有定義、邊、專家、標籤或停用記錄者）會被棄用並保留；刪除後會令某個概念失去通往數據路徑的術語也同樣如此。
 
-抽象術語永不自動移除；它們存在於實體生命週期之外，只能透過管理員 API 明確刪除。
-
-**復原：** 若已淘汰術語的正規化名稱再次出現（欄位重新註冊），該術語會取消標記，其參照亦重新累積。
+每個術語有一個狀態：`draft`、`live`、`deprecated` 或 `retired`。列表、明細和中繼檢視都帶有它。整理人只能透過下面的狀態操作改變它；設定狀態的 `PATCH` 會被拒絕。每個狀態的含義參閱 [本體](ontology.md#status)。
 
 ### 策展端點 {: #curation-endpoints }
 
-所有端點都在 `/admin/glossary` 之下。它們需要 `org_admin` 存取權與已設定的組織。每一次變更操作都會觸發中繼資料發佈。
+所有端點都在 `/admin/glossary` 之下，需要已設定的組織。讀取需要 `glossary_read` 權利，每次變更需要 `glossary_rw`，範圍限於呼叫者可觸及的網域。每次變更都會觸發中繼資料發佈。
 
 | 方法 | 路徑 | 描述 |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | 列出術語。查詢參數：`q`（名稱／定義搜尋）、`include_deprecated`（預設 `true`） |
-| `GET` | `/admin/glossary/terms/{term_id}` | 取得術語明細：定義、實體參照、具型別的邊、專家 |
-| `POST` | `/admin/glossary/terms` | 建立抽象術語 — 沒有實體參照的使用者詞彙 |
-| `PATCH` | `/admin/glossary/terms/{term_id}` | 重新命名、設定定義，或切換匯出排除 |
-| `DELETE` | `/admin/glossary/terms/{term_id}` | 刪除沒有實體參照的術語 |
-| `POST` | `/admin/glossary/refs/move` | 將一個實體參照移到另一個術語（合併整併） |
+| `GET` | `/admin/glossary/terms` | 列出術語，每個術語帶有其 `status` 和 `findings` 數量。查詢參數：`q`（名稱／定義搜尋）、`include_deprecated`（預設 `true`） |
+| `GET` | `/admin/glossary/terms/{term_id}` | 取得術語明細：定義、狀態、實體參照、具型別的邊、專家、標籤 |
+| `POST` | `/admin/glossary/terms` | 建立概念，即沒有欄位或資料表的術語 |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | 重新命名、設定定義、設定概念的網域，或切換匯出排除 |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | 刪除不持有任何欄位的術語 |
+| `POST` | `/admin/glossary/refs/move` | 將一個欄位的參照移到另一個術語 |
+| `GET` | `/admin/glossary/terms/{term_id}/tables` | 列出類所錨定的資料表 |
+| `POST` | `/admin/glossary/terms/{term_id}/tables` | 把一張資料表錨定到該術語上，使其成為該資料表的類 |
+| `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | 解除資料表的錨定；它的鍵回到它提議的類 |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | 棄用一個生效的術語 |
+| `POST` | `/admin/glossary/terms/{term_id}/retire` | 停用術語，把它的欄位或資料表移到繼任術語上 |
+| `POST` | `/admin/glossary/terms/{term_id}/restore` | 撤銷停用或整理人所作的棄用 |
+| `GET` | `/admin/glossary/terms/{term_id}/applied-history` | 已停用術語在停用前那次提交時的欄位和資料表 |
+| `GET` | `/admin/glossary/findings` | 每個有發現項的術語及其發現項 |
 | `POST` | `/admin/glossary/terms/{term_id}/edges` | 在兩個術語之間新增具型別的關聯邊 |
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | 移除一條邊（查詢參數：`to_term_id`、`rel_type`） |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | 將使用者標記為某術語的專家或作者 |
@@ -1383,6 +1393,8 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 | `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | 使用組織的 AI 模型為單一術語草擬定義 — 只傳回文字，未儲存前不會保存任何內容 |
 | `POST` | `/admin/glossary/definitions/generate` | 為每個尚無定義的術語產生並保存定義 — 永不覆寫人工撰寫的文字 |
 | `POST` | `/admin/glossary/relationships/generate` | 使用組織的 AI 模型，為整個詞彙表建議並保存具型別的邊 |
+
+術語的角色由它所錨定的對象推導而來，從不設定。設定 `is_abstract` 的 `PATCH` 或建立請求會被拒絕（`glossary.abstract_is_derived`）。
 
 **`POST /admin/glossary/terms` 主體：**
 
@@ -1396,7 +1408,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 {"to_term_id": 42, "rel_type": "KIND_OF"}
 ```
 
-有效的 `rel_type` 值：`KIND_OF`、`RELATED_TO`、`PART_OF`、`SYNONYM_OF`。
+有效的 `rel_type` 值：`KIND_OF`、`PART_OF`、`SYNONYM_OF`、`RELATED_TO`、`VALID_VALUE_OF`、`DERIVED_FROM`、`REPLACES`、`PREFERRED_TERM_FOR`、`TRANSLATION_OF`、`ANTONYM_OF`。
 
 **`POST /admin/glossary/terms/{term_id}/experts` 主體：**
 
@@ -1412,9 +1424,56 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-移動參照後，失去它的那個術語會按「刪除或棄用」規則處置。可以用它合併正規化未能合併的兩個術語，例如某個數據來源使用了擴充表未涵蓋的非標準縮寫時。
+移動參照後，失去它的那個術語會被處置。可以用它合併正規化未能合併的兩個術語，例如某個數據來源使用了擴充表未涵蓋的非標準縮寫時。
 
-刪除已扎根的術語（帶有實體參照者）會傳回 `400 glossary.invalid`。請先移除或移動所有參照。
+移入類的操作會被拒絕（`glossary.term_is_class`），移動鍵欄位亦會被拒絕，無論目標為何（`glossary.key_column_derived`，並指明該欄位、它的資料表和它的類）。
+
+若移動會去掉欄位上的 `pii`，會以 `409 tag.move_loses` 拒絕，並列出每個欄位失去（`loses`）和獲得（`gains`）的標籤。重新傳送移動請求，用 `confirm_tag_loss` 列出每個遺失的標籤，或用 `carry_tags: true` 把遺失的標籤放到該欄位要去的術語上：
+
+```json
+{"table_id": 7, "column_name": "email", "to_term_id": 12, "confirm_tag_loss": ["pii"]}
+```
+
+停用，以及會重新安置鍵參照的關係儲存或刪除，都接受同樣這兩個欄位。
+
+刪除仍持有欄位的術語會傳回 `400 glossary.invalid`，並指明相關的資料表。請先停用它，或移走它的欄位。刪除類會先解除其資料表的錨定，使這些資料表的鍵回到各自提議的類。
+
+**`POST /admin/glossary/terms/{term_id}/deprecate` 請求主體：**
+
+```json
+{"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
+```
+
+`reason` 為必填。`retire_on` 為選填，且不能早於今天；到了那一天，組織的排程器會停用該術語。只有生效的術語可以被棄用。
+
+**`POST /admin/glossary/terms/{term_id}/retire` 請求主體：**
+
+```json
+{"reason": "Merged into customer", "successor": 12}
+```
+
+當術語持有欄位或資料表時，`successor` 為必填。屬性的繼任術語必須是屬性或概念，類的繼任術語必須是類或概念。術語的欄位，或它的資料表及其鍵，會移到繼任術語上，繼任術語會獲得一條指向被停用術語的 `REPLACES` 邊。回應會列出每個被移動欄位的標籤變化。每次拒絕都是一個指明規則的 `400`：`glossary.reason_required`、`glossary.successor_required`、`glossary.successor_is_self`、`glossary.successor_retired` 或 `glossary.successor_role`。
+
+**`GET /admin/glossary/findings` 回應：**
+
+```json
+[
+  {
+    "term_id": 3,
+    "term": "customer",
+    "findings": [
+      {
+        "kind": "unlinked_tables",
+        "code": "glossary.finding.unlinked_tables",
+        "message": "the class is grounded in tables that same-entity relationships do not all join",
+        "params": {"tables": "pg.public.customers, crm.public.contacts"}
+      }
+    ]
+  }
+]
+```
+
+類型有 `unlinked_tables`、`class_and_attribute`、`tag_wrong_kind`、`retirement_blocked` 和 `no_data`。沒有發現項的術語不會列出，普通的草稿亦不算發現項。該端點只報告，不改變任何東西。
 
 **`PATCH /admin/glossary/terms/{term_id}` — `export_excluded` 欄位：**
 
@@ -1422,11 +1481,11 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 {"export_excluded": true}
 ```
 
-將 `export_excluded` 設為 `true`，可讓該術語不出現在任何中繼資料匯出快照中，無論其實體參照或抽象狀態為何。設回 `false` 則在下次發佈時把術語恢復到快照中。策展數據（定義、邊、專家）不受影響。
+將 `export_excluded` 設為 `true`，可讓該術語不出現在任何中繼資料匯出快照中，無論其參照或角色為何。設回 `false` 則在下次發佈時把術語恢復到快照中。策展數據（定義、邊、專家）不受影響。
 
 ### AI 輔助策展 {: #ai-assisted-curation }
 
-組織所設定的 AI 模型可以在一次操作中，為整個詞彙表草擬定義並建議關聯邊。這兩項批次動作都需要 `org_admin` 存取權與已設定的組織。
+組織所設定的 AI 模型可以在一次操作中，為整個詞彙表草擬定義並建議關聯邊。這兩項批次動作都需要 `glossary_rw` 權利與已設定的組織。
 
 **`POST /admin/glossary/definitions/generate`**
 
@@ -1492,10 +1551,11 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 
 匯出套用與快照其餘部分相同的篩選：
 
-- 標記 `export_excluded` 的術語會被整個保留不匯出，無論其實體參照、抽象狀態，或組織的目錄是否已設定。
-- 已扎根的術語只在其至少一個實體參照所屬的欄位同時通過**數據產品**篩選（資料表的 `data_product` 旗標必須為 `true`）與**技術性**欄位篩選（標記為 `technical` 的欄位不匯出）時才會發佈。
-- 若某個已扎根術語的所有參照都被上述篩選攔下，該術語也一併不匯出。
-- 抽象術語無條件發佈：它們是使用者詞彙，不繫結於實體欄位。
+- 只有生效的術語會發佈：在用、已定義，並且連接到一個其欄位或資料表會發佈的術語。
+- 欄位同時通過**數據產品**篩選（資料表的 `data_product` 旗標必須為 `true`）與**技術性**欄位篩選（標記為 `technical` 的欄位不匯出）時才會發佈。所有參照都以這種方式被攔下的術語，在匯出時不算已錨定。
+- 概念透過關係圖觸及一個已發佈的術語時才會發佈。
+- 標記 `export_excluded` 的術語會被整個保留不匯出。
+- 已棄用的術語發佈時會帶上它的 `status`、`status_reason` 和 `retire_on`，以便每個目錄把它對應到自己的棄用標記上。
 - 兩個術語之間的邊，只有在兩端術語都發佈時才會發佈。
 
 每個供應商配接器都以原生方式發佈術語圖，寫入一個歸 Provisa 所有、以冪等方式建立的詞彙表容器，從不寫入已有的目錄詞彙表：

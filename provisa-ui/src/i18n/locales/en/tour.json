@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "Back as the administrator",
         "description": "The dashboard is what operations sees. The rest of the tour is back as the administrator, and each statement that follows names the role it runs as."
+      },
+      "groupexposureScenario": {
+        "title": "What this demo is",
+        "description": "A Prague bank lends to companies and records the company that owns each one by its Legal Entity Identifier (LEI). EU rules cap what it may lend to one client, or to a group of companies one owner controls, at 25% of its Tier 1 capital. The question: which groups is the bank over that limit to? Its books name each borrower's owner, not who owns the owner. The bank, its borrowers and its loans are fictional; the groups that own them are real."
+      },
+      "groupexposureWikidata": {
+        "title": "Who owns the owners, from Wikidata",
+        "description": "Wikidata, the public knowledge graph, records each company's LEI and its parent organization. This source reads it through Wikidata's SPARQL query service. Its tables were landed once, when the demo was built, so the demo never calls Wikidata while you use it."
+      },
+      "groupexposureFacilities": {
+        "title": "The bank's facilities",
+        "description": "Every term loan, revolving credit facility and guarantee the bank has lent, with the borrower, what is committed and what is drawn. The limit counts what is committed."
+      },
+      "groupexposureGroups": {
+        "title": "Each owner's group",
+        "description": "For each owner the bank records, the company at the top of its chain of parent organizations on Wikidata, found with one SPARQL property path. Wikidata knows a Czech holding company belongs to Veolia, or to E.ON, even though the bank's books do not."
+      },
+      "groupexposureJoin": {
+        "title": "Joined by LEI",
+        "description": "The bank's owners table and Wikidata's tables share the owner's LEI, and these relationships join them. The bank's data stays in its database and Wikidata's in its replica; the join happens in the query."
+      },
+      "groupexposureTerms": {
+        "title": "In plain words",
+        "description": "The glossary explains the terms a risk officer works with: large exposure, Tier 1 capital, Legal Entity Identifier and parent organization. A group of connected clients is companies that are one risk because one controls the others."
+      },
+      "groupexposureAlone": {
+        "title": "The books alone",
+        "description": "Each borrower's own exposure, as the bank's books see it. The largest is under 10% of Tier 1, so no borrower is anywhere near the 25% limit."
+      },
+      "groupexposureAnswer": {
+        "title": "The answer in SQL",
+        "description": "The view group_exposure rolls every facility up to its borrower's group, through the owner's LEI and Wikidata. The Veolia and Vinci groups each pass 25% of Tier 1, and a joint venture owned by Veolia and EPH counts in both. Neither the bank's books nor Wikidata shows that alone. The borrowers and their loans are fictional."
+      },
+      "groupexposureExample": {
+        "title": "The answer in GraphQL",
+        "description": "The same view in GraphQL: the groups the bank lends most to, their borrowers, what is committed, and whether each is over the limit."
+      },
+      "groupexposureRest": {
+        "title": "The same answer over REST",
+        "description": "The view is a REST endpoint too, here grouped by whether a group is over the limit and summed on the server, ready for a risk report or a spreadsheet."
+      },
+      "groupexposureRecap": {
+        "title": "What you saw",
+        "description": "A fictional bank's loan book and public linked data from Wikidata, joined by LEI in one governed model. Wikidata's ownership chains turn many small loans into a few large group exposures, and the answer is served in SQL, GraphQL and REST."
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "EOD reporting without copying the ledger",
         "summary": "A bank's end-of-day totals, built at each close straight from a ledger that is never copied to the warehouse, read as reported and as restated, with the same answer over GraphQL, SQL and an agent."
+      },
+      "groupexposure": {
+        "title": "Group exposure through Wikidata",
+        "summary": "Which corporate groups is a bank over its large-exposure limit to? Its loan book, joined by each borrower's owner's LEI to Wikidata's chains of parent organizations over SPARQL, rolls each borrower up to its group. The bank and its borrowers are fictional; the groups are real."
       }
     }
   }

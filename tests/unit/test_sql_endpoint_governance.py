@@ -815,16 +815,36 @@ class TestSQLEachStatement:
             "SELECT status FROM orders",
         ]
         assert all("error" not in r and r["columns"] == ["id"] for r in results)
-        assert all(r["data"] == [{"id": 1}] for r in results)
+        assert all(r["data"] == [[1]] for r in results)
 
     async def test_an_error_in_the_second_keeps_the_first_rows(self, sql_client):
         resp = await self._post(sql_client, "SELECT id FROM orders; SELECT id FROM secret_table")
         assert resp.status_code == 200, resp.text
         first, second = resp.json()["results"]
-        assert first["data"] == [{"id": 1}]
+        assert first["data"] == [[1]]
         assert second["error"]["status"] == 403
         assert "secret_table" in str(second["error"]["body"])
         assert "data" not in second
+
+    async def test_two_columns_of_one_name_each_keep_their_value(self, sql_client):
+        # SELECT id, id (as SELECT a.id, b.id): a row is its values in column order, so a repeated name loses nothing.
+        rows = _make_query_result(rows=[(1, 2)], column_names=["id", "id"])
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+        ):
+            resp = await sql_client.post(
+                "/data/sql",
+                json={
+                    "sql": "SELECT id, id FROM orders",
+                    "role": "org_admin",
+                    "results": "each",
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        (only,) = resp.json()["results"]
+        assert only["columns"] == ["id", "id"]
+        assert only["data"] == [[1, 2]]
 
     async def test_a_semicolon_in_a_string_does_not_split(self, sql_client):
         resp = await self._post(sql_client, "SELECT id FROM orders WHERE status = 'a;b'")
