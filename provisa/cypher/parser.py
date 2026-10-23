@@ -625,11 +625,25 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     def _parse_with(self) -> WithClause:
         items = self._parse_return_items()
+        # Its ORDER BY, SKIP and LIMIT are the WITH's own: they pick the rows it carries on.
+        order_by: list[OrderItem] = []
+        if self._match_keyword("ORDER"):
+            self._advance()
+            self._consume_keyword("BY")
+            order_by = self._parse_order_by()
+        skip: int | None = None
+        if self._match_keyword("SKIP"):
+            self._advance()
+            skip = int(float(self._expect("NUMBER").value))
+        limit: int | None = None
+        if self._match_keyword("LIMIT"):
+            self._advance()
+            limit = int(float(self._expect("NUMBER").value))
         where: WhereClause | None = None
         if self._match_keyword("WHERE"):
             self._advance()
             where = self._parse_where()
-        return WithClause(items=items, where=where)
+        return WithClause(items=items, where=where, order_by=order_by, skip=skip, limit=limit)
 
     # --- RETURN ---
 
@@ -778,7 +792,18 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     def _parse_order_by(self) -> list[OrderItem]:
         items: list[OrderItem] = []
-        _stop_kws = {"SKIP", "LIMIT", "RETURN", "MATCH", "WITH"}
+        _stop_kws = {
+            "SKIP",
+            "LIMIT",
+            "RETURN",
+            "MATCH",
+            "WITH",
+            "WHERE",
+            "OPTIONAL",
+            "UNWIND",
+            "CALL",
+            "UNION",
+        }
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
             while (

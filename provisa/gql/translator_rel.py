@@ -36,6 +36,19 @@ from provisa.gql.translator_helpers import (
 from provisa.gql.translator_types import CypherTranslateError
 
 
+def _refuse_optional_branches(clause: MatchClause, candidates: list) -> None:
+    """An OPTIONAL hop that reaches several relationships has no form here: each is its own UNION
+    branch of LEFT JOINs, so a row with none of them would come back once per relationship, and a
+    row with one would come back with a null row from each other. A wrong row count is refused."""
+    if clause.optional and len(candidates) > 1:
+        names = sorted({rm.rel_type for rm, _ in candidates})
+        raise CypherTranslateError(
+            f"OPTIONAL MATCH over a hop that reaches several relationships ({', '.join(names)}) "
+            "is not supported: name the relationship type, or split the query into one "
+            "OPTIONAL MATCH per type"
+        )
+
+
 class _RelJoinMixin:  # mixin for _Translator
     if TYPE_CHECKING:
         # State and collaborating methods this mixin reads off ``self``. They belong to
@@ -345,6 +358,7 @@ class _RelJoinMixin:  # mixin for _Translator
         joins: "list[dict]",
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Apply primary and extra JOIN candidates to joins/from_expr."""
+        _refuse_optional_branches(clause, candidates)
         join_type = "LEFT" if clause.optional else "INNER"
         tgt_alias = tgt_nm.table_name
         if src_var and src_var in self._cte_sources:
@@ -405,7 +419,15 @@ class _RelJoinMixin:  # mixin for _Translator
                 join_type,
                 rel.variable,
             )
-            self._extra_path_branches.append((from_expr, joins_before + extra_joins, {}))
+            # The branch is of its own relationship type, which its type(r) names.
+            self._extra_path_branches.append(
+                (
+                    from_expr,
+                    joins_before + extra_joins,
+                    {},
+                    {rel.variable: extra_rm.rel_type} if rel.variable else {},
+                )
+            )
 
         return from_expr, joins
 
@@ -423,6 +445,7 @@ class _RelJoinMixin:  # mixin for _Translator
         joins: "list[dict]",
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build and register joins for a resolved set of rel candidates."""
+        _refuse_optional_branches(clause, candidates)
         join_type = "LEFT" if clause.optional else "INNER"
         if src_var and src_var in self._cte_sources:
             src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
@@ -497,7 +520,15 @@ class _RelJoinMixin:  # mixin for _Translator
                 join_type,
                 rel.variable,
             )
-            self._extra_path_branches.append((from_expr, joins_before + extra_joins, {}))
+            # The branch is of its own relationship type, which its type(r) names.
+            self._extra_path_branches.append(
+                (
+                    from_expr,
+                    joins_before + extra_joins,
+                    {},
+                    {rel.variable: extra_rm.rel_type} if rel.variable else {},
+                )
+            )
 
         return from_expr, joins
 
@@ -760,12 +791,19 @@ class _RelJoinMixin:  # mixin for _Translator
         if self._extra_path_branches:
             primary_aliases = {_join_alias(j["table"]): j for j in joins}
             patched: list[tuple] = []
-            for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
+            for (
+                extra_from,
+                extra_joins,
+                extra_path_steps_map,
+                rel_types,
+            ) in self._extra_path_branches:
                 branch_aliases = {_join_alias(j["table"]) for j in extra_joins}
                 supplement = [
                     pj for alias, pj in primary_aliases.items() if alias not in branch_aliases
                 ]
-                patched.append((extra_from, extra_joins + supplement, extra_path_steps_map))
+                patched.append(
+                    (extra_from, extra_joins + supplement, extra_path_steps_map, rel_types)
+                )
             self._extra_path_branches = patched
 
         return from_expr, joins

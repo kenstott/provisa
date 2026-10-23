@@ -345,6 +345,9 @@ def _is_bwd_for_candidate(
                 return None
             if not backward and not canonical_fwd and canonical_bwd:
                 return None
+        if canonical_fwd and canonical_bwd:
+            # Self-referential: both ends hold the label, so the arrow alone picks the side.
+            return backward
         return not canonical_fwd
     return backward
 
