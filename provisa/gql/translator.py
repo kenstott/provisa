@@ -234,6 +234,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._call_var_to_lateral: dict[str, str] = {}
         # relationship variable → resolved rel_type string (for type(r) resolution)
         self._rel_var_types: dict[str, str] = {}
+        # A single-hop alternation's relationship variable -> the type its row names (a CASE on
+        # the junction's type column), and each alternation's discriminator value -> type.
+        self._rel_var_type_exprs: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        self._alternation_types: dict[int, dict[str, str]] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed

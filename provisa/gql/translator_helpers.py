@@ -220,11 +220,17 @@ def _make_junction_joins(  # REQ-1586
         ]
     )
     if via.type_column is not None:
+        discriminator = via_column(via_alias, via.type_column)
         src_cond = exp.And(
             this=src_cond,
-            expression=exp.EQ(
-                this=via_column(via_alias, via.type_column),
-                expression=exp.Literal.string(via.type_value),
+            expression=(
+                # An alternation's rows are of any of its types.
+                exp.In(
+                    this=discriminator,
+                    expressions=[exp.Literal.string(v) for v in via.type_values],
+                )
+                if via.type_values
+                else exp.EQ(this=discriminator, expression=exp.Literal.string(via.type_value))
             ),
         )
     tgt_cond = _and_all(

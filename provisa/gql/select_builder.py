@@ -57,6 +57,12 @@ def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
     return frozenset(name for name, count in names.items() if count > 1)
 
 
+def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """An edge's type: its relationship's name, or for a single-hop alternation the type its row
+    names (a CASE on the junction's type column)."""
+    return rel_type.copy() if isinstance(rel_type, exp.Expression) else exp.Literal.string(rel_type)
+
+
 class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     """Mixin for _Translator: builds SELECT expressions and path objects."""
 
@@ -66,6 +72,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _shortestpath_hops_col: exp.Expression | None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     _lm: CypherLabelMap
     _rel_var_types: dict
+    _rel_var_type_exprs: dict
     _rel_var_endpoints: dict
     _rel_var_via: dict  # REQ-1586: rel variable → (junction alias, JunctionMapping)
     _domain_nodes: dict[str, str]
@@ -76,7 +83,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
 
     def _build_edge_object(
         self,
-        rel_type: str,
+        rel_type: "str | exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         src_alias: str,
         src_nm: NodeMapping,
         tgt_alias: str,
@@ -125,7 +132,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             this=exp.DPipe(
                 this=exp.DPipe(
                     this=exp.DPipe(
-                        this=exp.Literal.string(rel_type),
+                        this=_type_value(rel_type),
                         expression=exp.Literal.string(":"),
                     ),
                     expression=identity_first,
@@ -213,7 +220,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 exp.Literal.string("end"),
                 disp_tgt_id_col,
                 exp.Literal.string("type"),
-                exp.Literal.string(rel_type),
+                _type_value(rel_type),
                 *edge_fields,
                 exp.Literal.string("startNode"),
                 start_node,
@@ -352,7 +359,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             )
 
         def _edge_obj(
-            rel_type: str,
+            rel_type: "str | exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             src_alias: str,
             src_nm: "NodeMapping",
             tgt_alias: str,
@@ -381,7 +388,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 this=exp.DPipe(
                     this=exp.DPipe(
                         this=exp.DPipe(
-                            this=exp.Literal.string(rel_type),
+                            this=_type_value(rel_type),
                             expression=exp.Literal.string(":"),
                         ),
                         expression=identity_first,
@@ -396,7 +403,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     exp.Literal.string("identity"),
                     identity,
                     exp.Literal.string("type"),
-                    exp.Literal.string(rel_type),
+                    _type_value(rel_type),
                     exp.Literal.string("start"),
                     src_id_cast,
                     exp.Literal.string("end"),
@@ -486,7 +493,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
         if endpoints:
             src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-            rel_type = self._rel_var_types[expr_text]
+            rel_type = self._rel_var_type_exprs.get(expr_text) or self._rel_var_types[expr_text]
             edge_expr: exp.Expression = self._build_edge_object(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 rel_type,
                 src_alias,

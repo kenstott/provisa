@@ -261,6 +261,9 @@ class TranslatorExprContext:
                 return None
             return exp.Array(expressions=[exp.Literal.string(k) for k in sorted(nm.properties)])
         if name == "type":
+            named = t._rel_var_type_exprs.get(var)
+            if named is not None:
+                return named.copy()  # an alternation: the type its row's discriminator names
             rel_type = t._rel_var_types.get(var)
             if rel_type is None:
                 return None
