@@ -74769,6 +74769,7 @@
   - tests/unit/federation/test_replica_builds.py
   - tests/integration/test_replica_build_locks_pg.py
   - tests/unit/test_query_residency.py
+  - tests/unit/test_pg_foreign_table_import_race.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
   docs:
   - arch/vectors.md

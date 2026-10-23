@@ -50,6 +50,19 @@ def embedded_postgres():
 
 
 @pytest.fixture(scope="session")
+def embedded_postgres_fdw():
+    """A Postgres of this session's own with the product's FDW set (postgres_fdw and the rest of
+    the provisa-pg-ext bundle): the same server run from a private copy of pgserver's install with
+    that bundle staged into it (tests/embedded_pg.py private_pginstall). No container: the copy
+    is built once per machine from the installed wheels."""
+    from tests.embedded_pg import start_local_postgres
+
+    pg = start_local_postgres(fdws=True)
+    yield pg
+    pg.stop()
+
+
+@pytest.fixture(scope="session")
 def control_plane_template(embedded_postgres):
     """The worker's control-plane template database (tests/pg_control_plane.py), built once."""
     from tests.pg_control_plane import build_template
