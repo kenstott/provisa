@@ -82,6 +82,15 @@ async def term_domains(conn: "Connection") -> dict[int, set[str]]:
             .distinct()
         )
     ).fetchall()
+    # REQ-1387 (GROUNDED TO A TABLE): a class term holds its tables as a rooted term holds its
+    # columns, so their domains derive its own the same way.
+    rows += (
+        await conn.execute_core(
+            select(glossary_term_table_refs.c.term_id, registered_tables.c.domain_id)
+            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            .distinct()
+        )
+    ).fetchall()
     for r in rows:
         derived.setdefault(r.term_id, set()).add(r.domain_id)
     declared: dict[int, set[str]] = {}
@@ -275,7 +284,7 @@ async def _settle_terms(
     graph = await _load_graph(conn)
     for term_id in sorted(term_ids):
         node = graph.terms.get(term_id)
-        if node is None or node["is_abstract"] or node["deprecated"] or node["ref_count"] > 0:
+        if node is None or node["is_abstract"] or node["deprecated"] or node["rooted"]:
             continue
         if _is_curated(graph, node) or _dangling_grows(graph, term_id):
             await conn.execute_core(
@@ -324,7 +333,7 @@ class _TermGraph:
         frontier = [
             tid
             for tid, node in self.terms.items()
-            if tid not in excluded and (node["ref_count"] > 0 or tid in extra_roots)
+            if tid not in excluded and (node["rooted"] or tid in extra_roots)
         ]
         reached = set(frontier)
         while frontier:
@@ -357,6 +366,13 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
     counts: dict[int, int] = {}
     for r in ref_rows:
         counts[r.term_id] = counts.get(r.term_id, 0) + 1
+    # REQ-1387 (GROUNDED TO A TABLE): a term grounding a table is rooted as one holding a column.
+    classes = {
+        r.term_id
+        for r in (
+            await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
+        ).fetchall()
+    }
     edge_rows = (
         await conn.execute_core(
             select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id)
@@ -376,6 +392,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             "definition": r.definition,
             "has_expert": r.id in with_experts,
             "ref_count": counts.get(r.id, 0),
+            "rooted": counts.get(r.id, 0) > 0 or r.id in classes,
         }
         for r in term_rows
     }
@@ -385,14 +402,14 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
 async def live_ids(conn: "Connection") -> set[int]:
     """Ids of the terms a consuming surface may offer, by the shared admission rule.
 
-    Every term holding a ref is rooted here; the exporter runs the same rule over its own,
+    Every term holding a ref -- to a column or a table -- is rooted here; the exporter runs the same rule over its own,
     narrower notion of rooted (only refs whose column actually publishes).
     """
     graph = await _load_graph(conn)
     return live_term_ids(
         graph.terms.values(),
         graph.edges,
-        {tid for tid, node in graph.terms.items() if node["ref_count"] > 0},
+        {tid for tid, node in graph.terms.items() if node["rooted"]},
     )
 
 
@@ -406,7 +423,7 @@ async def grounded_ids(conn: "Connection") -> set[int]:
     return grounded_term_ids(
         graph.terms.values(),
         graph.edges,
-        {tid for tid, node in graph.terms.items() if node["ref_count"] > 0},
+        {tid for tid, node in graph.terms.items() if node["rooted"]},
     )
 
 
@@ -880,7 +897,7 @@ async def remove_expert(conn: "Connection", term_id: int, user_id: str) -> bool:
 
 async def export_graph(conn: "Connection") -> dict:
     """The whole term graph in one shape for the metadata-export builder (REQ-1387):
-    terms, refs joined to their table's config identity, edges, and experts."""
+    terms, column and table refs joined to their table's config identity, edges, and experts."""
     terms = [
         dict(r._mapping)
         for r in (
@@ -928,7 +945,30 @@ async def export_graph(conn: "Connection") -> dict:
             )
         ).fetchall()
     ]
-    return {"terms": terms, "refs": refs, "edges": edges, "experts": experts}
+    # REQ-1387 (GROUNDED TO A TABLE): a class term's tables, by their config identity.
+    table_refs = [
+        dict(r._mapping)
+        for r in (
+            await conn.execute_core(
+                select(
+                    glossary_term_table_refs.c.term_id,
+                    registered_tables.c.source_id,
+                    registered_tables.c.schema_name,
+                    registered_tables.c.table_name,
+                ).join(
+                    registered_tables,
+                    glossary_term_table_refs.c.table_id == registered_tables.c.id,
+                )
+            )
+        ).fetchall()
+    ]
+    return {
+        "terms": terms,
+        "refs": refs,
+        "table_refs": table_refs,
+        "edges": edges,
+        "experts": experts,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -987,14 +1027,9 @@ async def term_tables(conn: "Connection", term_id: int) -> list[dict]:
     return [dict(r._mapping) for r in rows]
 
 
-async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
-    """Make ``term_id`` the class term of ``table_id``.
-
-    Refused by name: a table without a primary key, whose rows are not identifiable instances,
-    and a table another term (or this one) already grounds -- a table has one class term.
-    """
-    if not await term_exists(conn, term_id):
-        raise TermNotFound(f"term {term_id} not found")
+async def _keyed_table(conn: "Connection", table_id: int) -> str:
+    """The address of ``table_id``, refused when it has no primary key -- its rows are then not
+    identifiable instances of a class."""
     table = (
         await conn.execute_core(select(*_TABLE_ADDRESS).where(registered_tables.c.id == table_id))
     ).fetchone()
@@ -1010,6 +1045,18 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     ).first()
     if keyed is None:
         raise TableHasNoPrimaryKey(address)
+    return address
+
+
+async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
+    """Make ``term_id`` the class term of ``table_id``.
+
+    Refused by name: a table without a primary key, whose rows are not identifiable instances,
+    and a table another term (or this one) already grounds -- a table has one class term.
+    """
+    if not await term_exists(conn, term_id):
+        raise TermNotFound(f"term {term_id} not found")
+    address = await _keyed_table(conn, table_id)
     held = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
@@ -1023,6 +1070,20 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
         raise TableAlreadyGrounded(address, held.id, held.name)
     await conn.execute_core(
         glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id)
+    )
+    model_change.name("ground", "glossary term", f"{term_id} to table {address}")
+
+
+async def declare_class_term(conn: "Connection", table_id: int, term_id: int) -> None:
+    """A configuration's statement of ``table_id``'s class term (REQ-2141): the declarative model
+    is the source of truth, so it replaces whatever term grounded the table before, and loading
+    the same configuration again changes nothing."""
+    address = await _keyed_table(conn, table_id)
+    await conn.upsert(
+        glossary_term_table_refs,
+        {"term_id": term_id, "table_id": table_id},
+        index_elements=["table_id"],
+        update_columns=["term_id"],
     )
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 

@@ -461,7 +461,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "retired": "True when a curator took the term out of service",
         "export_excluded": "True when the term is withheld from consuming surfaces",
         "ref_count": "How many physical columns the term binds to",
-        "is_rooted": "True when the term holds at least one physical ref of its own",
+        "is_rooted": "True when the term holds at least one physical ref of its own, to a column "
+        "or a whole table",
         "live": "True when the term is in service, defined, and connected over in-service "
         "edges to a term holding a physical ref",
         "tenant_id": _TENANT,

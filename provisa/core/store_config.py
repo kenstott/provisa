@@ -53,6 +53,7 @@ from provisa.core.models import (
 from provisa.core.schema_org import (
     glossary_term_domains,
     glossary_term_edges,
+    glossary_term_table_refs,
     glossary_terms,
     naming_rules,
 )
@@ -158,8 +159,8 @@ def _internal_table(row: dict[str, Any]) -> bool:
     return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops")
 
 
-def _table(row: dict[str, Any]) -> dict[str, Any]:
-    fields = _fields(Table, row)
+def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
+    fields = _fields(Table, {**row, "class_term": class_term})
     fields["columns"] = [{**c, "name": c["column_name"]} for c in row["columns"]]
     fields["columns"] = [
         {k: v for k, v in c.items() if v is not None and k != "column_name"}
@@ -222,6 +223,20 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
         )
         for r in rows
     ]
+
+
+async def _class_terms(conn: "Connection") -> dict[int, str]:
+    """Each table's class term, by name -- how a configuration states it (REQ-2141)."""
+    return {
+        r.table_id: r.name
+        for r in (
+            await conn.execute_core(
+                select(glossary_term_table_refs.c.table_id, glossary_terms.c.name).join(
+                    glossary_terms, glossary_terms.c.id == glossary_term_table_refs.c.term_id
+                )
+            )
+        ).fetchall()
+    }
 
 
 async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:
@@ -293,6 +308,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         fields.pop("table_id", None)  # a serial: the configuration names the table by table_ref
         tag_assignments.append(_written(TagAssignment.model_validate(fields)))
 
+    class_terms = await _class_terms(conn)
     stores, regions = await _stores_and_regions(conn)
     model = {
         "stores": stores,
@@ -306,7 +322,9 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             if row["domain_id"] not in ("meta", "ops")
         ],
         "glossary_terms": await _glossary_terms(conn),
-        "tables": [_table(t) for t in tables if int(t["id"]) not in internal],
+        "tables": [
+            _table(t, class_terms.get(int(t["id"]))) for t in tables if int(t["id"]) not in internal
+        ],
         "relationships": relationships,
         "metrics": [
             # A fact-derived metric is a part of its fact table: the table brings it.

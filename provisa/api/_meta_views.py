@@ -569,12 +569,15 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW glossary_term_domains_meta AS
         WITH d AS (
             SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
-            FROM glossary_term_refs r
+            FROM (SELECT term_id, table_id, tenant_id FROM glossary_term_refs
+                  UNION
+                  SELECT term_id, table_id, tenant_id FROM glossary_term_table_refs) r
             JOIN registered_tables rt ON rt.id = r.table_id
             UNION ALL
             SELECT g.term_id, g.domain_id, g.tenant_id
             FROM glossary_term_domains g
             WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
+              AND NOT EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = g.term_id)
         ),
         s AS (
             SELECT term_id, '|' || STRING_AGG(domain_id, '|') || '|' AS term_domains
@@ -588,7 +591,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
     # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
-    # in service, defined, and connected over in-service edges to a term holding a physical ref.
+    # in service, defined, and connected over in-service edges to a term holding a physical ref --
+    # a column, or a whole table (REQ-1387, GROUNDED TO A TABLE).
     # Grounding is transitive, so it needs the recursive CTE — every control-plane dialect the
     # meta domain is served from (PostgreSQL, SQLite, MySQL) supports WITH RECURSIVE in a view.
     # `rooted` here counts EVERY ref, which is the repository's reading of it; the exporter's
@@ -615,7 +619,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         ),
         grounded AS (
             SELECT DISTINCT r.term_id AS id
-            FROM glossary_term_refs r
+            FROM (SELECT term_id FROM glossary_term_refs
+                  UNION
+                  SELECT term_id FROM glossary_term_table_refs) r
             JOIN in_service s ON s.id = r.term_id
             UNION
             SELECT ce.b
@@ -626,6 +632,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                t.export_excluded,
                (SELECT COUNT(*) FROM glossary_term_refs r WHERE r.term_id = t.id) AS ref_count,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
+                      OR EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = t.id)
                     THEN TRUE ELSE FALSE END AS is_rooted,
                CASE WHEN t.id IN (SELECT id FROM grounded)
                      AND TRIM(COALESCE(t.definition, '')) <> ''

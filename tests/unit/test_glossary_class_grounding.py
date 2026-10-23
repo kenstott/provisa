@@ -327,3 +327,252 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         assert rows["glossary_term_table_refs"] == [
             {"table_id": ids["customers"], "term_id": ids["party"]}
         ]
+
+
+# --- grounded to a table (REQ-1387): the admission rule and the derived domains ---------------
+
+
+@pytest.mark.asyncio
+async def test_a_term_grounded_only_in_a_table_is_grounded_and_live_once_defined(
+    control_plane, monkeypatch
+):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        async with db.acquire() as conn:
+            assert ids["party"] not in await glossary_repo.grounded_ids(conn)
+            await glossary_repo.add_edge(conn, ids["ledger"], ids["party"], "KIND_OF")
+            await glossary_repo.set_definition(conn, ids["ledger"], "What the books record.")
+        await _ground(ids["party"], ids["customers"])
+        async with db.acquire() as conn:
+            grounded = await glossary_repo.grounded_ids(conn)
+            # Grounded through the table, and conducted over the edge to its neighbour.
+            assert {ids["party"], ids["ledger"]} <= grounded
+            live = await glossary_repo.live_ids(conn)
+            assert ids["ledger"] in live and ids["party"] not in live  # party has no definition
+            await glossary_repo.set_retired(conn, ids["party"], True)
+            assert ids["ledger"] not in await glossary_repo.grounded_ids(conn)
+
+
+@pytest.mark.asyncio
+async def test_a_class_terms_domains_derive_from_the_tables_it_grounds(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        with control_plane.engine().begin() as c:
+            c.exec_driver_sql(f'SET LOCAL search_path TO "{SCHEMA}"')
+            c.execute(insert(domains).values(id="hr", description=""))
+        async with db.acquire() as conn:
+            await table_repo.upsert(
+                conn, _tbl("staff", keyed=True).model_copy(update={"domain_id": "hr"})
+            )
+            staff = (
+                await conn.execute_core(
+                    select(registered_tables.c.id).where(registered_tables.c.table_name == "staff")
+                )
+            ).fetchone()
+            # Declared {sales}; grounded in an hr table, the term's domains are derived from it.
+            assert (await glossary_repo.term_domains(conn))[ids["party"]] == {"sales"}
+            await glossary_repo.ground_table(conn, ids["party"], staff.id)
+            assert (await glossary_repo.term_domains(conn))[ids["party"]] == {"hr"}
+            await conn.execute(_META_TABLE_VIEWS["glossary_term_domains"])
+            rows = await conn.fetch(
+                "SELECT domain_id FROM glossary_term_domains_meta WHERE term_id = $1",
+                ids["party"],
+            )
+            assert [r[0] for r in rows] == ["hr"]
+
+
+@pytest.mark.asyncio
+async def test_the_meta_terms_view_counts_a_table_as_grounding(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        async with db.acquire() as conn:
+            await glossary_repo.set_definition(conn, ids["party"], "Someone we deal with.")
+        await _ground(ids["party"], ids["customers"])
+        async with db.acquire() as conn:
+            for name in ("glossary_term_domains", "glossary_terms"):
+                await conn.execute(_META_TABLE_VIEWS[name])
+            rows = await conn.fetch(
+                "SELECT name, is_rooted, grounded, live FROM glossary_terms_meta"
+                " WHERE name IN ('party', 'ledger') ORDER BY name"
+            )
+            assert [tuple(r) for r in rows] == [
+                ("ledger", False, False, False),
+                ("party", True, True, True),
+            ]
+
+
+@pytest.mark.asyncio
+async def test_a_class_term_keeps_its_term_when_its_columns_depart(control_plane, monkeypatch):
+    """A derived term grounding a table is rooted by the table, so losing its columns does not
+    remove or deprecate it."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        async with db.acquire() as conn:
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+            assert note is not None
+            await glossary_repo.ground_table(conn, note["id"], ids["customers"])
+            await table_repo.upsert(
+                conn,
+                _tbl("accounts", keyed=True).model_copy(
+                    update={
+                        "columns": [
+                            Column(
+                                name="id", data_type="integer", visible_to=[], is_primary_key=True
+                            )
+                        ]
+                    }
+                ),
+            )
+            await table_repo.upsert(
+                conn,
+                _tbl("notes", keyed=False).model_copy(
+                    update={"columns": [Column(name="id", data_type="integer", visible_to=[])]}
+                ),
+            )
+            await table_repo.upsert(
+                conn,
+                _tbl("customers", keyed=True).model_copy(
+                    update={
+                        "columns": [
+                            Column(
+                                name="id", data_type="integer", visible_to=[], is_primary_key=True
+                            )
+                        ]
+                    }
+                ),
+            )
+            kept = await glossary_repo.get_term(conn, note["id"])
+            assert kept is not None and not kept["deprecated"]
+            assert [r for r in kept["refs"] if r["column_name"] == "note"] == []
+
+
+# --- the export admits a class term by the tables it publishes --------------------------------
+
+
+def test_the_export_roots_a_class_term_by_a_published_table():
+    from provisa.api.metadata_export.builder import _glossary_assets
+
+    orders = _tbl("orders", keyed=True)
+    glossary = {
+        "terms": [
+            {
+                "id": 1,
+                "name": "booking",
+                "definition": "A sale.",
+                "is_abstract": True,
+                "deprecated": False,
+                "retired": False,
+            },
+            {
+                "id": 2,
+                "name": "refund",
+                "definition": "A return.",
+                "is_abstract": True,
+                "deprecated": False,
+                "retired": False,
+            },
+        ],
+        "refs": [],
+        "table_refs": [
+            {"term_id": 1, "source_id": "__derived__", "schema_name": "s", "table_name": "orders"},
+            # Its table does not publish, so it roots nothing here.
+            {"term_id": 2, "source_id": "__derived__", "schema_name": "s", "table_name": "gone"},
+        ],
+        "edges": [],
+        "experts": [],
+    }
+    terms, _edges = _glossary_assets(glossary, [orders], set(), "acme")
+    assert [t.name for t in terms] == ["booking"]
+
+
+# --- the declarative model (REQ-2141): config load and the store's export ----------------------
+
+
+def _config(*, class_term: str | None, keyed: bool = True):
+    from provisa.core.config_loader import parse_config_dict
+
+    column = {"name": "id", "data_type": "integer", "visible_to": ["seller"]}
+    if keyed:
+        column["is_primary_key"] = True
+    table = {
+        "source_id": "cfg",
+        "domain_id": "sales",
+        "schema": "public",
+        "table": "orders",
+        "columns": [column],
+    }
+    if class_term is not None:
+        table["class_term"] = class_term
+    return parse_config_dict(
+        {
+            "sources": [
+                {"id": "cfg", "type": "postgresql", "host": "h", "port": 5432, "database": "d"}
+            ],
+            "domains": [{"id": "sales"}],
+            "roles": [
+                {
+                    "id": "seller",
+                    "description": "Test role.",
+                    "capabilities": [],
+                    "domain_access": ["sales"],
+                }
+            ],
+            "tables": [table],
+            "glossary_terms": [
+                {"name": "Booking", "domains": ["sales"], "definition": "A sale."},
+                {"name": "Sale", "domains": ["sales"], "definition": "A sale, again."},
+            ],
+        }
+    )
+
+
+@pytest.fixture
+async def cfg_db(control_plane, monkeypatch):
+    import contextlib
+
+    from provisa.core import secrets_providers, secrets_store
+
+    # One organisation, as the API layer says at import (provisa.api.app); and no request org to
+    # bind a secret to -- this config names none.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+    @contextlib.asynccontextmanager
+    async def _unbound():
+        yield
+
+    monkeypatch.setattr(secrets_store, "bound_to_request_org", _unbound)
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="__derived__", type="postgresql"))
+    return db
+
+
+async def _class_term_of_orders(conn) -> str | None:
+    from provisa.core.store_config import store_model
+
+    [orders] = [t for t in (await store_model(conn))["tables"] if t["table"] == "orders"]
+    return orders.get("class_term")
+
+
+@pytest.mark.asyncio
+async def test_a_config_states_a_tables_class_term_and_the_store_exports_it(cfg_db):
+    from provisa.core.config_loader import apply_config
+
+    async with cfg_db.acquire() as conn:
+        await apply_config(_config(class_term="Booking"), conn)
+        assert await _class_term_of_orders(conn) == "booking"
+        # Loading it again changes nothing; stating another term replaces it.
+        await apply_config(_config(class_term="Booking"), conn)
+        assert await _class_term_of_orders(conn) == "booking"
+        await apply_config(_config(class_term="sale"), conn)
+        assert await _class_term_of_orders(conn) == "sale"
+        [sale] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "sale"]
+        assert sale["live"]
+
+
+@pytest.mark.asyncio
+async def test_a_config_class_term_naming_nothing_or_on_an_unkeyed_table_is_refused(cfg_db):
+    from provisa.core.config_loader import apply_config
+
+    async with cfg_db.acquire() as conn:
+        with pytest.raises(ValueError, match="names 'Nobody' as its class term"):
+            await apply_config(_config(class_term="Nobody"), conn)
+    async with cfg_db.acquire() as conn:
+        with pytest.raises(ValueError, match="cfg.public.orders has no primary key"):
+            await apply_config(_config(class_term="Booking", keyed=False), conn)
