@@ -100,6 +100,9 @@
     "roleHelp_concept": "Ancré ni dans des tables ni dans des colonnes.",
     "groundedTablesTitle": "Ancré dans des tables",
     "groundedTablesPlaceholder": "Tables dont ce terme nomme les lignes",
-    "noGroundedTables": "Ancré dans aucune table"
+    "noGroundedTables": "Ancré dans aucune table",
+    "gapsOnly": "Lacunes",
+    "identityGap": "Lacune",
+    "identityGapHelp": "Ancré dans plusieurs tables qui ne sont pas toutes jointes comme même entité : marquez des relations de même entité entre elles"
   }
 }

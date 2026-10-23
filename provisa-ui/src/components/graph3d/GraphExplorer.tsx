@@ -602,6 +602,11 @@ function GraphDetail({
               </Text>
             </ClampedDetail>
           )}
+          {node.identityGap && (
+            <Text size="xs" c="orange" data-testid={`${testId}-identity-gap`}>
+              {t("graph3d.identityGap", { tables: node.identityGap.join(", ") })}
+            </Text>
+          )}
           <div className="p3d-list">
             {links.map((e) => {
               const other = e.a === node.id ? e.b : e.a;

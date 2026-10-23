@@ -158,6 +158,27 @@ describe("RelationshipsPage: the reverse form", () => {
 });
 
 describe("RelationshipsPage: editing a relationship", () => {
+  it("saves the same-entity mark, and shows why the server refuses it", async () => {
+    UPSERT.upsertRelationship.mockResolvedValueOnce({
+      success: false,
+      message: "not grounded in the same term",
+      code: "schema.relationship_same_entity_not_grounded",
+      params: { relationship: "r", source: "pg.public.access_log", target: "pg.public.customers" },
+    });
+    render(<RelationshipsPage />);
+    fireEvent.click(
+      within(screen.getByTestId("relationships-list")).getByText("shop_access.customer_id"),
+    );
+    fireEvent.click(within(panel()).getByRole("button", { name: "Edit" }));
+    fireEvent.click(within(panel()).getByTestId("relationship-same-entity"));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(UPSERT.upsertRelationship).toHaveBeenCalledTimes(1));
+    expect(UPSERT.upsertRelationship.mock.calls[0][0]).toMatchObject({ sameEntity: true });
+    expect(await screen.findByTestId("form-problem")).toHaveTextContent(
+      "pg.public.access_log and pg.public.customers are not grounded in the same term",
+    );
+  });
+
   it("names its tables by the name the save resolves, and ends a save that errors", async () => {
     UPSERT.upsertRelationship.mockRejectedValueOnce(new Error("network down"));
     render(<RelationshipsPage />);

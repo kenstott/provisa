@@ -449,7 +449,11 @@
       "version_log_updated": "Registro de versiones '{{mv}}' actualizado",
       "mv_window_held": "La MV '{{mv}}' no se selló al cierre del {{day}}: otra compilación suya tiene la reserva",
       "mv_window_unchanged": "La MV '{{mv}}' no se selló al cierre del {{day}}: nada de lo que lee cambió desde su última compilación",
-      "landing_time_pipeline": "La tabla '{{table}}' guarda su hora de llegada en {{column}}, pero su almacén carga el topic por su propia canalización, donde Provisa no ve llegar cada mensaje."
+      "landing_time_pipeline": "La tabla '{{table}}' guarda su hora de llegada en {{column}}, pero su almacén carga el topic por su propia canalización, donde Provisa no ve llegar cada mensaje.",
+      "relationship_same_entity_direct": "La relación '{{relationship}}' no se puede marcar como la misma entidad: une a través de una tabla intermedia o una función, no una fila con una fila",
+      "relationship_same_entity_cardinality": "La relación '{{relationship}}' no se puede marcar como la misma entidad: es {{cardinality}}, y la misma entidad es una fila con una fila",
+      "relationship_same_entity_not_grounded": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{source}} y {{target}} no están fundamentadas en el mismo término",
+      "relationship_same_entity_not_keys": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{columns}} no es la clave primaria ni una clave única de {{table}}"
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",

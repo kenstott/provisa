@@ -449,7 +449,11 @@
       "version_log_updated": "Version log '{{mv}}' updated",
       "mv_window_held": "MV '{{mv}}' was not sealed at {{day}}'s close: another build of it holds its claim",
       "mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build",
-      "landing_time_pipeline": "Table '{{table}}' keeps its landing time in {{column}}, but its store lands the topic through its own pipeline, where Provisa does not see each message land."
+      "landing_time_pipeline": "Table '{{table}}' keeps its landing time in {{column}}, but its store lands the topic through its own pipeline, where Provisa does not see each message land.",
+      "relationship_same_entity_direct": "Relationship '{{relationship}}' cannot be marked same entity: it joins through a junction or a function, not one row to one row",
+      "relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
+      "relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
+      "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}"
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",

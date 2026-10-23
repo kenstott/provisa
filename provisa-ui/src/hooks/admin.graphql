@@ -591,6 +591,7 @@ query RelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    sameEntity
     viaTableId
     viaTableName
     viaSourceColumn
@@ -626,6 +627,7 @@ query AllRelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    sameEntity
     viaTableId
     viaTableName
     viaSourceColumn

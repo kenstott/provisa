@@ -628,7 +628,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
             FROM grounded g
             JOIN conducting_edges ce ON ce.a = g.id
         ),
-        -- REQ-2141: a class term grounded in several tables is a curation gap until same-entity
+        -- A class term grounded in several tables is a curation gap until same-entity
         -- relationships join them all -- every one reached from one of them (identity.py's
         -- identity_gap_ids is the same rule).
         same_entity_edges AS (

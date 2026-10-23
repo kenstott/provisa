@@ -449,7 +449,11 @@
       "version_log_updated": "Versielogboek '{{mv}}' bijgewerkt",
       "mv_window_held": "MV '{{mv}}' is niet verzegeld bij de afsluiting van {{day}}: een andere build ervan houdt de claim vast",
       "mv_window_unchanged": "MV '{{mv}}' is niet verzegeld bij de afsluiting van {{day}}: niets wat ze leest is veranderd sinds haar laatste build",
-      "landing_time_pipeline": "Tabel '{{table}}' houdt zijn aankomsttijd bij in {{column}}, maar de opslag laadt het topic via een eigen pipeline, waar Provisa niet ziet wanneer elk bericht binnenkomt."
+      "landing_time_pipeline": "Tabel '{{table}}' houdt zijn aankomsttijd bij in {{column}}, maar de opslag laadt het topic via een eigen pipeline, waar Provisa niet ziet wanneer elk bericht binnenkomt.",
+      "relationship_same_entity_direct": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: ze koppelt via een koppeltabel of een functie, niet één rij aan één rij",
+      "relationship_same_entity_cardinality": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: ze is {{cardinality}}, en dezelfde entiteit is één rij op één rij",
+      "relationship_same_entity_not_grounded": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{source}} en {{target}} zijn niet in dezelfde term verankerd",
+      "relationship_same_entity_not_keys": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{columns}} is niet de primaire sleutel of een unieke sleutel van {{table}}"
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",

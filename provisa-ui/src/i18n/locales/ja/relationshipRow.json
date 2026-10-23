@@ -41,6 +41,9 @@
     "deleteConsequence": "リレーションシップはモデルから削除されます。クエリはこれを介して結合できなくなります。",
     "parametersFed": "渡すパラメーター",
     "parametersFedHelp": "このリレーションシップでの結合は、ソースの各行からこれらの値をターゲットに渡します。",
-    "parameterNotFed": "渡さない"
+    "parameterNotFed": "渡さない",
+    "sameEntity": "同一エンティティ",
+    "sameEntityHint": "結合する行は同じものです: 1 つの用語が両テーブルに紐づき、キーで 1:1 に結合",
+    "cardinalityOneToOne": "一対一"
   }
 }

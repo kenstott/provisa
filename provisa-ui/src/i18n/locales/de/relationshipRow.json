@@ -41,6 +41,9 @@
     "deleteConsequence": "Die Beziehung wird aus dem Modell entfernt. Abfragen können nicht mehr über sie verknüpfen.",
     "parametersFed": "Übergebene Parameter",
     "parametersFedHelp": "Ein Join über diese Beziehung übergibt dem Ziel diese Werte aus jeder Quellzeile.",
-    "parameterNotFed": "Nicht übergeben"
+    "parameterNotFed": "Nicht übergeben",
+    "sameEntity": "Dieselbe Entität",
+    "sameEntityHint": "Die verbundenen Zeilen sind dasselbe Ding: ein Begriff verankert beide Tabellen, 1:1 über Schlüssel",
+    "cardinalityOneToOne": "1:1"
   }
 }

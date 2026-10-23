@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "एज का नाम इससे रखें",
     "viaLabelSourceColumn": "डिस्क्रिमिनेटर मान",
     "viaLabelSourceTable": "जंक्शन टेबल का नाम",
-    "viaLabelSourceFixed": "Cypher उपनाम"
+    "viaLabelSourceFixed": "Cypher उपनाम",
+    "cardinalityOneToOne": "one-to-one"
   }
 }

@@ -143,6 +143,8 @@ export function GlossaryTab() {
   const [showProposed, setShowProposed] = useState(() =>
     readStoredBool("glossary.showProposed", true),
   );
+  // REQ-2130: narrow the list to the classes whose tables are not all declared one entity.
+  const [gapsOnly, setGapsOnly] = useState(false);
 
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
@@ -482,9 +484,9 @@ export function GlossaryTab() {
   // A term is "Proposed" (see the badge/alert below) exactly when it is none of live, retired or
   // deprecated — mirrored here rather than added to the summary type, since the server already
   // gives us the three booleans it derives that state from.
-  const displayedTerms = showProposed
-    ? terms
-    : terms.filter((term) => term.live || term.retired || term.deprecated);
+  const displayedTerms = (
+    showProposed ? terms : terms.filter((term) => term.live || term.retired || term.deprecated)
+  ).filter((term) => !gapsOnly || term.identity_gap);
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
@@ -599,6 +601,13 @@ export function GlossaryTab() {
                 checked={showProposed}
                 onChange={(e) => setShowProposed(e.currentTarget.checked)}
                 data-testid="glossary-show-proposed"
+              />
+              <Checkbox
+                size="xs"
+                label={t("glossaryTab.gapsOnly")}
+                checked={gapsOnly}
+                onChange={(e) => setGapsOnly(e.currentTarget.checked)}
+                data-testid="glossary-gaps-only"
               />
             </Group>
             <div style={{ flex: 1, overflow: "auto" }}>
@@ -890,6 +899,7 @@ export function GlossaryTab() {
                 <GlossaryGroundedTables
                   termId={detail.id}
                   canEdit={canEdit}
+                  identityGap={detail.identity_gap}
                   onChanged={() => void act(async () => undefined)}
                 />
 

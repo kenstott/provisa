@@ -66,6 +66,7 @@ const ORDER: GlossaryTermSummary = {
   deprecated: false,
   ref_count: 2,
   table_count: 0,
+  identity_gap: false,
   export_excluded: false,
   retired: false,
   live: true,

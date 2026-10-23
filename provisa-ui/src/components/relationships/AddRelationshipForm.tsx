@@ -163,6 +163,7 @@ export function AddRelationshipForm({
                 data={[
                   { value: "many-to-one", label: t("addRelationshipForm.cardinalityManyToOne") },
                   { value: "one-to-many", label: t("addRelationshipForm.cardinalityOneToMany") },
+                  { value: "one-to-one", label: t("addRelationshipForm.cardinalityOneToOne") },
                 ]}
                 value={form.cardinality}
                 allowDeselect={false}

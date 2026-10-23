@@ -100,6 +100,9 @@
     "roleHelp_concept": "Niet verankerd in tabellen of kolommen.",
     "groundedTablesTitle": "Verankerd in tabellen",
     "groundedTablesPlaceholder": "Tabellen waarvan deze term de rijen benoemt",
-    "noGroundedTables": "In geen tabel verankerd"
+    "noGroundedTables": "In geen tabel verankerd",
+    "gapsOnly": "Hiaten",
+    "identityGap": "Hiaat",
+    "identityGapHelp": "Verankerd in meerdere tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: markeer relaties tussen hen als dezelfde entiteit"
   }
 }

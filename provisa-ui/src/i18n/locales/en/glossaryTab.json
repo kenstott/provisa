@@ -100,6 +100,9 @@
     "roleHelp_concept": "Grounded in neither tables nor columns.",
     "groundedTablesTitle": "Grounded in tables",
     "groundedTablesPlaceholder": "Tables whose rows this term names",
-    "noGroundedTables": "Grounded in no table"
+    "noGroundedTables": "Grounded in no table",
+    "gapsOnly": "Gaps",
+    "identityGap": "Gap",
+    "identityGapHelp": "Grounded in several tables not all joined as the same entity: mark same-entity relationships between them"
   }
 }

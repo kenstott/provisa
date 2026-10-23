@@ -41,6 +41,9 @@
     "deleteConsequence": "La relación se elimina del modelo. Las consultas ya no pueden unir a través de ella.",
     "parametersFed": "Parámetros alimentados",
     "parametersFedHelp": "Una unión por esta relación da al destino estos valores de cada fila de origen.",
-    "parameterNotFed": "Sin alimentar"
+    "parameterNotFed": "Sin alimentar",
+    "sameEntity": "Misma entidad",
+    "sameEntityHint": "Las filas que une son una misma cosa: un término fundamenta ambas tablas, unidas 1:1 por claves",
+    "cardinalityOneToOne": "uno a uno"
   }
 }

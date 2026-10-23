@@ -99,6 +99,7 @@
     "openAsQueryFocused": "De omgeving van zoeken of focus is nog niet als één query uit te drukken.",
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
-    "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is."
+    "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is.",
+    "identityGap": "Verankerd in tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: {{tables}}"
   }
 }

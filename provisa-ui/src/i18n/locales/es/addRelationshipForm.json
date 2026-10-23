@@ -36,6 +36,7 @@
     "viaLabelSourceLabel": "Nombrar la arista desde",
     "viaLabelSourceColumn": "Valor discriminador",
     "viaLabelSourceTable": "Nombre de la tabla de unión",
-    "viaLabelSourceFixed": "Alias de Cypher"
+    "viaLabelSourceFixed": "Alias de Cypher",
+    "cardinalityOneToOne": "uno a uno"
   }
 }

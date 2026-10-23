@@ -114,6 +114,7 @@ export function RelationshipRead({
               ]),
           { label: t("relationshipRow.materializeCheckbox"), value: yesNo(r.materialize) },
           { label: t("relationshipRow.excludeFromCypher"), value: yesNo(r.disableCypher) },
+          { label: t("relationshipRow.sameEntity"), value: yesNo(r.sameEntity) },
           {
             label: t("relationshipRow.refreshIntervalSeconds"),
             value: r.materialize ? or(r.refreshInterval) : none,

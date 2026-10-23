@@ -100,6 +100,9 @@
     "roleHelp_concept": "לא מעוגן בטבלאות או בעמודות.",
     "groundedTablesTitle": "מעוגן בטבלאות",
     "groundedTablesPlaceholder": "טבלאות שהמונח הזה מציין את שורותיהן",
-    "noGroundedTables": "לא מעוגן באף טבלה"
+    "noGroundedTables": "לא מעוגן באף טבלה",
+    "gapsOnly": "פערים",
+    "identityGap": "פער",
+    "identityGapHelp": "מעוגן בכמה טבלאות שלא כולן מחוברות כאותה ישות: סמנו ביניהן קשרים של אותה ישות"
   }
 }

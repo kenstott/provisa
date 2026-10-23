@@ -56,6 +56,7 @@ function reader(): MetaReader {
           retired: scalar,
           live: scalar,
           termDomains: scalar,
+          identityGap: scalar,
           domains: list("M__GlossaryTermDomains"),
           refs: list("M__GlossaryTermRefs"),
           edgesOut: list("M__GlossaryTermEdges"),
@@ -145,6 +146,11 @@ describe("the Ontology View's query", () => {
     // Data off: a column's product is read for its look alone, and no products are read.
     expect(q).toContain("product: product { id: id }");
     expect(q).not.toContain("data_products");
+  });
+
+  it("reads whether each term's tables are all declared one entity", () => {
+    const q = squash(ontologyQuery(reader(), scope(["ontology"])));
+    expect(q).toContain("identity_gap: identityGap");
   });
 
   it("selects only what its layers draw", () => {

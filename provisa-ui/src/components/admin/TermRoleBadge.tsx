@@ -42,6 +42,13 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
   return (
     <Group gap={4} wrap="nowrap">
       <TermRoleBadge term={term} testId={`glossary-role-${term.id}`} />
+      {term.identity_gap && (
+        <Tip text={t("glossaryTab.identityGapHelp")}>
+          <Badge size="xs" variant="light" color="orange" data-testid={`glossary-gap-${term.id}`}>
+            {t("glossaryTab.identityGap")}
+          </Badge>
+        </Tip>
+      )}
       {term.is_abstract && (
         <Badge
           size="xs"

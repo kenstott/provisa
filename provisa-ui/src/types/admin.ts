@@ -600,6 +600,8 @@ export interface Relationship {
   computedCypherAlias: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;
+  /** REQ-2141: the rows it joins are the same entity (two tables one term grounds, keys 1:1). */
+  sameEntity: boolean;
   // REQ-1586: junction declaration. Present only on a junction-backed edge; viaLabelSource says
   // where the exposed Cypher type name comes from (column | table | fixed).
   // The ERD keys its nodes by registered-table id, so it needs the id as well as the name

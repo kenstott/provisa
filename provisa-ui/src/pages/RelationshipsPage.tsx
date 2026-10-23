@@ -187,6 +187,7 @@ export function RelationshipsPage() {
           alias: form.alias || null,
           graphqlAlias: form.graphqlAlias || null,
           disableCypher: form.disableCypher,
+          sameEntity: form.sameEntity,
           // REQ-1586: the junction declaration saves with the edge.
           viaTable: form.viaTable,
           viaSourceColumn: form.viaSourceColumn,
@@ -240,6 +241,7 @@ export function RelationshipsPage() {
           alias: editingRel.alias || null,
           graphqlAlias: editingRel.graphqlAlias || null,
           disableCypher: editingRel.disableCypher,
+          sameEntity: editingRel.sameEntity,
           // REQ-1586: the junction declaration saves with the edge.
           viaTable: editingRel.viaTable,
           viaSourceColumn: editingRel.viaSourceColumn,
@@ -334,6 +336,7 @@ export function RelationshipsPage() {
         alias: rel.alias ?? "",
         graphqlAlias: rel.graphqlAlias ?? "",
         disableCypher: rel.disableCypher ?? false,
+        sameEntity: rel.sameEntity,
         viaTable: rel.viaTableId != null ? tableRefById[rel.viaTableId] : "",
         viaSourceColumn: rel.viaSourceColumn ?? "",
         viaTargetColumn: rel.viaTargetColumn ?? "",
@@ -354,7 +357,9 @@ export function RelationshipsPage() {
 
   const buildReverse = useCallback(
     (r: Relationship): RelForm => {
-      const flipCardinality = (c: string) => (c === "many-to-one" ? "one-to-many" : "many-to-one");
+      // One-to-one reads the same both ways.
+      const flipCardinality = (c: string) =>
+        c === "one-to-one" ? c : c === "many-to-one" ? "one-to-many" : "many-to-one";
       const suggestCqlAlias = (alias: string | null) => {
         if (!alias) return "";
         if (alias.endsWith("_BY")) return alias.slice(0, -3);

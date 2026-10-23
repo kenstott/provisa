@@ -100,6 +100,9 @@
     "roleHelp_concept": "テーブルにも列にも紐付いていません。",
     "groundedTablesTitle": "紐付けるテーブル",
     "groundedTablesPlaceholder": "この用語が行を表すテーブル",
-    "noGroundedTables": "どのテーブルにも紐付いていません"
+    "noGroundedTables": "どのテーブルにも紐付いていません",
+    "gapsOnly": "ギャップ",
+    "identityGap": "ギャップ",
+    "identityGapHelp": "複数のテーブルに紐づいていますが、すべてが同一エンティティとして結合されていません: テーブル間のリレーションシップを同一エンティティに指定してください"
   }
 }

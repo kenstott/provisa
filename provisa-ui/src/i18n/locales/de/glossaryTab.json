@@ -100,6 +100,9 @@
     "roleHelp_concept": "Weder in Tabellen noch in Spalten verankert.",
     "groundedTablesTitle": "In Tabellen verankert",
     "groundedTablesPlaceholder": "Tabellen, deren Zeilen dieser Begriff benennt",
-    "noGroundedTables": "In keiner Tabelle verankert"
+    "noGroundedTables": "In keiner Tabelle verankert",
+    "gapsOnly": "Lücken",
+    "identityGap": "Lücke",
+    "identityGapHelp": "In mehreren Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: markieren Sie Beziehungen als dieselbe Entität"
   }
 }

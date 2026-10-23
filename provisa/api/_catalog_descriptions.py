@@ -470,6 +470,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         # REQ-1387
         "grounded": "True when the term is connected over in-service edges to a term holding a "
         "physical ref, defined or not",
+        "identity_gap": "True when the term grounds several tables that same-entity "
+        "relationships do not all join: a curation gap",
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },

@@ -99,6 +99,7 @@
     "openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
     "openAsQueryCompiling": "Compiling the query…",
     "openAsQueryNoCypher": "This query has no Cypher form.",
-    "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available."
+    "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available.",
+    "identityGap": "Grounded in tables not all joined as the same entity: {{tables}}"
   }
 }

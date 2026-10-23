@@ -99,6 +99,7 @@
     "openAsQueryFocused": "A vizinhança da pesquisa ou do foco ainda não é expressável como uma só consulta.",
     "openAsQueryCompiling": "Compilando a consulta…",
     "openAsQueryNoCypher": "Esta consulta não tem forma Cypher.",
-    "openAsQuerySparqlLater": "SPARQL abrirá quando seu endpoint estiver disponível."
+    "openAsQuerySparqlLater": "SPARQL abrirá quando seu endpoint estiver disponível.",
+    "identityGap": "Fundamentado em tabelas que não estão todas unidas como a mesma entidade: {{tables}}"
   }
 }

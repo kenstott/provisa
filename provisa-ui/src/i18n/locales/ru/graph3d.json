@@ -99,6 +99,7 @@
     "openAsQueryFocused": "Окрестность поиска или фокуса пока нельзя выразить одним запросом.",
     "openAsQueryCompiling": "Компиляция запроса…",
     "openAsQueryNoCypher": "У этого запроса нет формы Cypher.",
-    "openAsQuerySparqlLater": "SPARQL откроется, когда появится его endpoint."
+    "openAsQuerySparqlLater": "SPARQL откроется, когда появится его endpoint.",
+    "identityGap": "Привязан к таблицам, не все из которых связаны как одна сущность: {{tables}}"
   }
 }
