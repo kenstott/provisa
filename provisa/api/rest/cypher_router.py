@@ -30,7 +30,7 @@ from provisa.api.role_surface import role_surface
 
 import logging
 import time as _time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -172,6 +172,10 @@ def _exec_error(status: int, exc: Exception, sql: str) -> JSONResponse:
 class CypherRequest(BaseModel):  # REQ-345
     query: str
     params: dict[str, Any] = {}
+    # "last" (the default): the query is one statement, as Neo4j takes it. "each": the query holds
+    # statements separated by ";" (as Neo4j Browser's editor holds them), each run on its own in
+    # order and answered by its own result or error; the parameters are shared.
+    results: Literal["last", "each"] = "last"
 
 
 async def _execute_multi_call(
@@ -381,6 +385,39 @@ def _build_stats_content(
     return content
 
 
+async def _each_statement(
+    body: CypherRequest, request: Request, x_provisa_stats: str | None
+) -> Response:
+    """The statements of ``body.query``, split as Neo4j Browser splits them
+    (``split_cypher_statements``), each run on its own by this route -- its own governed run, in
+    order -- and answered as it alone would be: ``{"results": [{statement, status, body}]}``. A
+    statement that fails is its entry's error, with the status and body the app answers it with,
+    and the statements after it still run."""
+    import json as _json
+
+    from provisa.api.error_answer import error_answer
+    from provisa.cypher.parser import split_cypher_statements
+
+    results: list[dict[str, Any]] = []
+    for statement in split_cypher_statements(body.query):
+        one = CypherRequest(query=statement, params=body.params)
+        try:
+            answered = await cypher_query(one, request, None, x_provisa_stats)
+        except (
+            Exception
+        ) as exc:  # allow-ble: answered as this statement's error, by the app's own handler for it
+            results.append({"statement": statement, **await error_answer(request, exc)})
+            continue
+        results.append(
+            {
+                "statement": statement,
+                "status": answered.status_code,
+                "body": _json.loads(bytes(answered.body)),
+            }
+        )
+    return JSONResponse(content={"results": results})
+
+
 @router.post("/data/cypher")
 async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351, REQ-352
     body: CypherRequest,
@@ -390,6 +427,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 ) -> Response:
     """Execute a Cypher read or write query and return typed rows or affected_rows."""
     from provisa.api.app import state
+
+    if body.results == "each":
+        return await _each_statement(body, request, x_provisa_stats)
 
     if query_id:
         return JSONResponse(

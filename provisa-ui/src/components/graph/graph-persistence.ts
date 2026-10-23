@@ -10,7 +10,7 @@
 
 import { useState, useCallback } from "react";
 import type { ResultRedirect } from "../../types/resultRedirect";
-import type { FrameData, GNode, GEdge } from "./graph-model";
+import type { FrameData, FrameStatement, GNode, GEdge } from "./graph-model";
 import { getStored, setStored } from "../../lib/browserStorage";
 
 export type Favorite = { id: string; query: string; label: string; ts: number };
@@ -70,6 +70,20 @@ interface SerializedFrame {
   truncated?: boolean;
   elapsed?: number;
   pinned?: boolean;
+  statements?: SerializedStatement[];
+  statementIndex?: number;
+}
+
+interface SerializedStatement {
+  query: string;
+  status: "done" | "error";
+  nodes: [string, GNode][];
+  edges: [string, GEdge][];
+  rows: Record<string, unknown>[];
+  columns: string[];
+  error?: string;
+  redirect?: ResultRedirect;
+  truncated?: boolean;
 }
 
 function serializeFrame(f: FrameData): SerializedFrame {
@@ -86,11 +100,30 @@ function serializeFrame(f: FrameData): SerializedFrame {
     truncated: f.truncated,
     elapsed: f.elapsed,
     pinned: f.pinned,
+    statements: f.statements?.map((p) => ({
+      query: p.query,
+      status: p.status,
+      error: p.error,
+      nodes: [...p.nodes.entries()],
+      edges: [...p.edges.entries()],
+      rows: p.rows,
+      columns: p.columns,
+      redirect: p.redirect,
+      truncated: p.truncated,
+    })),
+    statementIndex: f.statementIndex,
   };
 }
 
 function deserializeFrame(s: SerializedFrame): FrameData {
-  return { ...s, nodes: new Map(s.nodes), edges: new Map(s.edges) };
+  return {
+    ...s,
+    nodes: new Map(s.nodes),
+    edges: new Map(s.edges),
+    statements: s.statements?.map(
+      (p): FrameStatement => ({ ...p, nodes: new Map(p.nodes), edges: new Map(p.edges) }),
+    ),
+  };
 }
 
 export function saveGraphState(state: GraphState): void {

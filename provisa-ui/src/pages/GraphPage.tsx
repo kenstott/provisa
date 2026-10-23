@@ -44,8 +44,8 @@ import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { Neo4jExportModal } from "../components/graph/Neo4jExportModal";
 import { buildDropExpansion, withExpansion } from "./graph-drop";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
-import { toResultRedirect } from "../api/admin";
-import { drawnElements, useMaxNodes } from "../components/graph/graph-drawing";
+import { useMaxNodes } from "../components/graph/graph-drawing";
+import { frameStatement, showing, type CypherAnswer } from "../components/graph/frameStatements";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
@@ -325,6 +325,87 @@ export function GraphPage() {
     /* eslint-disable-next-line react-hooks/exhaustive-deps -- refetch counts only on the listed schema/role/domain inputs; other referenced setters are stable */
   }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
 
+  // Run ``query`` and put what it answered in frame ``id``: one result per statement it holds.
+  const answer = useCallback(
+    async (id: string, query: string, start: number) => {
+      try {
+        const hdrs: Record<string, string> = { "Content-Type": "application/json" };
+        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
+        hdrs["X-Provisa-Stats"] = "true";
+        // The box may hold several statements, as Neo4j Browser's editor does: the server splits
+        // them and answers each on its own, in order; the frame shows one at a time.
+        const res = await fetch("/data/cypher", {
+          method: "POST",
+          headers: hdrs,
+          body: JSON.stringify({ query, params: {}, results: "each" }),
+        });
+        const elapsed = Date.now() - start;
+        if (!res.ok) {
+          const text = await res.text();
+          let msg: string;
+          try {
+            msg = (JSON.parse(text) as { error?: string }).error ?? text;
+          } catch {
+            msg = text;
+          }
+          setFrames((f) => {
+            const next = f.map((fr) =>
+              fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr,
+            );
+            graphState.frames = next;
+            saveGraphState(graphState);
+            return next;
+          });
+          return;
+        }
+        const { results } = (await res.json()) as { results: CypherAnswer[] };
+        const statements = results.map((r) => frameStatement(r, maxNodes, clusterMapRef.current));
+        setFrames((f) => {
+          const next = f.map((fr) =>
+            fr.id === id
+              ? statements.length === 0
+                ? { ...fr, status: "done" as const, elapsed }
+                : {
+                    ...fr,
+                    ...showing(statements[0]),
+                    elapsed,
+                    statements: statements.length > 1 ? statements : undefined,
+                    statementIndex: 0,
+                  }
+              : fr,
+          );
+          graphState.frames = next;
+          saveGraphState(graphState);
+          return next;
+        });
+      } catch (err) {
+        setFrames((f) => {
+          const next = f.map((fr) =>
+            fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr,
+          );
+          graphState.frames = next;
+          saveGraphState(graphState);
+          return next;
+        });
+      }
+    },
+    [roleHeaderValue, maxNodes],
+  );
+
+  // One statement's result, of the frame's, shown: its drawing, rows and error.
+  const showStatement = useCallback((id: string, index: number) => {
+    setFrames((f) => {
+      const next = f.map((fr) =>
+        fr.id === id && fr.statements
+          ? { ...fr, ...showing(fr.statements[index]), statementIndex: index }
+          : fr,
+      );
+      graphState.frames = next;
+      saveGraphState(graphState);
+      return next;
+    });
+  }, []);
+
   const runQuery = useCallback(
     async (query: string, view?: FrameView, frameId?: string) => {
       if (!query) return;
@@ -354,86 +435,9 @@ export function GraphPage() {
         saveGraphState(graphState);
         return next;
       });
-      try {
-        const hdrs: Record<string, string> = { "Content-Type": "application/json" };
-        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
-        hdrs["X-Provisa-Stats"] = "true";
-        const res = await fetch("/data/cypher", {
-          method: "POST",
-          headers: hdrs,
-          body: JSON.stringify({ query, params: {} }),
-        });
-        const elapsed = Date.now() - start;
-        if (!res.ok) {
-          const text = await res.text();
-          let msg: string;
-          try {
-            msg = (JSON.parse(text) as { error?: string }).error ?? text;
-          } catch {
-            msg = text;
-          }
-          setFrames((f) => {
-            const next = f.map((fr) =>
-              fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr,
-            );
-            graphState.frames = next;
-            saveGraphState(graphState);
-            return next;
-          });
-          return;
-        }
-        const data = await res.json();
-        const rows: Record<string, unknown>[] = data.rows ?? [];
-        const columns: string[] = data.columns ?? [];
-        const queryStats: unknown = data.provisa_stats ?? undefined;
-        // REQ-1224: a result over the large-result threshold comes back as a handle to the file
-        // it was delivered to, with no rows; the frame says so rather than drawing nothing.
-        const redirect = data.redirect ? toResultRedirect(data.redirect) : undefined;
-        // A result that returns nodes, relationships or paths is drawn, up to max nodes; one that
-        // returns rows only is a table (the server says which, from the translation).
-        const { nodes, edges, truncated } = drawnElements(data, maxNodes);
-        nodes.forEach((node) => {
-          const clusters = clusterMapRef.current[node.label];
-          if (clusters)
-            Object.assign(node.properties, {
-              scl1: clusters.scl1,
-              scl2: clusters.scl2,
-              scl3: clusters.scl3,
-            });
-        });
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id
-              ? {
-                  ...fr,
-                  status: "done" as const,
-                  nodes,
-                  edges,
-                  rows,
-                  columns,
-                  redirect,
-                  truncated,
-                  elapsed,
-                  queryStats,
-                }
-              : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      } catch (err) {
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      }
+      await answer(id, query, start);
     },
-    [roleHeaderValue, maxNodes],
+    [answer],
   );
 
   // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
@@ -503,6 +507,8 @@ export function GraphPage() {
                 error: undefined,
                 redirect: undefined,
                 truncated: undefined,
+                statements: undefined,
+                statementIndex: undefined,
               }
             : fr,
         );
@@ -510,86 +516,9 @@ export function GraphPage() {
         saveGraphState(graphState);
         return next;
       });
-      try {
-        const hdrs2: Record<string, string> = { "Content-Type": "application/json" };
-        if (roleHeaderValue) hdrs2["X-Provisa-Role"] = roleHeaderValue;
-        hdrs2["X-Provisa-Stats"] = "true";
-        const res = await fetch("/data/cypher", {
-          method: "POST",
-          headers: hdrs2,
-          body: JSON.stringify({ query, params: {} }),
-        });
-        const elapsed = Date.now() - start;
-        if (!res.ok) {
-          const text = await res.text();
-          let msg: string;
-          try {
-            msg = (JSON.parse(text) as { error?: string }).error ?? text;
-          } catch {
-            msg = text;
-          }
-          setFrames((f) => {
-            const next = f.map((fr) =>
-              fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr,
-            );
-            graphState.frames = next;
-            saveGraphState(graphState);
-            return next;
-          });
-          return;
-        }
-        const data = await res.json();
-        const rows: Record<string, unknown>[] = data.rows ?? [];
-        const columns: string[] = data.columns ?? [];
-        const queryStats: unknown = data.provisa_stats ?? undefined;
-        // REQ-1224: a result over the large-result threshold comes back as a handle to the file
-        // it was delivered to, with no rows; the frame says so rather than drawing nothing.
-        const redirect = data.redirect ? toResultRedirect(data.redirect) : undefined;
-        // A result that returns nodes, relationships or paths is drawn, up to max nodes; one that
-        // returns rows only is a table (the server says which, from the translation).
-        const { nodes, edges, truncated } = drawnElements(data, maxNodes);
-        nodes.forEach((node) => {
-          const clusters = clusterMapRef.current[node.label];
-          if (clusters)
-            Object.assign(node.properties, {
-              scl1: clusters.scl1,
-              scl2: clusters.scl2,
-              scl3: clusters.scl3,
-            });
-        });
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id
-              ? {
-                  ...fr,
-                  status: "done" as const,
-                  nodes,
-                  edges,
-                  rows,
-                  columns,
-                  redirect,
-                  truncated,
-                  elapsed,
-                  queryStats,
-                }
-              : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      } catch (err) {
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-      }
+      await answer(id, query, start);
     },
-    [roleHeaderValue, maxNodes],
+    [answer],
   );
 
   const framesRef = useRef(frames);
@@ -1007,6 +936,7 @@ export function GraphPage() {
                 onAddFavorite={handleAddFavorite}
                 isFavorited={isFavorited}
                 onPin={handlePin}
+                onStatement={showStatement}
               />
             ))}
         </div>

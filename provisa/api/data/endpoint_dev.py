@@ -40,6 +40,7 @@ from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.api.admin._dev_shared import detect_target
 from provisa.api.data.endpoint_helpers import request_time_travel
 from provisa.api.errors import ApiError
+from provisa.api.error_answer import error_answer
 from provisa.core import domain_policy
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
@@ -270,22 +271,6 @@ def _sql_error(exc: Exception) -> Exception:
     return HTTPException(status_code=400, detail=str(exc))
 
 
-async def _error_answer(raw_request: Request, exc: Exception) -> dict:
-    """``exc`` as the status and body the app's own handler answers it with: a statement's error
-    in a batch answered one result per statement says what the same statement alone would."""
-    import inspect
-    import json
-
-    handlers = raw_request.app.exception_handlers
-    for cls in type(exc).__mro__:
-        if cls in handlers:
-            response = handlers[cls](raw_request, exc)
-            if inspect.isawaitable(response):
-                response = await response
-            return {"status": response.status_code, "body": json.loads(bytes(response.body))}
-    raise exc
-
-
 async def _each_body(
     raw_request: Request, outcomes: list[StatementOutcome], stats_enabled: bool, t0: float
 ):
@@ -304,7 +289,7 @@ async def _each_body(
             "warnings": [w.as_dict() for w in o.warnings],
         }
         if o.error is not None:
-            entry["error"] = await _error_answer(raw_request, _sql_error(o.error))
+            entry["error"] = await error_answer(raw_request, _sql_error(o.error))
             entries.append(entry)
             continue
         assert o.result is not None  # an outcome holds its result or its error

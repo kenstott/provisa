@@ -61,6 +61,9 @@ function Run() {
   );
 }
 
+/** /data/cypher's answer for a query of one statement: one result. */
+const oneStatement = (body: unknown) => ({ results: [{ statement: "MATCH", status: 200, body }] });
+
 describe("GraphPage — a result delivered to a file", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -69,7 +72,7 @@ describe("GraphPage — a result delivered to a file", () => {
       "fetch",
       vi.fn(async (url: string) => {
         const body = String(url).includes("/data/cypher")
-          ? {
+          ? oneStatement({
               type: "cypher",
               columns: [],
               rows: [],
@@ -80,7 +83,7 @@ describe("GraphPage — a result delivered to a file", () => {
                 expires_in: 3600,
                 content_type: "text/csv",
               },
-            }
+            })
           : {};
         return new Response(JSON.stringify(body), {
           status: 200,

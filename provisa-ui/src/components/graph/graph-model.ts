@@ -381,4 +381,22 @@ export interface FrameData {
   elapsed?: number;
   queryStats?: unknown;
   pinned?: boolean;
+  /** A query holding several statements: each one's result, in order. The frame's own result
+   *  fields are the one chosen (statementIndex); its query is the whole text. */
+  statements?: FrameStatement[];
+  statementIndex?: number;
 }
+
+/** One statement's result, of a frame whose query holds several. */
+export type FrameStatement = Pick<
+  FrameData,
+  | "query"
+  | "nodes"
+  | "edges"
+  | "rows"
+  | "columns"
+  | "error"
+  | "redirect"
+  | "truncated"
+  | "queryStats"
+> & { status: "done" | "error" };
