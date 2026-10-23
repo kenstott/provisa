@@ -177,6 +177,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         use_catalog,
                         ctx.exposed_to_physical,
+                        RelationshipConditions(
+                            ctx, join_meta.target.type_name, use_catalog, sources
+                        ),
                     )
                 )
                 if sel.selection_set:

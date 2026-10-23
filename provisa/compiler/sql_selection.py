@@ -45,6 +45,8 @@ from provisa.compiler.sql_where import (
     _extract_non_negative_int,
     _field_args,
     _has_lateral_force_args,
+    RelationshipConditions,
+    where_names_relationship,
 )
 
 
@@ -57,7 +59,10 @@ def _lateral_join(
     variables: dict | None,
     use_catalog: bool,
     exposed_to_physical: dict | None = None,
+    relationships: RelationshipConditions | None = None,
 ) -> str:
+    """``relationships`` are the target's: a where stating a relationship's condition is compiled
+    to EXISTS correlated with the target's rows, read here under the join's alias (REQ-2136)."""
     args = _field_args(field_node, variables)
     _tid = join_meta.target.table_id
     _e2p = exposed_to_physical or {}
@@ -70,18 +75,26 @@ def _lateral_join(
             join_meta.target_column_type,
             join_meta.source_column_type,
         )
+    # A where naming a relationship correlates with the target's rows, so they are aliased.
+    related = (
+        relationships is not None
+        and "where" in args
+        and where_names_relationship(args["where"], relationships.ctx, relationships.type_name)
+    )
+    rows = f" {_q(join_alias)}" if related else ""
     sql = (
-        f"LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}"
+        f"LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}{rows}"
         f" WHERE {_lat_tgt_expr} = {src_expr}"
     )
     if "where" in args:
         where_sql = _compile_where(
             args["where"],
             collector,
-            None,
+            join_alias if related else None,
             None,
             _tid,
             exposed_to_physical,
+            relationships if related else None,
         )
         sql += f" AND ({where_sql})"
     if "distinct_on" in args:
@@ -557,6 +570,9 @@ def _collect_nested_columns(
                         variables,
                         use_catalog,
                         ctx.exposed_to_physical,
+                        RelationshipConditions(
+                            ctx, nested_join_meta.target.type_name, use_catalog, sources
+                        ),
                     )
                 )
             elif _use_agg and nested_sel.selection_set:

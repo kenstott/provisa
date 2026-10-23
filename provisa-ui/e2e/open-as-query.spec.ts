@@ -37,6 +37,9 @@ async function nextRead(page: Page, match: (query: string) => boolean, act: () =
   return { query: (request.postDataJSON() as { query: string }).query, data: body.data };
 }
 
+/** The view's read: the Ontology operation, not the OntologyCount read it makes first. */
+const ontologyRead = (q: string) => /^query Ontology[\s({]/.test(q);
+
 /** The Ontology View filtered (Taxonomy's two edge types, Unconnected off): the query it read and its
  * answer. One root: the terms, each with the edges leaving it. */
 async function filteredView(page: Page) {
@@ -49,12 +52,12 @@ async function filteredView(page: Page) {
   // Taxonomy: two edge types; then Unconnected off, all in the query's where.
   await nextRead(
     page,
-    (q) => q.startsWith("query Ontology") && q.includes("relType"),
+    (q) => ontologyRead(q) && q.includes("relType"),
     () => page.getByTestId("ontology-preset").getByText("Taxonomy", { exact: true }).click(),
   );
   const viewed = await nextRead(
     page,
-    (q) => q.startsWith("query Ontology") && q.includes("edgesOut"),
+    (q) => ontologyRead(q) && q.includes("edgesOut"),
     async () => {
       await page.getByTestId("ontology-terms-menu").click();
       await page.getByTestId("ontology-terms-menu-option-unconnected").click();
@@ -114,7 +117,7 @@ test.describe("Open as query", () => {
     // REQ-2143: the search is the query's root filter, its neighbourhood read nested with it.
     const viewed = await nextRead(
       page,
-      (q) => q.startsWith("query Ontology") && q.includes("ilike"),
+      (q) => ontologyRead(q) && q.includes("ilike"),
       () => page.getByTestId("glossary-search").fill("species"),
     );
     expect(viewed.query).toContain('ilike: "%species%"');
