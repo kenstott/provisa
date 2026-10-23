@@ -14,7 +14,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Link } from "react-router-dom";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
 import { ATTRACTION_MAX, ATTRACTION_MIN } from "../../pages/tables/profile3d/attractionState";
@@ -40,6 +41,7 @@ import {
   type GraphData,
   type GraphFilters,
   type GraphEdge,
+  type GraphNode,
   type GraphScope,
   type LayerId,
   type Preset,
@@ -52,6 +54,7 @@ import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
+import { nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
@@ -566,7 +569,6 @@ export function GraphExplorer({
           graph={shown}
           data={data}
           selected={selected}
-          setSelected={setSelected}
           setHover={setHover}
           expanded={expanded}
           folds={scope.foldColumns}
@@ -592,7 +594,6 @@ function GraphDetail({
   graph,
   data,
   selected,
-  setSelected,
   setHover,
   expanded,
   folds,
@@ -603,7 +604,6 @@ function GraphDetail({
   graph: GraphData;
   data: GraphData;
   selected: string | null;
-  setSelected: (id: string) => void;
   setHover: (h: GraphHover | null) => void;
   expanded: ReadonlySet<string>;
   /** Whether a table's columns fold into it (and so can be shown on asking). */
@@ -636,7 +636,12 @@ function GraphDetail({
       {node && (
         <section data-testid={`${testId}-detail`} aria-live="polite">
           <div className="p3d-col-head">
-            <h4>{node.label}</h4>
+            {/* The thing itself, on its own page; Back returns to the graph. */}
+            <h4>
+              <Anchor component={Link} to={nodeHref(node)} data-testid={`${testId}-title-link`}>
+                {node.label}
+              </Anchor>
+            </h4>
             <span className="p3d-kind">{t(kindKey(node))}</span>
           </div>
           {node.definition && (
@@ -654,12 +659,14 @@ function GraphDetail({
           <div className="p3d-list">
             {links.map((e) => {
               const other = e.a === node.id ? e.b : e.a;
+              // An edge drawn joins two nodes drawn: each connection is a link to the thing it
+              // joins, on that thing's page.
+              const otherNode = graph.nodes.find((n) => n.id === other) as GraphNode;
               return (
-                <button
-                  type="button"
+                <Link
                   key={e.id}
+                  to={nodeHref(otherNode)}
                   className="p3d-row p3d-row-link"
-                  onClick={() => setSelected(other)}
                   onMouseEnter={() => setHover({ kind: "edge", id: e.id })}
                   onMouseLeave={() => setHover(null)}
                   data-testid={`${testId}-link-${e.id}`}
@@ -671,7 +678,7 @@ function GraphDetail({
                   {(e.paths ?? 1) > 1 && (
                     <span className="p3d-num">{t("graph3d.paths", { count: e.paths })}</span>
                   )}
-                </button>
+                </Link>
               );
             })}
           </div>

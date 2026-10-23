@@ -7842,5 +7842,7 @@
   "pt/glossaryTab.json::glossaryTab.keyColumn": "Key",
   "pt/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class",
   "pt/graph3d.json::graph3d.overBudget": "{{count}} match; narrow the search or pick a domain",
-  "pt/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})"
+  "pt/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})",
+  "pt/graphInspector.json::graphInspector.openTable": "Open its table",
+  "pt/graphInspector.json::graphInspector.openRelationship": "Open its relationship"
 }

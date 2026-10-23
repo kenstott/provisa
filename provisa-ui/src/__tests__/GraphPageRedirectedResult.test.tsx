@@ -153,6 +153,7 @@ describe("GraphFrame — a result delivered to a file", () => {
             onColorChange={() => {}}
             pkMap={{}}
             labelToTableLabel={{}}
+            labelToTableId={{}}
           />
         </MemoryRouter>
       </MantineProvider>,

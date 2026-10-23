@@ -7843,5 +7843,7 @@
   "zh-HK/glossaryTab.json::glossaryTab.keyColumn": "Key",
   "zh-HK/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class",
   "zh-HK/graph3d.json::graph3d.overBudget": "{{count}} match; narrow the search or pick a domain",
-  "zh-HK/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})"
+  "zh-HK/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})",
+  "zh-HK/graphInspector.json::graphInspector.openTable": "Open its table",
+  "zh-HK/graphInspector.json::graphInspector.openRelationship": "Open its relationship"
 }

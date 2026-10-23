@@ -22,6 +22,8 @@
     "properties": "Proprietà",
     "copyValue": "Copia valore",
     "resizePanel": "Ridimensiona il pannello di ispezione",
-    "junctionTable": "tramite {{table}}"
+    "junctionTable": "tramite {{table}}",
+    "openTable": "Apri la sua tabella",
+    "openRelationship": "Apri la sua relazione"
   }
 }

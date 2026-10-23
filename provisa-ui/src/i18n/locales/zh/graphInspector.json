@@ -22,6 +22,8 @@
     "properties": "属性",
     "copyValue": "复制值",
     "resizePanel": "调整检查器面板大小",
-    "junctionTable": "经由 {{table}}"
+    "junctionTable": "经由 {{table}}",
+    "openTable": "打开其表",
+    "openRelationship": "打开其关系"
   }
 }
