@@ -342,6 +342,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if unwinds:
                 _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
                 joins.extend(uw_joins)
+        elif carried is not None:
+            # A WITH right after a WITH goes on from the rows that WITH carries (#288).
+            from_clause = exp.Table(this=exp.Identifier(this=carried))
+            joins = []
+            if unwinds:
+                _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
+                joins.extend(uw_joins)
         elif unwinds:
             from_clause, joins = self._build_unwind_joins(unwinds, has_from=False)
             assert from_clause is not None
