@@ -454,9 +454,11 @@ Erstellt eine Beziehung. Das Gate prüft die Domäne der Quelltabelle (nicht die
 
 Ändert eine bestehende Beziehung, mit denselben Prüfungen wie `createRelationship`. Eine ID, die keine Beziehung hält, wird abgelehnt (`schema.relationship_not_found`). Eine Änderung braucht das Recht selbst; sie wird nie als Anfrage eingereiht.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+Ein Speichern, das Schlüsselspalten zwischen einer Eigenschaft und einer Klasse umsiedelt, kann ihnen `pii` entziehen. Es wird dann mit `tag.move_loses` abgelehnt, und `params.columns` listet jede Spalte mit den Tags, die sie verliert (`loses`) und gewinnt (`gains`). Speichern Sie erneut, mit `confirmTagLoss`, das jeden verlorenen Tag nennt, oder mit `carryTags: true`, um sie auf den Begriff zu setzen, zu dem die jeweilige Spalte wechselt.
 
-Löscht eine Beziehung nach ID und baut Schemas neu auf.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+Löscht eine Beziehung nach ID und baut Schemas neu auf. Ein Löschen, das Schlüsselspalten umsiedelt, nimmt dieselben `confirmTagLoss` und `carryTags` wie ein Speichern.
 
 ---
 
@@ -538,11 +540,19 @@ Löscht einen Tag. Lehnt System- und abgeleitete Tags ab.
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-Weist einer Quelle, Tabelle, Spalte, Beziehung oder einem Command einen Tag zu. Erzwingt die Feldrichtlinien des Tags (`reason_policy`, `expires_policy`) und validiert bei parametrisierten Tags den Parameterwert gegen die zulässige Liste des Tags.
+Weist einer Quelle, Tabelle, Spalte, Beziehung oder einem Command einen Tag zu. Erzwingt die Feldrichtlinien des Tags (`reason_policy`, `expires_policy`) und prüft bei einem parametrisierten Tag den Parameterwert gegen die zulässige Liste des Tags.
+
+`pii` kann auch auf einen Glossarbegriff gesetzt werden, sodass jede Spalte mit dieser Bedeutung den Tag trägt, auch später registrierte Spalten. Setzen Sie `objectType: "term"` und `termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+Auf einer Spalte setzt `alsoTerm: true` den Tag stattdessen auf den Begriff der Spalte. `params.covers` im Ergebnis gibt an, wie viele Spalten der Tag erreicht: bei einer Spalte, wie viele andere Spalten ihr Begriff hält; bei einem Begriff, wie viele er hält. Namentlich abgelehnt werden: ein anderer Tag als `pii` auf einem Begriff (`tag.not_on_terms`), ein Begriff, der keine Eigenschaft ist (`tag.term_not_property`), ein Begriff im Entwurf (`tag.term_not_live`, „Definieren Sie *Begriff*, um ihn zu markieren“) und, mit `alsoTerm`, eine Schlüsselspalte (`tag.key_column`) oder eine Spalte ohne Begriff (`tag.column_has_no_term`). Eine direkt markierte Spalte braucht eine Begründung.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Entfernt eine Tag-Zuweisung.
+Entfernt eine Tag-Zuweisung, auch von einem Begriff (`objectType: "term"`, `termId`). Das Entfernen von `pii` von einer Spalte, die ihn über ihren Begriff trägt, wird abgelehnt (`tag.inherited_from_term`): Heben Sie die Markierung des Begriffs auf, oder verschieben Sie die Spalte auf einen Begriff, der zu ihrem Inhalt passt.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 

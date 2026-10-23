@@ -454,9 +454,11 @@ Crea una relazione. Il controllo verifica il dominio della tabella di origine (n
 
 Modifica una relazione esistente, con gli stessi controlli di `createRelationship`. Un id che nessuna relazione possiede viene rifiutato (`schema.relationship_not_found`). Una modifica richiede il diritto stesso; non viene mai messa in coda come richiesta.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+Un salvataggio che ricolloca colonne chiave tra una Proprietà e una Classe può togliere loro `pii`. Viene allora rifiutato con `tag.move_loses`, e `params.columns` elenca ogni colonna con i tag che perde (`loses`) e guadagna (`gains`). Salvare di nuovo con `confirmTagLoss` che nomina ogni tag perso, o con `carryTags: true` per metterli sul termine verso cui va ciascuna colonna.
 
-Elimina una relazione per ID e ricostruisce gli schemi.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+Elimina una relazione per ID e ricostruisce gli schemi. Un'eliminazione che ricolloca colonne chiave accetta gli stessi `confirmTagLoss` e `carryTags` di un salvataggio.
 
 ---
 
@@ -538,11 +540,19 @@ Elimina un tag. Rifiuta i tag di sistema e derivati.
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-Assegna un tag a un'origine, tabella, colonna, relazione o comando. Applica le policy di campo del tag (`reason_policy`, `expires_policy`) e — per i tag parametrizzati — valida il valore del parametro contro la lista permessa del tag.
+Assegna un tag a una sorgente, tabella, colonna, relazione o comando. Applica le politiche di campo del tag (`reason_policy`, `expires_policy`) e, per un tag parametrizzato, controlla il valore del parametro rispetto all'elenco consentito del tag.
+
+`pii` può andare anche su un termine del glossario, così ogni colonna con quel significato porta il tag, comprese le colonne registrate in seguito. Impostare `objectType: "term"` e `termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+Su una colonna, `alsoTerm: true` mette invece il tag sul termine della colonna. `params.covers` nel risultato dice quante colonne raggiunge il tag: per una colonna, quante altre colonne ha il suo termine; per un termine, quante ne ha. Rifiutati per nome: un tag diverso da `pii` su un termine (`tag.not_on_terms`), un termine che non è una Proprietà (`tag.term_not_property`), un termine in bozza (`tag.term_not_live`, «Definisci *termine* per contrassegnarlo») e, con `alsoTerm`, una colonna chiave (`tag.key_column`) o una colonna senza termine (`tag.column_has_no_term`). Una colonna contrassegnata direttamente richiede un motivo.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Rimuove un'assegnazione di tag.
+Rimuove un'assegnazione di tag, anche da un termine (`objectType: "term"`, `termId`). Rimuovere `pii` da una colonna che lo porta tramite il suo termine viene rifiutato (`tag.inherited_from_term`): togliere il contrassegno dal termine, o spostare la colonna su un termine che corrisponde a ciò che contiene.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 

@@ -1,7 +1,7 @@
 {
-  "admin-graphql.md": "213bd74fc22573256b52743cbf6f6acaf055d92efe45a45abd344bf24be291af",
+  "admin-graphql.md": "8a72372f0ae739efa8980df70f7487b71ce9d654196e06c4017d1ad311ebc863",
   "admin.md": "907be712515d768847b4c1b70d1861b99a61de0c10f721d4199607bd5f9f7f04",
-  "api-reference.md": "5713969669b099bba3ac6cf311f467b8f7c041d0910f23da6792b8225011091e",
+  "api-reference.md": "f24fc11a924981424ed4eba5c0999022745ee80ebc7d1ed7226cfcd4f0f848bd",
   "architecture.md": "44ad8bc5217aa098325df055e5ef5f676d869d7235b402f3c2b1ec5b5edc2ebe",
   "bitemporal-views.md": "7e9cab7b614ab415ed3d5b2e493c8e506bca73488fc352578c85578ccdf459c2",
   "business-logic.md": "2bbe21912f16a7c813ff6bd2389c18d6a34fdd936baef0a622827d6e7e1d5357",
@@ -21,7 +21,7 @@
   "migration/hasura-ddn.md": "08402b12f53b7dfde3716e9ac0ffffa525102d43e6bfd35740a72d4aff8ccdf4",
   "migration/hasura-v2.md": "34f9b7024b33ca49ddddb99d6952bbc3e8415f3e63bfca35b5d1fed24eff9c2f",
   "modeling.md": "baf89e4e1e6ddbc352737e65cda7bc6940edeb51295ee027ee09b0626cc8c191",
-  "ontology.md": "9a3606596fed282215b372a23ecc6ba890aaf903f1619a24fcefa8852a6a4b75",
+  "ontology.md": "0ad8eeae38e0d4f57f3808c9e7f697768f534a17729c065af4460dd96f07e2a0",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
   "pgwire.md": "b975b7574c379db350a0d16505120302e23e9118f83b5ad4ee3ea72f3e464e34",
   "python-client.md": "72587a15c990d156e03ee427c950f92fde4eec3d59bd4bab690ef294f7955588",

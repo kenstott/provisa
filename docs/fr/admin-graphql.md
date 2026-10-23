@@ -454,9 +454,11 @@ Crée une relation. Le contrôle vérifie le domaine de la table source (pas cel
 
 Modifie une relation existante, avec les mêmes vérifications que `createRelationship`. Un identifiant qu'aucune relation ne détient est refusé (`schema.relationship_not_found`). Une modification exige le droit lui-même ; elle n'est jamais mise en file comme demande.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+Un enregistrement qui reloge des colonnes de clé entre une Propriété et une Classe peut leur retirer `pii`. Il est alors refusé avec `tag.move_loses`, et `params.columns` liste chaque colonne avec les étiquettes qu'elle perd (`loses`) et gagne (`gains`). Enregistrez à nouveau avec `confirmTagLoss` nommant chaque étiquette perdue, ou avec `carryTags: true` pour les placer sur le terme vers lequel chaque colonne se déplace.
 
-Supprimer une relation par ID et reconstruire les schémas.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+Supprime une relation par ID et reconstruit les schémas. Une suppression qui reloge des colonnes de clé accepte les mêmes `confirmTagLoss` et `carryTags` qu'un enregistrement.
 
 ---
 
@@ -538,11 +540,19 @@ Supprimer une étiquette. Refuse les étiquettes système et dérivées.
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-Affecter une étiquette à une source, table, colonne, relation, ou commande. Applique les politiques de champ de l'étiquette (`reason_policy`, `expires_policy`) et — pour les étiquettes paramétrées — valide la valeur du paramètre contre la liste autorisée de l'étiquette.
+Assigne une étiquette à une source, une table, une colonne, une relation ou une commande. Applique les politiques de champ de l'étiquette (`reason_policy`, `expires_policy`) et, pour une étiquette paramétrée, vérifie la valeur du paramètre par rapport à la liste autorisée de l'étiquette.
+
+`pii` peut aussi être placée sur un terme du glossaire, si bien que chaque colonne qui porte ce sens reçoit l'étiquette, y compris les colonnes enregistrées plus tard. Définissez `objectType: "term"` et `termId` :
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+Sur une colonne, `alsoTerm: true` place l'étiquette sur le terme de la colonne à la place. `params.covers` dans le résultat indique combien de colonnes l'étiquette atteint : pour une colonne, combien d'autres colonnes son terme porte ; pour un terme, combien il en porte. Sont refusés nommément : une étiquette autre que `pii` sur un terme (`tag.not_on_terms`), un terme qui n'est pas une Propriété (`tag.term_not_property`), un terme en brouillon (`tag.term_not_live`, « Définissez *terme* pour le marquer ») et, avec `alsoTerm`, une colonne de clé (`tag.key_column`) ou une colonne sans terme (`tag.column_has_no_term`). Une colonne marquée directement exige un motif.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Retirer une affectation d'étiquette.
+Supprime une affectation d'étiquette, y compris sur un terme (`objectType: "term"`, `termId`). Retirer `pii` d'une colonne qui la porte par son terme est refusé (`tag.inherited_from_term`) : démarquez le terme, ou déplacez la colonne vers un terme qui correspond à ce qu'elle contient.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
