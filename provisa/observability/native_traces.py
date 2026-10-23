@@ -75,7 +75,14 @@ def traces_scan(root: str) -> str:
     opens no batch: compaction removes the batches it merged, and a batch listed by a bind that
     read every file (``union_by_name``) could be gone by the time it was opened. Every file is
     written with ``TRACES_SCHEMA`` (``write_batch``, ``compact``), so none needs its columns
-    matched by name."""
+    matched by name.
+
+    Known limitation: a query of the view lists the folder and then opens each file, so one
+    running while ``compact`` removes a batch it listed fails with DuckDB's "Cannot open file".
+    It touches only reads of the traces and is reported, never silent. Moving merged batches out
+    of the folder fails the same way (the listed path is gone either way); what closes it is a
+    batch kept in place, read alongside its merged copy, until no read can still hold its listing
+    (a grace longer than the request timeout), with the view reading each row once."""
     schema = os.path.join(root, SCHEMA_FILE).replace("'", "''")
     every = os.path.join(root, "**", "*.parquet").replace("'", "''")
     return f"SELECT * FROM read_parquet(['{schema}', '{every}'], hive_partitioning = false)"
