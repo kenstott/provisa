@@ -74,6 +74,7 @@ Provisa 讀取程式碼本身的宣告：Python 中的 docstring 和類型提示
 | `@table` | 一張表。函數返回清單或可迭代物件，每個元素是一行。 |
 | `@command` | 一個指令，按請求執行。 |
 | `@stream` | 一張即時表。函數是產生器，每產出一行就傳送一行。 |
+| `@columns` | 一個欄位轉換：輸入一批資料列，每行輸出一個結果。見[欄位轉換](#column-transforms)。 |
 
 - 沒有標籤的函數會被忽略。
 - Provisa 不認識的標籤會被拒絕，無法對應的類型也會被拒絕。拒絕訊息會一次列出所有問題，方便你一次改完。
@@ -212,6 +213,46 @@ def churn_score(
 ```
 
 與客戶表 join 時，它會以類似 `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` 的 `loader` 被呼叫。第二個鍵只帶 `customer_id`，因此其方案和區域取預設值。函數返回 `{"9f2c...": [...], "41ab...": [...], ...}`。
+
+### 欄位轉換：`@columns` {: #column-transforms }
+
+標記為 `@columns` 的函數會根據你已有資料列的欄位計算出新欄位：把地址拆分成各個部分、對描述進行分類，或豐富一個名稱。它接收一批資料列，並按相同順序為每行傳回一個結果。
+
+每個參數是一個輸入欄位，以該批次按行順序排列的值清單形式傳入。函數傳回一個清單，每個輸入行對應一個物件，物件的欄位就是輸出欄位。用 Python 寫：
+
+```python
+@dataclass
+class Address:
+    street: str
+    city: str
+    country: str
+
+
+def clean_address(raw_address: list[str]) -> list[Address]:
+    """Each raw address of the batch, as its parts.
+
+    @columns
+    """
+    ...
+```
+
+在 TypeScript 中，把它宣告為 `clean_address(raw_address: string[]): Promise<Address[]>`，並在其 JSDoc 中加上 `@columns`。
+
+你把它登記為指令，像其他指令一樣一次登記一個：在 **Commands** 頁面上選擇數據來源，它的 `@columns` 函數就會出現在可選清單中。函數的宣告提供輸入欄位和輸出欄位。把它登記到一個網域，並指定可以使用它的角色。
+
+在 select 清單中套用它，它的輸出欄位會取代這次呼叫：
+
+```sql
+SELECT id, clean_address(raw_address) FROM suppliers
+```
+
+這會傳回 `id, street, city, country`。如果需要其他名稱，請在外層查詢中重新命名輸出。呼叫必須是陳述式自身 select 清單中的一項：Provisa 在資料列讀取之後才對其執行函數，因此出現在 `WHERE`、`JOIN`、`GROUP BY` 中或嵌在其他運算式裏的呼叫都會被拒絕，為呼叫加別名亦會被拒絕。每個輸出欄位都是投影血緣中一個具名的步驟。
+
+資料列以每批 1,000 行的方式交給函數。在兩次呼叫之間不保留狀態的函數，可以令各批次分佈在數據來源的 worker 上並行執行：在數據來源表單上設定 **Workers**（其 mapping 中的 `workers`，見 [dev 模式與 worker](#workers)）即可執行多個，每增加一個 worker 就增加一份吞吐量。如果某批傳回的結果數與它收到的行數不同，就會被拒絕，並指明是哪個函數。
+
+函數可以呼叫 Provisa 的服務，其中包括 LLM 服務，因此一次模型呼叫就能清理、分類或豐富整批資料。每次呼叫都會像數據來源的其他呼叫一樣被計量並受數據來源的上限約束（[呼叫模型](#calling-a-model)）。
+
+套用了欄位轉換的檢視表會被落地，無論你是否把它宣告為具體化檢視表：Provisa 會像建置具體化檢視表那樣建置它，按批對檢視表的資料列呼叫函數並儲存結果，檢視表隨後從這張儲存的資料表中讀取。之後陳述式就可以像對待其他欄位一樣，對輸出欄位進行篩選、連接或分組。每次檢視表重新整理時，輸出都會按其新鮮度宣告重新計算。它們沒有自己的排程。
 
 ### 程式碼從哪裡來 {: #where-the-code-comes-from }
 

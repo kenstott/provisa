@@ -74,6 +74,7 @@ Provisa 读取代码自身的声明：Python 中的 docstring 和类型提示，
 | `@table` | 一张表。函数返回列表或可迭代对象，每个元素是一行。 |
 | `@command` | 一个命令，按请求运行。 |
 | `@stream` | 一张实时表。函数是生成器，每产出一行就发送一行。 |
+| `@columns` | 一个列转换：输入一批行，每行输出一个结果。见[列转换](#column-transforms)。 |
 
 - 没有标签的函数会被忽略。
 - Provisa 不认识的标签会被拒绝，无法映射的类型也会被拒绝。拒绝信息会一次列出所有问题，方便你一次改完。
@@ -212,6 +213,46 @@ def churn_score(
 ```
 
 与客户表 join 时，它会以类似 `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` 的 `loader` 被调用。第二个键只带 `customer_id`，因此其套餐和区域取默认值。函数返回 `{"9f2c...": [...], "41ab...": [...], ...}`。
+
+### 列转换：`@columns` {: #column-transforms }
+
+标记为 `@columns` 的函数会根据你已有行的列计算出新列：把地址拆分成各个部分、对描述进行分类，或丰富一个名称。它接收一批行，并按相同顺序为每行返回一个结果。
+
+每个参数是一个输入列，以该批次按行顺序排列的值列表形式传入。函数返回一个列表，每个输入行对应一个对象，对象的字段就是输出列。用 Python 写：
+
+```python
+@dataclass
+class Address:
+    street: str
+    city: str
+    country: str
+
+
+def clean_address(raw_address: list[str]) -> list[Address]:
+    """Each raw address of the batch, as its parts.
+
+    @columns
+    """
+    ...
+```
+
+在 TypeScript 中，把它声明为 `clean_address(raw_address: string[]): Promise<Address[]>`，并在其 JSDoc 中加上 `@columns`。
+
+你把它注册为命令，像其他命令一样一次注册一个：在 **Commands** 页面上选择数据源，它的 `@columns` 函数就会出现在可选列表中。函数的声明提供输入列和输出列。把它注册到一个网域，并指定可以使用它的角色。
+
+在 select 列表中应用它，它的输出列会取代这次调用：
+
+```sql
+SELECT id, clean_address(raw_address) FROM suppliers
+```
+
+这会返回 `id, street, city, country`。如果需要其他名称，请在外层查询中重命名输出。调用必须是语句自身 select 列表中的一项：Provisa 在行读取之后才对其运行函数，因此出现在 `WHERE`、`JOIN`、`GROUP BY` 中或嵌在其他表达式里的调用都会被拒绝，给调用加别名也会被拒绝。每个输出列都是投影血缘中一个具名的步骤。
+
+行以每批 1,000 行的方式交给函数。在两次调用之间不保留状态的函数，可以让各批次分布在数据源的 worker 上并行运行：在数据源表单上设置 **Workers**（其 mapping 中的 `workers`，见 [dev 模式与 worker](#workers)）即可运行多个，每增加一个 worker 就增加一份吞吐量。如果某批返回的结果数与它收到的行数不同，就会被拒绝，并指明是哪个函数。
+
+函数可以调用 Provisa 的服务，其中包括 LLM 服务，因此一次模型调用就能清洗、分类或丰富整批数据。每次调用都会像数据源的其他调用一样被计量并受数据源的上限约束（[调用模型](#calling-a-model)）。
+
+应用了列转换的视图会被落地，无论你是否把它声明为物化视图：Provisa 会像构建物化视图那样构建它，按批对视图的行调用函数并存储结果，视图随后从这张存储表中读取。之后语句就可以像对待其他列一样，对输出列进行过滤、连接或分组。每次视图刷新时，输出都会按其新鲜度声明重新计算。它们没有自己的调度。
 
 ### 代码从哪里来 {: #where-the-code-comes-from }
 

@@ -245,6 +245,23 @@ Alles andere (ein Aggregat, ein `GROUP BY`, eine berechnete oder maskierte Spalt
 
 Eine Suche wird pro Anweisung unter ihren Argumenten gelesen, ihre Zeilen für die TTL der Tabelle unter diesen Argumenten gehalten. Eine Suchtabelle ist schreibgeschützt.
 
+**Eine Suche, gespeist durch einen Join.** Eine Beziehung kann die Argumente einer Suche aus den Spalten einer anderen Tabelle speisen, so wie sie die einer Code-Tabelle speist: Ihre `parameters`-Map nennt jedes Argument und die Quellspalte, aus der es kommt. Eine Anweisung, die die Suche mit dieser Tabelle joint, führt dann eine Qdrant-Abfrage für jede unterschiedliche Kombination der Quellwerte aus, so wie die Rolle der Anweisung sie liest, mit den eigenen Argumenten der Anweisung für diejenigen, die die Beziehung nicht speist. Die Punkte einer Suche enthalten nichts von der Abfrage, die sie gefunden hat, daher joint die Beziehung auf der Parameterspalte der Abfrage: Jeder Punkt trägt in dieser Spalte den Wert, nach dem gesucht wurde.
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+Nach den Wörtern jeder Zeile wird gesucht, wobei die Punkte ihres eigenen Sonetts über den Filter `"@sonnet"` der Suche ausgelassen werden, und jede Zeile erhält die drei für sie gefundenen Punkte. Eine Anweisung, die eines der gespeisten Argumente selbst angibt, etwa `WHERE s._nf_query = 'the ravages of time'`, liest die Suche mit ihren eigenen Argumenten und wird nicht gespeist.
+
 ### Streaming
 
 | Quelltyp | Mechanismus | Mutations |
@@ -1611,7 +1628,7 @@ Beide Connectors verwenden die API-Source-Cache-Pipeline. Ergebnisse werden in P
 
 #### Konfigurationsdatei- und UI-Registrierung {: #config-file-and-ui-registration }
 
-Der `host` einer `sparql`-Quelle ist ihre SPARQL-Endpunkt-URL (das Sources-Formular speichert es auf dieselbe Weise). Jede Tabelle darunter trägt `query_template`, ein SELECT, dessen Variablen die Spalten sind; jede Bindung ist `text`.
+Der `host` einer `sparql`-Quelle ist ihre SPARQL-Endpunkt-URL (das Sources-Formular speichert es auf dieselbe Weise). Jede Tabelle darunter trägt `query_template`, ein SELECT, dessen Variablen die Spalten sind. Die Vorschau typisiert jede Spalte nach dem XSD-Datentyp, den ihre Bindungen gemeinsam haben: die Ganzzahltypen als `integer`, `xsd:decimal`, `xsd:double` und `xsd:float` als `double`, `xsd:boolean` als `boolean`, `xsd:date` als `date` und `xsd:dateTime` als `timestamp`. Eine IRI, ein leerer Knoten, eine einfache oder sprachmarkierte Zeichenkette oder eine Variable, deren Bindungen sich im Typ unterscheiden, ist `text`.
 
 ```yaml
 sources:
@@ -1632,6 +1649,64 @@ tables:
 ```
 
 Register Table funktioniert genauso wie bei Neo4j: Wählen Sie die Quelle, geben Sie einen Tabellennamen und das SELECT ein, drücken Sie Preview (die `sparqlPreview`-Abfrage führt es mit `LIMIT 5` aus und befüllt die Spaltenliste), dann registrieren. Die Registrierung persistiert eine `api_sources`-Zeile und eine `api_endpoints`-Zeile (formularkodiertes POST an den Endpunktpfad, `sparql_bindings`-Normalisierer), dieselben Zeilen, die eine Konfigurationsdatei-Registrierung schreibt, und die native Engine landet die Zeilen über dieselbe Fetch-Kette wie Neo4j.
+
+**Pushdown.** Liest eine Anweisung eine SPARQL-Tabelle allein (ohne Join), gehen ihre Bedingungen auf die Spalten der Tabelle in die an den Endpunkt gesendete Abfrage ein. Das registrierte SELECT wird zu einer Unterabfrage, `SELECT * WHERE { { <the SELECT> } FILTER(...) }`, wobei seine `PREFIX`- und `BASE`-Zeilen davor erhalten bleiben.
+- Übertragen: Gleichheit und `IN` auf einer `text`-Spalte (verglichen als `STR(?var)`, sodass eine IRI auf ihren Text passt); jeder Vergleich auf einer `integer`- oder `double`-Spalte; Gleichheit auf einem `boolean`.
+- Nicht übertragen: andere Bedingungen, etwa ein Ordnungsvergleich auf Text, ein Datum, eine Funktion einer Spalte oder ein gebundener Parameter. Sie werden auf die Zeilen angewendet, die Provisa erhält.
+- Jede Bedingung wird erneut auf die Zeilen angewendet, das Übertragen einer Bedingung schränkt also nur ein, was abgerufen wird.
+- Das `LIMIT` der Anweisung wird nur übertragen, wenn jede Bedingung übertragen wurde und die Anweisung nicht gruppiert, aggregiert, `DISTINCT`, `ORDER BY` oder `OFFSET` verwendet.
+- Eine eingeschränkte Antwort wird unter ihrer eigenen Abfrage gecacht, getrennt von der der ganzen Tabelle.
+
+#### Reasoner {: #reasoner }
+
+Eine `sparql`-Quelle kann einen Reasoner und ein OWL-Axiomdokument nennen. Eine Tabelle, deren Abfrage eine einzelne IRI in spitzen Klammern ist, liefert dann diese Klasse oder Eigenschaft so, wie die Axiome sie ableiten:
+- eine Klasse: eine Spalte, ihre Mitglieder;
+- eine Objekt- oder Dateneigenschaft: zwei Spalten, jedes Subjekt und sein Wert.
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+Die Axiome können in jeder Syntax geschrieben sein, die die OWL API liest: Turtle, RDF/XML, OWL Functional Syntax oder Manchester Syntax. HermiT ist der einzige Reasoner.
+
+Wird eine abgeleitete Tabelle gelesen, geht der Reasoner so vor:
+1. Er liest die Klassen und Eigenschaften, die die Axiome nennen;
+2. er sendet dem Endpunkt ein `CONSTRUCT` für jedes Tripel dieser Eigenschaften und jede Mitgliedschaft in diesen Klassen und fordert N-Triples an;
+3. er klassifiziert diesen Ausschnitt unter den Axiomen;
+4. er gibt die Fakten zurück, die daraus folgen.
+
+Alle abgeleiteten Tabellen einer Quelle teilen sich eine Klassifikation, und sie wird für die Cache-TTL der Tabelle wiederverwendet. Die Aktualitätsdeklaration der Quelle bestimmt also, wie oft sie schlussfolgert: `cache_ttl` für eine Live-Tabelle, die Aktualisierung des Replikats für ein Replikat und einmalig für eine TTL von `-1`. Was eine abgeleitete Tabelle liefert, wird für jeden Leser geregelt wie jede andere Tabelle.
+
+HermiT läuft als eigenes Programm, nie im Server. Es läuft auf einem festgelegten Eclipse Temurin JDK 21 mit HermiT, der OWL API und ihren Bibliotheken im Klassenpfad. Jedes Teil wird bei der ersten Verwendung abgerufen, gegen die von Provisa festgelegte SHA-256 geprüft und unter dem Cache-Stamm der Laufzeitabhängigkeiten gecacht (`$PROVISA_RUNTIME_DEPS_CACHE`, Standard `~/.cache/provisa/runtime_deps`). Ein fehlgeschlagener Download oder eine Datei, deren Summe von der festgelegten abweicht, lässt das Lesen mit Namen scheitern.
 
 ## Verbindungsbeispiele {: #connection-examples }
 
