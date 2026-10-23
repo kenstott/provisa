@@ -7805,5 +7805,6 @@
   "hi/tableSections.json::tableSections.classTerm": "Rows are instances of",
   "hi/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "hi/tableSections.json::tableSections.noClassTerm": "No term",
-  "hi/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}"
+  "hi/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
+  "hi/graphSidebar.json::graphSidebar.notCounted": "Not counted: {{list}}"
 }

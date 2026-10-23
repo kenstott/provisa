@@ -7803,5 +7803,6 @@
   "ru/tableSections.json::tableSections.classTerm": "Rows are instances of",
   "ru/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "ru/tableSections.json::tableSections.noClassTerm": "No term",
-  "ru/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}"
+  "ru/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
+  "ru/graphSidebar.json::graphSidebar.notCounted": "Not counted: {{list}}"
 }

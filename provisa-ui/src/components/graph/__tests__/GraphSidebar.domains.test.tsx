@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 // The Database tab's node labels under a domain selection: deselecting meta takes meta's labels
-// away and keeps the others', whichever page of the list was open.
+// away and keeps the others', whichever page of the list was open; and their counts, a count the
+// engine could not make said as such.
 
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -73,5 +74,32 @@ describe("the Database tab's node labels", () => {
     expect(screen.getByRole("button", { name: "PETINVENTORY" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PETINQUIRIES" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "M00" })).toBeNull();
+  });
+
+  it("show a count the engine could not make as ?, the * pill naming each one and why", async () => {
+    render(
+      <GraphSidebar
+        {...props(PETSTORE)}
+        counts={{
+          node_count: null,
+          rel_count: 0,
+          label_counts: {
+            "PetStore:PETINVENTORY": { count: 4 },
+            "PetStore:PETINQUIRIES": { count: null, error: "Catalog petstore is not attached" },
+          },
+          rel_counts: {},
+        }}
+      />,
+    );
+    const all = screen.getByTestId("graph-all-nodes");
+    expect(all).toHaveTextContent("*(?)");
+    expect(screen.getByRole("button", { name: /^PETINVENTORY\s*\(4\)$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^PETINQUIRIES\s*\(\?\)$/ })).toBeInTheDocument();
+    fireEvent.mouseEnter(all);
+    expect(
+      await screen.findByText(
+        "Not counted: PetStore:PETINQUIRIES (Catalog petstore is not attached)",
+      ),
+    ).toBeInTheDocument();
   });
 });

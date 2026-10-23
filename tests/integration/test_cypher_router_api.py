@@ -154,27 +154,31 @@ class TestGraphCounts:
         resp = await client.get("/data/graph-counts")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert "node_count" in data
-        assert "rel_count" in data
-        assert "label_counts" in data
+        assert set(data) == {"node_count", "rel_count", "label_counts", "rel_counts"}
         assert isinstance(data["label_counts"], dict)
-        assert isinstance(data["node_count"], int)
-        assert isinstance(data["rel_count"], int)
+        assert isinstance(data["rel_counts"], dict)
 
-    async def test_counts_label_counts_are_non_negative_ints(self, client):
+    async def test_counts_each_entry_is_a_count_or_its_reason(self, client):
         resp = await client.get("/data/graph-counts")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        for label, count in data["label_counts"].items():
-            assert isinstance(label, str)
-            assert isinstance(count, int)
-            assert count >= 0
+        for entries in (data["label_counts"], data["rel_counts"]):
+            for name, entry in entries.items():
+                assert isinstance(name, str)
+                if entry["count"] is None:
+                    assert isinstance(entry["error"], str) and entry["error"]
+                else:
+                    assert isinstance(entry["count"], int) and entry["count"] >= 0
 
-    async def test_counts_node_count_matches_sum_of_label_counts(self, client):
+    async def test_counts_total_is_the_sum_only_when_every_label_was_counted(self, client):
         resp = await client.get("/data/graph-counts")
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["node_count"] == sum(data["label_counts"].values())
+        counts = [e["count"] for e in data["label_counts"].values()]
+        if None in counts:
+            assert data["node_count"] is None
+        else:
+            assert data["node_count"] == sum(counts)
 
     async def test_counts_domain_filter_sales_analytics_only(self, client):
         resp = await client.get("/data/graph-counts", params={"domains": "sales-analytics"})

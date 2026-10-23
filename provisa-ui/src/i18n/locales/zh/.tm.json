@@ -7803,5 +7803,6 @@
   "zh/tableSections.json::tableSections.classTerm": "Rows are instances of",
   "zh/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "zh/tableSections.json::tableSections.noClassTerm": "No term",
-  "zh/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}"
+  "zh/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
+  "zh/graphSidebar.json::graphSidebar.notCounted": "Not counted: {{list}}"
 }
