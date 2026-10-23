@@ -1,6 +1,6 @@
 {
   "glossaryTab": {
-    "title": "Glossario",
+    "title": "Ontologia",
     "searchPlaceholder": "Cerca termini…",
     "empty": "Nessun termine.",
     "abstract": "Astratto",
@@ -68,6 +68,7 @@
     "excludeFromExportHelp": "Alcune colonne portano dati di business, altre l'impianto tecnico. Un termine come «etl batch identifier» o «row version» ha una definizione reale: semplicemente non è vocabolario di business. Escludilo e resta qui per gli ingegneri, fuori dai cataloghi in cui Provisa pubblica. Le colonne continuano a essere esportate; il termine e le sue relazioni no.",
     "bulkGenerateDefinitions": "Definizioni",
     "bulkGenerateRelationships": "Relazioni",
+    "generateMenu": "Genera con l'IA",
     "definitionsGenerated": "{{count}} definizione generata.",
     "definitionsGenerated_other": "{{count}} definizioni generate.",
     "relationshipsGenerated": "{{count}} relazione aggiunta.",
@@ -82,12 +83,12 @@
     "proposed": "Proposto",
     "proposedUndefined": "Proposto: derivato dai nomi della colonna e della tabella. Dagli una definizione: è ciò che leggono gli agenti e i cataloghi. Il nome deriva dalle colonne qui sotto, e le colonne che si normalizzano allo stesso modo confluiscono in un unico termine: assegna un alias a una colonna nella pagina Tabelle per cambiare il termine a cui contribuisce. Rinominare qui cambia solo la formulazione di questo termine.",
     "proposedUngrounded": "Proposto: questo termine non raggiunge alcuna colonna fisica. Collegalo a un termine che ne ha una perché indichi dati reali.",
-    "purposeTitle": "A cosa serve il glossario",
+    "purposeTitle": "A cosa serve l'ontologia",
     "purposeBody": "È il modo in cui persone e agenti trovano i dati giusti e li usano correttamente. Ogni termine dà un nome a un concetto di business, elenca tutte le colonne fisiche che lo contengono e dice che cosa significa davvero, così una domanda posta in linguaggio di business arriva alla colonna giusta invece che a una sbagliata dall'aria plausibile.",
     "purposeAdd": "I termini delle colonne reali vengono derivati automaticamente. Creane uno a mano solo per un concetto che nessuna singola colonna contiene: un termine ombrello che poi colleghi ai termini che ne hanno una, così continua a raggiungere dati reali.",
-    "purposeAria": "Informazioni sul glossario",
+    "purposeAria": "Informazioni sull'ontologia",
     "readOnly": "Sola lettura",
-    "readOnlyHint": "Puoi leggere il glossario ma non curarlo. Curare termini, definizioni e relazioni richiede la capacità glossary_rw.",
+    "readOnlyHint": "Puoi leggere l'ontologia ma non curarla. Curare termini, definizioni e relazioni richiede la capacità glossary_rw.",
     "expertUserPlaceholder": "Cerca persone…",
     "enterpriseDomainLabel": "Tutti i domini (aziendale)"
   }

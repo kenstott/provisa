@@ -180,7 +180,7 @@
       },
       "stepDomains": {
         "title": "Domeinen en hun stewards",
-        "description": "🗂️ Een domein groepeert tabellen, en zijn data steward beheert dat deel van het model: wie wat ziet, maskers en rijregels, gevoelige gegevens, en zijn glossarium en dataproducten."
+        "description": "🗂️ Een domein groepeert tabellen, en zijn data steward beheert dat deel van het model: wie wat ziet, maskers en rijregels, gevoelige gegevens, en zijn ontologie en dataproducten."
       },
       "stepTags": {
         "title": "Tags dragen betekenis",
@@ -287,12 +287,12 @@
         "description": "📦 Geef de eigenaar en het team, het doel, het gebruik, de SLA en de ondersteuning op en kies dan de tabellen en commando's die het bevat. Dit zijn de velden die worden gepubliceerd. Een tabel hoort alleen bij een product als beide hetzelfde domein delen."
       },
       "stepGlossary": {
-        "title": "Een levend bedrijfsglossarium",
-        "description": "📖 Elke term verwijst naar de kolommen die hem dragen en naar andere termen. Beheer namen, definities en getypeerde relaties (soort van, onderdeel van, synoniem van) handmatig, of laat AI de leemtes opvullen: <strong>✨ Definities</strong> stelt alleen concepten op voor termen die er nog geen hebben, en <strong>✨ Relaties</strong> stelt koppelingen voor in het hele glossarium. Markeer een term als <strong>uitgesloten van export</strong> om hem buiten de gepubliceerde metadata te houden."
+        "title": "Een levende ontologie",
+        "description": "📖 Elke term verwijst naar de kolommen die hem dragen en naar andere termen. Beheer namen, definities en getypeerde relaties (soort van, onderdeel van, synoniem van) handmatig, of laat AI de leemtes opvullen via het menu <strong>✨</strong>: <strong>Definities</strong> stelt alleen concepten op voor termen die er nog geen hebben, en <strong>Relaties</strong> stelt koppelingen voor in de hele ontologie. Markeer een term als <strong>uitgesloten van export</strong> om hem buiten de gepubliceerde metadata te houden."
       },
       "stepDataProducts": {
         "title": "Dataproducten, gepubliceerd waar afnemers al kijken",
-        "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard): eigenaar, team, doel, beperkingen, gebruik, SLA, ondersteuning en aangepaste eigenschappen. Provisa publiceert het rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het verschijnt als native product in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap die je kunt vergeten: de specificatie wordt telkens <strong>afgeleid uit het live model</strong> (tabellen, lineage, tags, glossariumtermen), dus wat is gepubliceerd kan niet verouderen zoals een met de hand onderhouden ODPS-bestand.</p><p>✅ Publiceren verstuurt ook een <strong>ontologie-uittreksel</strong>: het deel van uw glossarium dat van belang is voor wat wordt gepubliceerd, namelijk de termen die de kolommen definiëren, de bredere en gerelateerde termen waarmee ze zijn verbonden, en de getypeerde relaties daartussen. De datakwaliteitsresultaten van de controleurs die het scannen gaan mee. Het paneel <strong>Gerelateerde termen</strong> van een product somt zijn termen op.</p>"
+        "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard): eigenaar, team, doel, beperkingen, gebruik, SLA, ondersteuning en aangepaste eigenschappen. Provisa publiceert het rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het verschijnt als native product in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap die je kunt vergeten: de specificatie wordt telkens <strong>afgeleid uit het live model</strong> (tabellen, lineage, tags, ontologietermen), dus wat is gepubliceerd kan niet verouderen zoals een met de hand onderhouden ODPS-bestand.</p><p>✅ Publiceren verstuurt ook een <strong>ontologie-uittreksel</strong>: het deel van uw ontologie dat van belang is voor wat wordt gepubliceerd, namelijk de termen die de kolommen definiëren, de bredere en gerelateerde termen waarmee ze zijn verbonden, en de getypeerde relaties daartussen. De datakwaliteitsresultaten van de controleurs die het scannen gaan mee. Het paneel <strong>Gerelateerde termen</strong> van een product somt zijn termen op.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Een term toevoegen",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "Wat een open klacht is",
-        "description": "De woordenlijst zegt wat een open klacht is: een klacht die de stad nog niet heeft gesloten. Termen als deze zeggen wat de gegevens van de catalogus betekenen."
+        "description": "De ontologie zegt wat een open klacht is: een klacht die de stad nog niet heeft gesloten. Termen als deze zeggen wat de gegevens van de catalogus betekenen."
       },
       "filesAnswer": {
         "title": "Het antwoord",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "Een map werd een catalogus",
-        "description": "Een map met bestanden werd een beheerde catalogus: tabellen, relaties, een woordenlijstterm en een opgeslagen view, zonder dat er iets geladen is. Een nieuw maandbestand met klachten heeft geen nieuwe tabel nodig: het patroon omvat het al."
+        "description": "Een map met bestanden werd een beheerde catalogus: tabellen, relaties, een ontologieterm en een opgeslagen view, zonder dat er iets geladen is. Een nieuw maandbestand met klachten heeft geen nieuwe tabel nodig: het patroon omvat het al."
       },
       "reviewsCatalog": {
         "title": "Wat deze demo is",
@@ -492,7 +492,7 @@
       },
       "insuranceTerms": {
         "title": "In de termen van de verzekeraar",
-        "description": "De woordenlijst noemt waar een underwriter naar vraagt: totale verzekerde waarde, cumulatie, waarschijnlijk maximaal verlies en verwacht jaarlijks verlies. Cumulatie betekent hier een concentratie van blootstelling waar één gebeurtenis veel polissen kan raken."
+        "description": "De ontologie noemt waar een underwriter naar vraagt: totale verzekerde waarde, cumulatie, waarschijnlijk maximaal verlies en verwacht jaarlijks verlies. Cumulatie betekent hier een concentratie van blootstelling waar één gebeurtenis veel polissen kan raken."
       },
       "insuranceByRating": {
         "title": "Per risicoklasse, in GraphQL",
@@ -632,7 +632,7 @@
       },
       "vulnerabilitiesTerms": {
         "title": "De woordenschat",
-        "description": "De woordenlijst van het bedrijf definieert bekende misbruikte kwetsbaarheid, CVE, CWE en CVSS, en koppelt elke term aan de kolommen die hij beschrijft. Een CVSS-score zegt hoe ernstig een kwetsbaarheid is. Alleen de catalogus zegt of iemand haar misbruikt."
+        "description": "De ontologie van het bedrijf definieert bekende misbruikte kwetsbaarheid, CVE, CWE en CVSS, en koppelt elke term aan de kolommen die hij beschrijft. Een CVSS-score zegt hoe ernstig een kwetsbaarheid is. Alleen de catalogus zegt of iemand haar misbruikt."
       },
       "vulnerabilitiesAnswer": {
         "title": "Het antwoord in SQL",
@@ -717,7 +717,7 @@
       },
       "profilingTerms": {
         "title": "De woordenschat",
-        "description": "De woordenlijst definieert dataprofiel, plausibel type, waardevorm, dubbele rij en plaatsvervangende waarde, en koppelt elke term aan de metingen die hij beschrijft."
+        "description": "De ontologie definieert dataprofiel, plausibel type, waardevorm, dubbele rij en plaatsvervangende waarde, en koppelt elke term aan de metingen die hij beschrijft."
       },
       "profilingAnswer": {
         "title": "Wat elke kolom bevat",
@@ -802,7 +802,7 @@
       },
       "opioidsTerms": {
         "title": "In gewone woorden",
-        "description": "De woordenlijst legt de termen uit die een raadslid of een inwoner tegenkomt: schikkingsfonds, bestrijding, toewijzing, uitgave, onderdrukt aantal en ratio per 100.000. Bestrijding betekent hier waaraan het geld volgens de schikkingen moet worden besteed."
+        "description": "De ontologie legt de termen uit die een raadslid of een inwoner tegenkomt: schikkingsfonds, bestrijding, toewijzing, uitgave, onderdrukt aantal en ratio per 100.000. Bestrijding betekent hier waaraan het geld volgens de schikkingen moet worden besteed."
       },
       "opioidsAsPublic": {
         "title": "Uitvoeren als het publiek",
@@ -910,7 +910,7 @@
       },
       "agricultureTerms": {
         "title": "In de termen van de verzekeraar",
-        "description": "De woordenlijst noemt waar een gewasverzekeraar naar vraagt: schadequote, schadeoorzaak, werkelijke productiehistorie, dekkingsniveau, aansprakelijkheid en groeiseizoen. De schadequote is hier de uitkeringen gedeeld door de premie. Boven 1 heeft het jaar verlies opgeleverd."
+        "description": "De ontologie noemt waar een gewasverzekeraar naar vraagt: schadequote, schadeoorzaak, werkelijke productiehistorie, dekkingsniveau, aansprakelijkheid en groeiseizoen. De schadequote is hier de uitkeringen gedeeld door de premie. Boven 1 heeft het jaar verlies opgeleverd."
       },
       "agricultureAnswer": {
         "title": "Het antwoord in SQL",
@@ -1106,7 +1106,7 @@
       },
       "pharmaTerms": {
         "title": "In de termen van de apotheek",
-        "description": "De woordenlijst noemt waar een apotheekinkoper naar vraagt: NDC, formularium, geneesmiddelentekort, terugroepklasse en dagen voorraad. Leveringsrisico betekent hier een tekort, een terugroeping door de fabrikant van het product of te weinig dagen voorraad."
+        "description": "De ontologie noemt waar een apotheekinkoper naar vraagt: NDC, formularium, geneesmiddelentekort, terugroepklasse en dagen voorraad. Leveringsrisico betekent hier een tekort, een terugroeping door de fabrikant van het product of te weinig dagen voorraad."
       },
       "pharmaAnswer": {
         "title": "Het antwoord in SQL",

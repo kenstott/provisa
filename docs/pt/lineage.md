@@ -239,7 +239,7 @@ contratos de DQ, grãos de exibição de métrica e chaves de linha de MV são t
 **renomear um alias os quebra tão certamente quanto excluir a coluna**.
 
 O **nome físico** é `table_columns.column_name`, a identidade que sobrevive à substituição integral de
-colunas feita pelo upsert da tabela. Relacionamentos, vínculos de [glossário](glossary.md), atribuições de tag, a coluna
+colunas feita pelo upsert da tabela. Relacionamentos, vínculos de [ontologia](ontology.md), atribuições de tag, a coluna
 de watermark e presets de coluna guardam este, então eles só quebram quando a coluna é **removida**.
 
 `columnDependents` reporta ambos. Exibições e MVs a jusante vêm de fatiar o grafo de federação no

@@ -795,6 +795,27 @@ def build_mcp_server(state: Any):
         )
 
     @_tool
+    async def ground_glossary_term_to_table(
+        term_id: int, table_id: int, role: str | None = None
+    ) -> dict:
+        """Make a glossary term the class term of a registered table or view (one per table; the
+        table must have a primary key)."""
+        resolved = _role(role)
+        return await tools.ground_glossary_term_to_table(
+            state, resolved, _capability_request(resolved), term_id, table_id
+        )
+
+    @_tool
+    async def unground_glossary_term_from_table(
+        term_id: int, table_id: int, role: str | None = None
+    ) -> dict:
+        """Withdraw a glossary term as a table's class term."""
+        resolved = _role(role)
+        return await tools.unground_glossary_term_from_table(
+            state, resolved, _capability_request(resolved), term_id, table_id
+        )
+
+    @_tool
     async def list_data_products(role: str | None = None) -> list[dict]:
         """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
         resolved = _role(role)

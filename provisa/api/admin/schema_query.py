@@ -112,6 +112,7 @@ from provisa.api.admin.schema_helpers import (
     _dynamic_openapi_columns,
     _ensure_openapi_spec,
     _fetch_table_with_columns,
+    table_listing,
     _get_pool,
 )
 
@@ -851,13 +852,17 @@ class Query:  # REQ-021, REQ-042
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
                 # REQ-1958: the caller is answered the tables it administers or is served.
                 scope = catalog_scope(info)
+                listed = [r for r in rows if scope.lists_table(r["id"], r["domain_id"])]
+                # What every listed table reads beside its row, read once for all of them.
+                listing = await table_listing(conn, listed)
                 return [
                     _trim_table(
                         scope,
-                        await _fetch_table_with_columns(conn, r, all_tables, user_can_deploy),
+                        await _fetch_table_with_columns(
+                            conn, r, all_tables, user_can_deploy, listing
+                        ),
                     )
-                    for r in rows
-                    if scope.lists_table(r["id"], r["domain_id"])
+                    for r in listed
                 ]
 
     @strawberry.field

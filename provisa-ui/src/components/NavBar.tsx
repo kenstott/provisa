@@ -150,7 +150,7 @@ export function NavBar() {
     location.pathname === "/openapi" ||
     // REQ-1591: the glossary list is narrowed by the same selection, and its create modal makes a
     // term's domains from it.
-    location.pathname === "/admin/glossary";
+    location.pathname === "/admin/ontology";
 
   function toggleGroup(id: string) {
     // If already in this group's route, just toggle the pin
@@ -195,7 +195,7 @@ export function NavBar() {
           {/* REQ-1590: gated on the glossary's own read right, not org_settings — every seeded
               role reads the vocabulary the model is described in. */}
           <CapabilityGate capability="glossary_read">
-            <NavLink to="/admin/glossary" data-tour="nav-glossary">
+            <NavLink to="/admin/ontology" data-tour="nav-glossary">
               {t("navBar.itemGlossary")}
             </NavLink>
           </CapabilityGate>

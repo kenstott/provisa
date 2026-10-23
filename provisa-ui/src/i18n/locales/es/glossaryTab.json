@@ -1,6 +1,6 @@
 {
   "glossaryTab": {
-    "title": "Glosario",
+    "title": "Ontología",
     "searchPlaceholder": "Buscar términos…",
     "empty": "No hay términos.",
     "abstract": "Abstracto",
@@ -68,6 +68,7 @@
     "excludeFromExportHelp": "Algunas columnas llevan datos de negocio y otras, la fontanería técnica. Un término como «etl batch identifier» o «row version» tiene una definición real: sencillamente no es vocabulario de negocio. Si lo excluye, se queda aquí para los ingenieros y no llega a los catálogos en los que Provisa publica. Las columnas se siguen exportando; el término y sus relaciones, no.",
     "bulkGenerateDefinitions": "Definiciones",
     "bulkGenerateRelationships": "Relaciones",
+    "generateMenu": "Generar con IA",
     "definitionsGenerated": "{{count}} definición generada.",
     "definitionsGenerated_other": "{{count}} definiciones generadas.",
     "relationshipsGenerated": "{{count}} relación añadida.",
@@ -82,12 +83,12 @@
     "proposed": "Propuesto",
     "proposedUndefined": "Propuesto: derivado de los nombres de la columna y la tabla. Dele una definición: es lo que leen los agentes y los catálogos. El nombre proviene de las columnas de abajo, y las columnas que se normalizan igual acaban en un mismo término: asigne un alias a una columna en la página Tablas para cambiar a qué término alimenta. Cambiar el nombre aquí solo altera la redacción de este término.",
     "proposedUngrounded": "Propuesto: este término no llega a ninguna columna física. Relaciónelo con un término que sí la tenga para que nombre datos reales.",
-    "purposeTitle": "Para qué sirve el glosario",
+    "purposeTitle": "Para qué sirve la ontología",
     "purposeBody": "Es como las personas y los agentes encuentran los datos correctos y los usan bien. Cada término nombra un concepto de negocio, enumera todas las columnas físicas que lo contienen y dice qué significa realmente, de modo que una pregunta hecha en lenguaje de negocio llegue a la columna correcta y no a una equivocada que parece plausible.",
     "purposeAdd": "Los términos de columnas reales se derivan automáticamente. Cree uno a mano solo para un concepto que ninguna columna contiene por sí sola: un término paraguas que luego relaciona con los términos que sí la tienen, para que siga alcanzando datos reales.",
-    "purposeAria": "Acerca del glosario",
+    "purposeAria": "Acerca de la ontología",
     "readOnly": "Solo lectura",
-    "readOnlyHint": "Puede leer el glosario pero no curarlo. Curar términos, definiciones y relaciones requiere la capacidad glossary_rw.",
+    "readOnlyHint": "Puede leer la ontología pero no curarla. Curar términos, definiciones y relaciones requiere la capacidad glossary_rw.",
     "expertUserPlaceholder": "Buscar personas…",
     "enterpriseDomainLabel": "Todos los dominios (empresa)"
   }

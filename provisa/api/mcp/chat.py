@@ -244,7 +244,7 @@ _TOOLS: list[Any] = [
         "description": (
             "List the REST routes the UI's admin screens call for what is not a GraphQL mutation "
             "-- a file upload, a settings change, the organization folder's encryption, a code "
-            "archive, relationship candidates, glossary edits and the like -- each with its "
+            "archive, relationship candidates, ontology edits and the like -- each with its "
             "method, path, what it does and its body. Narrow it with `search`. Reach one with "
             "admin_request."
         ),
@@ -345,7 +345,7 @@ _TOOLS: list[Any] = [
     {
         "name": "list_glossary_terms",
         "description": (
-            "Search/list the org's glossary terms. Each result's `live` field tells "
+            "Search/list the org's ontology terms. Each result's `live` field tells "
             "you whether the term is admitted (grounded to a real column, or edge-connected to "
             "one) or still 'proposed' (a draft with neither). Use this before create_glossary_"
             "term to avoid proposing a duplicate."
@@ -361,7 +361,7 @@ _TOOLS: list[Any] = [
     {
         "name": "create_glossary_term",
         "description": (
-            "Create a new glossary term (name + definition). It starts 'proposed' — "
+            "Create a new ontology term (name + definition). It starts 'proposed' — "
             "there is no separate flag to mark it finalized/live. A proposed term becomes live "
             "either automatically (a real column gets registered and lands on it) or by calling "
             "add_glossary_term_edge to connect it to a term that is already live. If the org runs "
@@ -380,7 +380,7 @@ _TOOLS: list[Any] = [
     {
         "name": "update_glossary_term",
         "description": (
-            "Rename a glossary term, change its definition, exclude it from exports, "
+            "Rename a ontology term, change its definition, exclude it from exports, "
             "or retire it. Only the fields you pass are changed. Prefer retiring (retired=true) "
             "over deleting when the term carries curator work (a definition, a relationship, or "
             "an expert) — deleting that outright is exactly the case delete_glossary_term warns "
@@ -401,7 +401,7 @@ _TOOLS: list[Any] = [
     {
         "name": "delete_glossary_term",
         "description": (
-            "Permanently delete a glossary term. Irreversible — always confirm with "
+            "Permanently delete a ontology term. Irreversible — always confirm with "
             "the user first via present_choice (mode='yes_no'), the same as any other "
             "irreversible action, before calling this."
         ),
@@ -414,7 +414,7 @@ _TOOLS: list[Any] = [
     {
         "name": "add_glossary_term_edge",
         "description": (
-            "Connect two glossary terms with a typed relationship (e.g. 'broader', "
+            "Connect two ontology terms with a typed relationship (e.g. 'broader', "
             "'narrower', 'synonym' — check list_glossary_terms/existing edges for the vocabulary "
             "this org already uses before inventing a new rel_type). This is also the mechanism "
             "for finalizing a proposed term without waiting for a column: connect it to an "
@@ -432,7 +432,7 @@ _TOOLS: list[Any] = [
     },
     {
         "name": "remove_glossary_term_edge",
-        "description": "remove a relationship edge between two glossary terms.",
+        "description": "remove a relationship edge between two ontology terms.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -441,6 +441,29 @@ _TOOLS: list[Any] = [
                 "rel_type": {"type": "string"},
             },
             "required": ["term_id", "to_term_id", "rel_type"],
+        },
+    },
+    {
+        "name": "ground_glossary_term_to_table",
+        "description": (
+            "Make an ontology term the class term of a registered table or view: each of the "
+            "table's rows is an instance of what the term names. The table must have a primary "
+            "key, and a table has one class term — one another term already grounds is refused, "
+            "naming that term."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "table_id": {"type": "integer"}},
+            "required": ["term_id", "table_id"],
+        },
+    },
+    {
+        "name": "unground_glossary_term_from_table",
+        "description": "withdraw an ontology term as a table's class term.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "table_id": {"type": "integer"}},
+            "required": ["term_id", "table_id"],
         },
     },
     {
@@ -536,7 +559,7 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables, /relationships, /admin/glossary, /schema. Explore's query surfaces "
+            "/tables, /relationships, /admin/ontology, /schema. Explore's query surfaces "
             "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sql, "
             "/grpc, /jsonapi, /openapi, /nl (Natural Language). When you have already prepared a "
@@ -887,12 +910,12 @@ _SYSTEM = (
     "source's name/description alone; registerTable's own validation will refuse a guessed "
     "columns list outright, and the tool call will fail. "
     "THE PAGE-FIRST RULE: before performing an action that corresponds to a specific admin page (creating or "
-    "registering a source/table, editing a glossary term, upserting/deleting a relationship, "
+    "registering a source/table, editing a ontology term, upserting/deleting a relationship, "
     "running a GraphQL query in Explorer, or anything else with a dedicated screen), call navigate "
-    "to that page FIRST (e.g. /admin/glossary for any glossary edit), then perform the action — so "
+    "to that page FIRST (e.g. /admin/ontology for any ontology edit), then perform the action — so "
     "the user sees, on their own screen, the same page you're acting on, not just a chat "
     "transcript. Do this every single time that kind of action comes up, not just the first time "
-    "in a conversation — a later glossary edit needs its own navigate call exactly as much as the "
+    "in a conversation — a later ontology edit needs its own navigate call exactly as much as the "
     "first one did. Do this even when the action's own tool doesn't require the user to be on that "
     "page to work.\n\n"
     "If you cannot complete what was asked — no tool covers it, every avenue you tried came back "
@@ -901,7 +924,9 @@ _SYSTEM = (
     "and I'll try again?'). Never just stop or trail off without a closing message; the user should "
     "never have to guess whether you're still working or already gave up.\n\n"
     "Manage the glossary with list_glossary_terms/create_glossary_term/update_glossary_"
-    "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge directly — these "
+    "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge, and ground a term "
+    "to a whole table with ground_glossary_term_to_table/unground_glossary_term_from_table, "
+    "directly — these "
     "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
     "need no admin_mutation. Still always confirm with the user "
     "(present_choice, mode='yes_no') before delete_glossary_term specifically, since it's "
@@ -909,7 +934,7 @@ _SYSTEM = (
     "glossary_terms first to avoid creating a duplicate term, and remember 'finalizing' a term "
     "has no direct flag — it happens by grounding it (a real column, or add_glossary_term_edge to "
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
-    "the page-first rule above: navigate to /admin/glossary before calling any of these — every time, for "
+    "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/create_data_product/"
     "delete_data_product, and governed metrics with upsert_metric/delete_metric, directly — no "
@@ -1287,6 +1312,8 @@ async def _execute_tool(
         "delete_glossary_term",
         "add_glossary_term_edge",
         "remove_glossary_term_edge",
+        "ground_glossary_term_to_table",
+        "unground_glossary_term_from_table",
     ):
         if request is None:
             raise ValueError(f"{name} requires a verified request context")
@@ -1319,6 +1346,14 @@ async def _execute_tool(
                 int(args["term_id"]),
                 int(args["to_term_id"]),
                 args["rel_type"],
+            )
+        if name == "ground_glossary_term_to_table":
+            return await mcp_tools.ground_glossary_term_to_table(
+                state, role, request, int(args["term_id"]), int(args["table_id"])
+            )
+        if name == "unground_glossary_term_from_table":
+            return await mcp_tools.unground_glossary_term_from_table(
+                state, role, request, int(args["term_id"]), int(args["table_id"])
             )
         return await mcp_tools.remove_glossary_term_edge(
             state, role, request, int(args["term_id"]), int(args["to_term_id"]), args["rel_type"]

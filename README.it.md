@@ -399,7 +399,7 @@ Vedi [docs/python-client.md](docs/python-client.md) per il riferimento completo.
 | Design di sistema e mappa dei componenti | [docs/architecture.md](docs/architecture.md) |
 | Modello di sicurezza (RLS, mascheramento, autenticazione) | [docs/security.md](docs/security.md) |
 | Archiviazione dei segreti e riferimenti `${secret:NAME}` | [docs/secrets.md](docs/secrets.md) |
-| Glossario aziendale e curatela dei termini | [docs/glossary.md](docs/glossary.md) |
+| Glossario aziendale e curatela dei termini | [docs/ontology.md](docs/ontology.md) |
 | Ambienti (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Creare ambienti di test (profilazione, dati fittizi, dati sintetici) | [docs/test-data.md](docs/test-data.md) |
 | Riferimento dei metodi dei dati fittizi | [docs/fake-methods.md](docs/fake-methods.md) |

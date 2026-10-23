@@ -243,3 +243,54 @@ def test_a_running_postmasters_segment_is_never_released():
         pg.stop()
     assert not _listed(*segment)  # its own clean stop removed it
     assert postmaster_semaphore_sets(postmaster) == []  # and its semaphores
+
+
+def test_a_killed_session_with_a_temp_directory_of_its_own_leaves_nothing_once_reaped(tmp_path):
+    """Agents and CI jobs give each session a temporary directory of its own. A server's
+    directory was made there: another session's reaper never saw it, and once that temporary
+    directory was removed, so was the one record of the killed postmaster's semaphore sets --
+    about 5,000 sets from some 230 killed servers, until no server on the machine could start.
+    Every server's directory is under the machine's RUN_ROOT instead."""
+    import shutil
+
+    from provisa.core.pg_shared_memory import SYSV_SEMAPHORES, postmaster_semaphore_sets
+
+    own_temp = tmp_path / "session-temp"
+    own_temp.mkdir()
+    starter = subprocess.Popen(
+        [sys.executable, "-c", _STARTER.format(repo=str(_REPO))],
+        stdout=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "TMPDIR": str(own_temp)},
+    )
+    assert starter.stdout is not None
+    root = Path(starter.stdout.readline().strip())
+    assert root.parent == embedded_pg.RUN_ROOT  # not the session's own temporary directory
+    postmaster = _postmaster(root)
+    assert postmaster is not None
+    semaphores = postmaster_semaphore_sets(postmaster)
+    assert bool(semaphores) is SYSV_SEMAPHORES
+    starter.send_signal(signal.SIGTERM)
+    starter.wait(timeout=30)
+    os.kill(postmaster, signal.SIGKILL)
+    deadline = time.monotonic() + 30
+    while _alive(postmaster) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    shutil.rmtree(own_temp)  # its session's temporary directory goes with it
+
+    embedded_pg._stop_orphans()  # any later session's start, whatever its own TMPDIR
+
+    assert not root.exists()
+    assert postmaster_semaphore_sets(postmaster) == []
+
+
+def test_a_pid_recorded_before_its_process_started_is_not_that_process(tmp_path):
+    """A server's directory now outlives a restart of the machine, after which the pid it
+    recorded may name another process: one started after the record is not the one that wrote
+    it, and is never signalled as its postmaster."""
+    record = tmp_path / "owner.pid"
+    record.write_text(str(os.getpid()))
+    long_ago = time.time() - 10 * 24 * 3600
+    os.utime(record, (long_ago, long_ago))
+    assert embedded_pg._running(os.getpid(), record.stat().st_mtime) is False
+    assert embedded_pg._running(os.getpid(), time.time()) is True

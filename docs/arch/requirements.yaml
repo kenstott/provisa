@@ -46678,8 +46678,11 @@
     ADMISSION RULE (settled): what any consuming surface may offer is ONE predicate, core.glossary.live_term_ids,
     shared by the repository and the exporter. A term is LIVE only when it is (1) IN SERVICE: neither retired (a curator withdrew it) nor deprecated (the derivation lost its last column); (2) DEFINED: a term derived from a column name is a token, not a meaning, so an undefined term is a PROPOSAL
     awaiting a curator, never vocabulary an agent may ground a question on; and (3) GROUNDED: connected, over in-service terms, to a term holding a physical ref. The glossary is an entry point INTO the data,
-    so every term chain must terminate at a physical column: an abstract term wired to nothing physical
-    names no data and is not offered. Groundedness is a property of the term graph, not of any one row,
+    [SUPERSEDED by REQ-1387, 2026-10-22 -- a chain may also end at a
+    table, which a term now grounds with a reference that names no column (REQ-2141); GROUNDED TO A
+    TABLE below. Kept here for history; do not implement against it.] so every term chain must
+    terminate at a physical column: an abstract term wired to nothing physical
+    names no data and is not offered. [END SUPERSEDED BLOCK] Groundedness is a property of the term graph, not of any one row,
     so it is computed server-side and rides the admin payload as a `live` flag rather than being re-derived
     in the UI. Connectivity is STRUCTURAL and ignores definitions — an undefined rooted term still CONDUCTS
     grounding to its neighbours, it is merely not offered itself — but out-of-service terms do not conduct,
@@ -46722,7 +46725,10 @@
     (REQ-003/005/042) — and that it carries its own rate and query-complexity ceilings (REQ-369/1174).
     The card is the single explanation style: the NL page and the MCP explorer render their control explanations
     through the same component rather than as Mantine tooltips, with the control itself as the hover target
-    so the row keeps its shape.'
+    so the row keeps its shape. (Amended 2026-10-22, GROUNDED TO A TABLE:) A term is GROUNDED when it reaches, over in-service
+    terms, a term bound to a column or a table: a term reference with no column grounds its term in
+    the table itself (REQ-2141), and live_term_ids counts it as grounded. An abstract term wired to
+    nothing physical still names no data and is not offered.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -46801,7 +46807,7 @@
   - REQ-1377
   docs:
   - api-reference.md
-  - glossary.md
+  - ontology.md
   - metadata-export.md
 - id: REQ-1388
   status: complete
@@ -57268,7 +57274,7 @@
   depends_on:
   - REQ-1387
   docs:
-  - glossary.md
+  - ontology.md
 - id: REQ-1582
   status: complete
   since: 2026-08
@@ -57302,7 +57308,7 @@
   depends_on:
   - REQ-1387
   docs:
-  - glossary.md
+  - ontology.md
 - id: REQ-1581
   status: complete
   since: 2026-08
@@ -57346,7 +57352,7 @@
   depends_on:
   - REQ-1387
   docs:
-  - glossary.md
+  - ontology.md
 - id: REQ-1584
   status: complete
   since: 2026-08
@@ -57608,7 +57614,7 @@
   - architecture.md
   - configuration.md
   - cypher.md
-  - glossary.md
+  - ontology.md
   - metadata-export.md
   - pgwire.md
   - sources.md
@@ -86888,7 +86894,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     ONTOLOGY:) The page is named Ontology in the UI: its navigation item, its title, its route,
     /admin/ontology, and the docs. The view described here is that page's graph. The API path
     /admin/glossary and the identifiers in code (glossary_read, glossary_rw, the glossary tables and
-    meta tables) keep their names for now.
+    meta tables) keep their names for now. (Amended 2026-10-22, OWL ROLES:) Each term's node carries
+    a badge naming its OWL role, as REQ-2141 derives it from what the term grounds: Class (grounded
+    in a table or view), Property (grounded in a column; datatype or object property), or Concept
+    (grounded in nothing, the abstract terms). A class term grounded in several tables with no
+    declared same-entity identity between them is flagged on the page as a curation gap. The page
+    keeps the curation words (term, concrete, abstract, grounds) beside the badge; the words class,
+    property, instance and mapping belong to the docs, the export and SPARQL.
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -87126,8 +87138,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     IR: each borrows its namesake's shape, each is our own representation, and neither claims
     conformance to the standard. The GQL+ IR borrows GQL's pattern concepts (quantified path patterns,
     the path modes WALK, TRAIL, ACYCLIC and SIMPLE, label expressions) and adds only variable predicates,
-    a triples output for CONSTRUCT, and IRI and datatype values. Cypher maps straight in, its
-    depth-capped cycle-free paths being ACYCLIC with a bound; SPARQL's path sequences, alternatives and
+    a triples output for CONSTRUCT, and IRI and datatype values. [SUPERSEDED by REQ-2135, 2026-10-22
+    -- Cypher's variable-length paths are bounded WALK, not ACYCLIC (PATH MODES below). Kept here
+    for history; do not implement against it.] Cypher maps straight in, its
+    depth-capped cycle-free paths being ACYCLIC with a bound; [END SUPERSEDED BLOCK] SPARQL's path sequences, alternatives and
     inverses map onto those same concepts; a GQL or SQL/PGQ front end would be a parser only. The tiers
     are unchanged, and GraphQL still lowers straight to semantic SQL. Both IR names are internal: no
     user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:) Built in five phases.
@@ -87145,7 +87159,26 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     into the expression tree (expr_ast) when it parses the statement, and the back end walks trees
     only, proven by the Cypher tests. Only then is the IR fully structural: SPARQL's FILTER, BIND and
     ORDER BY convert straight to trees, and nothing below the IR reads Cypher syntax. Phase 1 keeps the
-    text on purpose, so that its move stays purely structural.
+    text on purpose, so that its move stays purely structural. (Amended 2026-10-22, SPARQL
+    VISUALIZER:) Phase 5's SPARQL visualizer is the Cypher visualizer (GraphSidebar and the graph
+    canvas) with a second vocabulary: one component, not a separate visualizer. It keeps the same
+    shell (history, favorites, settings, export, the canvas and how results are drawn), and its
+    left-hand pills are in SPARQL's vocabulary: Domains; Classes (terms typing a table, with abstract
+    terms as superclasses); Properties (term-linked columns); Relationships (edge-type predicates:
+    declared relationships and term edges); Concepts (the SKOS vocabulary); and Prefixes. Clicking a
+    pill adds a triple pattern to the current query rather than replacing it. IRIs are shown compacted
+    by prefix, with the full IRI on hover; literals are drawn distinct from resources; and CONSTRUCT
+    results are drawn as a graph.
+    (Amended 2026-10-22, PATH MODES:) Cypher's variable-length paths map in as WALK with a bound:
+    the depth limit ends the walk, and a path may repeat nodes and edges within it, as the compiled
+    SQL has always done. Phase 2 lowers WALK, and REACH for SPARQL's property paths: SPARQL's
+    set semantics, distinct endpoint pairs, which ends on cycles without tracking the path. TRAIL,
+    ACYCLIC and SIMPLE are in the IR and refused by name until a front end needs them. The depth
+    limit is an operator setting, default 10, with its field in Deployment settings, and a result cut
+    at the limit carries a flag saying so. The variable-predicate union is bounded by a second
+    operator setting, the graph union limit, default 64 branches, with its own field; a union past it
+    is refused, naming the limit. A subject's IRI is {public URL}/id/{domain}/{table}/{primary key},
+    built only on output. The prefixes are one per domain, plus skos:, owl:, rdf:, rdfs: and xsd:.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -87175,15 +87208,28 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   type: behavioral
   description: >-
     The Ontology page's filter controls are shorthand for a SPARQL query (REQ-2135) that scopes the
-    graph. The page has a SPARQL button: it builds the SPARQL query equivalent to the current filter
+    graph. [SUPERSEDED by REQ-2136, 2026-10-22 -- the SPARQL button is the "Open as query" control of every graph view (OPEN AS QUERY below). Kept here for history; do not implement against it.] The page has a SPARQL button: it builds the SPARQL query equivalent to the current filter
     (search focus, edge types, domains, status, Orphans, Columns) and opens it in the SPARQL query
-    surface, ready to edit and run. An export of the graph is that query as CONSTRUCT, serialized as
+    surface, ready to edit and run. [END SUPERSEDED BLOCK] An export of the graph is that query as CONSTRUCT, serialized as
     Turtle, JSON-LD or N-Triples, and streamed. Terms only exports SKOS and OWL, with DCAT and DPROD
     for the links to columns, tables and data products. With instances extends the slice to the rows
     behind the grounded columns, read as the viewer. The server estimates the export's size first;
     past a limit it narrows the export or runs it as a background job. (Amended 2026-10-22, PHASING:)
-    The SPARQL button is phase 5 of REQ-2135's phasing, with the SPARQL tab: it comes after the SPARQL
-    front end and endpoint, and can wait.
+    [SUPERSEDED by REQ-2136, 2026-10-22 -- the SPARQL button is the "Open as query" control of every graph view (OPEN AS QUERY below). Kept here for history; do not implement against it.] The SPARQL button is phase 5 of REQ-2135's phasing, with the SPARQL tab: it comes after the SPARQL
+    front end and endpoint, and can wait. [END SUPERSEDED BLOCK] (Amended 2026-10-22, OPEN AS QUERY:)
+    [SUPERSEDED by REQ-2136, 2026-10-22 -- relations and terrain are excluded for now (OPEN AS QUERY
+    SCOPE below). Kept here for history; do not implement against it.] Every graph view (the Ontology
+    page, the product graph, relations, terrain) has an "Open as query" (→) control. [END SUPERSEDED
+    BLOCK] It opens the view's own query, with the view's filters inside the query rather
+    than applied in the browser, ready to edit in the surface chosen: GraphQL (the exact query the view
+    runs), SQL (its compiled semantic SQL), Cypher (where the query maps to Cypher), or SPARQL (once
+    REQ-2135's endpoint exists). The scenario's "clicks SPARQL" reads as opening the view as SPARQL.
+    (Amended 2026-10-22, OPEN AS QUERY SCOPE:) The Ontology page and the product graph have the "Open
+    as query" control; relations and terrain do not, for now. Relations and terrain read through the
+    REST profile-runs route, where governance.safe_run applies the profiled table's column rules.
+    Their read moves to GraphQL, and they gain the control, only once that governance is expressed as
+    the result tables' own column rules, never by loosening it. While a search focus (a neighbourhood
+    traversal) is set, the GraphQL target is disabled; Cypher and SQL carry the focus.
   use_case: >-
     A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog
     tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope
@@ -87284,4 +87330,57 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2135
   - REQ-2138
   - REQ-2056
+  target: "2027-Q1"
+- id: REQ-2141
+  status: proposed
+  since: 2026-10
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A term stays the curated word, a SKOS concept, and its OWL role is derived from what it grounds.
+    A term grounded in a table or view is a Class, whose instances are that table's rows. A term
+    grounded in a column is a Property: a datatype property for a column of values, an object
+    property for a reference column. A term grounded in nothing (an abstract term) is a Concept and
+    may be a superclass. TABLE-LEVEL GROUNDING is new: a term reference with no column grounds the
+    term in the table itself, so glossary_term_refs no longer requires column_name. A class term may
+    ground many tables or views, and a table is grounded by at most one class term. A table without a
+    primary key cannot be grounded as a class, and the grounding is refused, naming the table.
+    Grounding is additive and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C
+    Direct Mapping: each row is an instance with the IRI {public URL}/id/{domain}/{table}/{primary
+    key}, typed by its table, and a class term additionally types the instances of every table it
+    grounds. Column-grounded property terms work exactly as today, across many tables, with no class
+    term required. IDENTITY ACROSS VARIANTS: instances from different tables are distinct by default.
+    A relationship between two class-grounded tables can be marked "same entity" on its keys; SPARQL
+    and the export then emit owl:sameAs between the instances it joins, the graph may draw them as one
+    node with several sources, and counts at the class's level resolve once per real entity. A class
+    grounded in several tables with no declared identity between them is a curation gap, flagged on
+    the Ontology page (REQ-2130). THE MAPPING: column lineage (logical columns through views) and
+    native references are the mapping from data to the ontology, provenance in the manner of R2RML,
+    and are not class assertions. Docs, the export and SPARQL use the words class, property, instance
+    and mapping; the curation UI keeps term, concrete, abstract and grounds, with the role badge.
+  use_case: >-
+    A curator grounds the word Customer in the tables that hold customers, and RDF tools, SPARQL and
+    the graph see one class with its instances, its properties and the identity between its sources,
+    without the curator having to model anything they do not want to.
+  scenario: |
+    Given a term Customer with a reference to the table crm.customers and none to a column, an
+    abstract term Party linked to it by KIND_OF, and a term Email grounded in two tables' email columns
+    When the curator opens the Ontology page
+    Then Customer shows the Class badge, Email the Property badge and Party the Concept badge
+    When Customer also grounds billing.accounts and no relationship between the two is marked same entity
+    Then the page flags Customer as a curation gap
+    When the relationship from billing.accounts to crm.customers is marked same entity on its keys
+    Then a SPARQL CONSTRUCT over Customer returns owl:sameAs between the joined instances, and a
+    count of Customer instances counts each real customer once
+    When the curator grounds a class term in a table without a primary key
+    Then the grounding is refused, naming the table
+  relates_to:
+  - REQ-2130
+  - REQ-2135
+  - REQ-1387
+  - REQ-1584
+  - REQ-1591
   target: "2027-Q1"

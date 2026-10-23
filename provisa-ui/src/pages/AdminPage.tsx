@@ -101,7 +101,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
-  "/admin/glossary": "Glossary", // REQ-1387: business-glossary curation
+  "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",

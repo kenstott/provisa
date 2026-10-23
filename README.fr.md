@@ -399,7 +399,7 @@ Voir [docs/python-client.md](docs/python-client.md) pour la référence complèt
 | Conception du système et carte des composants | [docs/architecture.md](docs/architecture.md) |
 | Modèle de sécurité (RLS, masquage, authentification) | [docs/security.md](docs/security.md) |
 | Stockage des secrets et références `${secret:NAME}` | [docs/secrets.md](docs/secrets.md) |
-| Glossaire métier et curation des termes | [docs/glossary.md](docs/glossary.md) |
+| Glossaire métier et curation des termes | [docs/ontology.md](docs/ontology.md) |
 | Environnements (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Construire des environnements de test (profilage, données factices, données synthétiques) | [docs/test-data.md](docs/test-data.md) |
 | Référence des méthodes de données factices | [docs/fake-methods.md](docs/fake-methods.md) |

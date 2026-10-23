@@ -211,6 +211,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("fake_adequacy_checks", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
     _part("glossary_term_refs", "table_id", "table"),
+    _part("glossary_term_table_refs", "table_id", "table"),  # REQ-2130
     _part("table_meta_links", "source_table_id", "table"),
     _part("table_meta_links", "target_table_id", "table"),
     _part("tag_assignments", "table_id", "table"),
@@ -305,6 +306,8 @@ REFERENCES: tuple[Reference, ...] = (
     # A term's physical refs point it at real data, so they block it: the operator retires the
     # term or moves its refs to another first. Its edges, domain links and experts go with it.
     _dep("glossary_term_refs", "term_id", "glossary_term", "table", "table_id"),
+    # REQ-2130: a class term's table groundings go with it (the schema cascades them).
+    _part("glossary_term_table_refs", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
     _part("glossary_term_edges", "from_term_id", "glossary_term"),

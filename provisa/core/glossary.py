@@ -311,7 +311,8 @@ def grounded_term_ids(
     merely a proposal, but one with no path to a column names no data at all, which a missing
     definition alone does not convey.
 
-    ``rooted`` is the set of term ids holding at least one physical ref. Callers supply it
+    ``rooted`` is the set of term ids holding at least one physical ref, to a column or to a whole
+    table (REQ-1387, GROUNDED TO A TABLE). Callers supply it
     because the two callers count refs differently: the repository counts every ref, the
     exporter counts only refs whose column actually publishes.
     """

@@ -152,7 +152,12 @@ def _model(monkeypatch):
     monkeypatch.setattr(schema_query, "_get_pool", _pool)
     monkeypatch.setattr(schema_query, "_resolve_admin_context", lambda info: None)
 
-    async def _table(conn, row, all_tables=None, user_can_deploy=True):  # noqa: ARG001
+    async def _listing(conn, rows):  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(schema_query, "table_listing", _listing)
+
+    async def _table(conn, row, all_tables=None, user_can_deploy=True, listing=None):  # noqa: ARG001
         return types.SimpleNamespace(
             id=row["id"],
             domain_id=row["domain_id"],

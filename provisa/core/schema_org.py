@@ -675,6 +675,20 @@ glossary_term_refs = Table(
     UniqueConstraint("table_id", "column_name"),
 )
 
+# REQ-2130: a class term grounds a whole table or view. At most one class term per table; a term
+# may ground many. See schema.sql.
+glossary_term_table_refs = Table(
+    "glossary_term_table_refs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("table_id"),
+)
+
 # Closed, enum-typed relationship set — free-form edge types are not permitted (REQ-1387).
 glossary_term_edges = Table(
     "glossary_term_edges",

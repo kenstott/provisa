@@ -91,8 +91,8 @@ async function openRevenue() {
 // Every control that reaches a `glossary_rw` endpoint.
 const WRITE_CONTROLS = [
   "glossary-new-btn",
-  "glossary-bulk-definitions-btn",
-  "glossary-bulk-relationships-btn",
+  // The AI menu's trigger; its Definitions and Relationships items exist only while it is open.
+  "glossary-generate-menu",
   "glossary-rename-btn",
   "glossary-retire-btn",
   "glossary-delete-btn",

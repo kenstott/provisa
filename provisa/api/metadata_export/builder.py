@@ -580,13 +580,20 @@ def _glossary_assets(
         if asset_ref.parts not in published_columns:
             continue
         refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
+    # REQ-1387 (GROUNDED TO A TABLE): a class term is rooted by a table it grounds, when that
+    # table publishes -- the same narrowing its column refs get.
+    classes = {
+        ref["term_id"]
+        for ref in glossary.get("table_refs", [])
+        if (ref["source_id"], ref["schema_name"], ref["table_name"]) in by_identity
+    }
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
     live = live_term_ids(
         glossary.get("terms", []),
         [(e["from_term_id"], e["to_term_id"]) for e in glossary.get("edges", [])],
-        set(refs_by_term),
+        set(refs_by_term) | classes,
     )
     terms = []
     for term in glossary.get("terms", []):

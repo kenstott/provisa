@@ -126,6 +126,9 @@ async def _run(
             patch("provisa.core.store_config._naming_rules", AsyncMock(return_value=[]))
         )
         stack.enter_context(
+            patch("provisa.core.store_config._class_terms", AsyncMock(return_value={}))
+        )
+        stack.enter_context(
             patch("provisa.core.repositories.kafka_source.list_specs", AsyncMock(return_value=[]))
         )
         return await config_export.build_live_config()

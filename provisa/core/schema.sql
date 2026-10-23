@@ -722,6 +722,17 @@ CREATE TABLE IF NOT EXISTS glossary_term_refs (
     UNIQUE (table_id, column_name)
 );
 
+-- REQ-2130: a class term grounds a whole table or view -- the table is what the term names an
+-- instance of. A table has at most one class term; a term may ground many tables. Only a table
+-- with a primary key may be grounded, so each of its rows is an identifiable instance.
+CREATE TABLE IF NOT EXISTS glossary_term_table_refs (
+    id          SERIAL PRIMARY KEY,
+    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    tenant_id   UUID,
+    UNIQUE (table_id)
+);
+
 -- Closed, enum-typed relationship set (REQ-1387) — free-form edge types are not permitted.
 CREATE TABLE IF NOT EXISTS glossary_term_edges (
     id           SERIAL PRIMARY KEY,

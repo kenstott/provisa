@@ -24,6 +24,7 @@ import {
   Checkbox,
   Group,
   Loader,
+  Menu,
   Modal,
   NavLink,
   MultiSelect,
@@ -514,36 +515,38 @@ export function GlossaryTab() {
               {t("glossaryTab.newTerm")}
             </Button>
           )}
-          {/* Most terms arrive derived, so the one thing a curator has to decide here is when
-              adding a term by hand is warranted. The bubble states what the glossary is for
-              rather than what the button does — the button is self-evident, the purpose is not. */}
-          <HelpBubble
-            title={t("glossaryTab.purposeTitle")}
-            paragraphs={[t("glossaryTab.purposeBody"), t("glossaryTab.purposeAdd")]}
-            ariaLabel={t("glossaryTab.purposeAria")}
-            testId="glossary-purpose-help"
-          />
           {canEdit ? (
-            <>
-              <Button
-                variant="default"
-                leftSection={<Sparkles size={14} />}
-                loading={bulkGeneratingDefinitions}
-                onClick={() => void handleBulkGenerateDefinitions()}
-                data-testid="glossary-bulk-definitions-btn"
-              >
-                {t("glossaryTab.bulkGenerateDefinitions")}
-              </Button>
-              <Button
-                variant="default"
-                leftSection={<Sparkles size={14} />}
-                loading={bulkGeneratingRelationships}
-                onClick={() => void handleBulkGenerateRelationships()}
-                data-testid="glossary-bulk-relationships-btn"
-              >
-                {t("glossaryTab.bulkGenerateRelationships")}
-              </Button>
-            </>
+            // The AI drafts, both behind one sparkle: relationships between the terms, and the
+            // definitions the terms lack.
+            <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+              <Menu.Target>
+                <Tip text={t("glossaryTab.generateMenu")} named>
+                  <ActionIcon
+                    size="input-sm"
+                    variant="default"
+                    loading={bulkGeneratingDefinitions || bulkGeneratingRelationships}
+                    aria-label={t("glossaryTab.generateMenu")}
+                    data-testid="glossary-generate-menu"
+                  >
+                    <Sparkles size={16} aria-hidden />
+                  </ActionIcon>
+                </Tip>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  onClick={() => void handleBulkGenerateRelationships()}
+                  data-testid="glossary-bulk-relationships-btn"
+                >
+                  {t("glossaryTab.bulkGenerateRelationships")}
+                </Menu.Item>
+                <Menu.Item
+                  onClick={() => void handleBulkGenerateDefinitions()}
+                  data-testid="glossary-bulk-definitions-btn"
+                >
+                  {t("glossaryTab.bulkGenerateDefinitions")}
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           ) : (
             // REQ-1590: say which of the two rights the viewer holds, so a reader who expected to
             // curate knows a right is missing rather than that the buttons failed to render.
@@ -553,6 +556,15 @@ export function GlossaryTab() {
               </Badge>
             </Tip>
           )}
+          {/* Most terms arrive derived, so the one thing a curator has to decide here is when
+              adding a term by hand is warranted. The bubble states what the glossary is for
+              rather than what the button does — the button is self-evident, the purpose is not. */}
+          <HelpBubble
+            title={t("glossaryTab.purposeTitle")}
+            paragraphs={[t("glossaryTab.purposeBody"), t("glossaryTab.purposeAdd")]}
+            ariaLabel={t("glossaryTab.purposeAria")}
+            testId="glossary-purpose-help"
+          />
         </Group>
       </Group>
 

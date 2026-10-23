@@ -29,6 +29,8 @@ CREATE TABLE glossary_terms (
     deprecated BOOLEAN, retired BOOLEAN, export_excluded BOOLEAN, tenant_id TEXT);
 CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
+CREATE TABLE glossary_term_table_refs (
+    id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, tenant_id TEXT);
 CREATE TABLE glossary_term_edges (
     id TEXT PRIMARY KEY, from_term_id TEXT, to_term_id TEXT, rel_type TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_domains (

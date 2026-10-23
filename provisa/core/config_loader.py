@@ -1142,10 +1142,50 @@ async def _load_after_tables(  # REQ-1919
                     )
                 await glossary_repo.add_edge(conn, from_id, term_ids[target], edge.rel_type)
 
+    # 10.6 Class terms (REQ-2141): resolved by name, like the edges above, once every term the
+    # config declares or derives exists and every table has its columns (a class needs a key).
+    await _declare_class_terms(conn, config)
+
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+
+
+async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> None:
+    declared = [t for t in config.tables if t.class_term is not None]
+    if not declared:
+        return
+    term_ids = {
+        row.name: row.id
+        for row in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+    }
+    for table in declared:
+        assert table.class_term is not None
+        address = f"{table.source_id}.{table.schema_name}.{table.table_name}"
+        # REQ-1844: every term name in the catalog is lowercase.
+        name = table.class_term.strip().lower()
+        if name not in term_ids:
+            raise ValueError(
+                f"table {address} names {table.class_term!r} as its class term, "
+                "which does not exist in this config or the catalog"
+            )
+        row = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(
+                    (registered_tables.c.source_id == table.source_id)
+                    & (registered_tables.c.schema_name == table.schema_name)
+                    & (registered_tables.c.table_name == table.table_name)
+                )
+            )
+        ).fetchone()
+        assert row is not None, f"table {address} was upserted by this load"
+        try:
+            await glossary_repo.declare_class_term(conn, row.id, term_ids[name])
+        except glossary_repo.TableHasNoPrimaryKey as exc:
+            raise ValueError(f"table {address} cannot have a class term: {exc}") from exc
 
 
 async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266, REQ-1919

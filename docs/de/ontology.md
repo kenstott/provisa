@@ -1,8 +1,8 @@
-# Business-Glossar {: #business-glossary }
+# Ontologie {: #ontology }
 
-Das Geschäftsglossar ist ein lebendiges Vokabular über Ihrem Datenmodell. Jede physische Spalte im Modell wird einem Begriff zugeordnet, und Spalten, die dasselbe Konzept tragen, teilen sich einen Begriff, wie unterschiedlich sie es auch schreiben. Jeder Begriff kann eine Definition, eine Reihe typisierter Beziehungen zu anderen Begriffen und eine Liste von Fachexperten haben, denen seine Bedeutung gehört.
+Die Ontologie ist ein lebendiges Vokabular über Ihrem Datenmodell. Jede physische Spalte im Modell wird einem Begriff zugeordnet, und Spalten, die dasselbe Konzept tragen, teilen sich einen Begriff, wie unterschiedlich sie es auch schreiben. Jeder Begriff kann eine Definition, eine Reihe typisierter Beziehungen zu anderen Begriffen und eine Liste von Fachexperten haben, denen seine Bedeutung gehört.
 
-Das Glossar ist eine Ontologie: ein Graph aus Konzepten, ihren Definitionen und den Beziehungen zwischen ihnen. Provisa bildet sie auf die Datenbankstrukturen ab, in denen die Werte liegen; dadurch kann es Fragen zu Ihren Daten beantworten. Ein Konzept ist ein Entwurf, bis es die Daten erreicht, direkt oder über andere Konzepte. Das Glossar ist von den Metriken getrennt: Ein Begriff sagt, was ein Konzept ist, eine Metrik sagt, wie eine Zahl berechnet wird.
+Sie ist ein Graph aus Konzepten, ihren Definitionen und den Beziehungen zwischen ihnen. Provisa bildet sie auf die Datenbankstrukturen ab, in denen die Werte liegen; dadurch kann es Fragen zu Ihren Daten beantworten. Ein Konzept ist ein Entwurf, bis es die Daten erreicht, direkt oder über andere Konzepte. Die Ontologie ist von den Metriken getrennt: Ein Begriff sagt, was ein Konzept ist, eine Metrik sagt, wie eine Zahl berechnet wird.
 
 Dieses gemeinsame Vokabular verbindet die Sprache des Geschäfts mit den physischen Daten. Ein KI-Agent, der weiß, dass „customer“ jede Spalte mit einer Kundenkennung bezeichnet, muss nicht raten, welche von `cust_id`, `customerId` und `CUSTOMER_KEY` die richtige ist. Alle werden demselben Begriff zugeordnet, und der Begriff trägt die Definition.
 
@@ -43,7 +43,7 @@ Ein abgeleiteter Begriff folgt dem **fachlichen Namen** der Spalte: ihrem Alias,
 
 Einer Spalte einen Alias zu geben, ist die stärkere Korrektur. Ein Alias gelangt auf jede Oberfläche, die die Spalte liest (SQL, GraphQL, KI-Agenten, der Katalog), sodass das Modell sich überall richtig beschreibt. Den Begriff umzubenennen, korrigiert einen Katalogeintrag und lässt die Spalte für den nächsten Leser `usr_nm` heißen. Das Banner für vorgeschlagene Begriffe in der UI sagt genau das: zuerst der Spalte einen Alias geben, den Begriff nur umbenennen, wenn der Spaltenname stimmt und das Vokabular nicht.
 
-Ein neuer Alias für eine Spalte leitet ihren vorgeschlagenen Begriff neu ab, sodass das Glossar dem Modell folgt und nie zweimal dieselbe Korrektur verlangt. Hat ein Kurator einem Begriff eine Definition, eine Beziehung oder einen Experten hinzugefügt, lässt eine Alias-Änderung die Referenz, wo sie ist, denn diese Arbeit gehört dem Kurator und bleibt.
+Ein neuer Alias für eine Spalte leitet ihren vorgeschlagenen Begriff neu ab, sodass die Ontologie dem Modell folgt und nie zweimal dieselbe Korrektur verlangt. Hat ein Kurator einem Begriff eine Definition, eine Beziehung oder einen Experten hinzugefügt, lässt eine Alias-Änderung die Referenz, wo sie ist, denn diese Arbeit gehört dem Kurator und bleibt.
 
 ### Tabellennamen als Zugriffspfad {: #access-path-table-names }
 
@@ -97,7 +97,7 @@ Beziehungen sind gerichtet. Die Oberfläche zeigt sowohl ausgehende Kanten (dies
 als auch eingehende Kanten (ein anderer Begriff → dieser) und beschriftet jede Richtung mit ihrer eigenen
 umgangssprachlichen Formulierung.
 
-Die Kanten liegen in `glossary_term_edges`, einer Zuordnungstabelle, die als Junction-Beziehung deklariert ist: Ihre Spalte `rel_type` ist der Diskriminator, sodass jeder der obigen Typen ein eigener Cypher-Beziehungstyp zwischen zwei `GlossaryTerm`-Knoten ist und keine Eigenschaft an einem reifizierten Knoten. Die Tabelle wird mit dem übrigen Metadatenschema bereitgestellt und erscheint in Graph-Clients nicht als Knoten: Sie ist die Kante. Nichts daran ist glossarspezifisch: Sie wird genauso deklariert, wie Sie eine Junction über Ihre eigenen Tabellen deklarieren würden, und sie wird vom selben Code gelesen.
+Die Kanten liegen in `glossary_term_edges`, einer Zuordnungstabelle, die als Junction-Beziehung deklariert ist: Ihre Spalte `rel_type` ist der Diskriminator, sodass jeder der obigen Typen ein eigener Cypher-Beziehungstyp zwischen zwei `GlossaryTerm`-Knoten ist und keine Eigenschaft an einem reifizierten Knoten. Die Tabelle wird mit dem übrigen Metadatenschema bereitgestellt und erscheint in Graph-Clients nicht als Knoten: Sie ist die Kante. Nichts daran ist ontologiespezifisch: Sie wird genauso deklariert, wie Sie eine Junction über Ihre eigenen Tabellen deklarieren würden, und sie wird vom selben Code gelesen.
 
 ## Abstrakte Begriffe {: #abstract-terms }
 
@@ -115,14 +115,14 @@ Ein Begriff, den eine konsumierende Oberfläche anbieten darf, muss drei Bedingu
    Token, keine Bedeutung. Ohne Definition ist er ein Vorschlag, der auf Kuratierung wartet, nie ein
    Vokabular, auf das ein Agent eine Frage gründen kann.
 3. **Verankert** — über Begriffe im Dienst mit mindestens einem Begriff verbunden, der eine Ref auf eine
-   physische Spalte hält. Das Glossar ist ein Einstiegspunkt in die Daten, also muss jede Kette an einer
+   physische Spalte hält. Die Ontologie ist ein Einstiegspunkt in die Daten, also muss jede Kette an einer
    Spalte enden.
 
 Die Verbindung breitet sich durch den Graphen aus: Ein abstrakter Begriff erreicht Daten über jeden Nachbarn in Betrieb, der es tut. Begriffe außer Betrieb leiten nicht weiter, ein stillgelegter Begriff hält also seine Abhängigen nicht am Leben.
 
 ## Metadaten-Export {: #metadata-export }
 
-Das Glossar wird im Rahmen des Metadatenexports in externe Datenkataloge veröffentlicht. Es gilt dieselbe Zulassungsregel, in einem Punkt verengt: Ob ein Begriff verwurzelt ist, wird nur an Spalten gemessen, die tatsächlich veröffentlicht werden. Ein Begriff, dessen Spalten alle vom Export zurückgehalten werden, weil ihre Tabellen nicht als Datenprodukte markiert sind oder technische Filter sie ausschließen, ist für den Export nicht verwurzelt, auch wenn er in der Steuerungsebene Referenzen hält.
+Die Ontologie wird im Rahmen des Metadatenexports in externe Datenkataloge veröffentlicht. Es gilt dieselbe Zulassungsregel, in einem Punkt verengt: Ob ein Begriff verwurzelt ist, wird nur an Spalten gemessen, die tatsächlich veröffentlicht werden. Ein Begriff, dessen Spalten alle vom Export zurückgehalten werden, weil ihre Tabellen nicht als Datenprodukte markiert sind oder technische Filter sie ausschließen, ist für den Export nicht verwurzelt, auch wenn er in der Steuerungsebene Referenzen hält.
 
 Beziehungskanten veröffentlichen nur, wenn beide Endpunktbegriffe veröffentlichen.
 
@@ -138,11 +138,11 @@ Metadaten-Export ausschließen** hält den Begriff und alle Beziehungskanten, di
 Katalogen zurück, in die Provisa veröffentlicht, während die Spalten selbst weiterhin als Assets
 exportieren.
 
-Entscheidend ist, ob das Geschäft das Wort verwendet; wie gut die Definition ist, entscheidet es nicht. Eine ETL-Batch-Kennung hat eine klare Bedeutung, die für Ingenieure ins Glossar gehört, aber nicht in einen Geschäftskatalog neben `customer` und `revenue`.
+Entscheidend ist, ob das Geschäft das Wort verwendet; wie gut die Definition ist, entscheidet es nicht. Eine ETL-Batch-Kennung hat eine klare Bedeutung, die für Ingenieure in die Ontologie gehört, aber nicht in einen Geschäftskatalog neben `customer` und `revenue`.
 
-## Arbeiten mit dem Glossar {: #working-with-the-glossary }
+## Arbeiten mit der Ontologie {: #working-with-the-ontology }
 
-Öffnen Sie in der Oberfläche **Admin → Glossar**. Das linke Panel listet jeden Begriff; klicken Sie einen
+Öffnen Sie in der Navigationsleiste der Oberfläche **Ontologie**. Das linke Panel listet jeden Begriff; klicken Sie einen
 an, um seine Detailansicht zu öffnen. Von dort aus:
 
 - **Umbenennen** Sie den Begriff, um seine Formulierung zu ändern, ohne seine Spalten zu verschieben.
@@ -159,9 +159,9 @@ an, um seine Detailansicht zu öffnen. Von dort aus:
 - **Stilllegen** Sie einen Begriff, um ihn außer Dienst zu nehmen. Er behält seine Spalten und bleibt hier
   bearbeitbar, aber die Begriffssuche von Agenten und der Metadaten-Export überspringen ihn beide.
   Stellen Sie ihn später wieder her, wenn das Konzept zurückkommt.
-- **Definitionen im Stapel erzeugen**, um jede leere Definition in einem Durchgang zu füllen. Nur leere
+- **Definitionen im Stapel erzeugen** (**Definitionen** im Menü ✨), um jede leere Definition in einem Durchgang zu füllen. Nur leere
   Definitionen werden geschrieben; von Menschen verfasster Text wird nie überschrieben.
-- **Beziehungen im Stapel erzeugen**, um typisierte Kanten über die gesamte Begriffsliste vorzuschlagen.
+- **Beziehungen im Stapel erzeugen** (**Beziehungen** im Menü ✨), um typisierte Kanten über die gesamte Begriffsliste vorzuschlagen.
   Fehlerhafte Vorschläge — unbekannte Begriffsnamen, Kanten auf sich selbst, unbekannte Typen — werden
   automatisch verworfen.
 
@@ -175,4 +175,4 @@ erreichbar.
 - [Metadaten-Export](metadata-export.md) — wie Begriffe und Beziehungen in externe Datenkataloge
   veröffentlichen, einschließlich der Frage, welche Begriffe die Zulassungsregel des Exports zulässt.
 - [Lineage auf Spaltenebene](lineage.md) — der Lineage-Explorer und wie `columnDependents`
-  Glossar-Bindungen als Abhängige einer physischen Spalte meldet.
+  Ontologie-Bindungen als Abhängige einer physischen Spalte meldet.
