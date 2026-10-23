@@ -123,9 +123,10 @@ class RouteInputs:
     # Why the engine must run it, named by the caller: a re-injected view, landed rows, a
     # live-only part, no connection on this node, a region's own ops record, every source inlined.
     forced: tuple[str, ...]
-    # What the source's connector could not satisfy of it, by its plan (federation.
-    # connector_contract), for a connector that answers directly.
-    unsatisfied: tuple[str, ...]
+    # Whether the source's proxy planned the read as its complete dataset (federation.
+    # source_proxy), and if not why. Not planned is not complete: the read lands.
+    complete_dataset: bool
+    incomplete: str | None
     engine: FederationEngine | None
 
 
@@ -199,14 +200,14 @@ def _not_forced(i: RouteInputs) -> str | None:
 
 
 def _trusted_to_answer(i: RouteInputs) -> str | None:
-    from provisa.federation.connector_contract import connector_for
+    # A source with a proxy answers only a complete dataset (federation.source_proxy); a SQL
+    # database's driver runs the statement itself (dialect_supports judged its constructs).
+    from provisa.federation.connector_contract import contract_for
 
-    stype = i.source_types.get(_primary(i), "")
-    if not connector_for(stype).answers_directly:
-        return f"the {stype} connector does not answer directly: its rows are landed"
-    if i.unsatisfied:
-        return f"unsatisfied: {'; '.join(i.unsatisfied)}"
-    return None
+    sid = _primary(i)
+    if contract_for(i.source_types.get(sid, "")) is None or i.complete_dataset:
+        return None
+    return f"incomplete dataset from {sid}" + (f": {i.incomplete}" if i.incomplete else "")
 
 
 #: The gates a statement passes, in order, to be read on its source directly; the first it fails
@@ -248,7 +249,8 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     # to a source fails there, the source holding no fake functions -- it never reads unfaked.
     reads_fakes: bool = False,
     forced: tuple[str, ...] = (),
-    unsatisfied: tuple[str, ...] = (),
+    complete_dataset: bool = False,
+    incomplete: str | None = None,
 ) -> RouteDecision:
     """Decide whether a statement is read on its source directly or landed and run by the engine
     (REQ-863). Landing is the default; a statement is read directly only when it passes every
@@ -307,7 +309,8 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
         operator_floor=operator_floor,
         reads_fakes=reads_fakes,
         forced=forced,
-        unsatisfied=unsatisfied,
+        complete_dataset=complete_dataset,
+        incomplete=incomplete,
         engine=engine,
     )
     failed = _failed_gate(inputs)

@@ -297,8 +297,7 @@ def test_a_read_of_a_code_source_is_landed_for_the_engine():
     for sources, types in (({"scores-src"}, {"scores-src": "python"}), ({"js"}, {"js": "node"})):
         decision = _route(sources, types)
         assert decision.route == Route.ENGINE
-        assert decision.reason.startswith("landed: trusted_to_answer: the ")
-        assert "connector does not answer directly" in decision.reason
+        assert decision.reason.startswith("landed: trusted_to_answer: incomplete dataset from ")
     across = _route({"scores-src", "pg"}, {"scores-src": "python", "pg": "postgresql"})
     assert across.route == Route.ENGINE
 

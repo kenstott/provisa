@@ -480,11 +480,7 @@ async def _optimize_and_route(
         else _forced_engine(
             routed, optimized and not sources, _view, _rewrites, ctx, state, table_ids
         ),
-        **(
-            {}
-            if is_mutation
-            else await _connector_plan(routed, governed_sql, ctx, state, table_ids)
-        ),
+        **({} if is_mutation else await _proxy_plan(routed, governed_sql, ctx, state, table_ids)),
     )
     from provisa.api.region_ops_views import reads_region_views
 
@@ -572,7 +568,14 @@ def _forced_engine(
     if view is not None:
         # The view is stored where the engine reads it: no source's driver knows it.
         forced.append(f"read from materialized view {view.mv.id!r}")
-    if rewrites:
+    from provisa.federation.connector_contract import contract_for
+
+    proxied = (
+        len(routed) == 1
+        and contract_for(state.source_types.get(next(iter(routed)), "")) is not None
+    )
+    if rewrites and not proxied:
+        # A source with a proxy has its own rows landed: trusted_to_answer says why.
         forced.append("reads landed rows (a materialized cache table)")
     from provisa.transpiler.router import API_SOURCES, CODE_SOURCES
 
@@ -587,21 +590,33 @@ def _forced_engine(
     return tuple(forced)
 
 
-async def _connector_plan(
+async def _proxy_plan(
     routed: set[str], governed_sql: str, ctx: Any, state: Any, table_ids: tuple[int, ...]
 ) -> dict[str, Any]:
-    """The trusted_to_answer gate's input (REQ-863): what the one source's connector, where it
-    answers directly and plans its reads, could not satisfy of the statement."""
+    """The trusted_to_answer gate's input (REQ-863, REQ-1756): whether the one source's proxy
+    plans the statement's read as its complete dataset, and if not, why."""
     if len(routed) != 1:
         return {}
     (sid,) = routed
-    from provisa.federation.connector_contract import connector_for
+    from provisa.federation.connector_contract import Read, contract_for
 
-    connector = connector_for(state.source_types.get(sid, ""))
-    if not connector.answers_directly or connector.plan is None:
+    proxy = contract_for(state.source_types.get(sid, ""))
+    if proxy is None:
         return {}
-    plan = await connector.plan(state, sid, governed_sql, ctx, table_ids)
-    return {"unsatisfied": plan.unsatisfied}
+    tables = [t for t in getattr(state, "tables", None) or [] if t.get("id") in set(table_ids)]
+    if len(tables) != 1:
+        return {"incomplete": "the statement reads more than one of its tables"}
+    plan = await proxy.plan(
+        state,
+        Read(
+            table=tables[0],
+            name=tables[0]["table_name"],
+            statement=governed_sql,
+            source_id=sid,
+        ),
+        ctx,
+    )
+    return {"complete_dataset": plan.complete_dataset, "incomplete": plan.incomplete_because}
 
 
 @functools.lru_cache(maxsize=4096)

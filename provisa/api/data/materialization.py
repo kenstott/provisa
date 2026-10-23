@@ -260,28 +260,60 @@ async def _mat_pipeline_table(
     """Run a pipeline table with the statement's arguments and land its rows for the engine,
     kept under those arguments for the table's TTL (REQ-1980): two argument sets are two
     answers, never one."""
-    if state.source_types[table["source_id"]] == "cosmosdb":
-        from provisa.cosmosdb.table import cache_arguments, read
-    elif state.source_types[table["source_id"]] == "qdrant":
-        from provisa.qdrant.table import cache_arguments, read
-    elif state.source_types[table["source_id"]] == "elasticsearch":
-        from provisa.elasticsearch.native_table import cache_arguments, read
-    elif state.source_types[table["source_id"]] in ("node", "python"):
-        from provisa.codesource.table import cache_arguments, pushed_arguments, read
+    source_type = state.source_types[table["source_id"]]
+    if source_type in ("node", "python"):
+        # REQ-2100, REQ-1756: a code table is called by its source's proxy, which plans the
+        # read -- its declared predicates a pre-filter -- and its rows are kept under every
+        # argument the call was given.
+        from provisa.codesource.proxy import CodeProxy
+        from provisa.codesource.table import cache_arguments as code_arguments
+        from provisa.federation.connector_contract import Read
 
-        # REQ-2100: the function is given what the statement lets it pre-filter -- its arguments
-        # and the values its pushed predicates give -- and its rows are kept under all of them.
-        given = {**await pushed_arguments(state, table, tn, statement), **(nf_args or {})}
+        proxy = CodeProxy()
+        plan = await proxy.plan(
+            state,
+            Read(
+                table=table,
+                name=tn,
+                statement=statement,
+                source_id=table["source_id"],
+                arguments=nf_args,
+            ),
+        )
         await _land_per_statement(
             tn,
             table,
             state,
             cache_rewrites,
             values_cte_entries,
-            cache_arguments(table, given),
-            lambda: read(state, table, given),
+            code_arguments(table, plan.arguments),
+            lambda: proxy.call(state, plan),
         )
         return
+    if source_type == "qdrant":
+        # A search table is landed (REQ-1983): its connector's call, under its arguments.
+        from provisa.federation.connector_contract import Plan, Read
+        from provisa.qdrant.contract import QdrantContract
+        from provisa.qdrant.table import cache_arguments as search_arguments
+
+        search = Plan(
+            read=Read(table=table, name=tn, statement=statement, source_id=table["source_id"]),
+            arguments=dict(nf_args or {}),
+        )
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            search_arguments(table, nf_args),
+            lambda: QdrantContract().call(state, search),
+        )
+        return
+    if source_type == "cosmosdb":
+        from provisa.cosmosdb.table import cache_arguments, read
+    elif source_type == "elasticsearch":
+        from provisa.elasticsearch.native_table import cache_arguments, read
     else:
         from provisa.mongodb.pipeline_table import cache_arguments, read
     await _land_per_statement(
@@ -559,10 +591,11 @@ async def _mat_fed_table(
         def answer():
             return search_each(state, table, sets, carried)
     else:
-        from provisa.codesource.table import read_each
+        from provisa.codesource.proxy import CodeProxy
 
         def answer():
-            return read_each(state, table, sets, joined=True)
+            # REQ-2099: through the code source's proxy, once per set of the parent's values.
+            return CodeProxy().call_each(state, table, sets, joined=True)
 
     await _land_per_statement(tn, table, state, cache_rewrites, values_cte_entries, key, answer)
 

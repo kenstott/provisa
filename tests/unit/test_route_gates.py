@@ -114,128 +114,49 @@ def test_not_forced(kw, why):
 
 
 def test_trusted_to_answer():
-    # A connector that does not answer directly lands, whatever it could push.
-    assert _route({"api"}).reason == (
-        "landed: trusted_to_answer: the openapi connector does not answer directly: its rows "
-        "are landed"
+    # A source with a proxy answers only a complete dataset; v1 plans none.
+    decision = _route({"api"}, incomplete="an API source declares no capability")
+    assert decision.reason == (
+        "landed: trusted_to_answer: incomplete dataset from api: an API source declares no "
+        "capability"
     )
-    assert _route({"py"}).reason.startswith(
-        "landed: trusted_to_answer: the python connector does not answer directly"
-    )
+    # Not planned is not complete.
+    assert _route({"vec"}).reason == "landed: trusted_to_answer: incomplete dataset from vec"
+    assert _route({"vec"}, complete_dataset=True).route == Route.DIRECT
 
 
-def test_a_connector_that_answers_directly_answers_only_what_it_satisfies():
-    satisfied = _route({"vec"}, unsatisfied=())
-    assert (satisfied.route, satisfied.source_id) == (Route.DIRECT, "vec")
-    left = _route(
-        {"vec"}, unsatisfied=("a read of the collection that is no similarity top-k search",)
-    )
-    assert left.reason == (
-        "landed: trusted_to_answer: unsatisfied: a read of the collection that is no "
-        "similarity top-k search"
-    )
-
-
-def test_a_direct_hint_is_honoured_where_every_gate_passes():
-    decision = _route({"pg"}, steward_hint="direct")
-    assert (decision.route, decision.reason) == (Route.DIRECT, "steward override: direct")
-
-
-@pytest.mark.parametrize(
-    "sources, kw, why",
-    [
-        ({"pg", "pg2"}, {}, "landed: one_source:"),
-        (
-            {"pg"},
-            {"operator_floor": {"pg": "load_protected"}},
-            "landed: not_forced: operator floor",
-        ),
-        ({"pg"}, {"reads_fakes": True}, "landed: not_forced: reads faked columns"),
-        ({"api"}, {}, "landed: trusted_to_answer:"),
-    ],
-)
-def test_a_direct_hint_that_cannot_apply_is_ignored_and_said(sources, kw, why):
-    decision = _route(sources, steward_hint="direct", **kw)  # raises nothing
-    assert decision.route == Route.ENGINE
-    assert decision.reason.startswith(f"route hint ignored: {why}")
-
-
-def test_an_engine_hint_skips_the_gates():
-    decision = _route({"pg"}, steward_hint="engine")
-    assert (decision.route, decision.reason) == (Route.ENGINE, "steward override: federated")
-
-
-def test_a_statement_whose_every_source_was_inlined_is_the_engines():
-    # Never read directly on a source it does not read: the org's default source (A4).
+async def test_qdrant_plans_a_complete_dataset_for_what_its_api_states_exactly(monkeypatch):
     from types import SimpleNamespace
 
-    from provisa.pgwire._pipeline import _forced_engine
-
-    state = SimpleNamespace(
-        source_types={"pg": "postgresql"},
-        source_pools=SimpleNamespace(has=lambda _sid: True),
-        tables=[],
-    )
-    forced = _forced_engine({"pg"}, True, None, {}, None, state, ())
-    assert forced == ("every source it reads was inlined as rows",)
-    assert _forced_engine({"pg"}, False, None, {}, None, state, ()) == ()
-
-
-# -- the connector contract (federation.connector_contract) ---------------------------------------
-
-
-class _Pools:
-    def __init__(self, driver):
-        self.driver = driver
-
-    def get(self, _sid):
-        return self.driver
-
-
-class _Qdrant:
-    def __init__(self, kind, why=None):
-        self.kind, self.why = kind, why
-
-    async def plan_kind(self, _sql, _table):
-        return self.kind, self.why
-
-
-def _qdrant_state(driver):
-    from types import SimpleNamespace
-
-    return SimpleNamespace(
-        tables=[{"id": 1, "table_name": "docs", "source_id": "vec"}],
-        source_pools=_Pools(driver),
-    )
-
-
-@pytest.mark.parametrize(
-    "kind, why, unsatisfied",
-    [
-        ("query", None, ()),
-        ("scroll", None, ("a read of the collection that is no similarity top-k search",)),
-        ("retrieve", None, ("a read of the collection that is no similarity top-k search",)),
-        (None, "an aggregate has no Qdrant form", ("an aggregate has no Qdrant form",)),
-    ],
-)
-async def test_the_qdrant_connector_satisfies_only_its_similarity_top_k(
-    monkeypatch, kind, why, unsatisfied
-):
-    from provisa.federation import connector_contract
+    from provisa.federation.connector_contract import Read, contract_for
 
     monkeypatch.setattr(
         "provisa.compiler.sql_rewrite.rewrite_semantic_to_physical", lambda sql, _ctx: sql
     )
-    plan = await connector_contract.connector_for("qdrant").plan(
-        _qdrant_state(_Qdrant(kind, why)), "vec", "SELECT 1", None, (1,)
-    )
-    assert plan.unsatisfied == unsatisfied
+
+    class _Driver:
+        def __init__(self, why):
+            self.why = why
+
+        async def reason(self, _sql, _table):
+            return self.why
+
+    def _state(why):
+        return SimpleNamespace(source_pools=SimpleNamespace(get=lambda _sid: _Driver(why)))
+
+    read = Read(table={"table_name": "docs"}, name="docs", statement="SELECT 1", source_id="vec")
+    exact = await contract_for("qdrant").plan(_state(None), read)
+    assert exact.complete_dataset
+    joined = await contract_for("qdrant").plan(_state("it joins another table"), read)
+    assert (joined.complete_dataset, joined.incomplete_because) == (False, "it joins another table")
 
 
-def test_every_connector_declares_whether_it_answers_directly():
-    from provisa.federation.connector_contract import connector_for
+async def test_v1_every_other_connector_declares_no_capability():
+    from provisa.federation.connector_contract import Read, contract_for
 
-    assert connector_for("qdrant").answers_directly
-    assert connector_for("postgresql").answers_directly  # it runs the SQL itself
-    for lands in ("openapi", "graphql_api", "grpc_remote", "sparql", "node", "python"):
-        assert not connector_for(lands).answers_directly
+    read = Read(table={"table_name": "t", "source_id": "s"}, name="t", statement="SELECT 1")
+    for source_type in ("openapi", "graphql_api", "grpc_api", "grpc_remote", "sparql"):
+        plan = await contract_for(source_type).plan(None, read)
+        assert plan.complete_dataset is False
+        assert "declares no capability" in (plan.incomplete_because or "")
+    assert contract_for("postgresql") is None  # a SQL database is read through its driver

@@ -1,5 +1,4 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 24dfe355-fd25-4c8e-a67f-300efdd54f30
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -8,104 +7,105 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What a connector may answer without landing (REQ-863's trusted_to_answer gate, the source
-contract). Every connector declares ``answers_directly`` and plans a statement over its table as
-``(pushed, unsatisfied)``: what it takes into its own call and what it could not satisfy exactly.
-A statement is answered by its source only when the connector answers directly and nothing is left
-unsatisfied; otherwise its rows are landed and the engine runs it, the route's reason naming each
-unsatisfied part. ``pushed`` is a pre-filter for a landed read: the engine applies the whole
-statement again.
+"""The source contract every connector Provisa calls itself provides, other than a SQL database's
+(REQ-1756, REQ-863): its capabilities, the plan of a read and the call.
 
-A relational connector runs the SQL itself (the dialect capability list judges its constructs);
-a Qdrant collection answers its similarity top-k search; an API, a remote, a SPARQL endpoint or a
-code connector does not answer directly and lands."""
+A plan is made before any call: the arguments the call is given and whether the rows it returns
+are the read's complete dataset -- every condition, the ordering, the limit and every column
+handled, with no row rule or mask of the role's on it. A complete dataset is the answer; any other
+read's rows are landed and the engine runs the statement over them, the arguments a pre-filter
+only. Routing's trusted_to_answer gate reads the plan and nothing else of the connector.
+
+Provisa's own connectors implement the contract in their own code (Qdrant, the API caller's
+sources, SPARQL). A code source's function cannot, so its proxy implements it on its behalf
+(codesource.proxy). A SQL database is read through its driver, judged by the dialect capability
+list, and a source the engine reads through its own connector is the engine's: neither has one.
+
+v1: Qdrant reports a complete dataset for what it answers exactly (a similarity top-k, a
+retrieve by id, a scroll); every other connector declares no capability and lands. The target
+shape of a capability, for later: the comparators it evaluates exactly, per data type; the
+ordering, by one key or several, in which directions; and the limit, as offset and length."""
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
 
 
 @dataclass(frozen=True)
-class PushdownPlan:
-    """A connector's plan of one statement: what it pushes into its call, what it cannot satisfy."""
+class Read:
+    """One read of a table by a statement: the governed statement, PostgreSQL text."""
 
-    pushed: tuple[str, ...] = ()
-    unsatisfied: tuple[str, ...] = ()
-
-
-#: A planner: (state, source id, governed statement, its compilation context, table ids) -> its plan.
-Planner = Callable[[Any, str, str, Any, tuple[int, ...]], Awaitable[PushdownPlan]]
+    table: dict
+    name: str  # the name the statement reads it by
+    statement: str
+    source_id: str = ""
+    arguments: dict | None = None  # the arguments the statement names for the read itself
 
 
 @dataclass(frozen=True)
-class Connector:
-    answers_directly: bool
-    plan: Planner | None = None  # None: it runs the statement whole (a relational connector)
+class Plan:
+    """What a connector's call is given for a read, and whether its rows are the read's answer."""
+
+    read: Read
+    arguments: dict = field(default_factory=dict)
+    complete_dataset: bool = False
+    incomplete_because: str | None = None  # named in the route's reason
 
 
-def _tables(state: Any, table_ids: tuple[int, ...]) -> list[dict]:
-    wanted = set(table_ids)
-    return [t for t in getattr(state, "tables", None) or [] if t.get("id") in wanted]
+class SourceContract(ABC):
+    """A connector's side of the source contract."""
+
+    @abstractmethod
+    async def plan(self, state: Any, read: Read, ctx: Any = None) -> Plan:
+        """The read's plan, before any call."""
+
+    @abstractmethod
+    async def call(self, state: Any, plan: Plan) -> Any:
+        """The rows the plan's call returns."""
 
 
-async def _qdrant_plan(
-    state: Any, sid: str, statement: str, ctx: Any, table_ids: tuple[int, ...]
-) -> PushdownPlan:
-    """REQ-2000: a collection's similarity top-k search -- ORDER BY cosine_similarity(<vector>, q)
-    DESC LIMIT k over its payload filters -- is Qdrant's query_points, satisfied whole; a retrieve,
-    a scroll, a search table or anything Qdrant does not state exactly is not."""
-    from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+class Lands(SourceContract):
+    """A connector that declares no capability (v1): every read is incomplete and lands, its call
+    made by the landing path that has always made it (the API caller, the remote fetches)."""
 
-    tables = _tables(state, table_ids)
-    if len(tables) != 1:
-        return PushdownPlan(unsatisfied=("a read of more than one table",))
-    driver = state.source_pools.get(sid)
-    kind, why = await driver.plan_kind(rewrite_semantic_to_physical(statement, ctx), tables[0])
-    if why is not None:
-        return PushdownPlan(unsatisfied=(why,))
-    if kind != "query":
-        return PushdownPlan(
-            pushed=(kind,),
-            unsatisfied=("a read of the collection that is no similarity top-k search",),
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+
+    async def plan(self, state: Any, read: Read, ctx: Any = None) -> Plan:
+        return Plan(
+            read=read,
+            arguments=dict(read.arguments or {}),
+            incomplete_because=f"a {self.kind} source declares no capability",
         )
-    return PushdownPlan(pushed=("query_points",))
+
+    async def call(self, state: Any, plan: Plan) -> Any:
+        raise RuntimeError(
+            f"{plan.read.name}: a {self.kind} read is never its complete dataset; its rows are "
+            "landed by the landing path"
+        )
 
 
-async def _code_plan(
-    state: Any, sid: str, statement: str, ctx: Any, table_ids: tuple[int, ...]
-) -> PushdownPlan:
-    """REQ-2100: a code table's wrapper pushes the predicates its function declares parameters
-    for (codesource.pushdown, codehost.residual.pushed); everything else -- the rest of the
-    conditions, orderings, limits, projections, joins, aggregates -- is the engine's."""
-    from provisa.codesource.table import pushed_arguments
-
-    tables = _tables(state, table_ids)
-    pushed: list[str] = []
-    for table in tables:
-        given = await pushed_arguments(state, table, table["table_name"], statement)
-        pushed.extend(f"{table['table_name']}.{name}" for name in sorted(given))
-    return PushdownPlan(pushed=tuple(pushed), unsatisfied=("the statement beyond its arguments",))
+_CONTRACTS: dict[str, SourceContract] = {}
 
 
-_LANDS = Connector(answers_directly=False)
+def contract_for(source_type: str) -> SourceContract | None:
+    """``source_type``'s contract, or None for a SQL database or a source the engine reads."""
+    if not _CONTRACTS:
+        from provisa.codesource.proxy import CodeProxy
+        from provisa.qdrant.contract import QdrantContract
 
-#: Each connector's contract, by source type. A type not named runs the statement whole.
-CONNECTORS: dict[str, Connector] = {
-    "qdrant": Connector(answers_directly=True, plan=_qdrant_plan),
-    "node": Connector(answers_directly=False, plan=_code_plan),
-    "python": Connector(answers_directly=False, plan=_code_plan),
-    "openapi": _LANDS,
-    "graphql_api": _LANDS,
-    "grpc_api": _LANDS,
-    "grpc_remote": _LANDS,
-    "sparql": _LANDS,
-}
-
-_RELATIONAL = Connector(answers_directly=True)
-
-
-def connector_for(source_type: str) -> Connector:
-    """``source_type``'s connector contract."""
-    return CONNECTORS.get(source_type, _RELATIONAL)
+        _CONTRACTS.update(
+            {
+                "node": CodeProxy(),
+                "python": CodeProxy(),
+                "qdrant": QdrantContract(),
+                "openapi": Lands("REST"),
+                "graphql_api": Lands("GraphQL remote"),
+                "grpc_api": Lands("gRPC"),
+                "grpc_remote": Lands("gRPC remote"),
+                "sparql": Lands("SPARQL"),
+            }
+        )
+    return _CONTRACTS.get(source_type)
