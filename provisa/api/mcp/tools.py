@@ -682,6 +682,56 @@ async def remove_glossary_term_edge(
     return {"ok": True}
 
 
+async def ground_glossary_term_to_table(
+    state: Any, role: str, request: Any, term_id: int, table_id: int
+) -> dict:  # REQ-2130
+    """Make an ontology term the class term of a registered table or view: the table's rows are
+    instances of what the term names. The table must have a primary key, and a table has one class
+    term -- one already grounded by another term is refused, naming that term."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, ground_term_table
+    from provisa.api.errors import ApiError
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        try:
+            await ground_term_table(conn, term_id, table_id, request)
+        except ApiError as exc:
+            if exc.status_code == 403:
+                raise
+            raise ValueError(exc.detail) from exc
+    await _notify(org_id, "ontology table grounded")
+    return {"ok": True, "term_id": term_id, "table_id": table_id}
+
+
+async def unground_glossary_term_from_table(
+    state: Any, role: str, request: Any, term_id: int, table_id: int
+) -> dict:  # REQ-2130
+    """Withdraw an ontology term as a table's class term."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, unground_term_table
+    from provisa.api.errors import ApiError
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        try:
+            await unground_term_table(conn, term_id, table_id, request)
+        except ApiError as exc:
+            if exc.status_code == 403:
+                raise
+            raise ValueError(exc.detail) from exc
+    await _notify(org_id, "ontology table ungrounded")
+    return {"ok": True}
+
+
 async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:  # REQ-1855
     """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
     require_role(role, state)

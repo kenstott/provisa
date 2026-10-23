@@ -16,7 +16,7 @@ rename, definition, ref moves, experts, abstract terms and their typed edges —
 queues a metadata publish after every mutation because the term graph exports.
 """
 
-# Requirements: REQ-1387, REQ-1590, REQ-1591
+# Requirements: REQ-1387, REQ-1590, REQ-1591, REQ-2130
 
 from typing import TYPE_CHECKING, Any, cast
 
@@ -762,4 +762,95 @@ async def remove_expert(request: Request, term_id: int, user_id: str) -> dict:
     if not removed:
         raise ApiError(404, "glossary.expert_not_found", "expert not found")
     await _notify(org_id, "ontology expert removed")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Class grounding: a term names what a whole table's rows are (REQ-2130)
+# ---------------------------------------------------------------------------
+
+
+async def _require_table_groundable(
+    conn: "Connection", term_id: int, table_id: int, request: Request
+) -> None:
+    """The curation gates a grounding passes, the column-ref move's: the table's domain decides
+    whether the caller may touch that table at all, and the term is gated by the curation rule."""
+    from provisa.api.admin.domain_guard import DomainLookupError, table_domain
+
+    if not await glossary_repo.term_exists(conn, term_id):
+        raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+    try:
+        domain = await table_domain(conn, table_id)
+    except DomainLookupError as exc:
+        raise ApiError(404, "glossary.table_not_found", f"table {table_id} not found") from exc
+    _require_domain(request, domain)
+    await _require_term_curatable(conn, term_id, request)
+
+
+async def ground_term_table(
+    conn: "Connection", term_id: int, table_id: int, request: Request
+) -> None:
+    """Gate and ground, shared by the route and the MCP tool."""
+    await _require_table_groundable(conn, term_id, table_id, request)
+    try:
+        await glossary_repo.ground_table(conn, term_id, table_id)
+    except glossary_repo.TableHasNoPrimaryKey as exc:
+        raise ApiError(400, "glossary.table_no_primary_key", str(exc), table=exc.table) from exc
+    except glossary_repo.TableAlreadyGrounded as exc:
+        raise ApiError(
+            409,
+            "glossary.table_already_grounded",
+            str(exc),
+            table=exc.table,
+            term_id=exc.term_id,
+            term_name=exc.term_name,
+        ) from exc
+
+
+async def unground_term_table(
+    conn: "Connection", term_id: int, table_id: int, request: Request
+) -> None:
+    """Gate and unground, shared by the route and the MCP tool."""
+    await _require_table_groundable(conn, term_id, table_id, request)
+    if not await glossary_repo.unground_table(conn, term_id, table_id):
+        raise ApiError(
+            404, "glossary.table_ref_not_found", f"term {term_id} does not ground table {table_id}"
+        )
+
+
+@router.get("/terms/{term_id}/tables")
+async def list_term_tables(request: Request, term_id: int) -> list[dict]:
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_readable(_conn, term_id, request)
+        try:
+            return await glossary_repo.term_tables(_conn, term_id)
+        except glossary_repo.TermNotFound as exc:
+            raise ApiError(404, "glossary.term_not_found", str(exc)) from exc
+
+
+@router.post("/terms/{term_id}/tables")
+async def add_term_table(request: Request, term_id: int) -> dict:
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    body = await request.json()
+    table_id = int(body["table_id"])
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        await ground_term_table(cast("Connection", conn), term_id, table_id, request)
+    await _notify(org_id, "ontology table grounded")
+    return {"ok": True, "term_id": term_id, "table_id": table_id}
+
+
+@router.delete("/terms/{term_id}/tables/{table_id}")
+async def remove_term_table(request: Request, term_id: int, table_id: int) -> dict:
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        await unground_term_table(cast("Connection", conn), term_id, table_id, request)
+    await _notify(org_id, "ontology table ungrounded")
     return {"ok": True}

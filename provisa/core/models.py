@@ -1551,6 +1551,10 @@ class Table(
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
+    # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
+    # configuration loads, after the terms it declares or derives exist; the table must have a
+    # primary key.
+    class_term: str | None = None
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table

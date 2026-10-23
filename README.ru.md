@@ -398,7 +398,7 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | Проектирование системы и карта компонентов | [docs/architecture.md](docs/architecture.md) |
 | Модель безопасности (RLS, маскирование, аутентификация) | [docs/security.md](docs/security.md) |
 | Хранение секретов и ссылки `${secret:NAME}` | [docs/secrets.md](docs/secrets.md) |
-| Бизнес-глоссарий и курирование терминов | [docs/glossary.md](docs/glossary.md) |
+| Бизнес-глоссарий и курирование терминов | [docs/ontology.md](docs/ontology.md) |
 | Окружения (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Создание тестовых окружений (профилирование, поддельные данные, синтетические данные) | [docs/test-data.md](docs/test-data.md) |
 | Справочник методов поддельных данных | [docs/fake-methods.md](docs/fake-methods.md) |

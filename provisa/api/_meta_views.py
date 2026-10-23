@@ -569,12 +569,15 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW glossary_term_domains_meta AS
         WITH d AS (
             SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
-            FROM glossary_term_refs r
+            FROM (SELECT term_id, table_id, tenant_id FROM glossary_term_refs
+                  UNION
+                  SELECT term_id, table_id, tenant_id FROM glossary_term_table_refs) r
             JOIN registered_tables rt ON rt.id = r.table_id
             UNION ALL
             SELECT g.term_id, g.domain_id, g.tenant_id
             FROM glossary_term_domains g
             WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
+              AND NOT EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = g.term_id)
         ),
         s AS (
             SELECT term_id, '|' || STRING_AGG(domain_id, '|') || '|' AS term_domains
@@ -588,7 +591,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
     # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
-    # in service, defined, and connected over in-service edges to a term holding a physical ref.
+    # in service, defined, and connected over in-service edges to a term holding a physical ref --
+    # a column, or a whole table (REQ-1387, GROUNDED TO A TABLE).
     # Grounding is transitive, so it needs the recursive CTE — every control-plane dialect the
     # meta domain is served from (PostgreSQL, SQLite, MySQL) supports WITH RECURSIVE in a view.
     # `rooted` here counts EVERY ref, which is the repository's reading of it; the exporter's
@@ -615,7 +619,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         ),
         grounded AS (
             SELECT DISTINCT r.term_id AS id
-            FROM glossary_term_refs r
+            FROM (SELECT term_id FROM glossary_term_refs
+                  UNION
+                  SELECT term_id FROM glossary_term_table_refs) r
             JOIN in_service s ON s.id = r.term_id
             UNION
             SELECT ce.b
@@ -626,6 +632,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                t.export_excluded,
                (SELECT COUNT(*) FROM glossary_term_refs r WHERE r.term_id = t.id) AS ref_count,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
+                      OR EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = t.id)
                     THEN TRUE ELSE FALSE END AS is_rooted,
                CASE WHEN t.id IN (SELECT id FROM grounded)
                      AND TRIM(COALESCE(t.definition, '')) <> ''
@@ -643,6 +650,16 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.tenant_id,
                (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
         FROM glossary_term_refs r
+        JOIN registered_tables rt ON rt.id = r.table_id
+    """,
+    # REQ-2130: a class term's tables and views, resolved to their address.
+    "glossary_term_table_refs": """
+        CREATE OR REPLACE VIEW glossary_term_table_refs_meta AS
+        SELECT r.id, r.term_id, r.table_id,
+               rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
+               r.tenant_id,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
+        FROM glossary_term_table_refs r
         JOIN registered_tables rt ON rt.id = r.table_id
     """,
     "glossary_term_edges": """
@@ -688,7 +705,11 @@ _META_TABLE_VIEWS: dict[str, str] = {
                       = m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_')
                    AS profiled_table_id,
                (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
-                   AS checked_table_id
+                   AS checked_table_id,
+               -- The table's class term, NULL when none grounds it. Last, like the two
+               -- above, so an existing view is replaced in place.
+               (SELECT g.term_id FROM glossary_term_table_refs g WHERE g.table_id = rt.id)
+                   AS class_term_id
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,

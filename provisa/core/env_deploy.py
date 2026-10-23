@@ -513,6 +513,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 "row_policies",
                 "write_grants",
                 "glossary",
+                "class_term",
                 "meta_links",
                 "tags",
             )
@@ -562,6 +563,10 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                         "column_name": ref["column_name"],
                         "term_id": resolve_term(ref["term"], path),
                     }
+                )
+            for ref in nested["class_term"]:  # REQ-2130
+                rows["glossary_term_table_refs"].append(
+                    {"table_id": tid, "term_id": resolve_term(ref["term"], path)}
                 )
             for link in nested["meta_links"]:
                 rows["table_meta_links"].append(

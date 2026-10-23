@@ -210,6 +210,7 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
         key=lambda g: (g["role_id"], g["operation"]),
     )
     term_refs = await _rows(conn, org.glossary_term_refs, schema)
+    table_terms = await _rows(conn, org.glossary_term_table_refs, schema)  # REQ-2130
     meta_links = await _rows(conn, org.table_meta_links, schema)
     assignments = await _rows(conn, org.tag_assignments, schema)
     terms = await _rows(conn, org.glossary_terms, schema)
@@ -255,6 +256,9 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             for r in term_refs
             if r["table_id"] == table_id
         ]
+        own_class = [
+            {"term": term_paths[r["term_id"]]} for r in table_terms if r["table_id"] == table_id
+        ]
         tree[paths[table_id]] = entity(
             "registered_tables",
             row,
@@ -289,6 +293,8 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 table="table_write_grants",
             ),
             glossary=Child("column_name", "table_id", own_refs, table="glossary_term_refs"),
+            # REQ-2130: at most one, by the table's UNIQUE -- a list only because every child is.
+            class_term=Child("term", "table_id", own_class, table="glossary_term_table_refs"),
             meta_links=Child("target", "source_table_id", own_links, table="table_meta_links"),
             tags=Child(
                 "at",

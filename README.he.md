@@ -399,7 +399,7 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | עיצוב מערכת ומפת רכיבים | [docs/architecture.md](docs/architecture.md) |
 | מודל אבטחה (RLS, מיסוך, אימות) | [docs/security.md](docs/security.md) |
 | אחסון סודות והתייחסויות `${secret:NAME}` | [docs/secrets.md](docs/secrets.md) |
-| מילון עסקי ואצירת מונחים | [docs/glossary.md](docs/glossary.md) |
+| מילון עסקי ואצירת מונחים | [docs/ontology.md](docs/ontology.md) |
 | סביבות (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | בניית סביבות בדיקה (פרופיילינג, נתונים מזויפים, נתונים סינתטיים) | [docs/test-data.md](docs/test-data.md) |
 | מדריך שיטות הנתונים המזויפים | [docs/fake-methods.md](docs/fake-methods.md) |

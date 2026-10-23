@@ -268,7 +268,7 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Ontology** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `dataplex`; glossary terms are silently omitted from their publishes.
+- **Ontology** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Ontology](ontology.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `dataplex`; glossary terms are silently omitted from their publishes.
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,
