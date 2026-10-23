@@ -64750,22 +64750,42 @@
   feature: engineering-standards-principles
   priority: SHOULD
   type: structural
-  description: 'Exactly two contracts govern how a source type is reached, never three or four. ENGINE
-    CONTRACT: every op a federation engine performs on a source type — reachability, capability, catalog
-    registration — goes through that engine''s own Connector(ABC) implementation (REQ-842), one instance
-    per (engine, source_type). An op that does not apply to a given engine is a no-op on that engine''s
-    Connector, never a separate code path outside the contract. DATASOURCE CONTRACT: every op Provisa
-    performs to read a source directly (no engine reaches it live) — connect, list tables, list columns,
-    list primary/foreign keys, execute a query — goes through that source type''s own implementation of
-    ONE interface (connect, fetch_tables, fetch_columns, fetch_primary_keys, fetch_foreign_keys, execute_query),
-    implemented once per source type and reused by every engine''s Connector for that mechanism. REQUIRED
-    FIX: (1) name the datasource contract as its own interface. (2) Every source type currently dispatched
-    by hardcoded special-casing instead of through a registry must be re-registered and dispatched generically
-    under the correct contract. (3) Every source type reimplementing datasource-contract logic another
-    source type already implements generically must migrate onto the shared implementation instead of
-    duplicating it. (4) Any engine-specific catalog-generation logic living outside that engine''s own
-    Connector implementation must fold into it. (5) The registry docstring must accurately describe both
-    contracts once (1)-(4) make that description true. (Amended 2026-10-23, THE SOURCE CONTRACT) Every connector Provisa calls itself, other than a SQL database''s, provides the source contract (provisa/federation/connector_contract.py): its capabilities; plan(read), made before any call -- the arguments the call is given and whether its rows are the read''s complete dataset (every condition, the ordering, the limit and every needed column handled, with no row rule or mask of the role''s on it); and call(plan), returning the rows. Routing''s trusted_to_answer gate reads the plan and nothing else of the connector (REQ-863). Provisa''s own connectors implement the contract in their own code: Qdrant, the API caller''s sources (REST/OpenAPI, GraphQL remote, gRPC remote) and SPARQL. A code source''s function cannot, so a proxy implements it on its behalf (REQ-2100). A SQL database is read through its driver and a source the engine reads through its own connector is the engine''s: neither provides it. v1: Qdrant plans a complete dataset for what its API states exactly (REQ-2000); every other connector declares no capability, plans no read complete and lands, applying what it pushes today as the pre-filter. The target shape of a capability, for later, is generic and fully supported only: the comparators it evaluates exactly, per data type; the ordering, by one key or several, in which directions; and the limit, as offset and length.'
+  description: 'Exactly two contracts govern how a source type is reached, never three or four. ENGINE CONTRACT:
+    every op a federation engine performs on a source type — reachability, capability, catalog registration
+    — goes through that engine''s own Connector(ABC) implementation (REQ-842), one instance per (engine,
+    source_type). An op that does not apply to a given engine is a no-op on that engine''s Connector, never
+    a separate code path outside the contract. DATASOURCE CONTRACT: every op Provisa performs to read a
+    source directly (no engine reaches it live) — connect, list tables, list columns, list primary/foreign
+    keys, execute a query — goes through that source type''s own implementation of ONE interface (connect,
+    fetch_tables, fetch_columns, fetch_primary_keys, fetch_foreign_keys, execute_query), implemented once
+    per source type and reused by every engine''s Connector for that mechanism. REQUIRED FIX: (1) name the
+    datasource contract as its own interface. (2) Every source type currently dispatched by hardcoded special-casing
+    instead of through a registry must be re-registered and dispatched generically under the correct contract.
+    (3) Every source type reimplementing datasource-contract logic another source type already implements
+    generically must migrate onto the shared implementation instead of duplicating it. (4) Any engine-specific
+    catalog-generation logic living outside that engine''s own Connector implementation must fold into it.
+    (5) The registry docstring must accurately describe both contracts once (1)-(4) make that description
+    true. (Amended 2026-10-23, THE SOURCE CONTRACT) Every connector Provisa calls itself, other than a SQL
+    database''s, provides the source contract (provisa/federation/connector_contract.py): its capabilities;
+    plan(read), made before any call -- the arguments the call is given and whether its rows are the read''s
+    complete dataset (every condition, the ordering, the limit and every needed column handled, with no
+    row rule or mask of the role''s on it); and call(plan), returning the rows. Routing''s trusted_to_answer
+    gate reads the plan and nothing else of the connector (REQ-863). Provisa''s own connectors implement
+    the contract in their own code: Qdrant, the API caller''s sources (REST/OpenAPI, GraphQL remote, gRPC
+    remote) and SPARQL. A code source''s function cannot, so a proxy implements it on its behalf (REQ-2100).
+    A SQL database is read through its driver and a source the engine reads through its own connector is
+    the engine''s: neither provides it. v1: Qdrant plans a complete dataset for what its API states exactly
+    (REQ-2000); every other connector declares no capability, plans no read complete and lands, applying
+    what it pushes today as the pre-filter. The target shape of a capability, for later, is generic and
+    fully supported only: the comparators it evaluates exactly, per data type; the ordering, by one key
+    or several, in which directions; and the limit, as offset and length. (Amended 2026-10-23, CONTRACT
+    CALLS:) A connector''s remote call is its contract''s call, and every path that calls the remote calls
+    through it: a statement''s landing, the API fills, the hot tier, and replication with its keyed fetch.
+    An API endpoint''s call (REST/OpenAPI, GraphQL API, gRPC, SPARQL, Neo4j) is the one endpoint call, made
+    with its source''s address, credential and headers. A remote GraphQL field''s call is its query, with
+    the plan''s arguments as its variables. A remote gRPC method''s call is the method, with the plan''s
+    arguments as its request. A replica build''s paged whole-collection read of a remote is not yet a contract
+    call.'
   use_case: Two contracts cleanly separates "how does an engine reach this source" from "how does Provisa itself read this source"; each gets exactly one implementation surface per source type. Consolidating
     onto two contracts is what makes "add a new source type" or "add a new engine" a bounded, reviewable
     change instead of a search for every place a source type's name is hardcoded.
