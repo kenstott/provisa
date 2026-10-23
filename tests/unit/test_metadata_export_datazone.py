@@ -15,7 +15,7 @@ Provisa table type per member, each published; the form and asset types are crea
 time; a second publish adds revisions to what it finds by the members' Provisa URIs and the
 product's name."""
 
-# Requirements: REQ-2118
+# Requirements: REQ-2118, REQ-1387, REQ-1389, REQ-2141
 
 from __future__ import annotations
 
@@ -35,6 +35,13 @@ from provisa.api.metadata_export.datazone import (
     DataZoneExport,
     product_form,
     table_form,
+)
+from provisa.api.metadata_export.model import (
+    AssetKind,
+    AssetRef,
+    GlossaryTermAsset,
+    GlossaryTermEdge,
+    MetadataSnapshot,
 )
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.core.models import (
@@ -478,3 +485,153 @@ async def test_a_bound_asset_deleted_in_datazone_is_published_anew(stubbed):
     result = await exporter.publish(snapshot)
     assert result.ok, result.errors
     assert result.bindings[table.semantic_uri] == ("asset-2", table.semantic_uri)
+
+
+# --- The DataZone business glossary (REQ-1387) ------------------------------------------------
+
+GLOSSARY_ID = "gls-1"
+
+
+def _glossary_snapshot(*, deprecated: bool = False) -> MetadataSnapshot:
+    """party, and order KIND_OF party; order grounds a table, which DataZone is not told."""
+    orders = AssetRef(kind=AssetKind.TABLE, parts=("pg", "public", "orders"))
+    return MetadataSnapshot(
+        org_id="acme",
+        glossary_terms=[
+            GlossaryTermAsset(
+                term_id=1,
+                name="party",
+                definition="Anyone the business deals with.",
+                is_abstract=True,
+                deprecated=False,
+                semantic_uri="provisa://acme/terms/party",
+            ),
+            GlossaryTermAsset(
+                term_id=2,
+                name="order",
+                definition="A request to buy.",
+                is_abstract=False,
+                deprecated=deprecated,
+                role="class",
+                tables=(orders,),
+                semantic_uri="provisa://acme/terms/order",
+            ),
+        ],
+        glossary_edges=[GlossaryTermEdge(from_term_id=2, to_term_id=1, rel_type="KIND_OF")],
+    )
+
+
+def _term_saved(op: str, term_id: str, name: str, params: dict, is_a: list[str] | None = None):
+    response = {
+        "id": term_id,
+        "domainId": DOMAIN,
+        "glossaryId": GLOSSARY_ID,
+        "name": name,
+        "status": "ENABLED",
+    }
+    if is_a is not None:
+        response["termRelations"] = {"isA": is_a}
+    return op, response, params
+
+
+async def test_the_glossary_and_its_terms_are_created_with_isa_and_no_assignment(stubbed):
+    """The first publish creates the Provisa glossary and its terms, then sets order isA party.
+    No asset is touched: DataZone cannot tell Provisa's assignment from a steward's."""
+    _search(stubbed, "GLOSSARY", [])
+    stubbed.add_response(
+        "create_glossary",
+        {
+            "domainId": DOMAIN,
+            "id": GLOSSARY_ID,
+            "name": "Provisa glossary (acme)",
+            "owningProjectId": PROJECT,
+        },
+        {
+            **SCOPE,
+            "name": "Provisa glossary (acme)",
+            "description": ANY,
+            "owningProjectIdentifier": PROJECT,
+            "status": "ENABLED",
+        },
+    )
+    _search(stubbed, "GLOSSARY_TERM", [])
+    for term_id, name, text in (
+        ("t-party", "party", "Anyone the business deals with."),
+        ("t-order", "order", "A request to buy."),
+    ):
+        stubbed.add_response(
+            *_term_saved(
+                "create_glossary_term",
+                term_id,
+                name,
+                {
+                    **SCOPE,
+                    "glossaryIdentifier": GLOSSARY_ID,
+                    "name": name,
+                    "longDescription": text,
+                    "status": "ENABLED",
+                },
+            )
+        )
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-order",
+            "order",
+            {
+                **SCOPE,
+                "identifier": "t-order",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "termRelations": {"isA": ["t-party"]},
+            },
+            is_a=["t-party"],
+        )
+    )
+    result = await metadata_export(_target()).publish(_glossary_snapshot())
+    assert result.ok, result.errors
+    assert result.published == {"glossary_term": 2}
+    assert result.bindings["provisa://acme/glossary"] == (GLOSSARY_ID, "Provisa glossary (acme)")
+    assert result.bindings["provisa://acme/terms/order"] == ("t-order", "order")
+
+
+async def test_a_republish_revises_bound_terms_and_a_deprecated_one_is_disabled(stubbed):
+    export = metadata_export(_target())
+    export.stored_bindings = {
+        "provisa://acme/glossary": (GLOSSARY_ID, "Provisa glossary (acme)"),
+        "provisa://acme/terms/party": ("t-party", "party"),
+        "provisa://acme/terms/order": ("t-order", "order"),
+    }
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-party",
+            "party",
+            {
+                **SCOPE,
+                "identifier": "t-party",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "name": "party",
+                "longDescription": "Anyone the business deals with.",
+                "status": "ENABLED",
+            },
+        )
+    )
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-order",
+            "order",
+            {
+                **SCOPE,
+                "identifier": "t-order",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "name": "order",
+                "longDescription": "A request to buy.",
+                "status": "DISABLED",
+            },
+            is_a=["t-party"],
+        )
+    )
+    # isA already stands, so no relation update follows.
+    result = await export.publish(_glossary_snapshot(deprecated=True))
+    assert result.ok, result.errors

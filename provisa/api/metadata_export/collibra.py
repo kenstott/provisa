@@ -77,9 +77,13 @@ inherited:
   snapshot carries no edge of that type. The edge set anchored on a Provisa term is
   Provisa-authored (REQ-1387 ownership), so full replacement of it IS the drift correction,
   exactly as it is for the ``Provisa *`` attribute types above.
-* Term-to-asset assignments are HUMAN-OWNED (REQ-1389): this adapter never writes an
-  assignment relation, so the assignment relation type is never mentioned and steward
-  assignments survive — the same never-mentioned argument the existing exclusions rest on.
+* Term-to-asset assignments (REQ-1389, amended): Provisa assigns a Class term to the tables
+  it grounds and a Property term to its columns with Collibra's own "Business Asset represents
+  Data Asset" relation. The import never mentions that relation type, because REPLACE would
+  set-replace a steward's assignments of the same type on a Provisa term. Provisa writes them
+  through the relations API instead, one relation at a time, and the relation's ``createdBy``
+  is the ownership test: Provisa adds and removes only relations its own Collibra user
+  created, and a relation any other user created stands.
 * Nothing is deleted for absence: a term missing from the snapshot is simply not mentioned,
   and no asset lacking a stored Provisa binding is ever PATCHed.
 * Deprecation is published as the asset's status (``Obsolete`` when deprecated, ``Accepted``
@@ -107,11 +111,11 @@ from provisa.api.metadata_export.provider import (
     MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_export.model import junction_payload
+from provisa.api.metadata_export.model import AssetKind, junction_payload
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_export.model import MetadataSnapshot
+    from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
 
 # Collibra ships these operating-model types out of the box, and its own JDBC ingestion uses
 # them — so a Provisa-published table lands beside a Collibra-ingested one instead of in a
@@ -157,6 +161,12 @@ DATA_QUALITY_ATTRIBUTE = "Provisa Data Quality"
 GLOSSARY_TERM_TYPE = "Business Term"
 GLOSSARY_DOMAIN_TYPE = "Glossary"
 DEFINITION_ATTRIBUTE = "Definition"
+# REQ-2141: the term's ontology role -- class, property or concept -- a Provisa-authored custom
+# attribute type like ``Provisa URI``, set on Provisa's own terms only.
+ROLE_ATTRIBUTE = "Provisa Role"
+# REQ-1389: Collibra's out-of-the-box relation between a business asset (a Business Term is one)
+# and the data asset it means, looked up from the target as "<head> <role> <tail>".
+ASSIGNMENT_RELATION = ("Business Asset", "represents", "Data Asset")
 DEPRECATED_STATUS = "Obsolete"
 ACTIVE_STATUS = "Accepted"
 
@@ -416,6 +426,7 @@ def glossary_rows(
     for term in snapshot.glossary_terms:
         attributes: dict[str, Any] = {
             URI_ATTRIBUTE: [{"value": term.semantic_uri}],  # REQ-1385: binding key
+            ROLE_ATTRIBUTE: [{"value": term.role}],  # REQ-2141
         }
         if term.definition is not None:
             # Provisa-authored on Provisa's own term (REQ-1389), so set-replacement of the
@@ -585,6 +596,39 @@ class CollibraExport(MetadataExport):  # REQ-1069
                 return entry["id"]
         return None
 
+    async def _require_role_attribute(
+        self, client: httpx.AsyncClient, rows: list[dict[str, Any]], result: PublishResult
+    ) -> None:
+        """The term role needs the ``Provisa Role`` attribute type in the target (REQ-2141).
+
+        Without it the import would refuse every term row, so the role is taken off the rows
+        and the publish fails naming the attribute type to create; the terms still publish.
+        """
+        try:
+            found = await self._find_by_name(
+                client, "/rest/2.0/attributeTypes", {"name": ROLE_ATTRIBUTE}, ROLE_ATTRIBUTE
+            )
+        except httpx.HTTPStatusError as error:
+            reason = (
+                f"looking up the attribute type {ROLE_ATTRIBUTE!r} failed "
+                f"(HTTP {error.response.status_code})"
+            )
+        else:
+            if found is not None:
+                return
+            reason = (
+                f"the target has no attribute type named {ROLE_ATTRIBUTE!r}. Create it as a "
+                "Text attribute type, assign it to Business Term, and publish again"
+            )
+        for row in rows:
+            row["attributes"].pop(ROLE_ATTRIBUTE)
+        result.errors.append(
+            AssetError(
+                asset=AssetRefStub(ROLE_ATTRIBUTE),
+                message=f"the term role was not exported: {reason}.",
+            )
+        )
+
     async def _ensure_glossary_domain(
         self, client: httpx.AsyncClient, result: PublishResult
     ) -> bool:
@@ -664,7 +708,9 @@ class CollibraExport(MetadataExport):  # REQ-1069
             # REQ-1387: terms ride the same import job, contained in Provisa's own glossary
             # domain — created first, since the import rejects rows naming an absent domain.
             if snapshot.glossary_terms and await self._ensure_glossary_domain(client, result):
-                rows = rows + glossary_rows(snapshot, self.community, self.glossary_domain)
+                terms = glossary_rows(snapshot, self.community, self.glossary_domain)
+                await self._require_role_attribute(client, terms, result)
+                rows = rows + terms
             # REQ-1389: rebind by stored UUID happens BEFORE the name-keyed import.
             await self._rename_rebound_assets(client, rows, result)
             response = await client.post(
@@ -696,10 +742,157 @@ class CollibraExport(MetadataExport):  # REQ-1069
                 return result
             # REQ-1389: capture the vendor's own asset UUIDs for the assets just imported.
             await self._capture_bindings(client, rows, result)
+            try:
+                await self._publish_term_assignments(client, snapshot, result)
+            except httpx.HTTPStatusError as error:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(self.glossary_domain),
+                        message=(
+                            f"term assignments: HTTP {error.response.status_code}: "
+                            f"{error.response.text[:300]}"
+                        ),
+                    )
+                )
+            except httpx.HTTPError as error:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(self.glossary_domain),
+                        message=f"term assignments: {error}",
+                    )
+                )
         for row in rows:
             kind = row["type"]["name"].lower()
             result.published[kind] = result.published.get(kind, 0) + 1
         return result
+
+    async def _publish_term_assignments(
+        self, client: httpx.AsyncClient, snapshot: MetadataSnapshot, result: PublishResult
+    ) -> None:
+        """Assign each term to the assets it grounds, as Provisa's own (REQ-1389, amended).
+
+        A Class term represents its tables, a Property term its columns. Provisa's Collibra
+        user is the author of every relation it writes, so ``createdBy`` decides ownership: a
+        relation of the type created by anyone else is a person's, never removed, and never
+        duplicated. A term that left the snapshot loses only Provisa's relations.
+        """
+        prefix = f"provisa://{snapshot.org_id}/terms/"
+        published = {term.semantic_uri for term in snapshot.glossary_terms}
+        departed = [
+            asset_id
+            for uri, (asset_id, _) in self._bindings.items()
+            if uri.startswith(prefix) and uri not in published
+        ]
+        if not snapshot.glossary_terms and not departed:
+            return
+        me = await client.get(self._url("/rest/2.0/users/current"), headers=self._headers())
+        me.raise_for_status()
+        author = me.json()["id"]
+        relation_type = await self._assignment_relation_type(client)
+        if relation_type is None:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(self.glossary_domain),
+                    message=(
+                        f"the target has no {' '.join(ASSIGNMENT_RELATION)!r} relation type, "
+                        "so no term was assigned to data"
+                    ),
+                )
+            )
+            return
+        wanted: dict[str, set[str]] = {asset_id: set() for asset_id in departed}
+        for term in snapshot.glossary_terms:
+            bound = result.bindings.get(term.semantic_uri)
+            if bound is None:
+                continue  # its import or capture failure is already reported
+            targets: set[str] = set()
+            for ref in term.assigned_to():
+                asset_id = await self._data_asset_id(client, snapshot, ref, result)
+                if asset_id is not None:
+                    targets.add(asset_id)
+            wanted[bound[0]] = targets
+        for term_asset, targets in wanted.items():
+            await self._sync_assignments(client, term_asset, targets, relation_type, author, result)
+
+    async def _assignment_relation_type(self, client: httpx.AsyncClient) -> str | None:
+        head, role, tail = ASSIGNMENT_RELATION
+        response = await client.get(
+            self._url("/rest/2.0/relationTypes"),
+            params={"sourceTypeName": head, "role": role, "targetTypeName": tail},
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        for entry in response.json().get("results", []):
+            if entry.get("role") == role:
+                return entry["id"]
+        return None
+
+    async def _data_asset_id(
+        self,
+        client: httpx.AsyncClient,
+        snapshot: MetadataSnapshot,
+        ref: AssetRef,
+        result: PublishResult,
+    ) -> str | None:
+        """A published table's id from its binding; a column's by its exact full name."""
+        if ref.kind == AssetKind.TABLE:
+            table = next(t for t in snapshot.tables if t.ref == ref)
+            bound = result.bindings.get(table.semantic_uri)
+            asset_id = bound[0] if bound is not None else None
+        else:
+            asset_id = await self._find_by_name(
+                client, "/rest/2.0/assets", {"name": ref.fqn(), "nameMatchMode": "EXACT"}, ref.fqn()
+            )
+        if asset_id is None:
+            result.errors.append(
+                AssetError(
+                    asset=ref,
+                    message=f"{ref.fqn()} has no Collibra asset, so no term is assigned to it",
+                )
+            )
+        return asset_id
+
+    async def _sync_assignments(
+        self,
+        client: httpx.AsyncClient,
+        term_asset: str,
+        targets: set[str],
+        relation_type: str,
+        author: str,
+        result: PublishResult,
+    ) -> None:
+        response = await client.get(
+            self._url("/rest/2.0/relations"),
+            params={"sourceId": term_asset, "relationTypeId": relation_type, "limit": "1000"},
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        live = response.json().get("results", [])
+        ours = {r["target"]["id"]: r["id"] for r in live if r.get("createdBy") == author}
+        held = {r["target"]["id"] for r in live if r.get("createdBy") != author}
+        add = sorted(targets - set(ours) - held)
+        withdraw = sorted(relation for target, relation in ours.items() if target not in targets)
+        if add:
+            response = await client.post(
+                self._url("/rest/2.0/relations/bulk"),
+                json=[
+                    {"sourceId": term_asset, "targetId": target, "typeId": relation_type}
+                    for target in add
+                ],
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            result.published["term_assignment"] = result.published.get("term_assignment", 0) + len(
+                add
+            )
+        if withdraw:
+            response = await client.request(
+                "DELETE",
+                self._url("/rest/2.0/relations/bulk"),
+                json=withdraw,
+                headers=self._headers(),
+            )
+            response.raise_for_status()
 
     async def health(self) -> None:
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:

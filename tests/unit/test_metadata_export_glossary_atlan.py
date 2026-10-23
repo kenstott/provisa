@@ -20,10 +20,13 @@ level, the same approach as the DataHub merge tests in test_metadata_export_vend
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import httpx
 import pytest
 
 from provisa.api.metadata_export.atlan import (
+    ATLAN_ASSIGNMENT_ATTRIBUTES,
     GLOSSARY_NAME,
     GLOSSARY_TYPE,
     TERM_DEPRECATION_STATUS,
@@ -33,10 +36,15 @@ from provisa.api.metadata_export.atlan import (
 from provisa.api.metadata_export.model import (
     AssetKind,
     AssetRef,
+    ColumnAsset,
     GlossaryTermAsset,
     GlossaryTermEdge,
     MetadataSnapshot,
+    SourceAsset,
+    TableAsset,
 )
+from provisa.api.metadata_export.atlas import ASSIGNMENT_SOURCE, SEMANTIC_ASSIGNMENT
+from provisa.api.metadata_export.provider import PublishResult
 from provisa.core.models import MetadataExportTarget
 
 ORG = "org-1"
@@ -240,7 +248,8 @@ async def test_a_stored_binding_updates_the_same_vendor_term_in_place(monkeypatc
 
 async def test_unbound_vendor_items_are_untouched_and_nothing_is_ever_deleted(monkeypatch):
     """An external term in the catalog is never read or written; a term absent from the
-    snapshot but present in the bindings is simply not sent — never deleted."""
+    snapshot but present in the bindings is read only for Provisa's own assignments to
+    withdraw, and is never deleted."""
     external = {
         "guid": "ext-9",
         "attributes": {"qualifiedName": "revenue@someone-elses-glossary", "name": "revenue"},
@@ -252,7 +261,7 @@ async def test_unbound_vendor_items_are_untouched_and_nothing_is_ever_deleted(mo
     result = await export.publish(_snapshot([_term(1, "customer")]))
     assert result.ok
     assert fake.deleted == []
-    assert not any(url.endswith("/ext-9") or url.endswith("/t-retired") for url in fake.fetched)
+    assert not any(url.endswith("/ext-9") for url in fake.fetched)
     assert {entity["guid"] for entity in _bulk_entities(fake)} == {"-1"}
 
 
@@ -368,3 +377,168 @@ async def test_only_provisas_own_deprecation_marker_is_cleared(monkeypatch):
     assert "certificateStatus" not in by_name["legacy"]["attributes"]
     assert "certificateStatusMessage" not in by_name["legacy"]["attributes"]
     assert by_name["customer"]["attributes"]["certificateStatus"] == "VERIFIED"
+
+
+# --- Term-to-asset assignment (REQ-1389, amended) -------------------------------------------
+
+ORDERS = AssetRef(kind=AssetKind.TABLE, parts=("wh", "public", "orders"))
+AMOUNT = AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "amount"))
+ORDERS_URI = f"provisa://{ORG}/sales/tables/orders"
+AMOUNT_URI = f"{ORDERS_URI}#field:amount"
+
+
+def _with_table(terms: list[GlossaryTermAsset]) -> MetadataSnapshot:
+    column = ColumnAsset(
+        ref=AMOUNT, name="amount", data_type="numeric", description="", semantic_uri=AMOUNT_URI
+    )
+    table = TableAsset(
+        ref=ORDERS,
+        name="orders",
+        source_id="wh",
+        domain_id=None,
+        description="",
+        columns=[column],
+        semantic_uri=ORDERS_URI,
+    )
+    source = SourceAsset(
+        ref=AssetRef(kind=AssetKind.SOURCE, parts=("wh",)),
+        id="wh",
+        source_type="postgresql",
+        description="",
+    )
+    return MetadataSnapshot(org_id=ORG, sources=[source], tables=[table], glossary_terms=terms)
+
+
+def _published_assets(monkeypatch) -> None:
+    """The asset bulk already ran: its guids are what the assignments address."""
+
+    async def _entities(self, entities, snapshot):
+        result = PublishResult(provider_name="atlan")
+        result.bindings[ORDERS_URI] = ("orders-guid", "orders")
+        result.bindings[AMOUNT_URI] = ("amount-guid", "amount")
+        return result
+
+    monkeypatch.setattr(AtlanExport, "_publish_entities", _entities)
+
+
+def _provisa_assignment(type_name: str, guid: str) -> dict:
+    return {
+        "typeName": type_name,
+        "guid": guid,
+        "relationshipAttributes": {
+            "typeName": SEMANTIC_ASSIGNMENT,
+            "attributes": {"source": ASSIGNMENT_SOURCE},
+        },
+    }
+
+
+async def test_a_class_term_is_assigned_to_its_table_and_a_property_to_its_column(monkeypatch):
+    """Provisa appends its assignments in the term's own bulk entry, attributed by source,
+    without replacing the term's assignment list."""
+    _published_assets(monkeypatch)
+    fake = _FakeAtlan(glossary_guid="g-1")
+    fake.install(monkeypatch)
+    order = replace(_term(1, "order"), role="class", tables=(ORDERS,))
+    amount = replace(_term(2, "amount"), role="property", refs=(AMOUNT,))
+    result = await _export().publish(_with_table([order, amount, _term(3, "party")]))
+    assert result.ok, result.errors
+    by_name = {e["attributes"]["name"]: e for e in _bulk_entities(fake)}
+    assert by_name["order"]["appendRelationshipAttributes"] == {
+        "assignedEntities": [
+            {
+                "typeName": "Table",
+                "guid": "orders-guid",
+                "relationshipType": SEMANTIC_ASSIGNMENT,
+                "relationshipAttributes": {
+                    "typeName": SEMANTIC_ASSIGNMENT,
+                    "attributes": ATLAN_ASSIGNMENT_ATTRIBUTES,
+                },
+            }
+        ]
+    }
+    (column,) = by_name["amount"]["appendRelationshipAttributes"]["assignedEntities"]
+    assert (column["typeName"], column["guid"]) == ("Column", "amount-guid")
+    assert "appendRelationshipAttributes" not in by_name["party"]
+    assert all(
+        "relationshipAttributes" not in e or "assignedEntities" not in e["relationshipAttributes"]
+        for e in _bulk_entities(fake)
+    )
+
+
+async def test_human_assignments_stand_and_provisas_stale_ones_are_removed(monkeypatch):
+    """A steward's assignment is never removed or duplicated; Provisa's own assignment to an
+    asset the term no longer grounds is removed, and a term that left the snapshot loses
+    only Provisa's assignments."""
+    _published_assets(monkeypatch)
+    anchor = {"anchor": {"typeName": GLOSSARY_TYPE, "guid": "g-1"}}
+    live = {
+        "t-order": {
+            "guid": "t-order",
+            "attributes": {"qualifiedName": f"order@{GLOSSARY_QN}", "name": "order"},
+            "relationshipAttributes": {
+                **anchor,
+                "assignedEntities": [
+                    {"typeName": "Table", "guid": "orders-guid"},  # a steward's
+                    _provisa_assignment("Table", "old-guid"),
+                ],
+            },
+        },
+        "t-margin": {
+            "guid": "t-margin",
+            "attributes": {"qualifiedName": f"margin@{GLOSSARY_QN}", "name": "margin"},
+            "relationshipAttributes": {
+                **anchor,
+                "assignedEntities": [_provisa_assignment("Column", "amount-guid")],
+            },
+        },
+    }
+    fake = _FakeAtlan(glossary_guid="g-1", live_terms=live)
+    fake.install(monkeypatch)
+    export = _export(
+        bindings={
+            f"provisa://{ORG}/terms/order": ("t-order", "order@x"),
+            f"provisa://{ORG}/terms/margin": ("t-margin", "margin@x"),
+        }
+    )
+    order = replace(_term(1, "order"), role="class", tables=(ORDERS,))
+    result = await export.publish(_with_table([order]))
+    assert result.ok, result.errors
+    by_guid = {e["guid"]: e for e in _bulk_entities(fake)}
+    assert "appendRelationshipAttributes" not in by_guid["t-order"]
+    assert by_guid["t-order"]["removeRelationshipAttributes"] == {
+        "assignedEntities": [{"typeName": "Table", "guid": "old-guid"}]
+    }
+    assert by_guid["t-margin"]["removeRelationshipAttributes"] == {
+        "assignedEntities": [{"typeName": "Column", "guid": "amount-guid"}]
+    }
+    # The departed term is sent with its live attributes, unchanged.
+    assert by_guid["t-margin"]["attributes"] == live["t-margin"]["attributes"]
+    assert fake.deleted == []
+
+
+async def test_every_term_carries_its_role_and_a_stewards_attributes_stand(monkeypatch):
+    """REQ-2141: the role rides additionalAttributes under provisaRole; a steward's entries in
+    the map stand."""
+    live = {
+        "t-order": {
+            "guid": "t-order",
+            "attributes": {
+                "qualifiedName": f"order@{GLOSSARY_QN}",
+                "name": "order",
+                "additionalAttributes": {"owner_team": "finance"},
+            },
+            "relationshipAttributes": {"anchor": {"typeName": GLOSSARY_TYPE, "guid": "g-1"}},
+        }
+    }
+    fake = _FakeAtlan(glossary_guid="g-1", live_terms=live)
+    fake.install(monkeypatch)
+    export = _export(bindings={f"provisa://{ORG}/terms/order": ("t-order", "order@x")})
+    order = replace(_term(1, "order"), role="class")
+    result = await export.publish(_snapshot([order, _term(2, "party")]))
+    assert result.ok, result.errors
+    by_name = {e["attributes"]["name"]: e["attributes"] for e in _bulk_entities(fake)}
+    assert by_name["order"]["additionalAttributes"] == {
+        "owner_team": "finance",
+        "provisaRole": "class",
+    }
+    assert by_name["party"]["additionalAttributes"] == {"provisaRole": "concept"}

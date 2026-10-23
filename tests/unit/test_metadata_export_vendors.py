@@ -318,6 +318,8 @@ def test_datahub_owns_only_the_aspects_it_publishes(snapshot):
         "datasetProperties",
         "schemaMetadata",
         "globalTags",
+        # REQ-1389: Provisa's own term assignments, read-merged with the people's.
+        "glossaryTerms",
         "ownership",
         "upstreamLineage",
     }

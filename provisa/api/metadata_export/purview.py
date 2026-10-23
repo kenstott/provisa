@@ -25,28 +25,49 @@ product's Provisa domain, with its members' Data Map entities as its data assets
   with no status is PUBLISHED when the product is published and DRAFT when not.
 - The update frequency is the shortest freshness among its members.
 - Approvers and access policies are not published yet.
+
+The org's glossary also publishes into the Unified Catalog's business glossary (REQ-1387): each
+term in the governance domain named after its Provisa domain (the first, alphabetically, that
+Purview has; a term none of whose domains Purview has is reported), with an id derived from its
+Provisa URI. Deprecated is EXPIRED, else PUBLISHED. A KIND_OF parent is the term's parent; a
+term with several keeps the lowest-id one as parent and relates to the rest. SYNONYM_OF is a
+Synonym relationship and every other edge a Related one. A Class term is related to the data
+assets of the tables it grounds (REQ-1389); a Property term's columns have no Unified Catalog
+id this adapter can resolve, so Property assignments reach Purview through the Data Map only.
+The Unified Catalog term has no free property for the term's role, which the Data Map term
+carries (REQ-2141). Provisa's service principal is the author of every relationship it writes,
+and ``systemData.createdBy`` is the ownership test: Provisa adds and removes only its own, and
+a term that left the snapshot loses only those.
 """
 
-# Requirements: REQ-2118
+# Requirements: REQ-2118, REQ-1387, REQ-1389, REQ-2141
 
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from provisa.api.metadata_export.atlas import PURVIEW_SCOPE, AtlasExport
-from provisa.api.metadata_export.provider import AssetError, PublishResult
+from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_export.model import DataProductAsset, MetadataSnapshot, TableAsset
+    from provisa.api.metadata_export.model import (
+        DataProductAsset,
+        GlossaryTermAsset,
+        MetadataSnapshot,
+        TableAsset,
+    )
 
 API_VERSION = "2026-03-20-preview"
 GRAPH = "https://graph.microsoft.com/v1.0"
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 DATA_ASSET = "DATAASSET"
+TERM = "TERM"
 
 # Seconds of freshness to the Unified Catalog's update frequencies, shortest first.
 _FREQUENCIES = (
@@ -77,6 +98,48 @@ def update_frequency(members: list["TableAsset"]) -> str | None:
         return None
     shortest = min(ttls)
     return next((name for limit, name in _FREQUENCIES if shortest <= limit), "Yearly")
+
+
+def term_id(term: "GlossaryTermAsset") -> str:
+    """The term's Unified Catalog id: a uuid of its Provisa URI, the same on every publish."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, term.semantic_uri))
+
+
+def token_oid(token: str) -> str:
+    """The object id of the principal an Entra access token was issued to: Provisa's own
+    identity in the catalog, which ``systemData.createdBy`` names on what it wrote."""
+    payload = token.split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    return claims["oid"]
+
+
+def term_edges(
+    terms: list["GlossaryTermAsset"], edges: list
+) -> tuple[dict[int, int], dict[int, set[tuple[int, str]]]]:
+    """Each term's KIND_OF parent (its lowest-id one) and its relationships to other terms, as
+    (other term id, Synonym|Related); a KIND_OF edge that is not the parent is Related."""
+    published = {t.term_id for t in terms}
+    parent: dict[int, int] = {}
+    related: dict[int, set[tuple[int, str]]] = {}
+    for edge in sorted(edges, key=lambda e: (e.from_term_id, e.to_term_id)):
+        if edge.from_term_id not in published or edge.to_term_id not in published:
+            continue
+        if edge.rel_type == "KIND_OF" and edge.from_term_id not in parent:
+            parent[edge.from_term_id] = edge.to_term_id
+            continue
+        kind = "Synonym" if edge.rel_type == "SYNONYM_OF" else "Related"
+        related.setdefault(edge.from_term_id, set()).add((edge.to_term_id, kind))
+    # A cycle cannot be a hierarchy: the term closing it relates to its parent instead.
+    for start in sorted(parent):
+        seen: set[int] = set()
+        cursor = start
+        while cursor in parent:
+            if cursor in seen:
+                related.setdefault(cursor, set()).add((parent.pop(cursor), "Related"))
+                break
+            seen.add(cursor)
+            cursor = parent[cursor]
+    return parent, related
 
 
 def product_id(product: "DataProductAsset") -> str:
@@ -140,13 +203,36 @@ class PurviewExport(AtlasExport):  # REQ-2118
 
     async def publish(self, snapshot: "MetadataSnapshot") -> PublishResult:
         result = await super().publish(snapshot)
-        if not snapshot.data_products:
+        if not snapshot.data_products and not snapshot.glossary_terms:
             return result
         tables = {t.ref.fqn(): t for t in snapshot.tables}
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-            catalog = {"Authorization": f"Bearer {await self._entra_token(client, PURVIEW_SCOPE)}"}
-            graph = {"Authorization": f"Bearer {await self._entra_token(client, GRAPH_SCOPE)}"}
+            token = await self._entra_token(client, PURVIEW_SCOPE)
+            catalog = {"Authorization": f"Bearer {token}"}
             domains = await self._domains(client, catalog)
+            try:
+                await self._publish_terms(
+                    client, catalog, token_oid(token), snapshot, domains, result
+                )
+            except httpx.HTTPStatusError as exc:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub("glossary"),
+                        message=(
+                            f"Unified Catalog glossary: HTTP {exc.response.status_code}: "
+                            f"{exc.response.text[:500]}"
+                        ),
+                    )
+                )
+            except httpx.HTTPError as exc:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub("glossary"), message=f"Unified Catalog glossary: {exc}"
+                    )
+                )
+            if not snapshot.data_products:
+                return result
+            graph = {"Authorization": f"Bearer {await self._entra_token(client, GRAPH_SCOPE)}"}
             for product in snapshot.data_products:
                 try:
                     await self._publish_product(
@@ -302,3 +388,162 @@ class PurviewExport(AtlasExport):  # REQ-2118
             created.raise_for_status()
             assets[guid] = created.json()["id"]
         return assets
+
+    async def _publish_terms(
+        self,
+        client: httpx.AsyncClient,
+        catalog: dict,
+        author: str,
+        snapshot: "MetadataSnapshot",
+        domains: dict[str, str],
+        result: PublishResult,
+    ) -> None:
+        """The org's glossary in the Unified Catalog's business glossary (module docstring)."""
+        params = {"api-version": API_VERSION}
+        placed: dict[int, str] = {}  # term id -> its governance domain's id
+        for term in snapshot.glossary_terms:
+            domain_id = next((domains[d] for d in term.domains if d in domains), None)
+            if domain_id is None:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=(
+                            f"term {term.name!r}: Purview has no governance domain named "
+                            f"{' or '.join(map(repr, term.domains)) or 'for it (it has no domain)'}"
+                        ),
+                    )
+                )
+                continue
+            placed[term.term_id] = domain_id
+        terms = [t for t in snapshot.glossary_terms if t.term_id in placed]
+        by_id = {t.term_id: t for t in terms}
+        parent, related = term_edges(terms, snapshot.glossary_edges)
+
+        def _depth(tid: int) -> int:
+            depth = 0
+            while tid in parent:
+                tid = parent[tid]
+                depth += 1
+            return depth
+
+        published: set[str] = set()
+        for term in sorted(terms, key=lambda t: (_depth(t.term_id), t.term_id)):
+            body: dict[str, Any] = {
+                "id": term_id(term),
+                "name": term.name,
+                "domain": placed[term.term_id],
+                "description": term.definition or "",
+                "status": "EXPIRED" if term.deprecated else "PUBLISHED",
+            }
+            if term.term_id in parent:
+                body["parentId"] = term_id(by_id[parent[term.term_id]])
+            url = self._catalog(f"/terms/{body['id']}")
+            found = await client.get(url, params=params, headers=catalog)
+            if found.status_code == 404:
+                response = await client.post(
+                    self._catalog("/terms"), params=params, json=body, headers=catalog
+                )
+            else:
+                found.raise_for_status()
+                # A steward's contacts, acronyms, resources and attributes stand.
+                live = found.json()
+                live.pop("parentId", None)
+                response = await client.put(
+                    url, params=params, json={**live, **body}, headers=catalog
+                )
+            if response.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=f"term {term.name!r}: HTTP {response.status_code}: "
+                        f"{response.text[:300]}",
+                    )
+                )
+                continue
+            published.add(body["id"])
+            result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
+        ids = {t.term_id: term_id(t) for t in terms}
+        # The data assets of the tables a Class term grounds -- the only ones a term is related to.
+        grounded = {ref.fqn() for t in terms if t.role == "class" for ref in t.assigned_to()}
+        guids = {
+            t.ref.fqn(): bound[0]
+            for t in snapshot.tables
+            if t.ref.fqn() in grounded
+            and (bound := result.bindings.get(t.semantic_uri)) is not None
+        }
+        assets = await self._data_assets(client, catalog, sorted(set(guids.values())))
+        for term in terms:
+            tid = ids[term.term_id]
+            if tid not in published:
+                continue
+            wanted_terms = {
+                (ids[other], kind)
+                for other, kind in related.get(term.term_id, set())
+                if ids[other] in published
+            }
+            await self._sync_relationships(client, catalog, author, tid, TERM, wanted_terms, result)
+            wanted_assets = {
+                (assets[guids[ref.fqn()]], "Related")
+                for ref in term.assigned_to()
+                if term.role == "class" and ref.fqn() in guids
+            }
+            await self._sync_relationships(
+                client, catalog, author, tid, DATA_ASSET, wanted_assets, result
+            )
+        # A term this publish no longer carries keeps its catalog entry, and loses Provisa's
+        # relationships (REQ-1389).
+        for domain_id in sorted(set(domains.values())):
+            for live in await self._paged(
+                client, catalog, self._catalog("/terms"), domainId=domain_id
+            ):
+                created_by = (live.get("systemData") or {}).get("createdBy")
+                if created_by != author or live["id"] in published:
+                    continue
+                for category in (TERM, DATA_ASSET):
+                    await self._sync_relationships(
+                        client, catalog, author, live["id"], category, set(), result
+                    )
+
+    async def _sync_relationships(
+        self,
+        client: httpx.AsyncClient,
+        catalog: dict,
+        author: str,
+        term: str,
+        category: str,
+        wanted: set[tuple[str, str]],
+        result: PublishResult,
+    ) -> None:
+        """Make Provisa's relationships of one category on one term exactly ``wanted``
+        ((entity id, relationship type) pairs). A relationship another principal created is a
+        person's: it is never removed, and Provisa adds none beside it."""
+        url = self._catalog(f"/terms/{term}/relationships")
+        live = await self._paged(client, catalog, url, entityType=category)
+        ours = {
+            (r["entityId"], r["relationshipType"])
+            for r in live
+            if (r.get("systemData") or {}).get("createdBy") == author
+        }
+        held = {
+            (r["entityId"], r["relationshipType"])
+            for r in live
+            if (r.get("systemData") or {}).get("createdBy") != author
+        }
+        params = {"api-version": API_VERSION, "entityType": category}
+        for entity_id, kind in sorted(wanted - ours - held):
+            added = await client.post(
+                url,
+                params=params,
+                json={"entityId": entity_id, "relationshipType": kind},
+                headers=catalog,
+            )
+            added.raise_for_status()
+            key = "term_assignment" if category == DATA_ASSET else "term_relationship"
+            result.published[key] = result.published.get(key, 0) + 1
+        for entity_id, kind in sorted(ours - wanted):
+            removed = await client.delete(
+                url,
+                params={**params, "entityId": entity_id, "relationshipType": kind},
+                headers=catalog,
+            )
+            removed.raise_for_status()

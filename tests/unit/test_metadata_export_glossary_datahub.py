@@ -12,8 +12,8 @@
 
 Everything lands inside one Provisa-owned ``glossaryNode`` per org; a term URN derives from
 the term's name, so a rename mints a new URN and the old bound URN is deprecated toward its
-successor (REQ-1389 succession). Term-to-asset assignment stays human-owned: no
-``glossaryTerms`` aspect is ever written on a dataset, and no delete is ever emitted.
+successor (REQ-1389 succession), and no delete is ever emitted. Provisa writes its own term
+assignments, attributed to its actor, and every other association stands (REQ-1389).
 """
 
 # Requirements: REQ-1387, REQ-1389
@@ -22,10 +22,15 @@ from __future__ import annotations
 
 import json
 
+from dataclasses import replace
+from json import loads as jsonlib_loads
+
 import httpx
 
 from provisa.api.metadata_export.datahub import (
+    PROVISA_ACTOR,
     DataHubExport,
+    role_node_urn,
     glossary_node_urn,
     glossary_term_urn,
     to_proposals,
@@ -121,7 +126,12 @@ def test_terms_publish_under_the_orgs_own_provisa_node():
     assert term.urn == glossary_term_urn(ORG, "customer")
     assert term.aspect["name"] == "customer"
     assert term.aspect["definition"] == "definition of customer"
-    assert term.aspect["parentNode"] == NODE_URN
+    # REQ-2141: the term sits in its role's child node, which sits in the org's node.
+    assert term.aspect["parentNode"] == role_node_urn(ORG, "concept") == f"{NODE_URN}.concepts"
+    concepts = next(p for p in proposals if p.urn == role_node_urn(ORG, "concept"))
+    assert concepts.aspect["name"] == "Concepts"
+    assert concepts.aspect["parentNode"] == NODE_URN
+    assert term.aspect["customProperties"]["provisaRole"] == "concept"
     assert term.aspect["customProperties"]["provisaUri"] == f"provisa://{ORG}/terms/customer"
     assert term.aspect["customProperties"]["provisaTermId"] == "1"
     assert term.aspect["customProperties"]["provisaExperts"] == "alice"
@@ -179,25 +189,118 @@ def test_edges_map_onto_the_native_related_terms_fields():
 # --- Ownership boundaries -------------------------------------------------------------------
 
 
-def test_no_dataset_ever_gets_a_glossary_terms_aspect():
-    """Term-to-asset assignment is human-owned (REQ-1389): the adapter maps refs into
-    nothing — a curated assignment in DataHub is never overwritten or duplicated."""
-    ref = AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "cust_id"))
-    terms = [
-        GlossaryTermAsset(
-            term_id=1,
-            name="customer",
-            definition="buyer",
-            is_abstract=False,
-            deprecated=False,
-            refs=(ref,),
-            semantic_uri=f"provisa://{ORG}/terms/customer",
-        )
+ORDERS = AssetRef(kind=AssetKind.TABLE, parts=("wh", "public", "orders"))
+CUST_ID = AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "cust_id"))
+DATASET_URN = "urn:li:dataset:(urn:li:dataPlatform:provisa,wh.public.orders,PROD)"
+
+
+def _class(term_id: int, name: str) -> GlossaryTermAsset:
+    return replace(_term(term_id, name), role="class", tables=(ORDERS,))
+
+
+def _property(term_id: int, name: str) -> GlossaryTermAsset:
+    return replace(_term(term_id, name), role="property", refs=(CUST_ID,))
+
+
+def _provisa(name: str, time: int | None = None) -> dict:
+    attribution = {
+        "actor": PROVISA_ACTOR,
+        "sourceDetail": {"provisaUri": f"provisa://{ORG}/terms/{name}"},
+    }
+    if time is not None:
+        attribution["time"] = time
+    return {"urn": glossary_term_urn(ORG, name), "actor": PROVISA_ACTOR, "attribution": attribution}
+
+
+def _human(urn: str) -> dict:
+    return {"urn": urn, "attribution": {"actor": "urn:li:corpuser:steward", "time": 5}}
+
+
+def test_a_class_term_is_assigned_to_its_dataset_and_a_property_to_its_field():
+    """REQ-1389 (amended): Provisa writes its own term assignments, attributed to its actor --
+    the Class on the dataset's glossaryTerms, the Property on the field in schemaMetadata,
+    which Provisa writes whole. A Concept is assigned to nothing."""
+    proposals = to_proposals(
+        _snapshot([_class(1, "order"), _property(2, "customer"), _term(3, "party")])
+    )
+    (assignment,) = [p for p in proposals if p.aspect_name == "glossaryTerms"]
+    assert assignment.urn == DATASET_URN
+    assert assignment.aspect["terms"] == [_provisa("order")]
+    (schema,) = [p for p in proposals if p.aspect_name == "schemaMetadata"]
+    (field,) = schema.aspect["fields"]
+    assert field["glossaryTerms"]["terms"] == [_provisa("customer")]
+    assert "party" not in json.dumps([assignment.aspect, schema.aspect])
+
+
+async def _publish_with_live(snapshot, monkeypatch, live: dict | None, status: int = 200):
+    posted: list[dict] = []
+
+    async def _post(self, url, json=None, headers=None):
+        posted.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    async def _get(self, url, headers=None):
+        request = httpx.Request("GET", url)
+        if "aspect=glossaryTerms" in url and live is not None:
+            body = {"aspect": {"com.linkedin.common.GlossaryTerms": live}}
+            return httpx.Response(status, json=body, request=request)
+        return httpx.Response(404, request=request)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+    result = await _export().publish(snapshot)
+    aspects = [
+        jsonlib_loads(p["proposal"]["aspect"]["value"])
+        for p in posted
+        if p["proposal"]["aspectName"] == "glossaryTerms"
     ]
-    for proposal in to_proposals(_snapshot(terms)):
-        assert proposal.aspect_name != "glossaryTerms"
-        if proposal.aspect_name == "schemaMetadata":
-            assert "glossaryTerms" not in json.dumps(proposal.aspect)
+    return result, aspects
+
+
+async def test_human_assignments_survive_and_provisas_stale_ones_are_withdrawn(monkeypatch):
+    """An association attributed to anyone but Provisa is a person's and stands -- Provisa adds
+    no duplicate of a term a person assigned -- while a Provisa association the snapshot no
+    longer carries leaves."""
+    live = {
+        "terms": [
+            _human(glossary_term_urn(ORG, "order")),
+            _human("urn:li:glossaryTerm:finance.revenue"),
+            _provisa("retired", time=100),
+        ],
+        "auditStamp": {"actor": PROVISA_ACTOR, "time": 100},
+    }
+    result, (aspect,) = await _publish_with_live(
+        _snapshot([_class(1, "order"), _class(2, "sale")]), monkeypatch, live
+    )
+    assert result.ok, result.errors
+    terms = aspect["terms"]
+    assert terms[:2] == live["terms"][:2]
+    (sale,) = terms[2:]
+    assert sale["urn"] == glossary_term_urn(ORG, "sale")
+    assert sale["attribution"]["actor"] == PROVISA_ACTOR
+    assert isinstance(sale["attribution"]["time"], int)
+
+
+async def test_a_standing_assignment_keeps_its_time_and_an_unchanged_one_is_not_rewritten(
+    monkeypatch,
+):
+    live = {
+        "terms": [_provisa("order", time=100)],
+        "auditStamp": {"actor": PROVISA_ACTOR, "time": 100},
+    }
+    result, aspects = await _publish_with_live(_snapshot([_class(1, "order")]), monkeypatch, live)
+    assert result.ok, result.errors
+    assert aspects == []
+
+
+async def test_an_unreadable_live_aspect_is_never_written_over(monkeypatch):
+    """Writing blind would replace the people's assignments, so the aspect is left as it is
+    and the publish says so."""
+    result, aspects = await _publish_with_live(
+        _snapshot([_class(1, "order")]), monkeypatch, {"terms": []}, status=503
+    )
+    assert aspects == []
+    assert any("glossaryTerms" in e.message for e in result.errors)
 
 
 def test_every_glossary_proposal_is_an_upsert_in_the_provisa_namespace_never_a_delete():
@@ -222,7 +325,7 @@ def test_every_glossary_proposal_is_an_upsert_in_the_provisa_namespace_never_a_d
 async def test_publish_captures_each_terms_urn_as_its_binding(monkeypatch):
     result, _ = await _publish(_export(), _snapshot([_term(7, "customer")]), monkeypatch)
     assert result.ok
-    assert result.published["glossary_node"] == 1
+    assert result.published["glossary_node"] == 2  # the org's node and its Concepts node
     assert result.published["glossary_term"] == 1
     assert result.bindings[f"provisa://{ORG}/terms/customer"] == (
         glossary_term_urn(ORG, "customer"),
@@ -270,3 +373,28 @@ async def test_an_unrenamed_term_and_a_foreign_urn_are_never_touched(monkeypatch
     assert result.ok
     assert not [p for p in posted if p["proposal"]["aspectName"] == "deprecation"]
     assert foreign not in {p["proposal"]["entityUrn"] for p in posted}
+
+
+def test_each_role_has_its_own_child_node_and_every_term_names_its_role():
+    """REQ-2141: Classes, Properties and Concepts are child nodes of the org's Provisa node,
+    each holding the terms of its role, and every term carries the role as a property."""
+    proposals = to_proposals(
+        _snapshot([_class(1, "order"), _property(2, "customer"), _term(3, "party")])
+    )
+    nodes = {p.urn: p.aspect for p in proposals if p.aspect_name == "glossaryNodeInfo"}
+    assert {urn: aspect.get("parentNode") for urn, aspect in nodes.items()} == {
+        NODE_URN: None,
+        f"{NODE_URN}.classes": NODE_URN,
+        f"{NODE_URN}.properties": NODE_URN,
+        f"{NODE_URN}.concepts": NODE_URN,
+    }
+    terms = {
+        p.aspect["name"]: (p.aspect["parentNode"], p.aspect["customProperties"]["provisaRole"])
+        for p in proposals
+        if p.aspect_name == "glossaryTermInfo"
+    }
+    assert terms == {
+        "order": (f"{NODE_URN}.classes", "class"),
+        "customer": (f"{NODE_URN}.properties", "property"),
+        "party": (f"{NODE_URN}.concepts", "concept"),
+    }

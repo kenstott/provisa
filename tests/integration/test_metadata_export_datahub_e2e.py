@@ -29,10 +29,13 @@ import httpx
 import pytest
 
 from provisa.api.metadata_export.datahub import (
+    PROVISA_ACTOR,
     data_product_urn,
     glossary_term_urn,
+    role_node_urn,
 )
 from tests.integration.metadata_export_server import (
+    CLASS_TERM,
     DOMAIN,
     GLOSSARY_DEFINITION,
     GLOSSARY_TERM,
@@ -159,7 +162,28 @@ async def _the_view_carries_its_column_lineage(published: dict) -> None:
 async def _the_glossary_term_lands_under_the_org_node(published: dict) -> None:
     term = await _aspect(glossary_term_urn(ORG, GLOSSARY_TERM), "glossaryTermInfo")
     assert term["definition"] == GLOSSARY_DEFINITION
-    assert term["parentNode"] == f"urn:li:glossaryNode:provisa.{ORG}"
+    # REQ-2141: in its role's child node of the org's node, carrying its role.
+    assert term["parentNode"] == role_node_urn(ORG, "property")
+    assert term["customProperties"]["provisaRole"] == "property"
+    order = await _aspect(glossary_term_urn(ORG, CLASS_TERM), "glossaryTermInfo")
+    assert order["parentNode"] == role_node_urn(ORG, "class")
+    classes = await _aspect(role_node_urn(ORG, "class"), "glossaryNodeInfo")
+    assert classes["name"] == "Classes"
+    assert classes["parentNode"] == f"urn:li:glossaryNode:provisa.{ORG}"
+
+
+async def _provisa_assigns_its_terms_attributed_to_its_actor(published: dict) -> None:
+    """REQ-1389 (amended): the Class term on the dataset it grounds, the Property term on its
+    field, each association attributed to Provisa's actor."""
+    dataset_terms = await _aspect(_dataset("orders"), "glossaryTerms")
+    assert [(t["urn"], t["attribution"]["actor"]) for t in dataset_terms["terms"]] == [
+        (glossary_term_urn(ORG, CLASS_TERM), PROVISA_ACTOR)
+    ]
+    schema = await _aspect(_dataset("orders"), "schemaMetadata")
+    fields = {f["fieldPath"]: f for f in schema["fields"]}
+    assert [t["urn"] for t in fields["customer_id"]["glossaryTerms"]["terms"]] == [
+        glossary_term_urn(ORG, GLOSSARY_TERM)
+    ]
 
 
 # One test, one DataHub: the heavy-service fixture starts GMS for a test and removes it after, so
@@ -176,5 +200,6 @@ async def test_datahub_holds_what_the_production_publish_sent():
         _the_data_product_holds_its_members_and_fields,
         _the_view_carries_its_column_lineage,
         _the_glossary_term_lands_under_the_org_node,
+        _provisa_assigns_its_terms_attributed_to_its_actor,
     ):
         await check(published)

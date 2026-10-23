@@ -32,8 +32,10 @@ import time
 import httpx
 import pytest
 
-from provisa.api.metadata_export.atlas import CLUSTER
+from provisa.api.metadata_export.atlas import ASSIGNMENT_SOURCE, CLUSTER, _glossary_qn
 from tests.integration.metadata_export_server import (
+    CLASS_TERM,
+    GLOSSARY_TERM,
     DOMAIN,
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
@@ -218,3 +220,22 @@ async def test_no_rule_body_is_stored_in_the_external_catalog(published):
     assert MASK_PATTERN not in stored
     assert RLS_FILTER not in stored
     assert "current_setting" not in stored
+
+
+async def test_provisa_assigns_its_terms_as_semantic_assignments_it_sourced(published):
+    """REQ-1389 (amended): the Class term is assigned to the table it grounds and the Property
+    term to its column, each an AtlasGlossarySemanticAssignment whose source is Provisa."""
+    orders = await _entity("provisa_table", ORDERS)
+    customer_id = await _entity("provisa_column", f"{_ORDERS}.customer_id@{CLUSTER}")
+    for term, entity in ((CLASS_TERM, orders), (GLOSSARY_TERM, customer_id)):
+        found = await _entity("AtlasGlossaryTerm", f"{term}@{_glossary_qn(ORG)}")
+        assigned = found["relationshipAttributes"]["assignedEntities"]
+        assert [
+            (a["guid"], a["relationshipAttributes"]["attributes"]["source"]) for a in assigned
+        ] == [(entity["guid"], ASSIGNMENT_SOURCE)]
+
+
+async def test_each_term_carries_its_role(published):
+    """REQ-2141: the role rides the term's additionalAttributes under provisaRole."""
+    order = await _entity("AtlasGlossaryTerm", f"{CLASS_TERM}@{_glossary_qn(ORG)}")
+    assert order["attributes"]["additionalAttributes"]["provisaRole"] == "class"
