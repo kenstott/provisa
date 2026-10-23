@@ -43,10 +43,16 @@ _EXPLORERS: tuple[tuple[str, str, dict | None], ...] = (
 )
 
 
-def tour_requests(directory: Path, all_roles: str) -> list[tuple[str, str, str, dict | None, str]]:
+def tour_requests(
+    directory: Path, all_roles: str
+) -> list[tuple[str, str, str, dict | None, dict[str, Any], str]]:
     """The requests that do the work of the demo's tour steps, in tour order, then the explorers':
-    ``(what, method, path, body, roles)``. A step that runs nothing (a page, a source, a term), a
-    Polly step (answered when the bundle was built) and a subscription send none.
+    ``(what, method, path, body, travel, roles)``. A step that runs nothing (a page, a source, a
+    term), a Polly step (answered when the bundle was built) and a subscription send none.
+
+    ``travel`` is the SQL explorer's time travel a statement runs under, as the steps before it set
+    it (``as_of``, ``as_recorded``, ``as_recorded_from``; demoTour.ts): :func:`travel_headers`
+    turns it into the request's headers once the statements before it have answered.
 
     ``roles`` is the X-Provisa-Role the visitor's page sends it with, as the steps before it chose
     (provisa-ui/src/tour/demoTour.ts): the page opens acting as "Role: All", ``all_roles`` (every
@@ -59,33 +65,59 @@ def tour_requests(directory: Path, all_roles: str) -> list[tuple[str, str, str, 
         return all_roles if role == "all" else role
 
     examples = {q["name"]: q["query"] for q in example_queries(directory)}
-    out: list[tuple[str, str, str, dict | None, str]] = []
+    out: list[tuple[str, str, str, dict | None, dict[str, Any], str]] = []
     page: str | None = None
     app_role = all_roles
     sql_role: str | None = None
+    travel: dict[str, Any] = {}
     for step in demo_tour(directory):
         key = step["key"]
         page = step.get("route", page)
+        if "as_of" in step:
+            travel["as_of"] = step["as_of"]
+        if "as_recorded" in step:
+            travel.pop("as_recorded_from", None)
+            travel["as_recorded"] = step["as_recorded"]
+        if "as_recorded_from" in step:
+            travel.pop("as_recorded", None)
+            travel["as_recorded_from"] = step["as_recorded_from"]
         if "role" in step:
             if "," in step["role"] or page == "/sql":
                 sql_role = chosen(step["role"])
             else:
                 app_role = chosen(step["role"])
         if "sql" in step:
-            out.append((key, "POST", "/data/sql", {"sql": step["sql"]}, sql_role or app_role))
+            out.append(
+                (key, "POST", "/data/sql", {"sql": step["sql"]}, dict(travel), sql_role or app_role)
+            )
         if "cypher" in step:
-            out.append((key, "POST", "/data/cypher", {"query": step["cypher"]}, app_role))
+            out.append((key, "POST", "/data/cypher", {"query": step["cypher"]}, {}, app_role))
         if "example" in step and not _is_subscription(examples[step["example"]]):
             query = {"query": examples[step["example"]]}
-            out.append((key, "POST", "/data/graphql", query, app_role))
+            out.append((key, "POST", "/data/graphql", query, {}, app_role))
         for kind in ("api", "jsonapi"):
             if kind in step:
                 method, _, path = (
                     step[kind].partition(" ") if kind == "api" else ("GET", "", step[kind])
                 )
-                out.append((key, method, path, None, app_role))
-    out.extend((path, method, path, body, app_role) for method, path, body in _EXPLORERS)
+                out.append((key, method, path, None, {}, app_role))
+    out.extend((path, method, path, body, {}, app_role) for method, path, body in _EXPLORERS)
     return out
+
+
+def travel_headers(travel: dict[str, Any], answers: dict[str, list[dict]]) -> dict[str, str]:
+    """``travel``'s headers (REQ-1163): an ``as_recorded_from`` is the value the earlier statement
+    it names answered, in ``answers`` (its rows, by step key), as the page reads it when it runs."""
+    headers: dict[str, str] = {}
+    if "as_of" in travel:
+        headers["X-Provisa-As-Of"] = str(travel["as_of"])
+    if "as_recorded" in travel:
+        headers["X-Provisa-As-Recorded"] = str(travel["as_recorded"])
+    if "as_recorded_from" in travel:
+        taken = travel["as_recorded_from"]
+        rows = answers[taken["step"]]
+        headers["X-Provisa-As-Recorded"] = str(rows[taken["row"]][taken["column"]])
+    return headers
 
 
 def _is_subscription(query: str) -> bool:
@@ -110,14 +142,21 @@ async def _warm(
     sent = {**headers, "x-org-provisa": org_id}
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://warmup") as client:
-        for what, method, path, body, roles in tour_requests(directory, all_roles):
+        answers: dict[str, list[dict]] = {}
+        for what, method, path, body, travel, roles in tour_requests(directory, all_roles):
             try:
                 resp = await client.request(
-                    method, path, json=body, headers={**sent, "X-Provisa-Role": roles}, timeout=None
+                    method,
+                    path,
+                    json=body,
+                    headers={**sent, **travel_headers(travel, answers), "X-Provisa-Role": roles},
+                    timeout=None,
                 )
             except Exception:
                 log.exception("sandbox %s tour warm-up: %s failed", org_id, what)
                 continue
+            if path == "/data/sql" and resp.status_code == 200:  # noqa: PLR2004 - HTTP OK
+                answers[what] = resp.json()["data"]["sql"]
             if resp.status_code >= 400:
                 # Not a failure of the warm-up: the visitor's own request meets the same answer.
                 log.warning(
