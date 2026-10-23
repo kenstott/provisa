@@ -267,6 +267,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._map_unwind_vars: set[str] = set()
         # Variables whose value is a MAP array (from collect({...}) or similar)
         self._map_array_vars: set[str] = set()
+        # Each UNWIND's UNNEST alias (``UNNEST(a) AS _uw0(x)``): its variable is that alias's column
+        self._unwind_aliases: set[str] = set()
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
         self._map_vars: dict[str, set[str]] = {}
@@ -844,6 +846,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 ),
             )
             self._var_table[uw.variable] = (alias, None)
+            self._unwind_aliases.add(alias)
             if not has_from and from_expr is None:
                 from_expr = unnest
                 has_from = True
