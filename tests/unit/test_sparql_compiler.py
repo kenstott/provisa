@@ -21,6 +21,7 @@ import pytest
 
 from provisa.gql.assembler import assemble_rows, take_cut
 from provisa.gql.iri import subject_iri
+from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.translator import cypher_to_sql
 from provisa.sparql_query.compiler import SparqlRefused, compile_sparql
@@ -135,6 +136,8 @@ def _answer(con, query: str) -> list[dict]:
         return []
     assert compiled.ast is not None
     sql, _, graph_vars = cypher_to_sql(compiled.ast, lm, {})
+    # As the endpoint runs it (sparql_router): a term is its own value through the graph rewrite.
+    sql = apply_graph_rewrites(sql, graph_vars, lm)
     cur = con.execute(sql.sql(dialect="duckdb"))
     names = [d[0] for d in cur.description]
     rows = assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)

@@ -128,3 +128,18 @@ def test_take_cut_says_nothing_of_an_uncut_result():
 def test_a_cut_with_no_channel_to_say_it_fails():
     with pytest.raises(NoWarningChannel):
         take_cut([{"a": 1, CUT_COLUMN: 1}], None)
+
+
+@pytest.mark.usefixtures("limit3")
+def test_the_cut_column_is_a_number_after_the_graph_rewrite():
+    # Every surface runs the statement through the graph rewrite: the cut column is passed
+    # through as the flag it is, never rebuilt as a node.
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
+
+    lm = _people()
+    sql, _, graph_vars = cypher_to_sql(parse_cypher(_UNBOUNDED), lm, {})
+    con = duckdb.connect()
+    _persons(con, _CHAIN_OF_5)
+    cur = con.execute(apply_graph_rewrites(sql, graph_vars, lm).sql(dialect="duckdb"))
+    names = [d[0] for d in cur.description]
+    assert {dict(zip(names, r, strict=True))[CUT_COLUMN] for r in cur.fetchall()} == {1}
