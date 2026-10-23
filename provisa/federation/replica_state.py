@@ -1016,6 +1016,17 @@ async def unbuild_retired(conn: "Connection", key: ReplicaKey) -> bool:
     return (result.rowcount or 0) > 0
 
 
+async def unbuild(conn: "Connection", key: ReplicaKey) -> bool:
+    """Mark the replica ``key`` as holding no replica: its table was emptied (a reconcile
+    re-created it to a changed shape), so its record must stop calling it built. Without this its
+    record kept the rows and content hash of a build whose rows were dropped, a read refused it as
+    landed elsewhere, and the next build, finding the same content, kept the empty table."""
+    result = await conn.execute_core(
+        update(replica_state).where(_is(key)).values(completed_at=None, content_hash=None)
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def retired_before(conn: "Connection", before: datetime) -> list[ReplicaKey]:
     """The replicas retired at or before ``before``: those whose wait is over."""
     result = await conn.execute_core(

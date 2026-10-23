@@ -53,7 +53,7 @@ async def test_land_replace_writes_rows_through_write_face(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_reconcile_creates_keeps_recreates(tmp_path):
+async def test_reconcile_creates_keeps_recreates(tmp_path, caplog):
     dsn = _dsn(tmp_path)
     # absent → created
     assert (
@@ -76,6 +76,9 @@ async def test_reconcile_creates_keeps_recreates(tmp_path):
     async with store_writer.store_connection(dsn) as conn:
         rows = await conn.fetch("SELECT count(*) FROM pets")
     assert rows[0][0] == 0
+    # the drop is said, with what drifted: a replica emptied this way is otherwise silent
+    assert "store table .pets re-created, its rows dropped: columns ['id', 'status']" in caplog.text
+    assert "declared columns ['id', 'status', 'added']" in caplog.text
 
 
 def test_check_source_drift_ratios_and_floor():
