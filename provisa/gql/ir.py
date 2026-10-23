@@ -21,9 +21,39 @@ front end; the back end walks the trees and reads no language's syntax.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 from provisa.gql.expr_ast import CypherExpr
+
+
+@dataclass(frozen=True)
+class LabelName:
+    """A label expression naming one label (GQL ``:A``)."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class LabelOr:
+    """A node with any of these labels (GQL ``:A|B``)."""
+
+    options: tuple[LabelName, ...]
+
+
+@dataclass(frozen=True)
+class LabelAnd:
+    """A node with every one of these labels (GQL ``:A&B``, Cypher ``:A:B``)."""
+
+    parts: tuple[LabelName, ...]
+
+
+@dataclass(frozen=True)
+class LabelAny:
+    """A node with any label at all (GQL ``%``, an unlabelled node)."""
+
+
+LabelExpr = LabelName | LabelOr | LabelAnd | LabelAny
 
 
 @dataclass
@@ -35,6 +65,86 @@ class NodePattern:
     #: Each inline property's value as the statement writes it (``'x'``, ``42``, ``$p``), which a
     #: read matches on as ``WHERE var.prop = <value>`` (:func:`with_inline_conditions`).
     property_text: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def label_expr(self) -> LabelExpr:
+        """The node's labels as a label expression. ``labels`` and ``label_alternation`` hold it:
+        the label expressions the back end lowers are one level deep (REQ-2135)."""
+        if not self.labels:
+            return LabelAny()
+        if len(self.labels) == 1:
+            return LabelName(self.labels[0])
+        names = tuple(LabelName(n) for n in self.labels)
+        return LabelOr(names) if self.label_alternation else LabelAnd(names)
+
+    @classmethod
+    def with_label_expr(
+        cls, variable: str | None, expr: LabelExpr, properties: dict[str, Any] | None = None
+    ) -> "NodePattern":
+        """A node pattern from a label expression; a front end builds one this way."""
+        props = properties or {}
+        if isinstance(expr, LabelAny):
+            return cls(variable, [], props)
+        if isinstance(expr, LabelName):
+            return cls(variable, [expr.name], props)
+        if isinstance(expr, LabelOr):
+            return cls(variable, [o.name for o in expr.options], props, label_alternation=True)
+        return cls(variable, [p.name for p in expr.parts], props)
+
+
+class PathMode(str, Enum):
+    """What a quantified path may repeat (GQL's path modes, REQ-2135). WALK repeats nodes and
+    edges; REACH is SPARQL's property-path meaning, each pair of ends once however many paths join
+    them. TRAIL, ACYCLIC and SIMPLE are GQL's and are refused until a front end needs them."""
+
+    WALK = "WALK"
+    TRAIL = "TRAIL"
+    ACYCLIC = "ACYCLIC"
+    SIMPLE = "SIMPLE"
+    REACH = "REACH"
+
+
+@dataclass(frozen=True)
+class EdgeStep:
+    """One edge of a relationship type; ``inverse`` walks it target to source (SPARQL ``^p``)."""
+
+    rel_type: str
+    inverse: bool = False
+
+
+@dataclass(frozen=True)
+class SeqPath:
+    """Each part after the one before (SPARQL ``p/q``)."""
+
+    parts: tuple["PathExpr", ...]
+
+
+@dataclass(frozen=True)
+class AltPath:
+    """Any one of the options (SPARQL ``p|q``)."""
+
+    options: tuple["PathExpr", ...]
+
+
+@dataclass(frozen=True)
+class RepeatPath:
+    """The body ``min`` to ``max`` times (GQL ``{m,n}``; SPARQL ``p*``, ``p+``, ``p?``). With no
+    ``max`` it repeats up to the operator's depth limit, and a result cut there says so."""
+
+    body: "PathExpr"
+    min: int
+    max: int | None
+
+
+@dataclass(frozen=True)
+class NegatedEdges:
+    """One edge of any relationship type but these (SPARQL ``!(p|q)``); ``inverse`` as EdgeStep."""
+
+    rel_types: tuple[str, ...]
+    inverse: bool = False
+
+
+PathExpr = EdgeStep | SeqPath | AltPath | RepeatPath | NegatedEdges
 
 
 @dataclass
@@ -48,6 +158,10 @@ class RelPattern:
     #: An inline property map on the relationship, as its node's is (``property_text``).
     properties: dict[str, Any] = field(default_factory=dict)
     property_text: dict[str, str] = field(default_factory=dict)
+    #: A path expression between the two nodes in place of ``types`` and the hop bounds (REQ-2135):
+    #: what a SPARQL property path or a GQL quantified path pattern parses into.
+    path: PathExpr | None = None
+    mode: PathMode = PathMode.WALK
 
 
 @dataclass

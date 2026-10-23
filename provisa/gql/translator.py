@@ -46,6 +46,7 @@ from provisa.gql.ir import (
     OrderItem,
 )
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.path_expr import PathExprMixin
 from provisa.gql.path_functions import PathFunctionsMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
@@ -164,6 +165,7 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
 
 
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
+    PathExprMixin,
     PathFunctionsMixin,
     SelectBuilderMixin,
     CorrelatedCallMixin,
