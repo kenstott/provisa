@@ -19,8 +19,8 @@ the hash of the arguments that produced them and when they were fetched.
 
 Nothing fetched from a remote is written into the control plane. The table is written and read
 through the connection the API cache uses on every engine (``EngineRuntime.isolated_sync``), and
-the remote is called the one way every path calls it (``caller.call_api``: the source's auth,
-the endpoint's paging, retries).
+the remote is called the one way every path calls it, its source's contract
+(``api_source.contract.call_endpoint``: the source's auth, the endpoint's paging, retries).
 """
 
 # Requirements: REQ-318, REQ-544, REQ-859, REQ-1661, REQ-1915
@@ -44,9 +44,9 @@ from provisa.api_source.caller import (
     ApiNotFoundError,
     answer_cut_warning,
     answer_rows,
-    call_api,
 )
 from provisa.api_source import engine_cache
+from provisa.api_source.contract import call_endpoint
 from provisa.api_source.engine_cache import (
     CacheLocation,
     _string_literal,
@@ -404,14 +404,12 @@ async def fetch(
     An answer that reports an error at the endpoint's ``error_path``, or a call that fails,
     fails the request (REQ-1661): it is never logged and answered with whatever the cache held."""
     try:
-        answer = await call_api(
+        answer = await call_endpoint(
             endpoint,
+            api_source,
             # REQ-318: the endpoint's default parameters under what the statement gives, as every
             # other read of it calls (router_integration.handle_api_query, replica_read).
             {**endpoint.default_params, **params},
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
         )
     except ApiNotFoundError:
         return [], None

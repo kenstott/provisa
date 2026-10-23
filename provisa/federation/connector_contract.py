@@ -43,6 +43,9 @@ class Read:
     statement: str
     source_id: str = ""
     arguments: dict | None = None  # the arguments the statement names for the read itself
+    # The connector's own registration of what it calls, when the caller holds it: an API
+    # endpoint and its source, a remote GraphQL field's request, a gRPC method's.
+    registration: Any = None
 
 
 @dataclass(frozen=True)
@@ -68,8 +71,9 @@ class SourceContract(ABC):
 
 
 class Lands(SourceContract):
-    """A connector that declares no capability (v1): every read is incomplete and lands, its call
-    made by the landing path that has always made it (the API caller, the remote fetches)."""
+    """A connector that declares no capability (v1): every read is incomplete and lands. Its
+    call is its own (api_source.contract, graphql_remote.contract,
+    source_adapters.grpc_remote_contract): the one place its remote is called."""
 
     def __init__(self, kind: str) -> None:
         self.kind = kind
@@ -81,12 +85,6 @@ class Lands(SourceContract):
             incomplete_because=f"a {self.kind} source declares no capability",
         )
 
-    async def call(self, state: Any, plan: Plan) -> Any:
-        raise RuntimeError(
-            f"{plan.read.name}: a {self.kind} read is never its complete dataset; its rows are "
-            "landed by the landing path"
-        )
-
 
 _CONTRACTS: dict[str, SourceContract] = {}
 
@@ -94,19 +92,24 @@ _CONTRACTS: dict[str, SourceContract] = {}
 def contract_for(source_type: str) -> SourceContract | None:
     """``source_type``'s contract, or None for a SQL database or a source the engine reads."""
     if not _CONTRACTS:
+        from provisa.api_source.contract import ApiEndpointContract
         from provisa.codesource.proxy import CodeProxy
+        from provisa.graphql_remote.contract import GraphqlRemoteContract
         from provisa.qdrant.contract import QdrantContract
+        from provisa.source_adapters.grpc_remote_contract import GrpcRemoteContract
 
         _CONTRACTS.update(
             {
                 "node": CodeProxy(),
                 "python": CodeProxy(),
                 "qdrant": QdrantContract(),
-                "openapi": Lands("REST"),
-                "graphql_api": Lands("GraphQL remote"),
-                "grpc_api": Lands("gRPC"),
-                "grpc_remote": Lands("gRPC remote"),
-                "sparql": Lands("SPARQL"),
+                "openapi": ApiEndpointContract("REST"),
+                "graphql_api": ApiEndpointContract("GraphQL API"),
+                "grpc_api": ApiEndpointContract("gRPC"),
+                "sparql": ApiEndpointContract("SPARQL"),
+                "neo4j": ApiEndpointContract("Neo4j"),
+                "graphql_remote": GraphqlRemoteContract("GraphQL remote"),
+                "grpc_remote": GrpcRemoteContract("gRPC remote"),
             }
         )
     return _CONTRACTS.get(source_type)

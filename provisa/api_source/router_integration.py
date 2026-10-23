@@ -27,7 +27,7 @@ import secrets
 
 from provisa.api_source.cache import resolve_ttl
 from provisa.core.environments import active_org_schema
-from provisa.api_source.caller import AnswerCut, answer_cut_warning, answer_rows, call_api
+from provisa.api_source.caller import AnswerCut, answer_cut_warning, answer_rows
 from provisa.core.statement_warnings import warn
 from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
 from provisa.api_source import engine_cache as _engine_cache
@@ -129,14 +129,12 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
 
         span.set_attribute("api_source.cache_hit", False)
 
-        # Cache miss: call API
-        base_url = source.base_url if source else ""
-        auth = source.auth if source else None
-        source_headers = source.headers if source else None
+        # Cache miss: the endpoint's call, through its source's contract (REQ-1756)
+        from provisa.api_source.contract import call_endpoint
 
-        answer = await call_api(
-            endpoint, params, base_url=base_url, auth=auth, source_headers=source_headers
-        )
+        if source is None:
+            raise ValueError(f"API table {endpoint.table_name!r}: its source is not registered")
+        answer = await call_endpoint(endpoint, source, params)
         all_rows, cut = answer_rows(endpoint, answer)
         if cut is not None:
             # A cut answer is never cached as the call's answer: it lands under a name of its

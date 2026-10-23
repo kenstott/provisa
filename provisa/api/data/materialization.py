@@ -650,28 +650,33 @@ def _normalize_mat_value(v):
 
 
 async def _fetch_gql_remote_rows(
-    gql_reg, gql_tbl, col_selections, variables, gql_to_sql, max_items, max_rows
+    tn, gql_reg, gql_tbl, col_selections, variables, gql_to_sql, max_items, max_rows
 ) -> tuple[list[dict], bool]:
     """Fetch a graphql_remote field (with its native-filter args) and remap each row's GQL field
     keys to the sql column names the store lands under. A single-record field returns null (→ [None])
     when nothing matches — drop non-dict rows so the caller lands an empty result, not a crash.
     The flag: the read stopped at max_rows with more to read (REQ-1350)."""
-    from provisa.graphql_remote.executor import NO_POLICY, execute_remote
+    from provisa.graphql_remote.contract import call_field
+    from provisa.graphql_remote.executor import NO_POLICY
 
     # REQ-2061: the table's fixed arguments are sent with every read; a read gives no value for one.
     variables = {**(gql_tbl.get("arguments") or {}), **(variables or {})}
-    answer = await execute_remote(
-        url=gql_reg["url"],
-        auth=gql_reg.get("auth"),
-        field_name=gql_tbl.get("field_name") or gql_tbl["name"],
-        columns=col_selections,
-        variables=variables or None,
-        required_args=remote_arguments(gql_tbl) or None,
-        limit=max_items,
-        pagination=gql_tbl.get("pagination"),
-        rows_path=gql_tbl.get("rows_path"),
-        max_rows=max_rows,
-        error_policy=gql_reg.get("error_policy") or NO_POLICY,
+    answer = await call_field(
+        gql_reg["source_id"],
+        tn,
+        {
+            "url": gql_reg["url"],
+            "auth": gql_reg.get("auth"),
+            "field_name": gql_tbl.get("field_name") or gql_tbl["name"],
+            "columns": col_selections,
+            "required_args": remote_arguments(gql_tbl) or None,
+            "limit": max_items,
+            "pagination": gql_tbl.get("pagination"),
+            "rows_path": gql_tbl.get("rows_path"),
+            "max_rows": max_rows,
+            "error_policy": gql_reg.get("error_policy") or NO_POLICY,
+        },
+        variables or None,
     )
     rows = [
         {gql_to_sql.get(k, k): v for k, v in row.items()}
@@ -802,7 +807,7 @@ async def _mat_gql_remote_table(
     _max_rows = await connection_rows(state, gql_reg["source_id"], tn)  # REQ-318
     if _store_scheme == "sqlite":
         gql_rows, _cut = await _fetch_gql_remote_rows(
-            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
+            tn, gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
         )
         # Inline THIS query only — never held by the hot tier: a parameterized fetch is keyed by
         # its arg, so holding it as the table's rows would serve one arg's rows for another.
@@ -819,7 +824,7 @@ async def _mat_gql_remote_table(
     # Cache miss — fetch from remote
     try:
         gql_rows, cut = await _fetch_gql_remote_rows(
-            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
+            tn, gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
         )
     except Exception as fetch_exc:
         raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
@@ -900,7 +905,7 @@ async def _mat_grpc_remote_table(
     from provisa.api.data.endpoint_helpers import _grpc_cache_type
     from provisa.cache.store import NoopCacheStore
     from provisa.executor.redirect import RedirectConfig
-    from provisa.source_adapters import grpc_remote_adapter
+    from provisa.source_adapters.grpc_remote_contract import call_method
 
     @_dc
     class _GCol:
@@ -930,17 +935,20 @@ async def _mat_grpc_remote_table(
         cache_rewrites[tn] = (cache_loc, cache_tbl)
         return
 
-    rows = await grpc_remote_adapter.fetch(
-        source_id=source_id,
-        full_method_path=grpc_query.full_method_path,
-        input_message_name=grpc_query.input_message,
-        output_message_name=grpc_query.output_message,
-        pb2=reg["pb2"],
-        args=nf_args or {},
-        grpc_remote_sources=getattr(state, "grpc_remote_sources", {}),
-        response_cache_store=NoopCacheStore(),  # the PG cache table is the cache, not Redis
-        ttl=ttl,
-        server_streaming=grpc_query.server_streaming,
+    rows = await call_method(
+        source_id,
+        tn,
+        {
+            "full_method_path": grpc_query.full_method_path,
+            "input_message_name": grpc_query.input_message,
+            "output_message_name": grpc_query.output_message,
+            "pb2": reg["pb2"],
+            "grpc_remote_sources": getattr(state, "grpc_remote_sources", {}),
+            "response_cache_store": NoopCacheStore(),  # the PG cache table is the cache, not Redis
+            "ttl": ttl,
+            "server_streaming": grpc_query.server_streaming,
+        },
+        nf_args or {},
     )
     if not col_names:
         col_names = list(rows[0].keys()) if rows else []
