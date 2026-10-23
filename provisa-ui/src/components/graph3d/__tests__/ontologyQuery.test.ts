@@ -129,13 +129,17 @@ const scope = (layers: LayerId[], over: Partial<QueryScope> = {}): QueryScope =>
 const squash = (q: string | null) => (q ?? "").replace(/\s+/g, " ");
 
 describe("the Ontology View's query", () => {
-  it("is one query reading the terms and, under Ontology, the edges between them", () => {
+  it("is one query with one root: the terms, each with the edges leaving it under Ontology", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
     expect(q.startsWith("query Ontology {")).toBe(true);
     expect(q).toContain("glossary_terms: m__glossaryTerms {");
     expect(q).toContain(
-      "glossary_term_edges: m__glossaryTermEdges { id: id from_term_id: fromTermId",
+      "edges_out: edgesOut { id: id from_term_id: fromTermId to_term_id: toTermId rel_type: relType target_term: targetTerm { id: id } }",
     );
+    // One root: the edges are the terms', not a root of their own.
+    expect(q).not.toContain("m__glossaryTermEdges");
+    expect(q.match(/m__\w+/g)).toEqual(["m__glossaryTerms"]);
+    expect(squash(ontologyQuery(reader(), scope(["columns"])))).not.toContain("edgesOut {");
     expect(q).toContain("domains: domains { domain_id: domainId }");
     expect(q).toContain("refs: refs {");
     // Data off: a column's product is read for its look alone, and no products are read.
@@ -188,9 +192,7 @@ describe("the Ontology View's query", () => {
         scope(["ontology", "columns", "ownerTables"], { edgeTypes: ["KIND_OF", "PLACED_BY"] }),
       ),
     );
-    expect(q).toContain(
-      'm__glossaryTermEdges(where: { relType: { in: ["KIND_OF","PLACED_BY"] } })',
-    );
+    expect(q).toContain('edges_out: edgesOut(where: { relType: { in: ["KIND_OF","PLACED_BY"] } })');
     expect(q).toContain(
       'sourceRelationships(where: { _or: [{ alias: { in: ["KIND_OF","PLACED_BY"] } }, { _and: [{ alias: { is_null: true } }, { id: { in: ["KIND_OF","PLACED_BY"] } }] }] })',
     );

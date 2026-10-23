@@ -10,8 +10,8 @@
 
 // REQ-2130: the glossary's Ontology View data, read from the meta domain as the signed-in user --
 // glossary_terms_meta (its standing columns), the domains each term is in, its refs to columns
-// with those columns' tables and the relationships declared from them, and
-// glossary_term_edges_meta; and the data products with their datasets, the datasets' columns and
+// with those columns' tables and the relationships declared from them, and the edges leaving it
+// (glossary_term_edges_meta, read with the term); and the data products with their datasets, the datasets' columns and
 // the terms those columns are -- turned into the graph's nodes and edges.
 
 import {
@@ -119,6 +119,17 @@ function related(s: QueryScope): Where {
 function termsField(m: MetaReader, s: QueryScope): string | null {
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
+  // A term's edges are read with it, from the term they leave (each edge once), so the view is one
+  // query: terms with their edges to other terms. An edge to a term not read has no end to draw.
+  if (s.layers.has("ontology"))
+    rels.edges_out = {
+      alias: "edgesOut",
+      sel: {
+        fields: ["id", "from_term_id", "to_term_id", "rel_type"],
+        rels: { target_term: { alias: "targetTerm", sel: { fields: ["id"] } } },
+      },
+      where: s.edgeTypes.length === 0 ? undefined : { rel_type: { in: s.edgeTypes } },
+    };
   // A class term's tables are the ontology's: what the term names the rows of.
   if (s.layers.has("ontology"))
     rels.tables = {
@@ -197,31 +208,26 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
   );
 }
 
-/** The Ontology View's one query for ``s``: its terms, the edges between them under the Ontology
- * layer, and the data products under Data; null when the role cannot read the terms. A part the
+/** The Ontology View's one query for ``s``: its terms, each with the edges leaving it under the
+ * Ontology layer, and the data products under Data; null when the role cannot read the terms. A part the
  * role cannot read is left out. */
 export function ontologyQuery(m: MetaReader, s: QueryScope): string | null {
   const terms = termsField(m, s);
   if (terms === null) return null;
-  const edges = s.layers.has("ontology")
-    ? rootField(
-        m,
-        "glossary_term_edges",
-        { fields: ["id", "from_term_id", "to_term_id", "rel_type"] },
-        s.edgeTypes.length === 0 ? undefined : { rel_type: { in: s.edgeTypes } },
-      )
-    : null;
   const products = s.layers.has("data") ? productsField(m, s) : null;
   return operation(
     "Ontology",
-    [terms, edges, products].filter((f): f is string => f !== null),
+    [terms, products].filter((f): f is string => f !== null),
   );
 }
+
+/** The edges the terms were read with: each from the term it leaves. */
+export const termEdges = (terms: TermRow[]): TermEdgeRow[] =>
+  terms.flatMap((t) => t.edges_out ?? []);
 
 /** What the Ontology View's query answers: a part not read is absent. */
 export interface OntologyRows {
   glossary_terms: TermRow[];
-  glossary_term_edges?: TermEdgeRow[];
   data_products?: ProductRow[];
 }
 
@@ -235,6 +241,8 @@ export interface TermRow {
   live: boolean;
   // One-to-many: null when the term has none (see rowsOf).
   domains?: { domain_id: string }[] | null;
+  // Under Ontology: the edges leaving the term (null when none; see rowsOf).
+  edges_out?: (TermEdgeRow & { target_term?: { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
   tables?: { table_id: number; table_name: string; domain_id: string }[] | null;
   refs?:
