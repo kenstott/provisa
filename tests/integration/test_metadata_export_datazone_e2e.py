@@ -31,7 +31,15 @@ import uuid
 import pytest
 
 from provisa.api.metadata_export.datazone import PRODUCT_FORM, TABLE_FORM, TABLE_TYPE
-from tests.integration.metadata_export_server import PRODUCT_FIELDS, publish, published_server
+from tests.integration.metadata_export_server import (
+    CLASS_DEFINITION,
+    CLASS_TERM,
+    GLOSSARY_DEFINITION,
+    GLOSSARY_TERM,
+    PRODUCT_FIELDS,
+    publish,
+    published_server,
+)
 
 pytestmark = [
     pytest.mark.integration,
@@ -78,6 +86,36 @@ def _listing(client, scope: dict, product_id: str, name: str) -> dict | None:
         if time.monotonic() > deadline:
             return None
         time.sleep(5)
+
+
+def _glossary(creds: dict[str, str]) -> dict[str, dict]:
+    """The terms of the org's Provisa glossary, by name. The glossary and its terms stay: they
+    are the org's, revised each run."""
+    client = _client(creds)
+    scope = {"domainIdentifier": creds["PROVISA_E2E_DATAZONE_DOMAIN_ID"]}
+    glossaries = client.search(
+        **scope,
+        owningProjectIdentifier=creds["PROVISA_E2E_DATAZONE_PROJECT_ID"],
+        searchScope="GLOSSARY",
+        searchText=f"Provisa glossary ({ORG})",
+    )["items"]
+    (glossary,) = [
+        g["glossaryItem"]
+        for g in glossaries
+        if g.get("glossaryItem", {}).get("name") == f"Provisa glossary ({ORG})"
+    ]
+    terms = client.search(
+        **scope,
+        owningProjectIdentifier=creds["PROVISA_E2E_DATAZONE_PROJECT_ID"],
+        searchScope="GLOSSARY_TERM",
+    )["items"]
+    return {
+        t["glossaryTermItem"]["name"]: client.get_glossary_term(
+            **scope, identifier=t["glossaryTermItem"]["id"]
+        )
+        for t in terms
+        if t.get("glossaryTermItem", {}).get("glossaryId") == glossary["id"]
+    }
 
 
 def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict], dict | None]:
@@ -133,13 +171,14 @@ async def published():
             },
         )
     found, assets, listing = _read_back(creds, name)
-    yield result, found, assets, listing
+    yield result, found, assets, listing, _glossary(creds)
 
 
 async def test_the_publish_reports_the_product_and_its_assets(published):
     result = published[0]
     assert result["ok"], result["errors"]
-    assert result["published"] == {"data_products": 1, "data_assets": 2}
+    # REQ-1387: the org's two defined terms, customer and order, in the Provisa glossary.
+    assert result["published"] == {"data_products": 1, "data_assets": 2, "glossary_term": 2}
 
 
 async def test_the_product_is_listed_for_subscription(published):
@@ -164,3 +203,12 @@ async def test_each_member_is_a_provisa_table_asset(published):
     for asset in assets:
         (form,) = [f for f in asset["formsOutput"] if f["formName"] == TABLE_FORM]
         assert json.loads(form["content"])["provisaUri"] == asset["externalIdentifier"]
+
+
+async def test_the_terms_are_in_the_provisa_glossary_with_their_definitions(published):
+    """REQ-1387: DataZone's glossary has the org's terms, enabled, defined. No term is assigned
+    to an asset: DataZone records no author for an assignment (REQ-1389)."""
+    terms = published[4]
+    assert terms[CLASS_TERM]["longDescription"] == CLASS_DEFINITION
+    assert terms[CLASS_TERM]["status"] == "ENABLED"
+    assert terms[GLOSSARY_TERM]["longDescription"] == GLOSSARY_DEFINITION

@@ -28,9 +28,19 @@ later publish revises it by that id. Only what no earlier publish recorded is lo
 the project's search (an asset by its external identifier, the member's Provisa URI; a product
 by its name), which DataZone indexes some seconds late. An entity deleted in DataZone since it
 was recorded is published anew.
+
+The org's glossary publishes into one DataZone business glossary Provisa owns, named
+``Provisa glossary (<org>)`` in the owning project (REQ-1387). Each term carries its definition
+as the long description; a deprecated term is DISABLED. KIND_OF is DataZone's own ``isA``
+relation; DataZone's glossary has no synonym or related-term relation, so the other edges have
+no native place here. Terms are revised by the ids recorded in the bindings, else found by name
+in the Provisa glossary, and never deleted. DataZone records no author on a term's assignment
+to an asset, so Provisa's assignments could not be told from a steward's: terms are not
+assigned to assets on this target (REQ-1389). The glossary term has no free property, so the
+term's role is not exported here either (REQ-2141).
 """
 
-# Requirements: REQ-2118
+# Requirements: REQ-2118, REQ-1387, REQ-1389, REQ-2141
 
 from __future__ import annotations
 
@@ -40,6 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.api.metadata_export.provider import (
     AssetError,
+    AssetRefStub,
     MetadataExport,
     PublishResult,
 )
@@ -126,7 +137,7 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         )
 
     async def publish(self, snapshot: "MetadataSnapshot") -> PublishResult:
-        if not snapshot.data_products:
+        if not snapshot.data_products and not snapshot.glossary_terms:
             return PublishResult(provider_name=self.provider_name)
         return await asyncio.to_thread(self._publish, snapshot)
 
@@ -135,6 +146,13 @@ class DataZoneExport(MetadataExport):  # REQ-2118
 
         result = PublishResult(provider_name=self.provider_name)
         client = self._client()
+        if snapshot.glossary_terms:
+            try:
+                self._publish_glossary(client, snapshot, result)
+            except (ClientError, BotoCoreError) as exc:
+                result.errors.append(AssetError(asset=AssetRefStub("glossary"), message=str(exc)))
+        if not snapshot.data_products:
+            return result
         tables = {t.ref.fqn(): t for t in snapshot.tables}
         types = self._types(client)
         assets, products = self._known(client, snapshot, tables)
@@ -341,6 +359,93 @@ class DataZoneExport(MetadataExport):  # REQ-2118
             action="PUBLISH",
         )
         return len(items)
+
+    def _glossary_id(self, client: Any, org_id: str, result: PublishResult) -> str:
+        """The Provisa glossary: its recorded id, else found by name in the project, else
+        created."""
+        uri = f"provisa://{org_id}/glossary"
+        name = f"Provisa glossary ({org_id})"
+        bound = self.stored_bindings.get(uri)
+        if bound is not None:
+            glossary_id = bound[0]
+        else:
+            found = self._existing(client, "GLOSSARY", "glossaryItem", "name", "id")
+            glossary_id = (
+                found.get(name)
+                or client.create_glossary(
+                    **self._scope(),
+                    name=name,
+                    description="Business vocabulary Provisa publishes from its governed model.",
+                    owningProjectIdentifier=self._config.datazone_project_id,
+                    status="ENABLED",
+                )["id"]
+            )
+        result.bindings[uri] = (glossary_id, name)
+        return glossary_id
+
+    def _publish_glossary(
+        self, client: Any, snapshot: "MetadataSnapshot", result: PublishResult
+    ) -> None:
+        """The org's terms in the Provisa glossary, then each term's isA (module docstring)."""
+        glossary_id = self._glossary_id(client, snapshot.org_id, result)
+        found: dict[str, str] | None = None
+        ids: dict[int, str] = {}
+        live_isa: dict[int, list[str]] = {}
+        for term in snapshot.glossary_terms:
+            fields = {
+                "name": term.name,
+                "longDescription": term.definition or "",
+                "status": "DISABLED" if term.deprecated else "ENABLED",
+            }
+            known = (self.stored_bindings.get(term.semantic_uri) or (None,))[0]
+            if known is None:
+                if found is None:
+                    found = self._glossary_terms(client, glossary_id)
+                known = found.get(term.name)
+            saved = self._revise(
+                client,
+                known,
+                lambda known, fields=fields: client.update_glossary_term(
+                    **self._scope(), identifier=known, glossaryIdentifier=glossary_id, **fields
+                ),
+                lambda fields=fields: client.create_glossary_term(
+                    **self._scope(), glossaryIdentifier=glossary_id, **fields
+                ),
+            )
+            ids[term.term_id] = saved["id"]
+            live_isa[term.term_id] = (saved.get("termRelations") or {}).get("isA") or []
+            # REQ-1389: the next publish revises this term by its id.
+            result.bindings[term.semantic_uri] = (saved["id"], term.name)
+            result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
+        parents: dict[int, list[str]] = {}
+        for edge in snapshot.glossary_edges:
+            if edge.rel_type == "KIND_OF" and edge.to_term_id in ids:
+                parents.setdefault(edge.from_term_id, []).append(ids[edge.to_term_id])
+        for tid, term_ref in ids.items():
+            wanted = sorted(parents.get(tid, []))
+            if wanted == sorted(live_isa[tid]):
+                continue
+            client.update_glossary_term(
+                **self._scope(),
+                identifier=term_ref,
+                glossaryIdentifier=glossary_id,
+                # isA takes at least one term; an empty relation set clears it.
+                termRelations={"isA": wanted} if wanted else {},
+            )
+
+    def _glossary_terms(self, client: Any, glossary_id: str) -> dict[str, str]:
+        """The Provisa glossary's terms: id by name."""
+        pages = client.get_paginator("search").paginate(
+            **self._scope(),
+            owningProjectIdentifier=self._config.datazone_project_id,
+            searchScope="GLOSSARY_TERM",
+        )
+        return {
+            hit["glossaryTermItem"]["name"]: hit["glossaryTermItem"]["id"]
+            for page in pages
+            for hit in page.get("items", [])
+            if hit.get("glossaryTermItem", {}).get("glossaryId") == glossary_id
+        }
 
     async def health(self) -> None:
         def _check() -> None:

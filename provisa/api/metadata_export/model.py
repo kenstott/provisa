@@ -413,6 +413,7 @@ class GlossaryTermAsset:  # REQ-1387
     role: str = "concept"  # class | property | concept
     experts: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/terms/<term name>
+    domains: tuple[str, ...] = ()  # REQ-1591: the term's domains, sorted
 
     def assigned_to(self) -> tuple[AssetRef, ...]:
         """The published assets a catalog assigns this term to (REQ-1389): a Class its tables,

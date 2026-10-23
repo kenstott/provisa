@@ -592,6 +592,9 @@ def _glossary_assets(
     # to -- a Class whose tables are all withheld is still a Class.
     grounds_tables = {ref["term_id"] for ref in glossary.get("table_refs", [])}
     owns_columns = {ref["term_id"] for ref in glossary.get("refs", [])}
+    domains_by_term: dict[int, list[str]] = {}
+    for row in glossary.get("domains", []):
+        domains_by_term.setdefault(row["term_id"], []).append(row["domain_id"])
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
@@ -623,6 +626,7 @@ def _glossary_assets(
                 ),
                 experts=tuple(experts_by_term.get(term["id"], [])),
                 semantic_uri=term_uri(org_id, term["name"]),
+                domains=tuple(sorted(domains_by_term.get(term["id"], []))),
             )
         )
     published_ids = {t.term_id for t in terms}

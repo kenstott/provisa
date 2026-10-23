@@ -46754,7 +46754,21 @@
     history; do not implement against it.] a term reference with no column grounds its term in
     the table itself (REQ-2141), [END SUPERSEDED BLOCK] a term grounded in a table (REQ-2141) is
     grounded, and live_term_ids counts it as grounded. An abstract term wired to
-    nothing physical still names no data and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after, rather than every refless term not flagged abstract.'
+    nothing physical still names no data and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after, rather than every refless term not flagged abstract.
+    (Amended 2026-10-23, CLOUD GLOSSARIES:) The term graph also publishes into the native
+    business glossaries of Purview''s Unified Catalog, Dataplex and DataZone, each into a
+    glossary or governance domain Provisa owns or the term''s own domain. Purview Unified Catalog:
+    each term in the governance domain named after its Provisa domain (the first, alphabetically,
+    that Purview has; a term none of whose domains it has is reported), its id derived from its
+    Provisa URI, deprecated as EXPIRED, KIND_OF as the parent, SYNONYM_OF as a Synonym relationship
+    and every other edge Related; a Class term is related to the data assets of its tables, and
+    the principal that created a relationship decides ownership. Dataplex: a provisa-<org>
+    glossary with a category per role, the role and deprecation as labels, SYNONYM_OF as a synonym
+    entry link and every other edge a related one, and definition entry links from the BigQuery
+    tables and columns a term grounds, owned by their provisa- id prefix. DataZone: a Provisa
+    glossary in the owning project, deprecated as DISABLED, KIND_OF as isA; DataZone records no
+    author for an assignment, so no term is assigned to data there. The snapshot carries each
+    term''s domains for this.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -46801,6 +46815,9 @@
   - provisa/api/metadata_export/datahub.py
   - provisa/api/metadata_export/openmetadata.py
   - provisa/api/metadata_export/collibra.py
+  - provisa/api/metadata_export/purview.py
+  - provisa/api/metadata_export/dataplex.py
+  - provisa/api/metadata_export/datazone.py
   - provisa-ui/src/components/admin/GlossaryTab.tsx
   - provisa/api/_meta_views.py
   - provisa/api/_meta_seed.py
@@ -46817,6 +46834,9 @@
   - tests/unit/test_metadata_export_glossary_datahub.py
   - tests/unit/test_metadata_export_glossary_openmetadata.py
   - tests/unit/test_metadata_export_glossary_collibra.py
+  - tests/unit/test_metadata_export_purview.py
+  - tests/unit/test_metadata_export_dataplex.py
+  - tests/unit/test_metadata_export_datazone.py
   - tests/unit/test_column_dependents.py
   - tests/integration/test_glossary_lifecycle.py
   - tests/steps/steps_business_glossary_ontology.py
