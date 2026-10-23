@@ -355,6 +355,12 @@ export function glossaryGraph(
       stored: true,
       layers: dataset ? ["data"] : [],
     });
+  // A product is in its domain, as on the data product graph: drawn beside the domain's terms
+  // even when none of its tables' columns is drawn.
+  const product = (id: string, name: string, domain: string) => {
+    node({ id: `p:${id}`, type: "product", label: name, domains: [domain] });
+    if (nodes.has(`d:${domain}`)) edge(`p:${id}`, `d:${domain}`, "in_domain");
+  };
   const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
     for (const r of rows ?? [])
       if (r.target_table_id !== null)
@@ -421,14 +427,14 @@ export function glossaryGraph(
       // A product read for its column's look alone (Data off) has neither name nor domain and is
       // no node; under Data both are read.
       if (p?.name !== undefined && p.domain_id !== undefined) {
-        node({ id: `p:${p.id}`, type: "product", label: p.name, domains: [p.domain_id] });
+        product(p.id, p.name, p.domain_id);
         edge(`p:${p.id}`, tid, "member");
       }
       relationships(r.table_id, r.table?.source_relationships);
     }
   }
   for (const p of products) {
-    node({ id: `p:${p.id}`, type: "product", label: p.name, domains: [p.domain_id] });
+    product(p.id, p.name, p.domain_id);
     for (const m of p.member_tables ?? []) {
       const tid = `t:${m.id}`;
       table(m.id, m.domain_id, m.table_name, true);

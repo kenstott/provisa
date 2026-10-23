@@ -126,9 +126,10 @@ export class GraphScene extends BaseScene<GraphHover> {
   private selected: string | null = null;
   private hover: GraphHover | null = null;
   private halo: THREE.Mesh | null = null;
-  private extent = 8;
   private extentX = 8;
   private extentY = 8;
+  /** The farthest node from the centre. */
+  private reach = 8;
   private frontal = false;
 
   constructor(
@@ -186,13 +187,14 @@ export class GraphScene extends BaseScene<GraphHover> {
       this.flyTo(new THREE.Vector3(0, 0, fit / half), new THREE.Vector3(0, 0, 0), instant);
       return;
     }
-    const base = this.extent * 2.6 + 6;
-    const dist = this.aspect < 1.1 ? (base * 1.25) / Math.max(this.aspect, 0.5) : base;
-    this.flyTo(
-      new THREE.Vector3(dist * 0.35, dist * 0.4, dist * 0.85),
-      new THREE.Vector3(0, 0, 0),
-      instant,
-    );
+    // Back far enough that a sphere round the whole layout, and a margin, fits the narrower of the
+    // field of view's two angles: a fixed multiple of the extent fits a small graph and cuts off
+    // the edges of a large one.
+    const half = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const across = Math.atan(Math.tan(half) * Math.max(this.aspect, 0.5));
+    const dist = (this.reach + 2) / Math.sin(Math.min(half, across));
+    const from = new THREE.Vector3(0.35, 0.4, 0.85).normalize().multiplyScalar(dist);
+    this.flyTo(from, new THREE.Vector3(0, 0, 0), instant);
   }
 
   focus(id: string) {
@@ -404,6 +406,7 @@ export class GraphScene extends BaseScene<GraphHover> {
     let extent = 1;
     let extentX = 1;
     let extentY = 1;
+    let reach = 1;
     for (const node of this.graph.nodes) {
       const xyz = this.at.get(node.id);
       if (!xyz) continue;
@@ -413,6 +416,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y), Math.abs(p.z));
       extentX = Math.max(extentX, Math.abs(p.x));
       extentY = Math.max(extentY, Math.abs(p.y));
+      reach = Math.max(reach, p.length());
       const r = SIZE[node.type];
       const mesh = new THREE.Mesh(geometry(nodeLook(node).shape, r), this.nodeMaterial(node));
       mesh.position.copy(p);
@@ -427,9 +431,9 @@ export class GraphScene extends BaseScene<GraphHover> {
       );
       this.nodes.push({ node, mesh, radius: r, label });
     }
-    this.extent = extent;
     this.extentX = extentX;
     this.extentY = extentY;
+    this.reach = reach;
     const nodeOf = new Map(this.nodes.map((n) => [n.node.id, n]));
     const HEAD = 0.4; // an arrowhead's length
     for (const e of this.graph.edges) {
