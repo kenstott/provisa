@@ -121,22 +121,28 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await kg.scrollIntoViewIfNeeded();
     // data-ready: three.js has loaded and the scene is drawn.
     await shows(page.locator('[data-testid="kg-panel-stage"][data-ready]'), refused, 60_000);
-    // The panel's legend names what it draws: the product, its tables, its command.
+    // The panel is the product graph in place, the Ontology View's controls with it: its legend
+    // names what it draws, the product's checks among them.
     const legend = page.getByTestId("kg-panel-stage").locator(".p3d-legend");
     await expect(legend).toContainText("data product");
     await expect(legend).toContainText("member table");
     await expect(legend).toContainText("command");
-    await expect(legend).not.toContainText("data quality check");
+    await expect(legend).toContainText("data quality check");
+    await expect(page.getByTestId("kg-panel-layers-menu")).toBeVisible();
+    await expect(page.getByTestId("kg-panel-open-as-query")).toBeVisible();
 
     await page.getByTestId("kg-panel-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
     // Focused on the product, on the Knowledge graph preset, with the layers it has data for.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
-    await expect(page.getByRole("radio", { name: "Knowledge graph" })).toBeChecked();
-    // The test id is on each chip's input, which Mantine hides behind its label: the layer is
-    // offered and on.
+    const expanded = page.getByTestId("graph3d");
+    await expect(expanded.getByRole("radio", { name: "Knowledge graph" })).toBeChecked();
+    // The layers it has data for are offered in its Layers menu, and on.
+    await page.getByTestId("graph3d-layers-menu").click();
     for (const layer of ["products", "tables", "commands", "quality"]) {
-      await expect(page.getByTestId(`graph3d-layer-${layer}`)).toBeChecked();
+      await expect(page.getByTestId(`graph3d-layers-menu-option-${layer}`)).toHaveAttribute(
+        "data-combobox-active",
+      );
     }
   });
 
