@@ -81,7 +81,12 @@ async def test_a_row_level_table_is_not_filled_as_an_api_cache_table(monkeypatch
     state = _state(
         [
             {"table_name": "bench_order_node", "source_id": "neo", "row_materialize": True},
-            {"table_name": "bench_placed_edge", "source_id": "neo", "row_materialize": False},
+            {
+                "table_name": "bench_placed_edge",
+                "source_id": "neo",
+                "row_materialize": False,
+                "cache_ttl": 300,
+            },
         ]
     )
     compiled = SimpleNamespace(sources={"neo"}, api_args={})

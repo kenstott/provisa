@@ -158,7 +158,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
     ):
         with collecting() as found:
             first = await router_integration.handle_api_query(
-                endpoint, {}, engine, source=source, loc=loc
+                endpoint, {}, engine, source=source, ttl=300, loc=loc
             )
         assert first.cut is not None and first.from_cache is False
         assert [w.code for w in found] == ["api.answer_cut"]
@@ -166,7 +166,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
         assert first.cache_table != cache_table_name("api", "pets", {})
         with collecting():
             second = await router_integration.handle_api_query(
-                endpoint, {}, engine, source=source, loc=loc
+                endpoint, {}, engine, source=source, ttl=300, loc=loc
             )
     assert second.from_cache is False and route.call_count == 2  # called again, not a hit
     # The handler fetched and wrote nothing: the statement that asked stores the rows, once.
