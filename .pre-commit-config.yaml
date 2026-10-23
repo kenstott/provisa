@@ -36,7 +36,7 @@ repos:
         name: eslint-ui
         language: system
         entry: provisa-ui/scripts/precommit-eslint.sh
-        files: ^provisa-ui/src/.*\.(ts|tsx)$
+        files: ^provisa-ui/(src|e2e)/.*\.(ts|tsx)$
       - id: revert-names-commit
         name: a revert names the commit it undoes
         language: system
