@@ -8,26 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What a read of a code table asks beyond its function's arguments, applied to the function's
-output (REQ-2100).
+"""The values a read of a code table gives the parameters its function pushes a predicate to
+(REQ-2100).
 
 A read of one code table is a statement over it. Its parameters go to the function as arguments;
-everything else -- column filters, sorts, limits, projections, aggregates -- is applied here, by an
-embedded DuckDB, to the rows the function returned, so a statement on any column never fails for
-the code and its author implements none of it. Every column is named as the code declares it.
+its rows are landed and the engine runs the whole statement over them (codesource.proxy), so a
+statement on any column never fails for the code and its author implements none of it.
 
 :func:`pushed` reads the values a statement gives the parameters a predicate is pushed to (the
 function's pushdown mapping, provisa/codesource/pushdown.py): only top-level AND conjuncts of the
 WHERE of the SELECT reading the table, each a comparison of a column with a literal. The pushed
-predicate stays in the statement and is applied again here, so a function that ignores or loosens
-a value cannot return wrong rows.
-
-:func:`answer` runs the statement over the rows. The rows hold the function's output columns, and
-one column per parameter, ``_nf_{name}``, holding the value the read gave it (null when none), so
-a statement's own conditions on its parameters hold of every row.
-
-This module is carried, as it is, by the front end of every built image and used by Provisa for a
-dev-mode source; it imports nothing of Provisa's: the standard library, sqlglot, DuckDB and Arrow.
+predicate stays in the statement and the engine applies it again, so a function that ignores or
+loosens a value cannot return wrong rows.
 """
 
 # Requirements: REQ-2100
@@ -38,14 +30,8 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
-import duckdb
-import pyarrow as pa
 import sqlglot
 from sqlglot import exp
-
-#: The relation the statement's table is read as.
-ROWS = "__provisa_code_rows"
-IR_KEY = b"provisa.ir"
 
 _COMPARISONS: dict[type, str] = {
     exp.EQ: "eq",
@@ -157,69 +143,3 @@ def pushed(
             if parameter is not None and parameter not in out:
                 out[parameter] = value
     return out
-
-
-def nf_given(sql: str, dialect: str, table: str) -> dict[str, Any]:
-    """The values a statement's top-level ``_nf_{name} = literal`` conjuncts on ``table`` give
-    its parameters, by name: what an engine that attached the host hands it."""
-    tree = sqlglot.parse_one(sql, read=dialect)
-    given: dict[str, Any] = {}
-    for read in _reading(tree, table):
-        select = read.parent_select
-        where = select.args.get("where") if select is not None else None
-        for conjunct in conjuncts(where.this if where is not None else None):
-            if not isinstance(conjunct, exp.EQ):
-                continue
-            for column, value in ((conjunct.left, conjunct.right), (conjunct.right, conjunct.left)):
-                if isinstance(column, exp.Column) and column.name.startswith("_nf_"):
-                    try:
-                        given.setdefault(column.name[len("_nf_") :], _value(value))
-                    except _NotLiteral:
-                        pass
-    return given
-
-
-def _typed(rows: pa.Table) -> pa.Table:
-    """The function's rows with each numeric field (exact digits on the wire) as a decimal wide
-    enough for every value it holds."""
-    columns, fields = [], []
-    for field, column in zip(rows.schema, rows.columns, strict=True):
-        if (field.metadata or {}).get(IR_KEY) != b"numeric":
-            columns.append(column)
-            fields.append(field)
-            continue
-        values = [None if v is None else Decimal(v) for v in column.to_pylist()]
-        digits = [d for d in values if d is not None]
-        scale = max((max(-int(d.as_tuple().exponent), 0) for d in digits), default=0)
-        whole = max((d.adjusted() + 1 for d in digits if d != 0), default=1)
-        kind = pa.decimal128(max(whole, 1) + scale, scale)
-        columns.append(pa.array(values, type=kind))
-        fields.append(pa.field(field.name, kind))
-    return pa.Table.from_arrays(columns, schema=pa.schema(fields))
-
-
-def with_arguments(rows: pa.Table, arguments: pa.Table) -> pa.Table:
-    """``rows`` with a column per parameter, ``_nf_{name}``: the one-row ``arguments``' value for
-    it (null when the read gave none) on every row."""
-    for field, column in zip(arguments.schema, arguments.columns, strict=True):
-        rows = rows.append_column(
-            pa.field(f"_nf_{field.name}", field.type, metadata=field.metadata),
-            pa.repeat(column[0], rows.num_rows).cast(field.type),
-        )
-    return rows
-
-
-def answer(sql: str, dialect: str, table: str, rows: pa.Table) -> pa.Table:
-    """``sql`` over ``rows``, the function's output as the statement's ``table``: every reference
-    to the table reads them, under the name the statement gives it."""
-    tree = sqlglot.parse_one(sql, read=dialect)
-    for read in _reading(tree, table):
-        alias = read.alias_or_name
-        read.replace(exp.alias_(exp.to_table(ROWS), alias, table=True))
-    for column in tree.find_all(exp.Column):
-        # A column the statement qualifies by its table's schema or catalog is the table's.
-        column.set("db", None)
-        column.set("catalog", None)
-    with duckdb.connect() as con:
-        con.register(ROWS, _typed(rows))
-        return con.execute(tree.sql(dialect="duckdb")).to_arrow_table()

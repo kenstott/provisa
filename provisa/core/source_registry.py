@@ -74,9 +74,6 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "google_workspace": "postgres",
     "microsoft_365": "postgres",
     "exasol": "exasol",
-    # REQ-2100: a code table's rows are read in DuckDB when its host answers the engine.
-    "node": "duckdb",
-    "python": "duckdb",
 }
 
 # Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)

@@ -10,8 +10,7 @@
 
 """A read of a code table (REQ-2100, REQ-863): the function is called with the read's arguments
 and the values its pushed predicates give, a pre-filter only; its rows are landed and the engine
-runs the whole statement over them, the pushed predicates again among it. The residual the code
-host applies for an engine that attaches it is the same statement over the same rows.
+runs the whole statement over them, the pushed predicates again among it.
 
 The worker is a real host process (the Python host, this interpreter, unsandboxed); the source's
 preparation is stood in with the code's manifest, read by the real reader."""
@@ -90,61 +89,6 @@ def test_nothing_under_or_or_not_or_on_an_expression_is_pushed(where):
     assert _pushed(where) == {}
 
 
-# -- the residual ----------------------------------------------------------------------------------
-
-
-def _rows() -> pa.Table:
-    return pa.table(
-        {
-            "id": pa.array([1, 2, 3], pa.int64()),
-            "region": ["EU", "US", "EU"],
-            "amount": pa.array(["10.50", "3.25", "7"], pa.utf8()),
-        }
-    ).cast(
-        pa.schema(
-            [
-                pa.field("id", pa.int64()),
-                pa.field("region", pa.utf8()),
-                pa.field("amount", pa.utf8(), metadata={b"provisa.ir": b"numeric"}),
-            ]
-        )
-    )
-
-
-def test_the_statement_is_applied_to_the_rows_with_exact_numerics():
-    answer = residual.answer(
-        'SELECT t.id, t.amount FROM "s"."scores" AS t WHERE t.amount > 5 ORDER BY t.amount DESC '
-        "LIMIT 1",
-        "duckdb",
-        "scores",
-        _rows(),
-    )
-    assert answer.to_pylist() == [{"id": 1, "amount": Decimal("10.50")}]
-
-
-def test_an_aggregate_and_a_schema_qualified_column_are_the_rows():
-    answer = residual.answer(
-        "SELECT s.scores.region, count(*) AS n FROM s.scores GROUP BY s.scores.region "
-        "ORDER BY region",
-        "duckdb",
-        "scores",
-        _rows(),
-    )
-    assert answer.to_pylist() == [{"region": "EU", "n": 2}, {"region": "US", "n": 1}]
-
-
-def test_a_parameters_column_holds_its_value_on_every_row():
-    arguments = pa.table({"as_of": pa.array(["2026"]), "x": pa.array([None], pa.utf8())})
-    rows = residual.with_arguments(_rows(), arguments)
-    answer = residual.answer(
-        "SELECT id FROM scores WHERE _nf_as_of = '2026' AND _nf_x IS NULL ORDER BY id",
-        "duckdb",
-        "scores",
-        rows,
-    )
-    assert answer.column("id").to_pylist() == [1, 2, 3]
-
-
 # -- a direct read ---------------------------------------------------------------------------------
 
 CODE = """
@@ -166,7 +110,7 @@ def scores(
 ) -> list[Score]:
     \"\"\"@table\"\"\"
     asked = f"region={region};gte_score={gte_score};as_of={as_of}"
-    # The values pushed are ignored: the residual still filters.
+    # The values pushed are ignored: the engine still filters.
     return [
         Score(1, "EU", 0.9, Decimal("10.50"), asked),
         Score(2, "US", 0.4, Decimal("3.25"), asked),

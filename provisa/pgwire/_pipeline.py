@@ -1266,14 +1266,6 @@ async def vector_registry(state: Any) -> Any:  # REQ-419, REQ-423
     )
 
 
-def _attached_parameters(state: Any, table_ids: Any) -> set[str]:  # REQ-2100
-    """The parameters of the code tables the engine attaches (codesource.attach): their
-    conditions stay in the statement, which the engine hands to the host."""
-    from provisa.codesource.attach import parameters
-
-    return parameters(state, table_ids)
-
-
 def context_parameters(ctx: Any) -> set[str]:  # REQ-1986
     """The parameter columns of ``ctx``, every table's (``native_filter_columns``)."""
     return {name for columns in ctx.native_filter_columns.values() for name in columns}
@@ -2175,7 +2167,7 @@ async def route_governed(
     # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys() - _attached_parameters(state, _table_ids)
+    _parameters = context_parameters(ctx) - _frozen.keys()
     _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _physical_sql, embedded_params or [], _parameters, _frozen
@@ -4961,7 +4953,7 @@ async def _route_compiled(
         )
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys() - _attached_parameters(state, _table_ids)
+    _parameters = context_parameters(ctx) - _frozen.keys()
     _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _exec_sql, exec_params or [], _parameters, _frozen
