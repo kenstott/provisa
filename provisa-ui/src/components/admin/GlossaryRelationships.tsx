@@ -277,7 +277,7 @@ export function GlossaryRelationships({
             {t("glossaryTab.addEdge")}
           </Button>
           <ActionIcon
-            variant="default"
+            variant="subtle"
             aria-label={t("glossaryTab.flipEdgeLabel")}
             onClick={() => setEdgeFlipped((flipped) => !flipped)}
             data-testid="glossary-edge-flip-btn"
