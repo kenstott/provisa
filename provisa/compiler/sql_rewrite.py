@@ -29,6 +29,7 @@ import sqlglot.expressions as exp
 from provisa.compiler.native_nested import mark_native_nested_reads
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.core.ir_types import EPOCH_UNITS
+from provisa.core.parse_once import parse_once
 
 
 def split_sql_statements(sql: str) -> list[str]:
@@ -235,7 +236,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
                     )
 
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
-    tree = sqlglot.parse_one(sql, read="postgres")
+    tree = parse_once(sql, "postgres")
     quoted_aliases: set[str] = set()
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
@@ -895,7 +896,7 @@ def propagate_literal_join_predicates(  # REQ-1880
     if not eligible_targets:
         return sql
     column_types = column_types or {}
-    tree = sqlglot.parse_one(sql, read=dialect)
+    tree = parse_once(sql, dialect)
     changed = False
     for select in tree.find_all(exp.Select):
         where = select.args.get("where")

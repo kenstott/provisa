@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from provisa.compiler.sql_literals import sql_literal
+from provisa.core.parse_once import parse_once
 
 
 class HotRows(Protocol):
@@ -86,7 +87,7 @@ def build_values_ctes_sql(
     if not rewritten:
         return sql
     try:
-        tree = sqlglot.parse_one(sql, dialect="postgres")
+        tree = parse_once(sql, "postgres")
     except Exception as exc:
         # A regex fallback can rewrite the wrong occurrence — fail loud on parse error.
         raise ValueError(
