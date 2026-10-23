@@ -633,8 +633,30 @@ def test_through_the_server(server):
     pass
 """
 
+_WAREHOUSE = """
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
+
+
+def test_published():
+    pass
+"""
+
+_DEMO_WALK = """
+import pytest
+
+pytestmark = [pytest.mark.demo_walk, pytest.mark.integration, pytest.mark.local_platform]
+
+
+def test_a_visitor_walks_the_demo():
+    pass
+"""
+
 _MIXED_FILE = "tests/integration/test_mixed.py"
 _PARAM_FILE = "tests/integration/test_parametrized.py"
+_WAREHOUSE_FILE = "tests/integration/test_warehouse_only.py"
+_DEMO_WALK_FILE = "tests/integration/test_sandbox_visitor_walk.py"
 
 
 @pytest.fixture()
@@ -646,6 +668,8 @@ def runner(tmp_path, monkeypatch):
     (tmp_path / "tests" / "integration").mkdir(parents=True)
     (tmp_path / _MIXED_FILE).write_text(_MIXED)
     (tmp_path / _PARAM_FILE).write_text(_PARAMETRIZED)
+    (tmp_path / _WAREHOUSE_FILE).write_text(_WAREHOUSE)
+    (tmp_path / _DEMO_WALK_FILE).write_text(_DEMO_WALK)
     return module
 
 
@@ -707,6 +731,63 @@ def test_a_test_only_a_live_lane_selects_is_refused_unless_the_dispatch_includes
     assert capsys.readouterr().out.strip() == "true"
     runner.main(["--has-targets", "salesforce"])
     assert capsys.readouterr().out.strip() == "false"
+
+
+def _ran(runner, monkeypatch) -> list[list[str]]:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(runner.subprocess, "call", lambda cmd, **k: calls.append(cmd) or 0)
+    return calls
+
+
+def test_a_warehouse_test_is_planned_when_the_dispatch_includes_the_warehouse(
+    runner, monkeypatch, capsys
+):
+    monkeypatch.setenv("PROVISA_LANE_TESTS", _WAREHOUSE_FILE)
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", "warehouse,,,")
+    assert runner.matrix("warehouse")["include"] == []
+    runner.main(["--has-targets", "warehouse"])
+    assert capsys.readouterr().out.strip() == "true"
+
+
+def test_a_warehouse_test_is_refused_by_name_when_the_dispatch_leaves_the_warehouse_out(
+    runner, monkeypatch, capsys
+):
+    monkeypatch.setenv("PROVISA_LANE_TESTS", _WAREHOUSE_FILE)
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",,,")
+    with pytest.raises(ValueError) as refused:
+        runner.matrix("warehouse")
+    assert (
+        f"{_WAREHOUSE_FILE}::test_published [integration, requires_warehouse] needs warehouse"
+        in str(refused.value)
+    )
+
+
+def test_a_live_lanes_own_job_runs_its_named_tests_without_the_dispatchs_include(
+    runner, monkeypatch
+):
+    # Run 39983405847 (lanes=warehouse, include_warehouse): the plan carried PROVISA_INCLUDE_LIVE
+    # and passed, but the warehouse job, which does not, refused every test it was handed.
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_WAREHOUSE_FILE} {_MIXED_FILE}::test_plain")
+    monkeypatch.delenv("PROVISA_INCLUDE_LIVE", raising=False)
+    calls = _ran(runner, monkeypatch)
+    assert runner.main(["warehouse"]) == 0
+    assert runner.main(["core"]) == 0
+    assert [c[3 : c.index("-m", 3)] for c in calls] == [
+        [_WAREHOUSE_FILE],
+        [f"{_MIXED_FILE}::test_plain"],
+    ]
+
+
+def test_a_demo_walk_test_is_refused_saying_which_workflow_runs_it(runner, monkeypatch):
+    # ci/gqlir (run 39983391673): the visitor walk needs a demo bundle that demo-bundles.yml
+    # builds, so no integration-suite dispatch can run it.
+    monkeypatch.setenv("PROVISA_LANE_TESTS", _DEMO_WALK_FILE)
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", "warehouse,salesforce,athena,servicenow")
+    with pytest.raises(ValueError, match=r"needs demo_walk \(run by demo-bundles\.yml"):
+        runner.matrix("all")
+    calls = _ran(runner, monkeypatch)
+    assert runner.main(["demo_walk"]) == 0  # demo-bundles.yml's own run of it
+    assert calls[0][3 : calls[0].index("-m", 3)] == [_DEMO_WALK_FILE]
 
 
 def test_a_test_the_module_does_not_hold_is_refused(runner, monkeypatch):
