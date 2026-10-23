@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
@@ -81,6 +82,18 @@ class State(Enum):
     DEFUNCT = auto()
 
 
+@dataclass
+class _OpenResult:
+    """A result of an explicit transaction that a later RUN of it set aside before all its records
+    were pulled: its client pulls the rest by its qid (Bolt 4+)."""
+
+    columns: list[str]
+    rows: list[list[Any]]
+    redirect: dict | None
+    offset: int
+    deadline: request_deadline.Deadline | None
+
+
 class BoltSession:
     def __init__(self, writer: BoltWriter, bolt_version: tuple[int, int]) -> None:
         self.writer = writer
@@ -115,6 +128,13 @@ class BoltSession:
         # ended with the last PULL/DISCARD, a RESET or a failure.
         self._deadline: request_deadline.Deadline | None = None
         self._pull_offset: int = 0
+        # An explicit transaction's results, each named by the qid its RUN's SUCCESS gave: the one
+        # buffered above while open (_qid), and those a later RUN set aside unpulled (_set_aside).
+        # A driver holds several and pulls each by its qid; qids count from 0 at each BEGIN.
+        self._qid: int | None = None
+        self._last_qid: int | None = None  # the transaction's last RUN's: what qid -1 names
+        self._next_qid: int = 0
+        self._set_aside: dict[int, _OpenResult] = {}
 
     # ── Response helpers ───────────────────────────────────────────────────────
 
@@ -148,12 +168,68 @@ class BoltSession:
     def send_failure(self, code: str, message: str) -> None:
         self._send(pack_message(msg.FAILURE, {"code": code, "message": message}))
         self.state = State.FAILED
-        self._end_request()
+        self._end_all_requests()
 
     def _end_request(self) -> None:
         deadline, self._deadline = self._deadline, None
         if deadline is not None:
             deadline.stop()
+        self._qid = None
+
+    def _end_all_requests(self) -> None:
+        """The buffered result's request and every one set aside in the transaction end."""
+        self._end_request()
+        self._last_qid = None
+        set_aside, self._set_aside = self._set_aside, {}
+        for result in set_aside.values():
+            if result.deadline is not None:
+                result.deadline.stop()
+
+    def _set_current_aside(self) -> None:
+        """The open result of the transaction stays pullable by its qid while another is current."""
+        assert self._qid is not None
+        self._set_aside[self._qid] = _OpenResult(
+            self._result_columns,
+            self._result_rows,
+            self._result_redirect,
+            self._pull_offset,
+            self._deadline,
+        )
+        self._deadline = None
+        self._qid = None
+
+    def _select_result(self, meta: dict) -> bool:
+        """Make the result a PULL or DISCARD names by its qid the buffered one. -1, or none, is
+        the last RUN's. A qid naming no open result of the transaction is refused."""
+        qid = meta.get("qid", -1)
+        if qid == -1:
+            if self._last_qid is None:  # an auto-commit RUN's: the one buffered
+                return True
+            qid = self._last_qid
+        if qid == self._qid:
+            return True
+        if qid not in self._set_aside:
+            self.send_failure("Neo.ClientError.Request.Invalid", f"No open result has qid {qid}")
+            return False
+        if self._qid is not None:
+            self._set_current_aside()
+        result = self._set_aside.pop(qid)
+        self._result_columns = result.columns
+        self._result_rows = result.rows
+        self._result_redirect = result.redirect
+        self._pull_offset = result.offset
+        self._deadline = result.deadline
+        self._qid = qid
+        return True
+
+    def _result_done(self) -> None:
+        """The buffered result has sent its last record: its request ends, and the transaction
+        streams on while a result set aside is still open."""
+        self._end_request()
+        if self.state == State.TX_STREAMING:
+            self.state = State.TX_STREAMING if self._set_aside else State.TX_READY
+        else:
+            self.state = State.READY
 
     def _fail_timed_out(self, deadline: request_deadline.Deadline) -> None:
         """REQ-1905: the request outran Bolt's request timeout — a FAILURE naming the transport
@@ -488,10 +564,10 @@ class BoltSession:
     def close(self) -> None:
         """The connection has ended (GOODBYE, the client gone, or the session defunct): a request
         whose records were never pulled ends with it — its deadline stops (REQ-1905)."""
-        self._end_request()
+        self._end_all_requests()
 
     def handle_reset(self) -> None:
-        self._end_request()
+        self._end_all_requests()
         self._result_columns = []
         self._result_rows = []
         self._result_redirect = None
@@ -506,6 +582,8 @@ class BoltSession:
             return
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
         self._tx_db = meta.get("db")
+        self._next_qid = 0
+        self._last_qid = None
         self.state = State.TX_READY
         self.send_success({})
 
@@ -514,6 +592,7 @@ class BoltSession:
             self.send_ignored()
             return
         self._tx_db = None
+        self._end_all_requests()
         self.state = State.READY
         self.send_success({})
 
@@ -522,6 +601,7 @@ class BoltSession:
             self.send_ignored()
             return
         self._tx_db = None
+        self._end_all_requests()
         self.state = State.READY
         self.send_success({})
 
@@ -701,7 +781,11 @@ class BoltSession:
         # Bolt executes on the event loop (no thread hop), so a plain scope binds it. A connection
         # that named no principal (an unsecured deployment) is audited as the anonymous one.
         _audit_scope = audit_identity_scope(self.user_id or ANONYMOUS_USER, "bolt")
-        self._end_request()  # a RUN over a result that was never drained ends that request
+        if self._qid is not None:
+            # Another RUN of the transaction: its open result stays pullable by its qid.
+            self._set_current_aside()
+        else:
+            self._end_request()  # a RUN over a result that was never drained ends that request
         shield = request_deadline.shielded()
         deadline = request_deadline.open_request("bolt")
         from provisa.core.statement_warnings import collecting
@@ -772,6 +856,12 @@ class BoltSession:
         in_tx = self.state in (State.TX_READY, State.TX_STREAMING)
         self.state = State.TX_STREAMING if in_tx else State.STREAMING
         meta: dict = {"fields": columns, "t_first": 0}
+        if in_tx:
+            self._qid, self._next_qid = self._next_qid, self._next_qid + 1
+            self._last_qid = self._qid
+            meta["qid"] = self._qid
+        else:
+            self._last_qid = None
         notifications = [
             {
                 "code": f"Provisa.{w.code}",
@@ -823,6 +913,8 @@ class BoltSession:
             return
 
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
+        if not self._select_result(meta):
+            return
         n = meta.get("n", -1)
 
         _dbg = logging.getLogger("uvicorn.error")
@@ -869,10 +961,8 @@ class BoltSession:
             return
 
         has_more = self._pull_offset < len(self._result_rows)
-        in_tx = self.state == State.TX_STREAMING
         if not has_more:
-            self.state = State.TX_READY if in_tx else State.READY
-            self._end_request()
+            self._result_done()
         summary: dict = {"has_more": has_more, "t_last": 0, "type": "r"}
         if not has_more and self._result_redirect is not None:
             summary["redirect"] = self._result_redirect  # REQ-1194/REQ-1195
@@ -883,16 +973,16 @@ class BoltSession:
             self.send_ignored()
             return
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
+        if not self._select_result(meta):
+            return
         n = meta.get("n", -1)
         if n == -1:
             self._pull_offset = len(self._result_rows)
         else:
             self._pull_offset = min(self._pull_offset + n, len(self._result_rows))
-        in_tx = self.state == State.TX_STREAMING
         has_more = self._pull_offset < len(self._result_rows)
         if not has_more:
-            self.state = State.TX_READY if in_tx else State.READY
-            self._end_request()
+            self._result_done()
         self.send_success({"has_more": has_more})
 
     def handle_route(self) -> None:
@@ -1478,7 +1568,11 @@ async def _execute_cypher(
         to_serializable,
     )
     from provisa.cypher.params import CypherParamError, bind_params, collect_param_names
-    from provisa.cypher.parser import CypherParseError, parse_cypher
+    from provisa.cypher.parser import (
+        CypherParseError,
+        parse_cypher,
+        refuse_multiple_statements,
+    )
     from provisa.gql.translator import (
         CypherCrossSourceError,
         CypherTranslateError,
@@ -1491,6 +1585,13 @@ async def _execute_cypher(
     ctx = app_state.contexts.get(role_id)
     if ctx is None:
         raise PermissionError("Schema not loaded")
+
+    # One statement per RUN, as Neo4j takes it: "stmt1; stmt2" is refused whole, never run in
+    # part. Before every branch below, so a catalog query or a command call is held to it too.
+    try:
+        refuse_multiple_statements(cypher)
+    except CypherParseError as exc:
+        raise ValueError(str(exc)) from exc
 
     result = _system_query(cypher, ctx, role_id, include_ops, app_state, roles, orgs)
     if result is not None:

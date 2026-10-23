@@ -224,10 +224,18 @@ def parse_cypher_write(query: str) -> WriteAST:
     Raises CypherWriteParseError for unrecognised syntax.
     """
     query = query.strip()
+    from provisa.cypher.parser import (
+        CypherParseError,
+        refuse_cypher_definition,
+        refuse_multiple_statements,
+    )
+
+    try:
+        refuse_multiple_statements(query)
+    except CypherParseError as exc:
+        raise CypherWriteParseError(str(exc)) from exc
     # An index or a constraint is a definition, not a write of rows: refused as one, in the
     # pipeline's own words, before any write pattern is tried.
-    from provisa.cypher.parser import refuse_cypher_definition
-
     refuse_cypher_definition(query)
 
     # REQ-665: relationships are derived from foreign-key joins, not stored edges,
