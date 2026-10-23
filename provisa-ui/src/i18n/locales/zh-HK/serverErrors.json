@@ -259,7 +259,7 @@
       "table_not_found": "找不到資料表 {{table_id}}"
     },
     "replication": {
-      "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：{{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
+      "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
       "no_whole_copy": "來源 {{source}} 的資料表 {{schema}}.{{table}} 沒有可建置的完整複本：它按列複製，或者帶有參數欄。",
       "page_limit_reached": "未建置 {{table}} 的複本：其端點的分頁在 max_pages={{max_pages}} 處停止，而端點在第 {{max_pages}} 頁之後仍有資料（已讀取 {{rows}} 列）。複本是整張資料表，因此不會在上限處截斷。請提高端點的 max_pages 或頁面大小。",
       "row_limit_reached": "未建置 {{table}} 的複本：其讀取在 max_rows={{max_rows}}（graphql_remote.max_rows）處停止，而遠端在 {{rows}} 列之後仍有資料。複本是整張資料表，因此不會在上限處截斷。請提高 graphql_remote.max_rows。",

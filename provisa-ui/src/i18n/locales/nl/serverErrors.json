@@ -259,7 +259,7 @@
       "table_not_found": "Tabel {{table_id}} niet gevonden"
     },
     "replication": {
-      "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
+      "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
       "no_whole_copy": "Tabel {{schema}}.{{table}} van bron {{source}} heeft geen volledige kopie om te bouwen: ze wordt rij voor rij gerepliceerd of heeft een parameterkolom.",
       "page_limit_reached": "De replica van {{table}} is niet gebouwd: de paginering van het endpoint stopt bij max_pages={{max_pages}}, en het endpoint had meer gegevens na pagina {{max_pages}} ({{rows}} rijen gelezen). Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog max_pages of de paginagrootte van het endpoint.",
       "row_limit_reached": "De replica van {{table}} is niet gebouwd: een leesactie stopt bij max_rows={{max_rows}} (graphql_remote.max_rows), en de remote had meer gegevens na {{rows}} rijen. Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog graphql_remote.max_rows.",

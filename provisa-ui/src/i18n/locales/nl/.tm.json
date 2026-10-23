@@ -4540,7 +4540,7 @@
   "nl/serverErrors.json::serverErrors.profile.query_engine_unavailable": "Query engine unavailable",
   "nl/serverErrors.json::serverErrors.profile.role_header_required": "X-Provisa-Role header required to profile a view",
   "nl/serverErrors.json::serverErrors.profile.table_not_found": "Table {{table_id}} not found",
-  "nl/serverErrors.json::serverErrors.replication.answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
+  "nl/serverErrors.json::serverErrors.replication.answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
   "nl/serverErrors.json::serverErrors.replication.no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",
   "nl/serverErrors.json::serverErrors.replication.page_limit_reached": "The replica of {{table}} was not built: its endpoint's paging stops at max_pages={{max_pages}}, and the endpoint had more after page {{max_pages}} ({{rows}} rows read). A replica is the whole table, so it is not cut at the cap. Raise the endpoint's max_pages or its page size.",
   "nl/serverErrors.json::serverErrors.replication.row_limit_reached": "The replica of {{table}} was not built: a read of it stops at max_rows={{max_rows}} (graphql_remote.max_rows), and the remote had more after {{rows}} rows. A replica is the whole table, so it is not cut at the bound. Raise graphql_remote.max_rows.",

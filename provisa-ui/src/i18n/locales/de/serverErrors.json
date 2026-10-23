@@ -259,7 +259,7 @@
       "table_not_found": "Tabelle {{table_id}} nicht gefunden"
     },
     "replication": {
-      "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
+      "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: [{{content_type}}] {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
       "no_whole_copy": "Für die Tabelle {{schema}}.{{table}} der Quelle {{source}} gibt es keine vollständige Kopie zu bauen: Sie wird zeilenweise repliziert oder hat eine Parameterspalte.",
       "page_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Die Paginierung des Endpunkts endet bei max_pages={{max_pages}}, und der Endpunkt hatte nach Seite {{max_pages}} noch weitere Daten ({{rows}} Zeilen gelesen). Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts.",
       "row_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Ein Lesevorgang endet bei max_rows={{max_rows}} (graphql_remote.max_rows), und die Gegenstelle hatte nach {{rows}} Zeilen noch weitere Daten. Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie graphql_remote.max_rows.",
