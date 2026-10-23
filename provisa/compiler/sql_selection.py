@@ -61,9 +61,11 @@ def _lateral_join(
     use_catalog: bool,
     exposed_to_physical: dict | None = None,
     relationships: RelationshipConditions | None = None,
+    column_types: dict[int, list[tuple[str, str]]] | None = None,
 ) -> str:
     """``relationships`` are the target's: a where stating a relationship's condition is compiled
-    to EXISTS correlated with the target's rows, read here under the join's alias (REQ-2136)."""
+    to EXISTS correlated with the target's rows, read here under the join's alias (REQ-2136).
+    ``column_types`` types the where's comparison values (``sql_where._compile_where``)."""
     args = _field_args(field_node, variables)
     _tid = join_meta.target.table_id
     _e2p = exposed_to_physical or {}
@@ -96,6 +98,7 @@ def _lateral_join(
             _tid,
             exposed_to_physical,
             relationships if related else None,
+            column_types,
         )
         sql += f" AND ({where_sql})"
     if "distinct_on" in args:
@@ -436,6 +439,7 @@ def _collect_nested_columns(
                         RelationshipConditions(
                             ctx, nested_join_meta.target.type_name, use_catalog, sources
                         ),
+                        ctx.aggregate_columns,
                     )
                 )
             elif _use_agg and nested_sel.selection_set:

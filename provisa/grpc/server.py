@@ -873,9 +873,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
         await context.abort(grpc.StatusCode.UNIMPLEMENTED, f"Insert{type_name} not yet implemented")
 
     async def _handle_query(self, request, context, type_name: str, field_name: str):
-        """Lower a proto query request directly to the IR (a semantic SELECT), then run the shared
-        governance → routing → physical pipeline — the same path SQL and Cypher use. gRPC never
-        round-trips through GraphQL (query language → IR → governed IR → plan → physical).
+        """Lower a proto query request to GraphQL text and compile it as every GraphQL-shaped
+        surface does (``query_ir.grpc_table_to_graphql``), then run the compiled statement through
+        the shared governance → routing → physical pipeline. gRPC composes no SQL of its own.
 
         REQ-1266: resolve+bind the RPC's org (x-provisa-org) before routing; the body runs bound so
         every state.X read resolves the org's runtime. The reset is in finally around the stream."""
@@ -957,10 +957,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
             MaskTree,
             ParameterError,
             ReadMaskError,
-            grpc_table_to_semantic_sql,
+            grpc_table_to_graphql,
             resolve_read_mask,
             restrict_json,
         )
+        from provisa.api.generated_plan import compile_generated_graphql
         from provisa.pgwire._pipeline import (
             _execute_plan,
             _govern_and_route_compiled,
@@ -970,10 +971,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         state = self._state
 
-        if role_id not in state.contexts:
+        surface = role_surface(state, role_id)  # one snapshot: parts of one build
+        if surface is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No schema for role {role_id!r}")
             return
-        ctx = state.contexts[role_id]
+        ctx = surface.context
 
         msg_cls = getattr(self._pb2, type_name, None)
         if msg_cls is None:
@@ -981,8 +983,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         descriptor = msg_cls.DESCRIPTOR
 
-        # IR: lower the request straight to a semantic SELECT (shared with the HTTP gRPC proxy), then
-        # govern → route → physical exactly as the SQL/Cypher transports do.
+        # Lower the request to GraphQL (shared with the HTTP gRPC proxy), compile it as every
+        # GraphQL-shaped surface does, then govern → route → physical.
         filter_msg = request.filter if request.HasField("filter") else None
         # REQ-1986: a table with parameters has a params field; one without has none.
         has_params = "params" in request.DESCRIPTOR.fields_by_name
@@ -995,18 +997,22 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # name before anything is governed or run.
         try:
             read_mask = resolve_read_mask(ctx, type_name, list(request.read_mask.paths))
-            semantic = grpc_table_to_semantic_sql(
-                ctx, type_name, request.limit, filter_msg, read_mask, params_msg
+            lowered = grpc_table_to_graphql(
+                ctx, surface.schema, type_name, request.limit, filter_msg, read_mask, params_msg
             )
         except (ReadMaskError, FilterError, ParameterError) as exc:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
             return
-        if semantic is None:
+        if lowered is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return
-        # REQ-1877: the statement is the request's shape; the filter values and the row limit
-        # travel bound, so a request that differs only in its values reuses the kept governed plan.
-        semantic_sql, bound_params = semantic
+        # REQ-1877: one plan is kept per request shape; the filter values and the row limit are
+        # bound into it, so a request that differs only in its values reuses the kept plans.
+        # The text is built from fields already checked, so the schema accepts it.
+        gql_text, variables = lowered
+        (compiled,) = compile_generated_graphql(
+            state, role_id, surface.schema, ctx, gql_text, variables
+        )
 
         def _norm(s: str) -> str:
             return s.replace("_", "").lower()
@@ -1020,14 +1026,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # REQ-1897: serve_cached — an opted-in request whose entry exists comes back as a
             # Route.CACHE plan read BEFORE routing, which this handler serves below.
             plan = await _govern_and_route_compiled(
-                semantic_sql,
+                compiled.sql,
                 role_id,
-                exec_params=bound_params or None,
+                exec_params=compiled.params or None,
                 state=state,
                 deliver=delivery,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),
                 serve_cached=True,
-                sdl_joins=False,
+                sdl_joins=True,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
