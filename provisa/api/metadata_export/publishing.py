@@ -35,6 +35,7 @@ publish — so a reconcile for one org cannot read another's target, let alone p
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from datetime import datetime, timezone
@@ -198,6 +199,18 @@ async def _model_for_export() -> "ProvisaConfig":
     return config
 
 
+def _for_target(snapshot: "MetadataSnapshot", bindings: dict[str, tuple[str, str]]) -> Any:
+    """``snapshot`` as one target is sent it: a retired product goes only where an earlier
+    publish put it, to withdraw it there (REQ-1634 STATUS). Where it was never published there
+    is nothing to withdraw, and sending it would create it retired."""
+    kept = [
+        p for p in snapshot.data_products if p.status != "retired" or p.semantic_uri in bindings
+    ]
+    if len(kept) == len(snapshot.data_products):
+        return snapshot
+    return dataclasses.replace(snapshot, data_products=kept)
+
+
 def _snapshot_uris(snapshot: Any) -> set[str]:
     """Every Provisa URN the snapshot publishes — the bindings worth keeping (REQ-1389)."""
     uris = {source.semantic_uri for source in snapshot.sources}
@@ -285,7 +298,12 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
                 from provisa.federation.replica_routing import export_view_addresses
 
                 exporter.export_views = await export_view_addresses(state)
-            result = await exporter.publish(snapshot)
+            sent = _for_target(snapshot, exporter.stored_bindings)
+            result = await exporter.publish(sent)
+            if result.ok and not exporter.binds_products:
+                # REQ-1634 STATUS: what this target now holds, so a retirement reaches it later.
+                for product in sent.data_products:
+                    result.bindings.setdefault(product.semantic_uri, (product.id, product.name))
             if result.bindings:
                 async with model_db.acquire() as conn:
                     await catalog_binding.upsert_bindings(conn, target.id, result.bindings)

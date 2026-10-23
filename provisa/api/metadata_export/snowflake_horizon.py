@@ -542,6 +542,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     # REQ-1912: every object this adapter addresses is in the engine's own store, where a
     # replica-served table is published through its export view.
     needs_export_views = True
+    binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
 
     def _runtime_or_none(self) -> SnowflakeFederationRuntime | None:
         url = configured_engine_url()

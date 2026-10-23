@@ -477,6 +477,7 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
     class _Exporter:
         stored_bindings: dict = {}
         needs_export_views = False  # a remote catalog: it addresses nothing in the engine's store
+        binds_products = True  # Atlas binds its product entities itself
 
         async def publish(self, published_snapshot):
             seen["bindings"] = dict(self.stored_bindings)
@@ -546,3 +547,97 @@ async def test_datahub_unchanged_urn_proposes_no_deprecation(snapshot, monkeypat
     result = await export.publish(snapshot)
     assert result.ok
     assert not any(p["proposal"]["aspectName"] == "deprecation" for p in posts)
+
+
+@pytest.mark.asyncio
+async def test_a_retired_product_is_sent_only_where_it_was_published(
+    snapshot, control_plane, monkeypatch
+):
+    """REQ-1634 STATUS: a retired product is withdrawn from a target an earlier publish put it in,
+    and never created, retired, where it was not. For a provider that keeps no product bindings
+    (Horizon), the publish path records what it published."""
+    import dataclasses
+    import types
+    from contextlib import asynccontextmanager
+
+    from provisa.api.metadata_export import publishing
+    from provisa.api.metadata_export.model import DataProductAsset
+    from provisa.api.metadata_export.provider import PublishResult
+    from provisa.api.metadata_export.refs import data_product_ref
+    from provisa.core.repositories import catalog_binding
+
+    db = control_plane.org()
+
+    class _TenantDb:
+        @asynccontextmanager
+        async def acquire(self):
+            async with db.acquire() as conn:
+                yield conn
+
+    def product(pid: str, status: str) -> DataProductAsset:
+        return DataProductAsset(
+            ref=data_product_ref(pid),
+            id=pid,
+            name=pid.upper(),
+            domain_id="sales",
+            owner=None,
+            description="",
+            semantic_uri=f"provisa://acme/sales/products/{pid}",
+            status=status,
+        )
+
+    sent: list[list[tuple[str, str]]] = []
+
+    class _Horizon:
+        stored_bindings: dict = {}
+        needs_export_views = False
+        binds_products = False  # a listing is found by its name, never by a stored id
+
+        async def publish(self, published_snapshot):
+            sent.append([(p.id, p.status) for p in published_snapshot.data_products])
+            return PublishResult(provider_name="snowflake_horizon", published={})
+
+    current: dict = {}
+
+    async def _export_config(org_id):
+        return MetadataExportConfig(
+            enabled=True,
+            targets=[{"id": "horizon", "provider": "snowflake_horizon"}],
+        )
+
+    async def _model(*args, **kwargs):
+        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+
+    monkeypatch.setattr(publishing, "_export_config", _export_config)
+    monkeypatch.setattr(publishing, "_model_for_export", _model)
+    monkeypatch.setattr(publishing, "build_snapshot", lambda *a, **k: current["snapshot"])
+    exporter = _Horizon()
+    monkeypatch.setattr(publishing, "metadata_export", lambda config: exporter)
+    monkeypatch.setattr(
+        "provisa.api.app.state",
+        RoleState(
+            model_db=(_one_db := _TenantDb()),
+            tenant_db=_one_db,
+            contexts={},
+            multitenancy=False,
+            config=types.SimpleNamespace(
+                mail=types.SimpleNamespace(base_url="https://provisa.test")
+            ),
+        ),
+        raising=False,
+    )
+
+    async def publish(*products: DataProductAsset) -> None:
+        current["snapshot"] = dataclasses.replace(snapshot, data_products=list(products))
+        assert (await publishing.publish_snapshot("acme"))["horizon"].ok
+
+    # c360 is published live; old was retired before this target ever had it.
+    await publish(product("c360", "live"), product("old", "retired"))
+    assert sent[-1] == [("c360", "live")]
+    async with db.acquire() as conn:
+        bound = await catalog_binding.load_bindings(conn, "horizon")
+    assert bound["provisa://acme/sales/products/c360"] == ("c360", "C360")
+    assert "provisa://acme/sales/products/old" not in bound
+    # c360 retires: it was published here, so it is sent, retired, to be withdrawn.
+    await publish(product("c360", "retired"), product("old", "retired"))
+    assert sent[-1] == [("c360", "retired")]

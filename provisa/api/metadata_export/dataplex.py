@@ -154,6 +154,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
     provider_name = "dataplex"
     # REQ-1912: a replica-served member is published through its export view.
     needs_export_views = True
+    binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
 
     def _parent(self) -> str:
         return f"projects/{self._config.gcp_project}/locations/{self._config.gcp_location}"
