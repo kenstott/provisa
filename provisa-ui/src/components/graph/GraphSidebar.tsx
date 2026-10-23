@@ -175,9 +175,17 @@ export function Sidebar({
       return next;
     });
   };
-  const [nodeLabelsPage, setNodeLabelsPage] = useState(0);
-  const [relTypesPage, setRelTypesPage] = useState(0);
+  const [pickedNodeLabelsPage, setNodeLabelsPage] = useState(0);
+  const [pickedRelTypesPage, setRelTypesPage] = useState(0);
   const SCHEMA_PAGE_SIZE = 50;
+  // The page shown is the one picked, within the list as it now is: a list that shrinks (a domain
+  // deselected) past the page picked shows its last page, not an empty one with no pager.
+  const lastPage = (count: number) => Math.max(0, Math.ceil(count / SCHEMA_PAGE_SIZE) - 1);
+  const nodeLabelsPage = Math.min(pickedNodeLabelsPage, lastPage(schemaNodeLabels.length));
+  const relTypesPage = Math.min(
+    pickedRelTypesPage,
+    lastPage(new Set(schemaRels.map((r) => r.type)).size),
+  );
   const dragging = useRef(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -516,7 +524,7 @@ export function Sidebar({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setNodeLabelsPage((p) => p - 1)}
+                            onClick={() => setNodeLabelsPage(nodeLabelsPage - 1)}
                             disabled={nodeLabelsPage === 0}
                             aria-label={t("graphSidebar.previousPage")}
                             style={{
@@ -538,7 +546,7 @@ export function Sidebar({
                           </span>
                           <button
                             type="button"
-                            onClick={() => setNodeLabelsPage((p) => p + 1)}
+                            onClick={() => setNodeLabelsPage(nodeLabelsPage + 1)}
                             disabled={nodeLabelsPage >= totalPages - 1}
                             aria-label={t("graphSidebar.nextPage")}
                             style={{
@@ -672,7 +680,7 @@ export function Sidebar({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setRelTypesPage((p) => p - 1)}
+                            onClick={() => setRelTypesPage(relTypesPage - 1)}
                             disabled={relTypesPage === 0}
                             aria-label={t("graphSidebar.previousPage")}
                             style={{
@@ -694,7 +702,7 @@ export function Sidebar({
                           </span>
                           <button
                             type="button"
-                            onClick={() => setRelTypesPage((p) => p + 1)}
+                            onClick={() => setRelTypesPage(relTypesPage + 1)}
                             disabled={relTypesPage >= totalPages - 1}
                             aria-label={t("graphSidebar.nextPage")}
                             style={{
