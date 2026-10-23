@@ -58,7 +58,8 @@ test.describe("Open as query", () => {
     const viewed = await nextRead(
       page,
       (q) => q.startsWith("query Ontology") && q.includes("edgesOut"),
-      () => page.getByTestId("ontology-orphans").click(),
+      // A Chip's input is visually hidden: clicked as the ontology spec clicks its layer chips.
+      () => page.getByTestId("ontology-orphans").evaluate((el: HTMLElement) => el.click()),
     );
     expect(viewed.query).toContain('relType: { in: ["KIND_OF","PART_OF"] }');
 
