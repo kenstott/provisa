@@ -12,6 +12,8 @@
 
 const LAYOUT_RADIUS = 6;
 const ITERATIONS = 360;
+/** The centre's pull on a node of a graph the springs join in one part. */
+const GRAVITY = 0.05;
 
 /** A spring between two nodes; ``strength`` (0 to 1) pulls them closer. */
 export interface Spring {
@@ -42,6 +44,14 @@ export function forceLayout(
   const links = springs.map(
     (e) => [index.get(e.a) as number, index.get(e.b) as number, e.strength] as const,
   );
+  // Every other node pushes a part the springs do not join to the rest outward, whatever its size,
+  // and only the centre's pull holds it: a small one (a data product whose tables reach nothing
+  // drawn) would settle far off, and the scale that fits it would crush the rest to the middle. So
+  // each part is held to the centre as the whole graph would be, in proportion to its share.
+  const part = parts(n, links);
+  const sizes = new Map<number, number>();
+  for (const r of part) sizes.set(r, (sizes.get(r) ?? 0) + 1);
+  const hold = part.map((r) => (GRAVITY * n) / (sizes.get(r) as number));
   let temp = radius / 2;
   for (let it = 0; it < ITERATIONS; it++) {
     const d = p.map(() => [0, 0, 0]);
@@ -75,9 +85,9 @@ export function forceLayout(
     }
     for (let i = 0; i < n; i++) {
       // A pull toward the centre keeps unconnected columns from drifting off.
-      d[i][0] -= p[i][0] * 0.05;
-      d[i][1] -= p[i][1] * 0.05;
-      d[i][2] -= p[i][2] * 0.05;
+      d[i][0] -= p[i][0] * hold[i];
+      d[i][1] -= p[i][1] * hold[i];
+      d[i][2] -= p[i][2] * hold[i];
       const len = Math.max(0.0001, Math.hypot(d[i][0], d[i][1], d[i][2]));
       const step = Math.min(len, temp);
       p[i][0] += (d[i][0] / len) * step;
@@ -90,4 +100,12 @@ export function forceLayout(
   for (const q of p) maxR = Math.max(maxR, Math.hypot(q[0], q[1], q[2]));
   const scale = maxR > 0 ? radius / attraction / maxR : 1;
   return new Map(ids.map((id, i) => [id, [p[i][0] * scale, p[i][1] * scale, p[i][2] * scale]]));
+}
+
+/** Each node's connected part, named by one of its nodes. */
+function parts(n: number, links: readonly (readonly [number, number, number])[]): number[] {
+  const up = Array.from({ length: n }, (_, i) => i);
+  const root = (i: number): number => (up[i] === i ? i : (up[i] = root(up[i])));
+  for (const [i, j] of links) up[root(i)] = root(j);
+  return up.map((_, i) => root(i));
 }
