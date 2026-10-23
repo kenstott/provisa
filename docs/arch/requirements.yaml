@@ -46243,7 +46243,7 @@
   description: 'System tags are predefined and immutable: exactly three system tags with fixed semantics
     and scopes, never deletable or redefinable. `technical` (scope: column ONLY — prunes columns from
     a published table''s export; at table level the Data Product flag itself is the export control, and
-    a second inverted switch for the same outcome would be a contradictory state), `pii` (scope: column;
+    a second inverted switch for the same outcome would be a contradictory state), `pii` ([SUPERSEDED by REQ-2143, 2026-10-23 -- pii also goes on a Property term. Kept here for history; do not implement against it.] scope: column; [END SUPERSEDED BLOCK]
     exported as provisa_pii classification; future masking-policy hook), `deprecated` (scope: source,
     table/view, column, relationship; UI warning; exports to each catalog''s NATIVE deprecation construct
     — DataHub deprecation aspect, Atlan DEPRECATED certificate status, Atlas provisa_deprecated classification).
@@ -46271,7 +46271,7 @@
     (SQL/pgwire for BI, GraphQL, Cypher) under role + domain access. Portable-bootstrap parity: the non-PG
     (SQLite/MySQL) schema path additively reconciles missing columns from the SQLAlchemy metadata (equivalent
     of schema.sql''s ALTER ADD COLUMN IF NOT EXISTS blocks), so metadata-declared columns reach existing
-    database files.'
+    database files. (Amended 2026-10-23, PII SCOPE:) The scope of `pii` is column and Property term (REQ-2143), never source, table, Class or Concept; a column carries pii assigned to it or through the term it means. A direct column assignment of pii requires a reason.'
   use_case: System tags drive governed behavior (metadata filtering, classification, deprecation warnings);
     user tags remain advisory, preventing accidental behavior acquisition and maintaining governance integrity.
     Settled tag set provides clear governance surface across all metadata exporters. Typed reason/expiration
@@ -46668,8 +46668,8 @@
     deleting or modifying a schema element removes its ref, and removal of a term''s last physical ref
     removes the term — unless an abstract term is connected to the rooted graph through it, in which case
     the term is deprecated (kept) instead so no abstract term is left dangling. The term graph is included
-    in metadata export (REQ-1068 family) and exposed via an MCP tool for term search/lookup. v1 scope is documentation and discovery only; term membership does not drive policy (masking/RLS by term is
-    a possible follow-on). Boundary vs tags (REQ-1373): tags remain flat operator-assigned labels; terms
+    in metadata export (REQ-1068 family) and exposed via an MCP tool for term search/lookup. v1 scope is documentation and discovery only; [SUPERSEDED by REQ-2143, 2026-10-23 -- a pii tag on a Property term covers every column with that meaning. Kept here for history; do not implement against it.] term membership does not drive policy (masking/RLS by term is
+    a possible follow-on). [END SUPERSEDED BLOCK] Boundary vs tags (REQ-1373): tags remain flat operator-assigned labels; terms
     are the normalized vocabulary derived from and linked to schema. Implemented so far: schema (glossary_terms/refs/edges/experts
     in schema.sql + schema_org, tenant-scoped), deterministic normalizer, repository with the full lifecycle
     (sync rides table_repo.upsert — the single table_columns write path — and refless-term settling rides
@@ -46754,7 +46754,7 @@
     history; do not implement against it.] a term reference with no column grounds its term in
     the table itself (REQ-2141), [END SUPERSEDED BLOCK] a term grounded in a table (REQ-2141) is
     grounded, and live_term_ids counts it as grounded. An abstract term wired to
-    nothing physical still names no data and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after, rather than every refless term not flagged abstract.'
+    nothing physical still names no data and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after, rather than every refless term not flagged abstract. (Amended 2026-10-23, PII ON TERMS:) Term membership drives one policy: the pii tag (REQ-2143). A pii tag on a Property term, defined and in service, is on every column the term holds, those it comes to hold included, computed where tags are read and never copied to the columns.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -87446,4 +87446,77 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1387
   - REQ-1584
   - REQ-1591
+  target: "2027-Q1"
+- id: REQ-2143
+  status: in-progress
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Data Governance
+  feature: glossary-tags-ontology-tags
+  priority: MUST
+  type: behavioral
+  description: >-
+    PII is on columns, and Provisa offers to cover every column with the same meaning, including
+    future ones. The pii system tag goes on a column or on a Property term, never on a source, a
+    table, a Class or a Concept. Only a term that is defined and in service (live, or deprecated)
+    takes it: tagging a draft term is refused (tag.term_not_live, "Define <term> to mark it"),
+    tagging a term that is not a Property is refused (tag.term_not_property), and clearing the
+    definition of a tagged term is refused ("Unmark <tags> first, or keep a definition"). A term
+    that stops being a Property keeps its tag, and GET /admin/glossary/role-conflicts reports it.
+    A term's tag is stored in tag_assignments with object_type term and its term_id. INHERITANCE:
+    every column whose ref is on a defined, in-service term tagged pii carries pii, sensitive
+    included (REQ-1943); a draft or retired term governs nothing, and a retired term holds no
+    columns. Inheritance is computed where tags are read (governance, masking, sensitivity, export,
+    the GraphQL and meta tag views), never copied to the columns, and each effective tag says
+    where it comes from: on the column, with its reason, or through a term, naming it. A column
+    marked pii directly requires a reason. Removing pii from a column whose pii is inherited is
+    refused (tag.inherited_from_term): "This column is PII because it means <term>. Unmark that
+    meaning, or move the column if it means something else." Tagging a term counts as curation, so
+    sync never re-derives it or removes it. API: tag assign and unassign on a term, under the
+    glossary curation rights and the tag rights (sensitive_data in the domains of its columns); a
+    column assignment with also_term tags the column's term instead, refused when the column is a
+    key or has no term; a column assignment reports how many other columns its term covers.
+    Config YAML tags a term by name (tag_assignments with object_type term and term), and an
+    environment's tree carries a term's tags in the term's file; Polly and MCP tag and untag a
+    term. MOVES: every move a person makes of a column's ref (a ref move or claim, retire's move of
+    a term's columns, a relationship saved or deleted that re-homes key refs between a Property and
+    a Class) computes the change in each moved column's inherited tags. When a column stops
+    carrying a restricting tag (pii) altogether, the move is refused (409 tag.move_loses, with each
+    column, its table, the tags it loses and gains) unless confirm_tag_loss names every lost tag;
+    carry_tags puts the lost tags on the term each column moves to in the same transaction,
+    refused when that term is not a defined, in-service Property. A column keeping a tag through
+    its own assignment needs no confirming; the change is listed. Moves the model derives (sync
+    re-deriving a draft's refs, key refs re-homed on ground or unground) change no inherited tag,
+    and a column's own tags never change on a move. Limited to pii; natural_language and entity
+    stay column tags.
+  use_case: >-
+    A data steward marks the meaning "home address" as personal data once, and every column that
+    means it, today and in tables registered later, is treated as personal data, without tagging
+    each column and without a column silently losing protection when someone re-files it.
+  scenario: |
+    Given the defined Property term "home address" holding customers.home_address and accounts.home_address
+    When the steward marks the term pii with a reason
+    Then both columns are sensitive, each saying it is pii through "home address"
+    And a table registered later with a home_address column is pii the same way
+    When the steward unmarks pii on customers.home_address alone
+    Then it is refused: the column is PII because it means home address
+    When a curator moves customers.home_address to another term without confirming
+    Then the move is refused with tag.move_loses listing the column losing pii
+    When the move confirms the loss of pii
+    Then the column is no longer pii and accounts.home_address still is
+  relates_to:
+  - REQ-1375
+  - REQ-1387
+  - REQ-1943
+  - REQ-2141
+  - REQ-1384
+  code:
+  - provisa/core/term_tags.py
+  - provisa/security/sensitive.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/glossary_router.py
+  tests:
+  - tests/unit/test_pii_term_tags.py
+  - tests/unit/test_pii_term_moves.py
+  - tests/integration/test_pii_term_e2e.py
   target: "2027-Q1"

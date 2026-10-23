@@ -155,7 +155,14 @@ def _fragment(assignment: dict[str, Any], rel_names: dict[str, str]) -> str | No
 #: ``at`` joins them: the fragment alone repeats across the tags on one object, and a sort key that
 #: repeats leaves the order of those tags to whatever the database returned. (base_tag_id,
 #: object_key) is unique, so fragment-plus-tag is unique too.
-OWNER_KEYS = ("owner_table_id", "owner_source_id", "owner_command_name", "owner_product_id", "at")
+OWNER_KEYS = (
+    "owner_table_id",
+    "owner_source_id",
+    "owner_command_name",
+    "owner_product_id",
+    "owner_term_id",
+    "at",
+)
 
 
 def _assignments_for(
@@ -188,6 +195,8 @@ def _assignments_for(
         # A PRODUCT tag likewise: its file is data-products/<id>, and without an owner of its own
         # it would belong to no file and be deleted by the first load that reached the target.
         carried["owner_product_id"] = row["product_id"]
+        # REQ-2143: a TERM tag's file is the term's (glossary-terms/<name>).
+        carried["owner_term_id"] = row["term_id"]
         out.append(carried)
     return out
 
@@ -338,6 +347,12 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 "term_id",
                 [d for d in term_domains if d["term_id"] == row["id"]],
                 table="glossary_term_domains",
+            ),
+            tags=Child(  # REQ-2143
+                "at",
+                OWNER_KEYS,
+                [t for t in tagged if t["owner_term_id"] == row["id"]],
+                table="tag_assignments",
             ),
         )
 

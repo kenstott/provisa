@@ -584,7 +584,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             )
 
         elif table == "glossary_terms":
-            own, nested = _split(body, "edges", "experts", "domains")
+            own, nested = _split(body, "edges", "experts", "domains", "tags")
             gid = term_id[path]
             rows["glossary_terms"].append({**own, "id": gid})
             for edge in nested["edges"]:
@@ -599,6 +599,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 rows["glossary_term_experts"].append({**expert, "term_id": gid})
             for domain in nested["domains"]:
                 rows["glossary_term_domains"].append({**domain, "term_id": gid})
+            rows["tag_assignments"].extend(_tags(nested["tags"], path, problems, term_id=gid))
 
         elif table == "tags":
             own, nested = _split(body, "values", "row_policies")
@@ -701,6 +702,7 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
     source_id: str | None = None,
     command_name: str | None = None,
     product_id: str | None = None,
+    term_id: int | None = None,
     rel_ids: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Nested tag entries back into ``tag_assignments`` rows.
@@ -725,7 +727,15 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
                 f"fragment can name; a product tag is on the product itself"
             )
             continue
-        if product_id is not None:
+        if term_id is not None and fragment is not None:  # REQ-2143
+            problems.append(
+                f"{path!r} carries a tag on {fragment!r}, but a term has no parts a fragment can "
+                f"name; a term tag is on the term itself"
+            )
+            continue
+        if term_id is not None:
+            body |= {"object_type": "term", "term_id": term_id, "object_key": f"term:{term_id}"}
+        elif product_id is not None:
             body |= {
                 "object_type": "product",
                 "product_id": product_id,
