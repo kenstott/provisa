@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 
 import re
 
-from sqlalchemy import delete as _delete, or_, select, update
+from sqlalchemy import delete as _delete, func, or_, select, update
 
 from provisa.core.glossary import (
     TERM_EDGE_TYPES,
@@ -509,6 +509,11 @@ async def list_terms(
     counts: dict[int, int] = {}
     for r in ref_rows:
         counts[r.term_id] = counts.get(r.term_id, 0) + 1
+    # REQ-2141: the tables a class term grounds, counted beside its columns in one query.
+    table_rows = (await conn.execute_core(select(glossary_term_table_refs.c.term_id))).fetchall()
+    table_counts: dict[int, int] = {}
+    for r in table_rows:
+        table_counts[r.term_id] = table_counts.get(r.term_id, 0) + 1
     # ``live`` rides the row so the admin surface shows the same admission rule the agent and
     # export surfaces enforce, rather than re-deriving it from the flags and guessing at
     # groundedness, which is a property of the graph and not of any one row.
@@ -519,6 +524,7 @@ async def list_terms(
         dict(r._mapping)
         | {
             "ref_count": counts.get(r.id, 0),
+            "table_count": table_counts.get(r.id, 0),
             "live": r.id in live,
             "grounded": r.id in grounded,
             "domains": sorted(scope.get(r.id, set())),
@@ -552,6 +558,13 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
         )
     ).fetchall()
     term["refs"] = [dict(r._mapping) for r in refs]
+    term["ref_count"] = len(term["refs"])
+    # REQ-2141: the tables this term grounds as a class.
+    term["table_count"] = (
+        await conn.execute_core(
+            select(func.count()).where(glossary_term_table_refs.c.term_id == term_id)
+        )
+    ).scalar_one()
     other = glossary_terms.alias("other")
     outgoing = (
         await conn.execute_core(
