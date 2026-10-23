@@ -22,6 +22,7 @@ from provisa.transpiler.transpile_correlated import (
     rewrite_correlated_subqueries_for_trino,
 )
 import sqlglot.expressions as exp
+from provisa.core.parse_once import parse_once
 
 
 # Valid SQLGlot write dialects for target sources
@@ -304,7 +305,7 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
     needs no rewrite.
     """
     # Parse failure must fail loud: returning input skips the required DuckDB rewrite.
-    tree = sqlglot.parse_one(sql, read="duckdb")
+    tree = parse_once(sql, "duckdb")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         inner = None

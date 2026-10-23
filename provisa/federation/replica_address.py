@@ -36,6 +36,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+from provisa.core.parse_once import parse_once
 
 if TYPE_CHECKING:
     from provisa.federation.engine import FederationEngine
@@ -301,10 +302,9 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
     """
     if not routes or not _names_a_routed_table(pg_sql, routes):
         return pg_sql
-    import sqlglot
     import sqlglot.expressions as exp
 
-    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    tree = parse_once(pg_sql, "postgres")
     changed = False
     replica_aliases: set[str] = set()
     live_tables = 0

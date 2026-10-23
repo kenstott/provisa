@@ -23,6 +23,7 @@ from provisa.compiler.rls import _qualify_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.security.masking import build_mask_expression
+from provisa.core.parse_once import parse_once
 
 
 # --------------------------------------------------------------------------- #
@@ -1414,7 +1415,7 @@ def apply_governance(
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage("govern.in", sql)
-    tree = sqlglot.parse_one(sql, read="postgres")
+    tree = parse_once(sql, "postgres")
     writes = is_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
     if writes:
         tree = admit_write(tree, gov_ctx, session_vars, params)  # pyright: ignore[reportArgumentType]
@@ -1536,7 +1537,7 @@ def reduce_sources_for_routing(  # REQ-863
     optimizer-side names; the query may carry the same tables under semantic names, so identity is
     reconciled through ``table_id`` (table_map keys both name forms to the same id).
     """
-    tree = sqlglot.parse_one(sql, read="postgres")
+    tree = parse_once(sql, "postgres")
 
     inlined_tids: set[int] = set()
     unresolved: set[str] = set()

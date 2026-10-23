@@ -53,6 +53,7 @@ import time
 import weakref
 
 from provisa.core import request_deadline
+from provisa.core.parse_once import parse_scope
 from collections.abc import Callable, Coroutine, Generator
 from contextlib import contextmanager
 from types import TracebackType
@@ -155,6 +156,8 @@ class ConnectionLoop:
                 raise
 
     def _run_body(self, body: Coroutine[Any, Any, T], context: contextvars.Context | None) -> T:
+        # A run is one request: the statements it parses are parsed once for it (REQ-913).
+        body = _in_parse_scope(body)
         if context is None:
             return self.loop.run_until_complete(body)
         return self.loop.run_until_complete(self.loop.create_task(body, context=context))
@@ -193,6 +196,11 @@ class ConnectionLoop:
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
         self._owner = None
+
+
+async def _in_parse_scope(body: Coroutine[Any, Any, T]) -> T:
+    with parse_scope():
+        return await body
 
 
 class ConnectionLoopPool:

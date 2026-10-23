@@ -30,6 +30,7 @@ from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
+from provisa.core.parse_once import parse_once
 
 _NF_PREFIX = "_nf_"
 _PARAM_RE = re.compile(r"\$(\d+)")
@@ -281,7 +282,7 @@ def separate_parameter_reads(
 
 @functools.lru_cache(maxsize=4096)
 def _table_names(sql: str) -> tuple[str, ...]:
-    ast = sqlglot.parse_one(sql, dialect="postgres")
+    ast = parse_once(sql, "postgres")
     return tuple(tbl.name for tbl in ast.find_all(exp.Table) if tbl.name)
 
 

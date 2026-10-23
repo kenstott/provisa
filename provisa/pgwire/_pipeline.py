@@ -42,6 +42,7 @@ from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
+from provisa.core.parse_once import parse_once
 
 if TYPE_CHECKING:
     from provisa.compiler.directives import CacheHint
@@ -1216,10 +1217,9 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
     (GraphQL-via-plan/Cypher/Flight/gRPC/JSON:API) and the GraphQL engine terminal each call it on
     the already-governed catalog-physical SQL, before the catalog fold/transpile. A pure rewrite:
     each added predicate is implied by the query's own predicates, so results are unchanged."""
-    import sqlglot
     import sqlglot.expressions as exp
 
-    tree = sqlglot.parse_one(sql, read="postgres")
+    tree = parse_once(sql, "postgres")
     if tree.find(exp.Join) is None and tree.find(exp.Subquery) is None:
         return sql
     referenced = {(t.db.lower(), t.name.lower()) for t in tree.find_all(exp.Table) if t.db}
@@ -1588,7 +1588,6 @@ async def govern_statement(
     relationship guard is about what a role's query may relate, so it is not held on it; every
     other check is. Stated by the product's own call site, as a GraphQL-built statement states
     ``sdl_joins``; no surface that carries a caller's SQL passes it."""
-    import sqlglot
     import sqlglot.expressions as exp
 
     from provisa.api.app import state
@@ -1710,7 +1709,7 @@ async def govern_statement(
         normalized_sql, _validated_sql = semantic_statement(
             normalized_sql, _view_map, state, gov_ctx
         )
-        _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
+        _parsed_input = await _off_loop(lambda: parse_once(normalized_sql, "postgres"))
     # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
     from provisa.mv.bitemporal_tables import read_versions
 
@@ -1718,7 +1717,7 @@ async def govern_statement(
     if _versioned != normalized_sql:
         normalized_sql = _versioned
         _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
-        _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
+        _parsed_input = await _off_loop(lambda: parse_once(normalized_sql, "postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
     _bypass_guard = product_statement or relationship_guard_bypassed(
@@ -1760,9 +1759,7 @@ async def govern_statement(
         if "*" not in _role_domain_access:
             try:
                 # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
-                parsed_tree = await _off_loop(
-                    lambda: sqlglot.parse_one(_validated_sql, read="postgres")
-                )
+                parsed_tree = await _off_loop(lambda: parse_once(_validated_sql, "postgres"))
                 for tbl in parsed_tree.find_all(exp.Table):
                     tbl_name = tbl.name
                     tbl_db = tbl.db
@@ -5101,12 +5098,11 @@ async def _route_compiled(
             | {"iceberg", "otel", "results"}
             | other_region_read_catalogs(state)  # REQ-1921/1922: another region's stores
         )
-        import sqlglot as _sg2
         import sqlglot.expressions as _exp2
         from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql2
 
         try:
-            _tree2 = _sg2.parse_one(_exec_sql, dialect="postgres")
+            _tree2 = parse_once(_exec_sql, "postgres")
             for _tbl2 in _tree2.find_all(_exp2.Table):
                 if _tbl2.catalog and _tbl2.catalog not in _known_cats:
                     _, _gql_tbl2 = _lookup_gql2(state, _tbl2.name)

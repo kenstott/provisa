@@ -65,7 +65,6 @@ from provisa.api.rest.cypher_exec import (
     _execute_call_body,
     _resolve_role_id,
 )
-from provisa.observability.span_attrs import span_attrs_from_semantic_sql
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
@@ -621,7 +620,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             ordered_params=tuple(ordered_params),
             param_names=tuple(param_names),
             graph_vars=graph_vars,
-            span_attrs=span_attrs_from_semantic_sql(semantic_sql, role_id),
         )
         kept.record(translation)
 

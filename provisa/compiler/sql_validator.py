@@ -43,7 +43,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
@@ -53,6 +52,7 @@ from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
 from provisa.security.rights import reaches_all_domains
+from provisa.core.parse_once import parse_once
 
 
 @dataclass
@@ -73,7 +73,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules."""
     try:
-        tree = sqlglot.parse_one(sql, read="postgres")
+        tree = parse_once(sql, "postgres")
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
 

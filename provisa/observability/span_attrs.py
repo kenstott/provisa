@@ -18,8 +18,8 @@ only when the executor is handed this dict, so every governed execution mints on
 
 from __future__ import annotations
 
-import sqlglot
 import sqlglot.expressions as _sge
+from provisa.core.parse_once import parse_once
 
 
 def span_attrs_from_semantic_sql(
@@ -39,7 +39,7 @@ def span_attrs_from_semantic_sql(
     tables: set[str] = set()
     domains: set[str] = set()
     try:
-        parsed = sqlglot.parse_one(semantic_sql, dialect="postgres")
+        parsed = parse_once(semantic_sql, "postgres")
         # Walk only the primary FROM clause — LATERAL joins (ops/meta traversal) live in
         # parsed.args["joins"] and must be excluded so provisa.table is a single root
         # table name rather than a comma list that never matches the exact-match join condition.
