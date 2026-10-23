@@ -68059,7 +68059,12 @@
     message bubble instead of each round producing its own new message. Fixed by introducing beginAssistantTurn()
     to create a fresh placeholder message per loop iteration, tracked by stable object reference (via
     indexOf at update time) rather than precomputed array index, making it safe against present_choice's
-    own messages being inserted elsewhere during the round.
+    own messages being inserted elsewhere during the round. (Amended 2026-10-22, TEXT BESIDE A TOOL
+    CALL:) Text the model writes beside a tool call is never shown; a round's text is sent only when
+    the round ends without a tool call. A round that ends in a call (present_choice, a search, a
+    create) shows no text bubble of its own; present_choice's question carries what the user needs.
+    The round that answers shows its text in its own new bubble, after any question and answer
+    recorded during the turn, and no earlier bubble is rewritten with it.
   use_case: Each round of a multi-turn tool-call loop should produce its own distinct message bubble in
     the chat panel, not accumulate text onto the previous round's message. Proper message boundaries make
     tool progress transparent to the user.
@@ -68072,6 +68077,9 @@
   e2e_reason: Message accumulation during multi-turn tool-call sequences is only verifiable through full
     chat UI interaction with actual tool execution and streaming responses.
   scenario: 'Given ChatPanel initiates a multi-round tool-call sequence (search → present_choice → create)
+
+    [SUPERSEDED by REQ-1823 amendment, 2026-10-22 -- text beside a tool call is never shown, so a round
+    ending in a call has no text bubble. Kept here for history; do not implement against it.]
 
     When the assistant begins round 1 (e.g. search tool)
 
@@ -68092,6 +68100,8 @@
     Then round 3''s text appears in its own distinct message bubble
 
     And all three rounds remain as separate messages
+
+    [END SUPERSEDED BLOCK]
 
     '
 - id: REQ-1824
