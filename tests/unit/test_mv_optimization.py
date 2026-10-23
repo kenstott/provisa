@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""End-to-end tests for materialized view optimization pipeline.
+"""The materialized view optimization pipeline, on mocked execution.
 
 Tests the full flow: MV registration → query compilation → rewrite → stale
 invalidation → refresh → re-optimization. Uses mock execution layer.

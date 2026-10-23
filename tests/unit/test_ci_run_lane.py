@@ -567,53 +567,6 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
     assert in_a_guest == ["nixos.yml:lane"], in_a_guest
 
 
-def test_a_targeted_run_hands_each_lane_only_its_named_tests(monkeypatch):
-    runner = _runner()
-    lane = runner.LANES["core"]
-    inside = runner.test_files(lane.paths)[0]
-    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{inside}::test_x")
-    assert runner.targets("core", None) == [f"{inside}::test_x"]
-    assert runner.targets("core", "3/6") == [f"{inside}::test_x"]
-
-
-def test_a_targeted_run_is_not_sharded(monkeypatch):
-    runner = _runner()
-    inside = runner.test_files(runner.LANES["core"].paths)[0]
-    monkeypatch.setenv("PROVISA_LANE_TESTS", inside)
-    include = runner.matrix("core,neo4j")["include"]
-    assert [(e["lane"], e["shard"]) for e in include] == [("core", ""), ("neo4j", "")]
-
-
-def test_a_targeted_run_plans_no_lane_that_holds_none_of_its_tests(monkeypatch):
-    # run 38596957161: the e2e lane was planned for an integration test, collected nothing and
-    # failed its required results upload.
-    runner = _runner()
-    inside = runner.test_files(runner.LANES["core"].paths)[0]
-    monkeypatch.setenv("PROVISA_LANE_TESTS", inside)
-    lanes = [e["lane"] for e in runner.matrix("all")["include"]]
-    assert "core" in lanes and "e2e" not in lanes, lanes
-
-
-def test_a_targeted_run_naming_a_missing_file_is_refused(monkeypatch):
-    runner = _runner()
-    monkeypatch.setenv("PROVISA_LANE_TESTS", "tests/integration/test_no_such_file.py::test_x")
-    with pytest.raises(ValueError, match="no such test file"):
-        runner.matrix("core")
-
-
-def test_a_lane_that_deselects_every_named_test_passes_but_a_real_failure_does_not(monkeypatch):
-    runner = _runner()
-    inside = runner.test_files(runner.LANES["core"].paths)[0]
-    monkeypatch.setenv("PROVISA_LANE_TESTS", inside)
-    monkeypatch.setattr(runner.subprocess, "call", lambda *a, **k: 5)
-    assert runner.main(["neo4j"]) == 0
-    monkeypatch.setattr(runner.subprocess, "call", lambda *a, **k: 1)
-    assert runner.main(["neo4j"]) == 1
-    monkeypatch.delenv("PROVISA_LANE_TESTS")
-    monkeypatch.setattr(runner.subprocess, "call", lambda *a, **k: 5)
-    assert runner.main(["neo4j"]) == 5
-
-
 @pytest.mark.parametrize("lane", ["warehouse", "salesforce", "athena", "servicenow"])
 def test_a_live_lane_runs_only_the_named_tests_of_a_targeted_run(lane):
     # A targeted dispatch with include_warehouse ran the whole warehouse lane (~108 tests, 35+
@@ -628,20 +581,192 @@ def test_a_live_lane_runs_only_the_named_tests_of_a_targeted_run(lane):
     assert "run_lane.py --has-targets" in step["run"]
 
 
-def test_a_live_lane_is_planned_for_a_whole_run_and_for_a_targeted_one_naming_a_test_of_its(
-    monkeypatch, capsys
+_MIXED = """
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
+
+def test_plain():
+    pass
+
+
+@pytest.mark.requires_sparql
+def test_on_fuseki():
+    pass
+
+
+class TestKafka:
+    pytestmark = pytest.mark.requires_kafka
+
+    def test_topic(self):
+        pass
+"""
+
+_PARAMETRIZED = """
+import pytest
+
+pytestmark = [pytest.mark.integration]
+_ENGINES = ["duckdb", "snowflake"]
+
+
+@pytest.mark.parametrize(
+    "engine",
+    [pytest.param(e, marks=[] if e == "duckdb" else [pytest.mark.requires_warehouse])
+     for e in _ENGINES],
+)
+def test_certified(engine):
+    pass
+
+
+@pytest.fixture(params=["duckdb", pytest.param("trino", marks=pytest.mark.requires_neo4j)])
+def engine(request):
+    return request.param
+
+
+@pytest.fixture
+def server(engine):
+    return engine
+
+
+def test_through_the_server(server):
+    pass
+"""
+
+_MIXED_FILE = "tests/integration/test_mixed.py"
+_PARAM_FILE = "tests/integration/test_parametrized.py"
+
+
+@pytest.fixture()
+def runner(tmp_path, monkeypatch):
+    """The runner over a repository holding only the two modules above."""
+    module = _runner()
+    monkeypatch.setattr(module, "REPO", tmp_path)
+    monkeypatch.delenv("PROVISA_INCLUDE_LIVE", raising=False)
+    (tmp_path / "tests" / "integration").mkdir(parents=True)
+    (tmp_path / _MIXED_FILE).write_text(_MIXED)
+    (tmp_path / _PARAM_FILE).write_text(_PARAMETRIZED)
+    return module
+
+
+def test_markers_are_read_from_the_module_its_classes_and_each_test(runner):
+    assert runner.test_markers(_MIXED_FILE) == {
+        f"{_MIXED_FILE}::test_plain": [frozenset({"integration"})],
+        f"{_MIXED_FILE}::test_on_fuseki": [frozenset({"integration", "requires_sparql"})],
+        f"{_MIXED_FILE}::TestKafka::test_topic": [frozenset({"integration", "requires_kafka"})],
+    }
+
+
+def test_a_marked_parameter_is_a_variant_of_its_test_however_it_reaches_it(runner):
+    marks = runner.test_markers(_PARAM_FILE)
+    certified = {
+        m - {"integration", "parametrize"} for m in marks[f"{_PARAM_FILE}::test_certified"]
+    }
+    assert certified == {frozenset(), frozenset({"requires_warehouse"})}
+    assert set(marks[f"{_PARAM_FILE}::test_through_the_server"]) == {
+        frozenset({"integration"}),
+        frozenset({"integration", "requires_neo4j"}),
+    }
+
+
+def test_a_targeted_file_runs_in_every_lane_that_selects_one_of_its_tests(runner, monkeypatch):
+    # ci/sparqlsrc (run 39836681175), ci/esheal (run 39873270651): dispatched on core alone, the
+    # tests only the datastores lane selects were deselected and the run reported success.
+    monkeypatch.setenv("PROVISA_LANE_TESTS", _MIXED_FILE)
+    include = runner.matrix("core")["include"]
+    assert [(e["lane"], e["shard"]) for e in include] == [
+        ("core", ""),
+        ("kafka", ""),
+        ("datastores", ""),
+    ]
+    for lane in ("core", "kafka", "datastores"):
+        assert runner.targets(lane, None) == [_MIXED_FILE]
+    assert runner.targets("neo4j", None) == []
+
+
+def test_a_named_test_runs_only_in_the_lane_that_selects_it(runner, monkeypatch):
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_MIXED_FILE}::test_on_fuseki")
+    assert [e["lane"] for e in runner.matrix("core")["include"]] == ["datastores"]
+    assert runner.targets("datastores", "2/6") == [f"{_MIXED_FILE}::test_on_fuseki"]
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_MIXED_FILE}::TestKafka")
+    assert [e["lane"] for e in runner.matrix("all")["include"]] == ["kafka"]
+
+
+def test_a_test_only_a_live_lane_selects_is_refused_unless_the_dispatch_includes_it(
+    runner, monkeypatch, capsys
 ):
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_PARAM_FILE}::test_certified")
+    with pytest.raises(ValueError) as refused:
+        runner.matrix("all")
+    said = str(refused.value)
+    assert f"{_PARAM_FILE}::test_certified" in said
+    assert "requires_warehouse" in said and "needs warehouse" in said
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",warehouse,,")
+    assert [e["lane"] for e in runner.matrix("all")["include"]] == ["core"]
+    runner.main(["--has-targets", "warehouse"])
+    assert capsys.readouterr().out.strip() == "true"
+    runner.main(["--has-targets", "salesforce"])
+    assert capsys.readouterr().out.strip() == "false"
+
+
+def test_a_test_the_module_does_not_hold_is_refused(runner, monkeypatch):
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_MIXED_FILE}::test_x")
+    with pytest.raises(ValueError, match="no such test"):
+        runner.matrix("core")
+
+
+def test_a_parametrized_id_names_its_test(runner, monkeypatch):
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_PARAM_FILE}::test_through_the_server[duckdb]")
+    assert [e["lane"] for e in runner.matrix("core")["include"]] == ["core", "neo4j"]
+
+
+def test_a_targeted_run_naming_a_missing_file_is_refused(monkeypatch):
     runner = _runner()
+    monkeypatch.setenv("PROVISA_LANE_TESTS", "tests/integration/test_no_such_file.py::test_x")
+    with pytest.raises(ValueError, match="no such test file"):
+        runner.matrix("core")
 
-    def planned(lane: str) -> str:
-        runner.main(["--has-targets", lane])
-        return capsys.readouterr().out.strip()
 
+def test_a_lane_routed_a_test_that_then_selects_none_of_it_fails(runner, monkeypatch):
+    """A lane that collects nothing of what it was routed means the markers were read differently
+    from pytest and the test ran nowhere: a failure, never a pass with nothing run."""
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_MIXED_FILE}::test_on_fuseki")
+    monkeypatch.setattr(runner.subprocess, "call", lambda *a, **k: 5)
+    assert runner.main(["datastores"]) == 1
+    assert runner.main(["core"]) == 0  # routed nothing: not run at all
+    monkeypatch.setattr(runner.subprocess, "call", lambda *a, **k: 1)
+    assert runner.main(["datastores"]) == 1
+    monkeypatch.delenv("PROVISA_LANE_TESTS")
+    monkeypatch.setattr(runner.subprocess, "call", lambda *a, **k: 5)
+    assert runner.main(["neo4j"]) == 5
+
+
+# Lanes no dispatch of integration-suite.yml runs: a test only they select is never routed.
+_NO_CI_LANE = {"packaging", "requires_microsoft_365", "requires_google_workspace"}
+
+
+def test_every_test_of_the_repository_is_read_and_some_lane_selects_it():
+    runner = _runner()
+    for path in runner.test_files(("tests/integration", "tests/steps", "tests/e2e")):
+        for test, variants in runner.test_markers(path).items():
+            for marks in variants:
+                lanes = [
+                    lane
+                    for lane in runner.LANES
+                    if runner._in_lane(lane, path) and runner.selects(lane, marks)
+                ]
+                assert lanes or marks & _NO_CI_LANE, (test, sorted(marks))
+
+
+def test_a_live_lane_is_planned_whole_for_a_run_that_names_no_test(monkeypatch, capsys):
+    runner = _runner()
     monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
-    assert planned("warehouse") == "true"  # the whole lane
-    inside = runner.test_files(runner.LANES["warehouse"].paths)[0]
-    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{inside}::test_x")
-    assert planned("warehouse") == "true"
-    outside = runner.test_files(("tests/e2e",))[0]
-    monkeypatch.setenv("PROVISA_LANE_TESTS", outside)
-    assert planned("warehouse") == "false"  # it would collect nothing and fail its upload
+    runner.main(["--has-targets", "warehouse"])
+    assert capsys.readouterr().out.strip() == "true"
+
+
+def test_the_plan_routes_the_cluster_job_and_passes_the_included_live_lanes():
+    step = next(s for s in _lanes_workflow()["jobs"]["plan"]["steps"] if s.get("id") == "plan")
+    assert "run_lane.py --has-targets cluster" in step["run"]
+    for lane in ("warehouse", "salesforce", "athena", "servicenow"):
+        assert f"inputs.include_{lane} && '{lane}'" in step["env"]["PROVISA_INCLUDE_LIVE"]
