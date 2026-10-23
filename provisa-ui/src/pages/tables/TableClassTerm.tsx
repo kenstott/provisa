@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 3c58aca1-83ca-48e2-baf8-a3df46f1d2df
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -73,6 +74,12 @@ export function TableClassTerm({ tableId }: { tableId: number }) {
     };
   }, [actingRoles, tableId, t]);
   useEffect(load, [load]);
+  // Polly grounds and ungrounds server-side (ChatPanel's provisa:glossary-changed): read again.
+  useEffect(() => {
+    const changed = () => void load();
+    window.addEventListener("provisa:glossary-changed", changed);
+    return () => window.removeEventListener("provisa:glossary-changed", changed);
+  }, [load]);
 
   // The terms to choose from, read when the curator opens the picker.
   const loadTerms = () => {

@@ -31,6 +31,10 @@
       "fail": "Fallido",
       "error": "Error",
       "skipped": "Omitido"
-    }
+    },
+    "classTerm": "Las filas son instancias de",
+    "classTermPlaceholder": "Elegir un término",
+    "noClassTerm": "Ningún término",
+    "classTermUnreadable": "No se pudo leer su término: {{error}}"
   }
 }

@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 6a5bf22a-4b7d-43ac-b8b1-3feb0f34f3d4
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -78,12 +79,12 @@ export function GlossaryGroundedTables({
       // The term's standing and role follow (the page reads the term again).
       onChanged();
     } catch (e) {
-      // Refused (no primary key, or another term's table): said here, and what was saved before
-      // the refusal is read back.
+      // Refused (no primary key, or another term's table): said here.
       setError(e instanceof Error ? e.message : String(e));
-      setSeq((n) => n + 1);
     } finally {
       setSaving(false);
+      // What was saved is read back, the refused change's earlier steps included.
+      setSeq((n) => n + 1);
     }
   };
 

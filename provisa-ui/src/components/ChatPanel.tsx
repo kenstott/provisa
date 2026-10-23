@@ -80,6 +80,9 @@ const GLOSSARY_TOOL_NAMES = new Set([
   "delete_glossary_term",
   "add_glossary_term_edge",
   "remove_glossary_term_edge",
+  // REQ-2130: a term grounded in a table, or let go of it.
+  "ground_glossary_term_to_table",
+  "unground_glossary_term_from_table",
 ]);
 
 // REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to

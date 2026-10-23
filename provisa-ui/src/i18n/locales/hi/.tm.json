@@ -7791,5 +7791,19 @@
   "hi/graph3d.json::graph3d.openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
   "hi/graph3d.json::graph3d.openAsQueryCompiling": "Compiling the query…",
   "hi/graph3d.json::graph3d.openAsQueryNoCypher": "This query has no Cypher form.",
-  "hi/graph3d.json::graph3d.openAsQuerySparqlLater": "SPARQL opens once its endpoint is available."
+  "hi/graph3d.json::graph3d.openAsQuerySparqlLater": "SPARQL opens once its endpoint is available.",
+  "hi/glossaryTab.json::glossaryTab.roleLabel": "Role",
+  "hi/glossaryTab.json::glossaryTab.role_class": "Class",
+  "hi/glossaryTab.json::glossaryTab.role_property": "Property",
+  "hi/glossaryTab.json::glossaryTab.role_concept": "Concept",
+  "hi/glossaryTab.json::glossaryTab.roleHelp_class": "Grounded in tables: it names what each of their rows is.",
+  "hi/glossaryTab.json::glossaryTab.roleHelp_property": "Grounded in columns: it names what their values are.",
+  "hi/glossaryTab.json::glossaryTab.roleHelp_concept": "Grounded in neither tables nor columns.",
+  "hi/glossaryTab.json::glossaryTab.groundedTablesTitle": "Grounded in tables",
+  "hi/glossaryTab.json::glossaryTab.groundedTablesPlaceholder": "Tables whose rows this term names",
+  "hi/glossaryTab.json::glossaryTab.noGroundedTables": "Grounded in no table",
+  "hi/tableSections.json::tableSections.classTerm": "Rows are instances of",
+  "hi/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
+  "hi/tableSections.json::tableSections.noClassTerm": "No term",
+  "hi/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}"
 }

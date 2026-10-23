@@ -16,6 +16,8 @@ import userEvent from "@testing-library/user-event";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 // The glossary terms that name the table's columns, as the server answers: one rooted term, and an
 // abstract one reachable from it (which names no column).
+// The table's class term reads the meta domain as the user: its own tests (termGrounding) hold it.
+vi.mock("../TableClassTerm", () => ({ TableClassTerm: () => <span>class term</span> }));
 vi.mock("../../../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/glossary")>()),
   fetchRelatedGlossaryTerms: vi.fn(async () => [

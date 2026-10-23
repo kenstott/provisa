@@ -105,7 +105,11 @@ function related(s: QueryScope): Where {
   return {
     _or: [
       ...(s.layers.has("ontology")
-        ? [{ edges_out: edge("target_term") }, { edges_in: edge("source_term") }]
+        ? [
+            { edges_out: edge("target_term") },
+            { edges_in: edge("source_term") },
+            { tables: inDomains(s.domains) ?? {} },
+          ]
         : []),
       ...(s.layers.has("columns") ? [{ refs: inDomains(s.domains) ?? {} }] : []),
     ],
@@ -115,6 +119,13 @@ function related(s: QueryScope): Where {
 function termsField(m: MetaReader, s: QueryScope): string | null {
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
+  // A class term's tables are the ontology's: what the term names the rows of.
+  if (s.layers.has("ontology"))
+    rels.tables = {
+      alias: "tables",
+      sel: { fields: ["table_id", "table_name", "domain_id"] },
+      where: inDomains(s.domains),
+    };
   if (s.layers.has("domains"))
     rels.domains = {
       alias: "domains",
@@ -224,6 +235,8 @@ export interface TermRow {
   live: boolean;
   // One-to-many: null when the term has none (see rowsOf).
   domains?: { domain_id: string }[] | null;
+  // REQ-2130 (class grounding): the tables whose rows the term names.
+  tables?: { table_id: number; table_name: string; domain_id: string }[] | null;
   refs?:
     | {
         column_key: string;
@@ -365,6 +378,19 @@ export function glossaryGraph(
     // An enterprise-wide term is joined to every domain, so it settles among them, at the centre.
     for (const d of domains.includes(ENTERPRISE_DOMAIN) ? named : domains)
       edge(id, `d:${d}`, "in_domain");
+    // REQ-2130: the term IS each table it grounds (a class term): the table a cylinder, drawn
+    // with the ontology.
+    for (const g of t.tables ?? []) {
+      node({
+        id: `t:${g.table_id}`,
+        type: "table",
+        label: `${g.domain_id}.${g.table_name}`,
+        domains: [g.domain_id],
+        stored: true,
+        layers: ["ontology"],
+      });
+      edge(id, `t:${g.table_id}`, "term_binding", "IS", ["ontology"]);
+    }
     for (const r of t.refs ?? []) {
       const tid = `t:${r.table_id}`;
       const cid = `c:${r.column_key}`;

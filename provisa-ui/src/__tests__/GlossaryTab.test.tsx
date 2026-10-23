@@ -323,6 +323,8 @@ describe("GlossaryTab", () => {
       .map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
     expect(fields).toEqual([
       ["Domains", "finance, sales"],
+      // Grounded in neither a table nor a column.
+      ["Role", "Concept"],
       ["Abstract", "No"],
       ["Proposed", "No"],
       ["Deprecated", "Yes"],

@@ -90,6 +90,16 @@
     "readOnly": "Lecture seule",
     "readOnlyHint": "Vous pouvez lire l'ontologie mais pas la curer. Curer les termes, définitions et relations exige la capacité glossary_rw.",
     "expertUserPlaceholder": "Rechercher des personnes…",
-    "enterpriseDomainLabel": "Tous les domaines (entreprise)"
+    "enterpriseDomainLabel": "Tous les domaines (entreprise)",
+    "roleLabel": "Rôle",
+    "role_class": "Classe",
+    "role_property": "Propriété",
+    "role_concept": "Concept",
+    "roleHelp_class": "Ancré dans des tables : nomme ce qu’est chacune de leurs lignes.",
+    "roleHelp_property": "Ancré dans des colonnes : nomme ce que sont leurs valeurs.",
+    "roleHelp_concept": "Ancré ni dans des tables ni dans des colonnes.",
+    "groundedTablesTitle": "Ancré dans des tables",
+    "groundedTablesPlaceholder": "Tables dont ce terme nomme les lignes",
+    "noGroundedTables": "Ancré dans aucune table"
   }
 }

@@ -31,6 +31,10 @@
       "fail": "Échec",
       "error": "Erreur",
       "skipped": "Ignoré"
-    }
+    },
+    "classTerm": "Les lignes sont des instances de",
+    "classTermPlaceholder": "Choisir un terme",
+    "noClassTerm": "Aucun terme",
+    "classTermUnreadable": "Son terme n’a pas pu être lu : {{error}}"
   }
 }

@@ -99,6 +99,14 @@ export function GlossaryOntologyView({ search }: { search: string }) {
   // The scoped read: what is drawn, and the query that read it (Open as query's).
   const [scoped, setScoped] = useState<{ data: GraphData; query: string } | null>(null);
   const [open, setOpen] = useState(false);
+  // Polly's glossary tools change the ontology server-side (ChatPanel's provisa:glossary-changed):
+  // the view reads it again, as the term list does.
+  const [changes, setChanges] = useState(0);
+  useEffect(() => {
+    const changed = () => setChanges((n) => n + 1);
+    window.addEventListener("provisa:glossary-changed", changed);
+    return () => window.removeEventListener("provisa:glossary-changed", changed);
+  }, []);
   useEffect(() => {
     if (actingRoles === null) return;
     let cancelled = false;
@@ -111,7 +119,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
     return () => {
       cancelled = true;
     };
-  }, [actingRoles, t]);
+  }, [actingRoles, t, changes]);
   useEffect(() => {
     if (actingRoles === null || scope === null) return;
     let cancelled = false;
@@ -123,7 +131,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
     return () => {
       cancelled = true;
     };
-  }, [actingRoles, scope]);
+  }, [actingRoles, scope, changes]);
   const onScope = useCallback((s: QueryScope) => setScope(s), []);
 
   if (read.error) {

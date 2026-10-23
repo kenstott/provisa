@@ -90,6 +90,16 @@
     "readOnly": "Только чтение",
     "readOnlyHint": "Вы можете читать онтологию, но не курировать её. Для курирования терминов, определений и связей нужна возможность glossary_rw.",
     "expertUserPlaceholder": "Поиск людей…",
-    "enterpriseDomainLabel": "Все домены (вся организация)"
+    "enterpriseDomainLabel": "Все домены (вся организация)",
+    "roleLabel": "Роль",
+    "role_class": "Класс",
+    "role_property": "Свойство",
+    "role_concept": "Понятие",
+    "roleHelp_class": "Привязан к таблицам: называет, что такое каждая их строка.",
+    "roleHelp_property": "Привязан к столбцам: называет, что такое их значения.",
+    "roleHelp_concept": "Не привязан ни к таблицам, ни к столбцам.",
+    "groundedTablesTitle": "Привязан к таблицам",
+    "groundedTablesPlaceholder": "Таблицы, строки которых называет этот термин",
+    "noGroundedTables": "Не привязан ни к одной таблице"
   }
 }
