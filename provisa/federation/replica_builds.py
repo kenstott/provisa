@@ -87,13 +87,18 @@ class NoWholeCopy(BuildFailure, LookupError):
 def store_identity(state: Any) -> str:
     """What identifies the store this engine's replicas are written into: the engine's own
     address where it is its own store, else the address of the store it reads through. A
-    digest, so no credential in an address is recorded."""
+    digest, so no credential in an address is recorded.
+
+    DuckDB is never its own replicas' store: they are written into its materialize store (its
+    embedded file, MotherDuck, or a region's PostgreSQL), so that store is what identifies them.
+    Keyed by the engine, a regions node's template recorded the replicas its provisioning build
+    wrote into the embedded file as built in its region's store, and never built them there."""
     import hashlib
 
     from provisa.federation.engine import configured_engine_url
 
     engine = state.federation_engine.engine
-    if engine.native_store is not None:
+    if engine.native_store is not None and engine.native_store != "duckdb":
         where = engine_job_key(engine.name, configured_engine_url())
     else:
         where = engine.materialize_store()

@@ -752,6 +752,10 @@ class NativeEngineBackend(EngineBackend):
                     exc_info=exc,
                 )
                 continue
+            if outcome == "recreated":
+                # The table's rows were dropped with it: its build record no longer describes it,
+                # and a build is asked for (a TTL -1 replica is never refreshed otherwise).
+                await _rebuild_emptied(state, (src.id, schema_name, table_name))
             self._unreconciled.pop((src.id, table_name), None)
             reconciled.append((src.id, table_name))
             entry = LandedTable(src.id, schema_name, table_name, tuple(pk_columns))
@@ -1151,3 +1155,14 @@ class NativeEngineBackend(EngineBackend):
         (ClickHouse) raises from ``ensure_materialize_attached`` — explicit, never a wrong target."""
         rt = self._runtime_for(state)
         return rt.ensure_materialize_attached(), rt.mv_store_schema(org_id)
+
+
+async def _rebuild_emptied(state: Any, key: tuple[str, str, str]) -> None:
+    """The replica ``key``, whose table a reconcile re-created empty: recorded as unbuilt, and a
+    build of it requested."""
+    from provisa.federation import replica_state
+
+    async with state.tenant_db.acquire() as conn:
+        if await replica_state.unbuild(conn, key):
+            await replica_state.request_build(conn, key, replica_state.REASON_MODEL)
+    _log.warning("the replica of %s.%s.%s was re-created empty; a build is requested", *key)
