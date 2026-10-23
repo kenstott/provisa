@@ -440,25 +440,29 @@ const judged = (n: GraphNode) =>
   n.tags !== undefined ||
   n.sensitivities !== undefined;
 
-/** Everything reached from ``start`` without passing through another product or a domain. */
+/** Everything reached from ``start`` without passing through another product or a domain. A table
+ * is an end too -- drawn where a reached column, term or table touches it, its other columns and
+ * relationships not followed -- unless it is the start or a member of the start product. */
 function reach(start: string, edges: GraphEdge[], byId: Map<string, GraphNode>): Set<string> {
-  const next = new Map<string, string[]>();
+  const next = new Map<string, [string, EdgeKind][]>();
   for (const e of edges) {
-    next.set(e.a, [...(next.get(e.a) ?? []), e.b]);
-    next.set(e.b, [...(next.get(e.b) ?? []), e.a]);
+    next.set(e.a, [...(next.get(e.a) ?? []), [e.b, e.kind]]);
+    next.set(e.b, [...(next.get(e.b) ?? []), [e.a, e.kind]]);
   }
   const seen = new Set([start]);
-  const stack = [start];
+  const stack: [string, EdgeKind | null][] = [[start, null]];
   while (stack.length > 0) {
-    const id = stack.pop() as string;
+    const [id, via] = stack.pop() as [string, EdgeKind | null];
     if (id !== start) {
       const t = byId.get(id)?.type;
       if (t === "product" || t === "domain") continue;
+      // Only the start product's own members are entered by a member edge.
+      if (t === "table" && via !== "member") continue;
     }
-    for (const m of next.get(id) ?? []) {
+    for (const [m, kind] of next.get(id) ?? []) {
       if (!seen.has(m)) {
         seen.add(m);
-        stack.push(m);
+        stack.push([m, kind]);
       }
     }
   }

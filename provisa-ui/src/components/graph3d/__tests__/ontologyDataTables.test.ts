@@ -182,3 +182,34 @@ describe("the Ontology View's Tables", () => {
     expect(view(["ontology", "columns"]).edges.some((e) => e.kind === "relationship")).toBe(false);
   });
 });
+
+describe("a search focus with Tables", () => {
+  // The search's terms: Order. Its column's table is drawn, and goes no further: not orders'
+  // relationship to customers, customers' columns, nor the terms those are.
+  const focus = { ...all, focus: ["term:2"] };
+
+  it("is the focus without Tables plus only the tables owning its columns", () => {
+    const off = view(["ontology", "columns"], focus);
+    const on = view(["ontology", "columns", "ownerTables"], focus);
+    expect(ids(off)).toEqual(["c:11:id", "term:2"]);
+    expect(ids(on)).toEqual([...ids(off), "t:11"].sort());
+    expect(has(on, "has_column", "t:11", "c:11:id")).toBe(true);
+  });
+
+  it("draws a term's grounded table, not that table's other columns", () => {
+    // Account IS customers (10): a class term, grounded in the table.
+    const account: TermRow = {
+      ...term(4, "Account", []),
+      tables: [{ table_id: 10, domain_id: "sales", table_name: "t10" }],
+    };
+    const g = visibleGraph(
+      glossaryGraph([...TERMS, account], EDGES, PRODUCTS),
+      new Set<LayerId>(["ontology", "columns", "ownerTables"]),
+      { ...all, focus: ["term:4"] },
+      new Set(),
+      GLOSSARY_SCOPE,
+    );
+    expect(ids(g)).toEqual(["t:10", "term:4"]);
+    expect(has(g, "term_binding", "term:4", "t:10")).toBe(true);
+  });
+});
