@@ -22,6 +22,8 @@ default address):
                         major faults of ``--pid`` and its descendants as class ``provisa``
                         (paging.py); the reader takes one at each end of a step
     GET /rtt/<name>     the TCP round trip to the ``--rtt-target`` of that name
+    GET /pyspy?seconds= ``py-spy record --gil --idle`` of the busiest worker of ``--pid`` for that
+                        long: its collapsed stacks per thread (device 1)
 
 A fact that cannot be read is reported under ``errors`` with the reason, never guessed.
 
@@ -132,6 +134,30 @@ def tcp_rtt(host: str, port: int, connects: int = RTT_CONNECTS) -> dict[str, Any
     }
 
 
+_PY_SPY = "/usr/local/bin/py-spy"  # installed, pinned, by the server device's startup
+
+
+def busiest_worker(pid: int) -> int:
+    """The descendant of ``pid`` that has used the most CPU: a worker under load."""
+    import psutil
+
+    children = psutil.Process(pid).children(recursive=True)
+    return max(children, key=lambda p: sum(p.cpu_times()[:2])).pid
+
+
+def py_spy_record(pid: int, seconds: float) -> dict[str, Any]:
+    """Samples of the threads holding the GIL in the busiest worker, as py-spy's raw collapsed
+    stacks (``thread;frame;... count`` lines)."""
+    worker = busiest_worker(pid)
+    out = Path(f"/tmp/pyspy-{worker}-{int(time.time())}.txt")  # noqa: S108  # nosec B108
+    subprocess.run(
+        ["sudo", "-n", _PY_SPY, "record", "--gil", "--idle", "--threads", "--nonblocking",
+         "-d", str(int(seconds)), "-r", "100", "-f", "raw", "-o", str(out), "-p", str(worker)],
+        capture_output=True, text=True, check=True, timeout=seconds + 60,
+    )  # fmt: skip
+    return {"worker": worker, "seconds": seconds, "t": time.time(), "raw": out.read_text()}
+
+
 def handler(
     *,
     pid: int | None,
@@ -158,6 +184,11 @@ def handler(
             return 200, stall_probe.read_dir(
                 stall_dir, float(query["since"][0]), float(query["until"][0])
             )
+        if path.startswith("/pyspy"):
+            if pid is None:
+                return 404, {"error": "this agent was started without --pid"}
+            query = parse_qs(urlparse(path).query)
+            return 200, py_spy_record(pid, float(query["seconds"][0]))
         if path.startswith("/rtt/"):
             name = path.removeprefix("/rtt/")
             if name not in rtt_targets:

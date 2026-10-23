@@ -866,6 +866,36 @@ def _server_stalls(
     return resp.json()
 
 
+# The steps whose server stalls had no collection beside them (the 2026-10-23 stall rounds): the
+# server device records which threads held the GIL for the middle third of their window.
+GIL_PROFILED = {("pgwire", 256), ("flight_sql", 256)}
+
+
+def _gil_profile(
+    transport: str, concurrency: int, devices: tuple[tuple[str, str], ...], window_s: float
+) -> tuple[threading.Thread, dict[str, Any]] | None:
+    url = dict(devices).get("server")
+    if url is None or (transport, concurrency) not in GIL_PROFILED:
+        return None
+    import httpx
+
+    seconds = window_s / 3
+    found: dict[str, Any] = {}
+
+    def record() -> None:
+        time.sleep(seconds)
+        try:
+            resp = httpx.get(f"{url}/pyspy", params={"seconds": seconds}, timeout=seconds + 90)
+            resp.raise_for_status()
+            found.update(resp.json())
+        except Exception as exc:  # noqa: BLE001 - raised again on the step's thread, below
+            found["failed"] = exc
+
+    thread = threading.Thread(target=record, name="gil-profile")
+    thread.start()
+    return thread, found
+
+
 def _stage_totals(url: str | None) -> dict | None:
     if url is None:
         return None
@@ -981,6 +1011,7 @@ def run_step(
         sampler.start()
     go.set()
     window_started = time.time()
+    profile = _gil_profile(transport, concurrency, ep.devices, window_s)
     results = [out.get(timeout=window_s + 120) for _ in procs]
     window_ended = time.time()
     server_cpu1 = _server_cpu_seconds(server_pid)
@@ -1036,6 +1067,11 @@ def run_step(
         "client": sorted((x for r in results for x in r["stalls"]), key=lambda x: x["t"]),
         "server": _server_stalls(ep.devices, window_started, window_ended),
     }
+    if profile is not None:
+        profile[0].join()
+        if "failed" in profile[1]:
+            raise profile[1]["failed"]
+        step["pyspy"] = profile[1]
     if ep.setup.load.mode == "open_loop":
         assert ep.setup.load.rate_per_s is not None
         step.update(

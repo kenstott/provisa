@@ -33,6 +33,17 @@ LATE_S = 0.05
 GC_S = 0.005
 
 
+# Linux only: this thread's time on the run queue (the second field, nanoseconds). macOS has no
+# such file, so there a stall carries no split.
+_SCHEDSTAT = Path("/proc/thread-self/schedstat")
+
+
+def _run_queue_s() -> float | None:
+    if not _SCHEDSTAT.exists():
+        return None
+    return int(_SCHEDSTAT.read_text().split()[1]) / 1e9
+
+
 def install(emit: Callable[[dict[str, Any]], None]) -> None:
     """Record this process's collections and stalls through ``emit``, from now on."""
     pid = os.getpid()
@@ -59,10 +70,23 @@ def install(emit: Callable[[dict[str, Any]], None]) -> None:
     def ticks() -> None:
         while True:
             before = time.perf_counter()
+            waited = _run_queue_s()
             time.sleep(TICK_S)
             late = time.perf_counter() - before - TICK_S
             if late >= LATE_S:
-                emit({"kind": "stall", "t": time.time(), "ms": round(late * 1000, 3), "pid": pid})
+                record = {
+                    "kind": "stall",
+                    "t": time.time(),
+                    "ms": round(late * 1000, 3),
+                    "pid": pid,
+                }
+                if waited is not None:
+                    # Of the lateness, the time this thread was runnable but given no CPU; the
+                    # rest it spent waiting for the GIL (a GIL wait is a sleep, not the run queue).
+                    record["run_queue_ms"] = round((_run_queue_s() - waited) * 1000, 3)
+                    record["os_threads"] = len(os.listdir("/proc/self/task"))
+                record["py_threads"] = threading.active_count()
+                emit(record)
 
     threading.Thread(target=ticks, name="stall-probe", daemon=True).start()
 
