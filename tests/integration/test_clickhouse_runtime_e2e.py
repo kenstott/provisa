@@ -217,3 +217,20 @@ async def test_clickhouse_backend_arrow_capabilities_wired():
     schema, batches = backend.execute_stream(state, "SELECT number AS n FROM numbers(4)")
     assert schema.names == ["n"]
     assert sum(b.num_rows for b in batches) == 4
+
+
+async def test_whether_a_table_is_landed_is_read_from_system_tables():
+    """REQ-318: absent is False, landed is True, and a listing that cannot be read raises --
+    never read as a table that is not there."""
+    rt = ClickHouseFederationRuntime.embedded()
+    try:
+        await rt.land_table(
+            schema="lte", table="landed", columns=[("id", "bigint")], rows=[{"id": 1}]
+        )
+        assert await rt.landed_table_exists(schema="lte", table="landed") is True
+        assert await rt.landed_table_exists(schema="lte", table="never") is False
+        assert await rt.landed_table_exists(schema="no_such_db", table="x") is False
+    finally:
+        rt.close()
+    with pytest.raises(Exception):  # noqa: B017 -- the engine's own error, whatever its class
+        await rt.landed_table_exists(schema="lte", table="landed")

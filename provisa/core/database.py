@@ -1036,6 +1036,15 @@ class Connection:
         return result
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+    async def has_table(self, table: str, schema: str | None = None) -> bool:
+        """Whether ``schema.table`` is in this database's catalog, read through SQLAlchemy's
+        inspector in the backend's own dialect: absent is False; a catalog that cannot be read
+        raises. ``schema`` is ignored on a schema-less backend (SQLite), as elsewhere here."""
+        from sqlalchemy import inspect as _sa_inspect
+
+        eff_schema = schema if self.capabilities.schemas else None
+        return bool(_sa_inspect(self._sc).has_table(table, schema=eff_schema))
+
     async def execute_core(self, stmt: Any) -> Any:
         """Execute a SQLAlchemy Core statement (select/insert/update/delete)
         and return the CursorResult. Autocommits outside a transaction.

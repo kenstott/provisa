@@ -220,3 +220,25 @@ async def test_databricks_bulk_copy_into_lands_large_batch(runtime):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+@pytest.mark.asyncio
+async def test_whether_a_table_is_landed_is_read_from_the_catalogs_listing(runtime):
+    """REQ-318: absent is False, landed is True, and a catalog that cannot be read raises --
+    never read as a table that is not there. The fixture drops the whole catalog after."""
+    await runtime.land_table(
+        schema=_SCHEMA, table="lte_landed", columns=[("id", "bigint")], rows=[{"id": 1}]
+    )
+    assert await runtime.landed_table_exists(schema=_SCHEMA, table="lte_landed") is True
+    assert await runtime.landed_table_exists(schema=_SCHEMA, table="lte_never") is False
+    broken = DatabricksFederationRuntime(
+        url=(
+            f"databricks://token:{os.environ['DATABRICKS_TOKEN']}"
+            f"@{os.environ['DATABRICKS_SERVER_HOSTNAME']}"
+            f"?http_path={os.environ['DATABRICKS_HTTP_PATH']}"
+            f"&catalog={_to_catalog_name(_SRC)}"
+        )
+    )
+    broken.close()
+    with pytest.raises(Exception):  # noqa: B017 -- the driver's own error, whatever its class
+        await broken.landed_table_exists(schema=_SCHEMA, table="lte_landed")
