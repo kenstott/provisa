@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "{{precision}} तक ट्रंकेट",
     "constantLabel": "स्थिरांक {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "सामान्य मास्क",
+    "presetsAria": "प्रविष्टि {{n}} के लिए सामान्य मास्क",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "हर इंजन पर काम करता है",
+    "universalHelp": "पैटर्न एक ही regex बोली का उपयोग करते हैं; Provisa इसे हर इंजन के लिए अनुवादित करता है। जो मान पैटर्न से मेल नहीं खाते, वे पूरी तरह मास्क किए जाते हैं।",
+    "notUniversal": "हर इंजन पर नहीं: अक्षर {{position}} पर {{construct}}",
+    "preset": {
+      "ssn_last4": "SSN, अंतिम 4",
+      "card_last4": "कार्ड नंबर, अंतिम 4",
+      "phone_last4": "फ़ोन, अंतिम 4",
+      "email_initial_domain": "ईमेल, पहला अक्षर और डोमेन",
+      "all_but_last4": "अंतिम 4 अक्षरों को छोड़कर सब",
+      "digits_keep_separators": "अंक, विभाजक बने रहें",
+      "zip3": "US ZIP, पहले 3",
+      "birth_year": "जन्म तिथि, केवल वर्ष",
+      "iban_last4": "IBAN, अंतिम 4",
+      "keep_first_last": "पहले और अंतिम अक्षर रखें"
+    },
+    "presetParam": {
+      "first": "पहले",
+      "last": "अंतिम"
+    },
+    "construct": {
+      "lookahead": "एक lookahead (?=…)",
+      "lookbehind": "एक lookbehind (?<=…)",
+      "backreference": "पैटर्न में एक backreference \\1",
+      "lazy_quantifier": "एक lazy quantifier (*?, +?)",
+      "possessive_quantifier": "एक possessive quantifier (*+, ++)",
+      "named_group": "एक नामित समूह (?<name>…)",
+      "word_boundary": "एक शब्द सीमा \\b",
+      "unicode_class": "एक Unicode क्लास \\p{…}",
+      "posix_class": "एक POSIX क्लास [[:…:]]",
+      "inline_flags": "इनलाइन फ़्लैग (?i)",
+      "unknown_escape": "एक escape जिसे हर इंजन नहीं जानता",
+      "open_bound": "एक खुली सीमा {n,}",
+      "bound_too_large": "बहुत बड़ी दोहराव संख्या",
+      "unbalanced_paren": "एक बंद न किया गया कोष्ठक",
+      "unbalanced_bracket": "एक बंद न किया गया वर्ग कोष्ठक",
+      "empty_class": "एक खाली क्लास []",
+      "bad_range": "एक श्रेणी जिसका आरंभ उसके अंत के बाद है",
+      "nothing_to_repeat": "एक quantifier जिसके पास दोहराने को कुछ नहीं",
+      "replace_group_out_of_range": "एक $n जो ऐसे समूह का नाम लेता है जो पैटर्न में नहीं है",
+      "replace_named_ref": "प्रतिस्थापन में एक नामित संदर्भ",
+      "replace_bad_escape": "एक escape जिसे प्रतिस्थापन स्वीकार नहीं करता",
+      "alternation_prefix": "विकल्प जिनमें एक दूसरे का उपसर्ग है",
+      "alternation_overlap": "विकल्प जो एक ही पाठ से मेल खा सकते हैं",
+      "negated_class_escape_in_set": "[ ] समूह के भीतर \\D जैसा निषेधित escape"
+    }
   }
 }

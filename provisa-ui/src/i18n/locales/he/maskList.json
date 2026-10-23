@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} ← {{replace}}",
     "truncateLabel": "מקוטע ל-{{precision}}",
     "constantLabel": "קבוע {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "מסכות נפוצות",
+    "presetsAria": "מסכות נפוצות לרשומה {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "עובד בכל מנוע",
+    "universalHelp": "התבניות משתמשות בניב regex אחד; Provisa מתרגמת אותו לכל מנוע. ערכים שאינם תואמים את התבנית ממוסכים במלואם.",
+    "notUniversal": "לא בכל מנוע: {{construct}} בתו {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, 4 אחרונות",
+      "card_last4": "מספר כרטיס, 4 אחרונות",
+      "phone_last4": "טלפון, 4 אחרונות",
+      "email_initial_domain": "דוא״ל, אות ראשונה ודומיין",
+      "all_but_last4": "הכול מלבד 4 התווים האחרונים",
+      "digits_keep_separators": "ספרות, המפרידים נשמרים",
+      "zip3": "מיקוד ארה״ב, 3 ראשונות",
+      "birth_year": "תאריך לידה, שנה בלבד",
+      "iban_last4": "IBAN, 4 אחרונות",
+      "keep_first_last": "שמירת התווים הראשונים והאחרונים"
+    },
+    "presetParam": {
+      "first": "ראשונים",
+      "last": "אחרונים"
+    },
+    "construct": {
+      "lookahead": "הצצה קדימה (?=…)",
+      "lookbehind": "הצצה לאחור (?<=…)",
+      "backreference": "הפניה לאחור \\1 בתבנית",
+      "lazy_quantifier": "כמת עצל (*?, +?)",
+      "possessive_quantifier": "כמת רכושני (*+, ++)",
+      "named_group": "קבוצה בעלת שם (?<name>…)",
+      "word_boundary": "גבול מילה \\b",
+      "unicode_class": "מחלקת Unicode \\p{…}",
+      "posix_class": "מחלקת POSIX [[:…:]]",
+      "inline_flags": "דגלים מוטבעים (?i)",
+      "unknown_escape": "תו מילוט שלא כל מנוע מכיר",
+      "open_bound": "גבול פתוח {n,}",
+      "bound_too_large": "מספר חזרות גדול מדי",
+      "unbalanced_paren": "סוגריים עגולים לא סגורים",
+      "unbalanced_bracket": "סוגריים מרובעים לא סגורים",
+      "empty_class": "מחלקה ריקה []",
+      "bad_range": "טווח שתחילתו אחרי סופו",
+      "nothing_to_repeat": "כמת ללא מה לחזור עליו",
+      "replace_group_out_of_range": "‏$n שמציין קבוצה שאין בתבנית",
+      "replace_named_ref": "הפניה בעלת שם בהחלפה",
+      "replace_bad_escape": "תו מילוט שההחלפה אינה מקבלת",
+      "alternation_prefix": "חלופות שאחת מהן היא תחילית של אחרת",
+      "alternation_overlap": "חלופות שעשויות להתאים לאותו טקסט",
+      "negated_class_escape_in_set": "תו מילוט שלילי כמו \\D בתוך קבוצה [ ]"
+    }
   }
 }

@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "truncado para {{precision}}",
     "constantLabel": "constante {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Máscaras comuns",
+    "presetsAria": "Máscaras comuns para a entrada {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Funciona em todos os motores",
+    "universalHelp": "Os padrões usam um único dialeto de regex; o Provisa o traduz para cada motor. Os valores que não correspondem ao padrão são totalmente mascarados.",
+    "notUniversal": "Não funciona em todos os motores: {{construct}} no caractere {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, últimos 4",
+      "card_last4": "Número do cartão, últimos 4",
+      "phone_last4": "Telefone, últimos 4",
+      "email_initial_domain": "E-mail, primeira letra e domínio",
+      "all_but_last4": "Tudo menos os últimos 4 caracteres",
+      "digits_keep_separators": "Dígitos, separadores mantidos",
+      "zip3": "ZIP dos EUA, primeiros 3",
+      "birth_year": "Data de nascimento, só o ano",
+      "iban_last4": "IBAN, últimos 4",
+      "keep_first_last": "Manter os primeiros e últimos caracteres"
+    },
+    "presetParam": {
+      "first": "Primeiros",
+      "last": "Últimos"
+    },
+    "construct": {
+      "lookahead": "um lookahead (?=…)",
+      "lookbehind": "um lookbehind (?<=…)",
+      "backreference": "uma retrorreferência \\1 no padrão",
+      "lazy_quantifier": "um quantificador preguiçoso (*?, +?)",
+      "possessive_quantifier": "um quantificador possessivo (*+, ++)",
+      "named_group": "um grupo nomeado (?<name>…)",
+      "word_boundary": "um limite de palavra \\b",
+      "unicode_class": "uma classe Unicode \\p{…}",
+      "posix_class": "uma classe POSIX [[:…:]]",
+      "inline_flags": "flags embutidas (?i)",
+      "unknown_escape": "um escape que nem todo motor conhece",
+      "open_bound": "um limite aberto {n,}",
+      "bound_too_large": "um número de repetições grande demais",
+      "unbalanced_paren": "um parêntese não fechado",
+      "unbalanced_bracket": "um colchete não fechado",
+      "empty_class": "uma classe vazia []",
+      "bad_range": "um intervalo cujo início vem depois do fim",
+      "nothing_to_repeat": "um quantificador sem nada a repetir",
+      "replace_group_out_of_range": "um $n que nomeia um grupo que o padrão não tem",
+      "replace_named_ref": "uma referência nomeada na substituição",
+      "replace_bad_escape": "um escape que a substituição não aceita",
+      "alternation_prefix": "alternativas em que uma é prefixo de outra",
+      "alternation_overlap": "alternativas que podem corresponder ao mesmo texto",
+      "negated_class_escape_in_set": "um escape negado como \\D dentro de um conjunto [ ]"
+    }
   }
 }
