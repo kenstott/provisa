@@ -95,7 +95,8 @@ def test_the_unit_workflow_shards_checks_and_keeps_its_verdicts_name():
     run = next(s for s in jobs["shard"]["steps"] if s.get("name") == "Run unit tests")
     assert "unit_shard.py files" in run["run"] and "-n auto" in run["run"]
     assert run["env"]["SHARD"] == "${{ matrix.shard }}/4"
-    assert jobs["check"]["needs"] == "shard"
+    assert jobs["check"]["needs"] == ["shard", "collect"]
+    assert "--collect-only" in str(jobs["collect"]["steps"])
     assert jobs["unit"]["name"] == "pytest tests/unit"
     assert jobs["unit"]["needs"] == ["shard", "check"] and jobs["unit"]["if"] == "always()"
 
