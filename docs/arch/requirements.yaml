@@ -87182,6 +87182,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     operator setting, the graph union limit, default 64 branches, with its own field; a union past it
     is refused, naming the limit. A subject's IRI is {public URL}/id/{domain}/{table}/{primary key},
     built only on output. The prefixes are one per domain, plus skos:, owl:, rdf:, rdfs: and xsd:.
+    (Amended 2026-10-22, IRIS:) The public URL is the operator setting server.public_url, with its
+    field in Deployment settings; it is not derived from the hostname, and a query whose answer
+    holds a subject IRI is refused while it is unset, naming the setting. No IRI is built in SQL: the
+    SQL returns a subject as its table's identity and its key values, typed as the table holds them,
+    and the answer's writer builds the IRI, each segment percent-encoded (RFC 3986), so a key with
+    '/', ';', a space or any non-ASCII character still makes a valid IRI. A composite key is its
+    values in primary-key order, separated by ';'. An IRI a query names is parsed back, at compile
+    time, to its table and key values, and subjects are joined and filtered on those. Data and
+    vocabulary are kept apart: instances are under /id/, and the vocabulary is under /vocab/. A
+    table's class is {public URL}/vocab/{domain}/{table}; a column's predicate, in the manner of the
+    Direct Mapping, is {public URL}/vocab/{domain}/{table}#{column}; a term's class or property is
+    {public URL}/vocab/{domain}/term/{term slug}, an enterprise-scope term under the domain "_"; and
+    an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property term
+    has the term's IRI as its predicate, and its direct predicate stays usable. A class term types
+    the instances of the tables it grounds in addition to their table class (REQ-2141).
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
