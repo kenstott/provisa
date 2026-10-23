@@ -75,20 +75,36 @@ def _s3():
     )
 
 
-def _metadata_gone(signal: str) -> None:
-    """Remove everything under ``signal``'s table location, as a bucket served empty would."""
+def _location(signal: str) -> tuple[str, str]:
+    """``signal``'s table location in the bucket, as its bucket and key prefix."""
     [[ddl]] = _Engine().execute_engine_sync(f"SHOW CREATE TABLE otel.signals.{signal}").rows
     location = re.search(r"location = '(s3://[^']+)'", ddl)
     assert location, ddl
     bucket, prefix = location.group(1).removeprefix("s3://").split("/", 1)
-    s3 = _s3()
-    keys = [
-        {"Key": obj["Key"]}
-        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
+    return bucket, prefix
+
+
+def _keys(bucket: str, prefix: str) -> list[str]:
+    return [
+        obj["Key"]
+        for page in _s3().get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
         for obj in page.get("Contents", [])
     ]
-    assert keys, f"nothing under {location.group(1)}"
-    s3.delete_objects(Bucket=bucket, Delete={"Objects": keys})
+
+
+def _metadata_gone(signal: str) -> None:
+    """Remove everything under ``signal``'s table location, as a bucket served empty would.
+
+    The table is given a snapshot first: the catalog's metadata cache answers a read of a table
+    with none without the bucket (ops_trino.metadata_files_gone), and whether an earlier test wrote
+    one would decide what a read of it says."""
+    _Engine().execute_engine_sync(
+        f"INSERT INTO otel.signals.{signal} (trace_id, _date) VALUES ('t', CURRENT_DATE)"
+    )
+    bucket, prefix = _location(signal)
+    keys = _keys(bucket, prefix)
+    assert keys, f"nothing under s3://{bucket}/{prefix}"
+    _s3().delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in keys]})
 
 
 def test_compaction_says_a_table_whose_metadata_is_unreadable_and_changes_nothing(booted, caplog):
@@ -133,7 +149,10 @@ def test_compaction_says_a_table_whose_metadata_is_unreadable_and_changes_nothin
         "otel.signals.traces is registered but its metadata cannot be read" in m for m in said
     ), said
     s3.head_object(Bucket=store["bucket"], Key=key)  # its file is kept for a later run
-    # The registration is untouched: the table is not made again, so it still cannot be read.
+    # The registration is untouched: the table is not made again -- no metadata file is written
+    # at its location -- so it still cannot be read.
+    bucket, prefix = _location("traces")
+    assert not [k for k in _keys(bucket, prefix) if k.endswith(".metadata.json")]
     with pytest.raises(trino.exceptions.TrinoQueryError, match="ICEBERG_MISSING_METADATA"):
         _Engine().execute_engine_sync("SELECT count(*) FROM otel.signals.traces")
     s3.delete_object(Bucket=store["bucket"], Key=key)
