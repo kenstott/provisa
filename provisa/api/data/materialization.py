@@ -255,18 +255,65 @@ async def _mat_pipeline_table(
     cache_rewrites: dict,
     values_cte_entries: dict,
     nf_args: dict | None,
+    statement: str,
 ) -> None:
     """Run a pipeline table with the statement's arguments and land its rows for the engine,
     kept under those arguments for the table's TTL (REQ-1980): two argument sets are two
     answers, never one."""
-    if state.source_types[table["source_id"]] == "cosmosdb":
+    source_type = state.source_types[table["source_id"]]
+    if source_type in ("node", "python"):
+        # REQ-2100, REQ-1756: a code table is called by its source's proxy, which plans the
+        # read -- its declared predicates a pre-filter -- and its rows are kept under every
+        # argument the call was given.
+        from provisa.codesource.proxy import CodeProxy
+        from provisa.codesource.table import cache_arguments as code_arguments
+        from provisa.federation.connector_contract import Read
+
+        proxy = CodeProxy()
+        plan = await proxy.plan(
+            state,
+            Read(
+                table=table,
+                name=tn,
+                statement=statement,
+                source_id=table["source_id"],
+                arguments=nf_args,
+            ),
+        )
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            code_arguments(table, plan.arguments),
+            lambda: proxy.call(state, plan),
+        )
+        return
+    if source_type == "qdrant":
+        # A search table is landed (REQ-1983): its connector's call, under its arguments.
+        from provisa.federation.connector_contract import Plan, Read
+        from provisa.qdrant.contract import QdrantContract
+        from provisa.qdrant.table import cache_arguments as search_arguments
+
+        search = Plan(
+            read=Read(table=table, name=tn, statement=statement, source_id=table["source_id"]),
+            arguments=dict(nf_args or {}),
+        )
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            search_arguments(table, nf_args),
+            lambda: QdrantContract().call(state, search),
+        )
+        return
+    if source_type == "cosmosdb":
         from provisa.cosmosdb.table import cache_arguments, read
-    elif state.source_types[table["source_id"]] == "qdrant":
-        from provisa.qdrant.table import cache_arguments, read
-    elif state.source_types[table["source_id"]] == "elasticsearch":
+    elif source_type == "elasticsearch":
         from provisa.elasticsearch.native_table import cache_arguments, read
-    elif state.source_types[table["source_id"]] in ("node", "python"):
-        from provisa.codesource.table import cache_arguments, read
     else:
         from provisa.mongodb.pipeline_table import cache_arguments, read
     await _land_per_statement(
@@ -278,28 +325,6 @@ async def _mat_pipeline_table(
         cache_arguments(table, nf_args),
         lambda: read(state, table, nf_args),
     )
-
-
-async def land_deferred(exec_sql: str, state) -> str:
-    """REQ-2100: ``exec_sql``, routed to the engine, reading the rows of each code table held for
-    a DIRECT read (``codesource.direct.defer``), landed now as any code table's are."""
-    from provisa.api_source.engine_cache import rewrite_all_from_cache
-    from provisa.cache.values_cte import build_values_ctes_sql
-    from provisa.codesource.direct import take
-
-    from provisa.codesource.attach import attached
-
-    held = take()
-    if not held:
-        return exec_sql
-    cache_rewrites: dict = {}
-    values_cte_entries: dict = {}
-    for tn, (table, arguments) in held.items():
-        if attached(state, table):
-            continue  # the engine reads it from its host, its parameters in the statement
-        await _mat_pipeline_table(tn, table, state, cache_rewrites, values_cte_entries, arguments)
-    exec_sql = build_values_ctes_sql(exec_sql, values_cte_entries)
-    return rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
 
 
 async def mat_live_part(
@@ -566,10 +591,11 @@ async def _mat_fed_table(
         def answer():
             return search_each(state, table, sets, carried)
     else:
-        from provisa.codesource.table import read_each
+        from provisa.codesource.proxy import CodeProxy
 
         def answer():
-            return read_each(state, table, sets, joined=True)
+            # REQ-2099: through the code source's proxy, once per set of the parent's values.
+            return CodeProxy().call_each(state, table, sets, joined=True)
 
     await _land_per_statement(tn, table, state, cache_rewrites, values_cte_entries, key, answer)
 
@@ -1392,13 +1418,11 @@ async def _materialize_api_to_engine_cache(
         ``nf_extractor.apply_dropped_tables`` raises the reason for it. A remote that fails is
         never dropped: its error fails the query (REQ-1661, amended 2026-09-30).
     """
-    from provisa.codesource import direct as code_direct
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
     from provisa.qdrant.table import is_search
     from provisa.sparql import pushdown as sparql_pushdown
 
-    code_direct.begin()
     cache_rewrites: dict = {}
     values_cte_entries: dict = {}
     dropped_tables: dict[str, str] = {}
@@ -1442,8 +1466,6 @@ async def _materialize_api_to_engine_cache(
             missing = _missing_parameters(params_of, table, None, given, ctx, None)
             if missing:
                 _refuse_or_drop(exec_sql, tn, missing, dropped_tables)
-            elif len(table_names) == 1 and tn not in (read_args or {}):
-                code_direct.defer(tn, attached_table, nf_args)
             continue
         pipeline_table = pipelines.get(_sql_name(table))
         # REQ-2099: a code table or a Qdrant search the statement joins to a table whose
@@ -1481,17 +1503,10 @@ async def _materialize_api_to_engine_cache(
             )
             continue
         if pipeline_table is not None:
-            if (
-                len(table_names) == 1
-                and tn not in (read_args or {})
-                and is_code_table(pipeline_table, state.source_types)
-            ):
-                # REQ-2100: a read of one code table alone is its source's to answer, DIRECT; it
-                # is landed only if the statement is routed to the engine after all.
-                code_direct.defer(tn, pipeline_table, nf_args)
-                continue
+            # REQ-2100 (amended 2026-10-23): a code table's rows are landed, its arguments a
+            # pre-filter, and the engine runs the statement over them.
             await _mat_pipeline_table(
-                tn, pipeline_table, state, cache_rewrites, values_cte_entries, nf_args
+                tn, pipeline_table, state, cache_rewrites, values_cte_entries, nf_args, exec_sql
             )
             continue
         # Hot cache: inline rows as VALUES CTE — avoids cross-catalog JOIN entirely

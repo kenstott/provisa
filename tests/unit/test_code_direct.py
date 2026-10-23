@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A read of one code table, DIRECT to its code (REQ-2100): the router sends it to the source's
-own driver; the function is called with the read's arguments and the values its pushed
-predicates give; the rest of the statement is applied to the rows by DuckDB, the pushed
-predicates again among it. A statement the engine answers after all lands the table's rows.
+"""A read of a code table (REQ-2100, REQ-863): the function is called with the read's arguments
+and the values its pushed predicates give, a pre-filter only; its rows are landed and the engine
+runs the whole statement over them, the pushed predicates again among it. The residual the code
+host applies for an engine that attaches it is the same statement over the same rows.
 
 The worker is a real host process (the Python host, this interpreter, unsandboxed); the source's
 preparation is stood in with the code's manifest, read by the real reader."""
@@ -31,7 +31,6 @@ import pyarrow as pa
 import pytest
 
 from provisa.codehost import residual
-from provisa.codesource import direct as code_direct
 from provisa.codesource import source as code_source
 from provisa.codesource import worker as w
 from provisa.codesource.manifest import PYTHON_RULES, read_manifest
@@ -240,14 +239,31 @@ def prepared(tmp_path, monkeypatch):
     w.pool.stop_source("scores-src")
 
 
-async def test_a_direct_read_calls_the_function_with_what_it_pushes_and_filters_the_rest(prepared):
-    answer = await code_direct.read(
-        None,
-        TABLE,
-        "scores",
+def _engine_answer(landed, sql: str, name: str = "scores") -> pa.Table:
+    """``sql`` run over the rows ``landed`` (a PipelineRead) as the engine runs a statement over a
+    landed table."""
+    import duckdb
+
+    with duckdb.connect() as con:
+        con.register(name, pa.Table.from_pylist(landed.rows))
+        return con.execute(sql).to_arrow_table()
+
+
+async def test_a_read_lands_what_its_pushes_pre_filter_and_the_engine_answers_it(prepared):
+    # REQ-2100 (amended 2026-10-23): the function is given what the statement lets it pre-filter,
+    # its rows are landed, and the engine runs the whole statement over them.
+    from provisa.codesource.table import pushed_arguments, read
+
+    statement = (
         'SELECT "id", "amount", "asked" FROM "main"."scores" WHERE "region" = \'EU\' '
-        'AND "score" >= 0.5 ORDER BY "amount" DESC',
-        {"as_of": "2026-10"},
+        'AND "score" >= 0.5 ORDER BY "amount" DESC'
+    )
+    given = {**await pushed_arguments(None, TABLE, "scores", statement), "as_of": "2026-10"}
+    landed = await read(None, TABLE, given)
+    answer = _engine_answer(
+        landed,
+        "SELECT id, amount, asked FROM scores WHERE region = 'EU' AND score >= 0.5 "
+        "ORDER BY amount DESC",
     )
     assert answer.column("id").to_pylist() == [1, 3]
     assert answer.column("amount").to_pylist() == [Decimal("10.50"), Decimal("7.00")]
@@ -255,27 +271,12 @@ async def test_a_direct_read_calls_the_function_with_what_it_pushes_and_filters_
 
 
 async def test_an_argument_the_read_names_itself_is_the_one_the_function_is_given(prepared):
-    answer = await code_direct.read(
-        None,
-        TABLE,
-        "scores",
-        "SELECT asked FROM main.scores WHERE region = 'EU' LIMIT 1",
-        {"region": "US"},
-    )
-    assert answer.column("asked").to_pylist() == ["region=US;gte_score=None;as_of=None"]
+    from provisa.codesource.table import pushed_arguments, read
 
-
-async def test_the_driver_answers_the_read_held_for_it(prepared):
-    code_direct.begin()
-    code_direct.defer("scores", TABLE, {"as_of": "x"})
-    driver = code_direct.CodeDriver()
-    driver.bind_source("scores-src")
-    sql = "SELECT id FROM main.scores WHERE region = $1 ORDER BY id"
-    first = await driver.execute(sql, ["EU"])
-    # The terminal may run it again (the row after its limit): it is still held.
-    again = await driver.execute(sql, ["EU"])
-    assert first.rows == again.rows == [(1,), (3,)]
-    assert first.column_names == ["id"]
+    statement = "SELECT asked FROM main.scores WHERE region = 'EU' LIMIT 1"
+    given = {**await pushed_arguments(None, TABLE, "scores", statement), "region": "US"}
+    landed = await read(None, TABLE, given)
+    assert {r["asked"] for r in landed.rows} == {"region=US;gte_score=None;as_of=None"}
 
 
 # -- routing and landing ---------------------------------------------------------------------------
@@ -287,38 +288,18 @@ def _route(sources, types, floor=None):
         source_types=types,
         source_dialects={s: "duckdb" for s in sources},
         operator_floor=floor or {},
+        statement="SELECT 1",
     )
 
 
-def test_a_read_of_one_code_source_goes_direct_and_a_read_across_sources_to_the_engine():
-    assert _route({"scores-src"}, {"scores-src": "python"}).route == Route.DIRECT
-    assert _route({"js"}, {"js": "node"}).route == Route.DIRECT
+def test_a_read_of_a_code_source_is_landed_for_the_engine():
+    # REQ-863: the code function is the source's access path, and its rows are landed.
+    for sources, types in (({"scores-src"}, {"scores-src": "python"}), ({"js"}, {"js": "node"})):
+        decision = _route(sources, types)
+        assert decision.route == Route.ENGINE
+        assert decision.reason.startswith("landed: trusted_to_answer: incomplete dataset from ")
     across = _route({"scores-src", "pg"}, {"scores-src": "python", "pg": "postgresql"})
     assert across.route == Route.ENGINE
-    floored = _route({"scores-src"}, {"scores-src": "python"}, {"scores-src": "replicate"})
-    assert floored.route == Route.ENGINE
-
-
-async def test_a_read_held_for_its_driver_is_landed_when_the_engine_answers(monkeypatch):
-    from provisa.api.data import materialization
-
-    landed = []
-
-    async def _land(tn, table, state, rewrites, inline, arguments):
-        landed.append((tn, table["table_name"], arguments))
-        inline[tn] = SimpleNamespace(rows=[], columns=[])
-
-    monkeypatch.setattr(materialization, "_mat_pipeline_table", _land)
-    monkeypatch.setattr(
-        "provisa.cache.values_cte.build_values_ctes_sql",
-        lambda sql, entries: f"{sql} /*{sorted(entries)}*/",
-    )
-    code_direct.begin()
-    code_direct.defer("scores", TABLE, {"as_of": "x"})
-    sql = await materialization.land_deferred("SELECT 1", None)
-    assert landed == [("scores", "scores", {"as_of": "x"})]
-    assert sql == "SELECT 1 /*['scores']*/"
-    assert code_direct.deferred() == {}
 
 
 LOOSE_CODE = """
@@ -364,14 +345,13 @@ async def test_a_table_typed_by_a_preview_is_read_into_its_registered_columns(
         "source_id": "fx-src",
         "columns": [_column("code", "text"), _column("rate", "double")],
     }
+    from provisa.codesource.table import read
+
     try:
-        answer = await code_direct.read(
-            None,
-            table,
-            "currencies",
-            'SELECT code FROM "default".currencies WHERE rate < 1 ORDER BY code',
-            None,
-        )
+        landed = await read(None, table, None)
     finally:
         w.pool.stop_source("fx-src")
+    answer = _engine_answer(
+        landed, "SELECT code FROM currencies WHERE rate < 1 ORDER BY code", "currencies"
+    )
     assert answer.column("code").to_pylist() == ["EUR", "GBP"]

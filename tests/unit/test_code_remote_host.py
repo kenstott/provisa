@@ -179,9 +179,17 @@ def test_a_pairing_code_that_is_not_one_is_refused_by_name():
         remote.parse_pairing_code("hello")
 
 
-def test_a_read_carrying_its_statement_is_answered_with_it_applied_on_the_host(started):
-    from provisa.codesource.direct import _ipc_text
+def _ipc_text(table: pa.Table) -> str:
+    """An Arrow table as the base64 IPC stream a residual's arguments are carried in."""
+    import base64
 
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as stream:
+        stream.write_table(table)
+    return base64.b64encode(sink.getvalue().to_pybytes()).decode()
+
+
+def test_a_read_carrying_its_statement_is_answered_with_it_applied_on_the_host(started):
     port, code = started
     identity = remote.new_identity()
     pin = remote.pair("127.0.0.1", port, code, identity)

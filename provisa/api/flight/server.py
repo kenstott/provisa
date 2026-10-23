@@ -1048,6 +1048,7 @@ class ProvisaFlightServer(
             sources=compiled.sources,
             source_types=self._state.source_types,
             source_dialects=self._state.source_dialects,
+            statement=compiled.sql,
             source_dsns=getattr(self._state, "source_dsns", None),
             operator_floor=operator_floor(self._state, compiled.table_ids),
             reads_fakes=reads_fakes(compiled.sql),  # REQ-1494

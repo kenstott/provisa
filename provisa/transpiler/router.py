@@ -18,7 +18,7 @@ Steward override hint respected (REQ-030).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -45,9 +45,8 @@ class Route(str, Enum):
 # API sources — route through API caller pipeline
 API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api", "grpc_remote"}
 
-# REQ-2100: code sources, VIRTUAL to every reader that lands or attaches a source, whose single-source
-# read goes DIRECT to their own driver (provisa/codesource/direct.py).
-CODE_DIRECT_SOURCES: frozenset[str] = frozenset({"node", "python"})
+# REQ-2100: code sources, whose function is their access path; their rows are landed (REQ-863).
+CODE_SOURCES: frozenset[str] = frozenset({"node", "python"})
 
 # Virtual sources — always route through the engine (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
@@ -109,13 +108,136 @@ class RouteDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class RouteInputs:
+    """What the gates read of one statement, after optimization (REQ-863)."""
+
+    sources: frozenset[str]
+    source_types: Mapping[str, str]
+    source_dialects: Mapping[str, str]
+    statement: str  # the governed statement, PostgreSQL text: what its source would run
+    json_path: bool
+    source_dsns: Mapping[str, str] | None
+    operator_floor: Mapping[str, str]
+    reads_fakes: bool
+    # Why the engine must run it, named by the caller: a re-injected view, landed rows, a
+    # live-only part, no connection on this node, a region's own ops record, every source inlined.
+    forced: tuple[str, ...]
+    # Whether the source's proxy planned the read as its complete dataset (federation.
+    # source_proxy), and if not why. Not planned is not complete: the read lands.
+    complete_dataset: bool
+    incomplete: str | None
+    engine: FederationEngine | None
+
+
+@dataclass(frozen=True)
+class Gate:
+    """One condition a statement passes to be read on its source directly, not landed: the reason
+    it fails (None when it passes)."""
+
+    name: str
+    check: Callable[[RouteInputs], str | None]
+
+
+def _database(dsn: str) -> str:
+    # A colocation key is host:port/database|user|digest (federation.colocation).
+    return dsn.split("|", 1)[0]
+
+
+def _one_source(i: RouteInputs) -> str | None:
+    if len(i.sources) == 1:
+        return None
+    if i.source_dsns:
+        keys = [i.source_dsns.get(s) for s in i.sources]
+        if None not in keys and len({_database(k) for k in keys if k is not None}) == 1:
+            return None
+    return f"reads {len(i.sources)} sources"
+
+
+def _primary(i: RouteInputs) -> str:
+    return next((s for s in sorted(i.sources) if s != "provisa-admin"), sorted(i.sources)[0])
+
+
+def _dialect_supports(i: RouteInputs) -> str | None:
+    from provisa.transpiler.dialect_capabilities import unsupported
+
+    sid = _primary(i)
+    construct = unsupported(i.statement, i.source_dialects.get(sid) or "", json_path=i.json_path)
+    return None if construct is None else f"source {sid!r} cannot run {construct}"
+
+
+def _access_path(i: RouteInputs) -> str | None:
+    stype = i.source_types.get(_primary(i), "")
+    if stype in API_SOURCES or stype in CODE_SOURCES:
+        return None  # the API caller, the code function
+    if stype in VIRTUAL_SOURCES:
+        # The engine reads it: in place on a file_native engine, else landed (REQ-897).
+        return _engine_source_reason(i.engine, stype)
+    if has_driver(stype):
+        return None
+    return f"no direct driver for source type ({stype})"
+
+
+def _colocated_login(i: RouteInputs) -> str | None:
+    if len(i.sources) == 1:
+        return None
+    assert i.source_dsns is not None  # one database (one_source) is judged by their keys
+    if len({i.source_dsns[s] for s in i.sources}) == 1:
+        return None
+    return "its sources share a database under different logins"
+
+
+def _not_forced(i: RouteInputs) -> str | None:
+    floored = sorted((s, i.operator_floor[s]) for s in i.sources if s in i.operator_floor)
+    if floored:
+        sid, setting = floored[0]
+        return f"operator floor: {setting} on {sid} (read from the replica)"
+    if i.reads_fakes:
+        return "reads faked columns (computed by the engine)"
+    if i.forced:
+        return i.forced[0]
+    return None
+
+
+def _trusted_to_answer(i: RouteInputs) -> str | None:
+    # A source with a proxy answers only a complete dataset (federation.source_proxy); a SQL
+    # database's driver runs the statement itself (dialect_supports judged its constructs).
+    from provisa.federation.connector_contract import contract_for
+
+    sid = _primary(i)
+    if contract_for(i.source_types.get(sid, "")) is None or i.complete_dataset:
+        return None
+    return f"incomplete dataset from {sid}" + (f": {i.incomplete}" if i.incomplete else "")
+
+
+#: The gates a statement passes, in order, to be read on its source directly; the first it fails
+#: lands it and names the reason (REQ-863).
+GATES: tuple[Gate, ...] = (
+    Gate("one_source", _one_source),
+    Gate("dialect_supports", _dialect_supports),
+    Gate("access_path", _access_path),
+    Gate("colocated_login", _colocated_login),
+    Gate("not_forced", _not_forced),
+    Gate("trusted_to_answer", _trusted_to_answer),
+)
+
+
+def _failed_gate(i: RouteInputs) -> str | None:
+    for gate in GATES:
+        why = gate.check(i)
+        if why is not None:
+            return f"landed: {gate.name}: {why}"
+    return None
+
+
 @timed_stage(_tracer, "router.decide_route", name="route")  # REQ-1910
-def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-151, REQ-152
+def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-151, REQ-152, REQ-863
     sources: set[str],
     source_types: dict[str, str],
     source_dialects: dict[str, str],
     steward_hint: str | None = None,
     *,
+    statement: str,
     has_json_extract: bool = False,
     is_mutation: bool = False,
     source_dsns: dict[str, str] | None = None,
@@ -126,41 +248,23 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     # REQ-1494: whether the statement reads faked columns. False is safe, not lax: a faked read sent
     # to a source fails there, the source holding no fake functions -- it never reads unfaked.
     reads_fakes: bool = False,
+    forced: tuple[str, ...] = (),
+    complete_dataset: bool = False,
+    incomplete: str | None = None,
 ) -> RouteDecision:
-    """Decide whether to route a query cached, direct, or through the engine.
+    """Decide whether a statement is read on its source directly or landed and run by the engine
+    (REQ-863). Landing is the default; a statement is read directly only when it passes every
+    gate (``GATES``), in order, and the first it fails names why it is landed.
 
-    Args:
-        operator_floor: {source_id: operator setting} for every source whose tables THIS
-            statement reads the operator requires to be read from their replicas
-            (``load_protected``, ``replicate``) — see ``registry_view.operator_floor``. Required, never defaulted: a caller that
-            skipped it would route those sources live, beneath the floor (REQ-030, amended
-            2026-09-30).
-        sources: Set of source_ids involved in the query.
-        source_types: {source_id: source_type} e.g. {"sales-pg": "postgresql"}.
-        source_dialects: {source_id: sqlglot_dialect} e.g. {"sales-pg": "postgres"}.
-        steward_hint: Optional "direct" or "engine" override from steward.
-        has_json_extract: Query uses json_extract_scalar (path columns).
-        is_mutation: True for mutations — the source's own driver when it has one, else the engine
-            through its connector (REQ-910); ``engine`` decides the latter.
-        cache_hit: True when the result cache (keyed per REQ-864/REQ-544 on the
-            governance-normalized IR) holds an entry for this query.
-        cache_opt_in: True only when the request opted into the response cache (GraphQL
-            @cached / SQL `-- @provisa cache=true|cache_ttl=N`, REQ-544 amended 2026-09-30);
-            without it no cached route is a candidate.
-        engine: The bound FederationEngine whose DECLARED capability traits (REQ-897) refine
-            the ENGINE-routed decision — e.g. its ``file_native`` trait distinguishes a file
-            source read in place (SCAN) from one that must be landed. When None, the decision is
-            engine-agnostic as before (the traits are planner inputs, never guessed).
+    ``steward_hint`` (REQ-030): ``engine``/``federated`` lands it without the gates; ``direct``
+    tries them, and is ignored -- noted in the reason -- when one fails. ``statement`` is the
+    governed statement after optimization, PostgreSQL text; ``forced`` names each condition the
+    caller found that makes it the engine's (a re-injected view, landed rows, a live-only part, no
+    connection on this node, a region's own ops record, every source inlined).
 
-    Returns:
-        RouteDecision with route, target source (if direct), and reason.
+    A response-cache hit is answered before any route (REQ-865), and a write goes to its source's
+    own driver where it has one, else through the engine's connector (REQ-031, REQ-910).
     """
-    # Result cache is the first candidate route (REQ-865). A hit serves the
-    # stored result with no direct or federated execution. The cache key is
-    # derived from the persona-resolved governed IR, so a serve is inherently
-    # isolated (REQ-866). Mutations never serve from cache, and only a request that opted into
-    # the response cache has CACHED as a candidate (REQ-544, amended 2026-09-30). A cached entry
-    # is never fresher than the read that stored it, so this stays above the operator's floor.
     if cache_hit and cache_opt_in and not is_mutation:
         return RouteDecision(
             route=Route.CACHE,
@@ -169,8 +273,6 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             reason="result cache hit",
         )
 
-    # A write goes to its source's own driver when there is one, otherwise through the engine's
-    # connector to it (REQ-031 as amended, REQ-910: executor/writable.resolve_write_path).
     if is_mutation and len(sources) >= 1:  # REQ-031, REQ-910
         from provisa.executor.writable import WritePath, resolve_write_path
 
@@ -189,39 +291,6 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             reason="mutation (direct driver)",
         )
 
-    # The operator's floor (REQ-030, amended 2026-09-30). A floored source is read from the
-    # platform's landed copy, which only the engine serves; no route may pull it live. A request
-    # hint that would (route=direct) is rejected rather than ignored. Checked after mutations —
-    # the floor bounds read load, and writes always go direct (REQ-031) — and before every other
-    # branch, since the steward, colocated, API and direct branches all read the source live.
-    floored = sorted((sid, operator_floor[sid]) for sid in sources if sid in operator_floor)
-    if floored:
-        sid, setting = floored[0]
-        if steward_hint == "direct":
-            raise OperatorFloorViolation(sid, setting, "direct")
-        return RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason=f"operator floor: {setting} on {sid} (read from the replica)",
-        )
-
-    # REQ-1494: every fake is computed by the engine serving the read; no source computes one.
-    if reads_fakes:
-        if steward_hint == "direct":
-            from provisa.fakes.read_sql import FakeReadRefused
-
-            raise FakeReadRefused(
-                "this statement reads faked columns, which only the engine computes"
-            )
-        return RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason="reads faked columns (computed by the engine)",
-        )
-
-    # Steward override
     if steward_hint in ("engine", "federated"):  # REQ-030
         return RouteDecision(
             route=Route.ENGINE,
@@ -229,102 +298,38 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             dialect=None,
             reason="steward override: federated",
         )
-    if steward_hint == "direct" and len(sources) == 1:  # REQ-030
-        sid = next(iter(sources))
-        stype = source_types.get(sid, "")
-        # A VIRTUAL/API source is reached only through the engine or the API caller, even when a
-        # driver is registered for its type (neo4j, issue #119: raw SQL text is not Cypher, and its
-        # read path is the engine + row_materialize, REQ-1865) — the hint cannot make it direct.
-        if has_driver(stype) and stype not in VIRTUAL_SOURCES and stype not in API_SOURCES:
-            return RouteDecision(
-                route=Route.DIRECT,
-                source_id=sid,
-                dialect=source_dialects.get(sid),
-                reason="steward override: direct",
-            )
 
-    # Colocated sources: same physical DB → treat as single source, route DIRECT
-    # Any source missing a DSN (e.g. iceberg/connector-only) means the query cannot be direct.
-    if len(sources) > 1 and source_dsns:
-        unique_dsns = {source_dsns.get(s) for s in sources}
-        if None not in unique_dsns and len(unique_dsns) == 1:
-            primary = next((s for s in sources if s != "provisa-admin"), next(iter(sources)))
-            stype = source_types.get(primary, "")
-            if has_driver(stype):
-                return RouteDecision(
-                    route=Route.DIRECT,
-                    source_id=primary,
-                    dialect=source_dialects.get(primary),
-                    reason="colocated sources on same physical DB (direct)",
-                )
-
-    # Multi-source → the engine
-    if len(sources) > 1:  # REQ-028
-        return RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason="multi-source query",
-        )
-
-    sid = next(iter(sources))
-    stype = source_types.get(sid, "")
-
-    # API sources — route through API caller, not the engine
-    if stype in API_SOURCES:
-        return RouteDecision(
-            route=Route.API,
-            source_id=sid,
-            dialect=None,
-            reason=f"api source ({stype})",
-        )
-
-    # REQ-2100: a read of one code source runs its function and applies the rest of the statement
-    # to its rows, on its own driver; no engine runs it.
-    if stype in CODE_DIRECT_SOURCES:
-        return RouteDecision(
-            route=Route.DIRECT,
-            source_id=sid,
-            dialect=source_dialects.get(sid),
-            reason=f"single code source ({stype}), read by its function",
-        )
-
-    # Connector-only sources (NoSQL, data lake, non-SQL)
-    if stype in VIRTUAL_SOURCES:
-        return RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason=_engine_source_reason(engine, stype),
-        )
-
-    # JSON path extraction — PG supports ->> natively; other dialects may not
-    if has_json_extract:  # REQ-151, REQ-152
-        _JSON_SAFE_DIALECTS = {"postgres", "postgresql"}
-        dialect = source_dialects.get(sid, "")
-        if dialect not in _JSON_SAFE_DIALECTS:
-            return RouteDecision(
-                route=Route.ENGINE,
-                source_id=None,
-                dialect=None,
-                reason=f"query uses JSON path extraction, unsupported for direct {stype}",
-            )
-
-    # RDBMS with direct driver → direct
-    if has_driver(stype):  # REQ-027, REQ-066, REQ-067
-        return RouteDecision(
-            route=Route.DIRECT,
-            source_id=sid,
-            dialect=source_dialects.get(sid),
-            reason=f"single rdbms source with direct driver ({stype})",
-        )
-
-    # RDBMS without direct driver → the engine
+    inputs = RouteInputs(
+        sources=frozenset(sources),
+        source_types=source_types,
+        source_dialects=source_dialects,
+        statement=statement,
+        json_path=has_json_extract,
+        source_dsns=source_dsns,
+        operator_floor=operator_floor,
+        reads_fakes=reads_fakes,
+        forced=forced,
+        complete_dataset=complete_dataset,
+        incomplete=incomplete,
+        engine=engine,
+    )
+    failed = _failed_gate(inputs)
+    if failed is not None:
+        # REQ-030 (amended 2026-10-23): a direct hint that cannot apply is ignored, and said.
+        reason = f"route hint ignored: {failed}" if steward_hint == "direct" else failed
+        return RouteDecision(route=Route.ENGINE, source_id=None, dialect=None, reason=reason)
+    sid = _primary(inputs)
+    if steward_hint == "direct":
+        reason = "steward override: direct"
+    elif len(sources) > 1:
+        reason = "colocated sources on same physical DB, one login (direct)"
+    else:
+        reason = f"single source with a direct access path ({source_types.get(sid, '')})"
     return RouteDecision(
-        route=Route.ENGINE,
-        source_id=None,
-        dialect=None,
-        reason=f"no direct driver for source type ({stype})",
+        route=Route.DIRECT,
+        source_id=sid,
+        dialect=source_dialects.get(sid),
+        reason=reason,
     )
 
 

@@ -371,6 +371,7 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229, REQ-030
         source_types=state.source_types,
         source_dialects=state.source_dialects,
         steward_hint=steward_hint,
+        statement=compiled.sql,
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
         operator_floor=operator_floor,

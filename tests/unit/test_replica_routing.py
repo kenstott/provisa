@@ -50,7 +50,7 @@ from provisa.federation.replica_routing import (
     reads_replica,
     table_floor,
 )
-from provisa.transpiler.router import OperatorFloorViolation, Route, decide_route
+from provisa.transpiler.router import Route, decide_route
 
 pytestmark = pytest.mark.unit
 
@@ -257,6 +257,7 @@ def _route(state: SimpleNamespace, table_ids, sources, hint=None):
         {"pg": "postgres", "crm": "postgres"},
         steward_hint=hint,
         operator_floor=operator_floor(state, table_ids),
+        statement="SELECT 1",
     )
 
 
@@ -277,11 +278,12 @@ def test_a_statement_that_reads_a_replica_served_table_routes_to_the_engine():
     assert decision.route == Route.ENGINE and "replicate on pg" in decision.reason
 
 
-def test_a_direct_hint_on_a_replica_served_table_is_refused_naming_the_setting():
+def test_a_direct_hint_on_a_replica_served_table_is_ignored_and_said():
     state = _published()
-    with pytest.raises(OperatorFloorViolation) as refused:
-        _route(state, [_ALWAYS_TABLE], {"pg"}, hint="direct")
-    assert "replicate" in str(refused.value) and "pg" in str(refused.value)
+    decision = _route(state, [_ALWAYS_TABLE], {"pg"}, hint="direct")
+    assert decision.route == Route.ENGINE
+    assert decision.reason.startswith("route hint ignored: landed: not_forced: operator floor:")
+    assert "replicate" in decision.reason
 
 
 def test_another_sources_statement_is_not_floored_by_it():
