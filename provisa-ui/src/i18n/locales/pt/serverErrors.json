@@ -662,6 +662,34 @@
       "also_term_needs_column": "Aplicar a tag ao termo em vez disso requer uma coluna.",
       "inherited_from_term": "Esta coluna é PII porque significa {{term}}. Desmarque esse significado, ou mova a coluna se ela significar outra coisa.",
       "move_loses": "Esta movimentação retira tags de colunas que deixariam de tê-las. Confirme a perda de cada tag, ou leve as tags para o termo para o qual as colunas são movidas."
+    },
+    "data_product": {
+      "status": {
+        "published": "Produto de dados {{data_product}} publicado.",
+        "deprecated": "Produto de dados {{data_product}} marcado como obsoleto.",
+        "retired": "Produto de dados {{data_product}} retirado.",
+        "restored": "Produto de dados {{data_product}} restaurado.",
+        "reason_required": "É necessário um motivo: diga por que o produto de dados está sendo marcado como obsoleto ou retirado.",
+        "not_found": "Produto de dados {{data_product}} não encontrado.",
+        "not_draft": "Só um produto de dados em rascunho pode ser publicado; este está {{status}}.",
+        "not_live": "Só um produto de dados ativo pode ser marcado como obsoleto, e só um ativo ou obsoleto pode ser retirado; este está {{status}}.",
+        "not_restorable": "Só um produto de dados obsoleto ou retirado pode ser restaurado; este está {{status}}.",
+        "retire_on_past": "A data de retirada planejada {{retire_on}} já passou. Escolha hoje ou uma data posterior.",
+        "successor_required": "Este produto de dados tem {{members}} membro(s); retirá-lo os passa para um sucessor. Escolha um.",
+        "successor_is_self": "Um produto de dados não pode suceder a si mesmo.",
+        "successor_retired": "O sucessor '{{successor}}' está retirado. Escolha um produto de dados em serviço.",
+        "successor_other_domain": "O sucessor '{{successor}}' está no domínio {{domain}}. Os membros de um produto compartilham o domínio dele, então escolha um sucessor do mesmo domínio."
+      },
+      "finding": {
+        "no_members": "Nenhuma tabela, view ou comando pertence a este produto de dados.",
+        "member_deprecated": "A tabela membro {{table}} está obsoleta.",
+        "no_owner": "Nenhum papel de proprietário é responsável por este produto de dados.",
+        "no_support_contact": "Este produto de dados não tem contato de suporte, exigido por um destino de exportação configurado.",
+        "retirement_blocked": "Este produto de dados deveria ser retirado em {{retire_on}}, mas ainda tem membros. Retire-o com um sucessor que os receba.",
+        "domain_steward_unset": "O domínio {{domain}} não tem steward.",
+        "no_description": "Este produto de dados não informa nem seu propósito nem seu uso.",
+        "successor_retired": "O produto de dados que recebeu os membros deste, '{{successor}}', também foi retirado."
+      }
     }
   }
 }

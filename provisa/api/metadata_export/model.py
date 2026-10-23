@@ -110,6 +110,12 @@ class TableAsset:  # REQ-1070
     is_view: bool = False
 
 
+def listed(product: "DataProductAsset") -> bool:
+    """Whether a catalog lists the product as published: while it is in service, live or
+    deprecated (REQ-1634 STATUS). A draft is not yet listed; a retired one no longer is."""
+    return product.status in ("live", "deprecated")
+
+
 @dataclass
 class DataProductAsset:  # REQ-1634
     """A named, owned bundle of member tables/views published as one catalog listing.
@@ -129,7 +135,6 @@ class DataProductAsset:  # REQ-1634
     members: tuple[AssetRef, ...] = ()
     semantic_uri: str = ""
     support_contact: str | None = None  # REQ-1635: Horizon Catalog org-listing manifest requirement
-    publish: bool = False  # REQ-1635: PUBLISH = TRUE on the organization listing instead of DRAFT
     # REQ-1659: the product's page in the org's UI, published as the listing's documentation link.
     documentation_url: str | None = None
     # REQ-2118: the rest of the product's ODPS fields, carried to every target in its own terms.
@@ -137,7 +142,9 @@ class DataProductAsset:  # REQ-1634
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
+    # REQ-1634 STATUS: draft, live, deprecated or retired; a product is listed while it is in
+    # service (:func:`listed`).
+    status: str = "draft"
     sla: str | None = None  # prose: a product spans several members
     support: str | None = None
     custom_properties: dict[str, str] = field(default_factory=dict)

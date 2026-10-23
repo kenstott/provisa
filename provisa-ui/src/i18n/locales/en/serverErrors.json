@@ -662,6 +662,34 @@
       "also_term_needs_column": "Tagging the term instead takes a column.",
       "inherited_from_term": "This column is PII because it means {{term}}. Unmark that meaning, or move the column if it means something else.",
       "move_loses": "This move takes tags off columns that would no longer carry them. Confirm the loss of each tag, or carry the tags to the term the columns move to."
+    },
+    "data_product": {
+      "status": {
+        "published": "Data product {{data_product}} published.",
+        "deprecated": "Data product {{data_product}} deprecated.",
+        "retired": "Data product {{data_product}} retired.",
+        "restored": "Data product {{data_product}} restored.",
+        "reason_required": "A reason is required: say why the data product is deprecated or retired.",
+        "not_found": "Data product {{data_product}} not found.",
+        "not_draft": "Only a draft data product can be published; this one is {{status}}.",
+        "not_live": "Only a live data product can be deprecated, and only a live or deprecated one retired; this one is {{status}}.",
+        "not_restorable": "Only a deprecated or retired data product can be restored; this one is {{status}}.",
+        "retire_on_past": "The planned retirement date {{retire_on}} is in the past. Choose today or a later date.",
+        "successor_required": "This data product has {{members}} member(s); retiring it moves them to a successor. Choose one.",
+        "successor_is_self": "A data product cannot succeed itself.",
+        "successor_retired": "The successor '{{successor}}' is retired. Choose a data product that is in service.",
+        "successor_other_domain": "The successor '{{successor}}' is in domain {{domain}}. A product's members share its domain, so choose a successor in the same domain."
+      },
+      "finding": {
+        "no_members": "No table, view or command belongs to this data product.",
+        "member_deprecated": "Member table {{table}} is deprecated.",
+        "no_owner": "No owner role is accountable for this data product.",
+        "no_support_contact": "This data product has no support contact, which a configured export target requires.",
+        "retirement_blocked": "This data product was due to retire on {{retire_on}} but still has members. Retire it with a successor to take them.",
+        "domain_steward_unset": "Domain {{domain}} has no steward.",
+        "no_description": "This data product states neither its purpose nor its usage.",
+        "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
+      }
     }
   }
 }

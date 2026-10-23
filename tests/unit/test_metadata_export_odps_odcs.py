@@ -75,7 +75,7 @@ def _errors(validator: Draft201909Validator, document: dict) -> list[str]:
 
 
 def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
-    snapshot, product = _snapshot(version="1.2.0", status="active")
+    snapshot, product = _snapshot(version="1.2.0", status="live")
     document = odps_document(snapshot, product)
 
     assert _errors(ODPS, document) == []
@@ -86,7 +86,7 @@ def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
     }
     assert (document["version"], document["status"], document["domain"]) == (
         "1.2.0",
-        "active",
+        "active",  # ODPS's word for a live product
         "sales",
     )
     ports = {port["name"]: port for port in document["outputPorts"]}

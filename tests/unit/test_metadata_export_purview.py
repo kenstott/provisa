@@ -68,7 +68,7 @@ def _target() -> MetadataExportTarget:
     )
 
 
-def _snapshot(*, owners=("owner@example.com",), domain="sales", status="active"):
+def _snapshot(*, owners=("owner@example.com",), domain="sales", status="live"):
     config = ProvisaConfig(
         sources=[
             Source(
@@ -220,18 +220,16 @@ def test_a_purview_target_signs_in_with_entra():
 
 
 @pytest.mark.parametrize(
-    ("status", "publish", "expected"),
+    ("status", "expected"),
     [
-        ("active", False, "PUBLISHED"),
-        ("deprecated", False, "EXPIRED"),
-        ("retired", True, "EXPIRED"),
-        ("proposed", True, "DRAFT"),
-        (None, True, "PUBLISHED"),
-        (None, False, "DRAFT"),
+        ("draft", "DRAFT"),
+        ("live", "PUBLISHED"),
+        ("deprecated", "PUBLISHED"),  # REQ-1634 STATUS: still in service
+        ("retired", "EXPIRED"),
     ],
 )
-def test_the_status_is_the_catalogs(status: Any, publish: bool, expected: str):
-    product = type("P", (), {"status": status, "publish": publish})()
+def test_the_status_is_the_catalogs(status: Any, expected: str):
+    product = type("P", (), {"status": status})()
     assert catalog_status(product) == expected  # type: ignore[arg-type]
 
 

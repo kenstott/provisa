@@ -136,8 +136,7 @@ def product_body(product: "DataProductAsset") -> dict[str, Any]:
     labels = {"provisa-product": label(product.id)}
     if product.version:
         labels["provisa-version"] = label(product.version)
-    if product.status:
-        labels["provisa-status"] = label(product.status)
+    labels["provisa-status"] = label(product.status)
     owners = list(product.owner_emails)
     return {
         "displayName": product.name,

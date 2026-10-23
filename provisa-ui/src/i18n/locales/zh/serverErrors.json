@@ -662,6 +662,34 @@
       "also_term_needs_column": "改为给术语加标签需要指定一列。",
       "inherited_from_term": "此列是 PII，因为它表示 {{term}}。请取消该含义的标记，或者如果此列表示其他含义，请移动它。",
       "move_loses": "此次移动会使列失去标签，之后这些列将不再带有它们。请确认失去每个标签，或将标签带到列移入的术语上。"
+    },
+    "data_product": {
+      "status": {
+        "published": "数据产品 {{data_product}} 已发布。",
+        "deprecated": "数据产品 {{data_product}} 已标记为弃用。",
+        "retired": "数据产品 {{data_product}} 已停用。",
+        "restored": "数据产品 {{data_product}} 已恢复。",
+        "reason_required": "需要填写原因：说明为什么弃用或停用该数据产品。",
+        "not_found": "未找到数据产品 {{data_product}}。",
+        "not_draft": "只有草稿状态的数据产品可以发布；此产品为 {{status}}。",
+        "not_live": "只有已上线的数据产品可以弃用，只有已上线或已弃用的可以停用；此产品为 {{status}}。",
+        "not_restorable": "只有已弃用或已停用的数据产品可以恢复；此产品为 {{status}}。",
+        "retire_on_past": "计划停用日期 {{retire_on}} 已过。请选择今天或之后的日期。",
+        "successor_required": "此数据产品有 {{members}} 个成员；停用后它们会转给继任者。请选择一个。",
+        "successor_is_self": "数据产品不能是自己的继任者。",
+        "successor_retired": "继任者“{{successor}}”已停用。请选择一个正在使用的数据产品。",
+        "successor_other_domain": "继任者“{{successor}}”属于域 {{domain}}。产品的成员与其共享同一个域，因此请选择同一域中的继任者。"
+      },
+      "finding": {
+        "no_members": "没有任何表、视图或命令属于此数据产品。",
+        "member_deprecated": "成员表 {{table}} 已弃用。",
+        "no_owner": "没有所有者角色对此数据产品负责。",
+        "no_support_contact": "此数据产品没有支持联系人，而已配置的导出目标要求提供。",
+        "retirement_blocked": "此数据产品原定于 {{retire_on}} 停用，但仍有成员。请指定一个继任者接收这些成员后再停用。",
+        "domain_steward_unset": "域 {{domain}} 没有数据管家。",
+        "no_description": "此数据产品既未说明用途，也未说明使用方式。",
+        "successor_retired": "接收此产品成员的数据产品“{{successor}}”也已停用。"
+      }
     }
   }
 }

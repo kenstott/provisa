@@ -31,7 +31,7 @@ FIELDS = {
     "limitations": "No orders before 2020",
     "usage": "Join on customer_id",
     "version": "1.2.0",
-    "status": "active",
+    "status": "live",
     "sla": "Refreshed hourly",
     "support": "The data team's channel",
     "supportContact": "data-team@example.com",

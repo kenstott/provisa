@@ -185,6 +185,7 @@ def test_the_forms_carry_the_members_and_the_products_fields():
         "purpose": "Every sale",
         "usage": "Join on customer_id",
         "version": "1.2.0",
+        "status": "draft",
     }
 
 

@@ -49,7 +49,7 @@ class _FakeDataProduct:
     description: str
     members: list[AssetRef] = field(default_factory=list)
     support_contact: str | None = "data-team@example.com"
-    publish: bool = False
+    status: str = "draft"  # REQ-1634 STATUS: listed (PUBLISH = TRUE) while live or deprecated
     documentation_url: str | None = None
 
     def described(self) -> str:
@@ -616,7 +616,7 @@ def test_publish_creates_listing_with_publish_true_when_product_opts_in(monkeypa
         "customer_360",
         "Customer 360",
         [_table_ref("petstore-api", "public", "customers")],
-        publish=True,
+        status="live",
     )
     snapshot = SimpleNamespace(data_products=[product])
     result = asyncio.run(_exporter().publish(snapshot))

@@ -50,7 +50,7 @@ PRODUCT_FIELDS = {
     "limitations": "Orders before 2020 are not loaded",
     "usage": "Join orders to customers on customer_id",
     "version": "1.2.0",
-    "status": "active",
+    "status": "live",
     "sla": "Refreshed hourly",
     "support": "Ask in the data team's channel",
     "support_contact": "data-team@example.com",

@@ -243,7 +243,6 @@ def _data_product_assets(
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
-                publish=product.publish,
                 team_role=product.team_role,
                 limitations=product.limitations,
                 usage=product.usage,

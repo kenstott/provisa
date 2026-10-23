@@ -163,7 +163,7 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
-class DataProductType:  # REQ-1634, REQ-1660
+class DataProductType:  # REQ-1634
     id: str
     domain_id: str
     name: str
@@ -173,10 +173,32 @@ class DataProductType:  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
     sla: str | None = None
     support: str | None = None
     custom_properties: JsonScalar
+    # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
+    status: str = "draft"
+    status_reason: str | None = None
+    retire_on: str | None = None  # ISO date: a deprecated product's planned retirement
+    status_by: str | None = None
+    status_at: str | None = None
+    successor_id: str | None = None
+    successor_name: str | None = None
+    findings: int = 0  # REQ-2146: how many To Review findings the product has
+
+
+@strawberry.type
+class DataProductFindingType:  # REQ-2146
+    kind: str
+    code: str
+    message: str
+    params: JsonScalar
+
+
+@strawberry.type
+class DataProductFindingsType:  # REQ-2146
+    product_id: str
+    findings: list[DataProductFindingType]
 
 
 @strawberry.type
@@ -996,7 +1018,7 @@ class DomainInput:  # REQ-533, REQ-609
 
 
 @strawberry.input
-class DataProductInput:  # REQ-1634, REQ-1660
+class DataProductInput:  # REQ-1634
     id: str
     domain_id: str
     name: str
@@ -1006,7 +1028,6 @@ class DataProductInput:  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
     sla: str | None = None
     support: str | None = None
     # Nullable, default null: a default of `{}` on the JSON scalar cannot be printed as a GraphQL
