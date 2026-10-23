@@ -168,6 +168,9 @@ function Loading({ error, testId }: { error: string | null; testId: string }) {
   );
 }
 
+// Before a view's first scoped read: nothing drawn yet.
+const EMPTY: GraphData = { nodes: [], edges: [] };
+
 export function KnowledgeGraphPanel({
   productId,
   productName,
@@ -179,7 +182,7 @@ export function KnowledgeGraphPanel({
   const { ref, seen } = useInView<HTMLDivElement>();
   const [open, setOpen] = useState(false);
   // Read once the panel is first in view, as three.js is loaded.
-  const { data, error } = useProductGraph(productId, seen);
+  const { data, error, scoped, onScope } = useProductGraph(productId, seen);
   const product = productNode(productId);
   const graph = useMemo(() => (data ? panelGraph(data, product) : null), [data, product]);
   return (
@@ -208,7 +211,8 @@ export function KnowledgeGraphPanel({
           opened={open}
           onClose={() => setOpen(false)}
           title={t("graph3d.expandTitle", { product: productName })}
-          data={data}
+          data={scoped?.data ?? EMPTY}
+          query={{ all: data, onScope, text: scoped?.query ?? null, own: product }}
           scope={PRODUCT_SCOPE}
           preset="knowledge"
           exportName={productName}
@@ -226,7 +230,7 @@ export function KnowledgeGraphPanel({
 export function ProductMapButton() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const { data, error } = useProductGraph(null, open);
+  const { data, error, scoped, onScope } = useProductGraph(null, open);
   return (
     <>
       <Button
@@ -248,7 +252,8 @@ export function ProductMapButton() {
           opened={open}
           onClose={() => setOpen(false)}
           title={t("graph3d.productMap")}
-          data={data}
+          data={scoped?.data ?? EMPTY}
+          query={{ all: data, onScope, text: scoped?.query ?? null }}
           scope={PRODUCT_SCOPE}
           preset="productMap"
           exportName="product-map"

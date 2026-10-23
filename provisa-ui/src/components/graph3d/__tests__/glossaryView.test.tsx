@@ -194,6 +194,8 @@ describe("the Glossary page's Ontology View", () => {
       edgeTypes: [],
       hiddenStatuses: [],
       orphans: true,
+      tags: [],
+      sensitivities: [],
     });
     await waitFor(() =>
       expect(asked.scopes.at(-1)).toEqual({
@@ -202,6 +204,8 @@ describe("the Glossary page's Ontology View", () => {
         edgeTypes: [],
         hiddenStatuses: ["retired"],
         orphans: true,
+        tags: [],
+        sensitivities: [],
       }),
     );
     // The Taxonomy preset's edge types and layers are the query's.

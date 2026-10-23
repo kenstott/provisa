@@ -250,6 +250,9 @@ export interface QueryScope {
   domains: string[];
   edgeTypes: string[];
   hiddenStatuses: TermStatus[];
+  /** The product graph's tag and sensitivity filters. */
+  tags: string[];
+  sensitivities: string[];
   /** Whether a term with no relationship drawn (no edge of the types kept to a term kept, and no
    * column it IS under Columns) is drawn: the Ontology View's Orphans. */
   orphans: boolean;

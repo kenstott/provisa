@@ -37,6 +37,8 @@ const EVERYTHING: QueryScope = {
   edgeTypes: [],
   hiddenStatuses: [],
   orphans: true,
+  tags: [],
+  sensitivities: [],
 };
 
 /** The ontology as ``scope`` reads it, in one query (REQ-2136); null when the role cannot read the

@@ -92,7 +92,14 @@ export function GraphExplorer({
   /** REQ-2136: the layers and the domain, edge type and status filters run in the view's query.
    * The page reads ``data`` for the scope ``onScope`` reports; ``all`` (every layer, no filter)
    * is what the controls choose from, since ``data`` holds only what the filters keep. */
-  query?: { all: GraphData; onScope: (s: QueryScope) => void; text: string | null };
+  query?: {
+    all: GraphData;
+    onScope: (s: QueryScope) => void;
+    text: string | null;
+    /** The focus the query itself states (a product's graph, read for that product): no
+     * neighbourhood beyond the query's own. */
+    own?: string;
+  };
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -226,6 +233,8 @@ export function GraphExplorer({
     return {
       domains: all(filters.domains, choices.domains),
       edgeTypes: all(filters.edgeTypes, edgeTypes),
+      tags: all(filters.tags, choices.tags),
+      sensitivities: all(filters.sensitivities, choices.sensitivities),
     };
   }, [filters, choices, edgeTypes]);
   // The scope the query reads, reported whenever it changes (a key, so an equal one is not news).
@@ -236,15 +245,19 @@ export function GraphExplorer({
     narrowed.edgeTypes,
     filters.hiddenStatuses,
     orphans,
+    narrowed.tags,
+    narrowed.sensitivities,
   ]);
   useEffect(() => {
     if (!onScope) return;
-    const [l, domains, types, statuses, kept] = JSON.parse(scopeKey) as [
+    const [l, domains, types, statuses, kept, tags, sensitivities] = JSON.parse(scopeKey) as [
       LayerId[],
       string[],
       string[],
       TermStatus[],
       boolean,
+      string[],
+      string[],
     ];
     onScope({
       layers: new Set(l),
@@ -252,12 +265,15 @@ export function GraphExplorer({
       edgeTypes: types,
       hiddenStatuses: statuses,
       orphans: kept,
+      tags,
+      sensitivities,
     });
   }, [onScope, scopeKey]);
 
   // A focus draws a neighbourhood (reach), which no query states: the page's search or a node.
   const focused =
-    (search !== undefined && searchItems(search).length > 0) || filters.focus.length > 0;
+    (search !== undefined && searchItems(search).length > 0) ||
+    filters.focus.some((f) => f !== query?.own);
 
   const shown = useMemo(() => {
     // The page's search, when it drives the focus: what it matches, by title or definition.
@@ -276,7 +292,9 @@ export function GraphExplorer({
     const narrowing = {
       ...filters,
       focus: matched ?? filters.focus,
-      ...(query ? { domains: [], edgeTypes: [], hiddenStatuses: [] } : narrowed),
+      ...(query
+        ? { domains: [], edgeTypes: [], hiddenStatuses: [], tags: [], sensitivities: [] }
+        : narrowed),
     };
     const g = visibleGraph(data, on, narrowing, expanded, scope);
     // Under a query its Orphans is its own too.

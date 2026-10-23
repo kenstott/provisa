@@ -61,15 +61,25 @@ class FakeObserver {
 }
 vi.stubGlobal("IntersectionObserver", FakeObserver);
 
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
+
 // The meta-domain read: what each call asked for, answered with the fixture.
 const reads = vi.hoisted(() => ({
   calls: [] as [string | null, boolean][],
   data: null as unknown,
 }));
+// The view's scoped read (REQ-2136) answers with the same fixture: what its filters keep is
+// productGraphData's query, tested there.
+const scopes = vi.hoisted(() => ({ asked: [] as unknown[] }));
 vi.mock("../useProductGraph", () => ({
   useProductGraph: (product: string | null, enabled: boolean) => {
     reads.calls.push([product, enabled]);
-    return { data: enabled ? reads.data : null, error: null };
+    return {
+      data: enabled ? reads.data : null,
+      error: null,
+      scoped: enabled ? { data: reads.data, query: "query DataProductGraph { x }" } : null,
+      onScope: (s: unknown) => scopes.asked.push(s),
+    };
   },
 }));
 
@@ -153,6 +163,24 @@ describe("the Knowledge Graph panel", () => {
     expect(nodeIds(g)).toContain("p:billing");
     expect(nodeIds(g)).not.toContain("d:finance");
     expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("customer_360");
+  });
+
+  it("opens as its query under its own product's focus, and not under one the reader picks", async () => {
+    panel();
+    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
+    // Its filters are its query's: the scope it reports, every filter open at first.
+    expect(scopes.asked.at(-1)).toMatchObject({ domains: [], tags: [], sensitivities: [] });
+    fireEvent.click(screen.getByTestId("graph3d-open-as-query"));
+    expect(await screen.findByTestId("graph3d-open-as-graphql")).not.toBeDisabled();
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    });
+    // A focus of the reader's own: a neighbourhood the query does not state.
+    fireEvent.click(screen.getByTestId("graph3d-filter-focus"));
+    fireEvent.click(await screen.findByTestId("graph3d-filter-focus-option-term:customer"));
+    fireEvent.click(screen.getByTestId("graph3d-open-as-query"));
+    await waitFor(() => expect(screen.getByTestId("graph3d-open-as-graphql")).toBeDisabled());
   });
 
   it("removes only the tags when the tags layer goes, and the Lineage preset draws lineage alone", async () => {

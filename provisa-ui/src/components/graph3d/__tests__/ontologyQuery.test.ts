@@ -120,6 +120,8 @@ const scope = (layers: LayerId[], over: Partial<QueryScope> = {}): QueryScope =>
   edgeTypes: [],
   hiddenStatuses: [],
   orphans: true,
+  tags: [],
+  sensitivities: [],
   ...over,
 });
 const squash = (q: string | null) => (q ?? "").replace(/\s+/g, " ");
