@@ -13,6 +13,7 @@ and pgwire's NoticeResponse. A cut answer lands under a name of its own, so the 
 request calls the remote again; a cut fill has no fetch time, so it is fetched again too."""
 
 from __future__ import annotations
+from provisa.api_source.models import ApiSourceType
 
 import io
 import json
@@ -149,7 +150,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
 
     engine = SimpleNamespace(isolated_sync=isolated_sync)
     loc = CacheLocation("c", "s", "relational")
-    source = SimpleNamespace(base_url=BASE, auth=None, headers={})
+    source = SimpleNamespace(type=ApiSourceType.openapi, base_url=BASE, auth=None, headers={})
     endpoint = _endpoint(_offset(max_pages=1))
     with (
         patch.object(router_integration, "table_exists", lambda conn, loc, t, ttl=None: False),
@@ -205,7 +206,7 @@ async def test_a_cut_fill_warns_has_no_fetch_time_and_is_fetched_again():
         side_effect=lambda request: httpx.Response(200, json=_pets(2))
     )
     endpoint = _endpoint(_offset(max_pages=1))
-    source = SimpleNamespace(base_url=BASE, auth=None, headers={})
+    source = SimpleNamespace(type=ApiSourceType.openapi, base_url=BASE, auth=None, headers={})
     with collecting() as found:
         assert await fill_cache.fill(state, endpoint, source, [{}], ttl=300) == 2
     assert [w.code for w in found] == ["api.answer_cut"]

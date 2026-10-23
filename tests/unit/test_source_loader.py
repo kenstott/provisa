@@ -7,6 +7,7 @@
 """REQ-941/846: SourceRowLoader — read a MATERIALIZED source's rows via the engine terminal."""
 
 from __future__ import annotations
+from provisa.api_source.models import ApiSourceType
 
 from types import SimpleNamespace
 
@@ -138,6 +139,7 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
     monkeypatch.setattr("provisa.api_source.flattener.flatten_response", _fake_flatten)
 
     endpoint = SimpleNamespace(
+        source_id="api",
         table_name="events",
         default_params={"limit": 100},
         response_root="data",
@@ -145,7 +147,11 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
         response_normalizer=None,
     )
     api_source = SimpleNamespace(
-        id="api", base_url="https://x.test", auth=None, headers={"User-Agent": "Provisa/x"}
+        id="api",
+        type=ApiSourceType.openapi,
+        base_url="https://x.test",
+        auth=None,
+        headers={"User-Agent": "Provisa/x"},
     )
     load = make_openapi_loader(
         SimpleNamespace(

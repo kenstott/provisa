@@ -231,6 +231,6 @@ async def test_a_live_read_sends_the_fixed_arguments_with_the_ones_it_gives(monk
     monkeypatch.setattr(executor, "execute_remote", execute_remote)
     table = {"name": "t", "arguments": {"owner": "acme"}, "required_args": [], "rows_path": None}
     await materialization._fetch_gql_remote_rows(
-        {"url": URL}, table, ["id"], {"name": "payments"}, {}, None, None
+        "t", {"url": URL, "source_id": "gql"}, table, ["id"], {"name": "payments"}, {}, None, None
     )
     assert sent["variables"] == {"owner": "acme", "name": "payments"}
