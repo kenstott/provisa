@@ -102,24 +102,13 @@ def _group_columns(
     return root_cols, nested_groups
 
 
-def _detect_path_sets(
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-) -> tuple[set[str], set[str], set[str]]:
-    """Return (one_to_many_paths, agg_paths, absorbed_paths)."""
-    one_to_many_paths: set[str] = set()
-    for nest_path, nest_cols in nested_groups.items():
-        for _, col in nest_cols:
-            if col.cardinality == "one-to-many" or col.is_agg:
-                one_to_many_paths.add(nest_path)
-                break
-
-    agg_paths: set[str] = {
-        p for p in one_to_many_paths if any(col.is_agg for _, col in nested_groups[p])
+def _one_to_many_paths(nested_groups: dict[str, list[tuple[int, ColumnRef]]]) -> set[str]:
+    """The nested paths that are lists: a to-many relationship's rows."""
+    return {
+        nest_path
+        for nest_path, nest_cols in nested_groups.items()
+        if any(col.cardinality == "one-to-many" for _, col in nest_cols)
     }
-    absorbed_paths: set[str] = {
-        cp for cp in one_to_many_paths if any(cp.startswith(p + ".") for p in agg_paths)
-    }
-    return one_to_many_paths, agg_paths, absorbed_paths
 
 
 def _navigate_path(
@@ -140,44 +129,6 @@ def _navigate_path(
     return target, False
 
 
-def _zip_absorbed_children(
-    arr: list,
-    oto_path: str,
-    child: dict,
-    absorbed_paths: set[str],
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-    row: tuple,
-    n: int,
-) -> None:
-    """Unzip ARRAY_AGG child and absorbed sub-paths, appending elements to arr."""
-    prefix = oto_path + "."
-    child_absorbed = [
-        (
-            cp,
-            {col.field_name: _convert_value(row[idx]) for idx, col in nested_groups[cp]},
-        )
-        for cp in sorted(absorbed_paths)
-        if cp.startswith(prefix)
-    ]
-    for j in range(n):
-        elem = {k: (v[j] if isinstance(v, list) and j < len(v) else v) for k, v in child.items()}
-        for cp, cp_data in child_absorbed:
-            rel = cp[len(prefix) :]
-            rel_parts = rel.split(".")
-            sub_t: dict = elem
-            for sub_part in rel_parts[:-1]:
-                sub_t = sub_t.setdefault(sub_part, {})
-            leaf = rel_parts[-1]
-            cp_elem = {
-                k: (v[j] if isinstance(v, list) and j < len(v) else v) for k, v in cp_data.items()
-            }
-            if all(v is None for v in cp_elem.values()):
-                sub_t[leaf] = None
-            else:
-                sub_t.setdefault(leaf, []).append(cp_elem)
-        arr.append(elem)
-
-
 def _parent_path(path: str, placed: dict[str, dict | None]) -> str:
     """The nearest enclosing path of ``path`` placed in this row ("" is the root object)."""
     parts = path.split(".")
@@ -193,7 +144,6 @@ def _serialize_with_one_to_many(
     root_cols: list[tuple[int, ColumnRef]],
     nested_groups: dict[str, list[tuple[int, ColumnRef]]],
     one_to_many_paths: set[str],
-    absorbed_paths: set[str],
     result_limit: int | None,
     root_field: str,
 ) -> dict:
@@ -201,13 +151,12 @@ def _serialize_with_one_to_many(
 
     Each row is placed path by path, parents first: a to-many element is the one its own values
     name under the element the row placed its parent in, at any depth (#285), and a to-one
-    object is its parent element's. An ARRAY_AGG path is unzipped once, when its parent element
-    is first placed; nothing below it comes from rows."""
+    object is its parent element's. A field built as one JSON value is a value of its element."""
     seen: dict[tuple, int] = {}
     result_rows: list[dict] = []
     #: (the list it is in, its values) -> the element
     elements: dict[tuple[int, tuple], dict] = {}
-    paths = sorted(p for p in nested_groups if p not in absorbed_paths)
+    paths = sorted(nested_groups)
 
     for row in rows:
         root_key = tuple(_to_hashable(_convert_value(row[idx])) for idx, _ in root_cols)
@@ -235,14 +184,6 @@ def _serialize_with_one_to_many(
                 arr = holder.get(leaf)
                 if not isinstance(arr, list):
                     arr = holder[leaf] = []
-                if any(isinstance(v, list) for v in values.values()):
-                    if fresh[parent]:
-                        n = next((len(v) for v in values.values() if isinstance(v, list)), 0)
-                        _zip_absorbed_children(
-                            arr, path, values, absorbed_paths, nested_groups, row, n
-                        )
-                    placed[path], fresh[path] = None, False
-                    continue
                 if empty:
                     placed[path], fresh[path] = None, False
                     continue
@@ -399,7 +340,7 @@ def serialize_rows(  # REQ-047, REQ-048, REQ-049, REQ-050
         {"data": {root_field: [...]}}
     """
     root_cols, nested_groups = _group_columns(columns)
-    one_to_many_paths, _agg_paths, absorbed_paths = _detect_path_sets(nested_groups)  # pyright: ignore[reportUnusedVariable]
+    one_to_many_paths = _one_to_many_paths(nested_groups)
 
     if one_to_many_paths and root_cols:
         return _serialize_with_one_to_many(
@@ -407,46 +348,11 @@ def serialize_rows(  # REQ-047, REQ-048, REQ-049, REQ-050
             root_cols,
             nested_groups,
             one_to_many_paths,
-            absorbed_paths,
             result_limit,
             root_field,
         )
 
     return _serialize_flat(rows, root_cols, nested_groups, result_limit, root_field)
-
-
-def _transform_row(obj: dict, m2o_paths: set[str], prefix: str) -> None:
-    for key in list(obj.keys()):
-        value = obj[key]
-        path = f"{prefix}.{key}" if prefix else key
-        if path in m2o_paths:
-            if isinstance(value, list):
-                obj[key] = value[0] if value else None
-                if obj[key] is not None:
-                    _transform_row(obj[key], m2o_paths, path)
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    _transform_row(item, m2o_paths, path)
-        elif isinstance(value, dict):
-            _transform_row(value, m2o_paths, path)
-
-
-def shape_transform(result: dict, columns: list[ColumnRef]) -> dict:  # REQ-484
-    """Collapse many-to-one ARRAY_AGG arrays into single objects."""
-    m2o_paths = {
-        col.nested_in
-        for col in columns
-        if col.is_agg and col.cardinality != "one-to-many" and col.nested_in
-    }
-    if not m2o_paths:
-        return result
-    root_field = next(iter(result["data"]))
-    rows = result["data"][root_field]
-    if isinstance(rows, list):
-        for row in rows:
-            _transform_row(row, m2o_paths, "")
-    return result
 
 
 def serialize_aggregate(  # REQ-196, REQ-197

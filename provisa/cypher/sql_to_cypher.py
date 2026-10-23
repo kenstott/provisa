@@ -605,6 +605,17 @@ def _normalize_json_builders(tree: exp.Select) -> None:
     same constructor over a binary representation, so the graph shape is identical; without this,
     NL-generated SQL using the jsonb spelling never reaches _process_json_subqueries.
     """
+    # A list field's empty-list default (sql_selection.EMPTY_JSON_LIST): COLLECT { } of no rows
+    # is [] already.
+    for node in list(tree.find_all(exp.Coalesce)):
+        default = node.expressions[0] if len(node.expressions or []) == 1 else None
+        if (
+            isinstance(node.this, exp.Subquery)
+            and isinstance(default, exp.Cast)
+            and isinstance(default.this, exp.Literal)
+            and default.this.this == "[]"
+        ):
+            node.replace(node.this)
     for node in list(tree.find_all(exp.Anonymous)):
         name = node.name.upper()
         if name in ("JSON_BUILD_OBJECT", "JSONB_BUILD_OBJECT"):

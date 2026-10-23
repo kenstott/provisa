@@ -21,7 +21,6 @@ from provisa.compiler.sql_selection import (
     _build_rel_json_expr,
     _build_rel_json_kv,
     _collect_nested_columns,
-    _emit_agg_subqueries,
     _extract_json_blob_kv,
     _lateral_join,
 )
@@ -168,271 +167,6 @@ def test_lateral_join_use_catalog_true():
     assert '"src"."public"."children"' in sql
 
 
-# --- _emit_agg_subqueries ------------------------------------------------------
-
-
-def test_emit_agg_subqueries_scalar_no_extra_joins_no_limit():
-    parent = _table(1, "widgets")
-    ctx = CompilationContext(exposed_to_physical={}, physical_to_sql={(1, "name"): "name"})
-    fn = _field("{ widgets { name } }")
-    select_parts: list[str] = []
-    columns: list = []
-    sources = _sources()
-    _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "",
-        "t0",
-        "root",
-        None,
-        None,
-        False,
-        1,
-        select_parts,
-        columns,
-        sources,
-    )
-    assert len(select_parts) == 1
-    assert "ARRAY_AGG" in select_parts[0]
-    assert "FROM public.widgets" in select_parts[0]
-    assert columns[0].is_agg is True
-
-
-def test_emit_agg_subqueries_scalar_with_extra_joins_and_limit():
-    parent = _table(1, "widgets")
-    ctx = CompilationContext(physical_to_sql={(1, "name"): "name"})
-    fn = _field("{ widgets { name } }")
-    select_parts: list[str] = []
-    _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "JOIN other o ON o.id = t0.id",
-        "t0",
-        "root",
-        None,
-        5,
-        False,
-        1,
-        select_parts,
-        [],
-        _sources(),
-    )
-    assert "LIMIT 5" in select_parts[0]
-    assert "JOIN other o" in select_parts[0]
-
-
-def test_emit_agg_subqueries_scalar_with_limit_no_extra_joins():
-    parent = _table(1, "widgets")
-    ctx = CompilationContext(physical_to_sql={(1, "name"): "name"})
-    fn = _field("{ widgets { name } }")
-    select_parts: list[str] = []
-    _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "",
-        "t0",
-        "root",
-        None,
-        5,
-        False,
-        1,
-        select_parts,
-        [],
-        _sources(),
-    )
-    assert "LIMIT 5" in select_parts[0]
-    assert "ARRAY_AGG" in select_parts[0]
-
-
-def test_emit_agg_subqueries_recurses_into_sub_relationship():
-    parent = _table(1, "widgets", field_name="widgets")
-    child = _table(2, "children", field_name="children")
-    jm = _join(child, cardinality="one-to-many")
-    ctx = CompilationContext(
-        joins={("Widget", "children"): jm},
-        physical_to_sql={(2, "name"): "name"},
-    )
-    fn = _field("{ widgets { children { name } } }")
-    select_parts: list[str] = []
-    columns: list = []
-    sources = _sources()
-    counter = _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "",
-        "t0",
-        "root",
-        None,
-        None,
-        False,
-        1,
-        select_parts,
-        columns,
-        sources,
-    )
-    assert counter == 2
-    assert "src" in sources
-    # REQ-826: the nested table is recorded beside the root one, for the statement's floor
-    assert sources.table_ids == {1, 2}
-    assert len(select_parts) == 1
-    assert columns[0].nested_in == "root.children"
-
-
-def test_emit_agg_subqueries_recurses_with_source_constant_and_target_expr():
-    parent = _table(1, "widgets", field_name="widgets")
-    child = _table(2, "children", field_name="children")
-    jm = _join(
-        child,
-        cardinality="one-to-many",
-        source_constant="pets",
-        target_expr='CONCAT({alias}."a", {alias}."b")',
-    )
-    ctx = CompilationContext(
-        joins={("Widget", "children"): jm},
-        physical_to_sql={(2, "name"): "name"},
-    )
-    fn = _field("{ widgets { children { name } } }")
-    select_parts: list = []
-    _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "",
-        "t0",
-        "root",
-        None,
-        None,
-        False,
-        1,
-        select_parts,
-        [],
-        _sources(),
-    )
-    assert "'pets'" in select_parts[0]
-    assert "CONCAT(" in select_parts[0]
-
-
-def test_emit_agg_subqueries_recurses_with_source_expr():
-    parent = _table(1, "widgets", field_name="widgets")
-    child = _table(2, "children", field_name="children")
-    jm = _join(
-        child,
-        cardinality="one-to-many",
-        source_expr='{alias}."custom"',
-        source_column_type="varchar",
-    )
-    ctx = CompilationContext(
-        joins={("Widget", "children"): jm},
-        physical_to_sql={(2, "name"): "name"},
-    )
-    fn = _field("{ widgets { children { name } } }")
-    select_parts: list = []
-    _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "",
-        "t0",
-        "root",
-        None,
-        None,
-        False,
-        1,
-        select_parts,
-        [],
-        _sources(),
-    )
-    assert '"t0"."custom"' in select_parts[0]
-
-
-def test_emit_agg_subqueries_recurses_with_source_json_key_and_virtual_target():
-    parent = _table(1, "widgets", field_name="widgets")
-    child = _table(2, "children", field_name="children")
-    jm = _join(
-        child,
-        cardinality="one-to-many",
-        source_json_key="cid",
-        target_column="_name_",
-    )
-    ctx = CompilationContext(
-        joins={("Widget", "children"): jm},
-        physical_to_sql={(2, "name"): "name"},
-        virtual_columns={2: {"_name_": "children"}},
-    )
-    fn = _field("{ widgets { children { name } } }")
-    select_parts: list = []
-    _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "",
-        "t0",
-        "root",
-        None,
-        None,
-        False,
-        1,
-        select_parts,
-        [],
-        _sources(),
-    )
-    assert "AS JSON)>>'cid'" in select_parts[0]
-    assert "VARCHAR 'children'" in select_parts[0]
-
-
-def test_emit_agg_subqueries_skips_relationship_without_selection_set():
-    parent = _table(1, "widgets")
-    child = _table(2, "children")
-    jm = _join(child)
-    ctx = CompilationContext(joins={("Widget", "children"): jm})
-    fn = _field("{ widgets { children } }")
-    select_parts: list = []
-    _emit_agg_subqueries(
-        fn.selection_set.selections,
-        ctx,
-        "Widget",
-        parent,
-        "public.widgets",
-        "TRUE",
-        "",
-        "t0",
-        "root",
-        None,
-        None,
-        False,
-        1,
-        select_parts,
-        [],
-        _sources(),
-    )
-    assert select_parts == []
-
-
 # --- _extract_json_blob_kv -----------------------------------------------------
 
 
@@ -510,7 +244,9 @@ def test_build_rel_json_expr_one_to_many_no_limit():
         1,
         _sources(),
     )
-    assert expr.startswith("(SELECT json_agg(json_object(")
+    # A list field with no rows is [], not null (#286).
+    assert expr.startswith("COALESCE((SELECT json_agg(json_object(")
+    assert expr.endswith(", CAST('[]' AS JSON))")
     assert "_sub" not in expr
 
 
@@ -723,7 +459,8 @@ def test_collect_nested_columns_lateral_via_default_limit():
     assert any("LATERAL" in jc for jc in join_clauses)
 
 
-def test_collect_nested_columns_agg_subquery_path():
+def test_collect_nested_columns_json_value_path():
+    # A nested field with no arguments is one JSON value, nesting its own relationships (#286).
     child = _table(2, "children", field_name="children")
     jm = _join(child, cardinality="one-to-many")
     ctx = CompilationContext(
@@ -751,8 +488,13 @@ def test_collect_nested_columns_agg_subquery_path():
         flat=False,
     )
     assert not has_lateral
-    assert any("ARRAY_AGG" in sp for sp in select_parts)
-    assert columns[0].is_agg is True
+    assert any("json_agg(json_object(" in sp for sp in select_parts)
+    assert not any("ARRAY_AGG" in sp for sp in select_parts)
+    assert (columns[0].field_name, columns[0].nested_in, columns[0].is_agg) == (
+        "children",
+        "root",
+        False,
+    )
 
 
 def test_collect_nested_columns_source_constant_and_target_expr():

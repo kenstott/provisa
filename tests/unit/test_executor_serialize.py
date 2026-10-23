@@ -28,7 +28,6 @@ from provisa.executor.serialize import (
     serialize_connection,
     serialize_group_by,
     serialize_rows,
-    shape_transform,
 )
 
 
@@ -222,15 +221,6 @@ class TestSerializeRowsOneToMany:
         result = serialize_rows(rows, columns, "pets", result_limit=1)
         assert len(result["data"]["pets"]) == 1
 
-    def test_one_to_many_agg_column(self):
-        columns = [
-            _cr("id"),
-            _cr("count", nested_in="stats", is_agg=True),
-        ]
-        rows = [(1, 5)]
-        result = serialize_rows(rows, columns, "pets")
-        assert result["data"]["pets"][0]["stats"] == [{"count": 5}]
-
     def test_one_to_many_no_dupes(self):
         columns = [
             _cr("id"),
@@ -254,48 +244,6 @@ class TestSerializeRowsOneToMany:
 
 
 # ---------------------------------------------------------------------------
-# shape_transform
-# ---------------------------------------------------------------------------
-
-
-class TestShapeTransform:
-    def test_no_m2o_paths_returns_unchanged(self):
-        result = {"data": {"pets": [{"id": 1}]}}
-        columns = [_cr("id")]
-        assert shape_transform(result, columns) is result
-
-    def test_collapses_array_agg_m2o(self):
-        columns = [
-            _cr("id"),
-            _cr("name", nested_in="owner", cardinality="many-to-one", is_agg=True),
-        ]
-        result = {"data": {"pets": [{"id": 1, "owner": [{"name": "Alice"}]}]}}
-        transformed = shape_transform(result, columns)
-        assert transformed["data"]["pets"][0]["owner"] == {"name": "Alice"}
-
-    def test_collapses_empty_array_to_none(self):
-        columns = [
-            _cr("id"),
-            _cr("name", nested_in="owner", cardinality="many-to-one", is_agg=True),
-        ]
-        result = {"data": {"pets": [{"id": 1, "owner": []}]}}
-        transformed = shape_transform(result, columns)
-        assert transformed["data"]["pets"][0]["owner"] is None
-
-    def test_recurses_into_lists_of_dicts(self):
-        columns = [
-            _cr("id"),
-            _cr("name", nested_in="toys.owner", cardinality="many-to-one", is_agg=True),
-        ]
-        result = {
-            "data": {
-                "pets": [
-                    {"id": 1, "toys": [{"owner": [{"name": "Alice"}]}]},
-                ]
-            }
-        }
-        transformed = shape_transform(result, columns)
-        assert transformed["data"]["pets"][0]["toys"][0]["owner"] == {"name": "Alice"}
 
 
 # ---------------------------------------------------------------------------
