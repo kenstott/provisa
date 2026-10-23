@@ -82,7 +82,6 @@
     "relatedTermsLabel": "相關術語",
     "relatedTermsEmpty": "沒有相關術語",
     "relatedTermsLoading": "正在載入相關術語…",
-    "relatedTermsAbstract": "抽象",
     "graphqlQueriesLabel": "存取模式",
     "graphqlQueriesEmpty": "沒有可查詢的數據表或關係",
     "graphqlQueryAria": "執行 {{table}} 的 GraphQL 查詢範例",
@@ -120,6 +119,7 @@
       "customPropertiesEmpty": "沒有自訂屬性"
     },
     "readOnly": "唯讀",
-    "readOnlyHint": "你只有 data_product_read 權限 — org_admin 可授予 data_product_rw 以進行編輯。"
+    "readOnlyHint": "你只有 data_product_read 權限 — org_admin 可授予 data_product_rw 以進行編輯。",
+    "relatedTermsConcept": "概念"
   }
 }

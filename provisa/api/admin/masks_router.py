@@ -13,7 +13,7 @@ no reader reaches, whether readers it does not list read the column unmasked, an
 reader acting as chosen roles and derived roles reads it through. It refuses nothing; the list is
 saved with the table. Gated by ``masking_config``, the right that edits masks."""
 
-# Requirements: REQ-2059
+# Requirements: REQ-2059, REQ-2142
 
 from __future__ import annotations
 
@@ -23,15 +23,52 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.api.admin.capabilities import require_capability_request
-from provisa.core.models import MaskEntry
 from provisa.security.rights import Capability
 
 router = APIRouter(prefix="/admin/masks", tags=["admin"])
 
 
+class _CheckedEntry(BaseModel):
+    """A mask entry as it is being edited: its mask is read as given, so a regex that is not yet
+    universal is reported (``patterns``) rather than refused (REQ-2142)."""
+
+    to: list[str]
+    mask: dict[str, Any] | None = None
+
+
 class MasksCheckBody(BaseModel):
-    masks: list[MaskEntry]
+    masks: list[_CheckedEntry]
     roles: list[str] | None = None
+
+
+def _verdict(entry: int, field: str, exc: Any, *, ok: bool) -> dict:
+    return {
+        "entry": entry,
+        "field": field,
+        "ok": ok,
+        "construct": exc.construct,
+        "position": exc.position,
+        "message": str(exc),
+    }
+
+
+def pattern_report(masks: list[dict]) -> dict:
+    """``patterns``: each regex entry's pattern or replacement that is not universal (ok false),
+    and each alternation engines may choose between differently (ok true, a warning) -- REQ-2142."""
+    from provisa.security.universal_regex import NotUniversal, check, warnings
+
+    found = []
+    for i, entry in enumerate(masks):
+        mask = entry["mask"]
+        if mask is None or mask.get("type") != "regex":
+            continue
+        try:
+            parsed, _ = check(mask.get("pattern") or "", mask.get("replace") or "")
+        except NotUniversal as exc:
+            found.append(_verdict(i, getattr(exc, "field"), exc, ok=False))
+            continue
+        found += [_verdict(i, "pattern", w, ok=True) for w in warnings(parsed)]
+    return {"patterns": found}
 
 
 def chain_of(state: Any, role_id: str) -> list[str]:
@@ -54,6 +91,17 @@ async def check_masks(body: MasksCheckBody, request: Request) -> dict:
     from provisa.api.app import state
     from provisa.security.masking import masks_report
 
-    return masks_report(
-        [e.model_dump() for e in body.masks], lambda r: chain_of(state, r), body.roles
-    )
+    masks = [e.model_dump() for e in body.masks]
+    return {
+        **masks_report(masks, lambda r: chain_of(state, r), body.roles),
+        **pattern_report(masks),
+    }
+
+
+@router.get("/presets")
+async def mask_presets(request: Request) -> list[dict]:
+    """The regex masks the column editor offers ready-made (REQ-2142)."""
+    require_capability_request(request, Capability.MASKING_CONFIG.value)
+    from provisa.security.mask_presets import PRESETS
+
+    return PRESETS

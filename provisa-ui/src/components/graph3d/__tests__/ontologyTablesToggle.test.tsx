@@ -44,6 +44,7 @@ vi.mock("../graphScene", () => ({
 import { GraphExplorer } from "../GraphExplorer";
 import { GLOSSARY_SCOPE } from "../graphModel";
 import { glossaryGraph, type TermRow } from "../glossaryGraphData";
+import { setStored } from "../../../lib/browserStorage";
 
 const ref = (table: number, column: string) => ({
   column_key: `${table}:${column}`,
@@ -62,7 +63,7 @@ const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow
   id,
   name,
   definition: null,
-  is_abstract: false,
+  ref_count: 0,
   deprecated: false,
   retired: false,
   live: true,
@@ -84,7 +85,17 @@ beforeEach(() => {
   made.scenes.length = 0;
 });
 
-describe("the Ontology View's Tables checkbox", () => {
+/** The Layers dropdown, opened, and the option asked for in it. */
+async function layer(value: string): Promise<HTMLElement> {
+  const id = `x-layers-menu-option-${value}`;
+  if (!screen.queryByTestId(id)) fireEvent.click(screen.getByTestId("x-layers-menu"));
+  return screen.findByTestId(id);
+}
+const ticked = async (value: string) => (await layer(value)).hasAttribute("data-combobox-active");
+const enabled = async (value: string) =>
+  !(await layer(value)).hasAttribute("data-combobox-disabled");
+
+describe("the Ontology View's Tables layer", () => {
   it("goes with Columns, and draws the owning tables while it is ticked", async () => {
     render(
       <GraphExplorer
@@ -98,19 +109,18 @@ describe("the Ontology View's Tables checkbox", () => {
       />,
     );
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    const tables = screen.getByTestId("x-tables");
-    expect(tables).not.toBeChecked();
+    expect(await ticked("ownerTables")).toBe(false);
     expect(tablesDrawn()).toEqual([]);
 
     // Columns off: Tables cannot be ticked.
-    screen.getByTestId("x-columns").click();
-    await waitFor(() => expect(screen.getByTestId("x-tables")).toBeDisabled());
-    screen.getByTestId("x-columns").click();
-    await waitFor(() => expect(screen.getByTestId("x-tables")).toBeEnabled());
+    fireEvent.click(await layer("columns"));
+    await waitFor(async () => expect(await enabled("ownerTables")).toBe(false));
+    fireEvent.click(await layer("columns"));
+    await waitFor(async () => expect(await enabled("ownerTables")).toBe(true));
 
-    fireEvent.click(screen.getByTestId("x-tables"));
+    fireEvent.click(await layer("ownerTables"));
     await waitFor(() => expect(tablesDrawn()).toEqual(["t:10", "t:11"]));
-    fireEvent.click(screen.getByTestId("x-tables"));
+    fireEvent.click(await layer("ownerTables"));
     await waitFor(() => expect(tablesDrawn()).toEqual([]));
   });
 
@@ -144,11 +154,36 @@ describe("the Ontology View's Tables checkbox", () => {
       />
     );
     const first = render(view());
-    fireEvent.click(screen.getByTestId("x-tables"));
-    await waitFor(() => expect(screen.getByTestId("x-tables")).toBeChecked());
+    fireEvent.click(await layer("ownerTables"));
+    await waitFor(async () => expect(await ticked("ownerTables")).toBe(true));
     first.unmount();
 
     render(view());
-    expect(screen.getByTestId("x-tables")).toBeChecked();
+    expect(await ticked("ownerTables")).toBe(true);
+    expect(screen.getByTestId("x-layers-menu")).toHaveTextContent("Layers: all");
+  });
+
+  it("draws the terms and their edges whatever was remembered, an old Ontology off too", async () => {
+    setStored("graph3d.ontology.org", JSON.stringify({ layers: ["domains"] }));
+    render(
+      <GraphExplorer
+        data={data}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "ontology", subject: null }}
+        exportName="ontology"
+        testId="x"
+      />,
+    );
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    // No Ontology to choose: the terms are the graph.
+    fireEvent.click(screen.getByTestId("x-layers-menu"));
+    expect(await screen.findByTestId("x-layers-menu-option-domains")).toBeInTheDocument();
+    expect(screen.queryByTestId("x-layers-menu-option-ontology")).toBeNull();
+    const calls = made.scenes[0].setData.mock.calls;
+    const graph = calls[calls.length - 1][0] as { nodes: { type: string }[] };
+    expect(graph.nodes.some((n) => n.type === "term")).toBe(true);
+    expect(screen.getByTestId("x-layers-menu")).toHaveTextContent("Layers: Domains");
   });
 });

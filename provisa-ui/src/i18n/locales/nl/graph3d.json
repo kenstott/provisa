@@ -85,8 +85,6 @@
     "allFocus": "Alle producten en termen",
     "someFocus": "{{count}} van {{total}} producten en termen",
     "search": "Zoeken…",
-    "look_concrete": "concrete term",
-    "look_abstract": "abstracte term",
     "look_in_product": "kolom in een dataproduct",
     "look_out_of_product": "kolom buiten dataproducten",
     "look_stored": "tabel",
@@ -100,6 +98,15 @@
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
     "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is.",
-    "identityGap": "Verankerd in tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: {{tables}}"
+    "identityGap": "Verankerd in tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: {{tables}}",
+    "layersMenu": "Lagen",
+    "termsMenu": "Termen",
+    "menuAll": "alle",
+    "menuSome": "{{count}} van {{total}}",
+    "unconnected": "Niet verbonden",
+    "unconnectedHelp": "Termen zonder getoonde relatie of verankering",
+    "look_class": "klasse",
+    "look_concept": "concept",
+    "look_property": "eigenschap"
   }
 }

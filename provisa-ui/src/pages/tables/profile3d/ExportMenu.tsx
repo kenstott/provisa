@@ -145,7 +145,7 @@ export function ExportMenu({
           <Tip text={t("profile3d.export")} named>
             <ActionIcon
               size="sm"
-              variant="default"
+              variant="subtle"
               disabled={!scene}
               aria-label={t("profile3d.export")}
               data-testid={`${testId}-export`}

@@ -82,7 +82,6 @@
     "relatedTermsLabel": "מונחים קשורים",
     "relatedTermsEmpty": "אין מונחים קשורים",
     "relatedTermsLoading": "טוען מונחים קשורים…",
-    "relatedTermsAbstract": "מופשט",
     "graphqlQueriesLabel": "דפוסי גישה",
     "graphqlQueriesEmpty": "אין טבלאות או קשרים שניתן לשאול",
     "graphqlQueryAria": "הרצת שאילתת GraphQL לדוגמה עבור {{table}}",
@@ -120,6 +119,7 @@
       "customPropertiesEmpty": "אין מאפיינים מותאמים אישית"
     },
     "readOnly": "לקריאה בלבד",
-    "readOnlyHint": "יש לך רק data_product_read — org_admin יכול להעניק data_product_rw לעריכה."
+    "readOnlyHint": "יש לך רק data_product_read — org_admin יכול להעניק data_product_rw לעריכה.",
+    "relatedTermsConcept": "מושג"
   }
 }

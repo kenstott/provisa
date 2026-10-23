@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""E2E tests for column-level masking (REQ-087 through REQ-091).
+"""Column-level masking through the pipeline (REQ-087 through REQ-091).
 
 Tests the full masking pipeline: config → compile → govern (compiler/stage2) → execute.
 Uses mocked execution to verify SQL transformations without a live DB.

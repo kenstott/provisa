@@ -963,6 +963,16 @@ class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
             )
         if self.type not in ("regex", "constant", "truncate"):
             raise ValueError(f"mask type {self.type!r} is not one of regex, constant, truncate")
+        if self.type == "regex" and self.pattern is not None and self.replace is not None:
+            # REQ-2142: a mask's regex is written in the universal dialect, checked here (the
+            # API's save and the config's load) and nowhere per engine.
+            from provisa.security.universal_regex import NotUniversal, check
+
+            try:
+                check(self.pattern, self.replace)
+            except NotUniversal as exc:
+                field = getattr(exc, "field")
+                raise ValueError(f"mask {field} is not universal: {exc}") from None
         return self
 
 

@@ -113,7 +113,7 @@ export function OpenAsQuery({
         <Tip text={t("graph3d.openAsQuery")} named>
           <ActionIcon
             size="input-xs"
-            variant="default"
+            variant="subtle"
             disabled={query === null}
             aria-label={t("graph3d.openAsQuery")}
             data-testid={`${testId}-open-as-query`}

@@ -2810,10 +2810,45 @@ export async function generateOrgFilesKey(): Promise<string> {
   return ((await resp.json()) as { key: string }).key;
 }
 
+/** The server's verdict on a regex entry's pattern or replacement: a construct outside the
+ *  universal regex dialect, where it starts. ``ok`` true is a warning, not a refusal. */
+export interface MaskPatternVerdict {
+  entry: number;
+  field: "pattern" | "replace";
+  ok: boolean;
+  construct: string;
+  position: number;
+  message: string;
+}
+
 export interface MasksReport {
   unreachable: { entry: number; covered_by: number | null }[];
   unlisted_unmasked: boolean;
   applies: number | null;
+  /** Each construct of a regex entry outside the universal dialect; empty when all pass. */
+  patterns: MaskPatternVerdict[];
+}
+
+/** A regex mask the server offers, in the universal dialect, with an example of what it does.
+ *  One with ``params`` has a ``pattern_template`` the editor fills with a number for each. */
+export interface MaskPreset {
+  id: string;
+  label: string;
+  pattern?: string;
+  pattern_template?: string;
+  params?: string[];
+  replace: string;
+  example: { input: string; output: string };
+}
+
+/** The regex masks offered beside a regex entry's Pattern and Replacement. */
+export async function maskPresets(): Promise<MaskPreset[]> {
+  const res = await fetch(`${API_BASE}/admin/masks/presets`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("mask presets", res.status)));
+  }
+  return res.json();
 }
 
 /** The server's check of a mask list as edited: unreachable entries, readers left unmasked, and

@@ -22,16 +22,26 @@ const n = (over: Partial<GraphNode> & Pick<GraphNode, "type">): GraphNode => ({
 });
 
 describe("a node's look", () => {
-  it("draws terms as diamonds, concrete and abstract in two colours", () => {
+  it("draws terms as diamonds, a colour to each role, one look where the role is not read", () => {
+    expect(nodeLook(n({ type: "term", role: "concept" }))).toEqual({
+      shape: "diamond",
+      colour: "fam-other",
+      variant: "concept",
+    });
+    expect(nodeLook(n({ type: "term", role: "class" }))).toEqual({
+      shape: "diamond",
+      colour: "fam-boolean",
+      variant: "class",
+    });
+    expect(nodeLook(n({ type: "term", role: "property" }))).toEqual({
+      shape: "diamond",
+      colour: "cool",
+      variant: "property",
+    });
     expect(nodeLook(n({ type: "term" }))).toEqual({
       shape: "diamond",
       colour: "cool",
-      variant: "concrete",
-    });
-    expect(nodeLook(n({ type: "term", abstract: true }))).toEqual({
-      shape: "diamond",
-      colour: "hl",
-      variant: "abstract",
+      variant: "plain",
     });
   });
 

@@ -10,7 +10,7 @@
     "attractionLoose": "Suelto",
     "attractionTight": "Compacto",
     "grid": "Cuadrícula",
-    "resetSettings": "Restablecer ajustes de vista",
+    "resetSettings": "Restablecer valores predeterminados",
     "resetSettingsHelp": "Olvida el diseño, las capas, los filtros y los interruptores guardados de este grafo y vuelve a los valores predeterminados.",
     "export": "Exportar",
     "exportImage": "Imagen",

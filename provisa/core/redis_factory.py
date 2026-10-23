@@ -127,6 +127,11 @@ def _deadline_bounded_pool_class() -> type:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             self._slots = threading.BoundedSemaphore(self.max_connections)
+            # The connections handed out, each holding one slot. A connection redis-py releases
+            # itself while failing to hand it out (its connect() failed) holds none: that slot is
+            # given back once, by get_connection (#284).
+            self._holding: set[int] = set()
+            self._holding_lock = threading.Lock()
 
         def get_connection(self, *args: Any, **kwargs: Any) -> Any:
             budget = request_deadline.remaining()
@@ -137,16 +142,23 @@ def _deadline_bounded_pool_class() -> type:
                     f"(all {self.max_connections} checked out)"
                 )
             try:
-                return super().get_connection(*args, **kwargs)
+                connection = super().get_connection(*args, **kwargs)
             except BaseException:
                 self._slots.release()
                 raise
+            with self._holding_lock:
+                self._holding.add(id(connection))
+            return connection
 
         def release(self, connection: Any) -> None:
+            with self._holding_lock:
+                held = id(connection) in self._holding
+                self._holding.discard(id(connection))
             try:
                 super().release(connection)
             finally:
-                self._slots.release()
+                if held:
+                    self._slots.release()
 
     return _DeadlineBoundedPool
 

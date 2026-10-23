@@ -126,7 +126,7 @@ describe("the Knowledge Graph panel", () => {
       "member table",
       "command",
       // A term's entry names its variant (nodeLook).
-      "concrete term",
+      "term",
     ]);
     // Each entry keys its shape: a table is a cylinder here as in every graph.
     expect(legend.querySelector('[data-testid="legend-table:plain"] i')).toHaveClass(

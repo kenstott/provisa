@@ -42,17 +42,19 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
         return sql_ast
 
     if isinstance(sql_ast, exp.Union):
-        left = apply_graph_rewrites(sql_ast.this, graph_vars, label_map)
-        right = apply_graph_rewrites(sql_ast.expression, graph_vars, label_map)
-        result = sql_ast.copy()
-        result.set("this", left)
-        result.set("expression", right)
-        return result
+        # In place, arm by arm: copying the union at each level copies every arm below it again,
+        # quadratic in the arms (one per label for an unlabelled MATCH).
+        sql_ast.set("this", apply_graph_rewrites(sql_ast.this, graph_vars, label_map))
+        sql_ast.set("expression", apply_graph_rewrites(sql_ast.expression, graph_vars, label_map))
+        return sql_ast
 
     # Recurse into FROM subqueries that wrap a Union or Select (e.g. SELECT * FROM (UNION) AS
     # _union produced by _apply_order_limit when LIMIT is applied to a variable-length path).
     # Without this, a.*  /  b.*  inside the inner branches are never rewritten to JSON_OBJECT.
-    for _subq in sql_ast.find_all(exp.Subquery):
+    # Only this query's own subqueries: each one's recursion rewrites those nested in it.
+    for _subq in list(sql_ast.find_all(exp.Subquery)):
+        if _subq.find_ancestor(exp.Select, exp.Union) is not sql_ast:
+            continue
         _inner = _subq.this
         if isinstance(_inner, (exp.Union, exp.Select)):
             _inner_rw = apply_graph_rewrites(_inner, graph_vars, label_map)
@@ -120,7 +122,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
         else:
             new_expressions.append(cast(exp.Expression, sel_expr))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-    return sql_ast.select(*new_expressions, append=False)  # type: ignore[return-value]
+    return sql_ast.select(*new_expressions, append=False, copy=False)  # type: ignore[return-value]
 
 
 def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

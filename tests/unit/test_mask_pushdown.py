@@ -34,7 +34,7 @@ def test_mask_is_a_projection_expression_in_the_governed_ir():
         all_columns={7: [("email", "varchar")]},
     )
     governed = apply_governance('SELECT "u"."email" FROM "public"."users" "u"', gov)
-    assert "REGEXP_REPLACE" in governed.upper()  # mask expression is in the projection
+    assert "PROVISA_REGEX_REPLACE" in governed.upper()  # mask expression is in the projection
     # The raw column is wrapped by the mask, not selected bare as the output value.
     assert 'SELECT "u"."email" FROM' not in governed
 
