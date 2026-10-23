@@ -572,6 +572,33 @@ def _add_computed_relationship_field(
         fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(ret_type)))
 
 
+def _where_relationships(  # REQ-2136
+    table: _TableInfo,
+    visible_rels: list[dict],
+    table_lookup: dict[int, _TableInfo],
+    where_types: dict[int, GraphQLInputObjectType | None],
+) -> Callable[[], dict[str, GraphQLInputField]]:
+    """``table``'s relationships as where conditions, each under its field's name and taking its
+    target's where: a row with a related row matching it (sql_where compiles it to EXISTS). Read
+    when the schema is built, once every table's where exists. A junction-backed edge is not one:
+    its rows are reached through the junction, which the condition does not state."""
+
+    def fields() -> dict[str, GraphQLInputField]:
+        out: dict[str, GraphQLInputField] = {}
+        for rel in visible_rels:
+            if rel["source_table_id"] != table.table_id or rel.get("via_table_id"):
+                continue
+            target = table_lookup.get(rel["target_table_id"])
+            target_where = where_types.get(target.table_id) if target else None
+            if target is None or target_where is None:
+                continue
+            name = rel.get("graphql_alias") or rel_field_name(target.field_name, rel["cardinality"])
+            out[name] = GraphQLInputField(target_where)
+        return out
+
+    return fields
+
+
 def _add_standard_relationship_field(
     fields: dict[str, GraphQLField],
     rel: dict,
@@ -1009,9 +1036,14 @@ def generate_schema(
     ]
 
     order_by_types = _build_order_by_inputs(tables, visible_rels, table_lookup)
-    where_types = {
-        t.table_id: _build_where_input(t, t.type_name, enum_types=si.enum_types) for t in tables
-    }
+    where_types: dict[int, GraphQLInputObjectType | None] = {}
+    for t in tables:
+        where_types[t.table_id] = _build_where_input(
+            t,
+            t.type_name,
+            enum_types=si.enum_types,
+            relationships=_where_relationships(t, visible_rels, table_lookup, where_types),
+        )
     distinct_enums = {t.table_id: _build_distinct_on_enum(t) for t in tables}
 
     # A table's root-field arguments, built once: its query and its subscription field take the same

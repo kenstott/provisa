@@ -50,12 +50,14 @@ from provisa.compiler.sql_types import (
     TableMeta,  # noqa: F401 — re-exported; many modules import TableMeta from sql_gen
 )
 from provisa.compiler.sql_rewrite import (
-    _join_column_expr,
     _q,
     _sql_str_literal,
     _table_ref,
 )
 from provisa.compiler.sql_where import (
+    RelationshipConditions,
+    join_exprs,
+    where_names_relationship,
     native_arg_conditions,
     native_args,
     _VIRTUAL_COLS,
@@ -94,7 +96,12 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     collector = ParamCollector()
     sources = StatementSources(table)
 
-    use_aliases = _has_joins(field_node, ctx, table.type_name)
+    # A where stating a relationship's condition correlates an EXISTS with the rows (REQ-2136).
+    use_aliases = _has_joins(field_node, ctx, table.type_name) or any(
+        arg.name.value == "where"
+        and where_names_relationship(_extract_value(arg.value, variables), ctx, table.type_name)
+        for arg in field_node.arguments or ()
+    )
     root_alias: str | None = "t0" if use_aliases else None
     alias_counter = 1
     has_lateral_ops_joins = False
@@ -152,42 +159,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             alias_counter += 1
             sources.add_table(join_meta.target)
 
-            if join_meta.source_expr is not None:
-                src_expr = join_meta.source_expr.replace("{alias}", _q(root_alias))
-            elif join_meta.source_constant is not None:
-                src_expr = (
-                    _sql_str_literal(join_meta.source_constant)
-                    if isinstance(join_meta.source_constant, str)
-                    else str(join_meta.source_constant)
-                )
-            elif join_meta.source_column in _VIRTUAL_COLS:
-                _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(
-                    join_meta.source_column, ""
-                )
-                src_expr = _sql_str_literal(_svc)
-            elif join_meta.source_json_key:
-                src_expr = f"CAST({_q(root_alias)}.{_q(join_meta.source_column)} AS JSON)->>'{join_meta.source_json_key}'"
-            else:
-                src_expr = _join_column_expr(
-                    root_alias,
-                    join_meta.source_column,
-                    join_meta.source_column_type,
-                    join_meta.target_column_type,
-                )
-            if join_meta.target_expr is not None:
-                tgt_expr = join_meta.target_expr.replace("{alias}", _q(join_alias))
-            elif join_meta.target_column in _VIRTUAL_COLS:
-                _tvc = (ctx.virtual_columns.get(join_meta.target.table_id) or {}).get(
-                    join_meta.target_column, ""
-                )
-                tgt_expr = _sql_str_literal(_tvc)
-            else:
-                tgt_expr = _join_column_expr(
-                    join_alias,
-                    join_meta.target_column,
-                    join_meta.target_column_type,
-                    join_meta.source_column_type,
-                )
+            src_expr, tgt_expr = join_exprs(join_meta, root_alias, join_alias, ctx, table.table_id)
             _use_agg = not flat and not _has_lateral_force_args(sel)
             if (
                 join_meta.default_limit is not None or _has_lateral_force_args(sel)
@@ -464,6 +436,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 _vvals,
                 table.table_id,
                 ctx.exposed_to_physical,
+                RelationshipConditions(ctx, table.type_name, use_catalog, sources),
             )
         )
     where_parts += native_arg_conditions(api_args)
