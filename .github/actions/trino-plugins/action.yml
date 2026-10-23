@@ -16,11 +16,14 @@ inputs:
   cache-hit:
     description: (save) the restore phase's `cache-hit` output; a hit is not saved again.
     default: "false"
-  key-suffix:
+  key-prefix:
     description: >-
-      Appended to the cache key. Empty everywhere but the action's own self-test
-      (ci-leaf-check.yml), which round-trips a key of its own and never touches the real one.
-    default: ""
+      Put before the cache key. Empty everywhere but the action's own self-test
+      (ci-leaf-check.yml), which round-trips a key of its own and never touches the real one. A
+      prefix, not a suffix: a restore that misses its key takes the newest entry the key is a
+      prefix of, so a self-test key that extended the real one was restored in its place -- its
+      stand-in jars mounted into Trino, which refused the cloudops one and never became healthy
+      (run 40005357162).
 outputs:
   cache-hit:
     description: (restore) whether the jars came from the cache.
@@ -49,6 +52,7 @@ runs:
         # carries each of those beside the pin, so moving any one of them is a new cache.
         own = pins["_TRINO_PLUGIN_VERSIONS"]
         versions = {n: own.get(n, pins["_TRINO_PLUGIN_VERSION"]) for n in pins["_TRINO_PLUGINS"]}
+        # The key ends "-jars" after the pin, so no pin's key is a prefix of another's.
         print("version=" + "_".join([pins["_TRINO_PLUGIN_VERSION"], *(f"{n}-{own[n]}" for n in sorted(own))]))
         print("jars=" + " ".join(f"trino/plugins/{n}/{n}-{v}.jar" for n, v in versions.items()))
         EOF
@@ -59,7 +63,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: trino/plugins/trino-*
-        key: trino-plugins-${{ steps.trino-pin.outputs.version }}${{ inputs.key-suffix }}
+        key: ${{ inputs.key-prefix }}trino-plugins-${{ steps.trino-pin.outputs.version }}-jars
 
     - name: Trino plugins fetched
       id: trino-plugins-fetched
@@ -76,4 +80,4 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: trino/plugins/trino-*
-        key: trino-plugins-${{ steps.trino-pin.outputs.version }}${{ inputs.key-suffix }}
+        key: ${{ inputs.key-prefix }}trino-plugins-${{ steps.trino-pin.outputs.version }}-jars

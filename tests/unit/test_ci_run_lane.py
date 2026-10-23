@@ -262,15 +262,36 @@ def test_the_plugin_cache_action_restores_and_saves_under_one_key():
     ]
     restored = by_name["Restore Trino plugins"]["with"]
     assert by_name["Cache Trino plugins"]["with"] == restored
-    # The pin, and a suffix that is empty for every caller but the action's own self-test.
+    # The pin behind a prefix that is empty for every caller but the action's own self-test.
+    # A restore that misses takes an entry its key is a prefix of: a self-test key that extended
+    # the real one put stand-in jars into Trino (run 40005357162).
     assert restored["key"] == (
-        "trino-plugins-${{ steps.trino-pin.outputs.version }}${{ inputs.key-suffix }}"
+        "${{ inputs.key-prefix }}trino-plugins-${{ steps.trino-pin.outputs.version }}-jars"
     )
     assert "inputs.phase == 'restore'" in by_name["Restore Trino plugins"]["if"]
     # Saved whatever the tests' outcome, and only when the restore missed and every jar is there.
     for step in ("Trino plugins fetched", "Cache Trino plugins"):
         assert "always()" in by_name[step]["if"] and "inputs.phase == 'save'" in by_name[step]["if"]
     assert "inputs.cache-hit != 'true'" in by_name["Trino plugins fetched"]["if"]
+
+
+def test_the_plugin_cache_self_test_keys_cannot_stand_in_for_the_real_key():
+    """Run 40005357162: the warehouse job's restore missed the real key and took the self-test's
+    entry, whose key extended it; its stand-in jars went into Trino. The self-test's part goes
+    before the key, so the real key is never a prefix of a self-test key."""
+    import yaml
+
+    leaf = yaml.safe_load((REPO / ".github" / "workflows" / "ci-leaf-check.yml").read_text())
+    uses = [
+        s["with"]
+        for s in leaf["jobs"]["trino-plugins"]["steps"]
+        if s.get("uses") == "./.github/actions/trino-plugins"
+    ]
+    assert uses and all(
+        w["key-prefix"] == "leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-"
+        and "key-suffix" not in w
+        for w in uses
+    )
 
 
 def test_the_trino_plugin_pin_step_names_the_harness_pin():
