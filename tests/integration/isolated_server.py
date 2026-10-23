@@ -52,6 +52,31 @@ def _subprocess_coverage_env() -> dict:
     return {"COVERAGE_PROCESS_START": str(_REPO_ROOT / "pyproject.toml")}
 
 
+def audited_route_reason(server: "IsolatedServer", noted: str) -> str | None:
+    """The newest route reason in the server's audit log that starts with ``noted``, waiting for
+    the writer (it inserts in batches)."""
+    import sqlalchemy as sa
+
+    from provisa.core.database import create_engine_from_url
+
+    url = server.plane.url if server.plane is not None else os.environ["TENANT_DATABASE_URL"]
+    engine = create_engine_from_url(url)
+    query = sa.text(
+        f"SELECT route_reason FROM org_{server.org_id}.query_audit_log "
+        "WHERE route_reason LIKE :noted ORDER BY id DESC LIMIT 1"
+    )
+    deadline = time.monotonic() + 60
+    try:
+        while True:
+            with engine.connect() as conn:
+                reason = conn.execute(query, {"noted": f"{noted}%"}).scalar()
+            if reason is not None or time.monotonic() > deadline:
+                return reason
+            time.sleep(0.5)
+    finally:
+        engine.dispose()
+
+
 def free_port() -> int:
     """A port this process never issues again. Pinned, not transient: the server binds its ports
     long after they are leased (five are leased before the process even starts), and a transient

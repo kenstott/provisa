@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from provisa.core.models import Source
 
 from provisa.federation.connector_base import Capability, Connector, Mechanism
-from provisa.federation.codehost_connectors import CodeHost, trino_details
 
 # --- Trino: a broad federator (many source types, all ATTACH via catalogs) ---
 
@@ -1118,30 +1117,6 @@ class TrinoKafkaConnector(_TrinoConnector):
         }
 
 
-class TrinoCodeHostConnector(CodeHost, _TrinoConnector):  # REQ-2100
-    """A built code host, through Trino's postgresql connector (codehost_connectors)."""
-
-    trino_connector = "postgresql"
-    mechanism = Mechanism.ATTACH_R
-    files_for = "trino"
-    opt_in_reach = True
-
-    def __init__(self, source_type: str) -> None:
-        self.source_type = source_type
-
-    def capability(self) -> Capability:
-        return Capability(predicate_pushdown=True)
-
-    def details(self, source: Source) -> dict:
-        mapping = getattr(source, "mapping", None) or {}
-        # A dev-mode source is landed, never attached: it has no catalog. A built one's catalog
-        # is created by the schema build once its identity is written where Trino reads it
-        # (codesource.attach.prepare), which registers the source on the engine again.
-        if mapping.get("mode") != "built" or not self.ready():
-            return {}
-        return trino_details(self, source)
-
-
 def build_trino_connectors() -> list[_TrinoConnector]:
     """Every Trino catalog connector (REQ-842) — the complete, authoritative reach of the Trino
     engine. This is THE source of truth for a type's Trino ``connector.name`` (``trino_connector``):
@@ -1181,8 +1156,6 @@ def build_trino_connectors() -> list[_TrinoConnector]:
     ]
     if TRINO_READS_PGWIRE_ADAPTER_LIVE:
         connectors.append(TrinoGovdataConnector())
-    # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-    connectors.extend(TrinoCodeHostConnector(t) for t in ("node", "python"))
     connectors.extend(
         cls() for cls in (_jdbc_trino(st, tc) for st, tc in _TRINO_JDBC_TYPES.items())
     )

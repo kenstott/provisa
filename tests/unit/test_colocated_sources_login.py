@@ -25,6 +25,7 @@ def _route(key_a: str, key_b: str):
         source_dialects={"a": "postgres", "b": "postgres"},
         source_dsns={"a": key_a, "b": key_b},
         operator_floor={},
+        statement="SELECT 1",
     )
 
 

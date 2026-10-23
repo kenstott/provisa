@@ -15,6 +15,7 @@ drained by its own tick, reads its own source as itself, and writes to its own s
 org's tick and events are untouched."""
 
 from __future__ import annotations
+from provisa.api_source.models import ApiSourceType
 
 import contextlib
 import logging
@@ -96,9 +97,15 @@ def two_orgs(monkeypatch):
         rt = OrgRuntime(org_id=org)
         rt.tenant_db = _Db(org)
         rt.federation_engine = shared
-        rt.api_endpoints = {("crm", "orders"): SimpleNamespace(default_params={})}
+        rt.api_endpoints = {
+            ("crm", "orders"): SimpleNamespace(
+                source_id="crm", table_name="orders", default_params={}
+            )
+        }
         rt.api_sources = {
-            "crm": SimpleNamespace(base_url=f"https://{org}.example", auth=org, headers={})
+            "crm": SimpleNamespace(
+                type=ApiSourceType.openapi, base_url=f"https://{org}.example", auth=org, headers={}
+            )
         }
         state.org_registry.set(org, rt)
     monkeypatch.setattr(app, "state", state)
