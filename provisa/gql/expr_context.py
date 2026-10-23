@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, cast
 import sqlglot.expressions as exp
 
 from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr, Term
+from provisa.gql.label_map import NodeMapping
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
@@ -135,6 +136,12 @@ class TranslatorExprContext:
         if meta is None and alias in self._t._unwind_aliases:
             return _col(name, alias)
         return exp.column(alias)
+
+    def resolve_node_key(self, name: str) -> exp.Expression | None:
+        alias, nm = self._t._var_table.get(name, (name, None))
+        if not isinstance(nm, NodeMapping):
+            return None
+        return exp.column(nm.id_column, table=alias, quoted=True)
 
     def resolve_property(self, obj: exp.Expression, name: str) -> exp.Expression:
         # Only a simple ``var.prop`` resolves against the symbol tables; anything else (nested access,
