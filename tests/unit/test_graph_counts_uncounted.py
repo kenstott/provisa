@@ -35,3 +35,36 @@ def test_the_total_is_null_when_any_label_is_uncounted():
     assert _total({"A": {"count": 3}, "B": {"count": 4}}) == 7
     assert _total({"A": {"count": 3}, "B": {"count": None, "error": "not attached"}}) is None
     assert _total({}) == 0
+
+
+async def test_bolt_totals_are_unknown_when_a_count_fails_and_say_why(monkeypatch, caplog):
+    """The Neo4j Browser's node/relationship totals over Bolt: a count the engine could not make
+    leaves the total unknown (null), logged and sent as a warning notification -- not 0."""
+    from types import SimpleNamespace
+
+    from provisa.bolt import session
+    from provisa.core.statement_warnings import collecting
+
+    nodes = {
+        "Pet": SimpleNamespace(label="Pet", native_filter_columns=[]),
+        "Inquiry": SimpleNamespace(label="Inquiry", native_filter_columns=[]),
+    }
+    monkeypatch.setattr(
+        session,
+        "_bolt_label_map",
+        lambda *a: SimpleNamespace(nodes=nodes, relationships={}),
+    )
+
+    async def _execute(cypher, params, role_id, include_ops):
+        if ":Inquiry" in cypher:
+            raise RuntimeError("Catalog petstore is not attached")
+        return ["cnt"], [[5]], None
+
+    monkeypatch.setattr(session, "_execute_cypher", _execute)
+    with caplog.at_level(logging.WARNING, logger="provisa.bolt.session"), collecting() as said:
+        node_count, rel_count = await session._graph_counts(None, "analyst", False, None)
+    assert node_count is None
+    assert rel_count == 0
+    assert [w.code for w in said] == ["cypher.count_unknown"]
+    assert said[0].params["reason"] == "Catalog petstore is not attached"
+    assert "Catalog petstore is not attached" in caplog.text

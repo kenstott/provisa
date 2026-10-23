@@ -7804,5 +7804,6 @@
   "pt/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "pt/tableSections.json::tableSections.noClassTerm": "No term",
   "pt/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
-  "pt/graphSidebar.json::graphSidebar.notCounted": "Not counted: {{list}}"
+  "pt/graphSidebar.json::graphSidebar.notCounted": "Not counted: {{list}}",
+  "pt/serverErrors.json::serverErrors.cypher.count_unknown": "A count could not be made, so the total is unknown: {{statement}}: {{reason}}"
 }

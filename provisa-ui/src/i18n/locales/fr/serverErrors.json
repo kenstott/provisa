@@ -523,7 +523,8 @@
       "username_taken": "L'utilisateur '{{username}}' existe déjà"
     },
     "cypher": {
-      "command_call_refused": "{{reason}}"
+      "command_call_refused": "{{reason}}",
+      "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",

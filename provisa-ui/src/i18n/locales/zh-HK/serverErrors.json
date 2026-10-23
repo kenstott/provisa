@@ -523,7 +523,8 @@
       "username_taken": "用戶 '{{username}}' 已存在"
     },
     "cypher": {
-      "command_call_refused": "{{reason}}"
+      "command_call_refused": "{{reason}}",
+      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}"
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
