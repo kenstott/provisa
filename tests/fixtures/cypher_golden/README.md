@@ -9,3 +9,7 @@ and parameters it was given (under `blobs/`), and the SQL, parameter order and g
 kinds it produced, or the refusal it raised. `tests/unit/test_cypher_golden_sql.py` replays each
 one and requires the same result, byte for byte. A difference is a regression unless it is
 approved query by query.
+
+`approved.jsonl` holds those approved differences, captured from the checkout that makes them by
+`scripts/cypher_golden.py capture-approved-tests`, each with the approval it was given. An entry
+an approval replaces is removed from `entries.jsonl`.

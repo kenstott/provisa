@@ -31,6 +31,11 @@ Usage, on a checkout of the commit to capture from:
 
     python scripts/cypher_golden.py capture-tests OUT tests/unit/test_cypher_*.py ...
     python scripts/cypher_golden.py capture-corpora OUT
+
+A result that differs from that commit's, approved query by query, is held in approved.jsonl:
+captured from the checkout that produces it, each entry with the approval it was given:
+
+    python scripts/cypher_golden.py capture-approved-tests OUT APPROVAL tests/unit/...::test ...
 """
 
 from __future__ import annotations
@@ -122,10 +127,14 @@ _parse_depth: contextvars.ContextVar[int] = contextvars.ContextVar("cypher_golde
 class Recorder:
     """Records each top-level translation into ``out``: entries.jsonl and blobs/."""
 
-    def __init__(self, out: Path) -> None:
+    def __init__(
+        self, out: Path, entries: str = "entries.jsonl", approved: str | None = None
+    ) -> None:
         self.out = out
         (out / "blobs").mkdir(parents=True, exist_ok=True)
-        self.entries = (out / "entries.jsonl").open("a")
+        self.entries = (out / entries).open("a")
+        #: For an approved entry: why it is held, and who approved it.
+        self.approved = approved
         self.seen: set[str] = set()
 
     def blob(self, value: Any) -> str:
@@ -201,6 +210,7 @@ class Recorder:
             "label_map": self.blob(label_map),
             "params": self.blob(params),
             "expected": produced,
+            **({"approved": self.approved} if self.approved else {}),
         }
         key = json.dumps(entry, sort_keys=True)
         if key in self.seen:
@@ -218,10 +228,12 @@ class _Plugin:
         _origin.set(f"test:{item.nodeid}")
 
 
-def capture_tests(out: Path, test_args: list[str]) -> int:
+def capture_tests(out: Path, test_args: list[str], approved: str | None = None) -> int:
     import pytest
 
-    recorder = Recorder(out)
+    recorder = (
+        Recorder(out, entries="approved.jsonl", approved=approved) if approved else Recorder(out)
+    )
     recorder.install()
     return pytest.main(["-q", "-p", "no:cacheprovider", *test_args], plugins=[_Plugin(recorder)])
 
@@ -393,6 +405,8 @@ def main(argv: list[str]) -> int:
     command, out = argv[0], Path(argv[1])
     if command == "capture-tests":
         return int(capture_tests(out, argv[2:]))
+    if command == "capture-approved-tests":
+        return int(capture_tests(out, argv[3:], approved=argv[2]))
     if command == "capture-corpora":
         capture_corpora(out)
         return 0

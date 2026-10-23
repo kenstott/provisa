@@ -387,7 +387,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         extra_path_steps_map: dict[str, tuple[list, list]] = {}
         if clause.variable is not None:
             extra_path_steps_map[clause.variable] = (extra_step_nodes, extra_step_edges)
-        self._extra_path_branches.append((extra_from, extra_joins, extra_path_steps_map))
+        self._extra_path_branches.append((extra_from, extra_joins, extra_path_steps_map, {}))
 
     def _resolve_path_node_types(
         self,

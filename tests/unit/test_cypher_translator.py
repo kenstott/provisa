@@ -2396,11 +2396,10 @@ def _make_label_map_bidir_multi_hop() -> CypherLabelMap:
 def test_union_all_branch_includes_all_subsequent_optional_match_joins():
     """UNION ALL extra branches must include joins for ALL variables in the SELECT.
 
-    When an undirected OPTIONAL MATCH has multiple relationship candidates (bidir),
-    the translator emits UNION ALL. Each UNION branch must carry every JOIN that
-    appears in the primary query — including ones added by OPTIONAL MATCHes that
-    come AFTER the branching point — so that column references in the shared SELECT
-    are resolvable in every branch.
+    When an undirected hop has multiple relationship candidates (bidir), the translator
+    emits UNION ALL. Each UNION branch must carry every JOIN that appears in the primary
+    query — including ones added by OPTIONAL MATCHes that come AFTER the branching
+    point — so that column references in the shared SELECT are resolvable in every branch.
 
     Regression: without the fix, the extra branch for mPets only contained the
     mPets JOIN, leaving mUsers unresolved → Trino: 'Column musers.id cannot be
@@ -2408,8 +2407,7 @@ def test_union_all_branch_includes_all_subsequent_optional_match_joins():
     """
     lm = _make_label_map_bidir_multi_hop()
     ast = parse_cypher(
-        "MATCH (n:PetStore:Inquiries) "
-        "OPTIONAL MATCH (n)-[rPets]-(mPets:PetStore:Pets) "
+        "MATCH (n:PetStore:Inquiries)-[rPets]-(mPets:PetStore:Pets) "
         "OPTIONAL MATCH (n)-[rUsers]-(mUsers:PetStore:Users) "
         "RETURN n, rPets, mPets, rUsers, mUsers"
     )
@@ -2430,6 +2428,19 @@ def test_union_all_branch_includes_all_subsequent_optional_match_joins():
     assert "mUsers" in from_clause, (
         f"mUsers JOIN missing from UNION ALL branch FROM clause: {from_clause[:300]}"
     )
+
+
+def test_an_optional_hop_reaching_several_relationships_is_refused():
+    """Each relationship an OPTIONAL hop reaches would be its own UNION branch of LEFT JOINs:
+    an inquiry with no pet would come back once per relationship. Refused, not miscounted."""
+    lm = _make_label_map_bidir_multi_hop()
+    ast = parse_cypher(
+        "MATCH (n:PetStore:Inquiries) OPTIONAL MATCH (n)-[r]-(m:PetStore:Pets) RETURN n, m"
+    )
+    from provisa.gql.translator_types import CypherTranslateError
+
+    with pytest.raises(CypherTranslateError, match="name the relationship type"):
+        cypher_to_sql(ast, lm, {})
 
 
 def _make_label_map_breed_chain() -> CypherLabelMap:

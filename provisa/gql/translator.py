@@ -28,7 +28,8 @@ Mapping:
 from __future__ import annotations
 
 import re
-from typing import Any
+from dataclasses import replace
+from typing import Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 import sqlglot
@@ -38,6 +39,7 @@ from provisa.gql.ir import (
     MatchClause,
     MatchStep,
     NodePattern,
+    PathPattern,
     ReturnItem,
     UnwindClause,
     WhereClause,
@@ -126,6 +128,60 @@ def cypher_calls_to_sql_list(  # REQ-571
     return results
 
 
+TYPE_OF = "cypher_type_of"  # meta key: the relationship variable a type(r) literal names
+
+
+_E = TypeVar("_E", bound=exp.Expr)
+
+
+def _of_branch(node: _E, rel_types: dict[str, str]) -> _E:
+    """``node`` as an extra UNION branch reads it: each ``type(r)`` its branch's own type."""
+    if not rel_types:
+        return node
+
+    def _typed(n: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        var = n.meta.get(TYPE_OF) if isinstance(n, exp.Literal) else None
+        if var in rel_types:
+            return _type_literal(var, rel_types[var])
+        return n
+
+    return cast(_E, node.copy().transform(_typed))
+
+
+_FLIPPED = {"right": "left", "left": "right", "none": "none"}
+
+
+def _from_carried(clause: MatchClause, carried: set[str]) -> MatchClause:
+    """A pattern after a WITH, read from the node the WITH carries: ``(b)-[:K]->(a)`` with ``a``
+    carried is ``(a)<-[:K]-(b)``, which goes on from ``a``'s rows instead of reading ``a`` again
+    beside them. A pattern that reaches a carried node only in its middle, or names its path,
+    has no such reading and is refused."""
+    pattern = clause.pattern
+    if not isinstance(pattern, PathPattern) or not carried:
+        return clause
+    names = [n.variable for n in pattern.nodes]
+    if names[0] in carried or not set(names) & carried:
+        return clause
+    if names[-1] not in carried or clause.variable is not None:
+        raise CypherTranslateError(
+            "A pattern after WITH goes on from a node the WITH carries: start it (or end it) at "
+            "that node"
+        )
+    return replace(
+        clause,
+        pattern=PathPattern(
+            nodes=pattern.nodes[::-1],
+            rels=[replace(r, direction=_FLIPPED[r.direction]) for r in pattern.rels[::-1]],
+        ),
+    )
+
+
+def _type_literal(var: str, rel_type: str) -> exp.Literal:
+    lit = exp.Literal.string(rel_type)
+    lit.meta[TYPE_OF] = var
+    return lit
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathFunctionsMixin,
     SelectBuilderMixin,
@@ -153,7 +209,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # var → domain_name for nodes resolved via a domain label only
         self._domain_nodes: dict[str, str] = {}
         # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
-        self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # (FROM, joins, path steps by alias, relationship type by variable) of each extra branch
+        self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict, dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # WITH RECURSIVE CTEs for self-referential variable-length paths
         self._recursive_ctes: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
@@ -177,6 +234,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._call_var_to_lateral: dict[str, str] = {}
         # relationship variable → resolved rel_type string (for type(r) resolution)
         self._rel_var_types: dict[str, str] = {}
+        # A single-hop alternation's relationship variable -> the type its row names (a CASE on
+        # the junction's type column), and each alternation's discriminator value -> type.
+        self._rel_var_type_exprs: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        self._alternation_types: dict[int, dict[str, str]] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
@@ -219,7 +280,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         ``carried``: the CTE of the WITH before it, whose rows this segment goes on from.
         """
-        all_matches = [m for step in match_steps for m in step.matches]
+        all_matches = [
+            _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
+        ]
         stage_where: WhereClause | None = None
         for step in match_steps:
             if step.where is not None:
@@ -254,6 +317,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         with_group_exprs = self._build_group_by_for_with(with_clause.items)
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)
+        # The WITH's ORDER BY, SKIP and LIMIT pick the rows it carries on, before its WHERE.
+        if with_clause.order_by:
+            stage_query = stage_query.order_by(*self._build_order_by(with_clause.order_by))
+        if with_clause.limit is not None:
+            stage_query = stage_query.limit(with_clause.limit)
+        if with_clause.skip is not None:
+            stage_query = stage_query.offset(with_clause.skip)
         if with_clause.where is not None:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
             before = (self._var_table, self._cte_sources)
@@ -302,7 +372,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         Returns (from_clause, joins, all_matches, stage_where).
         """
-        all_matches = [m for step in final_match_steps for m in step.matches]
+        all_matches = [
+            _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
+        ]
         stage_where: WhereClause | None = None
         for step in final_match_steps:
             if step.where is not None:
@@ -359,11 +431,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     (
                         bf,
                         _fold_where_into_optional_joins(
-                            raw_where, opt_vars, stage_where.expression, bj
+                            _of_branch(raw_where, types), opt_vars, stage_where.expression, bj
                         )[0],
                         bps,
+                        types,
                     )
-                    for bf, bj, bps in self._extra_path_branches
+                    for bf, bj, bps, types in self._extra_path_branches
                 ]
         return where_expr, joins
 
@@ -398,7 +471,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> "exp.Select | exp.Union":
         """Apply UNION ALL extra branches from multi-path shortestPath/allShortestPaths."""
-        for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
+        for extra_from, extra_joins, extra_path_steps_map, rel_types in self._extra_path_branches:
             branch_select_exprs = []
             for s_expr in select_exprs:
                 alias_name = getattr(s_expr, "alias", None)
@@ -407,7 +480,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     new_path = self._build_path_json(sn, se)
                     branch_select_exprs.append(exp.alias_(new_path, alias_name))
                 else:
-                    branch_select_exprs.append(s_expr)
+                    branch_select_exprs.append(_of_branch(s_expr, rel_types))
             assert extra_from is not None
             branch = exp.select(*branch_select_exprs).from_(extra_from)
             if self._ast.return_clause and self._ast.return_clause.distinct:
@@ -415,7 +488,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for j in extra_joins:
                 branch = branch.join(j["table"], on=j["on"], join_type=j["join_type"])
             if where_expr:
-                branch = branch.where(where_expr)
+                branch = branch.where(_of_branch(where_expr, rel_types))
             result = exp.Union(this=result, expression=branch, distinct=False)
         return result
 

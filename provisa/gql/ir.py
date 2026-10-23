@@ -88,6 +88,10 @@ class ReturnClause:
 class WithClause:
     items: list[ReturnItem]
     where: WhereClause | None = None
+    # A WITH's own ORDER BY, SKIP and LIMIT pick the rows it carries on, not the statement's.
+    order_by: list[OrderItem] = field(default_factory=list)
+    skip: int | None = None
+    limit: int | None = None
 
 
 @dataclass
