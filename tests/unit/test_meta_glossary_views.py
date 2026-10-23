@@ -26,7 +26,9 @@ from provisa.api._meta_views import _META_TABLE_VIEWS
 _BASE_DDL = """
 CREATE TABLE glossary_terms (
     id TEXT PRIMARY KEY, name TEXT, definition TEXT, is_abstract BOOLEAN,
-    deprecated BOOLEAN, retired BOOLEAN, export_excluded BOOLEAN, tenant_id TEXT);
+    deprecated BOOLEAN, retired BOOLEAN, export_excluded BOOLEAN,
+    deprecation_asserted BOOLEAN NOT NULL DEFAULT 0, status_reason TEXT, retire_on TEXT,
+    tenant_id TEXT);
 CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_table_refs (
@@ -52,7 +54,8 @@ CREATE TABLE table_columns (
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
     table_id INTEGER, column_name TEXT, relationship_id TEXT, command_name TEXT,
-    object_key TEXT, reason TEXT, expires_on TEXT, tenant_id TEXT, product_id TEXT);
+    object_key TEXT, reason TEXT, expires_on TEXT, tenant_id TEXT, product_id TEXT,
+    term_id INTEGER);
 """
 
 _VIEWS = (
@@ -114,7 +117,8 @@ def db() -> sqlite3.Connection:
         ],
     )
     conn.executemany(
-        "INSERT INTO glossary_terms VALUES (?, ?, ?, 0, ?, ?, ?, 'org1')",
+        "INSERT INTO glossary_terms (id, name, definition, is_abstract, deprecated, retired,"
+        " export_excluded, tenant_id) VALUES (?, ?, ?, 0, ?, ?, ?, 'org1')",
         [
             # bound to a column and defined -> live
             ("t-user", "user name", "The name a person signs in with.", 0, 0, 0),

@@ -575,6 +575,25 @@ class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
         return v
 
 
+class GlossaryTermDeprecation(BaseModel):  # REQ-2144
+    """A curator's deprecation of a live term: why, and when it is retired, if planned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    retire_on: date | None = None
+
+
+class GlossaryTermRetirement(BaseModel):  # REQ-2144
+    """A curator's retirement of a term: why, and the term that succeeds it, if any (a REPLACES
+    edge from it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1)
+    successor: str | None = None
+
+
 class GlossaryTermConfig(BaseModel):  # REQ-1641
     """A config-declared glossary term, upserted the same way an admin curates one by hand.
 
@@ -591,6 +610,18 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
     definition: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
+    # REQ-2144: the asserted parts of its status, one at most; draft and live are computed.
+    deprecate: GlossaryTermDeprecation | None = None
+    retire: GlossaryTermRetirement | None = None
+    restore: bool = False
+
+    @model_validator(mode="after")
+    def _one_status_action(self) -> "GlossaryTermConfig":
+        if sum((self.deprecate is not None, self.retire is not None, self.restore)) > 1:
+            raise ValueError(
+                f"glossary term {self.name!r} states more than one of deprecate, retire and restore"
+            )
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -603,7 +634,7 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
         return data
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product")
+TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product", "term")
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -723,8 +754,12 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="pii",
         description="Personally identifiable information",
-        applies_to=["column"],
+        # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
+        # holds now and those it comes to hold -- carries it. Never a source, table, Class or
+        # Concept: a column is what holds a person's data, and a Property is what a column means.
+        applies_to=["column", "term"],
         is_system=True,
+        reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
         sensitive=True,  # REQ-1943: set, and locked -- a system tag is never redefined
     ),
@@ -856,6 +891,11 @@ class TagAssignment(BaseModel):  # REQ-1377
     # the export builder (TableIndex resolves names, not DB serials). Filled from a DB join on
     # hydration; a YAML config may provide it instead of table_id and the loader resolves it.
     table_ref: str | None = None
+    # REQ-2145: a glossary term the tag is on (object_type "term"): its serial, and its name --
+    # the config-vocabulary identity, filled from a DB join on hydration and resolved by the
+    # loader as table_ref is.
+    term_id: int | None = None
+    term: str | None = None
 
     def base_tag_id(self) -> str:
         """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
@@ -875,6 +915,8 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"column:{self.table_id}:{self.column_name}"
         if self.object_type == "command":
             return f"command:{self.command_name}"
+        if self.object_type == "term":
+            return f"term:{self.term_id}"
         return f"relationship:{self.relationship_id}"
 
 

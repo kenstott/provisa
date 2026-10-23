@@ -57,31 +57,49 @@ def system_sensitive_tag_ids() -> frozenset[str]:
     return frozenset(t.id for t in SYSTEM_TAGS if t.sensitive)
 
 
-def sensitive_assignments(tag_assignments: Any, registered_tables: Any, tags_table: Any) -> Any:
-    """Each (table_id, table_name, column_name, base_tag_id) a sensitive tag is assigned to a
-    column at: a built-in sensitive tag, or one of the organisation's own with the option set.
-    One statement, so the environment's data choice (provisa.core.env_data) and the
+def sensitive_assignments(
+    tag_assignments: Any,
+    registered_tables: Any,
+    tags_table: Any,
+    term_refs: Any,
+    glossary_terms: Any,
+) -> Any:
+    """Each (table_id, table_name, column_name, base_tag_id, term_id) a sensitive tag is on a
+    column at: a built-in sensitive tag, or one of the organisation's own with the option set,
+    assigned to the column (term_id NULL) or to the defined, in-service glossary term its ref is on
+    (REQ-2145). One
+    statement, so the environment's data choice (provisa.core.env_data) and the
     sensitive_coverage meta view read sensitivity alike; the tables are passed so another
     environment's schema can be addressed."""
+    from sqlalchemy import literal, union_all
+
+    from provisa.core.term_tags import inherited_column_tags
+
     ta, rt = tag_assignments, registered_tables
-    return (
+    sensitive = or_(
+        ta.c.base_tag_id.in_(sorted(system_sensitive_tag_ids())),
+        ta.c.base_tag_id.in_(select(tags_table.c.id).where(tags_table.c.sensitive.is_(True))),
+    )
+    direct = (
         select(
             rt.c.id.label("table_id"),
             rt.c.table_name,
             ta.c.column_name,
             ta.c.base_tag_id,
+            literal(None).label("term_id"),
         )
         .select_from(ta.join(rt, rt.c.id == ta.c.table_id))
-        .where(
-            ta.c.object_type == "column",
-            or_(
-                ta.c.base_tag_id.in_(sorted(system_sensitive_tag_ids())),
-                ta.c.base_tag_id.in_(
-                    select(tags_table.c.id).where(tags_table.c.sensitive.is_(True))
-                ),
-            ),
-        )
+        .where(ta.c.object_type == "column", sensitive)
     )
+    inherited = inherited_column_tags(ta, term_refs, glossary_terms).where(sensitive).subquery()
+    through = select(
+        rt.c.id.label("table_id"),
+        rt.c.table_name,
+        inherited.c.column_name,
+        inherited.c.base_tag_id,
+        inherited.c.term_id,
+    ).select_from(inherited.join(rt, rt.c.id == inherited.c.table_id))
+    return union_all(direct, through)
 
 
 async def sensitive_tag_ids(conn: "Connection", tags_table: Any = None) -> frozenset[str]:
@@ -97,20 +115,12 @@ async def sensitive_tag_ids(conn: "Connection", tags_table: Any = None) -> froze
 
 
 async def sensitive_columns(conn: "Connection", table_id: int) -> frozenset[str]:
-    """The sensitive columns of table ``table_id``: those carrying a sensitive tag."""
-    from provisa.core.schema_org import tag_assignments as ta
+    """The sensitive columns of table ``table_id``: those carrying a sensitive tag, on the column
+    or on its term (REQ-2145)."""
+    from provisa.core.term_tags import column_tag_ids
 
     ids = await sensitive_tag_ids(conn)
-    rows = (
-        await conn.execute_core(
-            select(ta.c.column_name).where(
-                ta.c.object_type == "column",
-                ta.c.table_id == table_id,
-                ta.c.base_tag_id.in_(sorted(ids)),
-            )
-        )
-    ).fetchall()
-    return frozenset(r[0] for r in rows)
+    return frozenset(c for c, tags in (await column_tag_ids(conn, table_id)).items() if tags & ids)
 
 
 def mask_entry_dict(entry: Any) -> dict:
@@ -199,6 +209,10 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
         return None if row is None else int(row[0])
 
     for a in config.tag_assignments:
+        if a.object_type == "term" and base_tag_id(a.tag_id) in ids:  # REQ-2145
+            if not await _term_holds(conn, a.term, base_tag_id(a.tag_id)):
+                out.append(f"term {a.term} (tag {a.tag_id})")
+            continue
         if a.object_type != "column" or base_tag_id(a.tag_id) not in ids:
             continue
         tid = a.table_id
@@ -230,3 +244,22 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
         stored = {c["column_name"]: c for c in await load_columns(conn, tid)}
         out += [f"{table.table_name}.{c}" for c in hiding_changes(stored, table.columns, sensitive)]
     return out
+
+
+async def _term_holds(conn: "Connection", term: str | None, base: str) -> bool:
+    """Whether the glossary term named ``term`` already carries tag ``base`` (REQ-2145)."""
+    from provisa.core.schema_org import glossary_terms
+    from provisa.core.schema_org import tag_assignments as ta
+
+    row = (
+        await conn.execute_core(
+            select(ta.c.id)
+            .join(glossary_terms, glossary_terms.c.id == ta.c.term_id)
+            .where(
+                ta.c.object_type == "term",
+                ta.c.base_tag_id == base,
+                glossary_terms.c.name == (term or "").strip().lower(),
+            )
+        )
+    ).fetchone()
+    return row is not None
