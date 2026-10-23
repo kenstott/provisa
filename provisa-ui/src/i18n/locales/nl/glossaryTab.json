@@ -151,6 +151,15 @@
     "status_deprecated": "Verouderd",
     "status_retired": "Buiten gebruik",
     "draftUndefined": "Ontwerp: afgeleid van de kolom- en tabelnamen. Geef het een definitie — dat is wat agents en catalogi lezen. De naam komt van de kolommen hieronder, en kolommen die gelijk normaliseren komen op één term uit: geef een kolom een alias op de pagina Tabellen om te wijzigen welke term hij voedt. Hernoemen verandert hier alleen de formulering van deze term.",
-    "draftUngrounded": "Ontwerp: deze term bereikt geen fysieke kolom. Koppel hem aan een term die er wel een heeft, zodat hij echte gegevens benoemt."
+    "draftUngrounded": "Ontwerp: deze term bereikt geen fysieke kolom. Koppel hem aan een term die er wel een heeft, zodat hij echte gegevens benoemt.",
+    "piiLabel": "PII",
+    "piiHelp": "Elke kolom met deze betekenis draagt PII, ook toekomstige.",
+    "piiPropertyOnly": "Alleen een eigenschap markeert kolommen: een klasse of concept betekent er geen.",
+    "piiMarks_one": "Markeert {{count}} kolom",
+    "piiMarks_other": "Markeert {{count}} kolommen",
+    "moveOneUnnamed": "{{column}} verplaatsen?",
+    "moveManyUnnamed_one": "{{count}} kolom verplaatsen?",
+    "moveManyUnnamed_other": "{{count}} kolommen verplaatsen?",
+    "moveCarryUnnamed": "Verplaatsen en hun nieuwe termen markeren met {{tags}}"
   }
 }

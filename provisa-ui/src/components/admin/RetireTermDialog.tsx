@@ -27,6 +27,8 @@ import {
 } from "../../api/glossary";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { successorOptions } from "./retireSuccessors";
+import { TagLossSummary } from "./TagLossSummary";
+import { tagLossTitle } from "./tagLoss";
 
 /** Drawn while it is open: each opening starts from an empty form. */
 export function RetireTermDialog({
@@ -79,10 +81,8 @@ export function RetireTermDialog({
     }
   };
 
-  const lost = loss === null ? [] : [...new Set(loss.flatMap((c) => c.loses))];
   // A move is refused for its tags only when something moves, which only a successor takes.
-  const into = successorTerm?.name;
-  const moved = loss?.filter((c) => c.loses.length > 0 || c.gains.length > 0) ?? [];
+  const into = successorTerm === null ? null : successorTerm.name;
 
   return (
     <Modal
@@ -91,12 +91,7 @@ export function RetireTermDialog({
       title={
         loss === null
           ? t("glossaryTab.retireTitle", { term: term.name })
-          : moved.length === 1
-            ? t("glossaryTab.moveOne", {
-                column: `${moved[0].table}.${moved[0].column}`,
-                term: into,
-              })
-            : t("glossaryTab.moveMany", { count: moved.length, term: into })
+          : tagLossTitle(t, loss, into)
       }
       size="lg"
     >
@@ -171,50 +166,14 @@ export function RetireTermDialog({
           />
         </FormLayout>
       ) : (
-        <Stack gap="sm" data-testid="glossary-tag-loss">
-          {moved.map((c) => (
-            <Stack gap={0} key={`${c.table}.${c.column}`}>
-              <Text size="sm" fw={600}>
-                {c.table}.{c.column}
-              </Text>
-              <Text size="sm">
-                {/* What it loses first, marked: that is what the reader is asked to accept. */}
-                {c.loses.length > 0 && (
-                  <Text span c="red" fw={600}>
-                    {t("glossaryTab.loses", { tags: c.loses.join(", ") })}
-                  </Text>
-                )}
-                {c.loses.length > 0 && c.gains.length > 0 && " · "}
-                {c.gains.length > 0 && t("glossaryTab.gains", { tags: c.gains.join(", ") })}
-              </Text>
-            </Stack>
-          ))}
-          {/* Back to the form: nothing is moved. */}
-          <FormFooter
-            onCancel={() => setLoss(null)}
-            cancelProps={{ "data-testid": "glossary-tag-loss-cancel" }}
-            action={
-              <>
-                <Button
-                  color="orange"
-                  onClick={() => void retire({ confirm_tag_loss: lost })}
-                  loading={saving}
-                  data-testid="glossary-tag-loss-move"
-                >
-                  {t("glossaryTab.moveConfirm")}
-                </Button>
-                <Button
-                  variant="default"
-                  onClick={() => void retire({ carry_tags: true })}
-                  loading={saving}
-                  data-testid="glossary-tag-loss-carry"
-                >
-                  {t("glossaryTab.moveCarry", { term: into, tags: lost.join(", ") })}
-                </Button>
-              </>
-            }
-          />
-        </Stack>
+        <TagLossSummary
+          columns={loss}
+          into={into}
+          saving={saving}
+          onMove={(confirm_tag_loss) => void retire({ confirm_tag_loss })}
+          onCarry={() => void retire({ carry_tags: true })}
+          onCancel={() => setLoss(null)}
+        />
       )}
     </Modal>
   );

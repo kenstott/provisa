@@ -91,6 +91,7 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
   "components/admin/GlossaryTab.tsx":
     "a term's name, definition and export tick each saved in place in its detail; the list's filter ticks",
   "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
+  "components/ColumnPiiForm.tsx": "pii on a column, in TagControl's popover: on its term or on the column alone",
   "components/admin/GlossaryGroundedTables.tsx":
     "a term's tables grounded and let go each as it is picked, in the term's detail",
   "pages/tables/TableClassTerm.tsx":

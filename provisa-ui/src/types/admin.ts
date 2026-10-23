@@ -168,6 +168,8 @@ export interface TagAssignment {
   commandName?: string | null;
   // REQ-2145: the glossary term an objectType "term" assignment is on.
   termId?: number | null;
+  // REQ-2145: on a column, put the tag on the column's term instead.
+  alsoTerm?: boolean;
   tableRef?: string | null;
   // Why this tag is on this object; required for 'deprecated'.
   reason?: string | null;
@@ -228,6 +230,9 @@ export interface TableColumn {
   syntheticRule?: string | null;
   // REQ-1494: the column is tagged pii (marked in test-data mode when it declares no fake).
   isPii?: boolean;
+  // REQ-2145: the glossary term the column is pii through; null when it is pii by its own mark
+  // or not at all.
+  piiTerm?: string | null;
 }
 
 // REQ-1360: metadata-only Kimball measure annotation for a table's implicit_measures.

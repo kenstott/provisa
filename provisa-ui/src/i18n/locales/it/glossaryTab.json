@@ -151,6 +151,15 @@
     "status_deprecated": "Deprecato",
     "status_retired": "Ritirato",
     "draftUndefined": "Bozza: derivato dai nomi della colonna e della tabella. Dagli una definizione: è ciò che leggono gli agenti e i cataloghi. Il nome deriva dalle colonne qui sotto, e le colonne che si normalizzano allo stesso modo confluiscono in un unico termine: assegna un alias a una colonna nella pagina Tabelle per cambiare il termine a cui contribuisce. Rinominare qui cambia solo la formulazione di questo termine.",
-    "draftUngrounded": "Bozza: questo termine non raggiunge alcuna colonna fisica. Collegalo a un termine che ne ha una perché indichi dati reali."
+    "draftUngrounded": "Bozza: questo termine non raggiunge alcuna colonna fisica. Collegalo a un termine che ne ha una perché indichi dati reali.",
+    "piiLabel": "PII",
+    "piiHelp": "Ogni colonna con questo significato porta PII, anche le future.",
+    "piiPropertyOnly": "Solo una proprietà segna colonne: una classe o un concetto non ne significa nessuna.",
+    "piiMarks_one": "Segna {{count}} colonna",
+    "piiMarks_other": "Segna {{count}} colonne",
+    "moveOneUnnamed": "Spostare {{column}}?",
+    "moveManyUnnamed_one": "Spostare {{count}} colonna?",
+    "moveManyUnnamed_other": "Spostare {{count}} colonne?",
+    "moveCarryUnnamed": "Sposta e segna i loro nuovi termini con {{tags}}"
   }
 }

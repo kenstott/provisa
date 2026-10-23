@@ -103,6 +103,8 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   edges_out: GlossaryEdge[];
   edges_in: GlossaryEdge[];
   experts: GlossaryExpert[];
+  // REQ-2145: the tags on the term (pii), which every column it holds carries.
+  tags: { tag_id: string; reason: string | null }[];
 }
 
 // REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table
@@ -238,17 +240,26 @@ export async function deleteGlossaryTerm(termId: number): Promise<void> {
   if (!res.ok) throw await mutationError(res, "deleteGlossaryTerm");
 }
 
-export async function moveGlossaryRef(body: {
-  table_id: number;
-  column_name: string;
-  to_term_id: number;
-}): Promise<{ source_term_removed: boolean }> {
+/** How a move that takes tags off columns goes ahead (REQ-2145): each lost tag confirmed, or the
+ * tags carried to the term the columns move to. */
+export interface TagLossResolution {
+  confirm_tag_loss?: string[];
+  carry_tags?: boolean;
+}
+
+export async function moveGlossaryRef(
+  body: {
+    table_id: number;
+    column_name: string;
+    to_term_id: number;
+  } & TagLossResolution,
+): Promise<{ source_term_removed: boolean }> {
   const res = await fetch(`${API_BASE}/admin/glossary/refs/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await mutationError(res, "moveGlossaryRef");
+  if (!res.ok) throw await moveRefusal(res, "moveGlossaryRef");
   return (await res.json()) as { source_term_removed: boolean };
 }
 
@@ -370,34 +381,29 @@ export class TagLossRefused extends Error {
   }
 }
 
+/** A move's refusal: TagLossRefused for the tags it would take off columns, else its error. */
+async function moveRefusal(res: Response, op: string): Promise<Error> {
+  if (res.status !== 409) return mutationError(res, op);
+  const data = await res.json();
+  const message = serverMessage(data, requestFailed(op, res.status));
+  return data.code === "tag.move_loses"
+    ? new TagLossRefused(message, data.params.columns)
+    : new Error(message);
+}
+
 /** Retire a term (REQ-2144): its columns and tables move to ``successor``, which a term holding
  * any must name. A move that takes tags off columns is refused (TagLossRefused) until each lost
  * tag is confirmed or the tags are carried to the successor. */
 export async function retireGlossaryTerm(
   termId: number,
-  body: {
-    reason: string;
-    successor: number | null;
-    confirm_tag_loss?: string[];
-    carry_tags?: boolean;
-  },
+  body: { reason: string; successor: number | null } & TagLossResolution,
 ): Promise<{ status: string; tag_changes: ColumnTagChange[] }> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/retire`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (res.status === 409) {
-    const data = await res.json();
-    if (data.code === "tag.move_loses") {
-      throw new TagLossRefused(
-        serverMessage(data, requestFailed("retireGlossaryTerm", res.status)),
-        data.params.columns,
-      );
-    }
-    throw new Error(serverMessage(data, requestFailed("retireGlossaryTerm", res.status)));
-  }
-  if (!res.ok) throw await mutationError(res, "retireGlossaryTerm");
+  if (!res.ok) throw await moveRefusal(res, "retireGlossaryTerm");
   return res.json();
 }
 

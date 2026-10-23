@@ -151,6 +151,15 @@
     "status_deprecated": "Veraltet",
     "status_retired": "Außer Dienst",
     "draftUndefined": "Entwurf: aus den Spalten- und Tabellennamen abgeleitet. Geben Sie ihm eine Definition — sie ist es, was Agenten und Kataloge lesen. Der Name stammt aus den unten aufgeführten Spalten, und Spalten, die gleich normalisiert werden, landen auf einem Begriff: Vergeben Sie auf der Tabellenseite einen Alias für eine Spalte, um zu ändern, welchem Begriff sie zufließt. Umbenennen ändert hier nur die Formulierung dieses Begriffs.",
-    "draftUngrounded": "Entwurf: Dieser Begriff erreicht keine physische Spalte. Verknüpfen Sie ihn mit einem Begriff, der eine hat, damit er echte Daten benennt."
+    "draftUngrounded": "Entwurf: Dieser Begriff erreicht keine physische Spalte. Verknüpfen Sie ihn mit einem Begriff, der eine hat, damit er echte Daten benennt.",
+    "piiLabel": "PII",
+    "piiHelp": "Jede Spalte mit dieser Bedeutung trägt PII, auch künftige.",
+    "piiPropertyOnly": "Nur eine Eigenschaft markiert Spalten: Eine Klasse oder ein Konzept bedeutet keine.",
+    "piiMarks_one": "Markiert {{count}} Spalte",
+    "piiMarks_other": "Markiert {{count}} Spalten",
+    "moveOneUnnamed": "{{column}} verschieben?",
+    "moveManyUnnamed_one": "{{count}} Spalte verschieben?",
+    "moveManyUnnamed_other": "{{count}} Spalten verschieben?",
+    "moveCarryUnnamed": "Verschieben und ihre neuen Begriffe mit {{tags}} markieren"
   }
 }

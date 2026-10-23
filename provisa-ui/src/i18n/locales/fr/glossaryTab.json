@@ -151,6 +151,15 @@
     "status_deprecated": "Obsolète",
     "status_retired": "Retiré",
     "draftUndefined": "Brouillon: dérivé des noms de la colonne et de la table. Donnez-lui une définition — c'est ce que lisent les agents et les catalogues. Le nom provient des colonnes ci-dessous, et les colonnes qui se normalisent de la même façon aboutissent à un seul terme : donnez un alias à une colonne sur la page Tables pour changer le terme qu'elle alimente. Renommer ici ne change que la formulation de ce terme.",
-    "draftUngrounded": "Brouillon: ce terme n'atteint aucune colonne physique. Reliez-le à un terme qui en possède une pour qu'il désigne des données réelles."
+    "draftUngrounded": "Brouillon: ce terme n'atteint aucune colonne physique. Reliez-le à un terme qui en possède une pour qu'il désigne des données réelles.",
+    "piiLabel": "PII",
+    "piiHelp": "Chaque colonne de cette signification porte PII, y compris les futures.",
+    "piiPropertyOnly": "Seule une propriété marque des colonnes : une classe ou un concept n’en signifie aucune.",
+    "piiMarks_one": "Marque {{count}} colonne",
+    "piiMarks_other": "Marque {{count}} colonnes",
+    "moveOneUnnamed": "Déplacer {{column}} ?",
+    "moveManyUnnamed_one": "Déplacer {{count}} colonne ?",
+    "moveManyUnnamed_other": "Déplacer {{count}} colonnes ?",
+    "moveCarryUnnamed": "Déplacer et marquer leurs nouveaux termes {{tags}}"
   }
 }

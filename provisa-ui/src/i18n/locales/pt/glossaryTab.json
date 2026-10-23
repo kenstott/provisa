@@ -151,6 +151,15 @@
     "status_deprecated": "Obsoleto",
     "status_retired": "Retirado",
     "draftUndefined": "Rascunho: derivado dos nomes da coluna e da tabela. Dê-lhe uma definição — é o que os agentes e os catálogos leem. O nome vem das colunas abaixo, e colunas que normalizam da mesma forma acabam num único termo: atribua um alias a uma coluna na página Tabelas para mudar o termo que ela alimenta. Renomear aqui altera apenas a redação deste termo.",
-    "draftUngrounded": "Rascunho: este termo não alcança nenhuma coluna física. Relacione-o a um termo que tenha uma para que ele nomeie dados reais."
+    "draftUngrounded": "Rascunho: este termo não alcança nenhuma coluna física. Relacione-o a um termo que tenha uma para que ele nomeie dados reais.",
+    "piiLabel": "PII",
+    "piiHelp": "Cada coluna com este significado leva PII, também as futuras.",
+    "piiPropertyOnly": "Só uma propriedade marca colunas: uma classe ou um conceito não significa nenhuma.",
+    "piiMarks_one": "Marca {{count}} coluna",
+    "piiMarks_other": "Marca {{count}} colunas",
+    "moveOneUnnamed": "Mover {{column}}?",
+    "moveManyUnnamed_one": "Mover {{count}} coluna?",
+    "moveManyUnnamed_other": "Mover {{count}} colunas?",
+    "moveCarryUnnamed": "Mover e marcar os seus novos termos com {{tags}}"
   }
 }

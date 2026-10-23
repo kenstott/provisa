@@ -99,6 +99,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
   edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn" }],
   experts: [{ user_id: "u1", kind: "expert" }],
+  tags: [],
 };
 
 /** Mount the tab and open Revenue. */

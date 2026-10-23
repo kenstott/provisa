@@ -151,6 +151,15 @@
     "status_deprecated": "Deprecated",
     "status_retired": "Retired",
     "draftUndefined": "Draft: derived from the column and table names. Give it a definition — that is what agents and catalogs read. The name comes from the columns below, and columns that normalize alike land on one term: alias a column on the Tables page to change which term it feeds. Rename here to change only this term's wording.",
-    "draftUngrounded": "Draft: this term reaches no physical column. Relate it to a term that has one so it names real data."
+    "draftUngrounded": "Draft: this term reaches no physical column. Relate it to a term that has one so it names real data.",
+    "piiLabel": "PII",
+    "piiHelp": "Every column this term means carries PII, those to come too.",
+    "piiPropertyOnly": "Only a property marks columns: a class or a concept means none.",
+    "piiMarks_one": "Marks {{count}} column",
+    "piiMarks_other": "Marks {{count}} columns",
+    "moveOneUnnamed": "Move {{column}}?",
+    "moveManyUnnamed_one": "Move {{count}} column?",
+    "moveManyUnnamed_other": "Move {{count}} columns?",
+    "moveCarryUnnamed": "Move and mark their new terms {{tags}}"
   }
 }

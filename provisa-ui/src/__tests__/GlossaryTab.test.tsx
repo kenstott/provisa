@@ -47,9 +47,11 @@ vi.mock("../api/glossary", async (importOriginal) => ({
 
 // A term's tag taken off from its To review finding.
 const unassignTag = vi.hoisted(() => vi.fn(async () => ({ success: true, message: "" })));
+const assignTag = vi.hoisted(() => vi.fn(async () => ({ success: true, message: "" })));
 vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useTagQueries")>()),
   useUnassignTag: () => ({ unassignTag, loading: false }),
+  useAssignTag: () => ({ assignTag, loading: false }),
 }));
 const navigateTo = vi.hoisted(() => vi.fn());
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -281,6 +283,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
   edges_in: [],
   experts: [{ user_id: "u1", kind: "expert" }],
+  tags: [],
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
@@ -289,6 +292,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   edges_out: [],
   edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
   experts: [],
+  tags: [],
 };
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
@@ -298,6 +302,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   edges_out: [],
   edges_in: [],
   experts: [],
+  tags: [],
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
@@ -771,6 +776,64 @@ describe("GlossaryTab", () => {
     // The panel drops back to the empty state; no second read of the removed term.
     await waitFor(() => expect(screen.queryByTestId("glossary-ref-10-revenue")).toBeNull());
     expect(mockFetchTerm).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks before a move takes tags off the column, and moves on the reader's word", async () => {
+    mockMoveRef.mockRejectedValueOnce(
+      new TagLossRefused("loses tags", [
+        { column: "revenue", table: "erp.public.orders", loses: ["pii"], gains: [] },
+      ]),
+    );
+    mockMoveRef.mockResolvedValueOnce({ source_term_removed: false });
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await edit();
+    const listbox = await openSelect("glossary-move-select-10-revenue");
+    fireEvent.click(within(listbox).getByText("Churn", { ignore: "" }));
+    save();
+
+    expect(await screen.findByTestId("glossary-tag-loss")).toHaveTextContent(
+      t("glossaryTab.loses", { tags: "pii" }),
+    );
+    expect(
+      screen.getByText(
+        t("glossaryTab.moveOne", { column: "erp.public.orders.revenue", term: "Churn" }),
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("glossary-tag-loss-move"));
+    await waitFor(() =>
+      expect(mockMoveRef).toHaveBeenLastCalledWith({
+        table_id: 10,
+        column_name: "revenue",
+        to_term_id: 2,
+        confirm_tag_loss: ["pii"],
+      }),
+    );
+  });
+
+  it("marks a property PII in Edit, and its panel says how many columns it marks", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await edit();
+    const pii = screen.getByTestId("glossary-pii-checkbox");
+    expect(pii).not.toBeDisabled();
+    fireEvent.click(pii);
+    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, tags: [{ tag_id: "pii", reason: null }] });
+    save();
+    await waitFor(() =>
+      expect(assignTag).toHaveBeenCalledWith({ tagId: "pii", objectType: "term", termId: 1 }),
+    );
+    expect(await screen.findByTestId("glossary-detail-pii")).toHaveTextContent(
+      t("glossaryTab.piiMarks", { count: 1 }),
+    );
+  });
+
+  it("offers PII in Edit on a property only", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-2"));
+    await edit();
+    // A concept means no column: the box is off, its help saying why.
+    expect(screen.getByTestId("glossary-pii-checkbox")).toBeDisabled();
   });
 
   it("keeps the term open when a move left it with other refs", async () => {

@@ -151,6 +151,15 @@
     "status_deprecated": "Obsoleto",
     "status_retired": "Retirado",
     "draftUndefined": "Borrador: derivado de los nombres de la columna y la tabla. Dele una definición: es lo que leen los agentes y los catálogos. El nombre proviene de las columnas de abajo, y las columnas que se normalizan igual acaban en un mismo término: asigne un alias a una columna en la página Tablas para cambiar a qué término alimenta. Cambiar el nombre aquí solo altera la redacción de este término.",
-    "draftUngrounded": "Borrador: este término no llega a ninguna columna física. Relaciónelo con un término que sí la tenga para que nombre datos reales."
+    "draftUngrounded": "Borrador: este término no llega a ninguna columna física. Relaciónelo con un término que sí la tenga para que nombre datos reales.",
+    "piiLabel": "PII",
+    "piiHelp": "Cada columna con este significado lleva PII, también las futuras.",
+    "piiPropertyOnly": "Solo una propiedad marca columnas: una clase o un concepto no significa ninguna.",
+    "piiMarks_one": "Marca {{count}} columna",
+    "piiMarks_other": "Marca {{count}} columnas",
+    "moveOneUnnamed": "¿Mover {{column}}?",
+    "moveManyUnnamed_one": "¿Mover {{count}} columna?",
+    "moveManyUnnamed_other": "¿Mover {{count}} columnas?",
+    "moveCarryUnnamed": "Mover y marcar sus nuevos términos con {{tags}}"
   }
 }

@@ -652,6 +652,7 @@ export function TableReadView({
                             objectType="column"
                             tableId={table.id}
                             columnName={c.columnName}
+                            piiTerm={c.piiTerm}
                           />
                         </Table.Td>
                         {tab === "naming" && (

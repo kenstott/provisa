@@ -151,6 +151,15 @@
     "status_deprecated": "非推奨",
     "status_retired": "廃止済み",
     "draftUndefined": "下書き: 列名とテーブル名から導出されました。定義を付けてください — エージェントとカタログが読むのは定義です。名前は下の列に由来し、同じように正規化される列は一つの用語にまとまります。列がどの用語に入るかを変えるには、テーブルページでその列にエイリアスを設定してください。ここでの名前変更は、この用語の表記だけを変えます。",
-    "draftUngrounded": "下書き: この用語は物理列に到達していません。列を持つ用語と関連付けて、実データを指すようにしてください。"
+    "draftUngrounded": "下書き: この用語は物理列に到達していません。列を持つ用語と関連付けて、実データを指すようにしてください。",
+    "piiLabel": "PII",
+    "piiHelp": "この用語を意味するすべての列 (今後のものも) が PII になります。",
+    "piiPropertyOnly": "列に印を付けられるのはプロパティだけです: クラスやコンセプトはどの列も意味しません。",
+    "piiMarks_one": "{{count}} 列に付く",
+    "piiMarks_other": "{{count}} 列に付く",
+    "moveOneUnnamed": "{{column}} を移しますか?",
+    "moveManyUnnamed_one": "{{count}} 列を移しますか?",
+    "moveManyUnnamed_other": "{{count}} 列を移しますか?",
+    "moveCarryUnnamed": "移して新しい用語に {{tags}} を付ける"
   }
 }
