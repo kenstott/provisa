@@ -162,3 +162,29 @@ def test_real_redis_pool_wait_is_bounded_by_the_request_budget(monkeypatch, dead
     assert time.monotonic() - t0 < 2.0  # the fixed 20s cap did not apply
     pool.release(held)
     pool.release(pool.get_connection())  # slot accounting intact after the timeout
+
+
+def test_a_failed_connect_raises_its_own_error_and_gives_its_slot_back_once(monkeypatch):
+    """#284: redis-py releases a connection whose connect() failed before re-raising; the slot it
+    took is given back once, and the caller sees the connection error, not a ValueError from an
+    over-released semaphore."""
+    import redis.connection
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    import provisa.core.redis_factory as rf
+
+    def refused(self):
+        raise RedisConnectionError("Error 61 connecting to localhost:6379. Connection refused.")
+
+    monkeypatch.setattr(redis.connection.AbstractConnection, "connect", refused)
+    monkeypatch.setattr(rf, "_POOL_MAX_CONNECTIONS", 2)
+    pool = make_redis("redis://localhost:6379/0", decode_responses=True).client().connection_pool
+    for _ in range(3):  # more attempts than slots: none of them leaks one
+        with pytest.raises(RedisConnectionError, match="Connection refused"):
+            pool.get_connection()
+
+    monkeypatch.setattr(redis.connection.AbstractConnection, "connect", lambda self: None)
+    monkeypatch.setattr(redis.connection.AbstractConnection, "can_read", lambda self, *a: False)
+    held = [pool.get_connection() for _ in range(pool.max_connections)]  # every slot is free
+    for c in held:
+        pool.release(c)
