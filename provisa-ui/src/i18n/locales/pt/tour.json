@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "De volta como administrador",
         "description": "O painel é o que as operações veem. O resto do tour volta a ser como administrador, e cada instrução que segue indica a função com que é executada."
+      },
+      "groupexposureScenario": {
+        "title": "Do que trata esta demo",
+        "description": "Um banco de Praga empresta a empresas e regista a empresa que detém cada uma pelo seu Legal Entity Identifier (LEI). As regras da UE limitam o que pode emprestar a um cliente, ou a um grupo de empresas controlado por um mesmo dono, a 25% do seu capital de nível 1 (Tier 1). A pergunta: perante que grupos o banco ultrapassa esse limite? Os seus livros indicam o dono de cada mutuário, não quem é dono desse dono. O banco, os seus mutuários e os seus empréstimos são fictícios; os grupos que os detêm são reais."
+      },
+      "groupexposureJoin": {
+        "title": "Ligados pelo LEI",
+        "description": "A tabela de donos do banco e as tabelas do Wikidata partilham o LEI do dono, e estas relações ligam-nas. Os dados do banco ficam na sua base de dados e os do Wikidata na sua réplica; a ligação faz-se na consulta."
+      },
+      "groupexposureAnswer": {
+        "title": "A resposta em SQL",
+        "description": "A vista group_exposure agrega cada linha de crédito no grupo do seu mutuário, através do LEI do dono e do Wikidata. Os grupos Veolia e Vinci ultrapassam cada um 25% do capital de nível 1, e uma empresa conjunta da Veolia e da EPH conta em ambos. Nem os livros do banco nem o Wikidata o mostram sozinhos. Os mutuários e os seus empréstimos são fictícios."
+      },
+      "groupexposureExample": {
+        "title": "A resposta em GraphQL",
+        "description": "A mesma vista em GraphQL: os grupos a que o banco mais empresta, os seus mutuários, o valor comprometido e se cada um ultrapassa o limite."
+      },
+      "groupexposureRecap": {
+        "title": "O que viu",
+        "description": "A carteira de empréstimos de um banco fictício e dados ligados públicos do Wikidata, unidos por LEI num modelo governado. As cadeias de propriedade do Wikidata transformam muitos pequenos empréstimos em poucas grandes exposições de grupo, e a resposta é servida em SQL, GraphQL e REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Quem é dono dos donos, segundo o Wikidata",
+        "description": "O Wikidata, o grafo de conhecimento público, regista o LEI de cada empresa e a sua organização-mãe. Esta fonte lê-o através do serviço de consultas SPARQL do Wikidata. As suas tabelas foram carregadas uma única vez, quando a demo foi criada, por isso a demo nunca chama o Wikidata enquanto a usa."
+      },
+      "groupexposureFacilities": {
+        "title": "As linhas de crédito do banco",
+        "description": "Cada empréstimo a prazo, linha de crédito rotativa e garantia concedidos pelo banco, com o mutuário, o valor comprometido e o valor utilizado. O limite conta o valor comprometido."
+      },
+      "groupexposureGroups": {
+        "title": "O grupo de cada dono",
+        "description": "Para cada dono que o banco regista, a empresa no topo da sua cadeia de organizações-mãe no Wikidata, encontrada com um único caminho de propriedades SPARQL. O Wikidata sabe que uma holding checa pertence à Veolia ou à E.ON, mesmo que os livros do banco não o saibam."
+      },
+      "groupexposureTerms": {
+        "title": "Em palavras simples",
+        "description": "O glossário explica os termos com que trabalha um gestor de risco: grande exposição, capital de nível 1, Legal Entity Identifier e organização-mãe. Um grupo de clientes ligados são empresas que formam um único risco porque uma controla as outras."
+      },
+      "groupexposureAlone": {
+        "title": "Só os livros",
+        "description": "A exposição própria de cada mutuário, tal como a veem os livros do banco. A maior está abaixo de 10% do capital de nível 1, por isso nenhum mutuário se aproxima do limite de 25%."
+      },
+      "groupexposureRest": {
+        "title": "A mesma resposta por REST",
+        "description": "A vista também é um endpoint REST, aqui agrupada por o grupo ultrapassar ou não o limite e somada no servidor, pronta para um relatório de risco ou uma folha de cálculo."
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "Relatórios de fechamento sem copiar o razão",
         "summary": "Os totais de fim de dia de um banco, gerados em cada fechamento direto de um razão que nunca é copiado para o data warehouse, lidos como foram reportados e como foram corrigidos depois, com a mesma resposta via GraphQL, SQL e um agente."
+      },
+      "groupexposure": {
+        "title": "Exposição por grupo via Wikidata",
+        "summary": "Perante que grupos empresariais um banco ultrapassa o seu limite de grandes exposições? A sua carteira de empréstimos, ligada pelo LEI do dono de cada mutuário às cadeias de organizações-mãe do Wikidata via SPARQL, atribui cada mutuário ao seu grupo. O banco e os seus mutuários são fictícios; os grupos são reais."
       }
     }
   }
