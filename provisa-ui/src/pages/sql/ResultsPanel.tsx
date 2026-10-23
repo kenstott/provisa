@@ -21,7 +21,8 @@ import type { ExplainNodeDto, ExplainResponse } from "../../api/admin";
 import { MermaidDiagram } from "../../components/MermaidDiagram";
 import "./ResultsPanel.css";
 import { Tip } from "../../components/Tip";
-import { StatementTabs } from "./StatementTabs";
+import { StatementTabs } from "../../components/StatementTabs";
+import { statementLabel } from "./statementResults";
 import type { StatementResult } from "./statementResults";
 
 interface ResultsPanelProps {
@@ -143,7 +144,16 @@ export function ResultsPanel({
       {statements.length > 1 &&
         !running &&
         (resultTab === "results" || resultTab === "profile") && (
-          <StatementTabs statements={statements} index={statementIndex} onChange={onStatement} />
+          <StatementTabs
+            tabs={statements.map((r) => ({
+              name: statementLabel(r.statement),
+              rows: r.redirect ? null : r.rows.length,
+              failed: r.error !== "",
+            }))}
+            index={statementIndex}
+            onChange={onStatement}
+            testId="sql-statement-tab"
+          />
         )}
       <div style={{ flex: 1, overflow: "auto" }}>
         {resultTab === "results" &&

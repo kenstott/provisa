@@ -128,9 +128,9 @@ describe("a batch of two statements", () => {
 
     const first = await screen.findByTestId("sql-statement-tab-0");
     expect(first).toHaveTextContent("Result 1 · orders");
-    expect(screen.getByTestId("sql-statement-rows-0")).toHaveTextContent("2");
+    expect(screen.getByTestId("sql-statement-tab-rows-0")).toHaveTextContent("2");
     expect(screen.getByTestId("sql-statement-tab-1")).toHaveTextContent("Result 2 · secret");
-    expect(screen.getByTestId("sql-statement-failed-1")).toBeInTheDocument();
+    expect(screen.getByTestId("sql-statement-tab-failed-1")).toBeInTheDocument();
     // The first statement's rows, though the second failed.
     expect(screen.queryByTestId("sql-results-error")).toBeNull();
     expect(screen.getByTestId("results-tab-results")).toHaveTextContent("2");

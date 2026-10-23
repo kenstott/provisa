@@ -63,7 +63,15 @@ describe("GraphPage — a hand-off while the page is open", () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         if (String(url).includes("/data/cypher")) cypherCalls.push(String(init?.body));
         return new Response(
-          JSON.stringify({ columns: [], data: [], nodes: [], relationships: [] }),
+          JSON.stringify({
+            results: [
+              {
+                statement: "MATCH",
+                status: 200,
+                body: { columns: [], data: [], nodes: [], relationships: [] },
+              },
+            ],
+          }),
           {
             status: 200,
             headers: { "content-type": "application/json" },

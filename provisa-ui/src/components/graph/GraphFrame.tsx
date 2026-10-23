@@ -14,7 +14,7 @@
    ref reads/writes during render are intentional throughout this module. */
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { ActionIcon, Loader, Menu, Select, useComputedColorScheme } from "@mantine/core";
+import { ActionIcon, Menu, Select, useComputedColorScheme } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Relationship } from "../../types/admin";
 import { injectExclusion } from "./graph-model";
@@ -63,6 +63,7 @@ import {
 } from "./GraphIcons";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
+import { FrameRunning, FrameStatementTabs } from "./FrameParts";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -94,6 +95,8 @@ interface GraphFrameProps {
   onAddFavorite?: (query: string) => void;
   isFavorited?: (query: string) => boolean;
   onPin?: (id: string) => void;
+  /** Show the frame's ``index``th statement's result, of a query holding several. */
+  onStatement?: (id: string, index: number) => void;
   onEffectiveDataChange?: (
     frameId: string,
     nodes: Map<string, GNode>,
@@ -125,6 +128,7 @@ export function GraphFrame({
   onAddFavorite,
   isFavorited,
   onPin,
+  onStatement,
   onEffectiveDataChange,
 }: GraphFrameProps) {
   const { t } = useTranslation();
@@ -769,22 +773,8 @@ export function GraphFrame({
         )}
       </div>
       <div className="gf-body-content">
-        {frame.status === "loading" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "2rem",
-              gap: "0.5rem",
-              color: "var(--text-muted)",
-              fontSize: "0.85rem",
-            }}
-          >
-            <Loader size="xs" />
-            {t("graphFrame.running")}
-          </div>
-        )}
+        {onStatement && <FrameStatementTabs frame={frame} onStatement={onStatement} />}
+        {frame.status === "loading" && <FrameRunning />}
         {frame.status === "error" && (
           <div className="gf-error gf-error--copyable">
             <span className="gf-error-text">{frame.error}</span>
