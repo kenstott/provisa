@@ -92,8 +92,12 @@ def test_the_values_travel_by_the_pipelines_own_parameter_path():
 
     from provisa.pgwire import _pipeline
 
-    source = inspect.getsource(_pipeline.execute_sql_batch)
-    assert "params=params," in source  # the temp-session re-entry keeps them
+    # The batch entry points share one loop (_run_batch, _run_statements): the path is theirs.
+    source = "".join(
+        inspect.getsource(f)
+        for f in (_pipeline.execute_sql_batch, _pipeline._run_batch, _pipeline._run_statements)
+    )
+    assert "params=params," in source  # handed on to the batch loop
     assert "functools.partial(_govern_and_route, params=params)" in source  # the governed call
     assert "substitute" not in source and ".format(" not in source
 

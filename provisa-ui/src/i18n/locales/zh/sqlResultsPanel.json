@@ -101,6 +101,9 @@
     "provColumnsHeading": "列",
     "provTypeNumber": "数字",
     "provTypeDate": "日期",
-    "provTypeText": "文本"
+    "provTypeText": "文本",
+    "statementTab": "结果 {{n}} · {{name}}",
+    "statementTabUnnamed": "结果 {{n}}",
+    "statementFailed": "失败"
   }
 }

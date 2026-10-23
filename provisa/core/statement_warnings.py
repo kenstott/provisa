@@ -75,6 +75,19 @@ def collecting() -> Generator[list[ServerWarning]]:
         _collector.reset(token)
 
 
+@contextmanager
+def collecting_apart() -> Generator[list[ServerWarning]]:
+    """Collect the warnings raised inside the block in a list of its own, even inside an open
+    collector: for a batch answered one result per statement, each statement's answer carries
+    its own warnings, not the request's."""
+    found: list[ServerWarning] = []
+    token = _collector.set(found)
+    try:
+        yield found
+    finally:
+        _collector.reset(token)
+
+
 def warn(warning: ServerWarning) -> None:
     """Add ``warning`` to the statement's collector; raise :class:`NoWarningChannel` when none
     is open. The same warning twice is kept once."""
