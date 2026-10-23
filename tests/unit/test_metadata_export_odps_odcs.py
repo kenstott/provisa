@@ -174,3 +174,28 @@ def test_a_contract_names_the_product_it_belongs_to():
 )
 def test_a_declared_type_maps_to_its_logical_type_or_to_none(declared, logical):
     assert logical_type(declared) == logical
+
+
+def test_a_retired_product_is_retired_with_no_output_ports():
+    """REQ-1634 STATUS: retired, its members went to its successor; the document says so, with
+    no member contracts, and is still a valid ODPS document."""
+    config = governed_config()
+    for table in config.tables:
+        table.product_id = None  # moved to the successor
+    config.data_products = [
+        DataProduct(
+            id="prod",
+            domain_id="sales",
+            name="Customer 360",
+            purpose="One view of each customer",
+            status="retired",
+            status_reason="Replaced by Customer 360 v2.",
+        )
+    ]
+    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    (product,) = snapshot.data_products
+    assert product.members == ()
+    document, contracts = product_documents(snapshot, product)
+    assert document["status"] == "retired"
+    assert contracts == {}
+    assert _errors(ODPS, document) == []

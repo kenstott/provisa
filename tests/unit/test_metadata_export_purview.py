@@ -68,7 +68,7 @@ def _target() -> MetadataExportTarget:
     )
 
 
-def _snapshot(*, owners=("owner@example.com",), domain="sales", status="live"):
+def _snapshot(*, owners=("owner@example.com",), domain="sales", status="live", members=True):
     config = ProvisaConfig(
         sources=[
             Source(
@@ -88,7 +88,7 @@ def _snapshot(*, owners=("owner@example.com",), domain="sales", status="live"):
                 domain_id=domain,
                 schema_name="public",
                 table_name=name,
-                product_id="sales_360",
+                product_id="sales_360" if members else None,
                 cache_ttl=ttl,
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
@@ -104,6 +104,7 @@ def _snapshot(*, owners=("owner@example.com",), domain="sales", status="live"):
                 usage="Join on customer_id",
                 limitations="No refunds",
                 status=status,
+                status_reason="Replaced." if status in ("deprecated", "retired") else None,
             )
         ],
         roles=[],
@@ -281,3 +282,14 @@ async def test_an_owner_entra_does_not_know_is_reported(api, data_map):
     ]
     (body,) = api.products.values()
     assert [o["id"] for o in body["contacts"]["owner"]] == ["oid-owner"]
+
+
+async def test_a_retired_product_is_expired_with_no_assets(api, data_map):
+    """REQ-1634 STATUS: retired, its members went to its successor; the catalog is told so rather
+    than left listing it as published."""
+    await _export().publish(_snapshot())
+    result = await _export().publish(_snapshot(status="retired", members=False))
+    assert result.ok, result.errors
+    (product,) = _snapshot(status="retired", members=False).data_products
+    assert api.products[product_id(product)]["status"] == "EXPIRED"
+    assert api.related[product_id(product)] == set()

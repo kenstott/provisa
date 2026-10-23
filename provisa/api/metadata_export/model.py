@@ -123,7 +123,8 @@ class DataProductAsset:  # REQ-1634
     ``members`` are the exported TableAssets whose ``product_id`` names this product — the
     same domain-alignment Provisa enforces at save time (a member's domain_id always equals
     ``domain_id`` here). A product with no exported members does not build: publishing an
-    empty listing would tell the catalog about a product with nothing behind it.
+    empty listing would tell the catalog about a product with nothing behind it. A retired
+    product builds with none (REQ-1634 STATUS), so each catalog is told it is retired.
     """
 
     ref: AssetRef
