@@ -699,7 +699,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS profiled_table_id,
                (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
                    AS checked_table_id,
-               -- REQ-2130: the table's class term, NULL when none grounds it. Last, like the two
+               -- The table's class term, NULL when none grounds it. Last, like the two
                -- above, so an existing view is replaced in place.
                (SELECT g.term_id FROM glossary_term_table_refs g WHERE g.table_id = rt.id)
                    AS class_term_id
