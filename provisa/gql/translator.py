@@ -267,6 +267,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._map_unwind_vars: set[str] = set()
         # Variables whose value is a MAP array (from collect({...}) or similar)
         self._map_array_vars: set[str] = set()
+        # Each UNWIND's UNNEST alias (``UNNEST(a) AS _uw0(x)``): its variable is that alias's column
+        self._unwind_aliases: set[str] = set()
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
         self._map_vars: dict[str, set[str]] = {}
@@ -339,6 +341,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
+            if unwinds:
+                _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
+                joins.extend(uw_joins)
+        elif carried is not None:
+            # A WITH right after a WITH goes on from the rows that WITH carries (#288).
+            from_clause = exp.Table(this=exp.Identifier(this=carried))
+            joins = []
             if unwinds:
                 _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
                 joins.extend(uw_joins)
@@ -839,6 +848,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 ),
             )
             self._var_table[uw.variable] = (alias, None)
+            self._unwind_aliases.add(alias)
             if not has_from and from_expr is None:
                 from_expr = unnest
                 has_from = True
