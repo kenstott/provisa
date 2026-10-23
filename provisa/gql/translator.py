@@ -1086,13 +1086,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         raise CypherTranslateError(f"Unknown label(s): {labels}")
 
-    def _collect_var_props(self, var: str) -> list[str]:
-        """Return ordered list of property names referenced as var.prop in the AST.
-
-        When the var appears bare in RETURN (e.g. ``RETURN n``) with no explicit
-        property projections, all properties from the domain's node types are
-        included so that the domain union subquery exposes them.
-        """
+    def _referenced_var_props(self, var: str) -> list[str]:
+        """The property names referenced as ``var.prop`` in the statement, in order."""
         exprs: list[CypherExpr] = []
         for step in self._ast.pipeline:
             if isinstance(step, MatchStep) and step.where:
@@ -1103,29 +1098,42 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     exprs.append(step.where.expression)
         if self._ast.return_clause:
             exprs.extend(i.expression for i in self._ast.return_clause.items)
-        props = _properties_of(var, exprs)
+        return _properties_of(var, exprs)
 
-        # If var is returned bare (RETURN n) and is a domain node, include all
-        # domain properties so the union subquery exposes them for JSON serialization.
-        if not props and var in self._domain_nodes and self._ast.return_clause:
-            is_bare = any(
-                isinstance(item.expression, Variable) and item.expression.name == var
-                for item in self._ast.return_clause.items
+    def _node_as_one_value(self, var: str) -> bool:
+        """Whether ``var`` is a domain node the statement returns bare and reads no property of:
+        each type's arm of its union then carries the node as one JSON value of its own
+        properties, not a column for every property of every type."""
+        if var not in self._domain_nodes or not self._ast.return_clause:
+            return False
+        is_bare = any(
+            isinstance(item.expression, Variable) and item.expression.name == var
+            for item in self._ast.return_clause.items
+        )
+        return is_bare and not self._referenced_var_props(var)
+
+    def _collect_var_props(self, var: str) -> list[str]:
+        """Return ordered list of property names referenced as var.prop in the AST.
+
+        When the var appears bare in RETURN (e.g. ``RETURN n``) with no explicit
+        property projections, all properties from the domain's node types are
+        included, for a union over its relationships to carry its ends with.
+        """
+        props = self._referenced_var_props(var)
+        if self._node_as_one_value(var):
+            domain = self._domain_nodes[var]
+            type_labels = (
+                list(self._lm.nodes.keys())
+                if domain == "__all__"
+                else self._lm.domains.get(domain, [])
             )
-            if is_bare:
-                domain = self._domain_nodes[var]
-                type_labels = (
-                    list(self._lm.nodes.keys())
-                    if domain == "__all__"
-                    else self._lm.domains.get(domain, [])
-                )
-                _reserved = {"id", "label"}
-                all_props: set[str] = set()
-                for label in type_labels:
-                    nm = self._lm.nodes.get(label)
-                    if nm:
-                        all_props.update(k for k in nm.properties.keys() if k not in _reserved)
-                props = sorted(all_props)
+            _reserved = {"id", "label"}
+            all_props: set[str] = set()
+            for label in type_labels:
+                nm = self._lm.nodes.get(label)
+                if nm:
+                    all_props.update(k for k in nm.properties.keys() if k not in _reserved)
+            props = sorted(all_props)
 
         return props
 
