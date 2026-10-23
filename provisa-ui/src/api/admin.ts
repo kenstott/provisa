@@ -16,6 +16,7 @@ import { normalizeRole, type RawRole } from "../lib/roles";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
+import { columnKeys, rowByKeys } from "../lib/columnKeys";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -1713,6 +1714,7 @@ export async function runSql(
 /** One statement's answer in a batch answered one result per statement. */
 export interface StatementAnswer {
   statement: string;
+  /** Each column's key, unique by position (lib/columnKeys); columnLabel gives its name. */
   columns: string[];
   column_types: string[] | null;
   rows: Record<string, unknown>[];
@@ -1738,7 +1740,8 @@ export async function splitSql(sql: string): Promise<string[]> {
 interface EachEntry {
   statement: string;
   warnings: StatementWarning[];
-  data?: Record<string, unknown>[];
+  /** Each row's values in column order. */
+  data?: unknown[][];
   columns?: string[];
   column_types?: string[] | null;
   redirect?: Parameters<typeof toResultRedirect>[0];
@@ -1778,11 +1781,13 @@ export async function runSqlEach(
           return { ...empty, warnings: e.warnings, redirect: toResultRedirect(e.redirect) };
         if (!Array.isArray(e.columns) || !Array.isArray(e.data))
           throw new Error(`runSql: an answer for "${e.statement}" holds neither rows nor error`);
+        // Keyed by position, so two columns of one name each keep their own value.
+        const keys = columnKeys(e.columns);
         return {
           statement: e.statement,
-          columns: e.columns,
+          columns: keys,
           column_types: e.column_types ?? null,
-          rows: e.data,
+          rows: e.data.map((row) => rowByKeys(keys, row)),
           warnings: e.warnings,
         };
       }),
