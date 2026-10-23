@@ -161,3 +161,19 @@ def test_a_pattern_reaching_a_carried_node_only_midway_is_refused(terms):
             lm,
             {},
         )
+
+
+def test_a_numeric_parameter_name_is_a_parameter_not_a_number(terms):
+    """$3 is the parameter named "3" (Cypher allows $0, $1), never the number 3: run without it,
+    it is refused as unbound instead of compared with 3."""
+    from provisa.cypher.params import CypherParamError, bind_params, collect_param_names
+
+    lm, con = terms
+    text = "MATCH (a:GlossaryTerm) WHERE a.name = $3 RETURN a.name"
+    assert collect_param_names(text) == ["3"]
+    with pytest.raises(CypherParamError):
+        bind_params(collect_param_names(text), {})
+    sql_ast, ordered, graph_vars = cypher_to_sql(parse_cypher(text), lm, {"3": "ledger"})
+    sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="duckdb")
+    assert ordered == ["3"]
+    assert con.execute(sql, ["ledger"]).fetchall() == [("ledger",)]

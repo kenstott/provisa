@@ -95,12 +95,14 @@ async def _execute_call_body(
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled
+    from provisa.cypher.params import bind_params
 
     sql_ast, ordered_params, graph_vars = cypher_to_sql(call_body, label_map, params)
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     sql_str = sql_ast.sql(dialect="postgres")
     semantic_sql = make_semantic_sql(sql_str, ctx)
-    resolved_params = [params.get(name) for name in ordered_params]
+    # An unsupplied parameter is refused, never bound as NULL.
+    resolved_params = bind_params(list(ordered_params), params)
 
     plan = await _govern_and_route_compiled(
         semantic_sql,

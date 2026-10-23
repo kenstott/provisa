@@ -52,7 +52,8 @@ _TOKEN_SPEC = [
     ("COMMENT", r"//[^\n]*"),
     ("STRING", r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\""),
     ("NUMBER", r"\d+(?:\.\d+)?"),
-    ("PARAM", r"\$[A-Za-z_]\w*"),
+    # A parameter's name may be a number ($0, $1) as well as a name: $3 is parameter "3", never 3.
+    ("PARAM", r"\$\w+"),
     ("ARROW_RIGHT", r"->"),
     ("ARROW_LEFT", r"<-"),
     ("DOTDOT", r"\.\."),
