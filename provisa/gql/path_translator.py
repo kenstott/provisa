@@ -22,7 +22,7 @@ Rejects unbounded [*] (enforced at parse time, also checked here).
 from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
-from provisa.cypher.parser import CypherParseError
+from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.ir import PathFunction
 from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 
@@ -62,7 +62,7 @@ def path_to_recursive_sql(  # REQ-345, REQ-346, REQ-348, REQ-351
 
     if rel.variable_length:
         if rel.max_hops is None:
-            raise CypherParseError(
+            raise CypherTranslateError(
                 "Unbounded variable-length pattern [*] is not allowed. Specify a depth limit."
             )
         effective_max = min(rel.max_hops, max_depth)

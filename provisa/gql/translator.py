@@ -27,13 +27,14 @@ Mapping:
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import replace
 from typing import Any, TypeVar, cast
 
 import sqlglot.expressions as exp
-import sqlglot
 
+from provisa.gql.expr_ast import CypherExpr, MapLiteral, Variable, walk
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
@@ -47,22 +48,23 @@ from provisa.gql.ir import (
     OrderItem,
 )
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.path_expr import PathExprMixin
+from provisa.gql.terms import TermsMixin
 from provisa.gql.path_functions import PathFunctionsMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
-from provisa.gql.map_projection import rewrite_bare_map_literals
 from provisa.gql.group_by import GroupByMixin
 from provisa.gql.translator_helpers import (
+    _collects_maps,
+    _properties_of,
     _fold_where_into_optional_joins,
-    _is_bare_variable,
     _node_table_expr,
     _optional_vars,
     _rewrite_cypher_fn_node,
-    _rewrite_property_access,
     _safe_alias,
-    edge_properties_column,
 )
 from provisa.gql.translator_types import (
+    CUT_COLUMN,
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
     GraphVarKind,
@@ -182,7 +184,46 @@ def _type_literal(var: str, rel_type: str) -> exp.Literal:
     return lit
 
 
+#: An ISO 8601 date-time written as a string (REQ-409).
+_ISO_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?")
+
+
+def _with_uncut_column(query: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
+    """A union part with the cut column added as 0, to line up with a part that carries it."""
+    if isinstance(query, exp.Union):
+        query.set("this", _with_uncut_column(query.this))
+        query.set("expression", _with_uncut_column(query.expression))
+        return query
+    return query.select(exp.alias_(exp.Literal.number(0), alias=CUT_COLUMN))
+
+
+def _cut_across_union(union: "exp.Select | exp.Union") -> exp.Select:
+    """A UNION that removes duplicates, with the cut column made the same on every row: each part
+    carries its own, and two rows that differ only in it are one row (REQ-2135)."""
+    columns = [
+        exp.column(name, table="_cutu", quoted=True)
+        for name in union.named_selects
+        if name != CUT_COLUMN
+    ]
+    cut = exp.Window(this=exp.Max(this=exp.column(CUT_COLUMN, table="_cutu", quoted=True)))
+    return (
+        exp.select(*columns, exp.alias_(cut, alias=CUT_COLUMN))
+        .distinct()
+        .from_(exp.alias_(exp.Subquery(this=union), alias="_cutu"))
+    )
+
+
+def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """REQ-409: a WHERE's ISO 8601 date-time string is the timestamp it writes, so it compares with
+    a timestamp column on every engine (Trino refuses a varchar there)."""
+    if isinstance(node, exp.Literal) and node.is_string and _ISO_TIMESTAMP.fullmatch(node.this):
+        return exp.Cast(this=node, to=exp.DataType.build("TIMESTAMP"))
+    return node
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
+    PathExprMixin,
+    TermsMixin,
     PathFunctionsMixin,
     SelectBuilderMixin,
     CorrelatedCallMixin,
@@ -216,6 +257,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
         self._shortestpath_hops_col: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         self._shortestpath_is_all: bool = False
+        # REQ-2135: the variables a triple binds → the column holding each one's RDF term
+        self._term_vars: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-2135: one check per path bounded by the depth limit, true when it was cut there
+        self._cut_checks: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Counter for unique UNNEST alias names across the translation
         self._unwind_count: int = 0
         # UNWIND variables whose source array contains MAP elements (e.g. collect({...}))
@@ -307,7 +352,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         where_expr = self._build_where(stage_where)
         if where_expr and stage_where is not None:
             joins, where_expr = _fold_where_into_optional_joins(
-                where_expr, _optional_vars(all_matches), stage_where.expression, joins
+                where_expr, _optional_vars(all_matches), joins
             )
 
         stage_query = exp.select(*select_exprs).from_(from_clause)
@@ -425,17 +470,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         where_expr = self._build_where(stage_where)
         if where_expr and stage_where is not None:
             opt_vars = _optional_vars(all_matches)
-            joins, where_expr = _fold_where_into_optional_joins(
-                where_expr, opt_vars, stage_where.expression, joins
-            )
+            joins, where_expr = _fold_where_into_optional_joins(where_expr, opt_vars, joins)
             raw_where = self._build_where(stage_where)
             if raw_where is not None:
                 self._extra_path_branches = [
                     (
                         bf,
-                        _fold_where_into_optional_joins(
-                            _of_branch(raw_where, types), opt_vars, stage_where.expression, bj
-                        )[0],
+                        _fold_where_into_optional_joins(_of_branch(raw_where, types), opt_vars, bj)[
+                            0
+                        ],
                         bps,
                         types,
                     )
@@ -495,14 +538,58 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             result = exp.Union(this=result, expression=branch, distinct=False)
         return result
 
+    def _construct_union(
+        self,
+        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+        where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        selects: list[list["exp.Expr"]],
+    ) -> "exp.Select | exp.Union":
+        """REQ-2135: a CONSTRUCT's triples, one select per template triple, put together with
+        UNION ALL: the graph is a set, and its writer keeps each triple once."""
+        result: exp.Select | exp.Union | None = None
+        for select_exprs in selects:
+            query = self._build_main_query(
+                from_clause.copy(),
+                [{**j, "table": j["table"].copy(), "on": j["on"].copy()} for j in joins],
+                where_expr.copy() if where_expr is not None else None,
+                select_exprs,
+            )
+            result = (
+                query
+                if result is None
+                else exp.Union(this=result, expression=query, distinct=False)
+            )
+        assert result is not None
+        return result
+
+    def _cut_column(self) -> "exp.Expr":
+        """REQ-2135: 1 when any path bounded by the depth limit was cut there, else 0."""
+        cut = self._cut_checks[0]
+        for check in self._cut_checks[1:]:
+            cut = exp.Or(this=cut, expression=check)
+        self._graph_vars[CUT_COLUMN] = GraphVarKind.CUT
+        return exp.alias_(
+            exp.Case(ifs=[exp.If(this=cut, true=exp.Literal.number(1))]).else_(
+                exp.Literal.number(0)
+            ),
+            alias=CUT_COLUMN,
+        )
+
     def _fold_union_parts(self, result: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
-        """Fold UNION / UNION ALL parts into result."""
+        """Fold UNION / UNION ALL parts into result. A part that carries the cut column and one
+        that does not are made to match: the one without it is never cut (REQ-2135)."""
         for i, (sub_ast, is_all) in enumerate(self._ast.union_parts):
             sub_sql, sub_params, sub_graph_vars = cypher_to_sql(sub_ast, self._lm, self._params)
             for p in sub_params:
                 if p not in self._param_seen:
                     self._param_order.append(p)
                     self._param_seen.add(p)
+            head_cut = CUT_COLUMN in self._graph_vars
+            if CUT_COLUMN in sub_graph_vars and not head_cut:
+                result = _with_uncut_column(result)
+            elif head_cut and CUT_COLUMN not in sub_graph_vars:
+                sub_sql = _with_uncut_column(sub_sql)
             self._graph_vars.update(sub_graph_vars)
             # If the sub-branch has a per-branch LIMIT/SKIP, wrap it in a subquery so
             # the limit applies only to that branch, not the whole union.
@@ -511,6 +598,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     exp.alias_(exp.Subquery(this=sub_sql), alias=f"_ub{i}")
                 )
             result = exp.Union(this=result, expression=sub_sql, distinct=not is_all)
+        if CUT_COLUMN in self._graph_vars and not all(a for _, a in self._ast.union_parts):
+            result = _cut_across_union(result)
         return result
 
     def _apply_order_limit(
@@ -541,7 +630,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         return result
 
     def translate(self) -> tuple[exp.Select | exp.Union, list[str], dict[str, GraphVarKind]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        if self._ast.return_clause is None:
+        if self._ast.return_clause is None and self._ast.construct is None:
             raise CypherTranslateError(
                 "Cannot translate a CALL {}-only query directly. "
                 "Use cypher_calls_to_sql_list() instead."
@@ -567,7 +656,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         lateral_joins = self._translate_correlated_calls(self._ast.call_subqueries)
         joins = list(joins) + lateral_joins
 
-        select_exprs = self._build_select(self._ast.return_clause)
+        if self._ast.construct is not None:
+            # REQ-2135: one select list per template triple, over the same matches.
+            selects: list[list[exp.Expr]] = self._construct_selects(self._ast.construct)
+        else:
+            assert self._ast.return_clause is not None
+            selects = [self._build_select(self._ast.return_clause)]
+        if self._cut_checks:
+            cut = self._cut_column()
+            for select_exprs in selects:
+                select_exprs.append(cut.copy())
         where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
 
         # Short-circuit: if any resolved node's WHERE props are all absent from its schema,
@@ -576,8 +674,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             where_expr = exp.false()
         order_exprs = self._build_order_by(self._ast.order_by)
 
-        query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
-        result: exp.Select | exp.Union = self._apply_extra_branches(query, select_exprs, where_expr)
+        if self._ast.construct is not None:
+            if self._extra_path_branches:
+                raise CypherTranslateError("A CONSTRUCT's pattern has no several-path branch")
+            if not all(is_all for _, is_all in self._ast.union_parts):
+                raise CypherTranslateError("A CONSTRUCT's parts are put together with UNION ALL")
+            result: exp.Select | exp.Union = self._construct_union(
+                from_clause, joins, where_expr, selects
+            )
+        else:
+            select_exprs = selects[0]
+            query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
+            result = self._apply_extra_branches(query, select_exprs, where_expr)
 
         for cte_name, cte_query in cte_defs:
             result = result.with_(cte_name, as_=cte_query)
@@ -587,7 +695,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # If this is the first branch of a UNION ALL and has a per-branch LIMIT/SKIP,
         # apply it to just this branch before folding the union. Without this the limit
         # would be placed on the outer wrapper and constrain the whole union result.
-        if self._ast.union_parts and (self._ast.limit is not None or self._ast.skip is not None):
+        if (
+            self._ast.union_parts
+            and not self._ast.modifiers_of_whole
+            and (self._ast.limit is not None or self._ast.skip is not None)
+        ):
             if self._ast.limit is not None:
                 result = result.limit(self._ast.limit)
             if self._ast.skip is not None:
@@ -680,26 +792,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         segments.append((list(current_matches), list(current_unwinds), None))
         return segments
 
-    def _build_unwind_expr(self, expr_text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Parse a Cypher UNWIND source expression into a SQLGlot expression.
+    def _build_unwind_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """An UNWIND source as a SQLGlot expression. In an UNNEST a parameter is the executor's
+        ``$N`` placeholder as a name, which every dialect writes as it is (a parameter node is
+        ``@N`` in some), and a variable is its bare name, resolved by the engine."""
+        if isinstance(expr, Variable):
+            return exp.Column(this=exp.Identifier(this=expr.name, quoted=False))
 
-        Kept on the text path deliberately: an UNWIND source may be a bare ``$param`` that must survive
-        as the executor placeholder ``$N`` in every dialect (the AST parameter node renders ``@N`` in
-        some engines). The predicate/projection/order paths use the AST lowering (REQ-913)."""
-        text = expr_text.strip()
-        # Cypher list literal [...] → ARRAY[...]
-        if text.startswith("["):
-            text = "ARRAY" + text
-        text = self._rewrite_params_in_expr(text)
-        text = self._rewrite_cte_vars(text)
-        text = self._rewrite_cypher_props(text)
-        text = _rewrite_property_access(text)
-        try:
-            # No dialect: $N executor placeholders must survive as identifiers.
-            return sqlglot.parse_one(text)  # pyright: ignore[reportReturnType]
-        except Exception as exc:
-            # Treating an unparseable UNWIND source as a bare column emits wrong SQL — fail loud.
-            raise ValueError(f"Cannot parse UNWIND source expression {text!r}") from exc
+        def _placeholder(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if isinstance(node, exp.Parameter):
+                return exp.Column(this=exp.Identifier(this=f"${node.this.this}", quoted=False))
+            return node
+
+        return self._lower_expr(expr).transform(_placeholder)
 
     def _build_unwind_joins(
         self,
@@ -717,10 +822,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             alias = f"_uw{self._unwind_count}"
             self._unwind_count += 1
             array_expr = self._build_unwind_expr(uw.expression)
-            # Detect MAP-element arrays: either literal collect({...}) or a variable
-            # assigned from collect({...}) in a preceding WITH clause.
-            raw_rewritten = rewrite_bare_map_literals(uw.expression)
-            if "MAP(ARRAY[" in raw_rewritten or uw.expression.strip() in self._map_array_vars:
+            # Detect MAP-element arrays: a list holding map literals, or a variable assigned from
+            # collect({...}) in a preceding WITH clause.
+            source = uw.expression
+            if any(isinstance(node, MapLiteral) for node in walk(source)) or (
+                isinstance(source, Variable) and source.name in self._map_array_vars
+            ):
                 self._map_unwind_vars.add(uw.variable)
             unnest = exp.Unnest(
                 expressions=[array_expr],
@@ -813,63 +920,24 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             return {"table": join_table, "on": on_clause, "join_type": join_type}
         return None
 
-    def _rewrite_cypher_props(self, text: str) -> str:
-        """Rewrite var.camelProp → var.sql_alias using NodeMapping.properties.
-
-        A property name that resolves on NO node type anywhere in the schema is not a legitimate
-        cross-type mismatch (that case is `_where_is_impossible_for_resolved_nodes`'s job, and is
-        left alone here) — it is an invalid name, most commonly a caller writing the raw physical
-        column name instead of the CQL name REQ-194 requires (`customer_id` instead of
-        `customerId`). Silently leaving such a reference unchanged used to let it slip through as
-        literal (coincidentally valid-looking) SQL text on the SELECT/RETURN side while the
-        separate WHERE-impossible check forced a bogus `WHERE FALSE` for the exact same reference on
-        the WHERE side — two silently-different behaviors for one caller bug, never surfaced as an
-        error (confirmed live, perf-bench duckdb rerun 2026-09-26). Raise loud and immediately
-        instead, at the one place this is actually detected.
-        """
-
-        def _replace(m: re.Match) -> str:
-            var, prop = m.group(1), m.group(2)
-            if var in self._all_rels_rel_vars:
-                return f"JSON_EXTRACT_SCALAR({edge_properties_column(var)}, '$.{prop}')"
-            if var in self._all_rels_node_vars:
-                return f"JSON_EXTRACT_SCALAR({var}, '$.properties.{prop}')"
-            if var in self._map_unwind_vars:
-                return f"JSON_EXTRACT_SCALAR(CAST(element_at({var}, '{prop}') AS JSON), '$')"
-            info = self._var_table.get(var)
-            if info and info[1]:
-                sql_alias = info[1].properties.get(prop)
-                if sql_alias:
-                    return f"{var}.{sql_alias}"
-                if not any(prop in other_nm.properties for other_nm in self._lm.nodes.values()):
-                    raise CypherTranslateError(
-                        f"Unknown property {prop!r} on {var} (type {info[1].type_name!r}) — "
-                        f"Cypher property names follow the configured GQL naming convention"
-                        f"; physical/raw column names are never valid here."
-                    )
-            return m.group(0)
-
-        return re.sub(r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b", _replace, text)
-
-    def _lower_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Lower a Cypher expression to sqlglot via the AST path (REQ-913): parse to a CypherExpr and
-        lower it node-to-node against the translator's traversal state — no text rewriting. Raises on a
-        construct the grammar/context cannot handle, so a gap surfaces loudly instead of degrading."""
+    def _lower_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Lower an expression tree to sqlglot node-to-node against the translator's traversal state
+        (REQ-913). Raises on a construct the context cannot handle, so a gap surfaces loudly instead
+        of degrading. The tree is the IR's: lowering works on its own copy."""
         from provisa.gql.expr_context import TranslatorExprContext
-        from provisa.cypher.expr_parser import parse_expression
         from provisa.gql.expr_visitor import ExprLowering
 
-        node = ExprLowering(TranslatorExprContext(self)).lower(parse_expression(text))
+        node = ExprLowering(TranslatorExprContext(self)).lower(copy.deepcopy(expr))
         return node.transform(_rewrite_cypher_fn_node)
 
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is None:
             return None
-        return self._lower_expr(where.expression)
+        return self._lower_expr(where.expression).transform(_timestamp_literal)
 
-    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Parse a Cypher expression fragment into a SQLGlot expression via the AST path (REQ-913)."""
-        return self._lower_expr(text)
+    def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """An expression tree as a SQLGlot expression (REQ-913)."""
+        return self._lower_expr(expr)
 
     def _build_order_by(self, order_by: list[OrderItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -881,43 +949,26 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 exprs.append(exp.Ordered(this=inner, desc=False))
         return exprs
 
-    def _rewrite_cte_vars(self, text: str) -> str:
-        for var in self._cte_sources:
-            sql_alias = self._var_table.get(var, (var, None))[0]
-            if sql_alias != var:
-                text = re.sub(rf"\b{re.escape(var)}\.", f"{sql_alias}.", text)
-        return text
-
-    def _carried_map_keys(self, expr_text: str, alias: str) -> list[exp.Expr]:
+    def _carried_map_keys(self, expr: CypherExpr, alias: str) -> list[exp.Expr]:
         """A map literal the WITH carries as ``alias``: each key's own value as a column of its
         own, ``"alias.key"``, which ``alias.key`` after the WITH reads -- the value as it is, not
         its JSON-encoded copy in the map (#287)."""
-        from provisa.cypher.expr_parser import parse_expression
-        from provisa.gql.expr_ast import MapLiteral
-
-        literal = parse_expression(expr_text)
-        if not isinstance(literal, MapLiteral):
+        if not isinstance(expr, MapLiteral):
             return []
-        self._map_vars[alias] = {key for key, _value in literal.entries}
+        self._map_vars[alias] = {key for key, _value in expr.entries}
         return [
-            exp.alias_(self._lower_ast(value), f"{alias}.{key}", quoted=True)
-            for key, value in literal.entries
+            exp.alias_(self._lower_expr(value), f"{alias}.{key}", quoted=True)
+            for key, value in expr.entries
         ]
-
-    def _lower_ast(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        from provisa.gql.expr_context import TranslatorExprContext
-        from provisa.gql.expr_visitor import ExprLowering
-
-        return (
-            ExprLowering(TranslatorExprContext(self)).lower(node).transform(_rewrite_cypher_fn_node)
-        )
 
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
         exprs: list[exp.Expr] = []
         for item in items:
-            expr_text = item.expression.strip()
+            expr = item.expression
             alias = item.alias
-            if _is_bare_variable(expr_text) and expr_text in self._var_table:
+            bare = expr.name if isinstance(expr, Variable) else None
+            if bare is not None and bare in self._var_table:
+                expr_text = bare
                 held_in, meta = self._var_table[expr_text]
                 if expr_text in self._cte_sources and meta is None:
                     # A value an earlier WITH carries: one column of that WITH's rows.
@@ -945,10 +996,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 else:
                     exprs.append(tbl_col)
             else:
-                parsed = self._parse_expr(expr_text)
+                parsed = self._parse_expr(expr)
                 if alias:
                     exprs.append(exp.alias_(parsed, alias))
-                    exprs.extend(self._carried_map_keys(expr_text, alias))
+                    exprs.extend(self._carried_map_keys(expr, alias))
                 else:
                     exprs.append(parsed)
         return exprs
@@ -956,20 +1007,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
         for item in items:
-            expr_text = item.expression.strip()
+            expr = item.expression
             alias = item.alias
-            key = alias or (
-                _safe_alias(expr_text) if not _is_bare_variable(expr_text) else expr_text
-            )
-            if _is_bare_variable(expr_text) and expr_text in self._var_table:
-                original_meta = self._var_table[expr_text][1]
+            bare = expr.name if isinstance(expr, Variable) else None
+            key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
+            if bare is not None and bare in self._var_table:
+                original_meta = self._var_table[bare][1]
                 new_var_table[key] = (cte_name, original_meta)
-                if expr_text in self._map_array_vars:
+                if bare in self._map_array_vars:
                     self._map_array_vars.add(key)
             else:
                 new_var_table[key] = (cte_name, None)
                 # collect({...}) produces a MAP array — track the alias for UNWIND resolution
-                if re.search(r"\bcollect\s*\(\s*\{", expr_text, re.IGNORECASE) and key:
+                if _collects_maps(expr) and key:
                     self._map_array_vars.add(key)
         self._var_table = new_var_table
         self._cte_sources = set(new_var_table.keys())
@@ -1043,32 +1093,24 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         property projections, all properties from the domain's node types are
         included so that the domain union subquery exposes them.
         """
-        pattern = re.compile(rf"\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)")
-        texts: list[str] = []
+        exprs: list[CypherExpr] = []
         for step in self._ast.pipeline:
             if isinstance(step, MatchStep) and step.where:
-                texts.append(step.where.expression)
+                exprs.append(step.where.expression)
             elif isinstance(step, WithClause):
-                texts.extend(i.expression for i in step.items)
+                exprs.extend(i.expression for i in step.items)
                 if step.where:
-                    texts.append(step.where.expression)
+                    exprs.append(step.where.expression)
         if self._ast.return_clause:
-            texts.extend(i.expression for i in self._ast.return_clause.items)
-        seen: set[str] = set()
-        props: list[str] = []
-        for text in texts:
-            for m in pattern.finditer(text):
-                p = m.group(1)
-                if p not in seen:
-                    props.append(p)
-                    seen.add(p)
+            exprs.extend(i.expression for i in self._ast.return_clause.items)
+        props = _properties_of(var, exprs)
 
         # If var is returned bare (RETURN n) and is a domain node, include all
         # domain properties so the union subquery exposes them for JSON serialization.
         if not props and var in self._domain_nodes and self._ast.return_clause:
-            bare_pattern = re.compile(rf"^\s*{re.escape(var)}\s*$")
             is_bare = any(
-                bare_pattern.match(item.expression) for item in self._ast.return_clause.items
+                isinstance(item.expression, Variable) and item.expression.name == var
+                for item in self._ast.return_clause.items
             )
             if is_bare:
                 domain = self._domain_nodes[var]
@@ -1089,23 +1131,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _collect_where_only_props(self, var: str) -> list[str]:
         """Return property names referenced as var.prop in WHERE clauses only (not RETURN/WITH)."""
-        pattern = re.compile(rf"\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)")
-        seen: set[str] = set()
-        props: list[str] = []
-        for step in self._ast.pipeline:
-            if isinstance(step, MatchStep) and step.where:
-                for m in pattern.finditer(step.where.expression):
-                    p = m.group(1)
-                    if p not in seen:
-                        props.append(p)
-                        seen.add(p)
-            elif isinstance(step, WithClause) and step.where:
-                for m in pattern.finditer(step.where.expression):
-                    p = m.group(1)
-                    if p not in seen:
-                        props.append(p)
-                        seen.add(p)
-        return props
+        return _properties_of(
+            var,
+            [
+                step.where.expression
+                for step in self._ast.pipeline
+                if isinstance(step, (MatchStep, WithClause)) and step.where
+            ],
+        )
 
     def _where_is_impossible_for_resolved_nodes(self) -> bool:
         """Return True if any resolved node variable's WHERE props are ALL missing from its type.
@@ -1137,16 +1170,3 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if where_props and not any(nm.properties.get(p) for p in where_props):
                 return True
         return False
-
-    def _rewrite_params_in_expr(self, text: str) -> str:
-        """Replace $name with positional $N."""
-
-        def _replace(m: re.Match) -> str:
-            name = m.group(1)
-            if name not in self._param_seen:
-                self._param_order.append(name)
-                self._param_seen.add(name)
-            idx = self._param_order.index(name) + 1
-            return f"${idx}"
-
-        return re.sub(r"\$([A-Za-z_]\w*)", _replace, text)

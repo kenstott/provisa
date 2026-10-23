@@ -33,6 +33,7 @@ from provisa.gql.expr_ast import (
     CypherExpr,
     FunctionCall,
     Index,
+    IriConst,
     IsNull,
     LabelPredicate,
     ListComprehension,
@@ -48,9 +49,38 @@ from provisa.gql.expr_ast import (
     Reduce,
     Slice,
     SubqueryExpr,
+    Term,
+    TypedLiteral,
     Unary,
     Variable,
 )
+from provisa.gql.translator_types import CypherTranslateError
+
+_XSD = "http://www.w3.org/2001/XMLSchema#"
+# REQ-2135: a typed literal's datatype as the SQL value it lowers to. A number is written as one;
+# the others are cast from their lexical form.
+_XSD_NUMBERS = {
+    f"{_XSD}{t}"
+    for t in (
+        "integer",
+        "int",
+        "long",
+        "short",
+        "byte",
+        "nonNegativeInteger",
+        "positiveInteger",
+        "nonPositiveInteger",
+        "negativeInteger",
+        "unsignedInt",
+        "unsignedLong",
+        "unsignedShort",
+        "unsignedByte",
+        "decimal",
+        "double",
+        "float",
+    )
+}
+_XSD_CASTS = {f"{_XSD}date": "DATE", f"{_XSD}dateTime": "TIMESTAMP", f"{_XSD}time": "TIME"}
 
 
 class ExprContext(Protocol):
@@ -72,6 +102,10 @@ class ExprContext(Protocol):
 
     def resolve_parameter(self, name: str) -> exp.Expression:
         """A ``$param`` reference — the positional placeholder it binds to."""
+        ...
+
+    def resolve_term(self, node: Term) -> exp.Expression:
+        """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
 
     def resolve_function(
@@ -340,6 +374,32 @@ class ExprLowering:
 
     def _lower_SubqueryExpr(self, node: SubqueryExpr) -> exp.Expression:
         return self._ctx.resolve_subquery(node)
+
+    # -- RDF values (REQ-2135) ---------------------------------------------- #
+
+    def _lower_TypedLiteral(self, node: TypedLiteral) -> exp.Expression:
+        dt = node.datatype
+        if dt is None or node.lang is not None or dt == f"{_XSD}string":
+            return exp.Literal.string(node.lexical)
+        if dt in _XSD_NUMBERS:
+            return exp.Literal.number(node.lexical)
+        if dt == f"{_XSD}boolean":
+            if node.lexical not in ("true", "false", "1", "0"):
+                raise CypherTranslateError(f"{node.lexical!r} is not an xsd:boolean")
+            return exp.true() if node.lexical in ("true", "1") else exp.false()
+        if dt in _XSD_CASTS:
+            return exp.Cast(
+                this=exp.Literal.string(node.lexical), to=exp.DataType.build(_XSD_CASTS[dt])
+            )
+        raise CypherTranslateError(f"A literal of datatype <{dt}> has no SQL value")
+
+    def _lower_IriConst(self, node: IriConst) -> exp.Expression:
+        raise CypherTranslateError(
+            f"<{node.iri}> is a value of the answer only: a subject is compared through its key"
+        )
+
+    def _lower_Term(self, node: Term) -> exp.Expression:
+        return self._ctx.resolve_term(node)
 
     def _lower_PatternComprehension(self, node: PatternComprehension) -> exp.Expression:
         return self._ctx.resolve_pattern_comprehension(node)

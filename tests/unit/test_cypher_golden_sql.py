@@ -99,7 +99,7 @@ def _structure(value):
 _MODEL_MAPS = {}
 for _entry in _ENTRIES:
     _origin = _entry["origin"].split("#", 1)[0]
-    if not _origin.startswith("test:"):
+    if not _origin.startswith(("test:", "approved:")):
         _MODEL_MAPS.setdefault(_origin, _entry["label_map"])
 
 

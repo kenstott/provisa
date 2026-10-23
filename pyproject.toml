@@ -32,6 +32,9 @@ dependencies = [
     # Bounded to the release the suite runs on: an unbounded pin installed 30.23 into alpha.485's
     # image while every test ran 30.9, and a renamed scope attribute failed every query there.
     "sqlglot>=30.23,<30.24",
+    # REQ-2135: the SPARQL front end parses a query with rdflib and lowers its SPARQL algebra to
+    # the graph IR. BSD-3-Clause, as are its isodate and pyparsing (MIT).
+    "rdflib>=7.1,<8",
     # REQ-1494: the fake methods a column may name, checked when declared and, in the embedded
     # engine, computed seeded by the keyed digest of the value.
     "faker",
@@ -256,6 +259,9 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-timeout",  # scripts/ci/run_lane.py bounds every test, so a hang fails by name
+    # REQ-2135: the standard SPARQL 1.1 Protocol client the endpoint's integration test queries
+    # it with (W3C Software Notice and License, permissive).
+    "sparqlwrapper>=2,<3",
     "pytest-bdd",
     "pytest-cov",
     # REQ-1759: tests/unit/ alone collects ~12K tests, single-process at ~1%/19s (~50min
@@ -495,20 +501,12 @@ source_modules = ["provisa.cypher", "provisa.gql"]
 forbidden_modules = ["provisa.executor", "provisa.api"]
 
 # REQ-2135: the graph IR and its back end belong to no graph language; each language's front end
-# parses into the IR and may import it, never the reverse. The three imports ignored here are the
-# back end still lowering clause expressions held as Cypher text (Cypher's expression grammar, an
-# embedded subquery's body, the parse error a bad path raises); expressions become IR trees next and
-# these go.
+# parses into the IR and may import it, never the reverse.
 [[tool.importlinter.contracts]]
 name = "the graph back end imports no front end"
 type = "forbidden"
 source_modules = ["provisa.gql"]
-forbidden_modules = ["provisa.cypher"]
-ignore_imports = [
-    "provisa.gql.translator -> provisa.cypher.expr_parser",
-    "provisa.gql.expr_context -> provisa.cypher.parser",
-    "provisa.gql.path_translator -> provisa.cypher.parser",
-]
+forbidden_modules = ["provisa.cypher", "provisa.sparql_query"]
 
 [tool.ruff]
 target-version = "py312"

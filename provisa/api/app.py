@@ -4803,6 +4803,11 @@ def create_app() -> FastAPI:
     except ImportError:
         pass
 
+    # REQ-2135: the SPARQL 1.1 Protocol endpoint, beside Cypher's.
+    from provisa.api.rest.sparql_router import router as sparql_router
+
+    app.include_router(sparql_router)
+
     # Neo4j Browser compatibility layer (Query API v2 + discovery)
     try:
         from provisa.api.rest.neo4j_compat_router import router as neo4j_compat_router

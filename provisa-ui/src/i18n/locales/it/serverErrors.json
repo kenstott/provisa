@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "La risposta è stata troncata a {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}): corrispondono più righe di quelle restituite.",
       "rows_cut_unchecked": "La risposta ha {{limit}} righe, il limite di righe che si applica a questa lettura ({{kind}}). Non è stato possibile verificare se corrispondono altre righe: {{reason}}",
-      "approximate_index": "Le righe più simili sono state trovate tramite un indice vettoriale approssimato: potrebbe mancare una riga leggermente più simile dell'ultima restituita."
+      "approximate_index": "Le righe più simili sono state trovate tramite un indice vettoriale approssimato: potrebbe mancare una riga leggermente più simile dell'ultima restituita.",
+      "path_cut": "Un percorso senza limite superiore è stato troncato al limite di profondità del grafo di {{limit}} salti: i percorsi più lunghi mancano dalla risposta."
     },
     "wikipedia": {
       "no_pages": "Indicare almeno una pagina di partenza",

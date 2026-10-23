@@ -18,47 +18,48 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.gql.ir import ReturnClause, ReturnItem
-from provisa.gql.translator_helpers import _is_bare_variable
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Variable, walk
 
 # Requirements: REQ-347
 
 
-def _has_aggregate(text: str) -> bool:
-    import re
+_AGGREGATES = frozenset(
+    {"count", "sum", "avg", "min", "max", "collect", "stdev", "stdevp", "percentilecont",
+     "percentiledisc"}
+)  # fmt: skip
 
-    return bool(
-        re.search(
-            r"\b(count|sum|avg|min|max|collect|stDev|stDevP|percentileCont|percentileDisc)\s*\(",
-            text,
-            re.IGNORECASE,
-        )
+
+def _has_aggregate(expr: CypherExpr) -> bool:
+    """Whether ``expr`` calls an aggregate anywhere in it."""
+    return any(
+        isinstance(node, FunctionCall) and node.name.lower() in _AGGREGATES for node in walk(expr)
     )
 
 
 class GroupByMixin:  # REQ-653
     """Mixin for _Translator: builds implicit GROUP BY for aggregating queries."""
 
-    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         raise NotImplementedError
 
-    def _group_by_expr_for_item(self, expr_text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _group_by_expr_for_item(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Match `_build_with_select_items`'s shape for a bare node/rel variable: the SELECT list
         expands it to `alias.*`, so GROUP BY must group by the same `alias.*`, not a bare column
         named after the Cypher variable — else the two column sets disagree at the engine."""
         var_table = getattr(self, "_var_table", {})
-        if _is_bare_variable(expr_text) and expr_text in var_table:
+        if isinstance(expr, Variable) and expr.name in var_table:
             return exp.Column(
                 this=exp.Star(),
-                table=exp.Identifier(this=expr_text),
+                table=exp.Identifier(this=expr.name),
             )
-        return self._parse_expr(expr_text)
+        return self._parse_expr(expr)
 
     def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         items = return_clause.items
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._group_by_expr_for_item(item.expression.strip())
+            self._group_by_expr_for_item(item.expression)
             for item in items
             if not _has_aggregate(item.expression)
         ]
@@ -67,7 +68,7 @@ class GroupByMixin:  # REQ-653
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._group_by_expr_for_item(item.expression.strip())
+            self._group_by_expr_for_item(item.expression)
             for item in items
             if not _has_aggregate(item.expression)
         ]

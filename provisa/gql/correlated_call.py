@@ -69,7 +69,7 @@ class CorrelatedCallMixin:  # REQ-573
                 # Register return variables so the outer RETURN can qualify them
                 if call.body.return_clause:
                     for item in call.body.return_clause.items:
-                        var_name = item.alias or item.expression.strip()
+                        var_name = item.alias or item.name.strip()
                         if var_name:
                             self._call_var_to_lateral[var_name] = lateral_alias
         return lateral_joins
