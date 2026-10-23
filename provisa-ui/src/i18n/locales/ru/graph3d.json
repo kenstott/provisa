@@ -85,8 +85,6 @@
     "allFocus": "Все продукты и термины",
     "someFocus": "{{count}} из {{total}} продуктов и терминов",
     "search": "Поиск…",
-    "look_concrete": "конкретный термин",
-    "look_abstract": "абстрактный термин",
     "look_in_product": "столбец в продукте данных",
     "look_out_of_product": "столбец вне продуктов данных",
     "look_stored": "таблица",
@@ -100,6 +98,15 @@
     "openAsQueryCompiling": "Компиляция запроса…",
     "openAsQueryNoCypher": "У этого запроса нет формы Cypher.",
     "openAsQuerySparqlLater": "SPARQL откроется, когда появится его endpoint.",
-    "identityGap": "Привязан к таблицам, не все из которых связаны как одна сущность: {{tables}}"
+    "identityGap": "Привязан к таблицам, не все из которых связаны как одна сущность: {{tables}}",
+    "layersMenu": "Слои",
+    "termsMenu": "Термины",
+    "menuAll": "все",
+    "menuSome": "{{count}} из {{total}}",
+    "unconnected": "Без связей",
+    "unconnectedHelp": "Термины без показанных связей или привязки",
+    "look_class": "класс",
+    "look_concept": "понятие",
+    "look_property": "свойство"
   }
 }

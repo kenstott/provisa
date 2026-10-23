@@ -28,7 +28,7 @@ const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
       id: 10 * (d + 1) + i,
       name: `${domain} term ${i}`,
       definition: null,
-      is_abstract: false,
+      ref_count: 0,
       deprecated: false,
       retired: false,
       live: true,

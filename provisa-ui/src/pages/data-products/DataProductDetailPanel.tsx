@@ -642,7 +642,7 @@ export function DataProductDetailPanel({
                   <List.Item key={term.id} ff="monospace">
                     {term.name}
                     {term.is_abstract && (
-                      <Muted>({t("dataProductsTab.relatedTermsAbstract")})</Muted>
+                      <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>
                     )}
                     {term.definition && <Muted>— {term.definition}</Muted>}
                   </List.Item>

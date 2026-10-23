@@ -1040,16 +1040,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               </ActionIcon>
             </Tip>
           )}
-          <HelpBubble
-            title={translate("tablesPage.purposeTitle")}
-            paragraphs={[
-              translate("tablesPage.purposeBody"),
-              translate("tablesPage.purposeAdd"),
-              translate("tablesPage.purposeModel"),
-            ]}
-            ariaLabel={translate("tablesPage.purposeAria")}
-            testId="tables-purpose-help"
-          />
           {/* The icon is the opaque thing here, so it is its own hover target: a "?" next to
               it would add one more glyph to the row a reader is already trying to decode. */}
           <HelpBubble
@@ -1067,6 +1057,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 <Network size={14} />
               </ActionIcon>
             }
+          />
+          <HelpBubble
+            title={translate("tablesPage.purposeTitle")}
+            paragraphs={[
+              translate("tablesPage.purposeBody"),
+              translate("tablesPage.purposeAdd"),
+              translate("tablesPage.purposeModel"),
+            ]}
+            ariaLabel={translate("tablesPage.purposeAria")}
+            testId="tables-purpose-help"
           />
         </div>
       </div>

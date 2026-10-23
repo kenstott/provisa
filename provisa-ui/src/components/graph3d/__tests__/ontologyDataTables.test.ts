@@ -59,7 +59,7 @@ const term = (
   id,
   name,
   definition: `${name}.`,
-  is_abstract: false,
+  ref_count: 0,
   deprecated: false,
   retired: false,
   live: true,

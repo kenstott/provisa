@@ -520,7 +520,7 @@ async def create_glossary_term(
     definition: str | None = None,
     domains: list[str] | None = None,
 ) -> dict:  # REQ-1835
-    """Create a new abstract ontology term (a definition with no physical column yet). It starts
+    """Create a new concept: an ontology term naming no column or table yet. It starts
     'proposed' — there is no separate live/finalized flag to flip: a term is 'live' automatically
     once it is grounded, either by a real registered column landing on it (sync happens on table
     registration, outside your control) or by connecting it via add_glossary_term_edge to a term

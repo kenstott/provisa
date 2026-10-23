@@ -10,7 +10,7 @@
     "attractionLoose": "Largo",
     "attractionTight": "Stretto",
     "grid": "Griglia",
-    "resetSettings": "Ripristina le impostazioni di visualizzazione",
+    "resetSettings": "Imposta predefiniti",
     "resetSettingsHelp": "Dimentica layout, livelli, filtri e opzioni salvati di questo grafo e torna ai valori predefiniti.",
     "export": "Esporta",
     "exportImage": "Immagine",

@@ -85,8 +85,6 @@
     "allFocus": "सभी उत्पाद और शब्द",
     "someFocus": "{{total}} में से {{count}} उत्पाद और शब्द",
     "search": "खोजें…",
-    "look_concrete": "ठोस शब्द",
-    "look_abstract": "अमूर्त शब्द",
     "look_in_product": "डेटा उत्पाद में कॉलम",
     "look_out_of_product": "डेटा उत्पादों से बाहर कॉलम",
     "look_stored": "टेबल",
@@ -100,6 +98,15 @@
     "openAsQueryCompiling": "क्वेरी कंपाइल हो रही है…",
     "openAsQueryNoCypher": "इस क्वेरी का कोई Cypher रूप नहीं है।",
     "openAsQuerySparqlLater": "SPARQL उसका endpoint उपलब्ध होने पर खुलेगा।",
-    "identityGap": "ऐसी तालिकाओं में आधारित जो सभी एक ही इकाई के रूप में नहीं जुड़ी हैं: {{tables}}"
+    "identityGap": "ऐसी तालिकाओं में आधारित जो सभी एक ही इकाई के रूप में नहीं जुड़ी हैं: {{tables}}",
+    "layersMenu": "परतें",
+    "termsMenu": "शब्द",
+    "menuAll": "सभी",
+    "menuSome": "{{total}} में से {{count}}",
+    "unconnected": "असंबद्ध",
+    "unconnectedHelp": "ऐसे शब्द जिनका कोई संबंध या आधार नहीं दिखाया गया",
+    "look_class": "वर्ग",
+    "look_concept": "अवधारणा",
+    "look_property": "गुण"
   }
 }

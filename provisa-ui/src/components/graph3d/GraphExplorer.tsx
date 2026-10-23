@@ -45,12 +45,14 @@ import {
   type Preset,
   type PresetId,
   type QueryScope,
+  TERM_STATUSES,
   type TermStatus,
 } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
+import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -148,8 +150,13 @@ export function GraphExplorer({
   const presetOwn = scope.presets[preset]?.edgeTypes;
   const presetTypes = useMemo(() => presetOwn ?? edgeTypes, [presetOwn, edgeTypes]);
   const savedLayers = saved.layers as string[];
+  // A layer the graph always draws is on whatever was remembered (an old "ontology off" too).
   const layers = useMemo(
-    () => new Set(savedLayers.filter((l): l is LayerId => scope.layerOrder.includes(l as LayerId))),
+    () =>
+      new Set([
+        ...scope.implicitLayers,
+        ...savedLayers.filter((l): l is LayerId => scope.layerOrder.includes(l as LayerId)),
+      ]),
     [savedLayers, scope],
   );
   const orphans = saved.orphans as boolean;
@@ -169,7 +176,7 @@ export function GraphExplorer({
       domains: chosenNow(savedDomains, choices.domains),
       edgeTypes: savedTypes === null ? presetTypes : chosenNow(savedTypes, edgeTypes),
       hiddenStatuses: savedStatuses.filter((st): st is TermStatus =>
-        STATUSES.includes(st as TermStatus),
+        TERM_STATUSES.includes(st as TermStatus),
       ),
       tags: chosenNow(savedTags, choices.tags),
       sensitivities: chosenNow(savedSensitivities, choices.sensitivities),
@@ -377,26 +384,49 @@ export function GraphExplorer({
         {query && <OpenAsQuery query={query.text} focused={focused} testId={testId} />}
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
-      <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>
-        <Text size="xs" c="dimmed">
-          {t("graph3d.layers")}
-        </Text>
-        {scope.layerOrder
-          .filter((l) => offered.has(l) && !BESIDE_FILTERS.has(l))
-          .map((l) => (
-            <Chip
-              key={l}
-              size="xs"
-              checked={layers.has(l)}
-              onChange={(on) => toggleLayer(l, on)}
-              data-testid={`${testId}-layer-${l}`}
-            >
-              {t(`graph3d.layer_${l}`)}
-            </Chip>
-          ))}
-      </Group>
+      {!scope.menus && (
+        <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>
+          <Text size="xs" c="dimmed">
+            {t("graph3d.layers")}
+          </Text>
+          {scope.layerOrder
+            .filter((l) => offered.has(l) && !BESIDE_FILTERS.has(l))
+            .map((l) => (
+              <Chip
+                key={l}
+                size="xs"
+                checked={layers.has(l)}
+                onChange={(on) => toggleLayer(l, on)}
+                data-testid={`${testId}-layer-${l}`}
+              >
+                {t(`graph3d.layer_${l}`)}
+              </Chip>
+            ))}
+        </Group>
+      )}
       <Group className="p3d-toolbar g3d-filters" gap="xs" wrap="wrap">
-        {hasStatus && (
+        {scope.menus && (
+          <LayersMenu
+            offered={scope.layerOrder.filter(
+              (l) => offered.has(l) && !scope.implicitLayers.includes(l),
+            )}
+            layers={layers}
+            onChange={(chosen) => save("layers", [...scope.implicitLayers, ...chosen])}
+            testId={testId}
+          />
+        )}
+        {scope.menus && hasStatus && (
+          <TermsMenu
+            hidden={filters.hiddenStatuses}
+            unconnected={scope.orphans && hasTerms ? orphans : null}
+            onChange={(hidden, unconnected) => {
+              setFilters((f) => ({ ...f, hiddenStatuses: hidden }));
+              setOrphans(unconnected);
+            }}
+            testId={testId}
+          />
+        )}
+        {!scope.menus && hasStatus && (
           <Group gap={4} data-testid={`${testId}-statuses`}>
             <Text size="xs" c="dimmed">
               {t("graph3d.show")}
@@ -441,7 +471,7 @@ export function GraphExplorer({
           someText={(count, total) => t("graph3d.someDomains", { count, total })}
           testId={`${testId}-filter-domain`}
         />
-        {offered.has("columns") && (
+        {!scope.menus && offered.has("columns") && (
           <Chip
             size="xs"
             checked={layers.has("columns")}
@@ -451,7 +481,7 @@ export function GraphExplorer({
             {t("graph3d.columnsToggle")}
           </Chip>
         )}
-        {offered.has("ownerTables") && (
+        {!scope.menus && offered.has("ownerTables") && (
           <Chip
             size="xs"
             checked={layers.has("ownerTables")}
@@ -462,7 +492,7 @@ export function GraphExplorer({
             {t("graph3d.tablesToggle")}
           </Chip>
         )}
-        {scope.orphans && hasTerms && (
+        {!scope.menus && scope.orphans && hasTerms && (
           <Chip size="xs" checked={orphans} onChange={setOrphans} data-testid={`${testId}-orphans`}>
             {t("graph3d.orphans")}
           </Chip>

@@ -111,7 +111,7 @@ describe("glossary domain filter", () => {
     expect(mockList).toHaveBeenCalledWith("", true, null);
   });
 
-  it("declares an abstract term's domains, because it has no refs to derive them from", async () => {
+  it("declares a concept's domains, because it has no refs to derive them from", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-new-btn"));
 

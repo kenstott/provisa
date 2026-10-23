@@ -14,6 +14,7 @@
 // (glossary_term_edges_meta, read with the term); and the data products with their datasets, the datasets' columns and
 // the terms those columns are -- turned into the graph's nodes and edges.
 
+import { termRole } from "../../api/glossary";
 import {
   operation,
   rootField,
@@ -175,7 +176,7 @@ function termsField(m: MetaReader, s: QueryScope): string | null {
         "id",
         "name",
         "definition",
-        "is_abstract",
+        "ref_count",
         "deprecated",
         "retired",
         "live",
@@ -244,7 +245,8 @@ export interface TermRow {
   id: number;
   name: string;
   definition: string | null;
-  is_abstract: boolean;
+  /** The columns the term names. */
+  ref_count: number;
   deprecated: boolean;
   retired: boolean;
   live: boolean;
@@ -395,7 +397,7 @@ export function glossaryGraph(
       type: "term",
       label: t.name,
       status,
-      abstract: t.is_abstract,
+      role: termRole({ table_count: (t.tables ?? []).length, ref_count: t.ref_count }),
       // For the side panel only; a proposal with none has nothing said there.
       ...(t.definition ? { definition: t.definition } : {}),
       // REQ-2130/2141: a class whose tables are not all declared one entity: a curation gap.

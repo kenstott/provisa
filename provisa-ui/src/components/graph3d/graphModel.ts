@@ -13,6 +13,7 @@
 // Filters by domain, tag, sensitivity and a focus node apply to every layer; a preset is a named
 // set of layers with a layout. Pure data: the scene only draws what this decides.
 
+import type { TermRole } from "../../api/glossary";
 import { lanesFrom } from "../lineage/lineage-layout";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 
@@ -68,6 +69,9 @@ export type LayoutKind = "force" | "lanes" | "tree";
 /** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides proposed). */
 export type TermStatus = "live" | "proposed" | "deprecated" | "retired";
 
+/** Every standing a term can have, in the order a reader picks them. */
+export const TERM_STATUSES: TermStatus[] = ["live", "proposed", "deprecated", "retired"];
+
 export interface GraphNode {
   id: string;
   type: NodeType;
@@ -83,8 +87,9 @@ export interface GraphNode {
   lane?: number;
   /** REQ-2130: a term's standing; deprecated is drawn dimmed. */
   status?: TermStatus;
-  /** REQ-2130: an abstract term (coloured apart from a concrete one, nodeLook). */
-  abstract?: boolean;
+  /** REQ-2130: a term's role -- Class (tables), Property (columns), Concept (neither) -- coloured
+   * apart (nodeLook); absent where the graph does not read it. */
+  role?: TermRole;
   /** REQ-2130/2141: a class grounded in tables not all joined as the same entity (a curation
    * gap): its tables, marked on its name and named in the side panel. */
   identityGap?: string[];
@@ -190,6 +195,12 @@ export interface GraphScope {
   /** Edge kinds drawn only between nodes something else draws: they join what is shown and never
    * bring a node in (the Ontology View's relationships between the tables of its columns). */
   betweenDrawn: EdgeKind[];
+  /** Layers always drawn and offered by no control: the graph itself (the Ontology View's terms
+   * and their edges). A remembered setting without one is read with it. */
+  implicitLayers: LayerId[];
+  /** The layers, and the terms by status with the unconnected ones, are chosen in dropdowns
+   * beside the other filters, not in rows of chips. */
+  menus: boolean;
 }
 
 export const PRODUCT_SCOPE: GraphScope = {
@@ -202,6 +213,8 @@ export const PRODUCT_SCOPE: GraphScope = {
   foldColumns: true,
   typedKinds: ["term_edge"],
   betweenDrawn: [],
+  implicitLayers: [],
+  menus: false,
 };
 
 /** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
@@ -232,6 +245,8 @@ export const GLOSSARY_SCOPE: GraphScope = {
   foldColumns: false,
   typedKinds: ["term_edge", "relationship"],
   betweenDrawn: ["relationship"],
+  implicitLayers: ["ontology"],
+  menus: true,
 };
 
 export interface GraphFilters {
