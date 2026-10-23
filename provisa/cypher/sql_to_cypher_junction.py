@@ -324,8 +324,9 @@ def _reads(node: exp.Expression, variables: dict) -> bool:  # pyright: ignore[re
 
 
 def _end_subquery(sub: exp.Subquery, variables: dict, near: str, label_of) -> str | None:
-    """``(SELECT ARRAY_AGG(t.c) FROM end_table t WHERE t.key = j.end_col)``: the node at that end
-    of the junction row, as a list of its one value -- null where no relationship is."""
+    """``(SELECT json_object(KEY 'k' VALUE t.c, ...) FROM end_table t WHERE t.key = j.end_col
+    LIMIT 1)``: the node at that end of the junction row, as the map of its selected values --
+    null where no relationship is."""
     select = sub.this
     if not isinstance(select, exp.Select) or select.args.get("joins"):
         return None
@@ -335,7 +336,7 @@ def _end_subquery(sub: exp.Subquery, variables: dict, near: str, label_of) -> st
     if (
         not isinstance(table, exp.Table)
         or len(exprs) != 1
-        or not isinstance(exprs[0], exp.ArrayAgg)
+        or not isinstance(exprs[0], exp.JSONObject)
     ):
         return None
     own = table.alias or table.name
@@ -355,17 +356,26 @@ def _end_subquery(sub: exp.Subquery, variables: dict, near: str, label_of) -> st
         return None
     if label_of(table) != (hop.far_label if role == "far" else hop.near_label):
         return None
-    value = exprs[0].this
-    if not (isinstance(value, exp.Column) and value.table == own):
-        return None
     var = far if role == "far" else near
     props = hop.end_props(role)
     if mine.name not in props or props[mine.name] != key_prop:
         return None
-    prop = props.get(value.name)
-    if prop is None:
-        return None
-    return f"CASE WHEN {far}.{hop.far_key} IS NULL THEN NULL ELSE [{var}.{prop}] END"
+    entries = []
+    for pair in exprs[0].expressions:
+        key, value = pair.this, pair.expression
+        if not (
+            isinstance(pair, exp.JSONKeyValue)
+            and isinstance(key, exp.Literal)
+            and key.is_string
+            and isinstance(value, exp.Column)
+            and value.table == own
+        ):
+            return None
+        prop = props.get(value.name)
+        if prop is None:
+            return None
+        entries.append(f"{key.this}: {var}.{prop}")
+    return f"CASE WHEN {far}.{hop.far_key} IS NULL THEN NULL ELSE {{{', '.join(entries)}}} END"
 
 
 def _cypher_in(node: exp.In, render) -> str:

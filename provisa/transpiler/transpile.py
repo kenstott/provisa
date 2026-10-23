@@ -46,7 +46,30 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)
+    result = _rewrite_empty_json_list_for_trino(result)
     return _rewrite_to_json_for_trino(result)
+
+
+def _rewrite_empty_json_list_for_trino(sql: str) -> str:
+    """A list field's empty default (sql_selection.EMPTY_JSON_LIST, CAST('[]' AS JSON)) is
+    '[]' for Trino: there the aggregate it defaults is json_format(...) text
+    (_rewrite_json_arrayagg_for_trino), and Trino's CAST of text to JSON is a JSON string, not an
+    array (#286)."""
+    if "'[]' AS JSON" not in sql:
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if (
+            isinstance(node, exp.Cast)
+            and isinstance(node.this, exp.Literal)
+            and node.this.this == "[]"
+            and node.to.is_type(exp.DataType.Type.JSON)
+        ):
+            return exp.Literal.string("[]")
+        return node
+
+    return tree.transform(_transform).sql(dialect="trino")
 
 
 def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
