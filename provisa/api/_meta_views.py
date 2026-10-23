@@ -645,6 +645,16 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM glossary_term_refs r
         JOIN registered_tables rt ON rt.id = r.table_id
     """,
+    # REQ-2130: a class term's tables and views, resolved to their address.
+    "glossary_term_table_refs": """
+        CREATE OR REPLACE VIEW glossary_term_table_refs_meta AS
+        SELECT r.id, r.term_id, r.table_id,
+               rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
+               r.tenant_id,
+               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
+        FROM glossary_term_table_refs r
+        JOIN registered_tables rt ON rt.id = r.table_id
+    """,
     "glossary_term_edges": """
         CREATE OR REPLACE VIEW glossary_term_edges_meta AS
         SELECT e.id, e.from_term_id, e.to_term_id, e.rel_type,
@@ -688,7 +698,11 @@ _META_TABLE_VIEWS: dict[str, str] = {
                       = m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_')
                    AS profiled_table_id,
                (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
-                   AS checked_table_id
+                   AS checked_table_id,
+               -- REQ-2130: the table's class term, NULL when none grounds it. Last, like the two
+               -- above, so an existing view is replaced in place.
+               (SELECT g.term_id FROM glossary_term_table_refs g WHERE g.table_id = rt.id)
+                   AS class_term_id
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,

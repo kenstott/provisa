@@ -23,7 +23,7 @@ What any consuming surface may then offer is one rule, ``core.glossary.live_term
 in service, defined, and grounded in a physical column.
 """
 
-# Requirements: REQ-1387, REQ-1591
+# Requirements: REQ-1387, REQ-1591, REQ-2130
 
 from provisa.core import model_change
 from typing import TYPE_CHECKING
@@ -45,8 +45,10 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
+    glossary_term_table_refs,
     glossary_terms,
     registered_tables,
+    table_columns,
 )
 
 if TYPE_CHECKING:
@@ -927,6 +929,113 @@ async def export_graph(conn: "Connection") -> dict:
         ).fetchall()
     ]
     return {"terms": terms, "refs": refs, "edges": edges, "experts": experts}
+
+
+# ---------------------------------------------------------------------------
+# Class grounding: a term names what a whole table's rows are (REQ-2130)
+# ---------------------------------------------------------------------------
+
+
+class TermNotFound(LookupError):
+    pass
+
+
+class TableNotFound(LookupError):
+    pass
+
+
+class TableHasNoPrimaryKey(ValueError):
+    def __init__(self, table: str) -> None:
+        super().__init__(f"table {table} has no primary key")
+        self.table = table
+
+
+class TableAlreadyGrounded(ValueError):
+    def __init__(self, table: str, term_id: int, term_name: str) -> None:
+        super().__init__(f"table {table} is already grounded by term {term_name!r}")
+        self.table = table
+        self.term_id = term_id
+        self.term_name = term_name
+
+
+_TABLE_ADDRESS = (
+    registered_tables.c.source_id,
+    registered_tables.c.schema_name,
+    registered_tables.c.table_name,
+    registered_tables.c.domain_id,
+)
+
+
+async def term_exists(conn: "Connection", term_id: int) -> bool:
+    return (
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.id == term_id))
+    ).fetchone() is not None
+
+
+async def term_tables(conn: "Connection", term_id: int) -> list[dict]:
+    """The tables and views ``term_id`` grounds, by their address."""
+    if not await term_exists(conn, term_id):
+        raise TermNotFound(f"term {term_id} not found")
+    rows = (
+        await conn.execute_core(
+            select(glossary_term_table_refs.c.table_id, *_TABLE_ADDRESS)
+            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            .where(glossary_term_table_refs.c.term_id == term_id)
+            .order_by(*_TABLE_ADDRESS[:3])
+        )
+    ).fetchall()
+    return [dict(r._mapping) for r in rows]
+
+
+async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
+    """Make ``term_id`` the class term of ``table_id``.
+
+    Refused by name: a table without a primary key, whose rows are not identifiable instances,
+    and a table another term (or this one) already grounds -- a table has one class term.
+    """
+    if not await term_exists(conn, term_id):
+        raise TermNotFound(f"term {term_id} not found")
+    table = (
+        await conn.execute_core(select(*_TABLE_ADDRESS).where(registered_tables.c.id == table_id))
+    ).fetchone()
+    if table is None:
+        raise TableNotFound(f"table {table_id} not found")
+    address = f"{table.source_id}.{table.schema_name}.{table.table_name}"
+    keyed = (
+        await conn.execute_core(
+            select(table_columns.c.id).where(
+                (table_columns.c.table_id == table_id) & table_columns.c.is_primary_key
+            )
+        )
+    ).first()
+    if keyed is None:
+        raise TableHasNoPrimaryKey(address)
+    held = (
+        await conn.execute_core(
+            select(glossary_terms.c.id, glossary_terms.c.name)
+            .join(
+                glossary_term_table_refs, glossary_term_table_refs.c.term_id == glossary_terms.c.id
+            )
+            .where(glossary_term_table_refs.c.table_id == table_id)
+        )
+    ).fetchone()
+    if held is not None:
+        raise TableAlreadyGrounded(address, held.id, held.name)
+    await conn.execute_core(
+        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id)
+    )
+    model_change.name("ground", "glossary term", f"{term_id} to table {address}")
+
+
+async def unground_table(conn: "Connection", term_id: int, table_id: int) -> bool:
+    """Withdraw ``term_id`` as ``table_id``'s class term; False when it was not."""
+    result = await conn.execute_core(
+        _delete(glossary_term_table_refs).where(
+            (glossary_term_table_refs.c.term_id == term_id)
+            & (glossary_term_table_refs.c.table_id == table_id)
+        )
+    )
+    return (result.rowcount or 0) > 0
 
 
 async def get_term_by_ref(conn: "Connection", table_id: int, column_name: str) -> dict | None:
