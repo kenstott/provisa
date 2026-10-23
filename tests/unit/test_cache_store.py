@@ -50,46 +50,95 @@ class TestRedisCacheStoreGet:
     @pytest.mark.asyncio
     async def test_get_no_tenant_uses_base_prefix(self):
         store = self._make_store()
-        mock_pipe = MagicMock()
         meta = json.dumps({"cached_at": time.time(), "ttl": 60}).encode()
-        mock_pipe.execute = AsyncMock(return_value=[b"data", meta])
         mock_redis = MagicMock()
-        mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+        mock_redis.mget = AsyncMock(return_value=[b"data", meta])
         store._redis = mock_redis
 
         result = await store.get("mykey", tenant_id=None)
         assert isinstance(result, CachedResult)
         assert result.data == b"data"
-        mock_pipe.get.assert_any_call("provisa:cache:mykey")
-        mock_pipe.get.assert_any_call("provisa:cache:mykey:meta")
+        mock_redis.mget.assert_awaited_once_with("provisa:cache:mykey", "provisa:cache:mykey:meta")
 
     @pytest.mark.asyncio
     async def test_get_with_tenant_uses_tenant_prefix(self):
         store = self._make_store()
-        mock_pipe = MagicMock()
         meta = json.dumps({"cached_at": time.time(), "ttl": 60}).encode()
-        mock_pipe.execute = AsyncMock(return_value=[b"data", meta])
         mock_redis = MagicMock()
-        mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+        mock_redis.mget = AsyncMock(return_value=[b"data", meta])
         store._redis = mock_redis
 
         result = await store.get("mykey", tenant_id="acme")
         assert isinstance(result, CachedResult)
         assert result.data == b"data"
-        mock_pipe.get.assert_any_call("provisa:cache:acme:mykey")
-        mock_pipe.get.assert_any_call("provisa:cache:acme:mykey:meta")
+        mock_redis.mget.assert_awaited_once_with(
+            "provisa:cache:acme:mykey", "provisa:cache:acme:mykey:meta"
+        )
 
     @pytest.mark.asyncio
     async def test_get_miss_returns_none(self):
         store = self._make_store()
-        mock_pipe = MagicMock()
-        mock_pipe.execute = AsyncMock(return_value=[None, None])
         mock_redis = MagicMock()
-        mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+        mock_redis.mget = AsyncMock(return_value=[None, None])
         store._redis = mock_redis
 
         result = await store.get("missing", tenant_id=None)
         assert result is None
+
+
+class TestRedisCacheStoreGetCommands:
+    """A response-cache hit is one Redis command (an MGET of the entry and its meta); a miss is
+    the same one command; what each returns is unchanged."""
+
+    @staticmethod
+    def _store() -> RedisCacheStore:
+        from provisa.core.redis_factory import make_redis
+
+        store = RedisCacheStore(redis_url=None)
+        store._redis = make_redis(None, decode_responses=False)
+        return store
+
+    @staticmethod
+    def _record(store: RedisCacheStore) -> list[tuple]:
+        """Every command ``store`` sends from now on; a pipeline fails the test."""
+        assert store._redis is not None
+        client = store._redis.client()
+        sent: list[tuple] = []
+        execute_command = client.execute_command
+
+        def recording(*args, **kwargs):
+            sent.append(args)
+            return execute_command(*args, **kwargs)
+
+        def no_pipeline(*_args, **_kwargs):
+            raise AssertionError("a cache read sends no pipeline")
+
+        client.execute_command = recording
+        client.pipeline = no_pipeline
+        return sent
+
+    @pytest.mark.asyncio
+    async def test_a_hit_is_one_command_and_returns_the_entry(self):
+        store = self._store()
+        await store.set("hitkey", b"rows", ttl=60)
+        sent = self._record(store)
+
+        result = await store.get("hitkey", tenant_id="acme")
+        assert result is None  # another tenant's key: a miss
+        result = await store.get("hitkey", tenant_id=None)
+        assert isinstance(result, CachedResult)
+        assert result.data == b"rows" and result.ttl == 60
+        assert sent == [
+            ("MGET", "provisa:cache:acme:hitkey", "provisa:cache:acme:hitkey:meta"),
+            ("MGET", "provisa:cache:hitkey", "provisa:cache:hitkey:meta"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_miss_is_one_command_and_returns_none(self):
+        store = self._store()
+        sent = self._record(store)
+        assert await store.get("never-set", tenant_id=None) is None
+        assert sent == [("MGET", "provisa:cache:never-set", "provisa:cache:never-set:meta")]
 
 
 class TestRedisCacheStoreSet:
