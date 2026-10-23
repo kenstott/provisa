@@ -49,6 +49,7 @@ from tests.integration.metadata_export_server import (
     VIEW,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -191,7 +192,7 @@ async def _provisa_assigns_its_terms_attributed_to_its_actor(published: dict) ->
 async def test_datahub_holds_what_the_production_publish_sent():
     async with published_server(ORG) as client:
         published = await publish(client, {"provider": "datahub", "endpoint": _gms()})
-    assert published["ok"], published["errors"]
+    assert published["ok"], refused(published)
     for check in (
         _the_publish_reports_what_it_sent,
         _each_member_table_and_its_columns_land,

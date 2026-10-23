@@ -36,6 +36,9 @@ from typing import Any
 import httpx
 import yaml
 
+from provisa.core.db import SEEDED_ROLE_IDS
+from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
+
 SCHEMA = "mdx_e2e"
 SOURCE = "mdx-wh"
 DOMAIN = "sales"
@@ -56,6 +59,13 @@ PRODUCT_FIELDS = {
     "support_contact": "data-team@example.com",
     "custom_properties": {"cost_center": "CC-42"},
 }
+# The model's own roles.
+MODEL_ROLES = ("analyst", "data_owner", "admin")
+# Every role the server holds, which governance restricts or exempts: the model's and the ones
+# every store is seeded with, less the two reserved administrative roles, which are no model's.
+SERVER_ROLES = tuple(
+    sorted({*MODEL_ROLES, *SEEDED_ROLE_IDS} - {ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE})
+)
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
 RLS_FILTER = "region = 'eu'"
 ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"
@@ -119,10 +129,10 @@ def model_config(
     for the run (provisa_e2e_*). ``domain`` is the members' domain: a catalog that files a product
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
     is its name: a catalog read back by name is given the run's own."""
-    roles = ["analyst", "data_owner", "admin"]
+    roles = list(MODEL_ROLES)
     # The org's own admin reads every member as well: the tests read as org_admin, the role the
     # server's default assignment gives.
-    everyone = [*roles, "org_admin"]
+    everyone = [*SERVER_ROLES, ORG_ADMIN_ROLE]
     config = {
         "federation_engine": engine,
         "auth": {
@@ -206,9 +216,9 @@ def model_config(
                     {
                         "name": "ssn",
                         "data_type": "text",
-                        # The masked column's audience is the model's roles: masked for all but
-                        # admin, as the catalogs' restricted and exempt roles show it.
-                        "visible_to": roles,
+                        # The masked column's audience is the server's roles: masked for all
+                        # but admin, as the catalogs' restricted and exempt roles show it.
+                        "visible_to": list(SERVER_ROLES),
                         "masks": [
                             {"to": ["admin"], "mask": None},
                             {
@@ -311,6 +321,11 @@ async def published_server(
         finally:
             server.stop_process()
             await drop_org_schema(org_id)
+
+
+def refused(outcome: dict[str, Any]) -> str:
+    """A publish outcome's errors, each in full: a non-string assertion message is shortened."""
+    return "\n".join(f"{e['asset']}: {e['message']}" for e in outcome["errors"])
 
 
 async def publish(client: httpx.AsyncClient, target: dict[str, Any]) -> dict[str, Any]:

@@ -39,6 +39,7 @@ from tests.integration.metadata_export_server import (
     PRODUCT_FIELDS,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -176,7 +177,7 @@ async def published():
 
 async def test_the_publish_reports_the_product_and_its_assets(published):
     result = published[0]
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     # REQ-1387: the org's two defined terms, customer and order, in the Provisa glossary.
     assert result["published"] == {"data_products": 1, "data_assets": 2, "glossary_term": 2}
 

@@ -439,21 +439,14 @@ async def test_datahub_deprecates_the_old_bound_urn_on_physical_readdress(snapsh
 # --- The publish path ----------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_publish_snapshot_loads_persists_and_prunes_bindings(
-    snapshot, control_plane, monkeypatch
-):
-    """The binding lifecycle rides the single publish path (REQ-1389): stored bindings are
-    handed to the provider before the publish, captured ones are persisted after, and a
-    binding whose asset left the model is pruned."""
+def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
+    """The single publish path over ``db``, publishing ``snapshot`` to one target per entry of
+    ``exporters`` (target id -> the exporter that target resolves to)."""
     import types
 
     from contextlib import asynccontextmanager
 
     from provisa.api.metadata_export import publishing
-    from provisa.core.repositories import catalog_binding
-
-    db = control_plane.org()
 
     class _TenantDb:
         @asynccontextmanager
@@ -461,6 +454,59 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
             async with db.acquire() as conn:
                 yield conn
 
+    async def _export_config(org_id):
+        # REQ-2118: the bindings are kept per target, under the target's id.
+        return MetadataExportConfig(
+            enabled=True,
+            targets=[
+                {"id": target_id, "provider": "atlas", "endpoint": "https://catalog.example"}
+                for target_id in exporters
+            ],
+        )
+
+    async def _model(*args, **kwargs):
+        # An empty config: the publish path reads the DQ outcomes off it (REQ-1443), and a
+        # config with no checker source has no results table to read.
+        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
+
+    monkeypatch.setattr(publishing, "_export_config", _export_config)
+    monkeypatch.setattr(publishing, "_model_for_export", _model)
+    monkeypatch.setattr(
+        publishing,
+        "build_snapshot",
+        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None: (
+            snapshot
+        ),
+    )
+    monkeypatch.setattr(publishing, "metadata_export", lambda config: exporters[config.id])
+    monkeypatch.setattr(
+        "provisa.api.app.state",
+        RoleState(
+            model_db=(_one_db := _TenantDb()),
+            tenant_db=_one_db,
+            contexts={},
+            multitenancy=False,
+            # REQ-1659: the listing links back at the org's public origin, read off config.mail.
+            config=types.SimpleNamespace(
+                mail=types.SimpleNamespace(base_url="https://provisa.test")
+            ),
+        ),
+        raising=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_publish_snapshot_loads_persists_and_prunes_bindings(
+    snapshot, control_plane, monkeypatch
+):
+    """The binding lifecycle rides the single publish path (REQ-1389): stored bindings are
+    handed to the provider before the publish, captured ones are persisted after, and a
+    binding whose asset left the model is pruned."""
+    from provisa.api.metadata_export import publishing
+    from provisa.api.metadata_export.provider import PublishResult
+    from provisa.core.repositories import catalog_binding
+
+    db = control_plane.org()
     uri = snapshot.tables[0].semantic_uri
     async with db.acquire() as conn:
         await catalog_binding.upsert_bindings(
@@ -484,46 +530,7 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
             result.bindings = {uri: ("guid-1", f"{TABLE_FQN}@provisa")}
             return result
 
-    from provisa.api.metadata_export.provider import PublishResult
-
-    exporter = _Exporter()
-
-    async def _export_config(org_id):
-        # REQ-2118: the bindings are kept per target, under the target's id.
-        return MetadataExportConfig(
-            enabled=True,
-            targets=[{"id": "atlas", "provider": "atlas", "endpoint": "https://catalog.example"}],
-        )
-
-    async def _model(*args, **kwargs):
-        # An empty config: the publish path reads the DQ outcomes off it (REQ-1443), and a
-        # config with no checker source has no results table to read.
-        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
-
-    monkeypatch.setattr(publishing, "_export_config", _export_config)
-    monkeypatch.setattr(publishing, "_model_for_export", _model)
-    monkeypatch.setattr(
-        publishing,
-        "build_snapshot",
-        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None: (
-            snapshot
-        ),
-    )
-    monkeypatch.setattr(publishing, "metadata_export", lambda config: exporter)
-    monkeypatch.setattr(
-        "provisa.api.app.state",
-        RoleState(
-            model_db=(_one_db := _TenantDb()),
-            tenant_db=_one_db,
-            contexts={},
-            multitenancy=False,
-            # REQ-1659: the listing links back at the org's public origin, read off config.mail.
-            config=types.SimpleNamespace(
-                mail=types.SimpleNamespace(base_url="https://provisa.test")
-            ),
-        ),
-        raising=False,
-    )
+    _route_publish(monkeypatch, snapshot, db, {"atlas": _Exporter()})
 
     results = await publishing.publish_snapshot("acme")
 
@@ -534,6 +541,48 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
         stored = await catalog_binding.load_bindings(conn, "atlas")
     # The capture updated the physical key, and the departed asset's binding is pruned.
     assert stored == {uri: ("guid-1", f"{TABLE_FQN}@provisa")}
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_an_adapter_does_not_report_is_its_targets_named_failure(
+    snapshot, control_plane, monkeypatch
+):
+    """REQ-1068: a catalog refusal that escapes the adapter (its token, a listing) fails that
+    target with the request and the catalog's answer, and the targets after it still publish."""
+    from provisa.api.metadata_export import publishing
+    from provisa.api.metadata_export.provider import PublishResult
+
+    class _Refused:
+        stored_bindings: dict = {}
+        needs_export_views = False
+
+        async def publish(self, published_snapshot):
+            request = httpx.Request("GET", "https://catalog.example/businessdomains")
+            raise httpx.HTTPStatusError(
+                "refused",
+                request=request,
+                response=httpx.Response(403, text='{"error":"Forbidden"}', request=request),
+            )
+
+    class _Accepted:
+        stored_bindings: dict = {}
+        needs_export_views = False
+
+        async def publish(self, published_snapshot):
+            return PublishResult(provider_name="atlas", published={"table": 1})
+
+    _route_publish(
+        monkeypatch, snapshot, control_plane.org(), {"first": _Refused(), "second": _Accepted()}
+    )
+
+    results = await publishing.publish_snapshot("acme")
+
+    (error,) = results["first"].errors
+    assert error.asset.fqn() == "first"
+    assert error.message == (
+        'GET https://catalog.example/businessdomains: HTTP 403: {"error":"Forbidden"}'
+    )
+    assert results["second"].ok
 
 
 @pytest.mark.asyncio
