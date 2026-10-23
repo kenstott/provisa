@@ -92,6 +92,7 @@
     "openApiQueryAria": "הרצת בקשת REST לדוגמה עבור {{table}}",
     "detail": {
       "field": {
+        "details": "פרטים",
         "customProperties": "מאפיינים מותאמים אישית",
         "relatedTables": "טבלאות קשורות",
         "relationships": "קשרים",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "קלט/ים",
       "inputPortsColTransform": "טרנספורמציה",
       "inputPortsColOutput": "פלט",
-      "outputPortsHint": "משטח השאילתות של מוצר זה: הטבלאות/העמודות והפקודות החברות בו, עם שאילתות לדוגמה בהמשך תחת Sample Queries and Commands.",
+      "outputPortsHint": "המשטח הניתן לשאילתה של המוצר הזה: טבלאות החברות והפקודות שלו. שאילתות לדוגמה לכל אחת נמצאות תחת דפוסי גישה.",
       "customPropertiesEmpty": "אין מאפיינים מותאמים אישית"
     },
     "readOnly": "לקריאה בלבד",

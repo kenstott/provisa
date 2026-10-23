@@ -92,6 +92,7 @@
     "openApiQueryAria": "執行 {{table}} 的 REST 要求範例",
     "detail": {
       "field": {
+        "details": "詳情",
         "customProperties": "自訂屬性",
         "relatedTables": "相關數據表",
         "relationships": "關係",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "輸入",
       "inputPortsColTransform": "轉換",
       "inputPortsColOutput": "輸出",
-      "outputPortsHint": "此產品可供查詢的介面：其成員數據表／欄位及命令，範例查詢見下方「範例查詢與命令」。",
+      "outputPortsHint": "此產品可查詢的範圍：其成員資料表和指令。每個的範例查詢見「存取模式」。",
       "customPropertiesEmpty": "沒有自訂屬性"
     },
     "readOnly": "唯讀",

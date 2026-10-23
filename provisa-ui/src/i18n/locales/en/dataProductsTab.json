@@ -92,6 +92,7 @@
     "openApiQueryAria": "Run example REST request for {{table}}",
     "detail": {
       "field": {
+        "details": "Details",
         "customProperties": "Custom Properties",
         "relatedTables": "Related Tables",
         "relationships": "Relationships",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "Input(s)",
       "inputPortsColTransform": "Transform",
       "inputPortsColOutput": "Output",
-      "outputPortsHint": "This product's queryable surface: its member tables/columns and commands, with example queries below under Sample Queries and Commands.",
+      "outputPortsHint": "This product's queryable surface: its member tables and commands. Example queries for each are under Access Patterns.",
       "customPropertiesEmpty": "No custom properties"
     },
     "readOnly": "Read-only",
