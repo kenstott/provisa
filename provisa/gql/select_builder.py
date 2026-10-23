@@ -57,6 +57,10 @@ def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
     return frozenset(name for name, count in names.items() if count > 1)
 
 
+#: meta key: the NodeMapping of the variable a ``table.*`` selects (graph_rewriter reads it)
+NODE_OF_STAR = "provisa_node"
+
+
 class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     """Mixin for _Translator: builds SELECT expressions and path objects."""
 
@@ -515,8 +519,12 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 this=exp.Star(),
                 table=exp.Identifier(this=table_alias),
             )
-            if alias:
-                return exp.alias_(tbl_col, alias)
+            if alias or table_alias != expr_text:
+                # A node a WITH carries is a row of that WITH, beside what else it carries: named
+                # by its variable, it is the node (graph_rewriter) and not every column carried.
+                # The node's mapping rides on the star, for a name the RETURN gives it.
+                tbl_col.meta[NODE_OF_STAR] = var_info[1]
+                return exp.alias_(tbl_col, alias or expr_text)
             return tbl_col
         if hasattr(self, "_domain_nodes") and expr_text in self._domain_nodes:
             self._graph_vars[alias or expr_text] = graph_var_kind_node

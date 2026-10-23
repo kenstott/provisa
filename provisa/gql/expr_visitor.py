@@ -154,6 +154,12 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if isinstance(node.obj, MapLiteral):
+            # A map literal's key is its entry's own value; a key it has not is null (#287).
+            for key, value in node.obj.entries:
+                if key == node.name:
+                    return self.lower(value)
+            return exp.Null()
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
