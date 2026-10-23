@@ -552,7 +552,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                CAST(table_id AS TEXT) || ':' || column_name AS column_key,
                tenant_id,
                product_id,
-               term_id  -- REQ-2143: the glossary term, when the object is one
+               term_id  -- the glossary term, when the object is one
         FROM tag_assignments
     """,
     # REQ-2143: every tag each column carries, its own and its glossary term's, each saying where
@@ -998,7 +998,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
             SELECT CAST(id AS TEXT) AS id, table_id, object_type, column_name
             FROM tag_assignments
             WHERE tag_id = 'pii' AND table_id IS NOT NULL
-            -- REQ-2143: a column carries pii through its glossary term too
+            -- a column carries pii through its glossary term too
             UNION ALL
             SELECT CAST(t.id AS TEXT) || ':' || r.column_name, r.table_id, t.object_type,
                    r.column_name

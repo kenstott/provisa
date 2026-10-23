@@ -276,7 +276,8 @@ async def test_move_ref_and_missing_term_404(control_plane, monkeypatch):
                 {"table_id": row.id, "column_name": "order_dt", "to_term_id": customer},
             )
         )
-        assert moved == {"ok": True, "source_term_removed": True}
+        # REQ-2143: no column carried a tag through the term it left, so no tag changed.
+        assert moved == {"ok": True, "source_term_removed": True, "tag_changes": []}
         terms = await glossary_router.list_terms(_request(), domains=None)
         assert {t["name"] for t in terms} == {"customer"}
         with pytest.raises(ApiError) as err:
