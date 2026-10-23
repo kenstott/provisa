@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "Suche oder Fokus zeigen eine Umgebung, die die Abfrage nicht ausdrückt.",
+    "openAsQueryFocused": "Die Umgebung von Suche oder Fokus lässt sich noch nicht als eine Abfrage ausdrücken.",
     "openAsQueryCompiling": "Abfrage wird kompiliert…",
     "openAsQueryNoCypher": "Diese Abfrage hat keine Cypher-Form.",
     "openAsQuerySparqlLater": "SPARQL ist verfügbar, sobald sein Endpunkt existiert."

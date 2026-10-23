@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "החיפוש או המיקוד מציירים סביבה שהשאילתה אינה מבטאת.",
+    "openAsQueryFocused": "עדיין אי אפשר לבטא את סביבת החיפוש או המיקוד כשאילתה אחת.",
     "openAsQueryCompiling": "מהדר את השאילתה…",
     "openAsQueryNoCypher": "לשאילתה זו אין צורת Cypher.",
     "openAsQuerySparqlLater": "SPARQL ייפתח כאשר נקודת הקצה שלו תהיה זמינה."

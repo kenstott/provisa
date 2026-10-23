@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "La recherche ou le focus dessine un voisinage que la requête n’exprime pas.",
+    "openAsQueryFocused": "Le voisinage de la recherche ou du focus ne s’exprime pas encore en une seule requête.",
     "openAsQueryCompiling": "Compilation de la requête…",
     "openAsQueryNoCypher": "Cette requête n’a pas de forme Cypher.",
     "openAsQuerySparqlLater": "SPARQL s’ouvrira quand son point d’accès existera."

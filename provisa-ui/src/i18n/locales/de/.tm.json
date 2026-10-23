@@ -7786,7 +7786,7 @@
   "de/graph3d.json::graph3d.openAs_sql": "SQL",
   "de/graph3d.json::graph3d.openAs_cypher": "Cypher",
   "de/graph3d.json::graph3d.openAs_sparql": "SPARQL",
-  "de/graph3d.json::graph3d.openAsQueryFocused": "The search or focus draws a neighbourhood the query does not state.",
+  "de/graph3d.json::graph3d.openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
   "de/graph3d.json::graph3d.openAsQueryCompiling": "Compiling the query…",
   "de/graph3d.json::graph3d.openAsQueryNoCypher": "This query has no Cypher form.",
   "de/graph3d.json::graph3d.openAsQuerySparqlLater": "SPARQL opens once its endpoint is available."

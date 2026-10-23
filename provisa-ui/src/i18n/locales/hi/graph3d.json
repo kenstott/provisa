@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "खोज या फ़ोकस ऐसा पड़ोस दिखाता है जिसे क्वेरी व्यक्त नहीं करती।",
+    "openAsQueryFocused": "खोज या फ़ोकस का पड़ोस अभी एक क्वेरी के रूप में व्यक्त नहीं किया जा सकता।",
     "openAsQueryCompiling": "क्वेरी कंपाइल हो रही है…",
     "openAsQueryNoCypher": "इस क्वेरी का कोई Cypher रूप नहीं है।",
     "openAsQuerySparqlLater": "SPARQL उसका endpoint उपलब्ध होने पर खुलेगा।"

@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "Zoeken of focus toont een omgeving die de query niet uitdrukt.",
+    "openAsQueryFocused": "De omgeving van zoeken of focus is nog niet als één query uit te drukken.",
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
     "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is."

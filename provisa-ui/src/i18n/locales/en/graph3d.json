@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "The search or focus draws a neighbourhood the query does not state.",
+    "openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
     "openAsQueryCompiling": "Compiling the query…",
     "openAsQueryNoCypher": "This query has no Cypher form.",
     "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available."

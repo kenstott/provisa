@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "Поиск или фокус показывают окрестность, которую запрос не выражает.",
+    "openAsQueryFocused": "Окрестность поиска или фокуса пока нельзя выразить одним запросом.",
     "openAsQueryCompiling": "Компиляция запроса…",
     "openAsQueryNoCypher": "У этого запроса нет формы Cypher.",
     "openAsQuerySparqlLater": "SPARQL откроется, когда появится его endpoint."

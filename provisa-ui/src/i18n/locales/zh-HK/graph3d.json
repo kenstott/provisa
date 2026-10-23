@@ -96,7 +96,7 @@
     "openAs_sql": "SQL",
     "openAs_cypher": "Cypher",
     "openAs_sparql": "SPARQL",
-    "openAsQueryFocused": "搜尋或聚焦繪製的鄰域無法由查詢表達。",
+    "openAsQueryFocused": "搜尋或聚焦的鄰域目前仍無法以一個查詢表達。",
     "openAsQueryCompiling": "正在編譯查詢…",
     "openAsQueryNoCypher": "此查詢沒有 Cypher 形式。",
     "openAsQuerySparqlLater": "SPARQL 將在其端點可用後開放。"
