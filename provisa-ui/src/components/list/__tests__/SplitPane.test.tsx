@@ -16,6 +16,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ActionIcon, Button, Table } from "@mantine/core";
 import userEvent from "@testing-library/user-event";
@@ -111,6 +112,28 @@ describe("SplitPane", () => {
     fireEvent.click(screen.getByText("orders"));
     fireEvent.keyDown(screen.getByTestId("split-panel"), { key: "Escape" });
     expect(screen.queryByTestId("split-panel")).toBeNull();
+  });
+
+  it("leaves Escape to a popover or menu drawn in a portal from inside the panel", () => {
+    // A tag picker's dropdown, portaled to the body: its Escape closes it, not the panel.
+    function WithPortal() {
+      const [open, setOpen] = useState<string | null>("orders");
+      return (
+        <SplitPane
+          testId="split"
+          storageKey={KEY}
+          labels={LABELS}
+          title={open}
+          onClose={() => setOpen(null)}
+          list={<span>list</span>}
+        >
+          {open === null ? null : createPortal(<input aria-label="in a dropdown" />, document.body)}
+        </SplitPane>
+      );
+    }
+    render(<WithPortal />);
+    fireEvent.keyDown(screen.getByLabelText("in a dropdown"), { key: "Escape" });
+    expect(screen.getByTestId("split-panel")).toBeInTheDocument();
   });
 
   it("leaves Escape alone while leaving would drop what is being typed", () => {

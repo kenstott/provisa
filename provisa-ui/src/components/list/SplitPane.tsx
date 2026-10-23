@@ -149,8 +149,11 @@ export function SplitPane({
   }, [open, ref]);
 
   const onPanelKeyDown = (e: KeyboardEvent) => {
-    // A menu or a picker inside the panel that used Escape to close itself has claimed it.
+    // A menu or a picker inside the panel that used Escape to close itself has claimed it. So has
+    // one drawn in a portal (a popover's dropdown, a menu): React passes its keys up to the panel,
+    // but it is not in the panel, and its Escape is its own.
     if (e.key !== "Escape" || e.defaultPrevented || !closeOnEscape) return;
+    if (!e.currentTarget.contains(e.target as Node)) return;
     e.stopPropagation();
     onClose();
   };
