@@ -124,7 +124,7 @@ export function ResultsPanel({
         }}
       >
         <ActionIcon
-          variant="default"
+          variant="subtle"
           size="sm"
           onClick={handleDownloadCsv}
           aria-label={t("sqlModelingResultsPanel.downloadCsv")}

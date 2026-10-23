@@ -148,13 +148,17 @@ function kindsIn(nodes: readonly ts.Node[], sf: ts.SourceFile): [ToolbarKind, nu
 
 const RANK: Record<ToolbarKind, number> = { named: 0, icon: 1, help: 2 };
 
+/** A panel's head draws its actions in its one style, borderless (PanelHeadStyle): an action there
+ * sets no variant of its own (panelHeadGuard), and is not one this rule reads. */
+const HEADS = new Set(["PanelActions", "PanelHeadStyle"]);
+
 export function checkToolbarRules(file: string, source: string): ToolbarViolation[] {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const out: ToolbarViolation[] = [];
   const lineOf = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart()).line + 1;
-  const visit = (n: ts.Node): void => {
+  const visit = (n: ts.Node, inHead = false): void => {
     const open = opening(n);
-    if (open && open.tagName.getText() === "ActionIcon") {
+    if (open && open.tagName.getText() === "ActionIcon" && !inHead) {
       const variant = attr(open, "variant");
       const said = variant ? attrResults(variant) : [];
       const bordered = variant === undefined ? ["filled (the default)"] : said;
@@ -175,7 +179,8 @@ export function checkToolbarRules(file: string, source: string): ToolbarViolatio
             });
       }
     }
-    ts.forEachChild(n, visit);
+    const head = inHead || (open !== null && HEADS.has(open.tagName.getText()));
+    ts.forEachChild(n, (c) => visit(c, head));
   };
   visit(sf);
   return out;
