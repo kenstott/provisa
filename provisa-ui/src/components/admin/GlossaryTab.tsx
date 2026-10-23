@@ -42,6 +42,8 @@ import { Archive, ArchiveRestore, BookOpen, Pencil, Plus, Sparkles, Trash2 } fro
 import { GlossaryOntologyView, OntologyToggle } from "../graph3d/GlossaryOntologyView";
 import { FilterInput } from "./FilterInput";
 import { GlossaryRelationships } from "./GlossaryRelationships";
+import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
+import { TermListBadges, TermRoleBadge } from "./TermRoleBadge";
 import { HelpBubble } from "../HelpBubble";
 import {
   GLOSSARY_EXPERT_KINDS,
@@ -618,40 +620,7 @@ export function GlossaryTab() {
                     data-testid={`glossary-item-${term.id}`}
                     // REQ-2010: a demo's tour opens a term by its name.
                     data-glossary-term={term.name}
-                    rightSection={
-                      <Group gap={4} wrap="nowrap">
-                        {term.is_abstract && (
-                          <Badge
-                            size="xs"
-                            variant="light"
-                            color={term.grounded ? undefined : "red"}
-                            data-testid={term.grounded ? undefined : `glossary-dangling-${term.id}`}
-                          >
-                            {t("glossaryTab.abstract")}
-                          </Badge>
-                        )}
-                        {term.deprecated && (
-                          <Badge size="xs" color="gray" variant="light">
-                            {t("glossaryTab.deprecated")}
-                          </Badge>
-                        )}
-                        {term.retired && (
-                          <Badge size="xs" color="orange" variant="light">
-                            {t("glossaryTab.retired")}
-                          </Badge>
-                        )}
-                        {!term.live && !term.retired && !term.deprecated && (
-                          <Badge size="xs" color="yellow" variant="light">
-                            {t("glossaryTab.proposed")}
-                          </Badge>
-                        )}
-                        {!term.is_abstract && (
-                          <Badge size="xs" variant="default">
-                            {term.ref_count}
-                          </Badge>
-                        )}
-                      </Group>
-                    }
+                    rightSection={<TermListBadges term={term} />}
                   />
                 ))
               )}
@@ -697,6 +666,10 @@ export function GlossaryTab() {
                       value: detail.domains.length
                         ? detail.domains.join(", ")
                         : t("glossaryTab.enterpriseDomainLabel"),
+                    },
+                    {
+                      label: t("glossaryTab.roleLabel"),
+                      value: <TermRoleBadge term={detail} testId="glossary-detail-role" />,
                     },
                     { label: t("glossaryTab.abstract"), value: yesNo(detail.is_abstract) },
                     { label: t("glossaryTab.proposed"), value: yesNo(!detail.live) },
@@ -912,6 +885,13 @@ export function GlossaryTab() {
                     )}
                   />
                 )}
+
+                <Title order={5}>{t("glossaryTab.groundedTablesTitle")}</Title>
+                <GlossaryGroundedTables
+                  termId={detail.id}
+                  canEdit={canEdit}
+                  onChanged={() => void act(async () => undefined)}
+                />
 
                 <Group gap="xs" align="center">
                   <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>

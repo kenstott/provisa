@@ -40,6 +40,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   grounded: true,
   domains: [],
   ref_count: 1,
+  table_count: 0,
   refs: [
     {
       table_id: 10,
