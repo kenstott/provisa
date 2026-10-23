@@ -16,7 +16,7 @@ description: >-
   FDA's drug shortages and recalls and to Medicaid's prescriptions from government data: which of
   our products face shortage or recall risk?
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a491
