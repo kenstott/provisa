@@ -23,7 +23,8 @@ export type Shape =
   | "cone"
   | "tetrahedron"
   | "cylinder"
-  | "dodecahedron";
+  | "dodecahedron"
+  | "torus";
 
 /** A colour, as the --p3d-* token (profile3d.css) the scene's theme reads it from. */
 export type Colour =
@@ -51,11 +52,12 @@ export interface Look {
 const BY_TYPE: Record<Exclude<NodeType, "term" | "column">, { shape: Shape; colour: Colour }> = {
   product: { shape: "icosahedron", colour: "accent" },
   domain: { shape: "sphere", colour: "fam-temporal" },
-  table: { shape: "box", colour: "fam-numeric" },
-  relation: { shape: "box", colour: "fam-foreign" },
+  // A table is a cylinder in every graph, a product's member or not.
+  table: { shape: "cylinder", colour: "fam-numeric" },
+  relation: { shape: "cylinder", colour: "fam-foreign" },
   command: { shape: "cone", colour: "warm" },
   checker: { shape: "tetrahedron", colour: "q-tail" },
-  profile: { shape: "cylinder", colour: "q-mid" },
+  profile: { shape: "torus", colour: "q-mid" },
   tag: { shape: "dodecahedron", colour: "fam-boolean" },
 };
 
@@ -85,4 +87,10 @@ export function labelClass(status: TermStatus | undefined): string {
     default:
       return "";
   }
+}
+
+/** The i18n key naming what a node is, as its look shows it: a table drawn as stored is a table,
+ * not a product's member. */
+export function kindKey(n: GraphNode): string {
+  return n.type === "table" && n.stored ? "graph3d.look_stored" : `graph3d.type_${n.type}`;
 }

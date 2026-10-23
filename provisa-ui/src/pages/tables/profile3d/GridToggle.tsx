@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The floor grid's checkbox in a 3D network graph's toolbar (gridState.ts keeps the choice).
+// The floor grid's checkbox in a 3D network graph's toolbar (one of the graph's remembered settings, graphSettings.ts).
 
 import { useTranslation } from "react-i18next";
 import { Chip } from "@mantine/core";

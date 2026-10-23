@@ -47,6 +47,7 @@ const REVENUE: GlossaryTermSummary = {
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
+  table_count: 0,
   export_excluded: false,
   retired: false,
   live: true,
@@ -59,6 +60,7 @@ const CHURN: GlossaryTermSummary = {
   name: "Churn",
   definition: null,
   ref_count: 0,
+  table_count: 0,
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {

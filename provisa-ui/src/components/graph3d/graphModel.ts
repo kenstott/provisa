@@ -58,7 +58,9 @@ export type LayerId =
   // REQ-2130: the glossary's own layers.
   | "domains"
   | "data"
-  | "columns";
+  | "columns"
+  // The tables of the columns drawn, with the relationships between them (with Columns).
+  | "ownerTables";
 
 /** Force; lineage lanes left to right (REQ-1667); or a top-down tree (REQ-2130's Taxonomy). */
 export type LayoutKind = "force" | "lanes" | "tree";
@@ -87,6 +89,13 @@ export interface GraphNode {
   inProduct?: boolean;
   /** A term's definition: read in the side panel, never drawn on the graph. */
   definition?: string;
+  /** A table drawn as a stored table, a cylinder (the Ontology View's), not as a product's
+   * member, a box (nodeLook). */
+  stored?: boolean;
+  /** The layers that draw this node, where its type's own layer is not the whole answer: in the
+   * Ontology View a data product's column is the Data layer's as well as Columns'. Empty: drawn
+   * only as the end of an edge drawn (a table reached through its displayed columns). */
+  layers?: LayerId[];
 }
 
 export interface GraphEdge {
@@ -98,6 +107,9 @@ export interface GraphEdge {
   label?: string;
   /** How many paths the edge stands for (REQ-2126's path count). */
   paths?: number;
+  /** The layers that draw this edge, where its kind's own layer is not the whole answer (see
+   * GraphNode.layers). */
+  layers?: LayerId[];
 }
 
 export interface GraphData {
@@ -168,6 +180,13 @@ export interface GraphScope {
   hiddenStatuses: TermStatus[];
   /** Whether terms left with no relationship can be hidden (the Ontology View's Orphans). */
   orphans: boolean;
+  /** Whether a column folds into its table while the table is drawn and not expanded. */
+  foldColumns: boolean;
+  /** The edge kinds the edge-type filter chooses among, by their labels. */
+  typedKinds: EdgeKind[];
+  /** Edge kinds drawn only between nodes something else draws: they join what is shown and never
+   * bring a node in (the Ontology View's relationships between the tables of its columns). */
+  betweenDrawn: EdgeKind[];
 }
 
 export const PRODUCT_SCOPE: GraphScope = {
@@ -177,21 +196,27 @@ export const PRODUCT_SCOPE: GraphScope = {
   presetOrder: PRESET_ORDER,
   hiddenStatuses: [],
   orphans: false,
+  foldColumns: true,
+  typedKinds: ["term_edge"],
+  betweenDrawn: [],
 };
 
 /** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
  * (an enterprise-wide term in every one, so it sits at the centre); the columns a concrete term
  * IS (its physical refs, as the viewer may read them), shown by default and toggled beside the
- * filters; off by default, the tables those columns fold into and the products owning them. */
+ * filters; with Columns, the tables owning the columns drawn and the relationships declared
+ * between them (Tables); off by default, the data products with their datasets and those
+ * datasets' columns (Data). A column is drawn as itself, never folded into its table. */
 export const GLOSSARY_SCOPE: GraphScope = {
   layers: {
     ontology: { nodes: ["term"], edges: ["term_edge"] },
     domains: { nodes: ["domain"], edges: ["in_domain"] },
     data: { nodes: ["table", "product"], edges: ["has_column", "member"] },
-    // Toggled beside the filters (Columns), not in the Layers row.
+    // Toggled beside the filters (Columns, and Tables with it), not in the Layers row.
     columns: { nodes: ["column"], edges: ["term_binding"] },
+    ownerTables: { nodes: [], edges: ["relationship"] },
   },
-  layerOrder: ["ontology", "domains", "data", "columns"],
+  layerOrder: ["ontology", "domains", "data", "columns", "ownerTables"],
   presets: {
     // Every edge type, in a force layout, with the columns each term is.
     ontology: { layers: ["ontology", "domains", "columns"], layout: "force" },
@@ -201,6 +226,9 @@ export const GLOSSARY_SCOPE: GraphScope = {
   presetOrder: ["ontology", "taxonomy"],
   hiddenStatuses: ["retired"],
   orphans: true,
+  foldColumns: false,
+  typedKinds: ["term_edge", "relationship"],
+  betweenDrawn: ["relationship"],
 };
 
 export interface GraphFilters {
@@ -213,6 +241,21 @@ export interface GraphFilters {
   edgeTypes: string[];
   /** REQ-2130: the term statuses not drawn. */
   hiddenStatuses: TermStatus[];
+}
+
+/** REQ-2136: a view whose layers and filters run in its query, not after it: what the query reads.
+ * No domains, or no edge types, is every one. */
+export interface QueryScope {
+  layers: ReadonlySet<LayerId>;
+  domains: string[];
+  edgeTypes: string[];
+  hiddenStatuses: TermStatus[];
+  /** The product graph's tag and sensitivity filters. */
+  tags: string[];
+  sensitivities: string[];
+  /** Whether a term with no relationship drawn (no edge of the types kept to a term kept, and no
+   * column it IS under Columns) is drawn: the Ontology View's Orphans. */
+  orphans: boolean;
 }
 
 export const NO_FILTERS: GraphFilters = {
@@ -232,17 +275,24 @@ function layerOfNode(scope: GraphScope, type: NodeType): LayerId | undefined {
   return scope.layerOrder.find((l) => scope.layers[l]?.nodes.includes(type));
 }
 
+/** The layers that draw ``e``: its own, else its kind's. */
+function edgeLayers(scope: GraphScope, e: GraphEdge): LayerId[] {
+  if (e.layers) return e.layers;
+  const l = layerOfEdge(scope, e.kind);
+  return l ? [l] : [];
+}
+
+function nodeLayers(scope: GraphScope, n: GraphNode): LayerId[] {
+  if (n.layers) return n.layers;
+  const l = layerOfNode(scope, n.type);
+  return l ? [l] : [];
+}
+
 /** The layers ``data`` has anything in; a layer the user's role cannot read has nothing. */
 export function availableLayers(data: GraphData, scope: GraphScope): Set<LayerId> {
   const out = new Set<LayerId>();
-  for (const e of data.edges) {
-    const l = layerOfEdge(scope, e.kind);
-    if (l) out.add(l);
-  }
-  for (const n of data.nodes) {
-    const l = layerOfNode(scope, n.type);
-    if (l) out.add(l);
-  }
+  for (const e of data.edges) for (const l of edgeLayers(scope, e)) out.add(l);
+  for (const n of data.nodes) for (const l of nodeLayers(scope, n)) out.add(l);
   return out;
 }
 
@@ -294,7 +344,14 @@ export function visibleGraph(
   // A column folds into its table while the table is drawn and not expanded.
   const fold = (id: string): string => {
     const n = byId.get(id);
-    if (n?.type === "column" && n.parent && tablesOn && !expanded.has(n.parent)) return n.parent;
+    if (
+      scope.foldColumns &&
+      n?.type === "column" &&
+      n.parent &&
+      tablesOn &&
+      !expanded.has(n.parent)
+    )
+      return n.parent;
     return id;
   };
   // Who owns each table, for a bound column drawn without its table (the Ontology preset).
@@ -314,9 +371,9 @@ export function visibleGraph(
     else edges.set(id, { ...e, id, a, b });
   };
   for (const e of data.edges) {
-    const layer = layerOfEdge(scope, e.kind);
-    if (!layer || !layers.has(layer)) continue;
-    if (e.kind === "term_edge" && filters.edgeTypes.length > 0) {
+    if (!edgeLayers(scope, e).some((l) => layers.has(l))) continue;
+    if (scope.betweenDrawn.includes(e.kind)) continue;
+    if (scope.typedKinds.includes(e.kind) && filters.edgeTypes.length > 0) {
       if (!filters.edgeTypes.includes(e.label ?? "")) continue;
     }
     // REQ-2129: a column's upstream columns are drawn once its table is expanded to its columns;
@@ -340,13 +397,18 @@ export function visibleGraph(
   const drawn = new Set<string>();
   for (const n of data.nodes) {
     if (fold(n.id) !== n.id) continue;
-    const layer = layerOfNode(scope, n.type);
-    if (layer && layers.has(layer)) drawn.add(n.id);
+    if (nodeLayers(scope, n).some((l) => layers.has(l))) drawn.add(n.id);
   }
   for (const e of edges.values()) drawn.add(e.a).add(e.b);
   for (const id of [...drawn]) {
     const n = byId.get(id);
     if (!n || !passes(n, filters)) drawn.delete(id);
+  }
+  for (const e of data.edges) {
+    if (!scope.betweenDrawn.includes(e.kind)) continue;
+    if (!edgeLayers(scope, e).some((l) => layers.has(l))) continue;
+    if (filters.edgeTypes.length > 0 && !filters.edgeTypes.includes(e.label ?? "")) continue;
+    if (drawn.has(fold(e.a)) && drawn.has(fold(e.b))) add(e);
   }
   let kept = [...edges.values()].filter((e) => drawn.has(e.a) && drawn.has(e.b));
   const anyFilter = filters.domains.length + filters.tags.length + filters.sensitivities.length > 0;

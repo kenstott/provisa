@@ -22,6 +22,9 @@ import {
   type LayerId,
 } from "../graphModel";
 import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
+import { NO_FILTERS } from "../graphModel";
+
+const NO_FILTERS_ONTOLOGY: GraphFilters = { ...NO_FILTERS };
 
 const ref = (table: number, column: string, product?: string) => ({
   column_key: `${table}:${column}`,
@@ -161,12 +164,38 @@ describe("the Ontology View's presets", () => {
     expect(y("term:1")).toBeGreaterThan(y("term:3"));
   });
 
-  it("the data layer, off by default, adds the bound columns' tables and their products", () => {
+  it("the data layer, off by default, adds the products' datasets, unfolded into their columns", () => {
     expect(preset("ontology").layers).not.toContain("data");
     const g = view([...preset("ontology").layers, "data"]);
-    expect(ids(g)).toEqual(expect.arrayContaining(["t:10", "p:c360"]));
-    // The columns are folded into their table.
-    expect(ids(g)).not.toContain("c:10:email");
-    expect(g.edges.find((e) => e.kind === "term_binding" && e.a === "term:1")?.b).toBe("t:10");
+    expect(ids(g)).toEqual(expect.arrayContaining(["t:10", "p:c360", "c:10:email"]));
+    // A column is drawn as itself, joined to its dataset, and the term IS it.
+    expect(g.edges.find((e) => e.kind === "term_binding" && e.a === "term:1")?.b).toBe(
+      "c:10:email",
+    );
+    expect(g.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "has_column", a: "t:10", b: "c:10:email" }),
+      ]),
+    );
+  });
+
+  it("draws a class term's tables with the ontology: the term IS the table, a cylinder", () => {
+    const grounded = glossaryGraph(
+      [term(7, "Order", { tables: [{ table_id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [],
+    );
+    const on = (layers: LayerId[]) =>
+      visibleGraph(grounded, new Set(layers), NO_FILTERS_ONTOLOGY, new Set(), GLOSSARY_SCOPE);
+    const g = on(["ontology"]);
+    expect(g.nodes.find((n) => n.id === "t:20")).toMatchObject({
+      type: "table",
+      label: "sales.orders",
+      stored: true,
+    });
+    expect(g.edges).toEqual([
+      expect.objectContaining({ kind: "term_binding", a: "term:7", b: "t:20", label: "IS" }),
+    ]);
+    // Not drawn without the ontology.
+    expect(on(["domains"]).nodes.map((n) => n.id)).not.toContain("t:20");
   });
 });

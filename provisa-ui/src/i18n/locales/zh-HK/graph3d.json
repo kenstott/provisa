@@ -32,6 +32,7 @@
     "paths_one": "{{count}} 條路徑",
     "paths_other": "{{count}} 條路徑",
     "note": "選擇一個節點以列出其連接。表的欄位會摺疊在表中，直到你顯示它們。",
+    "noteUnfolded": "選擇一個節點以列出其連接。",
     "type_product": "數據產品",
     "type_domain": "網域",
     "type_table": "成員表",
@@ -72,6 +73,7 @@
     "ontologyView": "本體檢視",
     "orphans": "孤立項",
     "columnsToggle": "欄",
+    "tablesToggle": "資料表",
     "allEdgeTypes": "所有邊類型",
     "someEdgeTypes": "{{total}} 種邊類型中的 {{count}} 種",
     "allDomains": "所有域",
@@ -87,6 +89,16 @@
     "look_abstract": "抽象術語",
     "look_in_product": "數據產品中的欄",
     "look_out_of_product": "數據產品之外的欄",
-    "status_live": "有效"
+    "look_stored": "資料表",
+    "status_live": "有效",
+    "openAsQuery": "以查詢開啟",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "搜尋或聚焦的鄰域目前仍無法以一個查詢表達。",
+    "openAsQueryCompiling": "正在編譯查詢…",
+    "openAsQueryNoCypher": "此查詢沒有 Cypher 形式。",
+    "openAsQuerySparqlLater": "SPARQL 將在其端點可用後開放。"
   }
 }

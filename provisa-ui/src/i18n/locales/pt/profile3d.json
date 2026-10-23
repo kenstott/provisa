@@ -9,6 +9,24 @@
     "attraction": "Atração",
     "attractionLoose": "Solto",
     "attractionTight": "Compacto",
-    "grid": "Grade"
+    "grid": "Grade",
+    "resetSettings": "Redefinir configurações de exibição",
+    "resetSettingsHelp": "Esquece o layout, as camadas, os filtros e as opções salvos deste grafo e volta aos padrões.",
+    "export": "Exportar",
+    "exportImage": "Imagem",
+    "exportScale": "Escala da imagem",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (vetorial)",
+    "recordRotation": "Gravar rotação",
+    "recordLength": "Duração da gravação",
+    "seconds": "{{count}} s",
+    "format_mp4": "Vídeo MP4",
+    "format_webm": "Vídeo WebM",
+    "recording": "A gravar a volta… {{percent}}%",
+    "cancelRecording": "Parar a gravação",
+    "exportFailed": "Não foi possível exportar a vista: {{error}}",
+    "lastFormat": "Último usado"
   }
 }

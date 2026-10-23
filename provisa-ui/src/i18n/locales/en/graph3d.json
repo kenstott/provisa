@@ -32,6 +32,7 @@
     "paths_one": "{{count}} path",
     "paths_other": "{{count}} paths",
     "note": "Pick a node to list its connections. A table's columns stay folded into it until you show them.",
+    "noteUnfolded": "Pick a node to list its connections.",
     "type_product": "data product",
     "type_domain": "domain",
     "type_table": "member table",
@@ -72,6 +73,7 @@
     "ontologyView": "Ontology view",
     "orphans": "Orphans",
     "columnsToggle": "Columns",
+    "tablesToggle": "Tables",
     "allEdgeTypes": "All edge types",
     "someEdgeTypes": "{{count}} of {{total}} edge types",
     "allDomains": "All domains",
@@ -87,6 +89,16 @@
     "look_abstract": "abstract term",
     "look_in_product": "column in a data product",
     "look_out_of_product": "column outside data products",
-    "status_live": "Live"
+    "look_stored": "table",
+    "status_live": "Live",
+    "openAsQuery": "Open as query",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
+    "openAsQueryCompiling": "Compiling the query…",
+    "openAsQueryNoCypher": "This query has no Cypher form.",
+    "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available."
   }
 }

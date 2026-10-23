@@ -45,6 +45,8 @@ export interface GlossaryTermSummary {
   is_abstract: boolean;
   deprecated: boolean;
   ref_count: number;
+  // REQ-2130: the tables the term grounds (as a class term).
+  table_count: number;
   export_excluded: boolean;
   // Curator soft delete: the term keeps its refs but no consuming surface binds it —
   // agent term search skips it and metadata export withholds it.
@@ -291,4 +293,45 @@ export async function removeGlossaryExpert(termId: number, userId: string): Prom
     { method: "DELETE" },
   );
   if (!res.ok) throw await mutationError(res, "removeGlossaryExpert");
+}
+
+// REQ-2130 (class grounding): the tables and views a term names the rows of. A table has at most
+// one class term, and only a table with a primary key can have one; the server says so by code.
+export interface GlossaryTermTable {
+  table_id: number;
+  source_id: string;
+  schema_name: string;
+  table_name: string;
+  domain_id: string;
+}
+
+export async function listTermTables(termId: number): Promise<GlossaryTermTable[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/tables`);
+  if (!res.ok) throw await mutationError(res, "listTermTables");
+  return res.json();
+}
+
+export async function groundTermTable(termId: number, tableId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/tables`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table_id: tableId }),
+  });
+  if (!res.ok) throw await mutationError(res, "groundTermTable");
+}
+
+export async function ungroundTermTable(termId: number, tableId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/tables/${tableId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw await mutationError(res, "ungroundTermTable");
+}
+
+/** What a term is in the ontology, by what it is grounded in: a Class names a table's rows, a
+ * Property a column's values, a Concept neither. A term grounded in both is a Class. */
+export type TermRole = "class" | "property" | "concept";
+
+export function termRole(t: { table_count: number; ref_count: number }): TermRole {
+  if (t.table_count > 0) return "class";
+  return t.ref_count > 0 ? "property" : "concept";
 }

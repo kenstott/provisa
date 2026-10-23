@@ -81,6 +81,19 @@
 .g3d-shape-sphere {
   border-radius: 50%;
 }
+/* A cylinder seen from the side: upright, its ends rounded. Plain boxes, borders and radii only,
+   so an exported image paints the legend as it is (exportImage.ts). */
+.g3d-shape-cylinder {
+  width: 8px;
+  height: 10px;
+  border-radius: 3px;
+}
+/* A torus: a ring, its colour on its border (GraphStage). */
+.g3d-shape-torus {
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2.5px solid;
+}
 .g3d-legend-status {
   font-family: var(--mantine-font-family-monospace);
 }

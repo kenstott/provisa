@@ -31,6 +31,10 @@
       "fail": "נכשל",
       "error": "שגיאה",
       "skipped": "דולג"
-    }
+    },
+    "classTerm": "השורות הן מופעים של",
+    "classTermPlaceholder": "בחר מונח",
+    "noClassTerm": "אין מונח",
+    "classTermUnreadable": "לא ניתן היה לקרוא את המונח שלה: {{error}}"
   }
 }

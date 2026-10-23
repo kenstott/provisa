@@ -90,6 +90,16 @@
     "readOnly": "केवल पढ़ने योग्य",
     "readOnlyHint": "आप ऑन्टोलॉजी पढ़ सकते हैं पर उसे संवार नहीं सकते। पदों, परिभाषाओं और संबंधों को संवारने के लिए glossary_rw क्षमता चाहिए।",
     "expertUserPlaceholder": "लोग खोजें…",
-    "enterpriseDomainLabel": "सभी डोमेन (उद्यम-व्यापी)"
+    "enterpriseDomainLabel": "सभी डोमेन (उद्यम-व्यापी)",
+    "roleLabel": "भूमिका",
+    "role_class": "क्लास",
+    "role_property": "प्रॉपर्टी",
+    "role_concept": "अवधारणा",
+    "roleHelp_class": "तालिकाओं में आधारित: बताता है कि उनकी हर पंक्ति क्या है।",
+    "roleHelp_property": "कॉलमों में आधारित: बताता है कि उनके मान क्या हैं।",
+    "roleHelp_concept": "न तालिकाओं में आधारित, न कॉलमों में।",
+    "groundedTablesTitle": "तालिकाओं में आधारित",
+    "groundedTablesPlaceholder": "वे तालिकाएँ जिनकी पंक्तियों को यह शब्द नाम देता है",
+    "noGroundedTables": "किसी तालिका में आधारित नहीं"
   }
 }

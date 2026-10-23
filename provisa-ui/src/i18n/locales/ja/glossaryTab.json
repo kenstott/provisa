@@ -90,6 +90,16 @@
     "readOnly": "読み取り専用",
     "readOnlyHint": "オントロジーを閲覧できますが、整備はできません。用語・定義・関連の整備には glossary_rw ケーパビリティが必要です。",
     "expertUserPlaceholder": "人を検索…",
-    "enterpriseDomainLabel": "すべてのドメイン（全社）"
+    "enterpriseDomainLabel": "すべてのドメイン（全社）",
+    "roleLabel": "役割",
+    "role_class": "クラス",
+    "role_property": "プロパティ",
+    "role_concept": "概念",
+    "roleHelp_class": "テーブルに紐付け: 各行が何であるかを表します。",
+    "roleHelp_property": "列に紐付け: その値が何であるかを表します。",
+    "roleHelp_concept": "テーブルにも列にも紐付いていません。",
+    "groundedTablesTitle": "紐付けるテーブル",
+    "groundedTablesPlaceholder": "この用語が行を表すテーブル",
+    "noGroundedTables": "どのテーブルにも紐付いていません"
   }
 }

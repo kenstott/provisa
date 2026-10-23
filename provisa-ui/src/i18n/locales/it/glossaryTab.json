@@ -90,6 +90,16 @@
     "readOnly": "Sola lettura",
     "readOnlyHint": "Puoi leggere l'ontologia ma non curarla. Curare termini, definizioni e relazioni richiede la capacità glossary_rw.",
     "expertUserPlaceholder": "Cerca persone…",
-    "enterpriseDomainLabel": "Tutti i domini (aziendale)"
+    "enterpriseDomainLabel": "Tutti i domini (aziendale)",
+    "roleLabel": "Ruolo",
+    "role_class": "Classe",
+    "role_property": "Proprietà",
+    "role_concept": "Concetto",
+    "roleHelp_class": "Ancorato a tabelle: indica che cos’è ciascuna delle loro righe.",
+    "roleHelp_property": "Ancorato a colonne: indica che cosa sono i loro valori.",
+    "roleHelp_concept": "Non ancorato né a tabelle né a colonne.",
+    "groundedTablesTitle": "Ancorato a tabelle",
+    "groundedTablesPlaceholder": "Tabelle le cui righe questo termine nomina",
+    "noGroundedTables": "Ancorato a nessuna tabella"
   }
 }

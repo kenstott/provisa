@@ -90,6 +90,16 @@
     "readOnly": "Somente leitura",
     "readOnlyHint": "Você pode ler a ontologia mas não curá-la. Curar termos, definições e relacionamentos exige a capacidade glossary_rw.",
     "expertUserPlaceholder": "Pesquisar pessoas…",
-    "enterpriseDomainLabel": "Todos os domínios (empresa)"
+    "enterpriseDomainLabel": "Todos os domínios (empresa)",
+    "roleLabel": "Papel",
+    "role_class": "Classe",
+    "role_property": "Propriedade",
+    "role_concept": "Conceito",
+    "roleHelp_class": "Ancorado em tabelas: nomeia o que é cada uma de suas linhas.",
+    "roleHelp_property": "Ancorado em colunas: nomeia o que são seus valores.",
+    "roleHelp_concept": "Não ancorado em tabelas nem em colunas.",
+    "groundedTablesTitle": "Ancorado em tabelas",
+    "groundedTablesPlaceholder": "Tabelas cujas linhas este termo nomeia",
+    "noGroundedTables": "Ancorado em nenhuma tabela"
   }
 }

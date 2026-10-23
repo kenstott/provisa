@@ -31,6 +31,10 @@
       "fail": "不合格",
       "error": "エラー",
       "skipped": "スキップ"
-    }
+    },
+    "classTerm": "行のインスタンス元",
+    "classTermPlaceholder": "用語を選択",
+    "noClassTerm": "用語なし",
+    "classTermUnreadable": "用語を読み取れませんでした: {{error}}"
   }
 }

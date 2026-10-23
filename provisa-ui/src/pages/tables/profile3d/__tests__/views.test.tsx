@@ -112,7 +112,7 @@ const RESULTS = {
 
 describe("ProfileRelations", () => {
   it("opens on the busiest column and filters edges by strength", async () => {
-    render(<ProfileRelations results={RESULTS} tableName="orders" />);
+    render(<ProfileRelations tableId={7} results={RESULTS} tableName="orders" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(screen.getByTestId("relations-detail")).toHaveTextContent("amount");
     const [, edges] = last("relations").setData.mock.calls[0];
@@ -126,7 +126,7 @@ describe("ProfileRelations", () => {
   });
 
   it("selects the other end of a relationship and zooms to it", async () => {
-    render(<ProfileRelations results={RESULTS} tableName="orders" />);
+    render(<ProfileRelations tableId={7} results={RESULTS} tableName="orders" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByTestId("relations-link-spearman:age|amount"));
     expect(screen.getByTestId("relations-detail")).toHaveTextContent("age");
@@ -135,7 +135,7 @@ describe("ProfileRelations", () => {
   });
 
   it("expands into a modal with its own scene", async () => {
-    render(<ProfileRelations results={RESULTS} tableName="orders" />);
+    render(<ProfileRelations tableId={7} results={RESULTS} tableName="orders" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByTestId("relations-expand"));
     expect(await screen.findByTestId("relations-expanded")).toBeInTheDocument();
@@ -143,14 +143,16 @@ describe("ProfileRelations", () => {
   });
 
   it("says so when the run found no relationships", () => {
-    render(<ProfileRelations results={{ columns: RESULTS.columns }} tableName="orders" />);
+    render(
+      <ProfileRelations tableId={7} results={{ columns: RESULTS.columns }} tableName="orders" />,
+    );
     expect(screen.getByTestId("relations-empty")).toBeInTheDocument();
   });
 });
 
 describe("ProfileJointCloud", () => {
   it("draws the first column's joint counts and switches colouring", async () => {
-    render(<ProfileJointCloud results={RESULTS} tableName="orders" />);
+    render(<ProfileJointCloud tableId={7} results={RESULTS} tableName="orders" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const [model] = last("joint").setData.mock.calls[0];
     expect(model.target).toBe("amount");
@@ -160,7 +162,7 @@ describe("ProfileJointCloud", () => {
   });
 
   it("lights a listed combination in the cloud", async () => {
-    render(<ProfileJointCloud results={RESULTS} tableName="orders" />);
+    render(<ProfileJointCloud tableId={7} results={RESULTS} tableName="orders" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const rows = screen.getAllByTestId(/^joint-cell-/);
     fireEvent.mouseEnter(rows[0]);
@@ -170,7 +172,7 @@ describe("ProfileJointCloud", () => {
   });
 
   it("says so when the run holds no joint counts", () => {
-    render(<ProfileJointCloud results={{ columns: [] }} tableName="orders" />);
+    render(<ProfileJointCloud tableId={7} results={{ columns: [] }} tableName="orders" />);
     expect(screen.getByTestId("joint-empty")).toBeInTheDocument();
   });
 });

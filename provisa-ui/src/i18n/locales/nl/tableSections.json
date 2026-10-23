@@ -31,6 +31,10 @@
       "fail": "Mislukt",
       "error": "Fout",
       "skipped": "Overgeslagen"
-    }
+    },
+    "classTerm": "Rijen zijn instanties van",
+    "classTermPlaceholder": "Kies een term",
+    "noClassTerm": "Geen term",
+    "classTermUnreadable": "De term kon niet worden gelezen: {{error}}"
   }
 }

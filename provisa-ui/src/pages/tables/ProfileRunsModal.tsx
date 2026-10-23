@@ -223,9 +223,9 @@ export function ProfileRunsModal({
             {tab === "terrain" ? (
               <ProfileTerrain results={results} tableId={tableId} tableName={tableName} />
             ) : tab === "relationsMap" ? (
-              <ProfileRelations results={results} tableName={tableName} />
+              <ProfileRelations results={results} tableId={tableId} tableName={tableName} />
             ) : tab === "jointCloud" ? (
-              <ProfileJointCloud results={results} tableName={tableName} />
+              <ProfileJointCloud results={results} tableId={tableId} tableName={tableName} />
             ) : tab === "driftStrata" ? (
               selected != null &&
               runs != null &&

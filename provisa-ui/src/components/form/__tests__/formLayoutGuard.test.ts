@@ -89,6 +89,10 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
   "components/admin/GlossaryTab.tsx":
     "a term's name, definition and export tick each saved in place in its detail; the list's filter ticks",
   "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
+  "components/admin/GlossaryGroundedTables.tsx":
+    "a term's tables grounded and let go each as it is picked, in the term's detail",
+  "pages/tables/TableClassTerm.tsx":
+    "a table's class term set and cleared in place, beside its tags in its associations",
   "pages/tables/ProfileConstraintsModal.tsx":
     "a column's constraints edited in the row of the checklist that lists them",
   "components/admin/RedactionTab.tsx":

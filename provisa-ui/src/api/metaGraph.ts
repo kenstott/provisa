@@ -93,6 +93,14 @@ export class RoleSchema {
     return this.types.get(type)?.find((f) => norm(f.name) === want)?.name ?? null;
   }
 
+  /** A relationship of ``type`` by its snake_case name (``edges_out``), as the schema spells it,
+   * and the type it reaches; null when ``type`` has no such relationship the role can read. */
+  relationship(type: string, name: string): { name: string; type: string } | null {
+    const want = norm(name);
+    const f = this.types.get(type)?.find((x) => norm(x.name) === want);
+    return f?.type && this.types.has(f.type) ? { name: f.name, type: f.type } : null;
+  }
+
   /** The field ``name`` of ``type`` exactly (a root field, or a relationship's declared alias),
    * and the type it reaches; null when the role's schema has no such field. */
   exact(type: string, name: string): { name: string; type: string | null } | null {
@@ -140,11 +148,25 @@ export async function rootFields(role: string): Promise<RootFields> {
  * meta view it reaches. */
 export type Hop = { alias: string } | { to: string };
 
+/** One column's condition, as the where input spells it (provisa/compiler/type_map.py). */
+export type Cond =
+  | { eq: unknown }
+  | { neq: unknown }
+  | { in: unknown[] }
+  | { like: string }
+  | { is_null: boolean };
+
+/** A where: every column condition holds, each of ``_and`` and any of ``_or``, and for each
+ * relationship named, a related row matching its own where. */
+export type Where = { _and?: Where[]; _or?: Where[] } & {
+  [columnOrRelationship: string]: Cond | Where | Where[];
+};
+
 /** What to read of a type: its columns, and the relationships to follow, each answered under
- * ``key``. */
+ * ``key``; a one-to-many relationship can be narrowed by its own ``where``. */
 export interface Selection {
   fields: string[];
-  rels?: Record<string, Hop & { sel: Selection }>;
+  rels?: Record<string, Hop & { sel: Selection; where?: Where }>;
 }
 
 /** The meta domain as one role reads it: its schema and where each view is queried from. */
@@ -177,37 +199,80 @@ export function selectionSet(m: MetaReader, type: string, sel: Selection, depth 
           ? m.schema.reaching(type, target)
           : null;
     if (!found?.type) continue;
+    // A narrowing the role cannot state (a column it cannot read) leaves the relationship out
+    // rather than read wider than asked.
+    const args = hop.where ? whereArg(m, found.type, hop.where) : "";
+    if (args === null) continue;
     const body = selectionSet(m, found.type, hop.sel, depth + 1);
-    if (body) parts.push(`${key}: ${found.name} ${body}`);
+    if (body) parts.push(`${key}: ${found.name}${args} ${body}`);
   }
   if (parts.length === 0) return "";
   return `{\n${parts.map((p) => pad + p).join("\n")}\n${"  ".repeat(depth - 1)}}`;
 }
 
-/** A root query over the meta view ``view`` (``data_products``), answered under ``view``, with
- * an optional ``where``; null when the role cannot read the view. */
-export function rootQuery(
+/** ``where`` on ``type`` as GraphQL input text, each column as the role's schema spells it; null
+ * when a column it names is not the role's to read. */
+export function whereText(m: MetaReader, type: string, where: Where): string | null {
+  const conds: string[] = [];
+  for (const [key, cond] of Object.entries(where)) {
+    if (key === "_and" || key === "_or") {
+      const subs = (cond as Where[]).map((w) => whereText(m, type, w));
+      if (subs.some((x) => x === null)) return null;
+      conds.push(`${key}: [${subs.join(", ")}]`);
+      continue;
+    }
+    // A relationship's condition: a related row matching it (REQ-2136), on the type it reaches.
+    const rel = m.schema.relationship(type, key);
+    if (rel) {
+      const sub = whereText(m, rel.type, cond as Where);
+      if (sub === null) return null;
+      conds.push(`${rel.name}: ${sub}`);
+      continue;
+    }
+    const name = m.schema.column(type, key);
+    if (!name) return null;
+    const [op, value] = Object.entries(cond as Cond)[0];
+    conds.push(`${name}: { ${op}: ${JSON.stringify(value)} }`);
+  }
+  return `{ ${conds.join(", ")} }`;
+}
+
+function whereArg(m: MetaReader, type: string, where: Where): string | null {
+  const text = whereText(m, type, where);
+  return text === null ? null : `(where: ${text})`;
+}
+
+/** One root field over the meta view ``view``, answered under ``view``, with an optional
+ * ``where``; null when the role cannot read the view or a column the where names. */
+export function rootField(
   m: MetaReader,
-  name: string,
   view: string,
   sel: Selection,
-  where?: Record<string, { eq: unknown } | { in: unknown[] }>,
+  where?: Where,
 ): string | null {
   const field = m.roots.get(rootKey("meta", view));
   const type = viewType(m, view);
   if (!field || !type) return null;
   const body = selectionSet(m, type, sel, 2);
   if (!body) return null;
-  let args = "";
-  if (where) {
-    const conds: string[] = [];
-    for (const [col, cond] of Object.entries(where)) {
-      const name = m.schema.column(type, col);
-      if (!name) return null;
-      const [op, value] = Object.entries(cond)[0];
-      conds.push(`${name}: { ${op}: ${JSON.stringify(value)} }`);
-    }
-    args = `(where: { ${conds.join(", ")} })`;
-  }
-  return `query ${name} {\n  ${view}: ${field}${args} ${body}\n}`;
+  const args = where ? whereArg(m, type, where) : "";
+  if (args === null) return null;
+  return `${view}: ${field}${args} ${body}`;
+}
+
+/** One query operation reading each of ``fields`` (rootField's), so a view is one query. */
+export const operation = (name: string, fields: string[]) =>
+  `query ${name} {\n${fields.map((f) => `  ${f}`).join("\n")}\n}`;
+
+/** A root query over the meta view ``view`` (``data_products``), answered under ``view``, with
+ * an optional ``where``; null when the role cannot read the view or a column the where names. */
+export function rootQuery(
+  m: MetaReader,
+  name: string,
+  view: string,
+  sel: Selection,
+  where?: Where,
+): string | null {
+  const field = rootField(m, view, sel, where);
+  return field === null ? null : operation(name, [field]);
 }

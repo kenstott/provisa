@@ -31,6 +31,10 @@
       "fail": "Fail",
       "error": "Error",
       "skipped": "Skipped"
-    }
+    },
+    "classTerm": "Rows are instances of",
+    "classTermPlaceholder": "Pick a term",
+    "noClassTerm": "No term",
+    "classTermUnreadable": "Its term could not be read: {{error}}"
   }
 }

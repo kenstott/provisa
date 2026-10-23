@@ -444,6 +444,29 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "ground_glossary_term_to_table",
+        "description": (
+            "Make an ontology term the class term of a registered table or view: each of the "
+            "table's rows is an instance of what the term names. The table must have a primary "
+            "key, and a table has one class term — one another term already grounds is refused, "
+            "naming that term."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "table_id": {"type": "integer"}},
+            "required": ["term_id", "table_id"],
+        },
+    },
+    {
+        "name": "unground_glossary_term_from_table",
+        "description": "withdraw an ontology term as a table's class term.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "table_id": {"type": "integer"}},
+            "required": ["term_id", "table_id"],
+        },
+    },
+    {
         "name": "list_data_products",
         "description": "list the org's data products (id, domain, name, purpose, owner/team role, status, etc.).",
         "input_schema": {"type": "object", "properties": {}},
@@ -901,7 +924,9 @@ _SYSTEM = (
     "and I'll try again?'). Never just stop or trail off without a closing message; the user should "
     "never have to guess whether you're still working or already gave up.\n\n"
     "Manage the glossary with list_glossary_terms/create_glossary_term/update_glossary_"
-    "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge directly — these "
+    "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge, and ground a term "
+    "to a whole table with ground_glossary_term_to_table/unground_glossary_term_from_table, "
+    "directly — these "
     "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
     "need no admin_mutation. Still always confirm with the user "
     "(present_choice, mode='yes_no') before delete_glossary_term specifically, since it's "
@@ -1287,6 +1312,8 @@ async def _execute_tool(
         "delete_glossary_term",
         "add_glossary_term_edge",
         "remove_glossary_term_edge",
+        "ground_glossary_term_to_table",
+        "unground_glossary_term_from_table",
     ):
         if request is None:
             raise ValueError(f"{name} requires a verified request context")
@@ -1319,6 +1346,14 @@ async def _execute_tool(
                 int(args["term_id"]),
                 int(args["to_term_id"]),
                 args["rel_type"],
+            )
+        if name == "ground_glossary_term_to_table":
+            return await mcp_tools.ground_glossary_term_to_table(
+                state, role, request, int(args["term_id"]), int(args["table_id"])
+            )
+        if name == "unground_glossary_term_from_table":
+            return await mcp_tools.unground_glossary_term_from_table(
+                state, role, request, int(args["term_id"]), int(args["table_id"])
             )
         return await mcp_tools.remove_glossary_term_edge(
             state, role, request, int(args["term_id"]), int(args["to_term_id"]), args["rel_type"]

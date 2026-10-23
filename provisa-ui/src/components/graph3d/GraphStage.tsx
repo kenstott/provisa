@@ -17,7 +17,7 @@ import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import { edgesOf, type GraphData, type NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
-import { labelClass, nodeLook, type Look } from "./nodeLook";
+import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
 
 export interface StageState {
   graph: GraphData;
@@ -53,10 +53,13 @@ const LEGEND: NodeType[] = [
 export function GraphStage({
   s,
   command,
+  exportName,
   testId,
 }: {
   s: StageState;
   command: CameraCommand | null;
+  /** What the view's exports are named after (the graph and its view). */
+  exportName: string;
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -120,7 +123,7 @@ export function GraphStage({
       body = (
         <>
           <b>{node.label}</b>
-          <span>{t(`graph3d.type_${node.type}`)}</span>
+          <span>{t(kindKey(node))}</span>
           <span className="p3d-num">
             {t("graph3d.tipLinks", { count: edgesOf(s.graph, node.id).length })}
           </span>
@@ -152,6 +155,8 @@ export function GraphStage({
       error={error}
       canvasLabel={t("graph3d.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={exportName}
       testId={testId}
       legend={<GraphLegend graph={s.graph} />}
     />
@@ -162,12 +167,14 @@ export function GraphStage({
  * carry a status, the four styles a term's name takes. */
 function GraphLegend({ graph }: { graph: GraphData }) {
   const { t } = useTranslation();
-  const looks = new Map<string, { type: NodeType } & Look>();
+  const looks = new Map<string, { type: NodeType; name: string } & Look>();
   for (const type of LEGEND)
     for (const n of graph.nodes)
       if (n.type === type) {
         const look = nodeLook(n);
-        looks.set(`${type}:${look.variant}`, { type, ...look });
+        // A plain look is named as its node is (kindKey: the Ontology View's tables are tables).
+        const name = look.variant === "plain" ? kindKey(n) : `graph3d.look_${look.variant}`;
+        looks.set(`${type}:${look.variant}`, { type, name, ...look });
       }
   const statuses = graph.nodes.some((n) => n.status !== undefined);
   return (
@@ -176,9 +183,14 @@ function GraphLegend({ graph }: { graph: GraphData }) {
         <span key={key} data-testid={`legend-${key}`}>
           <i
             className={`g3d-shape g3d-shape-${l.shape}`}
-            style={{ background: `var(--p3d-${l.colour})` }}
+            // A ring's colour is its border; every other shape is filled.
+            style={
+              l.shape === "torus"
+                ? { borderColor: `var(--p3d-${l.colour})` }
+                : { background: `var(--p3d-${l.colour})` }
+            }
           />
-          {l.variant === "plain" ? t(`graph3d.type_${l.type}`) : t(`graph3d.look_${l.variant}`)}
+          {t(l.name)}
         </span>
       ))}
       {statuses &&

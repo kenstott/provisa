@@ -90,6 +90,16 @@
     "readOnly": "唯讀",
     "readOnlyHint": "您可以閱讀本體，但無法維護。維護術語、定義及關係需要 glossary_rw 能力。",
     "expertUserPlaceholder": "搜尋人員…",
-    "enterpriseDomainLabel": "所有領域（全機構）"
+    "enterpriseDomainLabel": "所有領域（全機構）",
+    "roleLabel": "角色",
+    "role_class": "類",
+    "role_property": "屬性",
+    "role_concept": "概念",
+    "roleHelp_class": "錨定在表上：說明其每一行是甚麼。",
+    "roleHelp_property": "錨定在欄上：說明其值是甚麼。",
+    "roleHelp_concept": "既未錨定在表上，也未錨定在欄上。",
+    "groundedTablesTitle": "錨定的表",
+    "groundedTablesPlaceholder": "此術語為其行命名的表",
+    "noGroundedTables": "未錨定在任何表上"
   }
 }

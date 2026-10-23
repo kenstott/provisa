@@ -17,6 +17,7 @@ import {
   BaseScene,
   type SceneCallbacks,
   type SceneTheme,
+  type VectorScene,
 } from "../../pages/tables/profile3d/baseScene";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
 import { labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
@@ -108,6 +109,8 @@ function geometry(shape: Shape, r: number): THREE.BufferGeometry {
       return new THREE.DodecahedronGeometry(r, 0);
     case "diamond":
       return new THREE.OctahedronGeometry(r * 1.2, 0);
+    case "torus":
+      return new THREE.TorusGeometry(r * 0.75, r * 0.3, 10, 24);
   }
 }
 
@@ -145,6 +148,18 @@ export class GraphScene extends BaseScene<GraphHover> {
     this.at = at;
     this.rebuild();
     if (resetCamera) this.resetView(true);
+  }
+
+  /** Nodes, edges and arrowheads, flat (an SVG export). */
+  get canVector(): boolean {
+    return true;
+  }
+
+  vector(): VectorScene {
+    return this.vectorOf([
+      ...this.edgeMeshes.flatMap((e) => e.meshes),
+      ...this.nodes.map((n) => n.mesh),
+    ]);
   }
 
   setSelected(id: string | null) {

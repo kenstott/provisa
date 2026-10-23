@@ -9,6 +9,24 @@
     "attraction": "Aantrekking",
     "attractionLoose": "Los",
     "attractionTight": "Dicht",
-    "grid": "Raster"
+    "grid": "Raster",
+    "resetSettings": "Weergave-instellingen herstellen",
+    "resetSettingsHelp": "Vergeet de opgeslagen lay-out, lagen, filters en schakelaars van deze graaf en ga terug naar de standaardwaarden.",
+    "export": "Exporteren",
+    "exportImage": "Afbeelding",
+    "exportScale": "Schaal van de afbeelding",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (vector)",
+    "recordRotation": "Rotatie opnemen",
+    "recordLength": "Opnameduur",
+    "seconds": "{{count}} s",
+    "format_mp4": "MP4-video",
+    "format_webm": "WebM-video",
+    "recording": "De draai wordt opgenomen… {{percent}}%",
+    "cancelRecording": "Opname stoppen",
+    "exportFailed": "De weergave kon niet worden geëxporteerd: {{error}}",
+    "lastFormat": "Laatst gebruikt"
   }
 }

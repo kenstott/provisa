@@ -70,7 +70,6 @@ describe("the graph's Attraction slider", () => {
   beforeEach(() => {
     made.scenes.length = 0;
     made.callbacks.length = 0;
-    window.sessionStorage.clear();
   });
 
   const g: GraphData = {
@@ -82,9 +81,17 @@ describe("the graph's Attraction slider", () => {
     edges: [{ id: "e", a: "term:1", b: "term:2", kind: "term_edge", label: "KIND_OF" }],
   };
 
-  it("tightens the layout where the camera is, and keeps its setting for the session", async () => {
+  it("tightens the layout where the camera is, and keeps its setting across reloads", async () => {
     const view = render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
+        testId="x"
+      />,
     );
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const drawn = () =>
@@ -104,7 +111,15 @@ describe("the graph's Attraction slider", () => {
     expect(drawn()[2]).toBe(false);
     view.unmount();
     render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
+        testId="x"
+      />,
     );
     expect(screen.getByRole("slider", { name: "Attraction" })).toHaveAttribute(
       "aria-valuenow",
@@ -114,7 +129,15 @@ describe("the graph's Attraction slider", () => {
 
   it("names a hovered edge's type with its source and target", async () => {
     render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="ontology" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
+        testId="x"
+      />,
     );
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const edge = (made.scenes[0].setData.mock.lastCall?.[0] as GraphData).edges[0];
@@ -126,7 +149,15 @@ describe("the graph's Attraction slider", () => {
 
   it("is left out of a graph laid out by a fixed rule", () => {
     render(
-      <GraphExplorer data={g} scope={GLOSSARY_SCOPE} preset="taxonomy" zero={[]} testId="x" />,
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="taxonomy"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
+        testId="x"
+      />,
     );
     expect(screen.queryByRole("slider", { name: "Attraction" })).toBeNull();
   });

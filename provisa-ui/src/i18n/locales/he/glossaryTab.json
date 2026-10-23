@@ -90,6 +90,16 @@
     "readOnly": "קריאה בלבד",
     "readOnlyHint": "אפשר לקרוא את האונטולוגיה אך לא לתחזק אותה. תחזוקת מונחים, הגדרות וקשרים מחייבת את היכולת glossary_rw.",
     "expertUserPlaceholder": "חיפוש אנשים…",
-    "enterpriseDomainLabel": "כל התחומים (ארגוני)"
+    "enterpriseDomainLabel": "כל התחומים (ארגוני)",
+    "roleLabel": "תפקיד",
+    "role_class": "מחלקה",
+    "role_property": "תכונה",
+    "role_concept": "מושג",
+    "roleHelp_class": "מעוגן בטבלאות: מציין מה כל אחת מהשורות שלהן.",
+    "roleHelp_property": "מעוגן בעמודות: מציין מה הערכים שלהן.",
+    "roleHelp_concept": "לא מעוגן בטבלאות או בעמודות.",
+    "groundedTablesTitle": "מעוגן בטבלאות",
+    "groundedTablesPlaceholder": "טבלאות שהמונח הזה מציין את שורותיהן",
+    "noGroundedTables": "לא מעוגן באף טבלה"
   }
 }

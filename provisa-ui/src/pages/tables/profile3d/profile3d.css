@@ -175,6 +175,26 @@
   font-variant-numeric: tabular-nums;
   text-align: end;
 }
+/* A view's export (ExportMenu): its control in the stage's top-left corner, and a recording's
+   progress and cancel in its place while a turn is recorded. */
+.p3d-export {
+  position: absolute;
+  inset-inline-start: 8px;
+  top: 8px;
+  z-index: 2;
+}
+.p3d-recording {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.p3d-export-choice {
+  padding: 2px 10px 6px;
+}
 .p3d-hint {
   position: absolute;
   inset-inline-end: 10px;

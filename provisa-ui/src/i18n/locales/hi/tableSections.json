@@ -31,6 +31,10 @@
       "fail": "असफल",
       "error": "त्रुटि",
       "skipped": "छोड़ा गया"
-    }
+    },
+    "classTerm": "पंक्तियाँ इसके उदाहरण हैं",
+    "classTermPlaceholder": "कोई शब्द चुनें",
+    "noClassTerm": "कोई शब्द नहीं",
+    "classTermUnreadable": "इसका शब्द पढ़ा नहीं जा सका: {{error}}"
   }
 }

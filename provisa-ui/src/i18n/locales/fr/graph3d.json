@@ -32,6 +32,7 @@
     "paths_one": "{{count}} chemin",
     "paths_other": "{{count}} chemins",
     "note": "Choisissez un nœud pour lister ses connexions. Les colonnes d'une table restent repliées dans celle-ci jusqu'à ce que vous les affichiez.",
+    "noteUnfolded": "Choisissez un nœud pour lister ses connexions.",
     "type_product": "produit de données",
     "type_domain": "domaine",
     "type_table": "table membre",
@@ -72,6 +73,7 @@
     "ontologyView": "Vue ontologie",
     "orphans": "Orphelins",
     "columnsToggle": "Colonnes",
+    "tablesToggle": "Tables",
     "allEdgeTypes": "Tous les types d’arêtes",
     "someEdgeTypes": "{{count}} sur {{total}} types d’arêtes",
     "allDomains": "Tous les domaines",
@@ -87,6 +89,16 @@
     "look_abstract": "terme abstrait",
     "look_in_product": "colonne d’un produit de données",
     "look_out_of_product": "colonne hors des produits de données",
-    "status_live": "Actif"
+    "look_stored": "table",
+    "status_live": "Actif",
+    "openAsQuery": "Ouvrir comme requête",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "Le voisinage de la recherche ou du focus ne s’exprime pas encore en une seule requête.",
+    "openAsQueryCompiling": "Compilation de la requête…",
+    "openAsQueryNoCypher": "Cette requête n’a pas de forme Cypher.",
+    "openAsQuerySparqlLater": "SPARQL s’ouvrira quand son point d’accès existera."
   }
 }

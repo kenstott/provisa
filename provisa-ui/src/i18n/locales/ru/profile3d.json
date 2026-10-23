@@ -9,6 +9,24 @@
     "attraction": "Притяжение",
     "attractionLoose": "Свободно",
     "attractionTight": "Плотно",
-    "grid": "Сетка"
+    "grid": "Сетка",
+    "resetSettings": "Сбросить настройки вида",
+    "resetSettingsHelp": "Забыть сохранённые для этого графа раскладку, слои, фильтры и переключатели и вернуться к значениям по умолчанию.",
+    "export": "Экспорт",
+    "exportImage": "Изображение",
+    "exportScale": "Масштаб изображения",
+    "format_png": "PNG",
+    "format_jpeg": "JPEG",
+    "format_webp": "WebP",
+    "format_svg": "SVG (вектор)",
+    "recordRotation": "Записать вращение",
+    "recordLength": "Длительность записи",
+    "seconds": "{{count}} с",
+    "format_mp4": "Видео MP4",
+    "format_webm": "Видео WebM",
+    "recording": "Запись оборота… {{percent}}%",
+    "cancelRecording": "Остановить запись",
+    "exportFailed": "Не удалось экспортировать вид: {{error}}",
+    "lastFormat": "Последний использованный"
   }
 }

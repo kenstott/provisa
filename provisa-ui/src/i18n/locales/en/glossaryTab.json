@@ -90,6 +90,16 @@
     "readOnly": "Read-only",
     "readOnlyHint": "You can read the ontology but not curate it. Curating terms, definitions and relationships needs the glossary_rw capability.",
     "expertUserPlaceholder": "Search people…",
-    "enterpriseDomainLabel": "All domains (enterprise)"
+    "enterpriseDomainLabel": "All domains (enterprise)",
+    "roleLabel": "Role",
+    "role_class": "Class",
+    "role_property": "Property",
+    "role_concept": "Concept",
+    "roleHelp_class": "Grounded in tables: it names what each of their rows is.",
+    "roleHelp_property": "Grounded in columns: it names what their values are.",
+    "roleHelp_concept": "Grounded in neither tables nor columns.",
+    "groundedTablesTitle": "Grounded in tables",
+    "groundedTablesPlaceholder": "Tables whose rows this term names",
+    "noGroundedTables": "Grounded in no table"
   }
 }

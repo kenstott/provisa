@@ -90,6 +90,16 @@
     "readOnly": "只读",
     "readOnlyHint": "您可以阅读本体，但无法维护它。维护术语、定义和关系需要 glossary_rw 能力。",
     "expertUserPlaceholder": "搜索人员…",
-    "enterpriseDomainLabel": "所有域（全组织）"
+    "enterpriseDomainLabel": "所有域（全组织）",
+    "roleLabel": "角色",
+    "role_class": "类",
+    "role_property": "属性",
+    "role_concept": "概念",
+    "roleHelp_class": "锚定在表上：说明其每一行是什么。",
+    "roleHelp_property": "锚定在列上：说明其值是什么。",
+    "roleHelp_concept": "既未锚定在表上，也未锚定在列上。",
+    "groundedTablesTitle": "锚定的表",
+    "groundedTablesPlaceholder": "此术语为其行命名的表",
+    "noGroundedTables": "未锚定在任何表上"
   }
 }

@@ -13,7 +13,7 @@
 // panel scrolls into view; its expand button opens the full graph on the Knowledge graph preset,
 // focused on the product. The Data Products page's own entry point opens it on the Product map.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Chip, Group, Loader, Modal, Text } from "@mantine/core";
 import { Network } from "lucide-react";
@@ -21,7 +21,8 @@ import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { GraphExplorer } from "./GraphExplorer";
 import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
-import { useGrid } from "../../pages/tables/profile3d/gridState";
+import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
+import { useGraphSettings, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
 import { GraphStage, type StageState } from "./GraphStage";
 import {
   PRODUCT_SCOPE,
@@ -48,6 +49,9 @@ export function GraphModal({
   focus,
   zero,
   search,
+  settingsKey,
+  exportName,
+  query,
 }: {
   opened: boolean;
   onClose: () => void;
@@ -59,6 +63,12 @@ export function GraphModal({
   zero: string[];
   /** The page's search driving the focus (the Ontology View's), as GraphExplorer takes it. */
   search?: string;
+  /** Which graph's remembered settings (graphSettings.ts): the same as its in-place view's. */
+  settingsKey: GraphKey;
+  /** What the graph's exports are named after. */
+  exportName: string;
+  /** The view's query scope, as GraphExplorer takes it (the Ontology View's). */
+  query?: ComponentProps<typeof GraphExplorer>["query"];
 }) {
   return (
     <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
@@ -70,6 +80,9 @@ export function GraphModal({
           focus={focus}
           zero={zero}
           search={search}
+          settingsKey={settingsKey}
+          exportName={exportName}
+          query={query}
           testId="graph3d"
         />
       )}
@@ -77,12 +90,29 @@ export function GraphModal({
   );
 }
 
-function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
+function PanelStage({
+  graph,
+  product,
+  productId,
+  productName,
+}: {
+  graph: GraphData;
+  product: string;
+  productId: string;
+  productName: string;
+}) {
   const at = useMemo(() => layoutGraph(graph, "force", []), [graph]);
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
-  const [rotate, setRotate] = useState(true);
-  const [grid, setGrid] = useGrid("kg-panel");
+  // Remembered for this product's panel (graphSettings.ts).
+  const [saved, save, resetSettings] = useGraphSettings(
+    { kind: "product-panel", subject: productId },
+    { rotate: true as boolean, grid: true as boolean },
+  );
+  const rotate = saved.rotate as boolean;
+  const grid = saved.grid as boolean;
+  const setRotate = (on: boolean) => save("rotate", on);
+  const setGrid = (on: boolean) => save("grid", on);
   const [command, setCommand] = useState<CameraCommand | null>(null);
   const { t } = useTranslation();
   const s: StageState = {
@@ -115,8 +145,9 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
         >
           {t("profile3d.resetView")}
         </Button>
+        <ResetSettingsButton onReset={resetSettings} testId="kg-panel" />
       </Group>
-      <GraphStage s={s} command={command} testId="kg-panel-stage" />
+      <GraphStage s={s} command={command} exportName={productName} testId="kg-panel-stage" />
     </>
   );
 }
@@ -137,6 +168,9 @@ function Loading({ error, testId }: { error: string | null; testId: string }) {
   );
 }
 
+// Before a view's first scoped read: nothing drawn yet.
+const EMPTY: GraphData = { nodes: [], edges: [] };
+
 export function KnowledgeGraphPanel({
   productId,
   productName,
@@ -148,7 +182,7 @@ export function KnowledgeGraphPanel({
   const { ref, seen } = useInView<HTMLDivElement>();
   const [open, setOpen] = useState(false);
   // Read once the panel is first in view, as three.js is loaded.
-  const { data, error } = useProductGraph(productId, seen);
+  const { data, error, scoped, onScope } = useProductGraph(productId, seen);
   const product = productNode(productId);
   const graph = useMemo(() => (data ? panelGraph(data, product) : null), [data, product]);
   return (
@@ -162,7 +196,12 @@ export function KnowledgeGraphPanel({
       <div className="p3d g3d-panel-view">
         {seen &&
           (graph ? (
-            <PanelStage graph={graph} product={product} />
+            <PanelStage
+              graph={graph}
+              product={product}
+              productId={productId}
+              productName={productName}
+            />
           ) : (
             <Loading error={error} testId="kg-panel" />
           ))}
@@ -172,11 +211,14 @@ export function KnowledgeGraphPanel({
           opened={open}
           onClose={() => setOpen(false)}
           title={t("graph3d.expandTitle", { product: productName })}
-          data={data}
+          data={scoped?.data ?? EMPTY}
+          query={{ all: data, onScope, text: scoped?.query ?? null, own: product }}
           scope={PRODUCT_SCOPE}
           preset="knowledge"
+          exportName={productName}
           focus={product}
           zero={membersOf(data, product)}
+          settingsKey={{ kind: "product-graph", subject: productId }}
         />
       )}
     </div>
@@ -188,7 +230,7 @@ export function KnowledgeGraphPanel({
 export function ProductMapButton() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const { data, error } = useProductGraph(null, open);
+  const { data, error, scoped, onScope } = useProductGraph(null, open);
   return (
     <>
       <Button
@@ -210,11 +252,14 @@ export function ProductMapButton() {
           opened={open}
           onClose={() => setOpen(false)}
           title={t("graph3d.productMap")}
-          data={data}
+          data={scoped?.data ?? EMPTY}
+          query={{ all: data, onScope, text: scoped?.query ?? null }}
           scope={PRODUCT_SCOPE}
           preset="productMap"
+          exportName="product-map"
           focus={null}
           zero={[]}
+          settingsKey={{ kind: "product-map", subject: null }}
         />
       )}
     </>

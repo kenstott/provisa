@@ -90,6 +90,16 @@
     "readOnly": "Alleen-lezen",
     "readOnlyHint": "U kunt de ontologie lezen maar niet cureren. Termen, definities en relaties cureren vereist de capability glossary_rw.",
     "expertUserPlaceholder": "Personen zoeken…",
-    "enterpriseDomainLabel": "Alle domeinen (organisatiebreed)"
+    "enterpriseDomainLabel": "Alle domeinen (organisatiebreed)",
+    "roleLabel": "Rol",
+    "role_class": "Klasse",
+    "role_property": "Eigenschap",
+    "role_concept": "Concept",
+    "roleHelp_class": "Verankerd in tabellen: benoemt wat elk van hun rijen is.",
+    "roleHelp_property": "Verankerd in kolommen: benoemt wat hun waarden zijn.",
+    "roleHelp_concept": "Niet verankerd in tabellen of kolommen.",
+    "groundedTablesTitle": "Verankerd in tabellen",
+    "groundedTablesPlaceholder": "Tabellen waarvan deze term de rijen benoemt",
+    "noGroundedTables": "In geen tabel verankerd"
   }
 }

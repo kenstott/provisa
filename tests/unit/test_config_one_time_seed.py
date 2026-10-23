@@ -678,7 +678,21 @@ def _everything() -> dict:
         domains=("sales", "analytics"),
         sources=("cfg", "old"),
         tables=[
-            _table("orders", description="all orders", hot=True),
+            _table(
+                "orders",
+                description="all orders",
+                hot=True,
+                # REQ-2141: a class term, which needs the table keyed.
+                class_term="Bookings",
+                columns=[
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "visible_to": ["seller"],
+                        "is_primary_key": True,
+                    }
+                ],
+            ),
             _table("customers", domain_id="analytics", alias="clients"),
             _table("legacy", source_id="old"),
             _view("big_orders", "SELECT id FROM orders"),

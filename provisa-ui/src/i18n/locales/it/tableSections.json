@@ -31,6 +31,10 @@
       "fail": "Non superato",
       "error": "Errore",
       "skipped": "Saltato"
-    }
+    },
+    "classTerm": "Le righe sono istanze di",
+    "classTermPlaceholder": "Scegli un termine",
+    "noClassTerm": "Nessun termine",
+    "classTermUnreadable": "Impossibile leggere il suo termine: {{error}}"
   }
 }

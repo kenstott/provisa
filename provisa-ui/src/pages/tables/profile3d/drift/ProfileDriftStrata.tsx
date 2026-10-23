@@ -11,6 +11,8 @@
 // REQ-2124: drift strata — one column's distribution in the selected run and the runs before it,
 // stacked oldest to newest, with the median traced through them and the runs that drifted marked.
 
+import { ResetSettingsButton } from "../ResetSettingsButton";
+import { useGraphSettings } from "../graphSettings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Chip, Group, Loader, Select, Text } from "@mantine/core";
@@ -27,6 +29,8 @@ import "../profile3d.css";
 export const STRATA_RUNS = 8;
 
 interface Shared {
+  /** What the view's exports are named after. */
+  exportName: string;
   columns: string[];
   column: string;
   setColumn: (c: string) => void;
@@ -36,6 +40,7 @@ interface Shared {
   setRotate: (on: boolean) => void;
   hover: StrataHover | null;
   setHover: (h: StrataHover | null) => void;
+  resetSettings: () => void;
 }
 
 const runTimeLabel = (iso: string) =>
@@ -128,6 +133,8 @@ function DriftStage({ s, command }: { s: Shared; command: CameraCommand | null }
       error={error}
       canvasLabel={t("profileStrata.canvasLabel")}
       tip={tip && body ? { x: tip.x, y: tip.y, body } : null}
+      exportable={scene}
+      exportName={s.exportName}
       testId="strata-stage"
       legend={
         <>
@@ -240,6 +247,7 @@ function DriftView({
         >
           {t("profile3d.resetView")}
         </Button>
+        <ResetSettingsButton onReset={s.resetSettings} testId="strata" />
         {onExpand && <ExpandButton onClick={onExpand} testId="strata-expand" />}
       </Group>
       <div className="p3d-body">
@@ -250,7 +258,15 @@ function DriftView({
   );
 }
 
-function DriftLoaded({ inputs, tableName }: { inputs: StrataRunInput[]; tableName: string }) {
+function DriftLoaded({
+  inputs,
+  tableId,
+  tableName,
+}: {
+  inputs: StrataRunInput[];
+  tableId: number;
+  tableName: string;
+}) {
   const { t } = useTranslation();
   const columns = useMemo(() => strataColumns(inputs), [inputs]);
   const preferred = useMemo(() => {
@@ -262,12 +278,21 @@ function DriftLoaded({ inputs, tableName }: { inputs: StrataRunInput[]; tableNam
     );
     return d ? String(d.column_name) : columns[0];
   }, [inputs, columns]);
-  const [picked, setColumn] = useState<string | null>(null);
+  // Remembered for this table's strata (graphSettings.ts). A column the reader picked that the runs
+  // no longer have falls back to the one the selected run found drifting.
+  const [saved, save, resetSettings] = useGraphSettings(
+    { kind: "profile-strata", subject: tableId },
+    { column: null as string[] | null, rotate: false as boolean },
+  );
+  const picked = (saved.column as string[] | null)?.[0] ?? null;
+  const setColumn = (c: string) => save("column", [c]);
   const column = picked != null && columns.includes(picked) ? picked : preferred;
   const model = useMemo(() => buildStrata(inputs, column), [inputs, column]);
-  const [rotate, setRotate] = useState(false);
+  const rotate = saved.rotate as boolean;
+  const setRotate = (on: boolean) => save("rotate", on);
   const [hover, setHover] = useState<StrataHover | null>(null);
   const s: Shared = {
+    exportName: `${tableName}-strata`,
     columns,
     column,
     setColumn: (c) => {
@@ -280,6 +305,7 @@ function DriftLoaded({ inputs, tableName }: { inputs: StrataRunInput[]; tableNam
     setRotate,
     hover,
     setHover,
+    resetSettings,
   };
   return (
     <Expandable3D
@@ -355,5 +381,5 @@ export function ProfileDriftStrata({
       </Text>
     );
   }
-  return <DriftLoaded inputs={loaded.inputs} tableName={tableName} />;
+  return <DriftLoaded inputs={loaded.inputs} tableId={tableId} tableName={tableName} />;
 }

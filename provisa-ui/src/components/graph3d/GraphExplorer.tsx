@@ -12,14 +12,20 @@
 // on and off, filtered by domain, tag, sensitivity and a focus, under named presets that set the
 // layers and the layout. A layer the data has nothing in (the role cannot read it) is not offered.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
-import { useAttraction } from "../../pages/tables/profile3d/attractionState";
+import { ATTRACTION_MAX, ATTRACTION_MIN } from "../../pages/tables/profile3d/attractionState";
 import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
-import { useGrid } from "../../pages/tables/profile3d/gridState";
+import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
+import {
+  chosenNow,
+  selectionToSave,
+  useGraphSettings,
+  type GraphKey,
+} from "../../pages/tables/profile3d/graphSettings";
 import { matchesSearch, searchItems } from "../../lib/searchItems";
 import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
@@ -38,18 +44,22 @@ import {
   type LayerId,
   type Preset,
   type PresetId,
+  type QueryScope,
   type TermStatus,
 } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
+import { kindKey } from "./nodeLook";
+import { OpenAsQuery } from "./OpenAsQuery";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
 /** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
 const STATUSES: TermStatus[] = ["proposed", "deprecated", "retired"];
 
-/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns. */
-const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns"]);
+/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns,
+ * and its Tables, which draws the tables of the columns drawn and so goes with Columns. */
+const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "ownerTables"]);
 
 export function GraphExplorer({
   data,
@@ -59,6 +69,9 @@ export function GraphExplorer({
   zero,
   onExpand,
   search,
+  settingsKey,
+  exportName,
+  query,
   testId = "graph3d",
 }: {
   data: GraphData;
@@ -72,6 +85,21 @@ export function GraphExplorer({
   /** The page's search, focusing the graph in place of its own focus field: the terms and
    * products it matches (searchItems' rule) and their neighbourhoods; empty, the whole graph. */
   search?: string;
+  /** Which graph's settings these are (graphSettings.ts): kept across reloads, per graph. */
+  settingsKey: GraphKey;
+  /** What the graph's exports are named after; the preset drawn is added ("ontology-taxonomy"). */
+  exportName: string;
+  /** REQ-2136: the layers and the domain, edge type and status filters run in the view's query.
+   * The page reads ``data`` for the scope ``onScope`` reports; ``all`` (every layer, no filter)
+   * is what the controls choose from, since ``data`` holds only what the filters keep. */
+  query?: {
+    all: GraphData;
+    onScope: (s: QueryScope) => void;
+    text: string | null;
+    /** The focus the query itself states (a product's graph, read for that product): no
+     * neighbourhood beyond the query's own. */
+    own?: string;
+  };
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -80,45 +108,174 @@ export function GraphExplorer({
     if (!found) throw new Error(`No ${p} preset in this graph`);
     return found;
   };
-  const offered = useMemo(() => availableLayers(data, scope), [data, scope]);
-  const choices = useMemo(() => filterChoices(data), [data]);
+  const every = query?.all ?? data;
+  const offered = useMemo(() => availableLayers(every, scope), [every, scope]);
+  const choices = useMemo(() => filterChoices(every), [every]);
   const edgeTypes = useMemo(
     () =>
-      [...new Set(data.edges.filter((e) => e.kind === "term_edge").map((e) => e.label ?? ""))]
+      [
+        ...new Set(
+          every.edges.filter((e) => scope.typedKinds.includes(e.kind)).map((e) => e.label ?? ""),
+        ),
+      ]
         .filter(Boolean)
         .sort(),
-    [data],
+    [every, scope],
   );
-  const hasStatus = useMemo(() => data.nodes.some((n) => n.status !== undefined), [data]);
-  const hasTerms = useMemo(() => data.nodes.some((n) => n.type === "term"), [data]);
-  // Terms left with no relationship under the chosen edge types and domains: drawn until unchecked.
-  const [orphans, setOrphans] = useState(true);
-  const [preset, setPreset] = useState<PresetId>(initialPreset);
-  const [layers, setLayers] = useState<Set<LayerId>>(new Set(presetOf(initialPreset).layers));
-  // The first render is the whole graph: every edge type (unless the preset picks its own) and
-  // every domain chosen, and the reader narrows from there.
-  const [filters, setFilters] = useState<GraphFilters>({
-    ...NO_FILTERS,
-    focus: initialFocus ? [initialFocus] : [],
-    domains: choices.domains,
-    edgeTypes: presetOf(initialPreset).edgeTypes ?? edgeTypes,
-    hiddenStatuses: scope.hiddenStatuses,
+  const hasStatus = useMemo(() => every.nodes.some((n) => n.status !== undefined), [every]);
+  const hasTerms = useMemo(() => every.nodes.some((n) => n.type === "term"), [every]);
+  // Everything the reader sets here is remembered for this graph (graphSettings.ts): the preset,
+  // layers, toggles and filters. The focus is the page's (its search, or the product it opened on)
+  // and the camera is where the reader left it, so neither is kept.
+  const [saved, save, resetSettings] = useGraphSettings(settingsKey, {
+    preset: initialPreset as string,
+    layers: presetOf(initialPreset).layers as string[],
+    // Terms left with no relationship under the chosen edge types and domains: drawn until unchecked.
+    orphans: true as boolean,
+    rotate: false as boolean,
+    attraction: 1 as number,
+    grid: true as boolean,
+    // null: every domain, every edge type (or the preset's own), so a new one is drawn too.
+    domains: null as string[] | null,
+    edgeTypes: null as string[] | null,
+    hiddenStatuses: scope.hiddenStatuses as string[],
+    tags: [] as string[],
+    sensitivities: [] as string[],
   });
+  const preset: PresetId = scope.presetOrder.includes(saved.preset as PresetId)
+    ? (saved.preset as PresetId)
+    : initialPreset;
+  const presetOwn = scope.presets[preset]?.edgeTypes;
+  const presetTypes = useMemo(() => presetOwn ?? edgeTypes, [presetOwn, edgeTypes]);
+  const savedLayers = saved.layers as string[];
+  const layers = useMemo(
+    () => new Set(savedLayers.filter((l): l is LayerId => scope.layerOrder.includes(l as LayerId))),
+    [savedLayers, scope],
+  );
+  const orphans = saved.orphans as boolean;
+  const rotate = saved.rotate as boolean;
+  const attraction = Math.min(ATTRACTION_MAX, Math.max(ATTRACTION_MIN, saved.attraction as number));
+  const grid = saved.grid as boolean;
+  const [focus, setFocus] = useState<string[]>(initialFocus ? [initialFocus] : []);
+  const savedDomains = saved.domains as string[] | null;
+  const savedTypes = saved.edgeTypes as string[] | null;
+  const savedStatuses = saved.hiddenStatuses as string[];
+  const savedTags = saved.tags as string[];
+  const savedSensitivities = saved.sensitivities as string[];
+  const filters: GraphFilters = useMemo(
+    () => ({
+      ...NO_FILTERS,
+      focus,
+      domains: chosenNow(savedDomains, choices.domains),
+      edgeTypes: savedTypes === null ? presetTypes : chosenNow(savedTypes, edgeTypes),
+      hiddenStatuses: savedStatuses.filter((st): st is TermStatus =>
+        STATUSES.includes(st as TermStatus),
+      ),
+      tags: chosenNow(savedTags, choices.tags),
+      sensitivities: chosenNow(savedSensitivities, choices.sensitivities),
+    }),
+    [
+      focus,
+      savedDomains,
+      savedTypes,
+      savedStatuses,
+      savedTags,
+      savedSensitivities,
+      choices,
+      presetTypes,
+      edgeTypes,
+    ],
+  );
+  const setFilters = (change: (f: GraphFilters) => GraphFilters) => {
+    const next = change(filters);
+    if (next.focus !== filters.focus) setFocus(next.focus);
+    if (next.domains !== filters.domains)
+      save("domains", selectionToSave(next.domains, choices.domains));
+    if (next.edgeTypes !== filters.edgeTypes)
+      save(
+        "edgeTypes",
+        presetTypes.length === next.edgeTypes.length &&
+          presetTypes.every((x) => next.edgeTypes.includes(x))
+          ? null
+          : [...next.edgeTypes],
+      );
+    if (next.hiddenStatuses !== filters.hiddenStatuses)
+      save("hiddenStatuses", [...next.hiddenStatuses]);
+    if (next.tags !== filters.tags) save("tags", [...next.tags]);
+    if (next.sensitivities !== filters.sensitivities)
+      save("sensitivities", [...next.sensitivities]);
+  };
+  const setOrphans = (on: boolean) => save("orphans", on);
+  const setRotate = (on: boolean) => save("rotate", on);
+  const setAttraction = (v: number) => save("attraction", v);
+  const setGrid = (on: boolean) => save("grid", on);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [frame, setFrame] = useState(0);
   const [picked, setSelected] = useState<string | null>(initialFocus);
   const [hover, setHover] = useState<GraphHover | null>(null);
-  const [rotate, setRotate] = useState(false);
   const [command, setCommand] = useState<CameraCommand | null>(null);
   const move = (kind: CameraCommand["kind"], target: string | null) =>
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
 
+  // Tables are the tables of the columns drawn: without Columns, there are none to draw.
+  const on = useMemo(
+    () =>
+      new Set(
+        [...layers].filter((l) => offered.has(l) && (l !== "ownerTables" || layers.has("columns"))),
+      ),
+    [layers, offered],
+  );
+  // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
+  // carry no domain included.
+  const narrowed = useMemo(() => {
+    const all = (chosen: string[], among: string[]) =>
+      among.length > 0 && among.every((v) => chosen.includes(v)) ? [] : chosen;
+    return {
+      domains: all(filters.domains, choices.domains),
+      edgeTypes: all(filters.edgeTypes, edgeTypes),
+      tags: all(filters.tags, choices.tags),
+      sensitivities: all(filters.sensitivities, choices.sensitivities),
+    };
+  }, [filters, choices, edgeTypes]);
+  // The scope the query reads, reported whenever it changes (a key, so an equal one is not news).
+  const onScope = query?.onScope;
+  const scopeKey = JSON.stringify([
+    [...on].sort(),
+    narrowed.domains,
+    narrowed.edgeTypes,
+    filters.hiddenStatuses,
+    orphans,
+    narrowed.tags,
+    narrowed.sensitivities,
+  ]);
+  useEffect(() => {
+    if (!onScope) return;
+    const [l, domains, types, statuses, kept, tags, sensitivities] = JSON.parse(scopeKey) as [
+      LayerId[],
+      string[],
+      string[],
+      TermStatus[],
+      boolean,
+      string[],
+      string[],
+    ];
+    onScope({
+      layers: new Set(l),
+      domains,
+      edgeTypes: types,
+      hiddenStatuses: statuses,
+      orphans: kept,
+      tags,
+      sensitivities,
+    });
+  }, [onScope, scopeKey]);
+
+  // A focus draws a neighbourhood (reach), which no query states: the page's search or a node.
+  const focused =
+    (search !== undefined && searchItems(search).length > 0) ||
+    filters.focus.some((f) => f !== query?.own);
+
   const shown = useMemo(() => {
-    const on = new Set([...layers].filter((l) => offered.has(l)));
-    // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
-    // carry no domain included.
-    const all = (chosen: string[], every: string[]) =>
-      every.length > 0 && every.every((v) => chosen.includes(v)) ? [] : chosen;
     // The page's search, when it drives the focus: what it matches, by title or definition.
     const items = search === undefined ? null : searchItems(search);
     const matched =
@@ -131,14 +288,17 @@ export function GraphExplorer({
     // A search that matches nothing draws nothing.
     if (items !== null && items.length > 0 && matched?.length === 0)
       return { nodes: [], edges: [] };
+    // Under a query the domains, edge types and statuses are its own: ``data`` is what they keep.
     const narrowing = {
       ...filters,
       focus: matched ?? filters.focus,
-      domains: all(filters.domains, choices.domains),
-      edgeTypes: all(filters.edgeTypes, edgeTypes),
+      ...(query
+        ? { domains: [], edgeTypes: [], hiddenStatuses: [], tags: [], sensitivities: [] }
+        : narrowed),
     };
     const g = visibleGraph(data, on, narrowing, expanded, scope);
-    if (orphans) return g;
+    // Under a query its Orphans is its own too.
+    if (orphans || query) return g;
     // An orphan has no term relationship drawn, and no column it IS while Columns is on; its
     // domain does not count.
     const related = (e: GraphEdge) => e.kind === "term_edge" || e.kind === "term_binding";
@@ -147,10 +307,8 @@ export function GraphExplorer({
     const kept = new Set(nodes.map((n) => n.id));
     // With an orphan go the edges that only placed it (its domain).
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
-  }, [data, layers, offered, filters, expanded, scope, choices, edgeTypes, orphans, search]);
+  }, [data, on, filters, narrowed, query, expanded, scope, orphans, search]);
   const layout = presetOf(preset).layout;
-  const [attraction, setAttraction] = useAttraction(testId);
-  const [grid, setGrid] = useGrid(testId);
   const at = useMemo(
     () => layoutGraph(shown, layout, zero, attraction),
     [shown, layout, zero, attraction],
@@ -164,19 +322,15 @@ export function GraphExplorer({
     [data],
   );
 
+  // A preset chooses its layers and its edge types afresh.
   const choosePreset = (p: PresetId) => {
-    setPreset(p);
-    setLayers(new Set(presetOf(p).layers));
-    setFilters((f) => ({ ...f, edgeTypes: presetOf(p).edgeTypes ?? edgeTypes }));
+    save("preset", p);
+    save("layers", [...presetOf(p).layers]);
+    save("edgeTypes", null);
     setFrame((f) => f + 1);
   };
   const toggleLayer = (l: LayerId, on: boolean) =>
-    setLayers((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(l);
-      else next.delete(l);
-      return next;
-    });
+    save("layers", on ? [...layers, l] : [...layers].filter((x) => x !== l));
 
   const selected = shown.nodes.some((n) => n.id === picked) ? picked : null;
   const s: StageState = {
@@ -219,6 +373,8 @@ export function GraphExplorer({
         {layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}
+        <ResetSettingsButton onReset={resetSettings} testId={testId} />
+        {query && <OpenAsQuery query={query.text} focused={focused} testId={testId} />}
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
       <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>
@@ -295,6 +451,17 @@ export function GraphExplorer({
             {t("graph3d.columnsToggle")}
           </Chip>
         )}
+        {offered.has("ownerTables") && (
+          <Chip
+            size="xs"
+            checked={layers.has("ownerTables")}
+            disabled={!layers.has("columns")}
+            onChange={(on) => toggleLayer("ownerTables", on)}
+            data-testid={`${testId}-tables`}
+          >
+            {t("graph3d.tablesToggle")}
+          </Chip>
+        )}
         {scope.orphans && hasTerms && (
           <Chip size="xs" checked={orphans} onChange={setOrphans} data-testid={`${testId}-orphans`}>
             {t("graph3d.orphans")}
@@ -344,7 +511,12 @@ export function GraphExplorer({
             </Text>
           </div>
         ) : (
-          <GraphStage s={s} command={command} testId={`${testId}-stage`} />
+          <GraphStage
+            s={s}
+            command={command}
+            exportName={preset === exportName ? exportName : `${exportName}-${preset}`}
+            testId={`${testId}-stage`}
+          />
         )}
         <GraphDetail
           graph={shown}
@@ -353,6 +525,7 @@ export function GraphExplorer({
           setSelected={setSelected}
           setHover={setHover}
           expanded={expanded}
+          folds={scope.foldColumns}
           toggleExpanded={(id) =>
             setExpanded((prev) => {
               const next = new Set(prev);
@@ -378,6 +551,7 @@ function GraphDetail({
   setSelected,
   setHover,
   expanded,
+  folds,
   toggleExpanded,
   onFocus,
   testId,
@@ -388,6 +562,8 @@ function GraphDetail({
   setSelected: (id: string) => void;
   setHover: (h: GraphHover | null) => void;
   expanded: ReadonlySet<string>;
+  /** Whether a table's columns fold into it (and so can be shown on asking). */
+  folds: boolean;
   toggleExpanded: (id: string) => void;
   onFocus: (id: string) => void;
   testId: string;
@@ -397,11 +573,19 @@ function GraphDetail({
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.label ?? id;
   const links = node ? edgesOf(graph, node.id) : [];
   const hasColumns =
-    node?.type === "table" && data.nodes.some((n) => n.type === "column" && n.parent === node.id);
+    folds &&
+    node?.type === "table" &&
+    data.nodes.some((n) => n.type === "column" && n.parent === node.id);
+  // Each kind drawn, named as its look shows it, with how many.
   const counts = useMemo(() => {
-    const by = new Map<string, number>();
-    for (const n of graph.nodes) by.set(n.type, (by.get(n.type) ?? 0) + 1);
-    return [...by.entries()].sort((a, b) => b[1] - a[1]);
+    const by = new Map<string, { key: string; type: string; count: number }>();
+    for (const n of graph.nodes) {
+      const key = kindKey(n);
+      const seen = by.get(key);
+      if (seen) seen.count += 1;
+      else by.set(key, { key, type: n.type, count: 1 });
+    }
+    return [...by.values()].sort((a, b) => b.count - a.count);
   }, [graph]);
   return (
     <div className="p3d-detail">
@@ -409,7 +593,7 @@ function GraphDetail({
         <section data-testid={`${testId}-detail`} aria-live="polite">
           <div className="p3d-col-head">
             <h4>{node.label}</h4>
-            <span className="p3d-kind">{t(`graph3d.type_${node.type}`)}</span>
+            <span className="p3d-kind">{t(kindKey(node))}</span>
           </div>
           {node.definition && (
             <ClampedDetail testId={`${testId}-definition`}>
@@ -467,18 +651,18 @@ function GraphDetail({
       <section>
         <h5 className="p3d-section-title">{t("graph3d.shown")}</h5>
         <div className="p3d-list">
-          {counts.map(([type, count]) => (
-            <div key={type} className="p3d-row p3d-row-compact">
+          {counts.map(({ key, type, count }) => (
+            <div key={key} className="p3d-row p3d-row-compact">
               <span className="p3d-row-name">
                 <i className={`p3d-dot g3d-sw-${type}`} />
-                {t(`graph3d.type_${type}`)}
+                {t(key)}
               </span>
               <span className="p3d-num">{count}</span>
             </div>
           ))}
         </div>
       </section>
-      <p className="p3d-note">{t("graph3d.note")}</p>
+      <p className="p3d-note">{t(folds ? "graph3d.note" : "graph3d.noteUnfolded")}</p>
     </div>
   );
 }

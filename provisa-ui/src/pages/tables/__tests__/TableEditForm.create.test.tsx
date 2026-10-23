@@ -16,6 +16,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../../../test-utils/render";
 
+// The table's class term reads the meta domain as the user: its own tests (termGrounding) hold it.
+vi.mock("../TableClassTerm", () => ({ TableClassTerm: () => <span>class term</span> }));
 vi.mock("../../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/admin")>()),
 }));
