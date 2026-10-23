@@ -675,10 +675,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         order_exprs = self._build_order_by(self._ast.order_by)
 
         if self._ast.construct is not None:
-            if self._extra_path_branches or self._ast.union_parts:
-                raise CypherTranslateError(
-                    "A CONSTRUCT's pattern is one match; it has no UNION and no several-path branch"
-                )
+            if self._extra_path_branches:
+                raise CypherTranslateError("A CONSTRUCT's pattern has no several-path branch")
+            if not all(is_all for _, is_all in self._ast.union_parts):
+                raise CypherTranslateError("A CONSTRUCT's parts are put together with UNION ALL")
             result: exp.Select | exp.Union = self._construct_union(
                 from_clause, joins, where_expr, selects
             )
@@ -695,7 +695,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # If this is the first branch of a UNION ALL and has a per-branch LIMIT/SKIP,
         # apply it to just this branch before folding the union. Without this the limit
         # would be placed on the outer wrapper and constrain the whole union result.
-        if self._ast.union_parts and (self._ast.limit is not None or self._ast.skip is not None):
+        if (
+            self._ast.union_parts
+            and not self._ast.modifiers_of_whole
+            and (self._ast.limit is not None or self._ast.skip is not None)
+        ):
             if self._ast.limit is not None:
                 result = result.limit(self._ast.limit)
             if self._ast.skip is not None:
