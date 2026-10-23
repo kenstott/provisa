@@ -349,6 +349,28 @@ def _with_member_list_team(contract: dict[str, Any]) -> dict[str, Any]:
     return {**contract, "team": members}
 
 
+# OpenMetadata's maxLatency unit (contractSLA in its dataContract.json): no seconds.
+_LATENCY_UNITS = (("day", 86400), ("hour", 3600), ("minute", 60))
+
+
+def _with_openmetadata_latency(contract: dict[str, Any]) -> dict[str, Any]:
+    """The contract with its latency in OpenMetadata's units: the largest unit the seconds fill
+    exactly, else whole minutes rounded up, which still bounds how far a read may trail."""
+    sla = contract.get("slaProperties")
+    if sla is None:
+        return contract
+    converted = []
+    for prop in sla:
+        if prop["property"] == "latency":
+            seconds = prop["value"]
+            unit, size = next(
+                ((u, n) for u, n in _LATENCY_UNITS if seconds % n == 0), _LATENCY_UNITS[-1]
+            )
+            prop = {**prop, "value": -(-seconds // size), "unit": unit}
+        converted.append(prop)
+    return {**contract, "slaProperties": converted}
+
+
 def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """Each data product member's ODCS 3.1 contract, through OpenMetadata's ODCS import
     (REQ-2118): the same document Provisa serves at /data-products/{id}/contracts/."""
@@ -364,7 +386,9 @@ def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
                     asset=table.ref,
                     path="/api/v1/dataContracts/odcs",
                     kind="data_contract",
-                    body=_with_member_list_team(odcs_contract(snapshot, product, table)),
+                    body=_with_openmetadata_latency(
+                        _with_member_list_team(odcs_contract(snapshot, product, table))
+                    ),
                     for_table=_table_fqn(table),
                 )
             )

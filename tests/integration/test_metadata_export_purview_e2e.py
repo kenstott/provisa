@@ -31,6 +31,7 @@ import httpx
 import pytest
 
 from provisa.api.metadata_export.purview import API_VERSION
+from provisa.api.metadata_export.refs import data_product_uri
 from tests.integration.metadata_export_server import (
     PRODUCT_FIELDS,
     publish,
@@ -126,19 +127,19 @@ async def _hold_owner_role(client: httpx.AsyncClient, email: str) -> None:
         await conn.close()
 
 
-def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict], list[str]]:
-    """The Unified Catalog product named ``name``, its related data assets and their Data Map
-    guids, then all of them deleted."""
+def _read_back(creds: dict[str, str], product_id: str) -> tuple[dict | None, list[dict], list[str]]:
+    """The Unified Catalog product the publish wrote, read by the id the adapter gives it, so the
+    read needs no permission the publish lacks; its related data assets and their Data Map guids,
+    then all of them deleted."""
     headers = {"Authorization": f"Bearer {_token(creds, 'https://purview.azure.net/.default')}"}
     params = {"api-version": API_VERSION}
     base = _catalog(creds)
     with httpx.Client(headers=headers, timeout=60) as http:
-        listed = http.post(f"{base}/dataProducts/query", params=params, json={"nameKeyword": name})
-        listed.raise_for_status()
-        found = [p for p in listed.json().get("value", []) if p["name"] == name]
-        if not found:
+        got_product = http.get(f"{base}/dataProducts/{product_id}", params=params)
+        if got_product.status_code == 404:
             return None, [], []
-        product = found[0]
+        got_product.raise_for_status()
+        product = got_product.json()
         related = http.get(
             f"{base}/dataProducts/{product['id']}/relationships",
             params={**params, "entityType": "DATAASSET"},
@@ -171,7 +172,6 @@ async def published():
         ORG, with_view=False, product=product, domain=DOMAIN, product_name=name
     ) as client:
         await _hold_owner_role(client, email)
-        # The run's product carries the run's name, so it is found and deleted by it.
         result = await publish(
             client,
             {
@@ -184,7 +184,9 @@ async def published():
                 "timeout_seconds": 120,
             },
         )
-    found, assets, guids = _read_back(creds, name)
+    found, assets, guids = _read_back(
+        creds, str(uuid.uuid5(uuid.NAMESPACE_URL, data_product_uri(ORG, DOMAIN, product)))
+    )
     yield result, found, assets, guids, oid
 
 

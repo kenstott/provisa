@@ -208,6 +208,23 @@ def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
     ]
 
 
+@pytest.mark.parametrize(
+    ("cache_ttl", "value", "unit"),
+    [(3600, 1, "hour"), (172800, 2, "day"), (300, 5, "minute"), (90, 2, "minute")],
+)
+def test_a_contracts_latency_goes_to_openmetadata_in_its_units(cache_ttl, value, unit):  # REQ-2118
+    """OpenMetadata's maxLatency has no seconds: the largest unit the seconds fill exactly, else
+    whole minutes rounded up, so the bound it states still holds."""
+    from provisa.api.metadata_export.openmetadata import _data_contract_entities
+
+    config = _config()
+    config.tables[0].cache_ttl = cache_ttl
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    (contract,) = _data_contract_entities(snapshot)
+    (latency,) = contract.body["slaProperties"]
+    assert (latency["property"], latency["value"], latency["unit"]) == ("latency", value, unit)
+
+
 def test_a_view_is_seated_in_the_derived_layers_service_and_database():  # REQ-2119
     """A view's schema names a database, and the database a service; the view's source is the
     derived layer, so that layer gets the service and database its schema names."""
