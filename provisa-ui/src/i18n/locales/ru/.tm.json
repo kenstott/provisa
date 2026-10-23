@@ -7803,5 +7803,7 @@
   "ru/tableSections.json::tableSections.classTerm": "Rows are instances of",
   "ru/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "ru/tableSections.json::tableSections.noClassTerm": "No term",
-  "ru/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}"
+  "ru/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
+  "ru.json::pageError.title": "This page could not be shown",
+  "ru.json::pageError.body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one."
 }

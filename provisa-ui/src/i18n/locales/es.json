@@ -93,5 +93,9 @@
     "notGranted": "El rol con el que actúa no concede esta página. Uno de los roles que tiene sí:",
     "switchTo": "Cambiar a {{role}}",
     "noneHeld": "Ninguno de los roles que tiene concede esta página."
+  },
+  "pageError": {
+    "title": "No se pudo mostrar esta página",
+    "body": "Falló al renderizarse. El resto de la aplicación sigue funcionando: vaya a otra página o vuelva a cargar esta."
   }
 }
