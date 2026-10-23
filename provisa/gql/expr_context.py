@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, cast
 import sqlglot.expressions as exp
 
 from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr, Term
+from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -221,6 +222,17 @@ class TranslatorExprContext:
             agg = self._agg_node(lname, args[0])
             if agg is not None:
                 return agg
+        if lname == "group_concat":
+            # REQ-2135: SPARQL's GROUP_CONCAT, each engine's own string aggregate over the values'
+            # text, the separator its second argument. Ordered by the text, since an engine
+            # (Trino's LISTAGG) requires an order, and so the string is the same each time.
+            if distinct:
+                raise CypherTranslateError("GROUP_CONCAT(DISTINCT ...) is not supported")
+            text = exp.Cast(this=args[0], to=exp.DataType.build("VARCHAR"))
+            return exp.GroupConcat(
+                this=exp.Order(this=text, expressions=[exp.Ordered(this=text.copy())]),
+                separator=args[1],
+            )
         # Build the raw call; Cypher→engine renames/casts are applied once, post-lowering, by the same
         # AST transform the old path uses (`_rewrite_cypher_fn_node`). DISTINCT is carried on aggregates.
         call = exp.Anonymous(this=name, expressions=args)

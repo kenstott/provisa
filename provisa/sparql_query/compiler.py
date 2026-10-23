@@ -105,6 +105,8 @@ class CompiledSparql:
     ast: CypherAST | None
     variables: list[str]
     empty: bool = False
+    #: The one solution an empty query still has: an aggregate over no solutions (COUNT is 0).
+    empty_row: dict[str, Any] | None = None
 
 
 # --- groups ------------------------------------------------------------------------------------
@@ -160,8 +162,55 @@ def _alternatives(p: CompValue) -> list[_Group]:
     if name in ("ToMultiSet", "values"):
         raise SparqlRefused("VALUES and sub-SELECTs are not supported")
     if name in ("Group", "AggregateJoin"):
-        raise SparqlRefused("GROUP BY and aggregates are not supported")
+        raise SparqlRefused("GROUP BY and aggregates are supported only at the top of a query")
     raise SparqlRefused(f"The SPARQL operator {name} is not supported")
+
+
+@dataclass
+class _Aggregation:
+    """A query's GROUP BY: its keys (variables; empty for one group of every solution), its
+    aggregates by the variable each result is, the projection's rebindings over them (in the
+    order they apply) and its HAVING conditions."""
+
+    keys: list[str]
+    aggregates: dict[str, Any]
+    rebinds: list[tuple[str, Any]]
+    having: list[Any]
+
+
+def _aggregation(p: CompValue) -> tuple[CompValue, _Aggregation | None]:
+    """Peel a GROUP BY's rebindings and HAVING off ``p``: the pattern it groups, and it."""
+    rebinds: list[tuple[str, Any]] = []
+    having: list[Any] = []
+    top = p
+    while p.name in ("Extend", "Filter"):
+        if p.name == "Extend":
+            rebinds.append((str(p.var), p.expr))
+        else:
+            having.append(p.expr)
+        p = p.p
+    if p.name != "AggregateJoin":
+        return top, None
+    group = p.p
+    keys = []
+    for key in group.expr or []:
+        if not isinstance(key, RdfVariable):
+            raise SparqlRefused("GROUP BY groups by variables; bind an expression to one first")
+        keys.append(str(key))
+    aggregates = {str(a.res): a for a in p.A}
+    return group.p, _Aggregation(keys, aggregates, list(reversed(rebinds)), having)
+
+
+_AGGREGATE_NAMES = {
+    "Aggregate_Count": "count",
+    "Aggregate_Sum": "sum",
+    "Aggregate_Avg": "avg",
+    "Aggregate_Min": "min",
+    "Aggregate_Max": "max",
+    "Aggregate_Sample": "min",
+    "Aggregate_GroupConcat": "group_concat",
+}
+_NUMERIC = {f"{XSD}{t}" for t in ("integer", "decimal", "double", "float")}
 
 
 def _solution_modifiers(p: CompValue) -> tuple[CompValue, dict[str, Any]]:
@@ -662,7 +711,79 @@ class _Lowering:
 
     # -- the statement --------------------------------------------------------------------
 
-    def statement(self, group: _Group, labels: dict[str, str], mods: dict, form: str, template):
+    def _aggregate(self, a: Any, bindings, labels) -> tuple[CypherExpr, str | None]:
+        """One SPARQL aggregate as the IR's call, with the datatype of its result."""
+        name = _AGGREGATE_NAMES.get(a.name)
+        if name is None:
+            raise SparqlRefused(
+                f"The aggregate {a.name.removeprefix('Aggregate_')} is not supported"
+            )
+        distinct = a.get("distinct") == "DISTINCT"
+        if str(a.vars) == "*":
+            return FunctionCall("count", [], distinct=distinct, star=True), f"{XSD}integer"
+        operand = a.vars
+        var = str(operand) if isinstance(operand, RdfVariable) else None
+        if var is not None and var in labels:
+            if name not in ("count",):
+                raise SparqlRefused(
+                    f"?{var} is a subject; COUNT it, or aggregate one of its properties"
+                )
+            arg: CypherExpr = self._key_of(var, labels)
+            datatype = None
+        else:
+            arg = self.expr(operand, bindings, labels)
+            datatype = bindings[var][1] if var is not None and var in bindings else None
+        if name == "count":
+            return FunctionCall("count", [arg], distinct=distinct), f"{XSD}integer"
+        if name == "group_concat":
+            separator = a.get("separator")
+            sep = Literal(" " if separator is None else str(separator), "string")
+            return FunctionCall("group_concat", [arg, sep], distinct=distinct), f"{XSD}string"
+        if name == "avg":
+            return FunctionCall("avg", [arg], distinct=distinct), (
+                f"{XSD}double" if datatype in (f"{XSD}double", f"{XSD}float") else f"{XSD}decimal"
+            )
+        if name == "sum":
+            kept = datatype if datatype in _NUMERIC else f"{XSD}decimal"
+            return FunctionCall("sum", [arg], distinct=distinct), kept
+        return FunctionCall(name, [arg], distinct=distinct), datatype
+
+    def _key_of(self, var: str, labels: dict[str, str]) -> CypherExpr:
+        """A subject's first key column, which tells one subject of its table from another."""
+        nm = self._node(labels[var])
+        by_column = {col: prop for prop, col in nm.properties.items()}
+        column = (nm.pk_columns or [nm.id_column])[0]
+        if column not in by_column:
+            raise SparqlRefused(f"{nm.table_name}'s key column {column} is not readable")
+        return Property(Variable(var), by_column[column])
+
+    def _group_keys(self, keys: list[str], bindings, labels) -> list[CypherExpr]:
+        out: list[CypherExpr] = []
+        for key in keys:
+            if key in labels:
+                nm = self._node(labels[key])
+                by_column = {col: prop for prop, col in nm.properties.items()}
+                for column in nm.pk_columns or [nm.id_column]:
+                    if column not in by_column:
+                        raise SparqlRefused(
+                            f"{nm.table_name}'s key column {column} is not readable"
+                        )
+                    out.append(Property(Variable(key), by_column[column]))
+            elif key in bindings:
+                out.append(bindings[key][0])
+            else:
+                raise SparqlRefused(f"GROUP BY ?{key}: the pattern binds no ?{key}")
+        return out
+
+    def statement(
+        self,
+        group: _Group,
+        labels: dict[str, str],
+        mods: dict,
+        form: str,
+        template,
+        aggregation: "_Aggregation | None" = None,
+    ):
         """One UNION ALL part: ``group`` under one interpretation, answered as ``form``."""
         self._placed = set()
         bindings: dict[str, tuple[CypherExpr, str | None]] = {}
@@ -678,6 +799,37 @@ class _Lowering:
                 self.lower_group(opt, {**labels, **opt_labels[0]}, bindings, optional=True)
             )
             labels = {**labels, **opt_labels[0]}
+
+        group_keys: list[CypherExpr] | None = None
+        having: CypherExpr | None = None
+        if aggregation is not None:
+            group_keys = self._group_keys(aggregation.keys, bindings, labels)
+            for res, a in aggregation.aggregates.items():
+                # A SAMPLE of a key is the key itself: the projection's way of naming it.
+                if a.name == "Aggregate_Sample" and str(a.vars) in aggregation.keys:
+                    continue
+                bindings[res] = self._aggregate(a, bindings, labels)
+            for var, expr in aggregation.rebinds:
+                source = (
+                    aggregation.aggregates.get(str(expr)) if isinstance(expr, RdfVariable) else None
+                )
+                if (
+                    source is not None
+                    and source.name == "Aggregate_Sample"
+                    and str(source.vars) == var
+                ):
+                    continue
+                dt = (
+                    bindings[str(expr)][1]
+                    if isinstance(expr, RdfVariable) and str(expr) in bindings
+                    else None
+                )
+                bindings[var] = (self.expr(expr, bindings, labels), dt)
+            conds = [self.expr(h, bindings, labels) for h in aggregation.having]
+            for c in conds:
+                having = c if having is None else Binary("AND", having, c)
+            # A subject that is not a key is no value of the group.
+            labels = {v: lab for v, lab in labels.items() if v in aggregation.keys}
 
         def term(var: str) -> CypherExpr:
             if var in labels:
@@ -708,7 +860,9 @@ class _Lowering:
             items.append(
                 ReturnItem(self.expr(cond.expr, bindings, labels), f"{_ORDER_PREFIX}{i}", name="")
             )
-        ast.return_clause = ReturnClause(items, distinct=bool(mods.get("distinct")))
+        ast.return_clause = ReturnClause(
+            items, distinct=bool(mods.get("distinct")), group_by=group_keys, having=having
+        )
         return ast
 
     def _template_term(self, x: Any, term) -> CypherExpr:
@@ -768,6 +922,9 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
     if query.prologue is not None and getattr(algebra, "datasetClause", None):
         raise SparqlRefused("FROM and FROM NAMED are not supported")
     pattern, mods = _solution_modifiers(algebra.p)
+    pattern, aggregation = _aggregation(pattern)
+    if aggregation is not None and form != "SELECT":
+        raise SparqlRefused(f"GROUP BY and aggregates in a {form} are not supported")
     if form == "SELECT" and "project" not in mods:
         mods["project"] = [str(v) for v in algebra.PV]
     template = list(algebra.template) if form == "CONSTRUCT" else None
@@ -776,7 +933,12 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
     parts: list[CypherAST] = []
     for group in _alternatives(pattern):
         for labels in lowering.interpretations(group, {}):
-            parts.append(lowering.statement(group, labels, mods, form, template))
+            parts.append(lowering.statement(group, labels, mods, form, template, aggregation))
+    if aggregation is not None and len(parts) > 1:
+        raise SparqlRefused(
+            "An aggregate over subjects of several classes (or a UNION) is not supported yet; "
+            "give the subjects one class"
+        )
     limit = settings_registry.value("graph.union_limit")
     if len(parts) > limit:
         raise SparqlRefused(
@@ -785,7 +947,18 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
         )
     variables = mods.get("project", []) if form == "SELECT" else []
     if not parts:
-        return CompiledSparql(form, None, variables, empty=True)
+        empty_row = None
+        if aggregation is not None and not aggregation.keys:
+            # One group of no solutions: its COUNTs are 0, a GROUP_CONCAT the empty string, and
+            # every other aggregate unbound -- answered without running anything.
+            empty_row = {}
+            for var, expr in aggregation.rebinds:
+                a = aggregation.aggregates.get(str(expr)) if isinstance(expr, RdfVariable) else None
+                if a is not None and a.name == "Aggregate_Count":
+                    empty_row[var] = {"literal": 0, "datatype": f"{XSD}integer"}
+                elif a is not None and a.name == "Aggregate_GroupConcat":
+                    empty_row[var] = {"literal": "", "datatype": f"{XSD}string"}
+        return CompiledSparql(form, None, variables, empty=True, empty_row=empty_row)
     head = parts[0]
     head.union_parts = [(p, True) for p in parts[1:]]
     head.order_by = [

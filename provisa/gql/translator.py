@@ -508,6 +508,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         )
         if group_exprs:
             query = query.group_by(*group_exprs)
+        if self._ast.return_clause and self._ast.return_clause.having is not None:
+            query = query.having(self._parse_expr(self._ast.return_clause.having))
         return query
 
     def _apply_extra_branches(
