@@ -454,9 +454,11 @@ Create a relationship. The gate checks the source table's domain (not the target
 
 Change an existing relationship, with the same checks as `createRelationship`. An id no relationship holds is refused (`schema.relationship_not_found`). A change needs the right itself; it is never queued as a request.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+A save that re-homes key columns between a Property and a Class can take `pii` off them. It is then refused with `tag.move_loses`, and `params.columns` lists each column with the tags it `loses` and `gains`. Save again with `confirmTagLoss` naming every lost tag, or with `carryTags: true` to put them on the term each column moves to.
 
-Delete a relationship by ID and rebuild schemas.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+Delete a relationship by ID and rebuild schemas. A delete that re-homes key columns takes the same `confirmTagLoss` and `carryTags` as a save.
 
 ---
 
@@ -538,11 +540,19 @@ Delete a tag. Refuses system and derived tags.
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-Assign a tag to a source, table, column, relationship, or command. Enforces the tag's field policies (`reason_policy`, `expires_policy`) and — for parameterized tags — validates the parameter value against the tag's permitted list.
+Assign a tag to a source, table, column, relationship, or command. Enforces the tag's field policies (`reason_policy`, `expires_policy`) and, for a parameterized tag, checks the parameter value against the tag's permitted list.
+
+`pii` can also go on a glossary term, so every column that means it carries the tag, columns registered later included. Set `objectType: "term"` and `termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+On a column, `alsoTerm: true` puts the tag on the column's term instead. The result's `params.covers` says how many columns the tag reaches: for a column, how many other columns its term holds; for a term, how many it holds. Refused by name: a tag other than `pii` on a term (`tag.not_on_terms`), a term that isn't a Property (`tag.term_not_property`), a draft term (`tag.term_not_live`, "Define *term* to mark it"), and, with `alsoTerm`, a key column (`tag.key_column`) or a column with no term (`tag.column_has_no_term`). A column marked directly needs a reason.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Remove a tag assignment.
+Remove a tag assignment, from a term too (`objectType: "term"`, `termId`). Removing `pii` from a column that carries it through its term is refused (`tag.inherited_from_term`): unmark the term, or move the column to a term that matches what it holds.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
