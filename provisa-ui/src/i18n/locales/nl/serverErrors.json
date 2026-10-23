@@ -523,7 +523,8 @@
       "username_taken": "Gebruiker '{{username}}' bestaat al"
     },
     "cypher": {
-      "command_call_refused": "{{reason}}"
+      "command_call_refused": "{{reason}}",
+      "count_unknown": "Een telling kon niet worden gemaakt, dus het totaal is onbekend: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",

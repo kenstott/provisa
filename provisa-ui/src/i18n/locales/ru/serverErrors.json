@@ -523,7 +523,8 @@
       "username_taken": "Пользователь '{{username}}' уже существует"
     },
     "cypher": {
-      "command_call_refused": "{{reason}}"
+      "command_call_refused": "{{reason}}",
+      "count_unknown": "Не удалось выполнить подсчёт, поэтому итог неизвестен: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Ваше право создавать связи не распространяется ни на один домен, которого касается этот запрос ({{domains}})",

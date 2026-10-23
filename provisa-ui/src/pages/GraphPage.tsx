@@ -37,6 +37,7 @@ import type {
   SchemaNodeLabel,
   SchemaRel,
   CypherSchema,
+  GraphCounts,
 } from "../components/graph/graph-schema-types";
 import { Sidebar } from "../components/graph/GraphSidebar";
 import { QueryBar } from "../components/graph/QueryBar";
@@ -103,9 +104,8 @@ export function GraphPage() {
   // The viewer's max-nodes setting: the most distinct nodes a frame draws.
   const [maxNodes, setMaxNodes] = useMaxNodes();
   const [schemaLoading, setSchemaLoading] = useState(true);
-  const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null);
-  const [totalRelCount, setTotalRelCount] = useState<number | null>(null);
-  const [labelCounts, setLabelCounts] = useState<Record<string, number>>({});
+  // What /data/graph-counts last said for this role and domain selection; null until it has.
+  const [counts, setCounts] = useState<GraphCounts | null>(null);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     "provisa.graph.sidebarWidth",
     240,
@@ -285,38 +285,21 @@ export function GraphPage() {
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     const domainsKey = [...checkedDomains].sort().join(",");
-    const countsKey = `provisa.graph.counts.${role?.id ?? "default"}.${domainsKey}`;
+    // v2: each entry is a count or why it is none (a v1 entry held bare numbers).
+    const countsKey = `provisa.graph.counts.v2.${role?.id ?? "default"}.${domainsKey}`;
     try {
       const cached = getStored(countsKey);
-      if (cached) {
-        const c = JSON.parse(cached) as {
-          node_count: number;
-          rel_count: number;
-          label_counts: Record<string, number>;
-        };
-        setTotalNodeCount(c.node_count);
-        setTotalRelCount(c.rel_count);
-        setLabelCounts(c.label_counts);
-      } else {
-        setTotalNodeCount(null);
-        setTotalRelCount(null);
-      }
+      setCounts(cached ? (JSON.parse(cached) as GraphCounts) : null);
     } catch {
-      setTotalNodeCount(null);
-      setTotalRelCount(null);
+      setCounts(null);
     }
     const domainsParam = checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
     fetch(`/data/graph-counts${domainsParam}`, { headers })
       .then((r) => r.json())
-      .then((data) => {
-        const node_count = data.node_count ?? 0;
-        const rel_count = data.rel_count ?? 0;
-        const label_counts = data.label_counts ?? {};
-        setTotalNodeCount(node_count);
-        setTotalRelCount(rel_count);
-        setLabelCounts(label_counts);
+      .then((data: GraphCounts) => {
+        setCounts(data);
         try {
-          setStored(countsKey, JSON.stringify({ node_count, rel_count, label_counts }));
+          setStored(countsKey, JSON.stringify(data));
         } catch {
           /* quota */
         }
@@ -940,9 +923,7 @@ export function GraphPage() {
         highlightedLabel={activeLabel}
         propertyKeys={cypherSchema.propertyKeys}
         onPropertyKeyClick={handlePropertyKeyClick}
-        totalNodeCount={totalNodeCount}
-        totalRelCount={totalRelCount}
-        labelCounts={labelCounts}
+        counts={counts}
         maxNodes={maxNodes}
         onMaxNodesChange={setMaxNodes}
       />

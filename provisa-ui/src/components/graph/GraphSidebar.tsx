@@ -15,7 +15,7 @@ import { labelColor } from "./graph-model";
 import { DatabaseIcon, HistoryIcon, StarIcon, ExportIcon, SlidersIcon } from "./GraphIcons";
 import { GraphViewSettings } from "./GraphViewSettings";
 import type { RelLineOverride } from "./graph-model";
-import type { SchemaNodeLabel, SchemaRel } from "./graph-schema-types";
+import type { CountEntry, GraphCounts, SchemaNodeLabel, SchemaRel } from "./graph-schema-types";
 import type { Favorite } from "./graph-persistence";
 import {
   NodeContextMenu,
@@ -59,9 +59,8 @@ interface SidebarProps {
   onFavoriteDelete?: (id: string) => void;
   propertyKeys?: string[];
   onPropertyKeyClick?: (key: string) => void;
-  totalNodeCount?: number | null;
-  totalRelCount?: number | null;
-  labelCounts?: Record<string, number>;
+  /** What /data/graph-counts said; null until it has. */
+  counts?: GraphCounts | null;
   maxNodes: number;
   onMaxNodesChange: (n: number) => void;
 }
@@ -117,9 +116,7 @@ export function Sidebar({
   onFavoriteDelete,
   propertyKeys = [],
   onPropertyKeyClick,
-  totalNodeCount = null,
-  totalRelCount = null,
-  labelCounts = {},
+  counts = null,
   maxNodes,
   onMaxNodesChange,
 }: SidebarProps) {
@@ -175,9 +172,27 @@ export function Sidebar({
       return next;
     });
   };
-  const [nodeLabelsPage, setNodeLabelsPage] = useState(0);
-  const [relTypesPage, setRelTypesPage] = useState(0);
+  const [pickedNodeLabelsPage, setNodeLabelsPage] = useState(0);
+  const [pickedRelTypesPage, setRelTypesPage] = useState(0);
   const SCHEMA_PAGE_SIZE = 50;
+  // The page shown is the one picked, within the list as it now is: a list that shrinks (a domain
+  // deselected) past the page picked shows its last page, not an empty one with no pager.
+  // A count the engine could not make is "?", never 0; the "*" pill's hint names each one and why.
+  const total = (n: number | null) => (n === null ? "?" : n.toLocaleString());
+  const uncounted = (entries: Record<string, CountEntry> | undefined) => {
+    const missing = Object.entries(entries ?? {}).filter(([, e]) => e.count === null);
+    return missing.length === 0
+      ? null
+      : t("graphSidebar.notCounted", {
+          list: missing.map(([name, e]) => `${name} (${e.error})`).join("; "),
+        });
+  };
+  const lastPage = (count: number) => Math.max(0, Math.ceil(count / SCHEMA_PAGE_SIZE) - 1);
+  const nodeLabelsPage = Math.min(pickedNodeLabelsPage, lastPage(schemaNodeLabels.length));
+  const relTypesPage = Math.min(
+    pickedRelTypesPage,
+    lastPage(new Set(schemaRels.map((r) => r.type)).size),
+  );
   const dragging = useRef(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -420,17 +435,17 @@ export function Sidebar({
                 ) : (
                   <div className="graph-label-list">
                     <div className="graph-label-item">
-                      <Tip text={t("graphSidebar.matchAllNodes")}>
+                      <Tip
+                        text={uncounted(counts?.label_counts) ?? t("graphSidebar.matchAllNodes")}
+                      >
                         <button
                           type="button"
                           className="graph-label-pill graph-label-pill--all"
                           onClick={() => onLabelClick("*")}
+                          data-testid="graph-all-nodes"
                         >
                           *(
-                          {totalNodeCount !== null
-                            ? totalNodeCount.toLocaleString()
-                            : schemaNodeLabels.length}
-                          )
+                          {counts === null ? schemaNodeLabels.length : total(counts.node_count)})
                         </button>
                       </Tip>
                     </div>
@@ -464,7 +479,7 @@ export function Sidebar({
                                 onContextMenu={(e) => handleNodeRightClick(e, node)}
                               >
                                 {node.tableLabel}
-                                {labelCounts[compoundLabel] !== undefined && (
+                                {counts?.label_counts[compoundLabel] !== undefined && (
                                   <span
                                     style={{
                                       opacity: 0.7,
@@ -472,7 +487,7 @@ export function Sidebar({
                                       marginInlineStart: "0.25em",
                                     }}
                                   >
-                                    ({labelCounts[compoundLabel].toLocaleString()})
+                                    ({total(counts.label_counts[compoundLabel].count)})
                                   </span>
                                 )}
                               </button>
@@ -516,7 +531,7 @@ export function Sidebar({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setNodeLabelsPage((p) => p - 1)}
+                            onClick={() => setNodeLabelsPage(nodeLabelsPage - 1)}
                             disabled={nodeLabelsPage === 0}
                             aria-label={t("graphSidebar.previousPage")}
                             style={{
@@ -538,7 +553,7 @@ export function Sidebar({
                           </span>
                           <button
                             type="button"
-                            onClick={() => setNodeLabelsPage((p) => p + 1)}
+                            onClick={() => setNodeLabelsPage(nodeLabelsPage + 1)}
                             disabled={nodeLabelsPage >= totalPages - 1}
                             aria-label={t("graphSidebar.nextPage")}
                             style={{
@@ -606,17 +621,17 @@ export function Sidebar({
                       );
                       return [
                         <div key="__all__" className="graph-label-item">
-                          <Tip text={t("graphSidebar.matchAllRels")}>
+                          <Tip
+                            text={uncounted(counts?.rel_counts) ?? t("graphSidebar.matchAllRels")}
+                          >
                             <button
                               type="button"
                               className="graph-label-pill graph-label-pill--all"
                               onClick={() => onRelClick("*")}
+                              data-testid="graph-all-rels"
                             >
                               *(
-                              {totalRelCount !== null
-                                ? totalRelCount.toLocaleString()
-                                : uniqueRels.length}
-                              )
+                              {counts === null ? uniqueRels.length : total(counts.rel_count)})
                             </button>
                           </Tip>
                         </div>,
@@ -672,7 +687,7 @@ export function Sidebar({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setRelTypesPage((p) => p - 1)}
+                            onClick={() => setRelTypesPage(relTypesPage - 1)}
                             disabled={relTypesPage === 0}
                             aria-label={t("graphSidebar.previousPage")}
                             style={{
@@ -694,7 +709,7 @@ export function Sidebar({
                           </span>
                           <button
                             type="button"
-                            onClick={() => setRelTypesPage((p) => p + 1)}
+                            onClick={() => setRelTypesPage(relTypesPage + 1)}
                             disabled={relTypesPage >= totalPages - 1}
                             aria-label={t("graphSidebar.nextPage")}
                             style={{

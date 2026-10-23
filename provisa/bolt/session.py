@@ -30,6 +30,8 @@ from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
+from provisa.core.statement_warnings import ServerWarning, warn
+
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
@@ -1273,8 +1275,9 @@ def _system_query(
 
 async def _graph_counts(
     ctx: Any, role_id: str, include_ops: bool, app_state: Any
-) -> tuple[int, int]:
-    """Total node/rel counts: sum of per-label count(n) and per-rel-type count(r).
+) -> tuple[int | None, int | None]:
+    """Total node/rel counts: sum of per-label count(n) and per-rel-type count(r); None when a
+    count in it could not be made (each logged and sent as a warning notification).
 
     Mirrors /data/graph-counts (REQ-392); view-labels over the same physical rows
     are counted per-label, matching the internal graph browser.
@@ -1295,22 +1298,39 @@ async def _graph_counts(
             seen.add(rel.rel_type)
             rel_types.append(rel.rel_type)
 
-    async def _count(cypher: str) -> int:
+    async def _count(cypher: str) -> int | None:
+        """The count, or None when the engine could not make it: logged, and said to the client
+        as a warning notification -- never counted as 0 rows."""
         try:
             _cols, rows, _ = await _execute_cypher(cypher, {}, role_id, include_ops=include_ops)
-            return int(rows[0][0]) if rows and rows[0] else 0
-        except Exception:
-            return 0
+        except (
+            Exception
+        ) as exc:  # allow-ble: any engine error leaves this one count unknown, said below
+            log.warning("[BOLT] graph count not made: %s: %s", cypher, exc)
+            warn(count_unknown_warning(cypher, str(exc)))
+            return None
+        return int(rows[0][0]) if rows and rows[0] else 0
 
     # Sequential, not asyncio.gather: a native engine (DuckDB) runs on ONE non-reentrant connection,
     # so concurrent count queries race and return sporadic zeros for attached/materialized sources.
-    node_count = 0
-    for lbl in node_labels:
-        node_count += await _count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt")
-    rel_count = 0
-    for rt in rel_types:
-        rel_count += await _count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt")
-    return node_count, rel_count
+    # A total is a total only when every count in it was made: otherwise it is unknown (None).
+    node_counts = [await _count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt") for lbl in node_labels]
+    rel_counts = [await _count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt") for rt in rel_types]
+    return _sum_known(node_counts), _sum_known(rel_counts)
+
+
+def _sum_known(counts: list[int | None]) -> int | None:
+    """The sum, or None when any count is unknown."""
+    return None if None in counts else sum(c for c in counts if c is not None)
+
+
+def count_unknown_warning(statement: str, reason: str) -> ServerWarning:
+    """What the browser's node/relationship totals say when one count could not be made."""
+    return ServerWarning(
+        code="cypher.count_unknown",
+        params={"statement": statement, "reason": reason},
+        message=f"A count could not be made, so the total is unknown: {statement}: {reason}",
+    )
 
 
 async def _impute_relationships(
