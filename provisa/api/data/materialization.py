@@ -12,9 +12,12 @@
 
 Fetch + schema-less-store of API / graphql_remote / gRPC source rows into the
 engine cache (VALUES-CTE rewrites). Extracted from endpoint.py; leaf module.
+
+Every read lands its rows before it is answered: a failed fetch or a failed landing fails the
+read, never leaving the statement rewritten to a cache table that was not written (REQ-1661).
 """
 
-# complexity-gate: allow-cc=32 allow-ble=4 reason="materialization fetch/store paths relocated verbatim from endpoint.py; the broad excepts make API-source landing best-effort (fall back to live execution, never fail the query) per REQ-848/REQ-941; per-route split is separately-tracked debt"
+# complexity-gate: allow-cc=32 allow-ble=1 reason="materialization fetch/store paths relocated verbatim from endpoint.py (per-route split is separately-tracked debt); the one broad except is _promote_joined_from_fills, post-answer housekeeping: the hot copy serves a later request and this read is already answered"
 
 from __future__ import annotations
 
@@ -624,7 +627,8 @@ async def _promote_joined_from_fills(
 ) -> None:
     """Read a joined API table's fills from the store and hold them in the hot tier for the next
     request's Values CTE. Best effort: the hot copy is an optimization of a later request, and
-    this request already has its answer."""
+    this request already has its answer -- a failure here is post-answer housekeeping, so it is
+    logged rather than failing a read that has already been answered."""
     try:
         rows = await _mat_fetch_rows_from_fills(ep, col_names, meta_cols, state)
         if 0 < len(rows) <= hot_threshold:
@@ -836,14 +840,15 @@ async def _mat_gql_remote_table(
             gql_reg["source_id"], tn, {**_cache_hash, "__cut__": secrets.token_hex(8)}
         )
 
-    # Hydrate to the engine cache (best-effort)
+    # Land in the engine cache. A failed landing fails the read: the statement is rewritten to
+    # the cache table below, which would otherwise be read unwritten or stale (REQ-1661).
     try:
         await land_api_cache(
             state.federation_engine, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs
         )
-        schedule_drop(state.federation_engine, gql_cache_loc, gql_cache_tbl, 300, redirect_config)
     except Exception as cache_exc:
-        log.warning("[GQL REMOTE] cache write failed for %s: %s", tn, cache_exc)
+        raise RuntimeError(f"GQL remote landing failed for {tn!r}: {cache_exc}") from cache_exc
+    schedule_drop(state.federation_engine, gql_cache_loc, gql_cache_tbl, 300, redirect_config)
 
     # Inline as VALUES CTE if below threshold; else use cache rewrite
     if 0 < len(gql_rows) <= _hot_threshold:
@@ -953,17 +958,13 @@ async def _mat_grpc_remote_table(
         cache_cols = [_GCol(name=n, type="string") for n in col_names]
 
     if rows:
+        # A failed landing fails the read: the statement is rewritten to the cache table below,
+        # which would otherwise be read unwritten or stale (REQ-1661).
         try:
             await land_api_cache(state.federation_engine, cache_loc, cache_tbl, rows, cache_cols)
-            schedule_drop(
-                state.federation_engine,
-                cache_loc,
-                cache_tbl,
-                ttl,
-                redirect_config,
-            )
         except Exception as cache_exc:
-            log.warning("[GRPC REMOTE] cache write failed for %s: %s", tn, cache_exc)
+            raise RuntimeError(f"gRPC remote landing failed for {tn!r}: {cache_exc}") from cache_exc
+        schedule_drop(state.federation_engine, cache_loc, cache_tbl, ttl, redirect_config)
 
     if 0 < len(rows) <= _hot_threshold:
         entry = hot.hold(
@@ -1202,7 +1203,7 @@ async def _mat_api_ep_table(
 
     with state.federation_engine.isolated_sync() as _c:
         ensure_cache_schema(_c, _cache_loc)
-        _cache_hit = table_exists(_c, _cache_loc, cache_tbl, ttl=ttl)
+    _cache_hit = await table_exists(state.federation_engine, _cache_loc, cache_tbl, ttl=ttl)
     if _cache_hit:
         log.warning(
             "[MAT] the engine cache hit for %s → %s.%s.%s",

@@ -57,7 +57,20 @@ def store(bind_org):
     def isolated_sync():
         yield EngineSession(con, dialect="duckdb", placeholder="?")
 
-    engine = SimpleNamespace(cache_catalog=lambda: "memory", isolated_sync=isolated_sync)
+    async def landed_table_exists(*, schema: str, table: str) -> bool:
+        # The store is this DuckDB connection: its own catalog says what is landed.
+        return bool(
+            con.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE schema_name = ? AND table_name = ?",
+                [schema, table],
+            ).fetchall()
+        )
+
+    engine = SimpleNamespace(
+        cache_catalog=lambda: "memory",
+        isolated_sync=isolated_sync,
+        landed_table_exists=landed_table_exists,
+    )
     state = SimpleNamespace(org_id="o1", federation_engine=engine, source_catalogs={})
     yield state, con
     con.close()

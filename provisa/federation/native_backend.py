@@ -792,6 +792,22 @@ class NativeEngineBackend(EngineBackend):
 
     # -- store write face --------------------------------------------------
 
+    async def landed_table_exists(self, state: Any, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed, asked where it lands: an engine whose write
+        face is its own runtime (``select_write_face`` ENGINE_NATIVE) answers from its own store's
+        catalog, and must -- a runtime that lands and cannot say what it landed raises; any other
+        face is the base store's catalog."""
+        from sqlalchemy import make_url
+
+        from provisa.federation.materialization import WriteFace, select_write_face
+
+        backend_type = make_url(self.engine.materialize_store()).get_backend_name()
+        if select_write_face(self.engine, backend_type) is WriteFace.ENGINE_NATIVE:
+            runtime = self._runtime_for(state)
+            if hasattr(runtime, "land_table"):
+                return await runtime.landed_table_exists(schema=schema, table=table)
+        return await super().landed_table_exists(state, schema=schema, table=table)
+
     async def analyze_landed_table(
         self, state: Any, *, catalog: str | None, schema: str, table: str
     ) -> None:  # REQ-280, REQ-1688

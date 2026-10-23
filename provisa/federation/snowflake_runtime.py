@@ -299,6 +299,23 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
         return await self._land_guard.run(_run)
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether the replica ``schema.table`` of the landing database exists, from the
+        database's own catalog (``snowflake_store.object_exists``). Absent is False; a catalog
+        that cannot be read raises."""
+        from provisa.federation.snowflake_store import object_exists
+
+        parts = (self.ensure_materialize_attached(), schema, table)
+
+        def _run() -> bool:
+            cur = open_cursor(self._conn)
+            try:
+                return object_exists(cur, parts)
+            finally:
+                close_cursor(cur)
+
+        return await self._land_guard.run(_run)
+
     async def reconcile_landed_metadata(self, plan: Any) -> int:
         """Apply the landed model's keys and descriptions (REQ-1652, REQ-1654): PRIMARY/FOREIGN KEY
         constraints on the replicas, PRIMARY_KEY / FOREIGN_KEY column tags on their export views

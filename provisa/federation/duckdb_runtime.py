@@ -1124,6 +1124,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             shape=shape,
         )
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` is landed, from the catalog of the store ``land_table`` writes:
+        an embedded DuckDB store's (through its broker, ``duckdb_tables()``), else the server
+        store's own (``store_writer``). Absent is False; a catalog that cannot be read raises."""
+        self.ensure_materialize_attached()
+        if self._store_is_duckdb():
+            return await self._land_guard.run(
+                lambda: table in self._store_broker.tables(schema),
+            )
+        return await store_writer.table_exists(self._store_dsn(), schema=schema, table=table)
+
     async def apply_change_group(self, group: list[Any]) -> None:
         """Apply a group of changes (``federation.change_group``) in one transaction: of the
         embedded DuckDB store through the engine's own connection, else of the server store's."""

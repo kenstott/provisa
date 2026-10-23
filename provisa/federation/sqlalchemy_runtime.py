@@ -306,6 +306,16 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _run)
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` of THIS engine's own store exists, from its catalog through
+        SQLAlchemy's inspector in the product's own dialect. Absent is False; a catalog that
+        cannot be read raises."""
+        import asyncio
+
+        from sqlalchemy import inspect
+
+        return await asyncio.to_thread(lambda: bool(inspect(self._sa).has_table(table, schema)))
+
     async def land_table(
         self,
         *,
