@@ -62,6 +62,7 @@ from provisa.gql.translator_helpers import (
     _safe_alias,
 )
 from provisa.gql.translator_types import (
+    CUT_COLUMN,
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
     GraphVarKind,
@@ -185,6 +186,31 @@ def _type_literal(var: str, rel_type: str) -> exp.Literal:
 _ISO_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?")
 
 
+def _with_uncut_column(query: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
+    """A union part with the cut column added as 0, to line up with a part that carries it."""
+    if isinstance(query, exp.Union):
+        query.set("this", _with_uncut_column(query.this))
+        query.set("expression", _with_uncut_column(query.expression))
+        return query
+    return query.select(exp.alias_(exp.Literal.number(0), alias=CUT_COLUMN))
+
+
+def _cut_across_union(union: "exp.Select | exp.Union") -> exp.Select:
+    """A UNION that removes duplicates, with the cut column made the same on every row: each part
+    carries its own, and two rows that differ only in it are one row (REQ-2135)."""
+    columns = [
+        exp.column(name, table="_cutu", quoted=True)
+        for name in union.named_selects
+        if name != CUT_COLUMN
+    ]
+    cut = exp.Window(this=exp.Max(this=exp.column(CUT_COLUMN, table="_cutu", quoted=True)))
+    return (
+        exp.select(*columns, exp.alias_(cut, alias=CUT_COLUMN))
+        .distinct()
+        .from_(exp.alias_(exp.Subquery(this=union), alias="_cutu"))
+    )
+
+
 def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """REQ-409: a WHERE's ISO 8601 date-time string is the timestamp it writes, so it compares with
     a timestamp column on every engine (Trino refuses a varchar there)."""
@@ -227,6 +253,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
         self._shortestpath_hops_col: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         self._shortestpath_is_all: bool = False
+        # REQ-2135: one check per path bounded by the depth limit, true when it was cut there
+        self._cut_checks: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Counter for unique UNNEST alias names across the translation
         self._unwind_count: int = 0
         # UNWIND variables whose source array contains MAP elements (e.g. collect({...}))
@@ -504,14 +532,33 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             result = exp.Union(this=result, expression=branch, distinct=False)
         return result
 
+    def _cut_column(self) -> "exp.Expr":
+        """REQ-2135: 1 when any path bounded by the depth limit was cut there, else 0."""
+        cut = self._cut_checks[0]
+        for check in self._cut_checks[1:]:
+            cut = exp.Or(this=cut, expression=check)
+        self._graph_vars[CUT_COLUMN] = GraphVarKind.CUT
+        return exp.alias_(
+            exp.Case(ifs=[exp.If(this=cut, true=exp.Literal.number(1))]).else_(
+                exp.Literal.number(0)
+            ),
+            alias=CUT_COLUMN,
+        )
+
     def _fold_union_parts(self, result: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
-        """Fold UNION / UNION ALL parts into result."""
+        """Fold UNION / UNION ALL parts into result. A part that carries the cut column and one
+        that does not are made to match: the one without it is never cut (REQ-2135)."""
         for i, (sub_ast, is_all) in enumerate(self._ast.union_parts):
             sub_sql, sub_params, sub_graph_vars = cypher_to_sql(sub_ast, self._lm, self._params)
             for p in sub_params:
                 if p not in self._param_seen:
                     self._param_order.append(p)
                     self._param_seen.add(p)
+            head_cut = CUT_COLUMN in self._graph_vars
+            if CUT_COLUMN in sub_graph_vars and not head_cut:
+                result = _with_uncut_column(result)
+            elif head_cut and CUT_COLUMN not in sub_graph_vars:
+                sub_sql = _with_uncut_column(sub_sql)
             self._graph_vars.update(sub_graph_vars)
             # If the sub-branch has a per-branch LIMIT/SKIP, wrap it in a subquery so
             # the limit applies only to that branch, not the whole union.
@@ -520,6 +567,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     exp.alias_(exp.Subquery(this=sub_sql), alias=f"_ub{i}")
                 )
             result = exp.Union(this=result, expression=sub_sql, distinct=not is_all)
+        if CUT_COLUMN in self._graph_vars and not all(a for _, a in self._ast.union_parts):
+            result = _cut_across_union(result)
         return result
 
     def _apply_order_limit(
@@ -577,6 +626,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         joins = list(joins) + lateral_joins
 
         select_exprs = self._build_select(self._ast.return_clause)
+        if self._cut_checks:
+            select_exprs.append(self._cut_column())
         where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
 
         # Short-circuit: if any resolved node's WHERE props are all absent from its schema,

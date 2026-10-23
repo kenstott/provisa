@@ -868,6 +868,16 @@
         "label": "Autoriser les commandes de code hôte",
         "help": "Activé : les commandes python et script peuvent être enregistrées et appelées. Chacune s'exécute avec l'accès complet du serveur à sa mémoire, ses identifiants, ses fichiers et son réseau, et son code ne suit pas le modèle. Désactivé par défaut ; utilisez plutôt un résolveur de code."
       }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Chemin de graphe le plus profond",
+        "help": "Le nombre maximal de sauts parcourus par un chemin Cypher de longueur variable ou un chemin de propriétés SPARQL quand la requête ne fixe pas sa propre limite. Un résultat coupé à cette profondeur l'indique."
+      },
+      "union_limit": {
+        "label": "Nombre maximal de prédicats couverts par un prédicat variable",
+        "help": "Un motif SPARQL dont le prédicat est une variable lit chaque prédicat mappé qui pourrait correspondre, une branche chacun. Une requête qui demande plus de branches est refusée, en nommant la limite."
+      }
     }
   }
 }

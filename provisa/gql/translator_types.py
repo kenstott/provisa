@@ -23,6 +23,13 @@ class GraphVarKind(str, Enum):
     PATH = "PATH"
     PASSTHROUGH = "PASSTHROUGH"  # pre-built JSON from rel/node union subquery
     MAP = "MAP"  # a map property: a declared object column, returned as a map (REQ-1991)
+    # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
+    # column off the rows and reports it beside them.
+    CUT = "CUT"
+
+
+# The column a statement carries when one of its paths is bounded by the depth limit.
+CUT_COLUMN = "__cut"
 
 
 class CypherTranslateError(Exception):

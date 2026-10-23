@@ -207,6 +207,9 @@ async def _execute_multi_call(
     combined: list[dict] = [{}]
     for rs in all_rows:
         combined = [{**a, **b} for a in combined for b in (rs or [{}])]
+    from provisa.gql.assembler import take_cut
+
+    combined = take_cut(combined, None)  # rows of several plans: the request's collector
 
     try:
         assembled = assemble_rows(combined, merged_graph_vars)
@@ -691,7 +694,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         return JSONResponse(
             content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
         )
-    rows = _dict_rows(_executed)
+    from provisa.gql.assembler import take_cut
+
+    rows = take_cut(_dict_rows(_executed), plan.warnings)
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 
     # Assemble & serialize

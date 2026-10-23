@@ -542,7 +542,8 @@
     "statement": {
       "rows_cut": "The answer was cut at {{limit}} rows, the row limit that applies to this read ({{kind}}): more rows match than were returned.",
       "rows_cut_unchecked": "The answer has {{limit}} rows, the row limit that applies to this read ({{kind}}). Whether more rows match could not be checked: {{reason}}",
-      "approximate_index": "The most similar rows were found through an approximate vector index: a row slightly more similar than the last one returned may be missing."
+      "approximate_index": "The most similar rows were found through an approximate vector index: a row slightly more similar than the last one returned may be missing.",
+      "path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer."
     },
     "wikipedia": {
       "no_pages": "Name at least one page to start from",

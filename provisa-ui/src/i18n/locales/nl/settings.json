@@ -868,6 +868,16 @@
         "label": "Hostcode-opdrachten toestaan",
         "help": "Aan: python- en script-opdrachten mogen worden geregistreerd en aangeroepen. Elke opdracht draait met de volledige toegang van de server tot zijn geheugen, inloggegevens, bestanden en netwerk, en de code gaat niet mee met het model. Standaard uit; gebruik in plaats daarvan een code-resolver."
       }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Diepste grafpad",
+        "help": "Het maximale aantal hops dat een Cypher-pad met variabele lengte of een SPARQL-eigenschapspad doorloopt als de query zelf geen grens stelt. Een resultaat dat op deze diepte is afgekapt, meldt dat."
+      },
+      "union_limit": {
+        "label": "Maximaal aantal predicaten van een variabel predicaat",
+        "help": "Een SPARQL-patroon met een variabele als predicaat leest elk gekoppeld predicaat dat zou kunnen passen, met één tak per predicaat. Een query die meer takken nodig heeft, wordt geweigerd met vermelding van de grens."
+      }
     }
   }
 }
