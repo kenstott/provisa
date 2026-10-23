@@ -100,9 +100,6 @@
     "groundedTablesTitle": "מעוגן בטבלאות",
     "groundedTablesPlaceholder": "טבלאות שהמונח הזה מציין את שורותיהן",
     "noGroundedTables": "לא מעוגן באף טבלה",
-    "gapsOnly": "פערים",
-    "identityGap": "פער",
-    "identityGapHelp": "מעוגן בכמה טבלאות שלא כולן מחוברות כאותה ישות: סמנו ביניהן קשרים של אותה ישות",
     "edit": "עריכה",
     "domainsDerived": "נגזר מהעמודות והטבלאות שלו",
     "derivedReason": "התפקיד, מוצע ומיושן נובעים מהעמודות, הטבלאות, ההגדרה והקשרים של המונח, ולכן אינם נקבעים כאן.",
@@ -114,6 +111,22 @@
     "danglingHelp": "אינו מחובר לאף מונח שמציין טבלה או עמודה: הוא עדיין אינו מציין נתונים.",
     "classKeys": "המפתחות נובעים מהטבלאות שלו ומהקשרים המוצהרים",
     "keyColumn": "מפתח",
-    "keyColumnClaim": "עמודה זו היא מפתח; היא שייכת למחלקה של הטבלה שלה"
+    "keyColumnClaim": "עמודה זו היא מפתח; היא שייכת למחלקה של הטבלה שלה",
+    "toReview": "לבדיקה",
+    "finding_unlinked_tables": "טבלאות לא מקושרות",
+    "finding_class_and_attribute": "מחלקה ותכונה",
+    "finding_tag_wrong_kind": "תגית מסוג שגוי",
+    "finding_retirement_blocked": "ההוצאה משימוש חסומה",
+    "finding_no_data": "אין נתונים",
+    "findingMessage_unlinked_tables": "מעוגן בכמה טבלאות שעדיין לא קושרו כאותה ישות: סמנו ביניהן קשרי אותה ישות",
+    "findingMessage_class_and_attribute": "מעוגן בטבלאות ומכנה עמודות בו-זמנית: מונח הוא מחלקה או תכונה, לא שתיהן",
+    "findingMessage_tag_wrong_kind": "נושא תגית שמיועדת לסוג אחר של אובייקט",
+    "findingMessage_retirement_blocked": "לעמודות או לטבלאות שלו אין לאן לעבור: הוצאתו משימוש דורשת מחליף",
+    "findingMessage_no_data": "אינו מכנה אף עמודה ואינו מעוגן באף טבלה",
+    "findingFix_unlinked_tables": "סמן כאותה ישות…",
+    "findingFix_class_and_attribute": "עריכה",
+    "findingFix_tag_wrong_kind": "הסר את התגית",
+    "findingFix_retirement_blocked": "בחר מחליף…",
+    "findingFix_no_data": "עריכה"
   }
 }

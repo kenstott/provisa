@@ -122,12 +122,7 @@ export function TermReadView({
       )}
 
       <Title order={5}>{t("glossaryTab.groundedTablesTitle")}</Title>
-      <GlossaryGroundedTables
-        termId={term.id}
-        canEdit={false}
-        identityGap={term.identity_gap}
-        onChanged={() => undefined}
-      />
+      <GlossaryGroundedTables termId={term.id} canEdit={false} onChanged={() => undefined} />
 
       <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
       <GlossaryRelationships

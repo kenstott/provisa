@@ -98,7 +98,6 @@
     "openAsQueryCompiling": "Compiling the query…",
     "openAsQueryNoCypher": "This query has no Cypher form.",
     "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available.",
-    "identityGap": "Grounded in tables not all joined as the same entity: {{tables}}",
     "layersMenu": "Layers",
     "termsMenu": "Terms",
     "menuAll": "all",
@@ -109,6 +108,7 @@
     "look_concept": "concept",
     "look_property": "property",
     "overBudget": "{{count}} match; narrow the search or pick a domain",
-    "domainCount": "{{domain}} ({{count}})"
+    "domainCount": "{{domain}} ({{count}})",
+    "unlinkedTables": "Grounded in tables not yet linked as the same entity: {{tables}}"
   }
 }

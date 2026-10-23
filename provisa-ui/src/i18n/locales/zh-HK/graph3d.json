@@ -98,7 +98,6 @@
     "openAsQueryCompiling": "正在編譯查詢…",
     "openAsQueryNoCypher": "此查詢沒有 Cypher 形式。",
     "openAsQuerySparqlLater": "SPARQL 將在其端點可用後開放。",
-    "identityGap": "關聯的表並未全部作為同一實體連接：{{tables}}",
     "layersMenu": "圖層",
     "termsMenu": "術語",
     "menuAll": "全部",
@@ -109,6 +108,7 @@
     "look_concept": "概念",
     "look_property": "屬性",
     "overBudget": "{{count}} 個相符；請收窄搜尋或選擇一個域",
-    "domainCount": "{{domain}}（{{count}}）"
+    "domainCount": "{{domain}}（{{count}}）",
+    "unlinkedTables": "錨定在尚未關聯為同一實體的資料表上：{{tables}}"
   }
 }

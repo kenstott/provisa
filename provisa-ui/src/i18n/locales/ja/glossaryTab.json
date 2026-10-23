@@ -100,9 +100,6 @@
     "groundedTablesTitle": "紐付けるテーブル",
     "groundedTablesPlaceholder": "この用語が行を表すテーブル",
     "noGroundedTables": "どのテーブルにも紐付いていません",
-    "gapsOnly": "ギャップ",
-    "identityGap": "ギャップ",
-    "identityGapHelp": "複数のテーブルに紐づいていますが、すべてが同一エンティティとして結合されていません: テーブル間のリレーションシップを同一エンティティに指定してください",
     "edit": "編集",
     "domainsDerived": "列とテーブルから導出",
     "derivedReason": "ロール、提案中、非推奨は用語の列・テーブル・定義・関係から決まるため、ここでは設定しません。",
@@ -114,6 +111,22 @@
     "danglingHelp": "テーブルや列を指す用語につながっていません。まだデータを指していません。",
     "classKeys": "キーはテーブルと宣言された関係から決まります",
     "keyColumn": "キー",
-    "keyColumnClaim": "この列はキーです。テーブルのクラスに属します"
+    "keyColumnClaim": "この列はキーです。テーブルのクラスに属します",
+    "toReview": "要確認",
+    "finding_unlinked_tables": "未リンクのテーブル",
+    "finding_class_and_attribute": "クラスと属性",
+    "finding_tag_wrong_kind": "対象種別の誤ったタグ",
+    "finding_retirement_blocked": "廃止がブロック",
+    "finding_no_data": "データなし",
+    "findingMessage_unlinked_tables": "同一エンティティとしてまだリンクされていない複数のテーブルに基づいています: それらの間に同一エンティティのリレーションシップを設定してください",
+    "findingMessage_class_and_attribute": "テーブルに基づきつつ列にも名前を付けています: 用語はクラスか属性のどちらかであり、両方ではありません",
+    "findingMessage_tag_wrong_kind": "別の種類のオブジェクト向けのタグが付いています",
+    "findingMessage_retirement_blocked": "列やテーブルの移動先がありません: 廃止するには後継が必要です",
+    "findingMessage_no_data": "どの列にも名前を付けておらず、どのテーブルにも基づいていません",
+    "findingFix_unlinked_tables": "同一エンティティを設定…",
+    "findingFix_class_and_attribute": "編集",
+    "findingFix_tag_wrong_kind": "タグを外す",
+    "findingFix_retirement_blocked": "後継を選択…",
+    "findingFix_no_data": "編集"
   }
 }

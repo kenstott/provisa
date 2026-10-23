@@ -430,7 +430,7 @@ export class GraphScene extends BaseScene<GraphHover> {
           "p3d-label p3d-node-label",
           `g3d-label-${node.type}`,
           labelClass(node.status),
-          node.identityGap ? "g3d-label-gap" : "",
+          node.unlinkedTables ? "g3d-label-unlinked" : "",
         ]
           .filter(Boolean)
           .join(" "),

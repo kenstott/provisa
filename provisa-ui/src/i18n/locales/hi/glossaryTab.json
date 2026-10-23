@@ -100,9 +100,6 @@
     "groundedTablesTitle": "तालिकाओं में आधारित",
     "groundedTablesPlaceholder": "वे तालिकाएँ जिनकी पंक्तियों को यह शब्द नाम देता है",
     "noGroundedTables": "किसी तालिका में आधारित नहीं",
-    "gapsOnly": "कमियाँ",
-    "identityGap": "कमी",
-    "identityGapHelp": "कई तालिकाओं में आधारित जो सभी एक ही इकाई के रूप में नहीं जुड़ी हैं: उनके बीच एक ही इकाई के संबंध चिह्नित करें",
     "edit": "संपादित करें",
     "domainsDerived": "इसके कॉलम और तालिकाओं से व्युत्पन्न",
     "derivedReason": "भूमिका, प्रस्तावित और अप्रचलित शब्द के कॉलम, तालिकाओं, परिभाषा और संबंधों से निकलते हैं, इसलिए यहाँ सेट नहीं होते।",
@@ -114,6 +111,22 @@
     "danglingHelp": "किसी ऐसे शब्द से नहीं जुड़ा जो तालिका या कॉलम को नाम देता हो: यह अभी किसी डेटा को नाम नहीं देता।",
     "classKeys": "कुंजियाँ इसकी तालिकाओं और घोषित संबंधों से निकलती हैं",
     "keyColumn": "कुंजी",
-    "keyColumnClaim": "यह कॉलम एक कुंजी है; यह अपनी तालिका के वर्ग का है"
+    "keyColumnClaim": "यह कॉलम एक कुंजी है; यह अपनी तालिका के वर्ग का है",
+    "toReview": "समीक्षा हेतु",
+    "finding_unlinked_tables": "अलिंक्ड तालिकाएँ",
+    "finding_class_and_attribute": "क्लास और एट्रिब्यूट",
+    "finding_tag_wrong_kind": "गलत प्रकार पर टैग",
+    "finding_retirement_blocked": "सेवा से हटाना अवरुद्ध",
+    "finding_no_data": "कोई डेटा नहीं",
+    "findingMessage_unlinked_tables": "कई तालिकाओं में आधारित है जो अभी एक ही एंटिटी के रूप में लिंक नहीं हैं: उनके बीच same-entity संबंध चिह्नित करें",
+    "findingMessage_class_and_attribute": "एक साथ तालिकाओं में आधारित है और कॉलम का नाम देता है: एक शब्द क्लास या एट्रिब्यूट होता है, दोनों नहीं",
+    "findingMessage_tag_wrong_kind": "किसी अन्य प्रकार के ऑब्जेक्ट के लिए बना टैग रखता है",
+    "findingMessage_retirement_blocked": "इसके कॉलम या तालिकाओं के जाने की कोई जगह नहीं: इसे सेवा से हटाने के लिए उत्तराधिकारी चाहिए",
+    "findingMessage_no_data": "किसी कॉलम का नाम नहीं देता और किसी तालिका में आधारित नहीं है",
+    "findingFix_unlinked_tables": "same-entity चिह्नित करें…",
+    "findingFix_class_and_attribute": "संपादित करें",
+    "findingFix_tag_wrong_kind": "टैग हटाएँ",
+    "findingFix_retirement_blocked": "उत्तराधिकारी चुनें…",
+    "findingFix_no_data": "संपादित करें"
   }
 }

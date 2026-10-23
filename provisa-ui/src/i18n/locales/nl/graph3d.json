@@ -98,7 +98,6 @@
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
     "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is.",
-    "identityGap": "Verankerd in tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: {{tables}}",
     "layersMenu": "Lagen",
     "termsMenu": "Termen",
     "menuAll": "alle",
@@ -109,6 +108,7 @@
     "look_concept": "concept",
     "look_property": "eigenschap",
     "overBudget": "{{count}} treffers; verfijn de zoekopdracht of kies een domein",
-    "domainCount": "{{domain}} ({{count}})"
+    "domainCount": "{{domain}} ({{count}})",
+    "unlinkedTables": "Verankerd in tabellen die nog niet als dezelfde entiteit zijn gekoppeld: {{tables}}"
   }
 }

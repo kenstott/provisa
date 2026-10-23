@@ -33,7 +33,7 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
 import { Archive, ArchiveRestore, BookOpen, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { GlossaryOntologyView, OntologyToggle } from "../graph3d/GlossaryOntologyView";
@@ -41,6 +41,8 @@ import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
 import { TermListBadges } from "./TermRoleBadge";
+import { TermToReview } from "./TermToReview";
+import { termFindings, toReview } from "./termFindings";
 import { HelpBubble } from "../HelpBubble";
 import {
   GLOSSARY_EXPERT_KINDS,
@@ -118,7 +120,7 @@ export function GlossaryTab() {
     readStoredBool("glossary.showProposed", true),
   );
   // REQ-2130: narrow the list to the classes whose tables are not all declared one entity.
-  const [gapsOnly, setGapsOnly] = useState(false);
+  const [toReviewOnly, setToReviewOnly] = useState(false);
 
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
@@ -131,6 +133,7 @@ export function GlossaryTab() {
   // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
   // a shared URL, or the back/forward buttons all resolve to the same term this state does.
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const raw = searchParams.get("term");
     const parsed = raw ? Number(raw) : NaN;
@@ -414,7 +417,7 @@ export function GlossaryTab() {
   // gives us the three booleans it derives that state from.
   const displayedTerms = (
     showProposed ? terms : terms.filter((term) => term.live || term.retired || term.deprecated)
-  ).filter((term) => !gapsOnly || term.identity_gap);
+  ).filter((term) => !toReviewOnly || toReview(term));
 
   return (
     <Stack gap="md" style={{ height: "100%", minHeight: 420 }}>
@@ -515,12 +518,14 @@ export function GlossaryTab() {
             }}
             data-testid="glossary-list"
           >
-            <Group gap="md" px="xs" pb={6} wrap="nowrap">
+            {/* Each filter's label on one line; the filters wrap where a language's labels are long. */}
+            <Group gap="sm" px="xs" pb={6} wrap="wrap">
               <Checkbox
                 size="xs"
                 label={t("glossaryTab.deprecated")}
                 checked={showDeprecated}
                 onChange={(e) => setShowDeprecated(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-show-deprecated"
               />
               <Checkbox
@@ -528,14 +533,16 @@ export function GlossaryTab() {
                 label={t("glossaryTab.proposed")}
                 checked={showProposed}
                 onChange={(e) => setShowProposed(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
                 data-testid="glossary-show-proposed"
               />
               <Checkbox
                 size="xs"
-                label={t("glossaryTab.gapsOnly")}
-                checked={gapsOnly}
-                onChange={(e) => setGapsOnly(e.currentTarget.checked)}
-                data-testid="glossary-gaps-only"
+                label={t("glossaryTab.toReview")}
+                checked={toReviewOnly}
+                onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
+                styles={{ label: { whiteSpace: "nowrap" } }}
+                data-testid="glossary-to-review-only"
               />
             </Group>
             <div style={{ flex: 1, overflow: "auto" }}>
@@ -654,6 +661,27 @@ export function GlossaryTab() {
                       </span>
                     </Tip>
                   </Group>
+                )}
+
+                {!editing && (
+                  <TermToReview
+                    findings={termFindings(detail)}
+                    fixes={{
+                      // Same-entity relationships are declared on the Relationships page.
+                      unlinked_tables: (f) =>
+                        navigate(
+                          f.params.tables
+                            ? `/relationships?search=${encodeURIComponent(f.params.tables)}`
+                            : "/relationships",
+                        ),
+                      ...(canEdit
+                        ? {
+                            class_and_attribute: () => setEditing(true),
+                            no_data: () => setEditing(true),
+                          }
+                        : {}),
+                    }}
+                  />
                 )}
 
                 {editing ? (

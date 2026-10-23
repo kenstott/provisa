@@ -100,9 +100,6 @@
     "groundedTablesTitle": "錨定的表",
     "groundedTablesPlaceholder": "此術語為其行命名的表",
     "noGroundedTables": "未錨定在任何表上",
-    "gapsOnly": "缺口",
-    "identityGap": "缺口",
-    "identityGapHelp": "關聯到多張表，但它們並未全部作為同一實體連接：請在它們之間標記同一實體關係",
     "edit": "編輯",
     "domainsDerived": "由其欄和表推導",
     "derivedReason": "角色、建議和已棄用取決於術語的欄、表、定義和關係，因此不在此設定。",
@@ -114,6 +111,22 @@
     "danglingHelp": "未連接到任何指代表或欄的術語：它尚未指代任何資料。",
     "classKeys": "鍵由其表和已宣告的關係決定",
     "keyColumn": "鍵",
-    "keyColumnClaim": "此欄是鍵；它屬於其表的類別"
+    "keyColumnClaim": "此欄是鍵；它屬於其表的類別",
+    "toReview": "待審核",
+    "finding_unlinked_tables": "未關聯的資料表",
+    "finding_class_and_attribute": "類別與屬性",
+    "finding_tag_wrong_kind": "標籤物件類型錯誤",
+    "finding_retirement_blocked": "停用受阻",
+    "finding_no_data": "無資料",
+    "findingMessage_unlinked_tables": "錨定在多個尚未關聯為同一實體的資料表上：請在它們之間標記同一實體關係",
+    "findingMessage_class_and_attribute": "同時錨定在資料表上並命名欄位：術語只能是類別或屬性，不能兩者皆是",
+    "findingMessage_tag_wrong_kind": "帶有一個用於其他物件類型的標籤",
+    "findingMessage_retirement_blocked": "其欄位或資料表無處可去：停用需要一個繼任術語",
+    "findingMessage_no_data": "未命名任何欄位，也未錨定在任何資料表上",
+    "findingFix_unlinked_tables": "標記為同一實體…",
+    "findingFix_class_and_attribute": "編輯",
+    "findingFix_tag_wrong_kind": "取消該標籤",
+    "findingFix_retirement_blocked": "選擇繼任術語…",
+    "findingFix_no_data": "編輯"
   }
 }

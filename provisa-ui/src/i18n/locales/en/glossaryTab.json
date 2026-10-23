@@ -100,9 +100,6 @@
     "groundedTablesTitle": "Grounded in tables",
     "groundedTablesPlaceholder": "Tables whose rows this term names",
     "noGroundedTables": "Grounded in no table",
-    "gapsOnly": "Gaps",
-    "identityGap": "Gap",
-    "identityGapHelp": "Grounded in several tables not all joined as the same entity: mark same-entity relationships between them",
     "edit": "Edit",
     "domainsDerived": "Derived from its columns and tables",
     "derivedReason": "Role, Proposed and Deprecated follow from the term's columns, tables, definition and relationships, so they are not set here.",
@@ -114,6 +111,22 @@
     "danglingHelp": "Connected to no term that names a table or column: it names no data yet.",
     "classKeys": "Keys follow from its tables and declared relationships",
     "keyColumn": "Key",
-    "keyColumnClaim": "This column is a key; it belongs to its table's class"
+    "keyColumnClaim": "This column is a key; it belongs to its table's class",
+    "toReview": "To review",
+    "finding_unlinked_tables": "Unlinked tables",
+    "finding_class_and_attribute": "Class and attribute",
+    "finding_tag_wrong_kind": "Tag on wrong kind",
+    "finding_retirement_blocked": "Retirement blocked",
+    "finding_no_data": "No data",
+    "findingMessage_unlinked_tables": "Grounded in several tables not yet linked as the same entity: mark same-entity relationships between them",
+    "findingMessage_class_and_attribute": "Grounded in tables and naming columns at once: a term is a class or an attribute, not both",
+    "findingMessage_tag_wrong_kind": "Carries a tag meant for another kind of object",
+    "findingMessage_retirement_blocked": "Its columns or tables have nowhere to go: retiring it needs a successor",
+    "findingMessage_no_data": "Names no column and is grounded in no table",
+    "findingFix_unlinked_tables": "Mark same-entity…",
+    "findingFix_class_and_attribute": "Edit",
+    "findingFix_tag_wrong_kind": "Unmark the tag",
+    "findingFix_retirement_blocked": "Choose a successor…",
+    "findingFix_no_data": "Edit"
   }
 }

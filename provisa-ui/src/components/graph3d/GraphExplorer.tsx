@@ -651,9 +651,9 @@ function GraphDetail({
               </Text>
             </ClampedDetail>
           )}
-          {node.identityGap && (
-            <Text size="xs" c="orange" data-testid={`${testId}-identity-gap`}>
-              {t("graph3d.identityGap", { tables: node.identityGap.join(", ") })}
+          {node.unlinkedTables && (
+            <Text size="xs" c="orange" data-testid={`${testId}-unlinked-tables`}>
+              {t("graph3d.unlinkedTables", { tables: node.unlinkedTables.join(", ") })}
             </Text>
           )}
           <div className="p3d-list">

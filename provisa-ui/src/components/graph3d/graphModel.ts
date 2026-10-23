@@ -94,7 +94,7 @@ export interface GraphNode {
   role?: TermRole;
   /** REQ-2130/2141: a class grounded in tables not all joined as the same entity (a curation
    * gap): its tables, marked on its name and named in the side panel. */
-  identityGap?: string[];
+  unlinkedTables?: string[];
   /** A column a data product holds (coloured apart from one it does not, nodeLook). */
   inProduct?: boolean;
   /** A term's definition: read in the side panel, never drawn on the graph. */

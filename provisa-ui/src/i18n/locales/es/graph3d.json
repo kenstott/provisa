@@ -98,7 +98,6 @@
     "openAsQueryCompiling": "Compilando la consulta…",
     "openAsQueryNoCypher": "Esta consulta no tiene forma Cypher.",
     "openAsQuerySparqlLater": "SPARQL se abrirá cuando exista su endpoint.",
-    "identityGap": "Fundamentado en tablas no todas unidas como la misma entidad: {{tables}}",
     "layersMenu": "Capas",
     "termsMenu": "Términos",
     "menuAll": "todos",
@@ -109,6 +108,7 @@
     "look_concept": "concepto",
     "look_property": "propiedad",
     "overBudget": "{{count}} coincidencias; acote la búsqueda o elija un dominio",
-    "domainCount": "{{domain}} ({{count}})"
+    "domainCount": "{{domain}} ({{count}})",
+    "unlinkedTables": "Anclado en tablas aún no vinculadas como la misma entidad: {{tables}}"
   }
 }

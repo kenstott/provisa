@@ -103,8 +103,8 @@ describe("the Ontology View's terms", () => {
       [],
     );
     const node = (id: string) => g.nodes.find((n) => n.id === id);
-    expect(node("term:1")?.identityGap).toEqual(["sales.customers", "crm.contacts"]);
-    expect(node("term:2")?.identityGap).toBeUndefined();
+    expect(node("term:1")?.unlinkedTables).toEqual(["sales.customers", "crm.contacts"]);
+    expect(node("term:2")?.unlinkedTables).toBeUndefined();
   });
 
   it("names a proposed term by its title, its standing marked by style alone", () => {

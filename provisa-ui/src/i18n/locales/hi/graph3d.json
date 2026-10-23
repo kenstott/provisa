@@ -98,7 +98,6 @@
     "openAsQueryCompiling": "क्वेरी कंपाइल हो रही है…",
     "openAsQueryNoCypher": "इस क्वेरी का कोई Cypher रूप नहीं है।",
     "openAsQuerySparqlLater": "SPARQL उसका endpoint उपलब्ध होने पर खुलेगा।",
-    "identityGap": "ऐसी तालिकाओं में आधारित जो सभी एक ही इकाई के रूप में नहीं जुड़ी हैं: {{tables}}",
     "layersMenu": "परतें",
     "termsMenu": "शब्द",
     "menuAll": "सभी",
@@ -109,6 +108,7 @@
     "look_concept": "अवधारणा",
     "look_property": "गुण",
     "overBudget": "{{count}} मिलान; खोज सीमित करें या कोई डोमेन चुनें",
-    "domainCount": "{{domain}} ({{count}})"
+    "domainCount": "{{domain}} ({{count}})",
+    "unlinkedTables": "उन तालिकाओं में आधारित जो अभी एक ही एंटिटी के रूप में लिंक नहीं हैं: {{tables}}"
   }
 }

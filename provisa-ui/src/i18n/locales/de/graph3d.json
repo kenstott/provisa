@@ -98,7 +98,6 @@
     "openAsQueryCompiling": "Abfrage wird kompiliert…",
     "openAsQueryNoCypher": "Diese Abfrage hat keine Cypher-Form.",
     "openAsQuerySparqlLater": "SPARQL ist verfügbar, sobald sein Endpunkt existiert.",
-    "identityGap": "In Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: {{tables}}",
     "layersMenu": "Ebenen",
     "termsMenu": "Begriffe",
     "menuAll": "alle",
@@ -109,6 +108,7 @@
     "look_concept": "Konzept",
     "look_property": "Eigenschaft",
     "overBudget": "{{count}} Treffer; Suche eingrenzen oder eine Domäne wählen",
-    "domainCount": "{{domain}} ({{count}})"
+    "domainCount": "{{domain}} ({{count}})",
+    "unlinkedTables": "In Tabellen verankert, die noch nicht als dieselbe Entität verknüpft sind: {{tables}}"
   }
 }

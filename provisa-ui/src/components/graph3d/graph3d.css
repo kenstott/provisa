@@ -69,7 +69,7 @@
   text-decoration: line-through;
 }
 /* REQ-2130: a class grounded in tables not all declared one entity, marked after its name. */
-.g3d-label-gap::after {
+.g3d-label-unlinked::after {
   content: " \26A0";
   color: var(--mantine-color-orange-5);
 }

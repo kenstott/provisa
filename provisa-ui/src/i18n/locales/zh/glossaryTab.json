@@ -100,9 +100,6 @@
     "groundedTablesTitle": "锚定的表",
     "groundedTablesPlaceholder": "此术语为其行命名的表",
     "noGroundedTables": "未锚定在任何表上",
-    "gapsOnly": "缺口",
-    "identityGap": "缺口",
-    "identityGapHelp": "关联到多张表，但它们并未全部作为同一实体连接：请在它们之间标记同一实体关系",
     "edit": "编辑",
     "domainsDerived": "由其列和表推导",
     "derivedReason": "角色、提议和已弃用取决于术语的列、表、定义和关系，因此不在此设置。",
@@ -114,6 +111,22 @@
     "danglingHelp": "未连接到任何指代表或列的术语：它尚未指代任何数据。",
     "classKeys": "键由其表和已声明的关系决定",
     "keyColumn": "键",
-    "keyColumnClaim": "此列是键；它属于其表的类"
+    "keyColumnClaim": "此列是键；它属于其表的类",
+    "toReview": "待审核",
+    "finding_unlinked_tables": "未关联的表",
+    "finding_class_and_attribute": "类与属性",
+    "finding_tag_wrong_kind": "标签对象类型错误",
+    "finding_retirement_blocked": "停用受阻",
+    "finding_no_data": "无数据",
+    "findingMessage_unlinked_tables": "锚定在多个尚未关联为同一实体的表上：请在它们之间标记同一实体关系",
+    "findingMessage_class_and_attribute": "同时锚定在表上并命名列：术语只能是类或属性，不能两者兼是",
+    "findingMessage_tag_wrong_kind": "带有一个用于其他对象类型的标签",
+    "findingMessage_retirement_blocked": "其列或表无处可去：停用需要一个继任术语",
+    "findingMessage_no_data": "未命名任何列，也未锚定在任何表上",
+    "findingFix_unlinked_tables": "标记为同一实体…",
+    "findingFix_class_and_attribute": "编辑",
+    "findingFix_tag_wrong_kind": "取消该标签",
+    "findingFix_retirement_blocked": "选择继任术语…",
+    "findingFix_no_data": "编辑"
   }
 }

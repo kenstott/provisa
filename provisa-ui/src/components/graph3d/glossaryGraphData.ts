@@ -522,7 +522,7 @@ export function glossaryGraph(
       ...(t.definition ? { definition: t.definition } : {}),
       // REQ-2130/2141: a class whose tables are not all declared one entity: a curation gap.
       ...(t.identity_gap
-        ? { identityGap: (t.tables ?? []).map((g) => `${g.domain_id}.${g.table_name}`) }
+        ? { unlinkedTables: (t.tables ?? []).map((g) => `${g.domain_id}.${g.table_name}`) }
         : {}),
       // An enterprise-wide term is in every domain: no domain filter leaves it out.
       ...(domains.includes(ENTERPRISE_DOMAIN) ? {} : { domains }),

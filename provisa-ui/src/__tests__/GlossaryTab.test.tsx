@@ -375,6 +375,16 @@ describe("GlossaryTab", () => {
     await screen.findByTestId("glossary-edge-out-link-2");
   });
 
+  it("lists only the terms To review when that filter is on", async () => {
+    mockList.mockResolvedValue([{ ...REVENUE, identity_gap: true }, CHURN]);
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-2");
+    expect(screen.getByTestId("glossary-review-1")).toHaveTextContent(t("glossaryTab.toReview"));
+    fireEvent.click(screen.getByTestId("glossary-to-review-only"));
+    await waitFor(() => expect(screen.queryByTestId("glossary-item-2")).toBeNull());
+    expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
+  });
+
   it("passes the search text and the deprecated toggle to the list endpoint", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");

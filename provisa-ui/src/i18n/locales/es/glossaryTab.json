@@ -100,9 +100,6 @@
     "groundedTablesTitle": "Anclado en tablas",
     "groundedTablesPlaceholder": "Tablas cuyas filas nombra este término",
     "noGroundedTables": "No anclado en ninguna tabla",
-    "gapsOnly": "Brechas",
-    "identityGap": "Brecha",
-    "identityGapHelp": "Fundamentado en varias tablas no todas unidas como la misma entidad: marque relaciones de misma entidad entre ellas",
     "edit": "Editar",
     "domainsDerived": "Derivado de sus columnas y tablas",
     "derivedReason": "El rol, Propuesto y Obsoleto se deducen de las columnas, tablas, definición y relaciones del término, por lo que no se establecen aquí.",
@@ -114,6 +111,22 @@
     "danglingHelp": "No está conectado a ningún término que nombre una tabla o columna: aún no nombra datos.",
     "classKeys": "Las claves se deducen de sus tablas y relaciones declaradas",
     "keyColumn": "Clave",
-    "keyColumnClaim": "Esta columna es una clave; pertenece a la clase de su tabla"
+    "keyColumnClaim": "Esta columna es una clave; pertenece a la clase de su tabla",
+    "toReview": "Por revisar",
+    "finding_unlinked_tables": "Tablas sin vincular",
+    "finding_class_and_attribute": "Clase y atributo",
+    "finding_tag_wrong_kind": "Etiqueta de tipo incorrecto",
+    "finding_retirement_blocked": "Retirada bloqueada",
+    "finding_no_data": "Sin datos",
+    "findingMessage_unlinked_tables": "Anclado en varias tablas aún no vinculadas como la misma entidad: marque relaciones de misma entidad entre ellas",
+    "findingMessage_class_and_attribute": "Anclado en tablas y nombrando columnas a la vez: un término es una clase o un atributo, no ambos",
+    "findingMessage_tag_wrong_kind": "Lleva una etiqueta pensada para otro tipo de objeto",
+    "findingMessage_retirement_blocked": "Sus columnas o tablas no tienen adónde ir: retirarlo requiere un sucesor",
+    "findingMessage_no_data": "No nombra ninguna columna ni está anclado en ninguna tabla",
+    "findingFix_unlinked_tables": "Marcar como misma entidad…",
+    "findingFix_class_and_attribute": "Editar",
+    "findingFix_tag_wrong_kind": "Quitar la etiqueta",
+    "findingFix_retirement_blocked": "Elegir un sucesor…",
+    "findingFix_no_data": "Editar"
   }
 }

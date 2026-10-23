@@ -100,9 +100,6 @@
     "groundedTablesTitle": "Verankerd in tabellen",
     "groundedTablesPlaceholder": "Tabellen waarvan deze term de rijen benoemt",
     "noGroundedTables": "In geen tabel verankerd",
-    "gapsOnly": "Hiaten",
-    "identityGap": "Hiaat",
-    "identityGapHelp": "Verankerd in meerdere tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: markeer relaties tussen hen als dezelfde entiteit",
     "edit": "Bewerken",
     "domainsDerived": "Afgeleid van zijn kolommen en tabellen",
     "derivedReason": "Rol, Voorgesteld en Verouderd volgen uit de kolommen, tabellen, definitie en relaties van de term en worden hier niet ingesteld.",
@@ -114,6 +111,22 @@
     "danglingHelp": "Met geen enkele term verbonden die een tabel of kolom benoemt: het benoemt nog geen gegevens.",
     "classKeys": "Sleutels volgen uit zijn tabellen en gedeclareerde relaties",
     "keyColumn": "Sleutel",
-    "keyColumnClaim": "Deze kolom is een sleutel; hij hoort bij de klasse van zijn tabel"
+    "keyColumnClaim": "Deze kolom is een sleutel; hij hoort bij de klasse van zijn tabel",
+    "toReview": "Te beoordelen",
+    "finding_unlinked_tables": "Niet-gekoppelde tabellen",
+    "finding_class_and_attribute": "Klasse en attribuut",
+    "finding_tag_wrong_kind": "Tag op verkeerd soort object",
+    "finding_retirement_blocked": "Buiten gebruik stellen geblokkeerd",
+    "finding_no_data": "Geen gegevens",
+    "findingMessage_unlinked_tables": "Verankerd in meerdere tabellen die nog niet als dezelfde entiteit zijn gekoppeld: markeer relaties van dezelfde entiteit ertussen",
+    "findingMessage_class_and_attribute": "Tegelijk verankerd in tabellen en benoemt kolommen: een term is een klasse of een attribuut, niet beide",
+    "findingMessage_tag_wrong_kind": "Heeft een tag die voor een ander soort object bedoeld is",
+    "findingMessage_retirement_blocked": "Zijn kolommen of tabellen kunnen nergens heen: buiten gebruik stellen vraagt een opvolger",
+    "findingMessage_no_data": "Benoemt geen kolom en is in geen tabel verankerd",
+    "findingFix_unlinked_tables": "Als dezelfde entiteit markeren…",
+    "findingFix_class_and_attribute": "Bewerken",
+    "findingFix_tag_wrong_kind": "Tag verwijderen",
+    "findingFix_retirement_blocked": "Opvolger kiezen…",
+    "findingFix_no_data": "Bewerken"
   }
 }

@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { Badge, Group } from "@mantine/core";
 import { termRole, type GlossaryTermSummary, type TermRole } from "../../api/glossary";
 import { Tip } from "../Tip";
+import { toReview } from "./termFindings";
 
 const COLOUR: Record<TermRole, string> = { class: "grape", property: "blue", concept: "gray" };
 
@@ -56,12 +57,11 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
         dangling={termRole(term) === "concept" && !term.grounded}
         testId={`glossary-role-${term.id}`}
       />
-      {term.identity_gap && (
-        <Tip text={t("glossaryTab.identityGapHelp")}>
-          <Badge size="xs" variant="light" color="orange" data-testid={`glossary-gap-${term.id}`}>
-            {t("glossaryTab.identityGap")}
-          </Badge>
-        </Tip>
+      {/* What it needs looked at is in its panel's To review section; the list marks it only. */}
+      {toReview(term) && (
+        <Badge size="xs" variant="light" color="orange" data-testid={`glossary-review-${term.id}`}>
+          {t("glossaryTab.toReview")}
+        </Badge>
       )}
       {term.deprecated && (
         <Badge size="xs" color="gray" variant="light">

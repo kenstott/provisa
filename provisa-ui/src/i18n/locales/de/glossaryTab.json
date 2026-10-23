@@ -100,9 +100,6 @@
     "groundedTablesTitle": "In Tabellen verankert",
     "groundedTablesPlaceholder": "Tabellen, deren Zeilen dieser Begriff benennt",
     "noGroundedTables": "In keiner Tabelle verankert",
-    "gapsOnly": "Lücken",
-    "identityGap": "Lücke",
-    "identityGapHelp": "In mehreren Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: markieren Sie Beziehungen als dieselbe Entität",
     "edit": "Bearbeiten",
     "domainsDerived": "Abgeleitet aus seinen Spalten und Tabellen",
     "derivedReason": "Rolle, Vorgeschlagen und Veraltet ergeben sich aus den Spalten, Tabellen, der Definition und den Beziehungen des Begriffs und werden hier nicht gesetzt.",
@@ -114,6 +111,22 @@
     "danglingHelp": "Mit keinem Begriff verbunden, der eine Tabelle oder Spalte benennt: Er benennt noch keine Daten.",
     "classKeys": "Schlüssel ergeben sich aus seinen Tabellen und deklarierten Beziehungen",
     "keyColumn": "Schlüssel",
-    "keyColumnClaim": "Diese Spalte ist ein Schlüssel; sie gehört zur Klasse ihrer Tabelle"
+    "keyColumnClaim": "Diese Spalte ist ein Schlüssel; sie gehört zur Klasse ihrer Tabelle",
+    "toReview": "Zu prüfen",
+    "finding_unlinked_tables": "Nicht verknüpfte Tabellen",
+    "finding_class_and_attribute": "Klasse und Attribut",
+    "finding_tag_wrong_kind": "Tag für falsche Objektart",
+    "finding_retirement_blocked": "Außerdienststellung blockiert",
+    "finding_no_data": "Keine Daten",
+    "findingMessage_unlinked_tables": "In mehreren Tabellen verankert, die noch nicht als dieselbe Entität verknüpft sind: Beziehungen „dieselbe Entität“ zwischen ihnen festlegen",
+    "findingMessage_class_and_attribute": "Gleichzeitig in Tabellen verankert und Spalten benennend: Ein Begriff ist eine Klasse oder ein Attribut, nicht beides",
+    "findingMessage_tag_wrong_kind": "Trägt ein Tag, das für eine andere Objektart gedacht ist",
+    "findingMessage_retirement_blocked": "Seine Spalten oder Tabellen haben kein Ziel: Zum Außer-Dienst-Stellen braucht es einen Nachfolger",
+    "findingMessage_no_data": "Benennt keine Spalte und ist in keiner Tabelle verankert",
+    "findingFix_unlinked_tables": "Als dieselbe Entität markieren…",
+    "findingFix_class_and_attribute": "Bearbeiten",
+    "findingFix_tag_wrong_kind": "Tag entfernen",
+    "findingFix_retirement_blocked": "Nachfolger wählen…",
+    "findingFix_no_data": "Bearbeiten"
   }
 }
