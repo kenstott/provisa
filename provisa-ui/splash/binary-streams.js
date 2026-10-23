@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 904c1f55-ffe7-4a99-acad-da86684ea402
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 /*
  * Binary streams converging on the Provisa mark: byte groups of 0s and 1s drift along a curl
  * flow field into the logo, bits flipping as they go, fading in at the edge and out near the
