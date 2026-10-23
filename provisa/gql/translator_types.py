@@ -53,3 +53,8 @@ class CypherCrossSourceError(CypherTranslateError):
     """Raised when a Cypher query spans multiple incompatible data sources."""
 
     pass
+
+
+#: The column a domain union's arm carries a node returned bare in: one JSON value, its id, its
+#: label and its own type's properties (each as text, as a property column is).
+NODE_COLUMN = "__node"

@@ -28,7 +28,43 @@ from provisa.gql.translator_helpers import (
     via_column,
 )
 
-from provisa.gql.translator_types import CypherTranslateError
+from provisa.gql.translator_types import NODE_COLUMN, CypherTranslateError
+
+if TYPE_CHECKING:
+    from provisa.gql.label_map import NodeMapping
+
+
+def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``nm``'s row as the node JSON value a domain union's arm carries (NODE_COLUMN)."""
+    kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        exp.JSONKeyValue(
+            this=exp.Literal.string("id"),
+            expression=exp.DPipe(
+                this=exp.Literal.string(f"{nm.label}|"),
+                expression=exp.Cast(
+                    this=exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)),
+                    to=exp.DataType(this=exp.DataType.Type.VARCHAR),
+                ),
+            ),
+        ),
+        exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
+    ]
+    # In name order, as the union's property columns were.
+    for prop in sorted(nm.properties):
+        if prop in ("id", "label"):
+            continue
+        # As a property column of the arm is: its physical column as text, null with none.
+        phys_col = nm.physical_properties.get(prop)
+        value = (
+            exp.Cast(
+                this=exp.Column(this=exp.Identifier(this=phys_col, quoted=True)),
+                to=exp.DataType(this=exp.DataType.Type.VARCHAR),
+            )
+            if phys_col
+            else exp.null()
+        )
+        kv.append(exp.JSONKeyValue(this=exp.Literal.string(prop), expression=value))
+    return exp.JSONObject(expressions=kv)
 
 
 class _UnionMixin:  # mixin for _Translator
@@ -41,6 +77,8 @@ class _UnionMixin:  # mixin for _Translator
         _lm: CypherLabelMap
 
         def _collect_var_props(self, var: str) -> list[str]: ...
+
+        def _node_as_one_value(self, var: str) -> bool: ...
 
     def _build_all_rels_union(
         self,
@@ -316,7 +354,9 @@ class _UnionMixin:  # mixin for _Translator
             if domain_name == "__all__"
             else self._lm.domains[domain_name]
         )
-        props = self._collect_var_props(var)
+        # A node returned bare is one JSON value per arm, of that type's own properties (NODE_COLUMN).
+        as_one_value = self._node_as_one_value(var)
+        props = [] if as_one_value else self._collect_var_props(var)
 
         branches: list[exp.Select] = []
         had_resolvable = False
@@ -354,6 +394,8 @@ class _UnionMixin:  # mixin for _Translator
                     alias="__id",
                 ),
             ]
+            if as_one_value:
+                select_items.append(exp.alias_(_node_value(nm), alias=NODE_COLUMN))
             for prop in props:
                 phys_col = nm.physical_properties.get(prop)
                 if phys_col:
@@ -390,6 +432,7 @@ class _UnionMixin:  # mixin for _Translator
             zero_items: list[exp.Expr] = [
                 exp.alias_(exp.null(), alias="__label"),
                 exp.alias_(exp.null(), alias="__id"),
+                *([exp.alias_(exp.null(), alias=NODE_COLUMN)] if as_one_value else []),
             ] + [exp.alias_(exp.null(), alias=exp.Identifier(this=p, quoted=True)) for p in props]
             zero_row = exp.select(*zero_items).where(exp.false())
             return exp.alias_(exp.Subquery(this=zero_row), alias=var)  # pyright: ignore[reportReturnType]
