@@ -438,8 +438,10 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
     flat_sql: bool,
     flat_cypher: bool,
     node_only_cypher: bool,
+    root_index: int,
 ) -> tuple[str | None, str | None, str | None]:
-    """Return (compiled_cypher, cypher_error, nodes_compiled_cypher)."""
+    """Return (compiled_cypher, cypher_error, nodes_compiled_cypher) for the query's root field
+    at ``root_index``: each root field is its own Cypher statement, as it is its own SQL one."""
     from provisa.compiler.params import embed_params_comment
     from provisa.compiler.sql_gen import compile_query as _compile_query
     from provisa.compiler.sql_rewrite import make_semantic_sql
@@ -463,7 +465,9 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
         # Cypher translator requires ARRAY_AGG (flat=False) SQL as input — it maps ARRAY_AGG→collect().
         # flat_sql only controls the SQL tab display; Cypher aggregation is controlled by flat_cypher.
         if flat_sql:
-            _cypher_compiled = _compile_query(document, ctx, effective_variables, flat=False)[0]
+            _cypher_compiled = _compile_query(document, ctx, effective_variables, flat=False)[
+                root_index
+            ]
             _cypher_sql = make_semantic_sql(
                 embed_params_comment(_cypher_compiled.sql, _cypher_compiled.params), ctx
             )
@@ -498,20 +502,6 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
         return compiled_cypher, None, nodes_compiled_cypher
     except Exception as e:
         return None, str(e), None
-
-
-def _combine_cypher_results(results: list[dict[str, Any]]) -> None:
-    """Merge multi-part Cypher queries in-place on results."""
-    cypher_parts = [r["compiled_cypher"] for r in results if r.get("compiled_cypher")]
-    if len(cypher_parts) > 1:
-        try:
-            from provisa.cypher.sql_to_cypher import combine_cypher_queries
-
-            combined = combine_cypher_queries(cypher_parts)
-            for r in results:
-                r["compiled_cypher"] = combined
-        except Exception:
-            pass
 
 
 async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039, REQ-262, REQ-263, REQ-266
@@ -561,7 +551,7 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
     results = []
     from provisa.federation.registry_view import operator_floor
 
-    for _compiled_orig in compiled_queries:
+    for root_index, _compiled_orig in enumerate(compiled_queries):
         pre_mv_sources = set(_compiled_orig.sources)
         compiled, mv_applied = await _apply_pipeline_transforms(
             _compiled_orig, ctx, role_id, fresh_mvs, state
@@ -607,6 +597,7 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
             flat_sql,
             flat_cypher,
             node_only_cypher,
+            root_index,
         )
 
         has_nodes = nodes_semantic_sql is not None and bool(compiled.nodes_columns)
@@ -664,5 +655,6 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
             }
         )
 
-    _combine_cypher_results(results)
+    # One result per root field, in the query's order, each with its own Cypher statement or the
+    # reason it has none: a root that can't be Cypher leaves the others theirs.
     return results

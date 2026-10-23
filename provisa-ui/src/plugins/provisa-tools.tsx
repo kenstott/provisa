@@ -444,14 +444,17 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
             ? raw.queries
             : [raw];
         setCompiled(results);
-        const cypherParts = results.flatMap((r) => {
-          const parts: string[] = [];
-          if (r.compiled_cypher) parts.push(r.compiled_cypher);
-          return parts;
-        });
-        setCypherQuery(cypherParts.join("\n\n") ?? "");
+        // Each root field is its own Cypher statement, in the query's order; a root with no
+        // Cypher form is said in its place and leaves the others theirs.
+        const translated = results.some((r) => !!r.compiled_cypher);
+        const cypherParts = results.map((r) =>
+          r.compiled_cypher
+            ? r.compiled_cypher
+            : `// ${r.root_field}: ${r.cypher_error ?? ""}`.trim(),
+        );
+        setCypherQuery(translated ? cypherParts.join(";\n\n") : "");
         const cerr = results.map((r) => r.cypher_error).find((e) => e) ?? null;
-        setCypherError(cypherParts.length > 0 ? null : cerr);
+        setCypherError(translated ? null : cerr);
       } catch {
         setCompiled(null);
       }

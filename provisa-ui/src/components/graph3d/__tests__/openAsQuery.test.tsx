@@ -88,6 +88,43 @@ describe("a graph view's Open as query", () => {
     expect(landed()).toEqual(["/graph", { query: "MATCH (n:GlossaryTerm) RETURN n.id" }]);
   });
 
+  it("opens each root field as its own Cypher statement, a root with none said in its place", async () => {
+    compiles.answer = {
+      queries: [
+        {
+          root_field: "glossary_terms",
+          semantic_sql: "SELECT 1",
+          compiled_cypher: "MATCH (n:GlossaryTerm) RETURN n.id",
+          cypher_error: null,
+        },
+        {
+          root_field: "glossary_term_edges",
+          semantic_sql: "SELECT 2",
+          compiled_cypher: null,
+          cypher_error: "no mapping",
+        },
+        {
+          root_field: "data_products",
+          semantic_sql: "SELECT 3",
+          compiled_cypher: "MATCH (p:DataProduct) RETURN p.id",
+          cypher_error: null,
+        },
+      ],
+    };
+    view(QUERY);
+    fireEvent.click(screen.getByTestId("x-open-as-query"));
+    await waitFor(() => expect(screen.getByTestId("x-open-as-cypher")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("x-open-as-cypher"));
+    expect(landed()).toEqual([
+      "/graph",
+      {
+        query:
+          "MATCH (n:GlossaryTerm) RETURN n.id;\n\n// glossary_term_edges: no mapping;\n\n" +
+          "MATCH (p:DataProduct) RETURN p.id",
+      },
+    ]);
+  });
+
   it("offers no Cypher for a query that does not map to it", async () => {
     compiles.answer = {
       queries: [{ semantic_sql: "SELECT 1", compiled_cypher: null, cypher_error: "no mapping" }],
