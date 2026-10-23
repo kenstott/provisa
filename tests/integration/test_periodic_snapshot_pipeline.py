@@ -106,7 +106,9 @@ def _one_pipeline(monkeypatch):
     from provisa.transpiler.router import Route
 
     async def _govern_and_route(sql, _role_id, **_kw):
-        return SimpleNamespace(route=Route.ENGINE, physical_sql=sql, exec_params=None)
+        return SimpleNamespace(
+            route=Route.ENGINE, physical_sql=sql, exec_params=None, columns=None
+        )  # columns: no column transform (REQ-2131)
 
     async def _resident(_state, _plan):
         return None

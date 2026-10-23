@@ -965,6 +965,7 @@ def test_a_statement_reading_it_alone_is_the_engines():
         source_types={"test-askamerica": "govdata"},
         source_dialects={},
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 
@@ -977,6 +978,7 @@ def test_a_join_with_another_source_is_the_engines():
         source_types={"test-askamerica": "govdata", "sales-pg": "postgresql"},
         source_dialects={"sales-pg": "postgres"},
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 

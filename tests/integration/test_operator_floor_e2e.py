@@ -16,7 +16,8 @@ materialize store) and once on the test stack's Trino (Postgres control plane an
 first read lands each. The upstream tables are then RENAMED away, so any read that reaches the source
 live fails with "does not exist" -- the source's own proof it was hit. Every later read, over
 /data/sql, pgwire and GraphQL, with no hint or a ``route=federated`` hint, must still answer from the
-landed copy; a ``route=direct`` hint must be refused with an error naming the operator setting.
+landed copy; a ``route=direct`` hint is ignored, the read answered from the landed copy and its
+route reason naming the operator setting (REQ-030, amended 2026-10-23).
 
 On Trino a catalog IS the live attach of a source, so a floored source has none (REQ-1912): the
 coordinator is asked for its catalogs and none of the three sources is among them.
@@ -26,6 +27,7 @@ coordinator is asked for its catalogs and none of the three sources is among the
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 from pathlib import Path
@@ -33,6 +35,8 @@ from pathlib import Path
 import httpx
 import pytest
 import pytest_asyncio
+
+from tests.integration.isolated_server import audited_route_reason
 
 pytestmark = [
     pytest.mark.requires_trino,
@@ -178,23 +182,27 @@ async def test_graphql_reads_come_from_the_landed_copy_not_the_source(floor_serv
 
 
 @pytest.mark.parametrize(
-    ("field", "setting"),
+    ("field", "setting", "source"),
     [
-        ("lpItems", "load_protected"),
-        ("pmItems", "replicate"),
-        ("bareItems", "replicate"),
-        ("mixedAlways", "replicate"),
+        ("lpItems", "load_protected", "floor-protected"),
+        ("pmItems", "replicate", "floor-materialized"),
+        ("bareItems", "replicate", "floor-bare"),
+        ("mixedAlways", "replicate", "floor-mixed"),
     ],
 )
-async def test_a_direct_route_hint_is_refused_naming_the_operator_setting(
-    floor_server, field, setting
+async def test_a_direct_route_hint_is_ignored_naming_the_operator_setting(
+    floor_server, field, setting, source
 ):
+    """REQ-030 (amended 2026-10-23): a direct hint the floor does not allow is ignored, and said:
+    the read answers from the replica, and its route reason names the operator setting."""
     query = f"# @provisa route=direct\n{{ {field} {{ id name }} }}"
     async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
         resp = await client.post("/data/graphql", json={"query": query})
-    assert resp.status_code == 403, _explain(floor_server, resp)
-    assert resp.json()["code"] == "query.operator_floor", resp.text
-    assert setting in resp.text
+    body = resp.json()
+    assert resp.status_code == 200 and not body.get("errors"), _explain(floor_server, resp)
+    assert sorted(r["id"] for r in body["data"][field]) == [1, 2, 3]
+    noted = f"route hint ignored: landed: not_forced: operator floor: {setting} on {source} "
+    assert await asyncio.to_thread(audited_route_reason, floor_server, noted)
 
 
 async def test_a_federated_route_hint_is_served_from_the_landed_copy(floor_server):
