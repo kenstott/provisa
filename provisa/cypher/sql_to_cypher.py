@@ -99,7 +99,10 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     base_label = _resolve_label(from_tbl, domain_to_label)
     if base_label is None:
-        return None
+        # A junction the relationships traverse is no node: its rows are those relationships.
+        return _junction_root_cypher(
+            tree, from_tbl, ctx, label_map, domain_to_sql_name, override_limit
+        )
 
     sql_base_alias = from_tbl.alias or from_tbl.name
 
@@ -142,6 +145,17 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
     alias_prop_map: dict[str, dict[str, str]] = {
         sql_a: _prop_map_for_label(lbl) for sql_a, lbl in alias_label.items()
     }
+
+    def _key_prop_for_label(display_lbl: str) -> str:
+        """The property a node of ``display_lbl`` is told apart by: its key column's."""
+        nm = next(
+            (n for n in label_map.nodes.values() if label_map.display_label(n) == display_lbl),
+            None,
+        )
+        if nm is None:
+            raise UntranslatableSubquery(f"no node label {display_lbl!r}")
+        props = {sql_col: prop for prop, sql_col in nm.properties.items()}
+        return props.get(nm.id_column, nm.id_column)
 
     def _node(short: str, label: str) -> str:
         return f"({short}:{label})"
@@ -247,15 +261,41 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
             _letters,
             _prop_map_for_label,
             _node,
+            join_to_rel,
+            _key_prop_for_label,
         )
     except UntranslatableSubquery:
         return None
 
     # --- WHERE ---
+    # The statement's own condition is on the rows of its MATCH, so it follows that MATCH, before
+    # any OPTIONAL MATCH a selection adds -- under one it would scope to the optional rows only.
+    # A relationship's condition (EXISTS over the related table) is that relationship's pattern.
     where_expr = tree.args.get("where")
     if where_expr:
-        where_sql = _remap(_sql_to_cypher_expr(where_expr.this.sql(dialect="postgres")))
-        cypher_lines.append(f"WHERE {where_sql}")
+        scope = {
+            sql_a: (alias_map[sql_a], alias_label[sql_a])
+            for sql_a in [sql_base_alias] + [seg[3] for seg in join_segments if not seg[0]]
+        }
+        patterns: dict[str, str] = {}
+
+        def _pattern_for(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if isinstance(node, exp.Exists):
+                key = f"__exists_{len(patterns)}"
+                patterns[key] = _exists_pattern(
+                    node, scope, domain_to_label, join_to_rel, src_tgt_to_rel, _prop_map_for_label
+                )
+                return exp.column(key)
+            return node
+
+        try:
+            condition = where_expr.this.copy().transform(_pattern_for)
+        except UntranslatableSubquery:
+            return None
+        where_sql = _remap(_sql_to_cypher_expr(condition.sql(dialect="postgres")))
+        for key, pattern in patterns.items():
+            where_sql = re.sub(rf"\b{key}\b", lambda _m, p=pattern: p, where_sql)
+        cypher_lines.insert(1, f"WHERE {where_sql}")
 
     # --- RETURN ---
     default_sql_alias = sql_base_alias if not join_segments else None
@@ -315,6 +355,220 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
 
 # --- Extracted helpers for semantic_sql_to_cypher ---
+
+
+def _junction_columns(
+    columns: dict[str, tuple[str, str]], type_column: str | None, type_value: str, table_alias: str
+):
+    """A transform reading a junction's columns as one relationship type's: each key column its
+    end node's key, the discriminator the type's value, every other column an attribute of r."""
+
+    def _cypher(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(node, exp.Column) and (not node.table or node.table == table_alias):
+            if type_column is not None and node.name == type_column:
+                return exp.Literal.string(type_value)
+            if node.name not in columns:
+                raise UntranslatableSubquery(f"junction column {node.name}")
+            variable, prop = columns[node.name]
+            return exp.column(prop, table=variable)
+        return node
+
+    return _cypher
+
+
+def _junction_root_cypher(
+    tree: exp.Select,
+    from_tbl: exp.Table,
+    ctx: object,  # object-ok: circular-import boundary -- CompilationContext lives in provisa.compiler
+    label_map: CypherLabelMap,
+    domain_to_sql_name,
+    override_limit: int | None,
+) -> str | None:
+    """A root over a junction table (REQ-1586) as the relationships it holds (REQ-2136): one
+    ``MATCH (a)-[r:TYPE]->(b)`` per relationship type the junction carries, put together with
+    UNION ALL. Its two foreign keys are the end nodes' keys, its discriminator the type's own
+    value, and every other column an attribute of ``r``. None when the table is no junction, or
+    an ORDER BY or LIMIT would have to apply across several types."""
+    from provisa.compiler.sql_types import key_list
+
+    type_name = None
+    for _fn, table_meta in ctx.tables.items():  # type: ignore[attr-defined]  # pyright: ignore[reportUnusedVariable]
+        field_key = (
+            table_meta.field_name.split("__", 1)[1]
+            if "__" in table_meta.field_name
+            else table_meta.field_name
+        )
+        if field_key == from_tbl.name and (
+            not from_tbl.db or domain_to_sql_name(table_meta.domain_id) == from_tbl.db
+        ):
+            type_name = table_meta.type_name
+            break
+    if type_name is None:
+        return None
+    every = [
+        *label_map.relationships.values(),
+        *(r for rs in label_map.aliases.values() for r in rs),
+    ]
+    rels: list[RelationshipMapping] = []
+    for rel in every:
+        if rel.via is not None and rel.via.type_name == type_name and rel not in rels:
+            rels.append(rel)
+    if not rels:
+        return None
+    if len(rels) > 1 and (tree.args.get("order") or tree.args.get("limit") or override_limit):
+        return None
+    table_alias = from_tbl.alias or from_tbl.name
+    select_exprs = tree.args.get("expressions") or []
+    branches = []
+    for rel in rels:
+        via = rel.via
+        assert via is not None
+        src = label_map.nodes.get(rel.source_label)
+        tgt = label_map.nodes.get(rel.target_label)
+        if src is None or tgt is None:
+            return None
+        columns: dict[str, tuple[str, str]] = {}
+        for end, nm, junction_cols, keys in (
+            ("a", src, via.source_columns, key_list(rel.join_source_column)),
+            ("b", tgt, via.target_columns, key_list(rel.join_target_column)),
+        ):
+            by_column = {col: prop for prop, col in nm.properties.items()}
+            for junction_col, key in zip(junction_cols, keys, strict=True):
+                columns[junction_col] = (end, by_column.get(key, key))
+        for prop, col in via.attributes.items():
+            columns[col] = ("r", prop)
+        type_value = via.type_value if via.type_value is not None else rel.rel_type
+
+        _cypher = _junction_columns(columns, via.type_column, type_value, table_alias)
+
+        try:
+            items = []
+            for e in select_exprs:
+                col = e.this if isinstance(e, exp.Alias) else e
+                name = e.alias_or_name
+                items.append(
+                    f"{_sql_to_cypher_expr(col.copy().transform(_cypher).sql(dialect='postgres'))}"
+                    f" AS {name}"
+                )
+            where = tree.args.get("where")
+            condition = (
+                _sql_to_cypher_expr(where.this.copy().transform(_cypher).sql(dialect="postgres"))
+                if where is not None
+                else None
+            )
+        except UntranslatableSubquery:
+            return None
+        lines = [
+            f"MATCH (a:{label_map.display_label(src)})-[r:{rel.rel_type}]->"
+            f"(b:{label_map.display_label(tgt)})"
+        ]
+        if condition is not None:
+            lines.append(f"WHERE {condition}")
+        lines.append(f"RETURN {', '.join(items)}")
+        branches.append("\n".join(lines))
+    statement = "\nUNION ALL\n".join(branches)
+    if len(rels) == 1:
+        order = tree.args.get("order")
+        if order is not None:
+            keys = ", ".join(
+                f"{o.this.alias_or_name}{' DESC' if o.args.get('desc') else ''}"
+                for o in order.expressions
+            )
+            statement += f"\nORDER BY {keys}"
+        limit = override_limit
+        if limit is None and tree.args.get("limit") is not None:
+            limit = int(tree.args["limit"].expression.sql())
+        if limit is not None:
+            statement += f"\nLIMIT {limit}"
+    return statement
+
+
+def _conjuncts(node: exp.Expression) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if isinstance(node, exp.And):
+        return [*_conjuncts(node.this), *_conjuncts(node.expression)]
+    if isinstance(node, exp.Paren):
+        return _conjuncts(node.this)
+    return [node]
+
+
+def _exists_pattern(
+    node: exp.Exists,
+    scope: dict[str, tuple[str, str]],
+    domain_to_label: dict[tuple[str, str], str],
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping | None],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
+    prop_map_for_label,
+) -> str:
+    """A relationship's condition, ``EXISTS (SELECT 1 FROM target w WHERE w.fk = t.pk AND ...)``,
+    as the Cypher pattern predicate it states: ``EXISTS { MATCH (t)-[:REL]->(w:Target) WHERE
+    ... }`` (REQ-2136). ``scope`` names each SQL alias the subquery may correlate with, as its
+    Cypher variable and label; a nested relationship condition is translated the same way."""
+    sub = node.this
+    if isinstance(sub, exp.Subquery):
+        sub = sub.this
+    if not isinstance(sub, exp.Select):
+        raise UntranslatableSubquery(f"EXISTS over {node.sql()}")
+    from_node = sub.args.get("from_")
+    tbl = from_node.this if from_node is not None else None
+    if not isinstance(tbl, exp.Table) or sub.args.get("joins"):
+        raise UntranslatableSubquery(f"EXISTS over {sub.sql()}")
+    label = _resolve_label(tbl, domain_to_label)
+    if label is None:
+        raise UntranslatableSubquery(f"unmapped EXISTS table: {tbl.sql()}")
+    inner = tbl.alias or tbl.name
+    where = sub.args.get("where")
+    conjuncts = _conjuncts(where.this) if where is not None else []
+    correlation = next(
+        (
+            c
+            for c in conjuncts
+            if isinstance(c, exp.EQ)
+            and isinstance(c.this, exp.Column)
+            and isinstance(c.expression, exp.Column)
+            and {c.this.table, c.expression.table} & {inner}
+            and ({c.this.table, c.expression.table} - {inner}) <= set(scope)
+            and len({c.this.table, c.expression.table}) == 2
+        ),
+        None,
+    )
+    if correlation is None:
+        raise UntranslatableSubquery(f"EXISTS with no relationship to its row: {sub.sql()}")
+    outer = next(t for t in (correlation.this.table, correlation.expression.table) if t != inner)
+    outer_var, outer_label = scope[outer]
+    var = f"x{len(scope)}"
+    rel = rel_pattern(
+        outer_label,
+        label,
+        src_tgt_to_rel,
+        rel_type=_rel_type_from_on(correlation, join_to_rel, label),
+    )
+    inner_scope = {**scope, inner: (var, label)}
+    rest = [c for c in conjuncts if c is not correlation]
+    nested: dict[str, str] = {}
+
+    def _cypher(n: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(n, exp.Exists):
+            key = f"__exists_{var}_{len(nested)}"
+            nested[key] = _exists_pattern(
+                n, inner_scope, domain_to_label, join_to_rel, src_tgt_to_rel, prop_map_for_label
+            )
+            return exp.column(key)
+        if isinstance(n, exp.Column) and n.table in inner_scope:
+            v, lbl = inner_scope[n.table]
+            return exp.column(prop_map_for_label(lbl).get(n.name, n.name), table=v)
+        return n
+
+    conditions = []
+    for c in rest:
+        text = _sql_to_cypher_expr(c.copy().transform(_cypher).sql(dialect="postgres"))
+        if text.strip("() ").lower() != "true":
+            conditions.append(text)
+    body = f"MATCH ({outer_var}){rel}({var}:{label})"
+    if conditions:
+        body += " WHERE " + " AND ".join(conditions)
+    for key, pattern in nested.items():
+        body = re.sub(rf"\b{key}\b", lambda _m, p=pattern: p, body)
+    return "EXISTS { " + body + " }"
 
 
 def _normalize_json_builders(tree: exp.Select) -> None:
