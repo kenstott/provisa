@@ -63,7 +63,7 @@ const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow
   id,
   name,
   definition: null,
-  is_abstract: false,
+  ref_count: 0,
   deprecated: false,
   retired: false,
   live: true,

@@ -152,7 +152,7 @@ export function GlossaryTab() {
   // may change the term from then on, so a typo would hand it to nobody.
   const [members, setMembers] = useState<OrgMember[]>([]);
 
-  // New abstract term modal
+  // New concept modal
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addDefinition, setAddDefinition] = useState("");

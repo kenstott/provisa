@@ -85,8 +85,6 @@
     "allFocus": "כל המוצרים והמונחים",
     "someFocus": "{{count}} מתוך {{total}} מוצרים ומונחים",
     "search": "חיפוש…",
-    "look_concrete": "מונח קונקרטי",
-    "look_abstract": "מונח מופשט",
     "look_in_product": "עמודה במוצר נתונים",
     "look_out_of_product": "עמודה מחוץ למוצרי נתונים",
     "look_stored": "טבלה",
@@ -106,6 +104,9 @@
     "menuAll": "הכול",
     "menuSome": "{{count}} מתוך {{total}}",
     "unconnected": "לא מחוברים",
-    "unconnectedHelp": "מונחים ללא קשר או עיגון מוצגים"
+    "unconnectedHelp": "מונחים ללא קשר או עיגון מוצגים",
+    "look_class": "מחלקה",
+    "look_concept": "מושג",
+    "look_property": "תכונה"
   }
 }

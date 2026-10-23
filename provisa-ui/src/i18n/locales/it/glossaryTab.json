@@ -3,16 +3,15 @@
     "title": "Ontologia",
     "searchPlaceholder": "Cerca termini…",
     "empty": "Nessun termine.",
-    "abstract": "Astratto",
     "deprecated": "Deprecato",
     "selectTerm": "Seleziona un termine.",
     "newTerm": "Termine",
-    "newTermTitle": "Nuovo termine astratto",
-    "newTermHint": "Un termine astratto è un concetto di business senza riferimenti fisici a colonne. Collegalo ad altri termini tramite relazioni.",
+    "newTermTitle": "Nuovo concetto",
+    "newTermHint": "Un concetto è un’idea di business che non nomina ancora colonne né tabelle. Collegalo ad altri termini con le relazioni.",
     "nameLabel": "Nome",
     "definitionLabel": "Definizione",
     "domainsLabel": "Domini",
-    "domainsHint": "Un termine astratto non ha colonne da cui derivare i suoi domini, quindi indicali qui. Chi raggiunge uno qualsiasi di essi può leggere e curare il termine.",
+    "domainsHint": "Un concetto non ha colonne da cui derivare i domini, quindi indicali qui. Chi raggiunge uno di essi può leggere e curare il termine.",
     "rename": "Rinomina",
     "save": "Salva",
     "updated": "Termine aggiornato.",
@@ -112,6 +111,7 @@
     "claimDisabled": "Questo termine nomina tabelle (una classe); non può nominare anche colonne",
     "groundDisabled": "Questo termine nomina colonne (una proprietà); non può nominare anche tabelle",
     "claimFrom": "da: {{term}}",
-    "claimFromDraft": "da: {{term}} (bozza)"
+    "claimFromDraft": "da: {{term}} (bozza)",
+    "danglingHelp": "Non collegato ad alcun termine che nomini una tabella o una colonna: non nomina ancora dati."
   }
 }

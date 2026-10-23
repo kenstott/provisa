@@ -133,7 +133,7 @@ test.describe("REQ-1387 glossary curation", () => {
     await expect(page.getByTestId("glossary-read-fields")).toContainText(EMPLOYEE_DEFINITION);
   });
 
-  test("an abstract term takes a KIND_OF edge to a rooted term", async ({ page }) => {
+  test("a concept takes a KIND_OF edge to a rooted term", async ({ page }) => {
     await openGlossary(page);
 
     // Unique per attempt: create_abstract_term refuses duplicate names, and a

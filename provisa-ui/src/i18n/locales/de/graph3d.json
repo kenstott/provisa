@@ -85,8 +85,6 @@
     "allFocus": "Alle Produkte und Begriffe",
     "someFocus": "{{count}} von {{total}} Produkten und Begriffen",
     "search": "Suchen…",
-    "look_concrete": "konkreter Begriff",
-    "look_abstract": "abstrakter Begriff",
     "look_in_product": "Spalte in einem Datenprodukt",
     "look_out_of_product": "Spalte außerhalb von Datenprodukten",
     "look_stored": "Tabelle",
@@ -106,6 +104,9 @@
     "menuAll": "alle",
     "menuSome": "{{count}} von {{total}}",
     "unconnected": "Unverbunden",
-    "unconnectedHelp": "Begriffe ohne angezeigte Beziehung oder Verankerung"
+    "unconnectedHelp": "Begriffe ohne angezeigte Beziehung oder Verankerung",
+    "look_class": "Klasse",
+    "look_concept": "Konzept",
+    "look_property": "Eigenschaft"
   }
 }

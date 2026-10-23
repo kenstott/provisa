@@ -3,16 +3,15 @@
     "title": "Ontology",
     "searchPlaceholder": "Search terms…",
     "empty": "No terms.",
-    "abstract": "Abstract",
     "deprecated": "Deprecated",
     "selectTerm": "Select a term.",
     "newTerm": "Term",
-    "newTermTitle": "New abstract term",
-    "newTermHint": "An abstract term is a business concept with no physical column refs. Link it to other terms with relationships.",
+    "newTermTitle": "New concept",
+    "newTermHint": "A concept is a business idea that names no column or table yet. Link it to other terms with relationships.",
     "nameLabel": "Name",
     "definitionLabel": "Definition",
     "domainsLabel": "Domains",
-    "domainsHint": "An abstract term has no columns to derive its domains from, so name them here. Whoever reaches any one of them may read and curate the term.",
+    "domainsHint": "A concept has no columns to derive its domains from, so name them here. Whoever reaches any one of them may read and curate the term.",
     "rename": "Rename",
     "save": "Save",
     "updated": "Term updated.",
@@ -112,6 +111,7 @@
     "claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
     "groundDisabled": "This term names columns (a property); a class term can't also own columns",
     "claimFrom": "from: {{term}}",
-    "claimFromDraft": "from: {{term}} (draft)"
+    "claimFromDraft": "from: {{term}} (draft)",
+    "danglingHelp": "Connected to no term that names a table or column: it names no data yet."
   }
 }

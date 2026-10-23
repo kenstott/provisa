@@ -271,7 +271,7 @@ describe("GlossaryTab", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the term list with abstract/deprecated badges and ref counts", async () => {
+  it("renders the term list with role and deprecated badges and column counts", async () => {
     render(<GlossaryTab />);
 
     expect(await screen.findByTestId("glossary-item-1")).toBeInTheDocument();
@@ -281,23 +281,28 @@ describe("GlossaryTab", () => {
     expect(within(revenue).getByText("Revenue")).toBeInTheDocument();
     expect(within(revenue).getByText("1")).toBeInTheDocument();
 
+    // A concept names no column: its role says so, and no count is shown.
     const churn = screen.getByTestId("glossary-item-2");
-    expect(within(churn).getByText(t("glossaryTab.abstract"))).toBeInTheDocument();
+    expect(within(churn).getByTestId("glossary-role-2")).toHaveTextContent(
+      t("glossaryTab.role_concept"),
+    );
+    expect(within(churn).queryByText("Abstract")).toBeNull();
 
     const margin = screen.getByTestId("glossary-item-3");
     expect(within(margin).getByText(t("glossaryTab.deprecated"))).toBeInTheDocument();
   });
 
-  it("flags a dangling abstract term (no path to a rooted term) in red", async () => {
+  it("flags a dangling concept (no path to a term naming data) in red", async () => {
     mockList.mockResolvedValue([REVENUE, CHURN, DANGLING]);
     render(<GlossaryTab />);
 
     const churn = await screen.findByTestId("glossary-item-2");
-    expect(within(churn).queryByTestId("glossary-dangling-2")).not.toBeInTheDocument();
+    expect(within(churn).getByTestId("glossary-role-2")).not.toHaveAttribute("data-dangling");
 
     const orphan = screen.getByTestId("glossary-item-4");
-    const badge = within(orphan).getByTestId("glossary-dangling-4");
-    expect(badge).toHaveTextContent(t("glossaryTab.abstract"));
+    const badge = within(orphan).getByTestId("glossary-role-4");
+    expect(badge).toHaveAttribute("data-dangling", "true");
+    expect(badge).toHaveTextContent(t("glossaryTab.role_concept"));
   });
 
   it("explains what the glossary is for next to the add button", async () => {

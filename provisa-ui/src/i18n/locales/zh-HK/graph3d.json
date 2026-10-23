@@ -85,8 +85,6 @@
     "allFocus": "所有產品和術語",
     "someFocus": "{{total}} 個產品和術語中的 {{count}} 個",
     "search": "搜尋…",
-    "look_concrete": "具體術語",
-    "look_abstract": "抽象術語",
     "look_in_product": "數據產品中的欄",
     "look_out_of_product": "數據產品之外的欄",
     "look_stored": "資料表",
@@ -106,6 +104,9 @@
     "menuAll": "全部",
     "menuSome": "{{count}}/{{total}}",
     "unconnected": "未連接",
-    "unconnectedHelp": "未顯示任何關係或依據的術語"
+    "unconnectedHelp": "未顯示任何關係或依據的術語",
+    "look_class": "類別",
+    "look_concept": "概念",
+    "look_property": "屬性"
   }
 }

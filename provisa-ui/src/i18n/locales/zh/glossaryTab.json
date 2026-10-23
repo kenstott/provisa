@@ -3,16 +3,15 @@
     "title": "本体",
     "searchPlaceholder": "搜索术语…",
     "empty": "暂无术语。",
-    "abstract": "抽象",
     "deprecated": "已弃用",
     "selectTerm": "请选择一个术语。",
     "newTerm": "术语",
-    "newTermTitle": "新建抽象术语",
-    "newTermHint": "抽象术语是没有物理列引用的业务概念。可通过关系将其与其他术语关联。",
+    "newTermTitle": "新建概念",
+    "newTermHint": "概念是尚未指代任何列或表的业务概念。通过关系将其与其他术语关联。",
     "nameLabel": "名称",
     "definitionLabel": "定义",
     "domainsLabel": "域",
-    "domainsHint": "抽象术语没有可用于推导域的列，因此请在此指定。能够访问其中任一域的人即可读取和维护该术语。",
+    "domainsHint": "概念没有可推导其域的列，因此请在此指定。能访问其中任一域的人都可以阅读和维护该术语。",
     "rename": "重命名",
     "save": "保存",
     "updated": "术语已更新。",
@@ -112,6 +111,7 @@
     "claimDisabled": "此术语指代表（类）；不能同时指代列",
     "groundDisabled": "此术语指代列（属性）；不能同时指代表",
     "claimFrom": "来自：{{term}}",
-    "claimFromDraft": "来自：{{term}}（草稿）"
+    "claimFromDraft": "来自：{{term}}（草稿）",
+    "danglingHelp": "未连接到任何指代表或列的术语：它尚未指代任何数据。"
   }
 }

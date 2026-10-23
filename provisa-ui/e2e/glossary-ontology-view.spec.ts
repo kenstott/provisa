@@ -75,7 +75,7 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
     await expect(page.getByTestId("glossary-list")).toHaveCount(0);
 
     expect(await legend(page, "ontology-stage")).toEqual(
-      expect.arrayContaining(["domain", "concrete term"]),
+      expect.arrayContaining(["domain", "property"]),
     );
     // The Terms dropdown: retired terms hidden until asked for.
     await expect(page.getByTestId("ontology-terms-menu")).toHaveText("Terms: 4 of 5");

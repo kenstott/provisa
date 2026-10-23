@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // A term's panel in Edit mode: one form holding every field a curator can change -- the name, the
-// definition, export, the declared domains of an abstract term, the columns it names (moved away,
+// definition, export, the declared domains of a concept, the columns it names (moved away,
 // or claimed from another term), the tables it is grounded in, its relationships and its experts.
 // Save makes the changes (termDraft.ts) and Cancel drops them. What follows from the term's columns,
 // tables and relationships is shown with why it cannot be set here. A term names columns (a
@@ -44,6 +44,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useTables } from "../../hooks/useAdminQueries";
 import { DescriptionField } from "../../pages/tables/DescriptionField";
+import { relationName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
 import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { columnKey, columnTerms, type ColumnTerm } from "./claimColumns";
@@ -71,7 +72,7 @@ export function TermEditForm({
   relTypeOptions: Option[];
   kindOptions: Option[];
   memberOptions: Option[];
-  /** The domains an abstract term can declare. */
+  /** The domains a concept can declare. */
   domainOptions: Option[];
   domainsEnabled: boolean;
   relLabel: (options: Option[], relType: string) => string;
@@ -140,7 +141,7 @@ export function TermEditForm({
         if (own.has(key)) continue;
         out.push({
           value: key,
-          label: `${tb.domainId}.${tb.tableName}.${c.columnName}`,
+          label: `${relationName(tb)}.${c.columnName}`,
           from: owners?.get(key) ?? null,
         });
       }
@@ -151,7 +152,7 @@ export function TermEditForm({
     () =>
       tables
         .filter((tb) => !tb.draft)
-        .map((tb) => ({ value: String(tb.id), label: `${tb.domainId}.${tb.tableName}` }))
+        .map((tb) => ({ value: String(tb.id), label: relationName(tb) }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [tables],
   );
@@ -181,17 +182,20 @@ export function TermEditForm({
     setRefused(null);
     let removed = false;
     let done = true;
-    for (const change of changes(term, read.tables, draft)) {
-      try {
-        const result = await change.run();
-        if (result && result.termRemoved) removed = true;
-      } catch (e) {
-        setRefused({ field: change.field, message: e instanceof Error ? e.message : String(e) });
-        done = false;
-        break;
+    try {
+      for (const change of changes(term, read.tables, draft)) {
+        try {
+          const result = await change.run();
+          if (result && result.termRemoved) removed = true;
+        } catch (e) {
+          setRefused({ field: change.field, message: e instanceof Error ? e.message : String(e) });
+          done = false;
+          break;
+        }
       }
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
     await onSaved(done, removed);
   };
 

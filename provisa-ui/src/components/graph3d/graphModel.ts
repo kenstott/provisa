@@ -13,6 +13,7 @@
 // Filters by domain, tag, sensitivity and a focus node apply to every layer; a preset is a named
 // set of layers with a layout. Pure data: the scene only draws what this decides.
 
+import type { TermRole } from "../../api/glossary";
 import { lanesFrom } from "../lineage/lineage-layout";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 
@@ -86,8 +87,9 @@ export interface GraphNode {
   lane?: number;
   /** REQ-2130: a term's standing; deprecated is drawn dimmed. */
   status?: TermStatus;
-  /** REQ-2130: an abstract term (coloured apart from a concrete one, nodeLook). */
-  abstract?: boolean;
+  /** REQ-2130: a term's role -- Class (tables), Property (columns), Concept (neither) -- coloured
+   * apart (nodeLook); absent where the graph does not read it. */
+  role?: TermRole;
   /** REQ-2130/2141: a class grounded in tables not all joined as the same entity (a curation
    * gap): its tables, marked on its name and named in the side panel. */
   identityGap?: string[];

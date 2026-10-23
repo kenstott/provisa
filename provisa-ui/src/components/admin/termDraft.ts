@@ -41,7 +41,7 @@ export interface TermDraft {
   name: string;
   definition: string;
   exportExcluded: boolean;
-  /** Declared domains: an abstract term's only; a rooted term's come from its columns. */
+  /** Declared domains: a concept's only; a rooted term's come from its columns. */
   domains: string[];
   /** A column of the term moved to another term: its key, and the term it moves to. */
   moves: Record<string, number>;

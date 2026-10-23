@@ -85,8 +85,6 @@
     "allFocus": "Every product and term",
     "someFocus": "{{count}} of {{total}} products and terms",
     "search": "Search…",
-    "look_concrete": "concrete term",
-    "look_abstract": "abstract term",
     "look_in_product": "column in a data product",
     "look_out_of_product": "column outside data products",
     "look_stored": "table",
@@ -106,6 +104,9 @@
     "menuAll": "all",
     "menuSome": "{{count}} of {{total}}",
     "unconnected": "Unconnected",
-    "unconnectedHelp": "Terms with no relationship or grounding shown"
+    "unconnectedHelp": "Terms with no relationship or grounding shown",
+    "look_class": "class",
+    "look_concept": "concept",
+    "look_property": "property"
   }
 }

@@ -3,16 +3,15 @@
     "title": "本體",
     "searchPlaceholder": "搜尋詞彙…",
     "empty": "沒有詞彙。",
-    "abstract": "抽象",
     "deprecated": "已棄用",
     "selectTerm": "請選擇一個詞彙。",
     "newTerm": "詞彙",
-    "newTermTitle": "新增抽象詞彙",
-    "newTermHint": "抽象詞彙是沒有實體欄位參照的業務概念。可透過關係將其與其他詞彙關聯。",
+    "newTermTitle": "新增概念",
+    "newTermHint": "概念是尚未指代任何欄或表的業務概念。透過關係將其與其他術語連結。",
     "nameLabel": "名稱",
     "definitionLabel": "定義",
     "domainsLabel": "領域",
-    "domainsHint": "抽象術語沒有可用以推導領域的欄位，因此請在此指定。能存取其中任一領域的人即可讀取及維護該術語。",
+    "domainsHint": "概念沒有可推導其域的欄，因此請在此指定。能存取其中任一域的人都可以閱讀和維護該術語。",
     "rename": "重新命名",
     "save": "儲存",
     "updated": "詞彙已更新。",
@@ -112,6 +111,7 @@
     "claimDisabled": "此術語指代表（類別）；不能同時指代欄",
     "groundDisabled": "此術語指代欄（屬性）；不能同時指代表",
     "claimFrom": "來自：{{term}}",
-    "claimFromDraft": "來自：{{term}}（草稿）"
+    "claimFromDraft": "來自：{{term}}（草稿）",
+    "danglingHelp": "未連接到任何指代表或欄的術語：它尚未指代任何資料。"
   }
 }

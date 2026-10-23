@@ -82,7 +82,6 @@
     "relatedTermsLabel": "Términos relacionados",
     "relatedTermsEmpty": "Sin términos relacionados",
     "relatedTermsLoading": "Cargando términos relacionados…",
-    "relatedTermsAbstract": "abstracto",
     "graphqlQueriesLabel": "Patrones de acceso",
     "graphqlQueriesEmpty": "Sin tablas ni relaciones consultables",
     "graphqlQueryAria": "Ejecutar consulta GraphQL de ejemplo para {{table}}",
@@ -120,6 +119,7 @@
       "customPropertiesEmpty": "Sin propiedades personalizadas"
     },
     "readOnly": "Solo lectura",
-    "readOnlyHint": "Solo tiene data_product_read: un org_admin puede conceder data_product_rw para editar."
+    "readOnlyHint": "Solo tiene data_product_read: un org_admin puede conceder data_product_rw para editar.",
+    "relatedTermsConcept": "concepto"
   }
 }

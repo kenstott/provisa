@@ -3,16 +3,15 @@
     "title": "Ontologie",
     "searchPlaceholder": "Begriffe suchen…",
     "empty": "Keine Begriffe.",
-    "abstract": "Abstrakt",
     "deprecated": "Veraltet",
     "selectTerm": "Begriff auswählen.",
     "newTerm": "Begriff",
-    "newTermTitle": "Neuer abstrakter Begriff",
-    "newTermHint": "Ein abstrakter Begriff ist ein Geschäftskonzept ohne physische Spaltenreferenzen. Verknüpfen Sie ihn über Beziehungen mit anderen Begriffen.",
+    "newTermTitle": "Neues Konzept",
+    "newTermHint": "Ein Konzept ist eine fachliche Idee, die noch keine Spalte oder Tabelle benennt. Verknüpfen Sie es über Beziehungen mit anderen Begriffen.",
     "nameLabel": "Name",
     "definitionLabel": "Definition",
     "domainsLabel": "Domänen",
-    "domainsHint": "Ein abstrakter Begriff hat keine Spalten, aus denen sich seine Domänen ableiten lassen – benennen Sie sie daher hier. Wer eine davon erreicht, darf den Begriff lesen und pflegen.",
+    "domainsHint": "Ein Konzept hat keine Spalten, aus denen sich seine Domänen ableiten, daher benennen Sie sie hier. Wer eine davon erreicht, darf den Begriff lesen und pflegen.",
     "rename": "Umbenennen",
     "save": "Speichern",
     "updated": "Begriff aktualisiert.",
@@ -112,6 +111,7 @@
     "claimDisabled": "Dieser Begriff benennt Tabellen (eine Klasse); er kann nicht auch Spalten benennen",
     "groundDisabled": "Dieser Begriff benennt Spalten (eine Eigenschaft); er kann nicht auch Tabellen benennen",
     "claimFrom": "von: {{term}}",
-    "claimFromDraft": "von: {{term}} (Entwurf)"
+    "claimFromDraft": "von: {{term}} (Entwurf)",
+    "danglingHelp": "Mit keinem Begriff verbunden, der eine Tabelle oder Spalte benennt: Er benennt noch keine Daten."
   }
 }

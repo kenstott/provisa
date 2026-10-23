@@ -3,16 +3,15 @@
     "title": "Ontologia",
     "searchPlaceholder": "Pesquisar termos…",
     "empty": "Nenhum termo.",
-    "abstract": "Abstrato",
     "deprecated": "Obsoleto",
     "selectTerm": "Selecione um termo.",
     "newTerm": "Termo",
-    "newTermTitle": "Novo termo abstrato",
-    "newTermHint": "Um termo abstrato é um conceito de negócio sem referências físicas a colunas. Vincule-o a outros termos por meio de relações.",
+    "newTermTitle": "Novo conceito",
+    "newTermHint": "Um conceito é uma ideia de negócio que ainda não nomeia nenhuma coluna ou tabela. Ligue-o a outros termos com relações.",
     "nameLabel": "Nome",
     "definitionLabel": "Definição",
     "domainsLabel": "Domínios",
-    "domainsHint": "Um termo abstrato não tem colunas das quais derivar seus domínios, portanto nomeie-os aqui. Quem alcançar qualquer um deles pode ler e curar o termo.",
+    "domainsHint": "Um conceito não tem colunas das quais derivar seus domínios, então nomeie-os aqui. Quem alcançar qualquer um deles pode ler e curar o termo.",
     "rename": "Renomear",
     "save": "Salvar",
     "updated": "Termo atualizado.",
@@ -112,6 +111,7 @@
     "claimDisabled": "Este termo nomeia tabelas (uma classe); não pode nomear também colunas",
     "groundDisabled": "Este termo nomeia colunas (uma propriedade); não pode nomear também tabelas",
     "claimFrom": "de: {{term}}",
-    "claimFromDraft": "de: {{term}} (rascunho)"
+    "claimFromDraft": "de: {{term}} (rascunho)",
+    "danglingHelp": "Não está ligado a nenhum termo que nomeie uma tabela ou coluna: ainda não nomeia dados."
   }
 }
