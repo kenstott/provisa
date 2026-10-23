@@ -958,6 +958,8 @@ def _seed_node(
     finally:
         server.terminate()
         server.wait(timeout=60)
+        # The node's whole log, into the build's own output: a run that seeded keeps it too.
+        print(f"--- seeding node {control_plane} ---\n{node_log.read_text(errors='replace')}")
         subprocess.run(
             [sys.executable, "-m", "provisa.core.control_plane_pg", "stop"]
             + [str(work / control_plane)],
