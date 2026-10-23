@@ -48,10 +48,22 @@ async function openGlossary(page: Page) {
   ).toBeVisible({ timeout: 30000 });
 }
 
-/** Click a term in the left-hand list and wait for its detail panel. */
+/** Click a term in the left-hand list and wait for its detail panel, read. */
 async function selectTerm(page: Page, name: string) {
   await page.getByTestId("glossary-list").getByText(name, { exact: true }).click();
-  await expect(page.getByTestId("glossary-name-input")).toHaveValue(name);
+  await expect(page.getByTestId("glossary-read-fields")).toContainText(name);
+}
+
+/** Open the term shown as one form. */
+async function editTerm(page: Page) {
+  await page.getByTestId("glossary-edit-btn").click();
+  await expect(page.getByTestId("glossary-edit-form")).toBeVisible();
+}
+
+/** Save the form, and wait for the term to be read again. */
+async function saveTerm(page: Page) {
+  await page.getByTestId("glossary-edit-save").click();
+  await expect(page.getByTestId("glossary-edit-form")).toHaveCount(0);
 }
 
 // Every test here starts with openGlossary, whose two waits alone budget 90 s for the first paint
@@ -99,35 +111,26 @@ test.describe("REQ-1387 glossary curation", () => {
       .or(list.getByText(DERIVED_EMPLOYEE, { exact: true }))
       .first();
     await item.click();
+    await expect(page.getByTestId("glossary-read-fields")).toBeVisible();
+    await editTerm(page);
     const nameInput = page.getByTestId("glossary-name-input");
     await expect(nameInput).not.toHaveValue("");
 
-    if ((await nameInput.inputValue()) !== RENAMED_EMPLOYEE) {
-      await nameInput.fill(RENAMED_EMPLOYEE);
-      await page.getByTestId("glossary-rename-btn").click();
-      await expect(list.getByText(RENAMED_EMPLOYEE, { exact: true })).toBeVisible();
-    }
-
-    // Same argument as the rename above, and the same reason it matters on the cloud target: the
-    // deployment keeps what an earlier run wrote. Saving is only possible when the textarea differs
-    // from the stored definition — the button is disabled otherwise — so a re-run against a
-    // deployment that already holds this definition has nothing to save, and the reload assertion
-    // below is what proves persistence either way.
-    const definition = page.getByTestId("glossary-definition-input").getByRole("textbox");
-    if ((await definition.inputValue()) !== EMPLOYEE_DEFINITION) {
-      await definition.fill(EMPLOYEE_DEFINITION);
-      await page.getByTestId("glossary-definition-save-btn").click();
-    }
-    // act() reloads the detail after the mutation; the save button re-disables
-    // because the textarea now matches the stored definition.
-    await expect(page.getByTestId("glossary-definition-save-btn")).toBeDisabled();
+    // The deployment keeps what an earlier run wrote, so a retry may have nothing to change: Save
+    // with nothing changed reads the term again all the same, and the reload below is what proves
+    // persistence either way.
+    await nameInput.fill(RENAMED_EMPLOYEE);
+    await page
+      .getByTestId("glossary-definition-input")
+      .getByRole("textbox")
+      .fill(EMPLOYEE_DEFINITION);
+    await saveTerm(page);
+    await expect(list.getByText(RENAMED_EMPLOYEE, { exact: true })).toBeVisible();
 
     await page.reload();
     await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 60000 });
     await selectTerm(page, RENAMED_EMPLOYEE);
-    await expect(page.getByTestId("glossary-definition-input").getByRole("textbox")).toHaveValue(
-      EMPLOYEE_DEFINITION,
-    );
+    await expect(page.getByTestId("glossary-read-fields")).toContainText(EMPLOYEE_DEFINITION);
   });
 
   test("an abstract term takes a KIND_OF edge to a rooted term", async ({ page }) => {
@@ -157,26 +160,24 @@ test.describe("REQ-1387 glossary curation", () => {
     await page.keyboard.press("Escape");
     await page.getByTestId("glossary-add-save-btn").click();
 
-    // Creation selects the new term; it is abstract, so it has no refs.
-    await expect(page.getByTestId("glossary-name-input")).toHaveValue(abstractName);
+    // Creation selects the new term; it is a concept, so it has no refs.
+    await expect(page.getByTestId("glossary-read-fields")).toContainText(abstractName);
     await expect(page.getByTestId("glossary-detail").getByText("No physical refs.")).toBeVisible();
 
-    // KIND_OF edge to the rooted "species" term. Relationships open read-only; the editor is
-    // behind its edit toggle.
-    await page.getByTestId("glossary-relationships-edit-toggle").click();
+    // KIND_OF edge to the rooted "species" term, in the term's Edit form.
+    await editTerm(page);
     await page.getByTestId("glossary-edge-rel-select").click();
     await page.getByRole("option", { name: "Kind of" }).click();
     await page.getByTestId("glossary-edge-term-select").click();
     await page.getByTestId("glossary-edge-term-select").fill(DERIVED_SPECIES);
     await page.getByRole("option", { name: DERIVED_SPECIES, exact: true }).click();
     await page.getByTestId("glossary-edge-add-btn").click();
+    await saveTerm(page);
 
+    // Read again: the edge's type is said as text.
     const edge = page.locator('[data-testid^="glossary-edge-out-"][data-testid$="-KIND_OF"]');
     await expect(edge).toBeVisible();
-    // The edge's type is a Select (the curator retypes in place), so "Kind of" is the input's
-    // value, not text content — toContainText only ever saw the target term's name.
-    // (the Select also renders a hidden input carrying the stored KIND_OF value)
-    await expect(edge.locator('[data-testid^="glossary-edge-out-rel-"]')).toHaveValue("Kind of");
+    await expect(edge).toContainText("Kind of");
     await expect(edge).toContainText(DERIVED_SPECIES);
 
     // REQ-1643: a term with a relationship cannot be deleted -- the button is disabled and the
@@ -207,13 +208,14 @@ test.describe("REQ-1387 glossary curation", () => {
     // REQ-1592: the expert is PICKED from the org roster, not typed — typing into the Select's
     // search box leaves the chosen user unset and the Add button disabled. global-setup seeds this
     // person into every backend's org so there is someone to pick.
-    // Experts open read-only; the picker is behind its edit toggle.
-    await page.getByTestId("glossary-experts-edit-toggle").click();
+    // The picker is in the term's Edit form.
+    await editTerm(page);
     await page.getByTestId("glossary-expert-user-input").click();
     await page.getByRole("option", { name: "jane.doe", exact: true }).click();
     await page.getByTestId("glossary-expert-kind-select").click();
     await page.getByRole("option", { name: "Expert" }).click();
     await page.getByTestId("glossary-expert-add-btn").click();
+    await saveTerm(page);
 
     const expert = page.getByTestId("glossary-expert-jane.doe");
     await expect(expert).toBeVisible();

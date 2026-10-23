@@ -103,6 +103,15 @@
     "noGroundedTables": "未锚定在任何表上",
     "gapsOnly": "缺口",
     "identityGap": "缺口",
-    "identityGapHelp": "关联到多张表，但它们并未全部作为同一实体连接：请在它们之间标记同一实体关系"
+    "identityGapHelp": "关联到多张表，但它们并未全部作为同一实体连接：请在它们之间标记同一实体关系",
+    "edit": "编辑",
+    "domainsDerived": "由其列和表推导",
+    "derivedReason": "角色、提议和已弃用取决于术语的列、表、定义和关系，因此不在此设置。",
+    "claimColumns": "认领列",
+    "claimHint": "每列只属于一个术语；认领后会移到此处。",
+    "claimDisabled": "此术语指代表（类）；不能同时指代列",
+    "groundDisabled": "此术语指代列（属性）；不能同时指代表",
+    "claimFrom": "来自：{{term}}",
+    "claimFromDraft": "来自：{{term}}（草稿）"
   }
 }

@@ -103,6 +103,15 @@
     "noGroundedTables": "Grounded in no table",
     "gapsOnly": "Gaps",
     "identityGap": "Gap",
-    "identityGapHelp": "Grounded in several tables not all joined as the same entity: mark same-entity relationships between them"
+    "identityGapHelp": "Grounded in several tables not all joined as the same entity: mark same-entity relationships between them",
+    "edit": "Edit",
+    "domainsDerived": "Derived from its columns and tables",
+    "derivedReason": "Role, Proposed and Deprecated follow from the term's columns, tables, definition and relationships, so they are not set here.",
+    "claimColumns": "Claim columns",
+    "claimHint": "Each column belongs to one term; claiming it moves it here.",
+    "claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
+    "groundDisabled": "This term names columns (a property); a class term can't also own columns",
+    "claimFrom": "from: {{term}}",
+    "claimFromDraft": "from: {{term}} (draft)"
   }
 }

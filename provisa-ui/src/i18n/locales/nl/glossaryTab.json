@@ -103,6 +103,15 @@
     "noGroundedTables": "In geen tabel verankerd",
     "gapsOnly": "Hiaten",
     "identityGap": "Hiaat",
-    "identityGapHelp": "Verankerd in meerdere tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: markeer relaties tussen hen als dezelfde entiteit"
+    "identityGapHelp": "Verankerd in meerdere tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: markeer relaties tussen hen als dezelfde entiteit",
+    "edit": "Bewerken",
+    "domainsDerived": "Afgeleid van zijn kolommen en tabellen",
+    "derivedReason": "Rol, Voorgesteld en Verouderd volgen uit de kolommen, tabellen, definitie en relaties van de term en worden hier niet ingesteld.",
+    "claimColumns": "Kolommen opeisen",
+    "claimHint": "Elke kolom hoort bij één term; opeisen verplaatst hem hierheen.",
+    "claimDisabled": "Deze term benoemt tabellen (een klasse); hij kan niet ook kolommen benoemen",
+    "groundDisabled": "Deze term benoemt kolommen (een eigenschap); hij kan niet ook tabellen benoemen",
+    "claimFrom": "van: {{term}}",
+    "claimFromDraft": "van: {{term}} (concept)"
   }
 }

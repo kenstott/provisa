@@ -103,6 +103,15 @@
     "noGroundedTables": "Ancré dans aucune table",
     "gapsOnly": "Lacunes",
     "identityGap": "Lacune",
-    "identityGapHelp": "Ancré dans plusieurs tables qui ne sont pas toutes jointes comme même entité : marquez des relations de même entité entre elles"
+    "identityGapHelp": "Ancré dans plusieurs tables qui ne sont pas toutes jointes comme même entité : marquez des relations de même entité entre elles",
+    "edit": "Modifier",
+    "domainsDerived": "Dérivé de ses colonnes et tables",
+    "derivedReason": "Le rôle, Proposé et Obsolète découlent des colonnes, tables, de la définition et des relations du terme ; ils ne se règlent pas ici.",
+    "claimColumns": "Revendiquer des colonnes",
+    "claimHint": "Chaque colonne appartient à un terme ; la revendiquer la déplace ici.",
+    "claimDisabled": "Ce terme nomme des tables (une classe) ; il ne peut pas aussi nommer des colonnes",
+    "groundDisabled": "Ce terme nomme des colonnes (une propriété) ; il ne peut pas aussi nommer des tables",
+    "claimFrom": "de : {{term}}",
+    "claimFromDraft": "de : {{term}} (brouillon)"
   }
 }

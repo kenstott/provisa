@@ -103,6 +103,15 @@
     "noGroundedTables": "In keiner Tabelle verankert",
     "gapsOnly": "Lücken",
     "identityGap": "Lücke",
-    "identityGapHelp": "In mehreren Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: markieren Sie Beziehungen als dieselbe Entität"
+    "identityGapHelp": "In mehreren Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: markieren Sie Beziehungen als dieselbe Entität",
+    "edit": "Bearbeiten",
+    "domainsDerived": "Abgeleitet aus seinen Spalten und Tabellen",
+    "derivedReason": "Rolle, Vorgeschlagen und Veraltet ergeben sich aus den Spalten, Tabellen, der Definition und den Beziehungen des Begriffs und werden hier nicht gesetzt.",
+    "claimColumns": "Spalten übernehmen",
+    "claimHint": "Jede Spalte gehört zu einem Begriff; beim Übernehmen wird sie hierher verschoben.",
+    "claimDisabled": "Dieser Begriff benennt Tabellen (eine Klasse); er kann nicht auch Spalten benennen",
+    "groundDisabled": "Dieser Begriff benennt Spalten (eine Eigenschaft); er kann nicht auch Tabellen benennen",
+    "claimFrom": "von: {{term}}",
+    "claimFromDraft": "von: {{term}} (Entwurf)"
   }
 }

@@ -26,13 +26,19 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
+  listTermTables: vi.fn(async () => []),
+}));
+
+vi.mock("../components/admin/claimColumns", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/admin/claimColumns")>()),
+  columnTerms: vi.fn(async () => new Map()),
 }));
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
 // The right under test. Mutating it per-case is what makes "withheld from a reader, present for a
 // curator" a single assertion pair rather than two suites that could drift apart.
-const auth = { capabilities: ["glossary_read"] as string[] };
+const auth = { capabilities: ["glossary_read"] as string[], actingRoles: "analyst" };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 
 import { fetchGlossaryTerm, listGlossaryTerms } from "../api/glossary";
@@ -87,21 +93,27 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
 async function openRevenue() {
   render(<GlossaryTab />);
   fireEvent.click(await screen.findByTestId("glossary-item-1"));
-  // The name input is in both views, so it is what proves the detail arrived — waiting on the
-  // panel itself would pass before the fetch resolved and make every absence assertion vacuous.
-  await screen.findByTestId("glossary-name-input");
+  // The term's read fields prove the detail arrived — waiting on the panel itself would pass
+  // before the fetch resolved and make every absence assertion vacuous.
+  await screen.findByTestId("glossary-read-fields");
 }
 
-// Every control that reaches a `glossary_rw` endpoint.
-const WRITE_CONTROLS = [
+// Every control that reaches a `glossary_rw` endpoint: those of the term read, then those of its
+// Edit form.
+const READ_CONTROLS = [
   "glossary-new-btn",
   // The AI menu's trigger; its Definitions and Relationships items exist only while it is open.
   "glossary-generate-menu",
-  "glossary-rename-btn",
+  "glossary-edit-btn",
   "glossary-retire-btn",
   "glossary-delete-btn",
-  "glossary-definition-save-btn",
+];
+const FORM_CONTROLS = [
+  "glossary-name-input",
+  "glossary-export-excluded-checkbox",
+  "glossary-edit-save",
   "glossary-move-select-10-revenue",
+  "glossary-claim-columns",
   "glossary-edge-out-rel-2",
   "glossary-edge-in-rel-2",
   "glossary-edge-rel-select",
@@ -111,6 +123,7 @@ const WRITE_CONTROLS = [
   "glossary-expert-kind-select",
   "glossary-expert-add-btn",
 ];
+const WRITE_CONTROLS = [...READ_CONTROLS, ...FORM_CONTROLS];
 
 describe("glossary read-only mode", () => {
   beforeEach(() => {
@@ -133,14 +146,16 @@ describe("glossary read-only mode", () => {
     // the testid moved or the control was deleted outright.
     auth.capabilities = ["glossary_read", "glossary_rw"];
     await openRevenue();
-    // Relationships/experts open read-only even for a curator; the pencil toggles reveal
-    // their write controls.
-    fireEvent.click(screen.getByTestId("glossary-relationships-edit-toggle"));
-    fireEvent.click(screen.getByTestId("glossary-experts-edit-toggle"));
-    for (const testid of WRITE_CONTROLS) {
+    for (const testid of READ_CONTROLS) {
       expect(screen.queryByTestId(testid), testid).not.toBeNull();
     }
     expect(screen.queryByTestId("glossary-read-only")).toBeNull();
+    // The term opens read even for a curator; Edit opens the form with the rest.
+    fireEvent.click(screen.getByTestId("glossary-edit-btn"));
+    await screen.findByTestId("glossary-edit-form");
+    for (const testid of FORM_CONTROLS) {
+      expect(screen.queryByTestId(testid), testid).not.toBeNull();
+    }
   });
 
   it("says why the curation controls are absent", async () => {
@@ -151,7 +166,7 @@ describe("glossary read-only mode", () => {
   it("still renders the term, its definition, refs, relationships and experts", async () => {
     await openRevenue();
 
-    expect(screen.getByTestId("glossary-name-input")).toHaveValue("Revenue");
+    expect(screen.getByTestId("glossary-read-fields")).toHaveTextContent("Revenue");
     expect(screen.getByTestId("glossary-detail")).toHaveTextContent("Money in.");
     expect(screen.getByTestId("glossary-ref-10-revenue")).toBeInTheDocument();
     expect(screen.getByTestId("glossary-edge-out-2-RELATED_TO")).toBeInTheDocument();
@@ -169,12 +184,13 @@ describe("glossary read-only mode", () => {
     expect(within(incoming).getByText(t("glossaryTab.rel_PART_OF"))).toBeInTheDocument();
   });
 
-  it("leaves the name and the export toggle unwritable", async () => {
-    // These two are inputs rather than buttons — there is nothing to withhold without taking the
-    // value itself off the page, so they render read-only instead.
+  it("reads the name and the export setting as values, with no control to change them", async () => {
     await openRevenue();
-    expect(screen.getByTestId("glossary-name-input")).toHaveAttribute("readonly");
-    expect(screen.getByTestId("glossary-export-excluded-checkbox")).toBeDisabled();
+    const read = screen.getByTestId("glossary-read-fields");
+    expect(read).toHaveTextContent("Revenue");
+    expect(read).toHaveTextContent(t("glossaryTab.excludeFromExportLabel"));
+    expect(screen.queryByTestId("glossary-name-input")).toBeNull();
+    expect(screen.queryByTestId("glossary-export-excluded-checkbox")).toBeNull();
   });
 
   it("keeps searching and filtering, which write nothing", async () => {

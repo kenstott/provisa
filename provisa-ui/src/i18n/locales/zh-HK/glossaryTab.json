@@ -103,6 +103,15 @@
     "noGroundedTables": "未錨定在任何表上",
     "gapsOnly": "缺口",
     "identityGap": "缺口",
-    "identityGapHelp": "關聯到多張表，但它們並未全部作為同一實體連接：請在它們之間標記同一實體關係"
+    "identityGapHelp": "關聯到多張表，但它們並未全部作為同一實體連接：請在它們之間標記同一實體關係",
+    "edit": "編輯",
+    "domainsDerived": "由其欄和表推導",
+    "derivedReason": "角色、建議和已棄用取決於術語的欄、表、定義和關係，因此不在此設定。",
+    "claimColumns": "認領欄",
+    "claimHint": "每欄只屬於一個術語；認領後會移到此處。",
+    "claimDisabled": "此術語指代表（類別）；不能同時指代欄",
+    "groundDisabled": "此術語指代欄（屬性）；不能同時指代表",
+    "claimFrom": "來自：{{term}}",
+    "claimFromDraft": "來自：{{term}}（草稿）"
   }
 }

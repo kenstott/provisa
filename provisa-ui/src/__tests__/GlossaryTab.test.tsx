@@ -35,6 +35,36 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   generateGlossaryDefinition: vi.fn(),
   generateAllGlossaryDefinitions: vi.fn(),
   generateGlossaryRelationships: vi.fn(),
+  listTermTables: vi.fn(async () => []),
+  groundTermTable: vi.fn(),
+  ungroundTermTable: vi.fn(),
+}));
+
+// The term each column is, for Claim columns: read from the meta domain, here a fixture.
+vi.mock("../components/admin/claimColumns", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/admin/claimColumns")>()),
+  columnTerms: vi.fn(
+    async () => new Map([["11:churn_flag", { id: 2, name: "Churn", draft: true }]]),
+  ),
+}));
+
+// The registered tables Claim columns offers columns of, and Grounded in tables offers.
+vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
+  useTables: () => ({
+    tables: [
+      {
+        id: 11,
+        domainId: "sales",
+        tableName: "events",
+        draft: false,
+        columns: [{ columnName: "churn_flag" }, { columnName: "at" }],
+      },
+    ],
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
 }));
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
@@ -42,7 +72,11 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 // REQ-1590: every case below is a curator's, so the tab is mounted holding both glossary rights.
 // What a holder of `glossary_read` alone is shown is glossaryReadOnly.test.tsx.
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" }),
+  useAuth: () => ({
+    capabilities: ["glossary_read", "glossary_rw"],
+    activeOrgId: "acme",
+    actingRoles: "org_admin",
+  }),
 }));
 
 // REQ-1592: the expert/author picker is fed by the org's roster, not by typing a user id.
@@ -65,7 +99,12 @@ vi.mock("../api/admin", () => ({
   ]),
 }));
 
-import { addGlossaryExpert } from "../api/glossary";
+import {
+  addGlossaryEdge,
+  addGlossaryExpert,
+  listTermTables,
+  removeGlossaryEdge,
+} from "../api/glossary";
 import { notifications } from "@mantine/notifications";
 import {
   deleteGlossaryTerm,
@@ -199,6 +238,13 @@ async function openSelect(testid: string): Promise<HTMLElement> {
   return document.getElementById(input.getAttribute("aria-controls") as string) as HTMLElement;
 }
 
+/** Opens the selected term as one form. */
+async function edit() {
+  fireEvent.click(await screen.findByTestId("glossary-edit-btn"));
+  return screen.findByTestId("glossary-edit-form");
+}
+const save = () => fireEvent.click(screen.getByTestId("glossary-edit-save"));
+
 describe("GlossaryTab", () => {
   beforeEach(() => {
     mockList.mockReset();
@@ -210,6 +256,7 @@ describe("GlossaryTab", () => {
     mockMoveRef.mockReset();
     mockRetypeEdge.mockReset();
     mockNotify.mockClear();
+    vi.mocked(listTermTables).mockImplementation(async () => []);
     window.localStorage.clear();
     mockList.mockResolvedValue([REVENUE, CHURN, MARGIN]);
     mockFetchTerm.mockImplementation(async (id) => {
@@ -267,24 +314,23 @@ describe("GlossaryTab", () => {
     expect(screen.getByText(t("glossaryTab.purposeAdd"))).toBeInTheDocument();
   });
 
-  it("corrects a relationship's type in place, in both directions", async () => {
+  it("retypes a relationship in the form, in both directions, on Save", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    fireEvent.click(await screen.findByTestId("glossary-relationships-edit-toggle"));
-    await screen.findByTestId("glossary-edge-out-rel-2");
-
+    await edit();
     const outgoing = await openSelect("glossary-edge-out-rel-2");
     fireEvent.click(within(outgoing).getByText(t("glossaryTab.rel_KIND_OF")));
+    expect(mockRetypeEdge).not.toHaveBeenCalled();
+    save();
     await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "KIND_OF"));
 
     // The incoming picker shows the same forward types and sends the stored forward type; the
-    // edge keeps its own direction: the other term is still the source. Edit mode resets per
-    // term, so it needs re-enabling.
+    // edge keeps its own direction: the other term is still the source.
     fireEvent.click(screen.getByTestId("glossary-item-2"));
-    fireEvent.click(await screen.findByTestId("glossary-relationships-edit-toggle"));
-    await screen.findByTestId("glossary-edge-in-rel-1");
+    await edit();
     const incoming = await openSelect("glossary-edge-in-rel-1");
     fireEvent.click(within(incoming).getByText(t("glossaryTab.rel_PART_OF")));
+    save();
     await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "PART_OF"));
   });
 
@@ -313,7 +359,7 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", false, null));
   });
 
-  it("shows the term's domains and its states, which the edit fields do not", async () => {
+  it("reads every value of the term, under the form's labels", async () => {
     mockFetchTerm.mockImplementation(async (id) => {
       if (id === 3) return { ...MARGIN_DETAIL, domains: ["finance", "sales"] };
       if (id === 1) return REVENUE_DETAIL;
@@ -326,55 +372,77 @@ describe("GlossaryTab", () => {
       .getAllByRole("term")
       .map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
     expect(fields).toEqual([
+      ["Name", "Margin"],
+      ["Definition", t("glossaryTab.hoverNoDefinition")],
       ["Domains", "finance, sales"],
       // Grounded in neither a table nor a column.
       ["Role", "Concept"],
-      ["Abstract", "No"],
       ["Proposed", "No"],
       ["Deprecated", "Yes"],
       ["Retired", "No"],
+      [t("glossaryTab.excludeFromExportLabel"), "No"],
     ]);
+    // Nothing is edited in place: no input until Edit.
+    expect(screen.queryByTestId("glossary-name-input")).toBeNull();
     // An unscoped term is the enterprise's, as the create form names it.
     fireEvent.click(screen.getByTestId("glossary-item-1"));
     await waitFor(() =>
       expect(
-        within(screen.getByTestId("glossary-read-fields")).getAllByRole("definition")[0],
+        within(screen.getByTestId("glossary-read-fields")).getAllByRole("definition")[2],
       ).toHaveTextContent("All domains (enterprise)"),
     );
   });
 
-  it("renames the selected term through the PATCH endpoint and refetches", async () => {
+  it("renames the term on Save and reads it again; Cancel drops the change", async () => {
     mockUpdate.mockResolvedValue(undefined);
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    await screen.findByTestId("glossary-name-input");
+    await edit();
     expect(screen.getByTestId("glossary-name-input")).toHaveValue("Revenue");
+    fireEvent.change(screen.getByTestId("glossary-name-input"), { target: { value: "Gross" } });
+    fireEvent.click(screen.getByTestId("glossary-edit-cancel"));
+    expect(screen.queryByTestId("glossary-edit-form")).toBeNull();
+    expect(mockUpdate).not.toHaveBeenCalled();
 
-    // Unchanged name keeps the rename disabled.
-    expect(screen.getByTestId("glossary-rename-btn")).toBeDisabled();
-
+    await edit();
+    // The form starts from the term again, not from what was cancelled.
+    expect(screen.getByTestId("glossary-name-input")).toHaveValue("Revenue");
     fireEvent.change(screen.getByTestId("glossary-name-input"), {
       target: { value: "Net Revenue" },
     });
-    fireEvent.click(screen.getByTestId("glossary-rename-btn"));
+    save();
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { name: "Net Revenue" }));
-    // Mutation refetches the detail and the list.
+    // Save reads the term and the list again, and the panel is read once more.
     await waitFor(() => expect(mockFetchTerm).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId("glossary-edit-form")).toBeNull());
   });
 
-  it("drafts a definition with the AI button without persisting it", async () => {
+  it("says a refused change in place and keeps the form open with what was typed", async () => {
+    mockUpdate.mockRejectedValue(new Error("a term named Churn already exists"));
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await edit();
+    fireEvent.change(screen.getByTestId("glossary-name-input"), { target: { value: "Churn" } });
+    save();
+    expect(await screen.findByTestId("glossary-edit-refused-fields")).toHaveTextContent(
+      "a term named Churn already exists",
+    );
+    expect(screen.getByTestId("glossary-name-input")).toHaveValue("Churn");
+  });
+
+  it("drafts a definition with the AI button into the form without saving it", async () => {
     mockGenerate.mockResolvedValue("Money earned from sales.");
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    await screen.findByTestId("glossary-definition-input");
+    await edit();
 
     fireEvent.click(screen.getByTestId("description-field-generate"));
     await waitFor(() => expect(mockGenerate).toHaveBeenCalledWith(1));
 
-    // The draft lands in the editor only; saving is a separate, explicit PATCH.
+    // The draft lands in the form only; Save sends it.
     const input = within(screen.getByTestId("glossary-definition-input")).getByRole("textbox");
     await waitFor(() => expect(input).toHaveValue("Money earned from sales."));
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -383,7 +451,7 @@ describe("GlossaryTab", () => {
   it("offers exactly the ten closed rel_type values in the add-edge form", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    fireEvent.click(await screen.findByTestId("glossary-relationships-edit-toggle"));
+    await edit();
     await screen.findByTestId("glossary-edge-rel-select");
 
     const listbox = await openSelect("glossary-edge-rel-select");
@@ -400,6 +468,22 @@ describe("GlossaryTab", () => {
       t("glossaryTab.rel_TRANSLATION_OF"),
       t("glossaryTab.rel_ANTONYM_OF"),
     ]);
+  });
+
+  it("adds and removes relationships in the form, sent on Save", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await edit();
+    fireEvent.click(
+      within(screen.getByTestId("glossary-edge-out-2-RELATED_TO")).getByRole("button", {
+        name: t("glossaryTab.removeEdge"),
+      }),
+    );
+    save();
+    await waitFor(() =>
+      expect(vi.mocked(removeGlossaryEdge)).toHaveBeenCalledWith(1, 2, "RELATED_TO"),
+    );
+    expect(vi.mocked(addGlossaryEdge)).not.toHaveBeenCalled();
   });
 
   it("disables delete for a term with refs or relationships, otherwise surfaces the server 400", async () => {
@@ -427,15 +511,17 @@ describe("GlossaryTab", () => {
     expect(await screen.findByTestId("glossary-error")).toHaveTextContent("term 3 still has refs");
   });
 
-  it("toggles export exclusion through the PATCH endpoint", async () => {
+  it("sets export exclusion in the form, sent on Save", async () => {
     mockUpdate.mockResolvedValue(undefined);
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    const checkbox = await screen.findByTestId("glossary-export-excluded-checkbox");
+    await edit();
+    const checkbox = screen.getByTestId("glossary-export-excluded-checkbox");
     expect(checkbox).not.toBeChecked();
-
     fireEvent.click(checkbox);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    save();
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }));
   });
 
@@ -498,10 +584,11 @@ describe("GlossaryTab", () => {
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    await screen.findByTestId("glossary-ref-10-revenue");
-
+    await edit();
     const listbox = await openSelect("glossary-move-select-10-revenue");
     fireEvent.click(within(listbox).getByText("Churn", { ignore: "" }));
+    expect(mockMoveRef).not.toHaveBeenCalled();
+    save();
 
     await waitFor(() =>
       expect(mockMoveRef).toHaveBeenCalledWith({
@@ -510,7 +597,7 @@ describe("GlossaryTab", () => {
         to_term_id: 2,
       }),
     );
-    // The panel drops back to the empty state; no second read of the deleted term.
+    // The panel drops back to the empty state; no second read of the removed term.
     await waitFor(() => expect(screen.queryByTestId("glossary-ref-10-revenue")).toBeNull());
     expect(mockFetchTerm).toHaveBeenCalledTimes(1);
   });
@@ -520,13 +607,65 @@ describe("GlossaryTab", () => {
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    await screen.findByTestId("glossary-ref-10-revenue");
-
+    await edit();
     const listbox = await openSelect("glossary-move-select-10-revenue");
     fireEvent.click(within(listbox).getByText("Churn", { ignore: "" }));
+    save();
 
     await waitFor(() => expect(mockFetchTerm).toHaveBeenCalledTimes(2));
-    expect(screen.getByTestId("glossary-ref-10-revenue")).toBeInTheDocument();
+    expect(await screen.findByTestId("glossary-ref-10-revenue")).toBeInTheDocument();
+  });
+
+  it("claims a column from another term on Save; the emptied draft leaves the list", async () => {
+    mockMoveRef.mockResolvedValue({ source_term_removed: false });
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-3"));
+    await edit();
+    const listbox = await openSelect("glossary-claim-columns");
+    // Each column says the term it belongs to now.
+    expect(within(listbox).getByText("from: Churn (draft)")).toBeInTheDocument();
+    fireEvent.click(within(listbox).getByText("sales.events.churn_flag"));
+    // The server removes Churn, a draft its last column left.
+    mockList.mockResolvedValue([REVENUE, MARGIN]);
+    save();
+    await waitFor(() =>
+      expect(mockMoveRef).toHaveBeenCalledWith({
+        table_id: 11,
+        column_name: "churn_flag",
+        to_term_id: 3,
+      }),
+    );
+    await waitFor(() => expect(screen.queryByTestId("glossary-item-2")).toBeNull());
+  });
+
+  it("offers a property's tables and a class's columns disabled, saying why", async () => {
+    render(<GlossaryTab />);
+    // Revenue names a column: grounding it in tables would make it a class too.
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await edit();
+    expect(screen.getByTestId("glossary-grounded-tables-select")).toBeDisabled();
+    expect(screen.getByText(t("glossaryTab.groundDisabled"))).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-claim-columns")).toBeEnabled();
+
+    // Margin is grounded in a table: claiming a column would make it a property too.
+    vi.mocked(listTermTables).mockImplementation(async (id) =>
+      id === 3
+        ? ([
+            {
+              table_id: 11,
+              table_name: "events",
+              domain_id: "sales",
+              source_id: "s",
+              schema_name: "p",
+            },
+          ] as never)
+        : [],
+    );
+    fireEvent.click(screen.getByTestId("glossary-edit-cancel"));
+    fireEvent.click(screen.getByTestId("glossary-item-3"));
+    await edit();
+    await waitFor(() => expect(screen.getByTestId("glossary-claim-columns")).toBeDisabled());
+    expect(screen.getByText(t("glossaryTab.claimDisabled"))).toBeInTheDocument();
   });
 
   // Soft delete: a rooted term cannot be deleted (its refs would recreate it), so retiring is
@@ -569,23 +708,26 @@ describe("GlossaryTab", () => {
 
   // The user id is what the term is keyed on, so it is never typed: a mistyped id would attribute
   // the term to nobody and — for an author — lock every curator out of it.
-  it("picks the author from the org roster and sends that user's id", async () => {
+  it("picks the author from the org roster and sends that user's id on Save", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
-    fireEvent.click(await screen.findByTestId("glossary-experts-edit-toggle"));
-    await screen.findByTestId("glossary-expert-user-input");
+    await edit();
 
     const listbox = await openSelect("glossary-expert-user-input");
     // A member with no display name is offered under the email the server does have.
     expect(within(listbox).getByText("grace@acme.test")).toBeInTheDocument();
-    fireEvent.click(within(listbox).getByText("Ada Lovelace"));
+    // Ada is already the term's expert: the picker offers the members it has not named.
+    expect(within(listbox).queryByText("Ada Lovelace")).toBeNull();
+    fireEvent.click(within(listbox).getByText("grace@acme.test"));
 
     const kinds = await openSelect("glossary-expert-kind-select");
     fireEvent.click(within(kinds).getByText(t("glossaryTab.kind_author")));
 
     fireEvent.click(screen.getByTestId("glossary-expert-add-btn"));
+    expect(vi.mocked(addGlossaryExpert)).not.toHaveBeenCalled();
+    save();
     await waitFor(() =>
-      expect(vi.mocked(addGlossaryExpert)).toHaveBeenCalledWith(1, "u1", "author"),
+      expect(vi.mocked(addGlossaryExpert)).toHaveBeenCalledWith(1, "u2", "author"),
     );
   });
 

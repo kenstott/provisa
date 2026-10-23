@@ -103,6 +103,15 @@
     "noGroundedTables": "No anclado en ninguna tabla",
     "gapsOnly": "Brechas",
     "identityGap": "Brecha",
-    "identityGapHelp": "Fundamentado en varias tablas no todas unidas como la misma entidad: marque relaciones de misma entidad entre ellas"
+    "identityGapHelp": "Fundamentado en varias tablas no todas unidas como la misma entidad: marque relaciones de misma entidad entre ellas",
+    "edit": "Editar",
+    "domainsDerived": "Derivado de sus columnas y tablas",
+    "derivedReason": "El rol, Propuesto y Obsoleto se deducen de las columnas, tablas, definición y relaciones del término, por lo que no se establecen aquí.",
+    "claimColumns": "Reclamar columnas",
+    "claimHint": "Cada columna pertenece a un término; al reclamarla, se mueve aquí.",
+    "claimDisabled": "Este término nombra tablas (una clase); no puede nombrar también columnas",
+    "groundDisabled": "Este término nombra columnas (una propiedad); no puede nombrar también tablas",
+    "claimFrom": "de: {{term}}",
+    "claimFromDraft": "de: {{term}} (borrador)"
   }
 }

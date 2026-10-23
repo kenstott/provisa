@@ -103,6 +103,15 @@
     "noGroundedTables": "Ancorado em nenhuma tabela",
     "gapsOnly": "Lacunas",
     "identityGap": "Lacuna",
-    "identityGapHelp": "Fundamentado em várias tabelas que não estão todas unidas como a mesma entidade: marque relações de mesma entidade entre elas"
+    "identityGapHelp": "Fundamentado em várias tabelas que não estão todas unidas como a mesma entidade: marque relações de mesma entidade entre elas",
+    "edit": "Editar",
+    "domainsDerived": "Derivado de suas colunas e tabelas",
+    "derivedReason": "Papel, Proposto e Obsoleto decorrem das colunas, tabelas, definição e relações do termo, por isso não são definidos aqui.",
+    "claimColumns": "Reivindicar colunas",
+    "claimHint": "Cada coluna pertence a um termo; reivindicá-la a move para cá.",
+    "claimDisabled": "Este termo nomeia tabelas (uma classe); não pode nomear também colunas",
+    "groundDisabled": "Este termo nomeia colunas (uma propriedade); não pode nomear também tabelas",
+    "claimFrom": "de: {{term}}",
+    "claimFromDraft": "de: {{term}} (rascunho)"
   }
 }

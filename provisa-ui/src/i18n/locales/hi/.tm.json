@@ -7830,5 +7830,14 @@
   "hi/graph3d.json::graph3d.menuAll": "all",
   "hi/graph3d.json::graph3d.menuSome": "{{count}} of {{total}}",
   "hi/graph3d.json::graph3d.unconnected": "Unconnected",
-  "hi/graph3d.json::graph3d.unconnectedHelp": "Terms with no relationship or grounding shown"
+  "hi/graph3d.json::graph3d.unconnectedHelp": "Terms with no relationship or grounding shown",
+  "hi/glossaryTab.json::glossaryTab.derivedReason": "Role, Proposed and Deprecated follow from the term's columns, tables, definition and relationships, so they are not set here.",
+  "hi/glossaryTab.json::glossaryTab.claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
+  "hi/glossaryTab.json::glossaryTab.domainsDerived": "Derived from its columns and tables",
+  "hi/glossaryTab.json::glossaryTab.claimFromDraft": "from: {{term}} (draft)",
+  "hi/glossaryTab.json::glossaryTab.claimHint": "Each column belongs to one term; claiming it moves it here.",
+  "hi/glossaryTab.json::glossaryTab.claimFrom": "from: {{term}}",
+  "hi/glossaryTab.json::glossaryTab.edit": "Edit",
+  "hi/glossaryTab.json::glossaryTab.claimColumns": "Claim columns",
+  "hi/glossaryTab.json::glossaryTab.groundDisabled": "This term names columns (a property); a class term can't also own columns"
 }

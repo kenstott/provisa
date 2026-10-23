@@ -103,6 +103,15 @@
     "noGroundedTables": "Ancorato a nessuna tabella",
     "gapsOnly": "Lacune",
     "identityGap": "Lacuna",
-    "identityGapHelp": "Ancorato a più tabelle non tutte unite come stessa entità: marcate tra loro relazioni di stessa entità"
+    "identityGapHelp": "Ancorato a più tabelle non tutte unite come stessa entità: marcate tra loro relazioni di stessa entità",
+    "edit": "Modifica",
+    "domainsDerived": "Derivato dalle sue colonne e tabelle",
+    "derivedReason": "Ruolo, Proposto e Deprecato derivano da colonne, tabelle, definizione e relazioni del termine, quindi non si impostano qui.",
+    "claimColumns": "Rivendica colonne",
+    "claimHint": "Ogni colonna appartiene a un termine; rivendicarla la sposta qui.",
+    "claimDisabled": "Questo termine nomina tabelle (una classe); non può nominare anche colonne",
+    "groundDisabled": "Questo termine nomina colonne (una proprietà); non può nominare anche tabelle",
+    "claimFrom": "da: {{term}}",
+    "claimFromDraft": "da: {{term}} (bozza)"
   }
 }
