@@ -614,8 +614,11 @@ def _build_domain_to_label(
             else table_meta.field_name
         )
         lbl = label_map.display_label(nm)
-        domain_to_label[(sql_domain, field_key)] = lbl
-        domain_to_label[("", field_key)] = lbl
+        # Semantic SQL names a table by its field or by its own name before a physical alias (a
+        # meta view's *_meta).
+        for name in {field_key, table_meta.original_table_name or table_meta.table_name}:
+            domain_to_label[(sql_domain, name)] = lbl
+            domain_to_label[("", name)] = lbl
 
     for _tn, nm in label_map.nodes.items():  # pyright: ignore[reportUnusedVariable]
         lbl = label_map.display_label(nm)

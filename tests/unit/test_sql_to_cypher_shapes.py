@@ -399,6 +399,10 @@ def meta():
         naming_rules=[],
         role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
         domains=[{"id": "meta", "description": "Meta"}],
+        # As the server registers them: each meta table read through its *_meta view, its
+        # fields domain-prefixed.
+        domain_prefix=True,
+        physical_table_map={name: f"{name}_meta" for name in _META_COLUMNS},
     )
     ctx = build_context(si)
     c = duckdb.connect()
@@ -425,7 +429,9 @@ def meta():
     c.execute("ATTACH ':memory:' AS provisa_admin")
     c.execute("CREATE SCHEMA provisa_admin.public")
     for name in _META_COLUMNS:
-        c.execute(f"CREATE VIEW provisa_admin.public.{name} AS SELECT * FROM memory.meta.{name}")
+        c.execute(
+            f"CREATE VIEW provisa_admin.public.{name}_meta AS SELECT * FROM memory.meta.{name}"
+        )
     return (generate_schema(si), ctx, CypherLabelMap.from_schema(ctx, domain_access=["*"])), c
 
 
@@ -433,7 +439,7 @@ _KEPT = 'relType: { in: ["KIND_OF", "PART_OF"] }'
 #: The Ontology View's one query: live terms with an edge of a kept type to a live term, either
 #: way, or a table; each with its edges out of those types, each edge's target, and its tables.
 _ONTOLOGY = (
-    "{ glossaryTerms(where: { retired: { eq: false }, _or: ["
+    "{ m__glossaryTerms(where: { retired: { eq: false }, _or: ["
     f"{{ edgesOut: {{ {_KEPT}, targetTerm: {{ retired: {{ eq: false }} }} }} }}, "
     f"{{ edgesIn: {{ {_KEPT}, sourceTerm: {{ retired: {{ eq: false }} }} }} }}, "
     "{ tables: {} } ] }) { id name "
@@ -454,14 +460,14 @@ def test_the_ontology_view_s_one_query_is_its_cypher(meta):
     "query",
     [
         # A filtered root with a to-many junction field: the filter is the root's, not dropped.
-        '{ glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        '{ m__glossaryTerms(where: { name: { eq: "ledger" } }) { id '
         f"edgesOut(where: {{ {_KEPT} }}) {{ id toTermId }} }} }}",
         # One kept type, and the edges into a term.
-        '{ glossaryTerms { id edgesIn(where: { relType: { eq: "KIND_OF" } }) { id fromTermId } } }',
+        '{ m__glossaryTerms { id edgesIn(where: { relType: { eq: "KIND_OF" } }) { id fromTermId } } }',
         # A relationship's condition over the junction, either way, with its far term's own.
-        f"{{ glossaryTerms(where: {{ edgesIn: {{ {_KEPT}, sourceTerm: {{ name: {{ eq: "
+        f"{{ m__glossaryTerms(where: {{ edgesIn: {{ {_KEPT}, sourceTerm: {{ name: {{ eq: "
         '"ledger" } } } }) { id } }',
-        "{ glossaryTerms(where: { tables: {} }) { id tables { tableName } } }",
+        "{ m__glossaryTerms(where: { tables: {} }) { id tables { tableName } } }",
     ],
 )
 def test_a_junction_field_or_condition_is_its_relationships(meta, query):
@@ -473,7 +479,7 @@ def test_a_junction_field_or_condition_is_its_relationships(meta, query):
 def test_a_junction_field_not_kept_to_declared_types_has_no_cypher_form(meta):
     # Every edge row, ANTONYM_OF's included: it has the declared types' rows and others'.
     (schema, ctx, lm), _con = meta
-    (root,) = compile_query(parse("{ glossaryTerms { id edgesOut { id } } }"), ctx)
+    (root,) = compile_query(parse("{ m__glossaryTerms { id edgesOut { id } } }"), ctx)
     semantic = make_semantic_sql(root.sql, ctx)
     assert semantic_sql_to_cypher(semantic, lm, ctx, params=root.params) is None
 
