@@ -21,7 +21,7 @@ import { useAuth } from "../../context/AuthContext";
 import { dataGraphql } from "../../api/metaGraph";
 import { GraphExplorer } from "./GraphExplorer";
 import { GLOSSARY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
-import { glossaryGraph, ontologyQuery, type OntologyRows } from "./glossaryGraphData";
+import { glossaryGraph, ontologyQuery, termEdges, type OntologyRows } from "./glossaryGraphData";
 import { GraphModal } from "./KnowledgeGraphPanel";
 import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
@@ -51,7 +51,7 @@ async function loadOntology(
   if (query === null) return null;
   const rows = await dataGraphql<OntologyRows>(query, {}, role);
   return {
-    data: glossaryGraph(rows.glossary_terms, rows.glossary_term_edges ?? [], rows.data_products),
+    data: glossaryGraph(rows.glossary_terms, termEdges(rows.glossary_terms), rows.data_products),
     query,
   };
 }
