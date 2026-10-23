@@ -19,16 +19,20 @@ so a pushed condition only ever narrows what is fetched. The LIMIT is pushed onl
 conjunct was and the SELECT does nothing else that needs rows beyond it (grouping, aggregates,
 DISTINCT, ORDER BY, OFFSET).
 
+Each kind of pushdown is a feature of the source (:data:`FEATURES`, REQ-2143): one a steward
+disabled on the source is never pushed, its condition left for the engine after landing, and the
+plan names it.
+
 The table's own SELECT becomes a subquery: ``SELECT * WHERE { { <its SELECT> } FILTER(...) }
 LIMIT n``, its PREFIX and BASE declarations kept in front.
 """
 
-# Requirements: REQ-2138
+# Requirements: REQ-2138, REQ-2143
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from decimal import Decimal
 from typing import Any
 
@@ -41,6 +45,13 @@ from provisa.codehost.residual import conjuncts, predicate
 #: The form field a SPARQL 1.1 query is posted under, and the argument a narrowed query is
 #: sent as (``caller.prepare_call``): part of the call, so the answer is kept under it.
 QUERY_ARG = "query"
+
+#: The source-level pushdowns this planner makes (REQ-2143), by the id a source disables one by.
+FEATURES = {
+    "filter_equality": "FILTER equality and IN on a text, number or boolean column",
+    "filter_range": "FILTER range comparison (<, <=, >, >=) on a number column",
+    "limit": "LIMIT",
+}
 
 _SQL_OPS = {"eq": "=", "ne": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 _NUMBERS = (ApiColumnType.integer, ApiColumnType.number)
@@ -71,6 +82,10 @@ def _term(kind: ApiColumnType, value: Any) -> str | None:
     if kind == ApiColumnType.boolean and isinstance(value, bool):
         return "true" if value else "false"
     return None
+
+
+def _feature(op: str) -> str:
+    return "filter_equality" if op in ("eq", "ne", "in") else "filter_range"
 
 
 def _filter(var: str, kind: ApiColumnType, op: str, value: Any) -> str | None:
@@ -109,11 +124,18 @@ def _limit_pushable(select: exp.Select) -> bool:
 
 
 def narrowed_query(
-    query_template: str, sql: str, table: str, columns: Mapping[str, tuple[str, ApiColumnType]]
+    query_template: str,
+    sql: str,
+    table: str,
+    columns: Mapping[str, tuple[str, ApiColumnType]],
+    disabled: Collection[str] = (),
+    held: list[str] | None = None,
 ) -> str | None:
     """``query_template`` narrowed by what the statement ``sql`` (postgres) asks of ``table``:
     ``columns`` maps each column's SQL name to its SPARQL variable and type. None when nothing is
-    pushed."""
+    pushed. ``disabled``: the :data:`FEATURES` the source disabled, never pushed; each one this
+    statement would have pushed is added to ``held``."""
+    held = [] if held is None else held
     tree = sqlglot.parse_one(sql, read="postgres")
     reads = [t for t in tree.find_all(exp.Table) if t.name == table]
     if len(reads) != 1:
@@ -135,11 +157,17 @@ def narrowed_query(
         if found is not None and found[0] in columns:
             var, kind = columns[found[0]]
             pushed = _filter(var, kind, found[1], found[2])
+            if pushed is not None and _feature(found[1]) in disabled:
+                held.append(_feature(found[1]))
+                pushed = None
         if pushed is None:
             every_one = False
         else:
             filters.append(pushed)
     limit = _limit(select) if every_one and _limit_pushable(select) else None
+    if limit is not None and "limit" in disabled:
+        held.append("limit")
+        limit = None
     if not filters and limit is None:
         return None
     prologue = _PROLOGUE.match(query_template)
@@ -153,15 +181,22 @@ def narrowed_query(
     return narrowed
 
 
-def pushed_arguments(endpoint: ApiEndpoint, sql: str, table: str) -> dict[str, str]:
+def pushed_arguments(
+    endpoint: ApiEndpoint, sql: str, table: str, disabled: Collection[str] = ()
+) -> dict[str, str]:
     """The argument a SPARQL table's call is sent with to answer the statement ``sql``: its query
-    narrowed (``QUERY_ARG``), or none when nothing is pushed."""
+    narrowed (``QUERY_ARG``), or none when nothing is pushed. ``disabled``: the source's disabled
+    :data:`FEATURES`; each one the statement would have pushed is named in the plan's notes."""
     from provisa.compiler.naming import apply_sql_name
+    from provisa.core.pushdown_notes import not_pushed_on_source
 
     if endpoint.response_normalizer != "sparql_bindings" or not endpoint.query_template:
         return {}
     columns = {
         apply_sql_name(c.name): (c.name, c.type) for c in endpoint.columns if c.param_type is None
     }
-    narrowed = narrowed_query(endpoint.query_template, sql, table, columns)
+    held: list[str] = []
+    narrowed = narrowed_query(endpoint.query_template, sql, table, columns, disabled, held)
+    for feature in dict.fromkeys(held):
+        not_pushed_on_source(endpoint.source_id, feature)
     return {} if narrowed is None else {QUERY_ARG: narrowed}
