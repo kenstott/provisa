@@ -25,7 +25,7 @@ from provisa.gql.expr_ast import CypherExpr, FunctionCall, Variable, walk
 
 _AGGREGATES = frozenset(
     {"count", "sum", "avg", "min", "max", "collect", "stdev", "stdevp", "percentilecont",
-     "percentiledisc"}
+     "percentiledisc", "group_concat"}
 )  # fmt: skip
 
 
@@ -55,6 +55,9 @@ class GroupByMixin:  # REQ-653
         return self._parse_expr(expr)
 
     def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
+        if return_clause.group_by is not None:
+            # REQ-2135: the keys the statement names.
+            return [self._parse_expr(key) for key in return_clause.group_by]
         items = return_clause.items
         if not any(_has_aggregate(item.expression) for item in items):
             return []

@@ -137,7 +137,7 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     except CypherTranslateError as exc:
         return _refused(400, str(exc))
 
-    rows: list[dict] = []
+    rows: list[dict] = [compiled.empty_row] if compiled.empty_row is not None else []
     if not compiled.empty:
         assert compiled.ast is not None
         try:
