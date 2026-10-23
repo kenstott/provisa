@@ -15,8 +15,9 @@ glossary is read, written, or deleted, and a term's absence from the snapshot ne
 it. Each upsert's entity UUID is captured as a binding keyed by the term's semantic URI; on
 a later publish a changed FQN is rebound by PATCH — glossary terms, unlike tables, allow
 rename and re-parenting — so steward curation stays on the SAME entity. The four edge types
-land on OpenMetadata's own constructs, the deprecated flag on ``entityStatus``, and
-term-to-asset assignment is never written (HUMAN-OWNED, REQ-1389).
+land on OpenMetadata's own constructs and the deprecated flag on ``entityStatus``. Provisa
+assigns its terms to data as Automated labels and owns only those; a steward's assignment stays
+the steward's (REQ-1389).
 """
 
 # Requirements: REQ-1387, REQ-1389
@@ -25,15 +26,19 @@ from __future__ import annotations
 
 import json as jsonlib
 
+from dataclasses import replace
+
 import httpx
 import pytest
 
 from provisa.api.metadata_export.model import (
     AssetKind,
     AssetRef,
+    ColumnAsset,
     GlossaryTermAsset,
     GlossaryTermEdge,
     MetadataSnapshot,
+    TableAsset,
 )
 from provisa.api.metadata_export.openmetadata import (
     GLOSSARY_DISPLAY_NAME,
@@ -98,6 +103,9 @@ def _mock_transport(monkeypatch, live_terms: dict[str, dict] | None = None):
         calls.append(("PUT", url, json))
         if url.endswith("/glossaries"):
             body = {"id": "gid-1", "fullyQualifiedName": json["name"]}
+        elif "glossary" not in json:
+            fqn = f"{json.get('databaseSchema', json.get('service', ''))}.{json['name']}"
+            body = {"id": f"uuid-{json['name']}", "fullyQualifiedName": fqn.lstrip(".")}
         else:
             prefix = json.get("parent", json["glossary"])
             body = {"id": f"uuid-{json['name']}", "fullyQualifiedName": f"{prefix}.{json['name']}"}
@@ -362,18 +370,121 @@ async def test_merge_carries_steward_tags_reviewers_and_foreign_related_terms(mo
     assert body["relatedTerms"] == ["Business Glossary.Party"]
 
 
-@pytest.mark.asyncio
-async def test_term_to_asset_assignment_is_never_written(monkeypatch):
-    calls = _mock_transport(monkeypatch)
-    ref = AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "customer_id"))
-    result = await OpenMetadataExport(_export_config()).publish(
-        _snapshot([_term(1, "Customer", refs=(ref,))])
+ORDERS = AssetRef(kind=AssetKind.TABLE, parts=("wh", "public", "orders"))
+CUSTOMER_ID = AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "customer_id"))
+ORDERS_FQN = "wh.default.public.orders"
+
+
+def _assignment_snapshot(terms) -> MetadataSnapshot:
+    """One published table with one column, beside the terms assigned to them."""
+    return MetadataSnapshot(
+        org_id="acme",
+        tables=[
+            TableAsset(
+                ref=ORDERS,
+                name="orders",
+                source_id="wh",
+                domain_id=None,
+                description="orders",
+                columns=[
+                    ColumnAsset(
+                        ref=CUSTOMER_ID, name="customer_id", data_type="integer", description=""
+                    )
+                ],
+                semantic_uri="provisa://acme/sales/tables/orders",
+            )
+        ],
+        glossary_terms=list(terms),
     )
-    assert result.ok
-    # REQ-1389: term-to-asset assignment is HUMAN-OWNED. The ref never leaves the model —
-    # no table/column endpoint is touched and no payload names the referenced asset.
-    assert all("/api/v1/glossar" in url for _, url, _ in calls)
-    assert "customer_id" not in jsonlib.dumps([body for _, _, body in calls if body is not None])
+
+
+def _class(term_id: int, name: str) -> GlossaryTermAsset:
+    return replace(_term(term_id, name), is_abstract=False, role="class", tables=(ORDERS,))
+
+
+def _property(term_id: int, name: str) -> GlossaryTermAsset:
+    return replace(_term(term_id, name), is_abstract=False, role="property", refs=(CUSTOMER_ID,))
+
+
+def _label(fqn: str, label_type: str = "Automated") -> dict:
+    return {"tagFQN": fqn, "source": "Glossary", "labelType": label_type, "state": "Confirmed"}
+
+
+def _table_put(calls) -> dict:
+    (body,) = [b for m, url, b in calls if m == "PUT" and url.endswith("/api/v1/tables")]
+    return body
+
+
+@pytest.mark.asyncio
+async def test_a_class_term_is_assigned_to_its_tables_and_a_property_to_its_columns(monkeypatch):
+    """REQ-1389 (amended): Provisa writes its own term assignments as OpenMetadata's
+    Automated glossary labels -- the Class on the table it grounds, the Property on its
+    column -- after the glossary pass, so every label names a term that exists."""
+    calls = _mock_transport(monkeypatch)
+    result = await OpenMetadataExport(_export_config()).publish(
+        _assignment_snapshot([_class(1, "order"), _property(2, "customer"), _term(3, "party")])
+    )
+    assert result.ok, result.errors
+    order = [i for i, (m, url, _) in enumerate(calls) if url.endswith("/api/v1/tables")]
+    terms = [i for i, (m, url, _) in enumerate(calls) if url.endswith("/glossaryTerms")]
+    assert max(terms) < min(order)
+    body = _table_put(calls)
+    assert body["tags"] == [_label(f"{GLOSSARY}.order")]
+    (column,) = body["columns"]
+    assert column["tags"] == [_label(f"{GLOSSARY}.customer")]
+    # The Concept grounds nothing, so nothing carries it.
+    assert f"{GLOSSARY}.party" not in jsonlib.dumps(body)
+
+
+@pytest.mark.asyncio
+async def test_human_assignments_survive_and_provisas_stale_ones_are_withdrawn(monkeypatch):
+    """Provisa owns only its Automated labels on terms in its own glossary. A steward's Manual
+    assignment -- even of a Provisa term -- stands, and Provisa adds no duplicate beside it; an
+    Automated label Provisa made for a term no longer assigned there is withdrawn."""
+    live_table = {
+        "tags": [
+            _label(f"{GLOSSARY}.order", "Manual"),  # the steward assigned it by hand
+            _label(f"{GLOSSARY}.retired_term"),  # Provisa's, no longer assigned
+            _label("Business Glossary.Revenue", "Manual"),  # a steward glossary
+            _label("Vendor Glossary.Auto", "Automated"),  # another system's automation
+        ],
+        "columns": [{"name": "customer_id", "tags": [_label(f"{GLOSSARY}.customer")]}],
+    }
+    calls = _mock_transport(monkeypatch, live_terms={ORDERS_FQN: live_table})
+    result = await OpenMetadataExport(_export_config()).publish(
+        _assignment_snapshot([_class(1, "order"), _property(2, "customer")])
+    )
+    assert result.ok, result.errors
+    body = _table_put(calls)
+    assert body["tags"] == [
+        _label(f"{GLOSSARY}.order", "Manual"),
+        _label("Business Glossary.Revenue", "Manual"),
+        _label("Vendor Glossary.Auto", "Automated"),
+    ]
+    (column,) = body["columns"]
+    assert column["tags"] == [_label(f"{GLOSSARY}.customer")]
+
+
+@pytest.mark.asyncio
+async def test_a_term_whose_upsert_failed_keeps_its_live_assignments(monkeypatch):
+    """An assignment is never withdrawn because a request failed: the term's live Automated
+    label rides through, and no new label names a term that was not upserted."""
+    live_table = {"tags": [_label(f"{GLOSSARY}.order")], "columns": []}
+    calls = _mock_transport(monkeypatch, live_terms={ORDERS_FQN: live_table})
+    put = httpx.AsyncClient.put
+
+    async def _refuse_order(self, url, json=None, headers=None, params=None):
+        if url.endswith("/glossaryTerms") and json["name"] == "order":
+            calls.append(("PUT", url, json))
+            return httpx.Response(500, text="boom", request=httpx.Request("PUT", url))
+        return await put(self, url, json=json, headers=headers, params=params)
+
+    monkeypatch.setattr(httpx.AsyncClient, "put", _refuse_order)
+    result = await OpenMetadataExport(_export_config()).publish(
+        _assignment_snapshot([_class(1, "order")])
+    )
+    assert not result.ok
+    assert _table_put(calls)["tags"] == [_label(f"{GLOSSARY}.order")]
 
 
 @pytest.mark.asyncio

@@ -1508,7 +1508,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 | OpenMetadata | 透過 `/v1/glossaries` 的 Provisa 詞彙表 | 以 fqn 為索引鍵的 PUT，重新命名則以已儲存的 UUID 進行 PATCH 重新繫結 | KIND_OF → 原生父階層、SYNONYM_OF → `synonyms`、其餘 → `relatedTerms` | `entityStatus` |
 | Collibra | 詞彙表類型的網域「Provisa Glossary」 | 透過 Import API 的 Business Term 資產 | 原生 Business Term 關聯類型 | 資產狀態 |
 
-關鍵在於繫結，而不是名稱。每個已發佈術語的供應商 id 都會以該術語的 URN（`provisa://<org>/terms/<name>`）記錄在 `catalog_bindings` 中，只有當 Provisa 持有該繫結，或該條目位於 Provisa 建立的容器中時，Provisa 才會修改或刪除供應商一側的詞彙表條目。沒有 Provisa 繫結的詞彙表條目來自外部系統，永遠不會被觸碰。更新會先讀取再合併，所以數據管家在 Provisa 自有術語上加入的欄位會保留；術語離開快照時亦不會刪除任何東西。數據管家所作的術語到資產的指派仍歸外部系統所有：沒有任何配接器寫入它們（發佈在 Provisa 中編寫的指派是另一項後續工作）。具體到 Collibra，Import API 會取代收到的內容，安全性依靠範圍限定：負載只提及 Provisa 詞彙表領域內的資產，以及 Provisa 術語之間的關係，所以數據管家的詞彙表及其關係都不會被觸及。
+關鍵在於繫結，而不是名稱。每個已發佈術語的供應商 id 都會以該術語的 URN（`provisa://<org>/terms/<name>`）記錄在 `catalog_bindings` 中，只有當 Provisa 持有該繫結，或該條目位於 Provisa 建立的容器中時，Provisa 才會修改或刪除供應商一側的詞彙表條目。沒有 Provisa 繫結的詞彙表條目來自外部系統，永遠不會被觸碰。更新會先讀取再合併，所以數據管家在 Provisa 自有術語上加入的欄位會保留；術語離開快照時亦不會刪除任何東西。Provisa 亦會把每個術語指派給它所指的數據。類術語指派給它所落地的已發佈表，屬性術語指派給它的已發佈欄，概念則不指派給任何東西。每項指派都以目錄自身的自動指派寫入，並歸屬於 Provisa：在 OpenMetadata 中是 `Automated` 標籤，在 DataHub 中是歸屬於 Provisa 執行者的術語關聯，在 Atlas 和 Atlan 中是來源為 Provisa 的語義指派，在 Collibra 中是由 Provisa 用戶建立的關係。Provisa 只加入和撤回這些指派，所以數據管家所作的指派永遠不會被移除或重複。請求失敗不會令指派被撤回。在 Collibra 中，指派經關係 API 而不是 Import API 寫入，因為匯入會取代數據管家同一類型的關係。具體到 Collibra，Import API 會取代收到的內容，安全性依靠範圍限定：負載只提及 Provisa 詞彙表領域內的資產，以及 Provisa 術語之間的關係，所以數據管家的詞彙表及其關係都不會被觸及。
 
 ---
 

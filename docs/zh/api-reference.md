@@ -1508,7 +1508,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 | OpenMetadata | 通过 `/v1/glossaries` 的 Provisa 术语表 | 以 fqn 为键的 PUT，重命名通过存储的 UUID 进行 PATCH 重绑定 | KIND_OF → 原生父级层级，SYNONYM_OF → `synonyms`，其他 → `relatedTerms` | `entityStatus` |
 | Collibra | 术语表类型域 "Provisa Glossary" | 通过 Import API 创建的 Business Term 资产 | 原生 Business Term 关系类型 | 资产状态 |
 
-关键在于绑定，而不是名称。每个已发布术语的供应商 id 都会以该术语的 URN（`provisa://<org>/terms/<name>`）记录在 `catalog_bindings` 中，只有当 Provisa 持有该绑定，或该条目位于 Provisa 创建的容器中时，Provisa 才会修改或删除供应商一侧的术语表条目。没有 Provisa 绑定的术语表条目来自外部系统，永远不会被触碰。更新会先读取再合并，所以数据管家在 Provisa 自有术语上添加的字段会保留；术语离开快照时也不会删除任何东西。数据管家所做的术语到资产的分配仍归外部系统所有：没有任何适配器写入它们（发布在 Provisa 中编写的分配是另一项后续工作）。具体到 Collibra，Import API 会替换收到的内容，安全性依靠范围限定：载荷只提及 Provisa 术语表领域内的资产，以及 Provisa 术语之间的关系，所以数据管家的术语表及其关系都不会被触及。
+关键在于绑定，而不是名称。每个已发布术语的供应商 id 都会以该术语的 URN（`provisa://<org>/terms/<name>`）记录在 `catalog_bindings` 中，只有当 Provisa 持有该绑定，或该条目位于 Provisa 创建的容器中时，Provisa 才会修改或删除供应商一侧的术语表条目。没有 Provisa 绑定的术语表条目来自外部系统，永远不会被触碰。更新会先读取再合并，所以数据管家在 Provisa 自有术语上添加的字段会保留；术语离开快照时也不会删除任何东西。Provisa 还会把每个术语分配给它所指的数据。类术语分配给它所落地的已发布表，属性术语分配给它的已发布列，概念则不分配给任何东西。每项分配都以目录自身的自动分配写入，并归属于 Provisa：在 OpenMetadata 中是 `Automated` 标签，在 DataHub 中是归属于 Provisa 执行者的术语关联，在 Atlas 和 Atlan 中是来源为 Provisa 的语义分配，在 Collibra 中是由 Provisa 用户创建的关系。Provisa 只添加和撤回这些分配，所以数据管家所做的分配永远不会被移除或重复。请求失败不会导致分配被撤回。在 Collibra 中，分配通过关系 API 而不是 Import API 写入，因为导入会替换数据管家同一类型的关系。具体到 Collibra，Import API 会替换收到的内容，安全性依靠范围限定：载荷只提及 Provisa 术语表领域内的资产，以及 Provisa 术语之间的关系，所以数据管家的术语表及其关系都不会被触及。
 
 ---
 

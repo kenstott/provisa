@@ -11,7 +11,7 @@ does, a rooted term whose refs are all withheld is withheld with them, an abstra
 term publishes on its edges alone, and an edge needs both endpoints published.
 """
 
-# Requirements: REQ-1387
+# Requirements: REQ-1387, REQ-1389, REQ-2141
 
 from __future__ import annotations
 
@@ -168,3 +168,61 @@ def test_snapshot_without_glossary_is_empty_not_absent():
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert snapshot.glossary_terms == []
     assert snapshot.glossary_edges == []
+
+
+def _class_glossary() -> dict:
+    """A Class term grounding two tables, one of them withheld, and a Property on a column."""
+    glossary = _glossary()
+    glossary["terms"].append(
+        {
+            "id": 4,
+            "name": "order",
+            "definition": "A customer's request to buy.",
+            "is_abstract": False,
+            "deprecated": False,
+        }
+    )
+    glossary["table_refs"] = [
+        {"term_id": 4, "source_id": "wh", "schema_name": "public", "table_name": "orders"},
+        {"term_id": 4, "source_id": "wh", "schema_name": "public", "table_name": "staging"},
+    ]
+    return glossary
+
+
+def test_a_class_term_is_rooted_for_export_through_its_published_tables():
+    """REQ-2141 admission: a Class term holds no column ref, so a published table it grounds
+    is what roots it; with every grounded table withheld it does not publish."""
+    tables = [
+        _table("orders", columns=["cust_id"]),
+        _table("staging", product_id=None, columns=["hidden_id"]),
+    ]
+    snapshot = build_snapshot(
+        _config(tables), org_id="acme", dialect="postgres", contexts={}, glossary=_class_glossary()
+    )
+    order = next(t for t in snapshot.glossary_terms if t.name == "order")
+    assert order.refs == ()
+    assert [t.parts for t in order.tables] == [("wh", "public", "orders")]
+
+    withheld = [_table("orders", product_id=None, columns=["cust_id"]), tables[1]]
+    snapshot = build_snapshot(
+        _config(withheld),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        glossary=_class_glossary(),
+    )
+    assert "order" not in {t.name for t in snapshot.glossary_terms}
+
+
+def test_each_term_carries_its_role():
+    """REQ-2141: class when it grounds tables, property when it owns column refs, concept when
+    neither -- the role decides what a catalog assigns the term to (REQ-1389)."""
+    config = _config([_table("orders", columns=["cust_id"])])
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=_class_glossary()
+    )
+    assert {t.name: t.role for t in snapshot.glossary_terms} == {
+        "customer": "property",
+        "party": "concept",
+        "order": "class",
+    }

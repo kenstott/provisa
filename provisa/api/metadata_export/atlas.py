@@ -97,6 +97,10 @@ class AtlasEntity:  # REQ-1069
     guid: str
     classifications: list[dict[str, Any]] = field(default_factory=list)
     relationships: dict[str, Any] = field(default_factory=dict)
+    # Atlan's bulk route adds to and removes from a relationship list without replacing it
+    # (REQ-1389: Provisa's own term assignments beside a steward's).
+    append_relationships: dict[str, Any] = field(default_factory=dict)
+    remove_relationships: dict[str, Any] = field(default_factory=dict)
 
     def payload(self) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -108,6 +112,10 @@ class AtlasEntity:  # REQ-1069
             body["classifications"] = self.classifications
         if self.relationships:
             body["relationshipAttributes"] = self.relationships
+        if self.append_relationships:
+            body["appendRelationshipAttributes"] = self.append_relationships
+        if self.remove_relationships:
+            body["removeRelationshipAttributes"] = self.remove_relationships
         return body
 
 
@@ -866,6 +874,25 @@ TERM_RELATION_MAP = {
 }
 
 
+# REQ-1389 (amended): a term-to-entity assignment Provisa makes is an AtlasGlossarySemanticAssignment
+# relationship carrying these attributes. ``source`` is the ownership test -- Provisa writes and
+# withdraws only assignments whose source is Provisa; every other assignment is a person's and
+# stands. ``DISCOVERED`` is Atlas's own status for an assignment a system made, not a steward.
+SEMANTIC_ASSIGNMENT = "AtlasGlossarySemanticAssignment"
+ASSIGNMENT_SOURCE = "provisa"
+ASSIGNMENT_ATTRIBUTES = {
+    "source": ASSIGNMENT_SOURCE,
+    "createdBy": ASSIGNMENT_SOURCE,
+    "status": "DISCOVERED",
+    "description": "Assigned by Provisa from the term's grounding in the governed model.",
+}
+
+
+def _is_provisa_assignment(assigned: dict[str, Any]) -> bool:
+    attributes = (assigned.get("relationshipAttributes") or {}).get("attributes") or {}
+    return attributes.get("source") == ASSIGNMENT_SOURCE
+
+
 def _glossary_qn(org_id: str) -> str:
     """The Provisa-owned container's stable per-org qualifiedName (REQ-1387)."""
     return f"provisa_glossary.{org_id}@{CLUSTER}"
@@ -1107,13 +1134,24 @@ class AtlasExport(MetadataExport):  # REQ-1069
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = await self._publish_entities(to_native_entities(snapshot), snapshot)
-        if snapshot.glossary_terms:
+        if snapshot.glossary_terms or self._departed_terms(snapshot):
             # REQ-1387: the glossary publishes even when no entity does — an abstract term
             # is user vocabulary, not physical binding, and exists without a data product.
             async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
                 headers = await self._headers(client)
                 await self._publish_glossary(client, headers, snapshot, result)
         return result
+
+    def _departed_terms(self, snapshot: MetadataSnapshot) -> dict[str, str]:
+        """Terms Provisa created that this snapshot no longer carries: URI → guid. They are
+        never deleted, but the assignments Provisa made for them are withdrawn (REQ-1389)."""
+        prefix = f"provisa://{snapshot.org_id}/terms/"
+        published = {term.semantic_uri for term in snapshot.glossary_terms}
+        return {
+            uri: guid
+            for uri, (guid, _) in self._bindings.items()
+            if uri.startswith(prefix) and uri not in published
+        }
 
     async def _ensure_glossary(
         self,
@@ -1235,8 +1273,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
         Provisa created there (its guid captured in ``bindings``). Glossary objects without a
         Provisa binding — other glossaries, steward-created terms — are never modified, and
         nothing is ever deleted: a term that left the snapshot stays in the catalog, exactly
-        as vendor-side assets do (bindings prune separately).
+        as vendor-side assets do (bindings prune separately). Last, each term's assignments to
+        the published entities (REQ-1389).
         """
+        departed = self._departed_terms(snapshot)
         try:
             glossary_guid = await self._ensure_glossary(client, headers, snapshot.org_id, result)
         except httpx.HTTPError as exc:
@@ -1264,6 +1304,113 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 term_guids[term.term_id] = guid
                 result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
         await self._publish_term_relations(client, headers, snapshot, term_guids, result)
+        await self._publish_term_assignments(
+            client, headers, snapshot, term_guids, departed, result
+        )
+
+    def _assignment_path(self, term_guid: str) -> str:
+        return self._url(f"{self.glossary_path}/terms/{term_guid}/assignedEntities")
+
+    async def _publish_term_assignments(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        snapshot: MetadataSnapshot,
+        term_guids: dict[int, str],
+        departed: dict[str, str],
+        result: PublishResult,
+    ) -> None:
+        """Assign each term to the entities it grounds, as Provisa's own (REQ-1389, amended).
+
+        A Class term is assigned to its tables, a Property term to its columns, each by an
+        AtlasGlossarySemanticAssignment whose ``source`` is Provisa. Provisa adds and
+        withdraws only those: an assignment with any other source is a person's and stands,
+        and where a person assigned the same entity Provisa adds nothing beside it. A term
+        that left the snapshot keeps its catalog entry and loses only Provisa's assignments.
+        """
+        uris = {table.ref.fqn(): table.semantic_uri for table in snapshot.tables}
+        uris.update({column.ref.fqn(): column.semantic_uri for column in snapshot.columns()})
+
+        def _guid(uri: str) -> str | None:
+            bound = result.bindings.get(uri) or self._bindings.get(uri)
+            return bound[0] if bound is not None else None
+
+        wanted: dict[str, tuple[str, set[str]]] = {
+            uri: (guid, set()) for uri, guid in departed.items()
+        }
+        for term in snapshot.glossary_terms:
+            term_guid = term_guids.get(term.term_id)
+            if term_guid is None:
+                continue  # its upsert failure is already reported; its assignments stand
+            entities: set[str] = set()
+            for ref in term.assigned_to():
+                entity_guid = _guid(uris[ref.fqn()])
+                if entity_guid is None:
+                    result.errors.append(
+                        AssetError(
+                            asset=ref,
+                            message=(
+                                f"term {term.name!r}: {ref.fqn()} has no catalog entity, so "
+                                "the term is not assigned to it"
+                            ),
+                        )
+                    )
+                    continue
+                entities.add(entity_guid)
+            wanted[term.semantic_uri] = (term_guid, entities)
+        for uri, (term_guid, entities) in wanted.items():
+            try:
+                await self._sync_assignments(client, headers, term_guid, entities, result)
+            except httpx.HTTPError as exc:
+                result.errors.append(
+                    AssetError(asset=AssetRefStub(uri), message=f"term assignments: {exc}")
+                )
+
+    async def _sync_assignments(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        term_guid: str,
+        entities: set[str],
+        result: PublishResult,
+    ) -> None:
+        fetch = await client.get(
+            self._url(f"{self.glossary_term_path}/{term_guid}"), headers=headers
+        )
+        fetch.raise_for_status()
+        assigned = fetch.json().get("assignedEntities") or []
+        ours = {a["guid"]: a["relationshipGuid"] for a in assigned if _is_provisa_assignment(a)}
+        held = {a["guid"] for a in assigned if not _is_provisa_assignment(a)}
+        add = sorted(entities - set(ours) - held)
+        withdraw = sorted(guid for guid in ours if guid not in entities)
+        if add:
+            response = await client.post(
+                self._assignment_path(term_guid),
+                json=[
+                    {
+                        "guid": guid,
+                        "relationshipAttributes": {
+                            "typeName": SEMANTIC_ASSIGNMENT,
+                            "attributes": ASSIGNMENT_ATTRIBUTES,
+                        },
+                    }
+                    for guid in add
+                ],
+                headers=headers,
+            )
+            response.raise_for_status()
+            result.published["term_assignment"] = result.published.get("term_assignment", 0) + len(
+                add
+            )
+        if withdraw:
+            # Atlas dissociates by relationship guid, so only the named relationships go.
+            response = await client.request(
+                "DELETE",
+                self._assignment_path(term_guid),
+                json=[{"guid": guid, "relationshipGuid": ours[guid]} for guid in withdraw],
+                headers=headers,
+            )
+            response.raise_for_status()
 
     async def _publish_term_relations(
         self,

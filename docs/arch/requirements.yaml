@@ -46690,8 +46690,8 @@
     — GlossaryTermRepository allows rename; KIND_OF as native parent hierarchy, entityStatus deprecation),
     Collibra (Glossary-type domain via the Import API; REPLACE safety re-derived by CONTAINMENT: only
     Provisa-domain assets and Provisa-term relations are ever mentioned). Updates read-merge so steward
-    fields on Provisa''s own terms survive; nothing deletes on snapshot absence; NO adapter writes term-to-asset
-    assignments (Provisa-authored assignment publishing is the one explicit follow-on). OWNERSHIP CONSTRAINT
+    fields on Provisa''s own terms survive; nothing deletes on snapshot absence; [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa now writes its own term-to-asset assignments as each catalog''s automated assignment (REQ-1389, TERM ASSIGNMENT). Kept here for history; do not implement against it.] NO adapter writes term-to-asset
+    assignments (Provisa-authored assignment publishing is the one explicit follow-on). [END SUPERSEDED BLOCK] OWNERSHIP CONSTRAINT
     (settled): the REQ-1389 authorship contract extends to glossary items. A vendor-side glossary item
     is modified or deleted ONLY when Provisa created it, tracked the same way as every published asset:
     the vendor''s own id is captured into catalog_bindings at publish, keyed by the term''s URN (provisa://<org>/terms/<name>),
@@ -46875,14 +46875,14 @@
     which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish. Every
     attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts, governance
     projections, provisa_* classifications — written on every publish and drift-corrected by the REQ-1072
-    reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, glossary term assignments,
+    reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END SUPERSEDED BLOCK]
     labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment in the catalog survives
     every publish and reconcile). Consequence: the Atlas governance document moves OFF userDescription
     — the exact field the Atlas UI edits for human descriptions, clobbered today on every publish — onto
     a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift correction applies
     to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
     overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
-    classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. This
+    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins and Provisa never writes it. This
     is a single-writer MERGE, not a sync: nothing flows back into Provisa (publication is outbound-only),
     each data element has exactly ONE owning system, and the read step exists only because replace-style
     catalog APIs force carrying the catalog-owned fields through unchanged. The merge is NOT optional:
@@ -46909,7 +46909,18 @@
     by stored UUID BEFORE the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable
     identity, so the successor publishes as a new URN and the OLD bound URN gets the deprecation aspect
     naming the successor and the Provisa URN. The binding lifecycle (load before publish, persist capture
-    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain, the scheduled reconcile and the CLI publish.'
+    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain, the scheduled reconcile and the CLI publish.
+    (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment is Provisa-owned when Provisa makes it.
+    A Class term (REQ-2141) is assigned to the published tables it grounds and a Property term to its
+    published columns; a Concept is assigned to nothing. Each is written as the catalog''s own automated
+    or system assignment, attributed to Provisa -- OpenMetadata labelType Automated, DataHub term associations
+    attributed to Provisa''s actor, Atlas and Atlan semantic assignments whose source is Provisa, Collibra
+    relations created by Provisa''s own user -- and that attribution is the ownership test. Provisa writes
+    and removes only its own assignments, which track the snapshot: one the snapshot no longer carries,
+    including every assignment of a term that left it, is withdrawn. A human assignment stays human-owned:
+    Provisa never removes or overwrites it, and adds none beside it for the same term on the same asset.
+    An assignment is never withdrawn because a request failed, and a live assignment list that cannot
+    be read is not written over.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -46937,6 +46948,9 @@
   - tests/unit/test_metadata_export_glossary_atlas.py
   - tests/unit/test_metadata_export_glossary_atlan.py
   - tests/unit/test_metadata_export_glossary_openmetadata.py
+  - tests/unit/test_metadata_export_glossary_datahub.py
+  - tests/unit/test_metadata_export_glossary_collibra.py
+  - tests/unit/test_metadata_export_glossary.py
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Atlas uses the Provisa-owned provisaGovernance attribute and binding tracking exists, but the Purview path still writes the governance document to userDescription (GOVERNANCE_ATTRIBUTE).'
 - id: REQ-1390
   status: complete

@@ -66,6 +66,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
@@ -77,7 +78,7 @@ from provisa.api.metadata_export.provider import (
     MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_export.model import junction_payload
+from provisa.api.metadata_export.model import AssetKind, junction_payload
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
@@ -218,6 +219,70 @@ def _tag_label(tag_fqn: str) -> dict[str, Any]:
         "labelType": "Automated",
         "state": "Confirmed",
     }
+
+
+def _glossary_label(term_fqn: str) -> dict[str, Any]:
+    """A term-to-asset assignment Provisa makes (REQ-1389): ``Automated``, so it reads as the
+    system's and a steward's own ``Manual`` assignment of the same term stays theirs."""
+    return {
+        "tagFQN": term_fqn,
+        "source": "Glossary",
+        "labelType": "Automated",
+        "state": "Confirmed",
+    }
+
+
+@dataclass
+class GlossaryOutcome:  # REQ-1387, REQ-1389
+    """What the glossary pass leaves the table pass: whether Provisa's glossary exists this
+    publish, each upserted term's FQN by term id, and the FQNs whose upsert failed."""
+
+    glossary: str
+    ok: bool = False
+    term_fqns: dict[int, str] = dataclass_field(default_factory=dict)
+    failed: set[str] = dataclass_field(default_factory=set)
+
+    def owns(self, label: dict[str, Any]) -> bool:
+        """Whether a live label is one of Provisa's own assignments, tracked to the snapshot.
+
+        Only an ``Automated`` glossary label on a term in Provisa's glossary is Provisa's, and
+        only while that glossary was reached this publish and the term's upsert did not fail:
+        an assignment is never withdrawn because a request failed.
+        """
+        fqn = str(label.get("tagFQN", ""))
+        return (
+            self.ok
+            and label.get("source") == "Glossary"
+            and label.get("labelType") == "Automated"
+            and fqn.startswith(f"{self.glossary}.")
+            and fqn not in self.failed
+        )
+
+
+def _assign_terms(snapshot: MetadataSnapshot, entities: list[Entity], outcome: GlossaryOutcome):
+    """Label each table and column with the terms assigned to it (REQ-1389): a Class term on
+    the tables it grounds, a Property term on its columns."""
+    by_table: dict[str, list[str]] = {}
+    by_column: dict[tuple[str, str], list[str]] = {}
+    for term in snapshot.glossary_terms:
+        fqn = outcome.term_fqns.get(term.term_id)
+        if fqn is None:
+            continue
+        for ref in term.assigned_to():
+            if ref.kind == AssetKind.TABLE:
+                by_table.setdefault(ref.fqn(), []).append(fqn)
+            else:
+                table_fqn = ".".join(ref.parts[:-1])
+                by_column.setdefault((table_fqn, ref.parts[-1]), []).append(fqn)
+    for entity in entities:
+        if entity.kind != "table":
+            continue
+        table_fqn = entity.asset.fqn()
+        for fqn in sorted(by_table.get(table_fqn, [])):
+            entity.body.setdefault("tags", []).append(_glossary_label(fqn))
+        for column in entity.body["columns"]:
+            for fqn in sorted(by_column.get((table_fqn, column["name"]), [])):
+                column.setdefault("tags", []).append(_glossary_label(fqn))
 
 
 def _governance_tag_fqns(snapshot: MetadataSnapshot, asset_fqn: str) -> list[str]:
@@ -919,23 +984,34 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
 
     @staticmethod
     def _merged_tags(
-        live_tags: list[dict[str, Any]] | None, our_tags: list[dict[str, Any]] | None
+        live_tags: list[dict[str, Any]] | None,
+        our_tags: list[dict[str, Any]] | None,
+        glossary: GlossaryOutcome,
     ) -> list[dict[str, Any]]:
         """Provisa's tags to match the snapshot, everyone else's preserved (REQ-1389).
 
-        Ownership is the classification namespace: a label under ``Provisa.`` was authored
-        here and is added/removed to track the snapshot; any other label was applied by a
-        steward inside OpenMetadata and is carried through untouched.
+        Ownership is authorship: a label under ``Provisa.``, or an ``Automated`` assignment of
+        a term in Provisa's glossary, was authored here and is added/removed to track the
+        snapshot; any other label was applied by a steward inside OpenMetadata and is carried
+        through untouched. Where a steward assigned the same term by hand, theirs stands and
+        Provisa's is not added beside it.
         """
         steward = [
             tag
             for tag in live_tags or []
             if not str(tag.get("tagFQN", "")).startswith(f"{CLASSIFICATION}.")
+            and not glossary.owns(tag)
         ]
-        return [*(our_tags or []), *steward]
+        held = {str(tag.get("tagFQN")) for tag in steward}
+        ours = [tag for tag in our_tags or [] if tag["tagFQN"] not in held]
+        return [*ours, *steward]
 
     async def _merge_live_table(
-        self, client: httpx.AsyncClient, entity: Entity, result: PublishResult
+        self,
+        client: httpx.AsyncClient,
+        entity: Entity,
+        result: PublishResult,
+        glossary: GlossaryOutcome,
     ) -> None:
         """Overlay the live table's human-owned state onto the outgoing PUT body (REQ-1389).
 
@@ -980,17 +1056,21 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 )
             )
             return
-        self._overlay_live_table(entity, response.json())
+        self._overlay_live_table(entity, response.json(), glossary)
 
-    def _overlay_live_table(self, entity: Entity, live: dict[str, Any]) -> None:
+    def _overlay_live_table(
+        self, entity: Entity, live: dict[str, Any], glossary: GlossaryOutcome
+    ) -> None:
         """Carry one live table's human-owned state onto the outgoing PUT body (REQ-1389)."""
-        entity.body["tags"] = self._merged_tags(live.get("tags"), entity.body.get("tags"))
+        entity.body["tags"] = self._merged_tags(live.get("tags"), entity.body.get("tags"), glossary)
         live_columns = {c.get("name"): c for c in live.get("columns") or []}
         for column in entity.body["columns"]:
             live_column = live_columns.get(column["name"])
             if live_column is None:
                 continue
-            column["tags"] = self._merged_tags(live_column.get("tags"), column.get("tags"))
+            column["tags"] = self._merged_tags(
+                live_column.get("tags"), column.get("tags"), glossary
+            )
         # Extension keys Provisa does not own are somebody's custom properties; only the
         # relationship property tracks the snapshot (including its removal).
         live_extension = {
@@ -1009,6 +1089,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         stored: tuple[str, str],
         new_fqn: str,
         result: PublishResult,
+        glossary: GlossaryOutcome,
     ) -> None:
         """Succession for a physically re-addressed table (REQ-1389).
 
@@ -1056,7 +1137,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
             )
             return
         live = response.json()
-        self._overlay_live_table(entity, live)
+        self._overlay_live_table(entity, live, glossary)
         note = (
             f"[Superseded by Provisa] This table was physically re-addressed and is now "
             f"published as {new_fqn}. Provisa URI: {uri}."
@@ -1257,18 +1338,20 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
 
     async def _publish_glossary(
         self, client: httpx.AsyncClient, snapshot: MetadataSnapshot, result: PublishResult
-    ) -> None:
+    ) -> GlossaryOutcome:
         """Publish the term graph into the Provisa-owned glossary (REQ-1387).
 
         Everything here is scoped to the ``provisa_<org>`` glossary: no other glossary is
         read, written, or deleted, and a term's absence from the snapshot never deletes it.
-        Term-to-asset assignment (tagging tables/columns with terms) is HUMAN-OWNED
-        (REQ-1389) and is never written — ``GlossaryTermAsset.refs`` stays out of the
-        payload by design.
+        The outcome tells the table pass which terms it may assign (REQ-1389): it runs first,
+        because OpenMetadata refuses a label naming a term that does not exist.
         """
-        if not snapshot.glossary_terms:
-            return
         gname = _glossary_name(snapshot.org_id)
+        outcome = GlossaryOutcome(glossary=gname)
+        if not snapshot.glossary_terms:
+            # No term publishes, so every assignment Provisa made is withdrawn.
+            outcome.ok = True
+            return outcome
         response = await client.put(
             self._url("/api/v1/glossaries"),
             json={
@@ -1290,7 +1373,8 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     ),
                 )
             )
-            return
+            return outcome
+        outcome.ok = True
         result.published["glossary"] = result.published.get("glossary", 0) + 1
         plans, plan_errors = to_term_plans(snapshot)
         result.errors.extend(plan_errors)
@@ -1331,9 +1415,11 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                         ),
                     )
                 )
+                outcome.failed.add(plan.fqn)
                 continue
             body = response.json()
             term_ids[plan.fqn] = body["id"]
+            outcome.term_fqns[plan.term.term_id] = body["fullyQualifiedName"]
             # REQ-1389: capture the vendor's own id for this term, keyed by the canonical
             # Provisa URN, so the next publish can rebind by identity.
             result.bindings[plan.term.semantic_uri] = (body["id"], body["fullyQualifiedName"])
@@ -1376,6 +1462,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                         ),
                     )
                 )
+        return outcome
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
@@ -1387,6 +1474,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         # the domains they steward.
         user_ids: dict[str, str] = {}
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            # REQ-1387: business-glossary terms, scoped to the Provisa-owned glossary -- first,
+            # so the tables can carry Provisa's term assignments (REQ-1389).
+            glossary = await self._publish_glossary(client, snapshot, result)
+            _assign_terms(snapshot, requests, glossary)
             if any("extension" in entity.body for entity in requests):
                 try:
                     await self._register_relationship_property(client)
@@ -1464,11 +1555,13 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     if stored is not None and stored[1] != fqn:
                         # REQ-1389: the stored binding says the physical FQN changed —
                         # succession by stored UUID, since PATCH cannot rename a table.
-                        await self._succeed_rebound_table(client, entity, stored, fqn, result)
+                        await self._succeed_rebound_table(
+                            client, entity, stored, fqn, result, glossary
+                        )
                     if self.tag_merge:
                         # REQ-1389: a PUT replaces the fields sent, so the live entity's
                         # human-owned state is read and carried through first.
-                        await self._merge_live_table(client, entity, result)
+                        await self._merge_live_table(client, entity, result, glossary)
                 params: dict[str, str] = {}
                 if entity.for_table is not None:
                     table_id = table_ids.get(entity.for_table)
@@ -1525,8 +1618,6 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     )
                     continue
                 result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
-            # REQ-1387: business-glossary terms, scoped to the Provisa-owned glossary.
-            await self._publish_glossary(client, snapshot, result)
         return result
 
     async def health(self) -> None:

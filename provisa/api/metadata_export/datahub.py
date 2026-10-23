@@ -51,8 +51,12 @@ Business glossary (REQ-1387): terms publish as native ``glossaryTerm`` entities 
 Provisa-owned ``glossaryNode`` per org (``urn:li:glossaryNode:provisa.<org>``), so everything
 this adapter writes in the glossary sits inside a namespace it visibly owns — a term or node
 outside that namespace is never proposed, and no delete is ever emitted. Term-to-asset
-assignment is HUMAN-OWNED (REQ-1389): this adapter never writes a ``glossaryTerms`` aspect on
-a dataset or schema field. The typed term edges map onto ``glossaryRelatedTerms``:
+assignment (REQ-1389, amended): Provisa assigns a Class term to the datasets it grounds and a
+Property term to its schema fields, each association attributed to Provisa's actor. A field's
+terms ride ``schemaMetadata``, which Provisa writes whole (a steward's field terms land in
+``editableSchemaMetadata``, never written here); a dataset's ride the shared ``glossaryTerms``
+aspect, read-merged so every association not attributed to Provisa stands. The typed term
+edges map onto ``glossaryRelatedTerms``:
 
 * ``KIND_OF``   → ``isRelatedTerms`` on the subtype (DataHub's "Inherits" / is-a relation);
 * ``PART_OF``   → ``hasRelatedTerms`` on the WHOLE (DataHub's "Contains" / has-a relation,
@@ -91,7 +95,12 @@ from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot, TableAsset
+    from provisa.api.metadata_export.model import (
+        AssetRef,
+        GlossaryTermAsset,
+        MetadataSnapshot,
+        TableAsset,
+    )
 
 # The data platform every published dataset is attributed to. Provisa is the governed access
 # path, and a consumer resolving one of these URNs has to arrive back at Provisa rather than at
@@ -104,6 +113,10 @@ PLATFORM = "provisa"
 FABRIC = "PROD"
 
 TAG_PREFIX = "provisa_"
+
+# REQ-1389: the actor every Provisa-made term assignment is attributed to. The attribution is the
+# ownership test: an association attributed to anyone else is a person's, and stands.
+PROVISA_ACTOR = "urn:li:corpuser:provisa"
 
 
 def dataset_urn(ref: AssetRef) -> str:
@@ -223,7 +236,35 @@ def _tag_definitions(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     ]
 
 
-def _schema_metadata(table: TableAsset, snapshot: MetadataSnapshot) -> dict[str, Any]:
+def _term_association(org_id: str, term: GlossaryTermAsset) -> dict[str, Any]:
+    """One Provisa-made term assignment (REQ-1389), unstamped: ``publish`` stamps its time, the
+    live one when the same assignment already stands, so a steady state writes no new version."""
+    return {
+        "urn": glossary_term_urn(org_id, term.name),
+        "actor": PROVISA_ACTOR,
+        "attribution": {"actor": PROVISA_ACTOR, "sourceDetail": {"provisaUri": term.semantic_uri}},
+    }
+
+
+def _assignments(snapshot: MetadataSnapshot) -> dict[str, list[dict[str, Any]]]:
+    """Each published table's or column's Provisa term assignments, by its fqn (REQ-1389): a
+    Class term on the tables it grounds, a Property term on its columns."""
+    by_asset: dict[str, list[dict[str, Any]]] = {}
+    for term in sorted(snapshot.glossary_terms, key=lambda t: t.name):
+        for ref in term.assigned_to():
+            by_asset.setdefault(ref.fqn(), []).append(_term_association(snapshot.org_id, term))
+    return by_asset
+
+
+def _field_terms(assigned: list[dict[str, Any]]) -> dict[str, Any]:
+    if not assigned:
+        return {}
+    return {"glossaryTerms": {"terms": assigned, "auditStamp": {"actor": PROVISA_ACTOR}}}
+
+
+def _schema_metadata(
+    table: TableAsset, snapshot: MetadataSnapshot, assigned: dict[str, list[dict[str, Any]]]
+) -> dict[str, Any]:
     return {
         "schemaName": table.ref.fqn(),
         "platform": f"urn:li:dataPlatform:{PLATFORM}",
@@ -244,6 +285,8 @@ def _schema_metadata(table: TableAsset, snapshot: MetadataSnapshot) -> dict[str,
                 # a field's tags there rather than on a separate entity — a masked column is
                 # visible as masked in the same view that shows its type (REQ-1071).
                 "globalTags": {"tags": _tags_for(snapshot, column.ref.fqn())},
+                # REQ-1389: Provisa's Property assignments, in the aspect Provisa writes whole.
+                **_field_terms(assigned.get(column.ref.fqn(), [])),
             }
             for column in table.columns
         ],
@@ -617,6 +660,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     a tag URN with no ``tagProperties`` renders in DataHub as an unnamed tag.
     """
     proposals = _tag_definitions(snapshot)
+    assigned = _assignments(snapshot)  # REQ-1389
     domain_by_id = {domain.id: domain for domain in snapshot.domains}
     relationships_by_source: dict[str, list[Any]] = {}
     for edge in snapshot.relationships:
@@ -696,7 +740,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                 entity_type="dataset",
                 urn=urn,
                 aspect_name="schemaMetadata",
-                aspect=_schema_metadata(table, snapshot),
+                aspect=_schema_metadata(table, snapshot, assigned),
             )
         )
         if table.ref.fqn() in deprecated_tables:
@@ -720,6 +764,21 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                     aspect=_aspect,
                 )
             )
+        # REQ-1389: Provisa's Class assignments on this dataset -- proposed even when empty, so
+        # an assignment Provisa withdrew leaves; ``publish`` merges in the live aspect.
+        proposals.append(
+            AspectProposal(
+                asset=table.ref,
+                kind="glossary_assignment",
+                entity_type="dataset",
+                urn=urn,
+                aspect_name="glossaryTerms",
+                aspect={
+                    "terms": assigned.get(table.ref.fqn(), []),
+                    "auditStamp": {"actor": PROVISA_ACTOR},
+                },
+            )
+        )
         table_tags = _tags_for(snapshot, table.ref.fqn())
         if table_tags:
             proposals.append(
@@ -840,6 +899,142 @@ class DataHubExport(MetadataExport):  # REQ-1069
         ]
         return replace(proposal, aspect={"tags": human + proposal.aspect["tags"]})
 
+    async def _live_aspect(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        proposal: AspectProposal,
+        result: PublishResult,
+    ) -> tuple[bool, dict[str, Any] | None]:
+        """Whether the proposal's aspect could be read (a failure is reported here), and its
+        live value, None when there is none."""
+        route = (
+            f"{self.aspects_path}/{quote(proposal.urn, safe='')}"
+            f"?aspect={proposal.aspect_name}&version=0"
+        )
+        try:
+            response = await client.get(self._url(route), headers=headers)
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(
+                    asset=proposal.asset,
+                    message=f"{proposal.aspect_name}: live aspect read failed ({exc})",
+                )
+            )
+            return False, None
+        if response.status_code == 404:
+            return True, None
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=proposal.asset,
+                    message=(
+                        f"{proposal.aspect_name}: live aspect read failed "
+                        f"(HTTP {response.status_code})"
+                    ),
+                )
+            )
+            return False, None
+        # GMS wraps the value in its record-class key ({"aspect": {"com.linkedin...": {...}}}).
+        for value in (response.json().get("aspect") or {}).values():
+            if isinstance(value, dict):
+                return True, value
+        return True, None
+
+    @staticmethod
+    def _stamped(
+        ours: list[dict[str, Any]], live: list[dict[str, Any]], now_ms: int
+    ) -> list[dict[str, Any]]:
+        """Provisa's associations with their times: an assignment already standing keeps the
+        time it was made, a new one is made now (REQ-1389)."""
+        made = {
+            entry["urn"]: entry["attribution"]["time"]
+            for entry in live
+            if (entry.get("attribution") or {}).get("actor") == PROVISA_ACTOR
+        }
+        return [
+            {
+                **entry,
+                "attribution": {**entry["attribution"], "time": made.get(entry["urn"], now_ms)},
+            }
+            for entry in ours
+        ]
+
+    async def _merge_glossary_terms(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        proposal: AspectProposal,
+        result: PublishResult,
+        now_ms: int,
+    ) -> AspectProposal | None:
+        """Read-merge a dataset's live ``glossaryTerms`` into Provisa's assignments (REQ-1389).
+
+        An association not attributed to Provisa's actor is a person's and stands; where a
+        person assigned the same term, Provisa adds none beside it. Provisa's own track the
+        snapshot, so a withdrawn one leaves. Nothing is written when the live aspect cannot be
+        read -- writing blind would replace the people's assignments -- or when nothing would
+        change.
+        """
+        read, live = await self._live_aspect(client, headers, proposal, result)
+        if not read:
+            result.errors.append(
+                AssetError(
+                    asset=proposal.asset,
+                    message="glossaryTerms: not written, so the live assignments stand",
+                )
+            )
+            return None
+        live_terms = (live or {}).get("terms") or []
+        human = [
+            entry
+            for entry in live_terms
+            if (entry.get("attribution") or {}).get("actor") != PROVISA_ACTOR
+        ]
+        held = {entry["urn"] for entry in human}
+        ours = [entry for entry in proposal.aspect["terms"] if entry["urn"] not in held]
+        terms = human + self._stamped(ours, live_terms, now_ms)
+        if terms == live_terms:
+            return None
+        return replace(
+            proposal,
+            aspect={"terms": terms, "auditStamp": {"actor": PROVISA_ACTOR, "time": now_ms}},
+        )
+
+    async def _stamp_field_terms(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        proposal: AspectProposal,
+        result: PublishResult,
+        now_ms: int,
+    ) -> AspectProposal:
+        """Stamp the schema fields' Provisa assignments (REQ-1389), keeping the time of each
+        one that already stands so an unchanged schema is an unchanged aspect."""
+        fields = proposal.aspect["fields"]
+        if not any("glossaryTerms" in f for f in fields):
+            return proposal
+        live_fields: dict[str, list[dict[str, Any]]] = {}
+        if self.tag_merge:
+            _, live = await self._live_aspect(client, headers, proposal, result)
+            for live_field in (live or {}).get("fields") or []:
+                terms = (live_field.get("glossaryTerms") or {}).get("terms") or []
+                live_fields[live_field["fieldPath"]] = terms
+        stamped = []
+        for f in fields:
+            if "glossaryTerms" in f:
+                f = {
+                    **f,
+                    "glossaryTerms": {
+                        "terms": self._stamped(
+                            f["glossaryTerms"]["terms"], live_fields.get(f["fieldPath"], []), now_ms
+                        ),
+                        "auditStamp": {"actor": PROVISA_ACTOR, "time": now_ms},
+                    },
+                }
+            stamped.append(f)
+        return replace(proposal, aspect={**proposal.aspect, "fields": stamped})
+
     def _rebind_deprecations(self, proposals: list[AspectProposal]) -> list[AspectProposal]:
         """Deprecation aspects for the OLD URNs of physically re-addressed tables (REQ-1389).
 
@@ -922,6 +1117,7 @@ class DataHubExport(MetadataExport):  # REQ-1069
         proposals = to_proposals(snapshot)
         proposals.extend(self._rebind_deprecations(proposals))
         proposals.extend(self._term_rename_deprecations(snapshot))  # REQ-1387
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             for proposal in proposals:
                 if (
@@ -930,6 +1126,29 @@ class DataHubExport(MetadataExport):  # REQ-1069
                     and proposal.entity_type == "dataset"
                 ):
                     proposal = await self._merge_global_tags(client, headers, proposal, result)
+                if proposal.aspect_name == "glossaryTerms" and proposal.entity_type == "dataset":
+                    # REQ-1389: Provisa's term assignments beside the people's.
+                    if self.tag_merge:
+                        merged = await self._merge_glossary_terms(
+                            client, headers, proposal, result, now_ms
+                        )
+                    elif proposal.aspect["terms"]:
+                        merged = replace(
+                            proposal,
+                            aspect={
+                                "terms": self._stamped(proposal.aspect["terms"], [], now_ms),
+                                "auditStamp": {"actor": PROVISA_ACTOR, "time": now_ms},
+                            },
+                        )
+                    else:
+                        merged = None
+                    if merged is None:
+                        continue
+                    proposal = merged
+                if proposal.aspect_name == "schemaMetadata":
+                    proposal = await self._stamp_field_terms(
+                        client, headers, proposal, result, now_ms
+                    )
                 # One request per aspect, because that is DataHub's unit of ingestion. A
                 # rejected aspect is reported against its asset and the rest still publish —
                 # a table whose lineage aspect is refused is still a published table.

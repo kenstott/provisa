@@ -394,7 +394,13 @@ class GlossaryTermAsset:  # REQ-1387
 
     ``refs`` lists the published columns that mean this concept; a rooted term whose refs
     all point at withheld tables is withheld with them (the data_product filter rule), while
-    an abstract term publishes on the strength of its edges alone.
+    an abstract term publishes on the strength of its edges alone. ``tables`` lists the
+    published tables a Class term grounds (REQ-2141).
+
+    ``role`` is the term's ontology role (REQ-2141): ``class`` when it grounds tables,
+    ``property`` when it owns column refs, ``concept`` when it grounds neither. It decides
+    what the term is assigned to in a catalog: a Class to its tables, a Property to its
+    columns (REQ-1389).
     """
 
     term_id: int
@@ -403,8 +409,19 @@ class GlossaryTermAsset:  # REQ-1387
     is_abstract: bool
     deprecated: bool
     refs: tuple[AssetRef, ...] = ()
+    tables: tuple[AssetRef, ...] = ()
+    role: str = "concept"  # class | property | concept
     experts: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/terms/<term name>
+
+    def assigned_to(self) -> tuple[AssetRef, ...]:
+        """The published assets a catalog assigns this term to (REQ-1389): a Class its tables,
+        a Property its columns, a Concept nothing."""
+        if self.role == "class":
+            return self.tables
+        if self.role == "property":
+            return self.refs
+        return ()
 
 
 @dataclass
