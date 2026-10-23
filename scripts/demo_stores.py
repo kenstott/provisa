@@ -34,6 +34,8 @@ a version's data is dropped by its suffix, so another demo's, or another version
 
 Usage (scripts/demo_stores_sync.sh runs it):
     demo_stores.py up <name> <version> <bundle dir>    start, load, write <bundle dir>/stores.env
+    demo_stores.py check <name> <version> <bundle dir> fail unless every index its search
+                                                       stores restore is in the shared instance
     demo_stores.py drop <name> <version>               drop the version's data and own services,
                                                        and the images no other container uses
     demo_stores.py stop <name> <version>               the same, its images kept: a demo whose
@@ -491,6 +493,36 @@ def _es(shared: Shared, method: str, path: str, body: dict | None = None) -> str
     return shared.exec("elasticsearch", *cmd, f"http://localhost:9200{path}")
 
 
+def _es_repository(shared: Shared, name: str, version: str, store: Store, ns: str) -> None:
+    """The version's snapshot repository, registered (again) over its bundle's dump."""
+    _es(
+        shared,
+        "PUT",
+        f"/_snapshot/{ns}",
+        {
+            "type": "fs",
+            "settings": {
+                "location": f"/bundles/{name}/{version}/dump/{store.service}",
+                "readonly": True,
+            },
+        },
+    )
+
+
+def es_missing(shared: Shared, name: str, version: str, store: Store, suffix: str) -> list[str]:
+    """The indices of the version's snapshot that the shared instance does not hold under its
+    suffix: what a reader of the version would be refused (404) on."""
+    ns = suffix.lstrip("_")
+    _es_repository(shared, name, version, store, ns)
+    snapshot = json.loads(_es(shared, "GET", f"/_snapshot/{ns}/data"))["snapshots"][0]
+    held = set(_es(shared, "GET", f"/_cat/indices/*{suffix}?h=index&expand_wildcards=all").split())
+    return sorted(
+        f"{index}{suffix}"
+        for index in snapshot["indices"]
+        if not index.startswith(".") and f"{index}{suffix}" not in held
+    )
+
+
 def es_load(shared: Shared, name: str, version: str, store: Store, suffix: str) -> None:
     ns = suffix.lstrip("_")
     marked = shared.exec(
@@ -504,15 +536,18 @@ def es_load(shared: Shared, name: str, version: str, store: Store, suffix: str) 
         f"http://localhost:9200/{_ES_MARKS}/_doc/{ns}:{store.service}",
     ).strip()
     if marked == "200":
-        return
+        # The mark says the restore finished, not that its indices are still there: one gone
+        # since is restored again, the whole namespace with it.
+        missing = es_missing(shared, name, version, store, suffix)
+        if not missing:
+            return
+        print(
+            f"elasticsearch: {', '.join(missing)} missing though {ns}:{store.service} is marked "
+            "loaded; restoring it again",
+            file=sys.stderr,
+        )
     es_drop(shared, suffix)
-    repository = f"/bundles/{name}/{version}/dump/{store.service}"
-    _es(
-        shared,
-        "PUT",
-        f"/_snapshot/{ns}",
-        {"type": "fs", "settings": {"location": repository, "readonly": True}},
-    )
+    _es_repository(shared, name, version, store, ns)
     _es(
         shared,
         "POST",
@@ -542,20 +577,15 @@ def es_drop(shared: Shared, suffix: str) -> None:
         "DELETE",
         f"http://localhost:9200/_snapshot/{ns}",
     )
-    shared.exec(
-        "elasticsearch",
-        "curl",
-        "-s",
-        "-o",
-        "/dev/null",
-        "-X",
-        "POST",
-        "-H",
-        "Content-Type: application/json",
-        "-d",
-        json.dumps({"query": {"prefix": {"_id": f"{ns}:"}}}),
-        f"http://localhost:9200/{_ES_MARKS}/_delete_by_query?refresh=true&conflicts=proceed",
+    # Its marks, by id. Elasticsearch 8 has no prefix query on _id: a delete_by_query asking for
+    # one is refused (400), and the mark it leaves tells the version's next load that its indices,
+    # dropped just above, are still there.
+    marks = json.loads(
+        _es(shared, "GET", f"/{_ES_MARKS}/_search?size=10000&_source=false&ignore_unavailable=true")
     )
+    for hit in marks["hits"]["hits"]:
+        if hit["_id"].startswith(f"{ns}:"):
+            _es(shared, "DELETE", f"/{_ES_MARKS}/_doc/{hit['_id']}?refresh=true")
 
 
 # -- Qdrant ----------------------------------------------------------------------------------------
@@ -802,6 +832,19 @@ class Demo:
         published = self.runner.run(self._compose("port", store.service, port)).strip()
         return "127.0.0.1", published.rsplit(":", 1)[1]
 
+    def check(self) -> None:
+        """Refuse a version whose shared data is not all there: it is not to be served ready."""
+        missing = [
+            index
+            for store in self.stores()
+            if store.kind == "elasticsearch"
+            for index in es_missing(self.shared, self.name, self.version, store, self.suffix)
+        ]
+        if missing:
+            raise StoreError(
+                f"demo {self.name} {self.version}: Elasticsearch holds no {', '.join(missing)}"
+            )
+
     def drop(self, shared_kinds: set[str], *, keep_images: bool = False) -> None:
         """Remove the version: its data from each shared instance running, its own services, and
         -- unless ``keep_images`` (a demo lingered out, to be brought back) -- the images they ran
@@ -892,6 +935,9 @@ def main(argv: list[str]) -> int:
         _write_atomically(
             bundle / "stores.env", "".join(f"{k}={v}\n" for k, v in sorted(found.items()))
         )
+        return 0
+    if len(argv) == 4 and argv[0] == "check":
+        Demo(runner, argv[1], argv[2], Path(argv[3])).check()
         return 0
     if len(argv) == 3 and argv[0] in ("drop", "stop"):
         Demo(runner, argv[1], argv[2], None).drop(

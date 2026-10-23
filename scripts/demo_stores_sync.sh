@@ -113,7 +113,9 @@ sync_demo() { # name
     # Its stores not brought up: why, for the tier to answer the visitor waiting on them with,
     # never a demo left starting with nothing said.
     errors="$DEMO_BUNDLES_DIR/$name/.up-errors"
-    if ! python3 "$DEMO_STORES" up "$name" "$version" "$dir" 2>"$errors"; then
+    # Then checked: a version is never marked ready over data its shared stores do not hold.
+    if ! python3 "$DEMO_STORES" up "$name" "$version" "$dir" 2>"$errors" \
+        || ! python3 "$DEMO_STORES" check "$name" "$version" "$dir" 2>>"$errors"; then
       cat "$errors" >&2
       write_atomically "$DEMO_BUNDLES_DIR/$name/failed" "$(tail -c 4000 "$errors")"
       rm -f "$errors"
