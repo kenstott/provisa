@@ -38,7 +38,7 @@ steps:
   capability: create_relationship
   relationship: OWNER_IS
 - key: groupexposureTerms
-  route: /admin/glossary
+  route: /admin/ontology
   capability: glossary_read
   term: group of connected clients
 # The solution: the books alone, then the books rolled up through Wikidata.
