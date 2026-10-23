@@ -216,3 +216,26 @@ def test_a_depth_two_order_and_limit_pick_each_parent_s_rows(meta):
     }
     # customer's edges are 7, 10, 13: the one with the highest id, for each edge reaching it.
     assert firsts == {8: [14], 9: [13], 12: [13]}
+
+
+def test_a_nested_field_with_arguments_is_answered_under_its_alias(meta):
+    # The Ontology View reads every field under an alias (edges_out: edgesOut(where: ...)); a
+    # field read through its own join is answered under it, at every depth.
+    answer = _answer(
+        meta,
+        '{ glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        f"eo: edgesOut{_KEPT} {{ id tt: targetTerm {{ id e2: edgesOut{_KEPT} {{ id }} }} }} }} }}",
+    )
+    assert [sorted(e) for e in answer[0]["eo"]] == [["id", "tt"], ["id", "tt"]]
+    assert all("e2" in e["tt"] for e in answer[0]["eo"])
+
+
+def test_one_field_read_twice_under_two_aliases_answers_each(meta):
+    answer = _answer(
+        meta,
+        '{ glossaryTerms(where: { name: { eq: "ledger" } }) { id '
+        'kinds: edgesOut(where: { relType: { eq: "KIND_OF" } }) { relType } '
+        'parts: edgesOut(where: { relType: { eq: "PART_OF" } }) { relType } } }',
+    )
+    assert {e["relType"] for e in answer[0]["kinds"]} == {"KIND_OF"}
+    assert {e["relType"] for e in answer[0]["parts"]} <= {"PART_OF"}

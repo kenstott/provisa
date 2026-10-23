@@ -480,7 +480,7 @@ def _collect_nested_columns(
                     f" ON {src_expr} = {tgt_expr}"
                 )
 
-            sub_path = f"{nesting_path}.{nested_name}"
+            sub_path = f"{nesting_path}.{nested_key}"  # its response key, as the path
             if nested_sel.selection_set and not _use_agg:
                 alias_counter, _child_lateral = _collect_nested_columns(
                     nested_sel.selection_set.selections,

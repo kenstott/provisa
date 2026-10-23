@@ -193,7 +193,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         join_alias,
                         join_meta.target.type_name,
                         join_meta.target,
-                        sel_name,
+                        # The field's response key: the path its rows are answered under.
+                        sel.alias.value if sel.alias else sel_name,
                         ctx,
                         select_parts,
                         columns,
@@ -257,7 +258,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         join_alias,
                         join_meta.target.type_name,
                         join_meta.target,
-                        sel_name,
+                        # The field's response key: the path its rows are answered under.
+                        sel.alias.value if sel.alias else sel_name,
                         ctx,
                         select_parts,
                         columns,
