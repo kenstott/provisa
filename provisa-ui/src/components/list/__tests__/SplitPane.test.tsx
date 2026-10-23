@@ -130,6 +130,37 @@ describe("SplitPane", () => {
     expect(row).toHaveFocus();
   });
 
+  it("leaves the focus in a dialog open over the page when it opens beneath it", () => {
+    // A linked item's panel opens when its data arrives, which on a first visit is after the
+    // welcome dialog is up: the reader's Escape is the dialog's, not the panel's.
+    function Linked() {
+      const [open, setOpen] = useState<string | null>(null);
+      return (
+        <>
+          <div role="dialog" aria-modal="true">
+            <button onClick={() => setOpen("orders")}>data arrives</button>
+          </div>
+          <SplitPane
+            testId="split"
+            storageKey={KEY}
+            labels={LABELS}
+            title={open}
+            onClose={() => setOpen(null)}
+            list={<span>list</span>}
+          >
+            {open === null ? null : <div>detail of {open}</div>}
+          </SplitPane>
+        </>
+      );
+    }
+    render(<Linked />);
+    const inDialog = screen.getByText("data arrives");
+    inDialog.focus();
+    fireEvent.click(inDialog);
+    expect(screen.getByTestId("split-panel")).toBeInTheDocument();
+    expect(inDialog).toHaveFocus();
+  });
+
   it("opens at about 60% of its row and keeps the width it is dragged to", () => {
     render(<Page />);
     fireEvent.click(screen.getByText("orders"));
