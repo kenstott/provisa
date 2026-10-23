@@ -87193,7 +87193,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     vocabulary are kept apart: instances are under /id/, and the vocabulary is under /vocab/. A
     table's class is {public URL}/vocab/{domain}/{table}; a column's predicate, in the manner of the
     Direct Mapping, is {public URL}/vocab/{domain}/{table}#{column}; a term's class or property is
-    {public URL}/vocab/{domain}/term/{term slug}, an enterprise-scope term under the domain "_"; and
+    {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as a key is, since
+    term names are unique and a term's derived domains change (a renamed term has a new IRI); and
     an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property term
     has the term's IRI as its predicate, and its direct predicate stays usable. A class term types
     the instances of the tables it grounds in addition to their table class (REQ-2141).
