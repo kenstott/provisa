@@ -868,6 +868,16 @@
         "label": "Consenti comandi di codice host",
         "help": "Attivo: i comandi python e script possono essere registrati e chiamati. Ognuno viene eseguito con l'accesso completo del server alla sua memoria, alle credenziali, ai file e alla rete, e il suo codice non viaggia con il modello. Disattivato per impostazione predefinita; usa invece un resolver di codice."
       }
+    },
+    "graph": {
+      "depth_limit": {
+        "label": "Percorso del grafo più profondo",
+        "help": "Il numero massimo di salti percorsi da un percorso Cypher a lunghezza variabile o da un percorso di proprietà SPARQL quando la query non fissa un proprio limite. Un risultato troncato a questa profondità lo segnala."
+      },
+      "union_limit": {
+        "label": "Numero massimo di predicati coperti da un predicato variabile",
+        "help": "Un pattern SPARQL il cui predicato è una variabile legge ogni predicato mappato che potrebbe corrispondere, un ramo ciascuno. Una query che richiede più rami viene rifiutata, indicando il limite."
+      }
     }
   }
 }

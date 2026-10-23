@@ -1475,6 +1475,7 @@ async def _execute_cypher(
         assemble_rows,
         register_node_ids,
         register_rel_ids,
+        take_cut,
         to_serializable,
     )
     from provisa.cypher.params import CypherParamError, bind_params, collect_param_names
@@ -1619,7 +1620,7 @@ async def _execute_cypher(
     if result.redirect is not None:
         # Materialized to a sink — no records stream; the handle rides the trailing SUCCESS metadata.
         return [], [], result.redirect
-    raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    raw_rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
 

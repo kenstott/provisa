@@ -7758,5 +7758,10 @@
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasoner": "Reasoner",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.reasonerNone": "None",
   "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axioms": "OWL axioms",
-  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer."
+  "fr/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer.",
+  "fr/settings.json::settings.graph.depth_limit.label": "Deepest graph path",
+  "fr/settings.json::settings.graph.depth_limit.help": "The most hops a Cypher variable-length path or a SPARQL property path walks when the query sets no bound of its own. A result cut at this depth says it was cut.",
+  "fr/settings.json::settings.graph.union_limit.label": "Most predicates a variable predicate covers",
+  "fr/settings.json::settings.graph.union_limit.help": "A SPARQL pattern whose predicate is a variable reads every mapped predicate it could match, one branch each. A query needing more branches than this is refused, naming the limit.",
+  "fr/serverErrors.json::serverErrors.statement.path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer."
 }

@@ -91,6 +91,34 @@ DECLARED: list[Setting] = [
         unit="bytes",
     ),
     Setting(
+        key="graph.depth_limit",
+        card="limits",
+        type="int",
+        effect="live",  # read when a graph query is compiled
+        # REQ-2135: the most hops a variable-length path or property path walks when the query
+        # gives no bound of its own; a result cut at it says so. 10 was the bound before the setting.
+        req="REQ-2135",
+        env="PROVISA_GRAPH_DEPTH_LIMIT",
+        config_path=("server", "limits", "graph_depth_limit"),
+        default=10,
+        min=1,
+        unit="hops",
+    ),
+    Setting(
+        key="graph.union_limit",
+        card="limits",
+        type="int",
+        effect="live",  # read when a graph query is compiled
+        # REQ-2135: the most branches a variable predicate's union over the mapped predicates may
+        # have; a query needing more is refused, naming the limit.
+        req="REQ-2135",
+        env="PROVISA_GRAPH_UNION_LIMIT",
+        config_path=("server", "limits", "graph_union_limit"),
+        default=64,
+        min=1,
+        unit="branches",
+    ),
+    Setting(
         key="sources.max_upload_bytes",
         card="limits",
         type="int",
