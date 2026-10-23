@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "Compilazione della query…",
     "openAsQueryNoCypher": "Questa query non ha forma Cypher.",
     "openAsQuerySparqlLater": "SPARQL si aprirà quando il suo endpoint sarà disponibile.",
-    "identityGap": "Ancorato a tabelle non tutte unite come stessa entità: {{tables}}"
+    "identityGap": "Ancorato a tabelle non tutte unite come stessa entità: {{tables}}",
+    "layersMenu": "Livelli",
+    "termsMenu": "Termini",
+    "menuAll": "tutti",
+    "menuSome": "{{count}} di {{total}}",
+    "unconnected": "Non collegati",
+    "unconnectedHelp": "Termini senza relazioni né ancoraggi mostrati"
   }
 }

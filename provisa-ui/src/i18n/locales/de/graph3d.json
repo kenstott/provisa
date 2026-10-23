@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "Abfrage wird kompiliert…",
     "openAsQueryNoCypher": "Diese Abfrage hat keine Cypher-Form.",
     "openAsQuerySparqlLater": "SPARQL ist verfügbar, sobald sein Endpunkt existiert.",
-    "identityGap": "In Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: {{tables}}"
+    "identityGap": "In Tabellen verankert, die nicht alle als dieselbe Entität verbunden sind: {{tables}}",
+    "layersMenu": "Ebenen",
+    "termsMenu": "Begriffe",
+    "menuAll": "alle",
+    "menuSome": "{{count}} von {{total}}",
+    "unconnected": "Unverbunden",
+    "unconnectedHelp": "Begriffe ohne angezeigte Beziehung oder Verankerung"
   }
 }

@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "Compilando la consulta…",
     "openAsQueryNoCypher": "Esta consulta no tiene forma Cypher.",
     "openAsQuerySparqlLater": "SPARQL se abrirá cuando exista su endpoint.",
-    "identityGap": "Fundamentado en tablas no todas unidas como la misma entidad: {{tables}}"
+    "identityGap": "Fundamentado en tablas no todas unidas como la misma entidad: {{tables}}",
+    "layersMenu": "Capas",
+    "termsMenu": "Términos",
+    "menuAll": "todos",
+    "menuSome": "{{count}} de {{total}}",
+    "unconnected": "Sin conexión",
+    "unconnectedHelp": "Términos sin relación ni anclaje mostrados"
   }
 }

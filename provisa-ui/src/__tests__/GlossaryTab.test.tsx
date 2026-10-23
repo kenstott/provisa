@@ -439,7 +439,7 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }));
   });
 
-  it("orders its toolbar: Ontology view, + Term, the AI menu, then help", async () => {
+  it("orders its toolbar: + Term, then the icons (Ontology view, the AI menu), then help", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     const ontology = screen.getByTestId("glossary-ontology-toggle");
@@ -447,8 +447,8 @@ describe("GlossaryTab", () => {
     expect(ontology).toHaveAttribute("aria-pressed", "false");
     expect(ontology).not.toHaveTextContent("Ontology view");
     const order = [
-      "glossary-ontology-toggle",
       "glossary-new-btn",
+      "glossary-ontology-toggle",
       "glossary-generate-menu",
       "glossary-purpose-help",
     ].map((id) => screen.getByTestId(id));

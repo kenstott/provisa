@@ -9,12 +9,14 @@
 // permission from the copyright holder.
 
 // How close a force-laid-out 3D graph draws its nodes: one slider, loose to tight, in each such
-// graph's toolbar. 1 is the usual spacing. The value lasts for the browser session per graph (this
-// tab, never the model); a graph with a fixed layout (the terrain, the strata) has none.
+// graph's toolbar, read "Loose ——— Tight" and named Attraction. 1 is the usual spacing. The value
+// lasts for the browser session per graph (this tab, never the model); a graph with a fixed layout
+// (the terrain, the strata) has none.
 
 import { useTranslation } from "react-i18next";
 import { Group, Slider, Text } from "@mantine/core";
 import { ATTRACTION_MAX, ATTRACTION_MIN } from "./attractionState";
+import { Tip } from "../../../components/Tip";
 
 export function AttractionSlider({
   value,
@@ -27,28 +29,28 @@ export function AttractionSlider({
 }) {
   const { t } = useTranslation();
   return (
-    <Group gap={6} wrap="nowrap" data-testid={`${testId}-attraction`}>
-      <Text size="xs" c="dimmed">
-        {t("profile3d.attraction")}
-      </Text>
-      <Text size="xs" c="dimmed">
-        {t("profile3d.attractionLoose")}
-      </Text>
-      <Slider
-        w={110}
-        size="xs"
-        min={ATTRACTION_MIN}
-        max={ATTRACTION_MAX}
-        step={0.1}
-        value={value}
-        onChange={onChange}
-        label={null}
-        thumbLabel={t("profile3d.attraction")}
-        data-testid={`${testId}-attraction-slider`}
-      />
-      <Text size="xs" c="dimmed">
-        {t("profile3d.attractionTight")}
-      </Text>
-    </Group>
+    <Tip text={t("profile3d.attraction")}>
+      <Group gap={6} wrap="nowrap" data-testid={`${testId}-attraction`}>
+        <Text size="xs" c="dimmed">
+          {t("profile3d.attractionLoose")}
+        </Text>
+        <Slider
+          w={110}
+          size="xs"
+          min={ATTRACTION_MIN}
+          max={ATTRACTION_MAX}
+          step={0.1}
+          value={value}
+          onChange={onChange}
+          label={null}
+          thumbLabel={t("profile3d.attraction")}
+          aria-label={t("profile3d.attraction")}
+          data-testid={`${testId}-attraction-slider`}
+        />
+        <Text size="xs" c="dimmed">
+          {t("profile3d.attractionTight")}
+        </Text>
+      </Group>
+    </Tip>
   );
 }

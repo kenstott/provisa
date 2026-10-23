@@ -10,7 +10,7 @@
     "attractionLoose": "松散",
     "attractionTight": "紧密",
     "grid": "网格",
-    "resetSettings": "重置视图设置",
+    "resetSettings": "恢复默认",
     "resetSettingsHelp": "清除此图已保存的布局、图层、筛选器和开关，恢复默认设置。",
     "export": "导出",
     "exportImage": "图像",

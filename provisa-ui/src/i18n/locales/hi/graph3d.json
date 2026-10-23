@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "क्वेरी कंपाइल हो रही है…",
     "openAsQueryNoCypher": "इस क्वेरी का कोई Cypher रूप नहीं है।",
     "openAsQuerySparqlLater": "SPARQL उसका endpoint उपलब्ध होने पर खुलेगा।",
-    "identityGap": "ऐसी तालिकाओं में आधारित जो सभी एक ही इकाई के रूप में नहीं जुड़ी हैं: {{tables}}"
+    "identityGap": "ऐसी तालिकाओं में आधारित जो सभी एक ही इकाई के रूप में नहीं जुड़ी हैं: {{tables}}",
+    "layersMenu": "परतें",
+    "termsMenu": "शब्द",
+    "menuAll": "सभी",
+    "menuSome": "{{total}} में से {{count}}",
+    "unconnected": "असंबद्ध",
+    "unconnectedHelp": "ऐसे शब्द जिनका कोई संबंध या आधार नहीं दिखाया गया"
   }
 }

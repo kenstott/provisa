@@ -834,7 +834,7 @@ export function LineageDag({
         {onExpandAll && (
           <Tip text="Expand all datasets" named>
             <ActionIcon
-              variant="default"
+              variant="subtle"
               onClick={onExpandAll}
               aria-label="Expand all datasets"
               data-testid="lineage-expand-all"
@@ -846,7 +846,7 @@ export function LineageDag({
         {onCollapseAll && (
           <Tip text="Collapse all datasets" named>
             <ActionIcon
-              variant="default"
+              variant="subtle"
               onClick={onCollapseAll}
               aria-label="Collapse all datasets"
               data-testid="lineage-collapse-all"
@@ -858,7 +858,7 @@ export function LineageDag({
         {onOpenModal && (
           <Tip text="Open full view" named>
             <ActionIcon
-              variant="default"
+              variant="subtle"
               onClick={onOpenModal}
               aria-label="Open full view"
               data-testid="lineage-open-modal"
@@ -869,7 +869,7 @@ export function LineageDag({
         )}
         <Tip text="Fit to screen" named>
           <ActionIcon
-            variant="default"
+            variant="subtle"
             onClick={fitToScreen}
             aria-label="Fit to screen"
             data-testid="lineage-fit"
@@ -879,7 +879,7 @@ export function LineageDag({
         </Tip>
         <Tip text="Download PNG" named>
           <ActionIcon
-            variant="default"
+            variant="subtle"
             onClick={downloadPng}
             aria-label="Download PNG"
             data-testid="lineage-download"

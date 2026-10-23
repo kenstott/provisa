@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "クエリをコンパイル中…",
     "openAsQueryNoCypher": "このクエリには Cypher 形式がありません。",
     "openAsQuerySparqlLater": "SPARQL はエンドポイントが利用可能になると開けます。",
-    "identityGap": "すべてが同一エンティティとして結合されていないテーブルに紐づいています: {{tables}}"
+    "identityGap": "すべてが同一エンティティとして結合されていないテーブルに紐づいています: {{tables}}",
+    "layersMenu": "レイヤー",
+    "termsMenu": "用語",
+    "menuAll": "すべて",
+    "menuSome": "{{total}} 件中 {{count}} 件",
+    "unconnected": "未接続",
+    "unconnectedHelp": "関係やグラウンディングが表示されていない用語"
   }
 }

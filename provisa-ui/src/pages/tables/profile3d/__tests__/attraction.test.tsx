@@ -161,4 +161,25 @@ describe("the graph's Attraction slider", () => {
     );
     expect(screen.queryByRole("slider", { name: "Attraction" })).toBeNull();
   });
+
+  it("reads Loose to Tight, named Attraction for a reader and on hover, and sits by Set Defaults", () => {
+    render(
+      <GraphExplorer
+        data={g}
+        scope={GLOSSARY_SCOPE}
+        preset="ontology"
+        zero={[]}
+        settingsKey={{ kind: "test", subject: null }}
+        exportName="test"
+        testId="x"
+      />,
+    );
+    const bar = screen.getByTestId("x-attraction");
+    expect(bar).toHaveTextContent("LooseTight");
+    expect(bar).not.toHaveTextContent("Attraction");
+    expect(screen.getByRole("slider", { name: "Attraction" })).toBeInTheDocument();
+    const defaults = screen.getByTestId("x-reset-settings");
+    expect(defaults).toHaveTextContent("Set Defaults");
+    expect(defaults).toHaveAttribute("data-variant", "default");
+  });
 });

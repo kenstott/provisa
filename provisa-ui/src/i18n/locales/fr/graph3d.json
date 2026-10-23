@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "Compilation de la requête…",
     "openAsQueryNoCypher": "Cette requête n’a pas de forme Cypher.",
     "openAsQuerySparqlLater": "SPARQL s’ouvrira quand son point d’accès existera.",
-    "identityGap": "Ancré dans des tables qui ne sont pas toutes jointes comme même entité : {{tables}}"
+    "identityGap": "Ancré dans des tables qui ne sont pas toutes jointes comme même entité : {{tables}}",
+    "layersMenu": "Couches",
+    "termsMenu": "Termes",
+    "menuAll": "tous",
+    "menuSome": "{{count}} sur {{total}}",
+    "unconnected": "Non reliés",
+    "unconnectedHelp": "Termes sans relation ni ancrage affichés"
   }
 }

@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "Query wordt gecompileerd…",
     "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
     "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is.",
-    "identityGap": "Verankerd in tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: {{tables}}"
+    "identityGap": "Verankerd in tabellen die niet allemaal als dezelfde entiteit zijn gekoppeld: {{tables}}",
+    "layersMenu": "Lagen",
+    "termsMenu": "Termen",
+    "menuAll": "alle",
+    "menuSome": "{{count}} van {{total}}",
+    "unconnected": "Niet verbonden",
+    "unconnectedHelp": "Termen zonder getoonde relatie of verankering"
   }
 }

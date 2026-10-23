@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "正在編譯查詢…",
     "openAsQueryNoCypher": "此查詢沒有 Cypher 形式。",
     "openAsQuerySparqlLater": "SPARQL 將在其端點可用後開放。",
-    "identityGap": "關聯的表並未全部作為同一實體連接：{{tables}}"
+    "identityGap": "關聯的表並未全部作為同一實體連接：{{tables}}",
+    "layersMenu": "圖層",
+    "termsMenu": "術語",
+    "menuAll": "全部",
+    "menuSome": "{{count}}/{{total}}",
+    "unconnected": "未連接",
+    "unconnectedHelp": "未顯示任何關係或依據的術語"
   }
 }

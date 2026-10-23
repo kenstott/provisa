@@ -10,7 +10,7 @@
     "attractionLoose": "Solto",
     "attractionTight": "Compacto",
     "grid": "Grade",
-    "resetSettings": "Redefinir configurações de exibição",
+    "resetSettings": "Definir padrões",
     "resetSettingsHelp": "Esquece o layout, as camadas, os filtros e as opções salvos deste grafo e volta aos padrões.",
     "export": "Exportar",
     "exportImage": "Imagem",

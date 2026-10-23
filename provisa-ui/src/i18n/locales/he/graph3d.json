@@ -100,6 +100,12 @@
     "openAsQueryCompiling": "מהדר את השאילתה…",
     "openAsQueryNoCypher": "לשאילתה זו אין צורת Cypher.",
     "openAsQuerySparqlLater": "SPARQL ייפתח כאשר נקודת הקצה שלו תהיה זמינה.",
-    "identityGap": "מעוגן בטבלאות שלא כולן מחוברות כאותה ישות: {{tables}}"
+    "identityGap": "מעוגן בטבלאות שלא כולן מחוברות כאותה ישות: {{tables}}",
+    "layersMenu": "שכבות",
+    "termsMenu": "מונחים",
+    "menuAll": "הכול",
+    "menuSome": "{{count}} מתוך {{total}}",
+    "unconnected": "לא מחוברים",
+    "unconnectedHelp": "מונחים ללא קשר או עיגון מוצגים"
   }
 }

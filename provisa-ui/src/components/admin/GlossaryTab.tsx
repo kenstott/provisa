@@ -508,8 +508,7 @@ export function GlossaryTab() {
           placeholder={t("glossaryTab.searchPlaceholder")}
           testId="glossary-search"
         />
-        <Group gap="xs">
-          <OntologyToggle open={ontology} onChange={setOntology} />
+        <Group gap="xs" data-toolbar>
           {canEdit && (
             <Button
               leftSection={<Plus size={14} />}
@@ -519,6 +518,7 @@ export function GlossaryTab() {
               {t("glossaryTab.newTerm")}
             </Button>
           )}
+          <OntologyToggle open={ontology} onChange={setOntology} />
           {canEdit ? (
             // The AI drafts, both behind one sparkle: relationships between the terms, and the
             // definitions the terms lack.
@@ -527,7 +527,7 @@ export function GlossaryTab() {
                 <Tip text={t("glossaryTab.generateMenu")} named>
                   <ActionIcon
                     size="input-sm"
-                    variant="default"
+                    variant="subtle"
                     loading={bulkGeneratingDefinitions || bulkGeneratingRelationships}
                     aria-label={t("glossaryTab.generateMenu")}
                     data-testid="glossary-generate-menu"

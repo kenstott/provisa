@@ -7760,7 +7760,7 @@
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axioms": "OWL axioms",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.axiomsHint": "Turtle, RDF/XML, functional or Manchester syntax. A table whose query is one IRI, such as <http://example.org/kyc#controls>, reads what they infer.",
   "he/glossaryTab.json::glossaryTab.generateMenu": "Generate with AI",
-  "he/profile3d.json::profile3d.resetSettings": "Reset view settings",
+  "he/profile3d.json::profile3d.resetSettings": "Set Defaults",
   "he/profile3d.json::profile3d.resetSettingsHelp": "Forget this graph's saved layout, layers, filters and toggles, and go back to the defaults.",
   "he/graph3d.json::graph3d.tablesToggle": "Tables",
   "he/graph3d.json::graph3d.look_stored": "table",
@@ -7822,5 +7822,11 @@
   "he/glossaryTab.json::glossaryTab.identityGapHelp": "Grounded in several tables not all joined as the same entity: mark same-entity relationships between them",
   "he/graph3d.json::graph3d.identityGap": "Grounded in tables not all joined as the same entity: {{tables}}",
   "he/addRelationshipForm.json::addRelationshipForm.cardinalityOneToOne": "one-to-one",
-  "he/relationshipRow.json::relationshipRow.cardinalityOneToOne": "one-to-one"
+  "he/relationshipRow.json::relationshipRow.cardinalityOneToOne": "one-to-one",
+  "he/graph3d.json::graph3d.layersMenu": "Layers",
+  "he/graph3d.json::graph3d.termsMenu": "Terms",
+  "he/graph3d.json::graph3d.menuAll": "all",
+  "he/graph3d.json::graph3d.menuSome": "{{count}} of {{total}}",
+  "he/graph3d.json::graph3d.unconnected": "Unconnected",
+  "he/graph3d.json::graph3d.unconnectedHelp": "Terms with no relationship or grounding shown"
 }

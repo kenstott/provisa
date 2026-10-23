@@ -13,7 +13,7 @@ import type { Request } from "@playwright/test";
 
 /**
  * REQ-2136: a graph view opens as its own query, its filters inside it. Against the real backend
- * and its meta views: the Ontology View filtered (Taxonomy's two edge types, Orphans off) reads
+ * and its meta views: the Ontology View filtered (Taxonomy's two edge types, Unconnected off) reads
  * one query with one root; Open as query → GraphQL hands that query to the GraphQL page, and run
  * there it answers exactly what the view read and drew from; → Cypher hands its one pattern to the
  * Cypher page, which answers the same terms and edges.
@@ -37,7 +37,7 @@ async function nextRead(page: Page, match: (query: string) => boolean, act: () =
   return { query: (request.postDataJSON() as { query: string }).query, data: body.data };
 }
 
-/** The Ontology View filtered (Taxonomy's two edge types, Orphans off): the query it read and its
+/** The Ontology View filtered (Taxonomy's two edge types, Unconnected off): the query it read and its
  * answer. One root: the terms, each with the edges leaving it. */
 async function filteredView(page: Page) {
   await page.goto("/admin/ontology");
@@ -46,7 +46,7 @@ async function filteredView(page: Page) {
   await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
     timeout: 60_000,
   });
-  // Taxonomy: two edge types and the Ontology layer; then Orphans off, all in the query's where.
+  // Taxonomy: two edge types; then Unconnected off, all in the query's where.
   await nextRead(
     page,
     (q) => q.startsWith("query Ontology") && q.includes("relType"),
@@ -55,8 +55,11 @@ async function filteredView(page: Page) {
   const viewed = await nextRead(
     page,
     (q) => q.startsWith("query Ontology") && q.includes("edgesOut"),
-    // A Chip's input is visually hidden: clicked as the ontology spec clicks its layer chips.
-    () => page.getByTestId("ontology-orphans").evaluate((el: HTMLElement) => el.click()),
+    async () => {
+      await page.getByTestId("ontology-terms-menu").click();
+      await page.getByTestId("ontology-terms-menu-option-unconnected").click();
+      await page.keyboard.press("Escape");
+    },
   );
   expect(viewed.query).toContain('relType: { in: ["KIND_OF","PART_OF"] }');
   // One root: the edges are read with their terms.

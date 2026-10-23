@@ -67,3 +67,50 @@ describe("a graph filter picking several values", () => {
     expect(screen.getByTestId("pick")).toHaveTextContent("PART_OF");
   });
 });
+
+describe("a graph control choosing what to show", () => {
+  function Menu({ start }: { start: string[] }) {
+    const [value, setValue] = useState(start);
+    return (
+      <SummaryMultiSelect
+        label="Layers"
+        prefix="Layers"
+        names={2}
+        data={[
+          { value: "domains", label: "Domains" },
+          { value: "columns", label: "Columns" },
+          { value: "tables", label: "Tables", disabled: !value.includes("columns") },
+          { value: "data", label: "Data", hint: "Data products" },
+        ]}
+        value={value}
+        onChange={setValue}
+        testId="layers"
+        allText="all"
+        someText={(count, total) => `${count} of ${total}`}
+      />
+    );
+  }
+
+  it("says its own name before what is chosen: up to two by name, more counted, or all", () => {
+    const { unmount } = render(<Menu start={["domains", "columns"]} />);
+    expect(screen.getByTestId("layers")).toHaveTextContent("Layers: Domains, Columns");
+    unmount();
+    const three = render(<Menu start={["domains", "columns", "data"]} />);
+    expect(screen.getByTestId("layers")).toHaveTextContent("Layers: 3 of 4");
+    three.unmount();
+    render(<Menu start={["domains", "columns", "tables", "data"]} />);
+    expect(screen.getByTestId("layers")).toHaveTextContent("Layers: all");
+  });
+
+  it("offers a choice it cannot take now disabled, until what it waits for is chosen", async () => {
+    render(<Menu start={[]} />);
+    expect(screen.getByTestId("layers")).toHaveTextContent("Layers");
+    fireEvent.click(screen.getByTestId("layers"));
+    const tables = await screen.findByTestId("layers-option-tables");
+    expect(tables).toHaveAttribute("data-combobox-disabled");
+    fireEvent.click(screen.getByTestId("layers-option-columns"));
+    expect(screen.getByTestId("layers-option-tables")).not.toHaveAttribute(
+      "data-combobox-disabled",
+    );
+  });
+});
