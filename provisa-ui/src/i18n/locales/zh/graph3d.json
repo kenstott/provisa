@@ -85,8 +85,6 @@
     "allFocus": "所有产品和术语",
     "someFocus": "{{total}} 个产品和术语中的 {{count}} 个",
     "search": "搜索…",
-    "look_concrete": "具体术语",
-    "look_abstract": "抽象术语",
     "look_in_product": "数据产品中的列",
     "look_out_of_product": "数据产品之外的列",
     "look_stored": "表",
@@ -100,6 +98,15 @@
     "openAsQueryCompiling": "正在编译查询…",
     "openAsQueryNoCypher": "此查询没有 Cypher 形式。",
     "openAsQuerySparqlLater": "SPARQL 将在其端点可用后开放。",
-    "identityGap": "关联的表并未全部作为同一实体连接：{{tables}}"
+    "identityGap": "关联的表并未全部作为同一实体连接：{{tables}}",
+    "layersMenu": "图层",
+    "termsMenu": "术语",
+    "menuAll": "全部",
+    "menuSome": "{{count}}/{{total}}",
+    "unconnected": "未连接",
+    "unconnectedHelp": "未显示任何关系或依据的术语",
+    "look_class": "类",
+    "look_concept": "概念",
+    "look_property": "属性"
   }
 }

@@ -89,7 +89,7 @@ class TestMaskingInjection:
         )
         sql = "SELECT email FROM users"
         result = apply_governance(sql, gov)
-        assert "REGEXP_REPLACE" in result
+        assert "PROVISA_REGEX_REPLACE" in result
         assert "email" in result
 
     def test_non_masked_column_unchanged(self):
@@ -100,7 +100,7 @@ class TestMaskingInjection:
         )
         sql = "SELECT id FROM users"
         result = apply_governance(sql, gov)
-        assert "REGEXP_REPLACE" not in result
+        assert "PROVISA_REGEX_REPLACE" not in result
         assert "id" in result
 
     def test_constant_mask_applied(self):

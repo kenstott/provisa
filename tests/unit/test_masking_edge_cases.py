@@ -150,7 +150,7 @@ class TestMaskedColumnInJoinCondition:
         result = governed_for_role(sql, ctx, "analyst", masking_rules=rules)
 
         assert result == (
-            'SELECT "t0"."id", REGEXP_REPLACE("t1"."email", \'.*\', \'***\', \'g\') AS "email" '
+            'SELECT "t0"."id", PROVISA_REGEX_REPLACE("t1"."email", \'.*\', \'***\', \'****\') AS "email" '
             'FROM "public"."orders" AS "t0" LEFT JOIN "public"."customers" AS "t1" '
             'ON "t0"."customer_id" = "t1"."id"'
         )
@@ -213,7 +213,7 @@ class TestMaskingDialectConsistency:
     def test_regex_mask_expression_is_ansi_regexp_replace(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*$", replace="$1***")
         expr = build_mask_expression(rule, '"col"', "varchar")
-        assert expr.startswith("REGEXP_REPLACE(")
+        assert expr.startswith("provisa_regex_replace(")
 
     def test_truncate_mask_expression_is_ansi_date_trunc(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="day")
@@ -253,7 +253,7 @@ class TestMaskingDialectConsistency:
         """varchar(255) must be treated as varchar for REGEXP_REPLACE emission."""
         rule = MaskingRule(mask_type=MaskType.regex, pattern=".*", replace="X")
         expr = build_mask_expression(rule, '"col"', "varchar(255)")
-        assert expr.startswith("REGEXP_REPLACE(")
+        assert expr.startswith("provisa_regex_replace(")
 
     def test_truncate_mask_preserves_precision_token(self):
         """The precision token must be preserved exactly in the DATE_TRUNC call."""

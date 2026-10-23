@@ -29,7 +29,7 @@ const term = (id: number, name: string, refs: ReturnType<typeof ref>[] = []): Te
   id,
   name,
   definition: `${name}.`,
-  is_abstract: false,
+  ref_count: 0,
   deprecated: false,
   retired: false,
   live: true,

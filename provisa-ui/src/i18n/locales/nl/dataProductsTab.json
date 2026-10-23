@@ -82,7 +82,6 @@
     "relatedTermsLabel": "Gerelateerde termen",
     "relatedTermsEmpty": "Geen gerelateerde termen",
     "relatedTermsLoading": "Gerelateerde termen laden…",
-    "relatedTermsAbstract": "abstract",
     "graphqlQueriesLabel": "Toegangspatronen",
     "graphqlQueriesEmpty": "Geen bevraagbare tabellen of relaties",
     "graphqlQueryAria": "Voorbeeld-GraphQL-query voor {{table}} uitvoeren",
@@ -120,6 +119,7 @@
       "customPropertiesEmpty": "Geen aangepaste eigenschappen"
     },
     "readOnly": "Alleen-lezen",
-    "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken."
+    "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken.",
+    "relatedTermsConcept": "concept"
   }
 }

@@ -9,8 +9,8 @@
 // permission from the copyright holder.
 
 // REQ-2130: the glossary's Ontology View, as REQ-2130's scenario sets it: a concrete term bound to
-// a column, an abstract term linked to it by KIND_OF, an undefined term bound to a column, an
-// abstract term with no edges, a deprecated term and a retired term.
+// a column, a concept linked to it by KIND_OF, an undefined term bound to a column, a concept with
+// no edges, a deprecated term and a retired term.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -42,7 +42,7 @@ const term = (id: number, name: string, over: Partial<TermRow>): TermRow => ({
   id,
   name,
   definition: `${name}, as the business uses it.`,
-  is_abstract: false,
+  ref_count: 0,
   deprecated: false,
   retired: false,
   live: true,
@@ -52,10 +52,15 @@ const term = (id: number, name: string, over: Partial<TermRow>): TermRow => ({
 });
 
 const TERMS: TermRow[] = [
-  term(1, "Customer", { refs: [ref(10, "email", "c360")] }),
-  term(2, "Party", { is_abstract: true, domains: [{ domain_id: "*" }] }),
-  term(3, "Loyalty tier", { definition: null, live: false, refs: [ref(10, "tier")] }),
-  term(4, "Concept", { is_abstract: true, live: false }),
+  term(1, "Customer", { ref_count: 1, refs: [ref(10, "email", "c360")] }),
+  term(2, "Party", { ref_count: 0, domains: [{ domain_id: "*" }] }),
+  term(3, "Loyalty tier", {
+    definition: null,
+    live: false,
+    ref_count: 1,
+    refs: [ref(10, "tier")],
+  }),
+  term(4, "Concept", { ref_count: 0, live: false }),
   term(5, "Old customer", { deprecated: true, live: false, domains: [{ domain_id: "finance" }] }),
   term(6, "Ancient", { retired: true, live: false }),
 ];
@@ -117,9 +122,14 @@ describe("the Ontology View's terms", () => {
     expect(node(g, "term:7")?.label).toBe("Lone");
   });
 
-  it("marks abstract terms apart from concrete ones, and columns a product holds", () => {
-    expect(node(G, "term:2")?.abstract).toBe(true);
-    expect(node(G, "term:1")?.abstract).toBe(false);
+  it("gives each term its role -- class, property or concept -- and marks columns a product holds", () => {
+    expect(node(G, "term:2")?.role).toBe("concept");
+    expect(node(G, "term:1")?.role).toBe("property");
+    const grounded = glossaryGraph(
+      [term(9, "Order", { tables: [{ table_id: 20, table_name: "orders", domain_id: "sales" }] })],
+      [],
+    );
+    expect(node(grounded, "term:9")?.role).toBe("class");
     // customers.email's table is c360's; customers.tier's too, so both are in a product.
     expect(node(G, "c:10:email")?.inProduct).toBe(true);
   });

@@ -173,6 +173,19 @@ beforeEach(() => {
   asked.scopes.length = 0;
 });
 
+/** The Ontology View's Layers or Terms dropdown, opened, and the option asked for in it. */
+async function option(menu: "layers" | "terms", value: string): Promise<HTMLElement> {
+  const id = `ontology-${menu}-menu-option-${value}`;
+  if (!screen.queryByTestId(id)) fireEvent.click(screen.getByTestId(`ontology-${menu}-menu`));
+  return screen.findByTestId(id);
+}
+/** Ticks or unticks a choice in one of the dropdowns. */
+const choose = async (menu: "layers" | "terms", value: string) =>
+  fireEvent.click(await option(menu, value));
+/** Whether a choice is ticked. */
+const ticked = async (menu: "layers" | "terms", value: string) =>
+  (await option(menu, value)).hasAttribute("data-combobox-active");
+
 describe("the Glossary page's Ontology View", () => {
   it("reads and draws nothing until it is opened", async () => {
     render(<Page />);
@@ -242,9 +255,10 @@ describe("the Glossary page's Ontology View", () => {
       "term:8",
       "term:9",
     ]);
-    expect(screen.getByTestId("ontology-status-retired")).not.toBeChecked();
-    expect(screen.getByTestId("ontology-status-deprecated")).toBeChecked();
-    fireEvent.click(screen.getByTestId("ontology-status-retired"));
+    expect(screen.getByTestId("ontology-terms-menu")).toHaveTextContent("Terms: 4 of 5");
+    expect(await ticked("terms", "retired")).toBe(false);
+    expect(await ticked("terms", "deprecated")).toBe(true);
+    await choose("terms", "retired");
     await waitFor(() => expect(ids(drawn())).toContain("term:4"));
   });
 
@@ -258,15 +272,15 @@ describe("the Glossary page's Ontology View", () => {
     expect(ids(drawn())).toEqual(expect.arrayContaining(["term:1", "term:2", "term:3", "term:5"]));
   });
 
-  it("hides the terms left with no edge when Orphans is unchecked, and shows them again", async () => {
+  it("hides the terms left with no edge when Unconnected is unticked, and shows them again", async () => {
     render(<GlossaryOntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(screen.getByTestId("ontology-orphans")).toBeChecked();
+    expect(await ticked("terms", "unconnected")).toBe(true);
     expect(ids(drawn())).toContain("term:5");
-    fireEvent.click(screen.getByTestId("ontology-orphans"));
+    await choose("terms", "unconnected");
     await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
     expect(ids(drawn())).toEqual(expect.arrayContaining(["term:1", "term:2", "term:3"]));
-    fireEvent.click(screen.getByTestId("ontology-orphans"));
+    await choose("terms", "unconnected");
     await waitFor(() => expect(ids(drawn())).toContain("term:5"));
   });
 
@@ -277,23 +291,25 @@ describe("the Glossary page's Ontology View", () => {
       drawn()
         .edges.filter((e) => e.kind === "term_binding")
         .map((e) => [e.a, e.label, e.b]);
-    expect(screen.getByTestId("ontology-columns")).toBeChecked();
+    expect(screen.getByTestId("ontology-layers-menu")).toHaveTextContent(
+      "Layers: Domains, Columns",
+    );
     expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]);
     expect(node(drawn(), "c:10:email")).toMatchObject({ type: "column", label: "customers.email" });
-    fireEvent.click(screen.getByTestId("ontology-columns"));
+    await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([]));
     expect(ids(drawn())).not.toContain("c:10:email");
-    fireEvent.click(screen.getByTestId("ontology-columns"));
+    await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]));
   });
 
-  it("does not count a term joined only by IS as an orphan while Columns is on", async () => {
+  it("does not count a term joined only by IS as unconnected while Columns is on", async () => {
     render(<GlossaryOntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    fireEvent.click(screen.getByTestId("ontology-orphans"));
+    await choose("terms", "unconnected");
     await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
     expect(ids(drawn())).toContain("term:6");
-    fireEvent.click(screen.getByTestId("ontology-columns"));
+    await choose("layers", "columns");
     await waitFor(() => expect(ids(drawn())).not.toContain("term:6"));
   });
 

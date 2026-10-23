@@ -36,6 +36,54 @@
     "regexLabel": "Regex {{pattern}} → {{replace}}",
     "truncateLabel": "gekürzt auf {{precision}}",
     "constantLabel": "Konstante {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Gängige Masken",
+    "presetsAria": "Gängige Masken für Eintrag {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Funktioniert auf jeder Engine",
+    "universalHelp": "Muster verwenden einen einzigen Regex-Dialekt; Provisa übersetzt ihn für jede Engine. Werte, die nicht zum Muster passen, werden vollständig maskiert.",
+    "notUniversal": "Nicht auf jeder Engine: {{construct}} bei Zeichen {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, letzte 4",
+      "card_last4": "Kartennummer, letzte 4",
+      "phone_last4": "Telefon, letzte 4",
+      "email_initial_domain": "E-Mail, erster Buchstabe und Domain",
+      "all_but_last4": "Alles außer den letzten 4 Zeichen",
+      "digits_keep_separators": "Ziffern, Trennzeichen bleiben",
+      "zip3": "US-ZIP, erste 3",
+      "birth_year": "Geburtsdatum, nur Jahr",
+      "iban_last4": "IBAN, letzte 4",
+      "keep_first_last": "Erste und letzte Zeichen behalten"
+    },
+    "presetParam": {
+      "first": "Erste",
+      "last": "Letzte"
+    },
+    "construct": {
+      "lookahead": "ein Lookahead (?=…)",
+      "lookbehind": "ein Lookbehind (?<=…)",
+      "backreference": "eine Rückreferenz \\1 im Muster",
+      "lazy_quantifier": "ein genügsamer Quantor (*?, +?)",
+      "possessive_quantifier": "ein possessiver Quantor (*+, ++)",
+      "named_group": "eine benannte Gruppe (?<name>…)",
+      "word_boundary": "eine Wortgrenze \\b",
+      "unicode_class": "eine Unicode-Klasse \\p{…}",
+      "posix_class": "eine POSIX-Klasse [[:…:]]",
+      "inline_flags": "Inline-Flags (?i)",
+      "unknown_escape": "ein Escape, das nicht jede Engine kennt",
+      "open_bound": "eine offene Grenze {n,}",
+      "bound_too_large": "eine zu große Wiederholungszahl",
+      "unbalanced_paren": "eine nicht geschlossene runde Klammer",
+      "unbalanced_bracket": "eine nicht geschlossene eckige Klammer",
+      "empty_class": "eine leere Klasse []",
+      "bad_range": "ein Bereich, dessen Anfang nach seinem Ende liegt",
+      "nothing_to_repeat": "ein Quantor ohne etwas zu wiederholen",
+      "replace_group_out_of_range": "ein $n für eine Gruppe, die das Muster nicht hat",
+      "replace_named_ref": "ein benannter Verweis in der Ersetzung",
+      "replace_bad_escape": "ein Escape, das die Ersetzung nicht annimmt",
+      "alternation_prefix": "Alternativen, von denen eine Präfix einer anderen ist",
+      "alternation_overlap": "Alternativen, die denselben Text treffen können",
+      "negated_class_escape_in_set": "ein negiertes Escape wie \\D innerhalb einer [ ]-Menge"
+    }
   }
 }

@@ -35,7 +35,8 @@ const LIST_PAGES = [
   "components/admin/ScheduledTasks.tsx",
   "components/admin/SystemHealth.tsx",
   "components/admin/McpServerTab.tsx",
-  "components/admin/GlossaryTab.tsx",
+  // The Ontology page's term columns: its read view lists them.
+  "components/admin/TermReadView.tsx",
   "components/admin/MergeRequestsPanel.tsx",
   "components/admin/EnvironmentsTab.tsx",
   "components/admin/SecretsTab.tsx",

@@ -15,7 +15,7 @@ from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta
 from provisa.security.masking import MaskType, MaskingRule
 from tests.helpers import governed_for_role
 
-_REGEX = "REGEXP_REPLACE({}, '^(.{{2}}).*(@.*)$', '$1***$2', 'g')"
+_REGEX = "PROVISA_REGEX_REPLACE({}, '^(.{{2}}).*(@.*)$', '$1***$2', '****')"
 _EMAIL_MASK = _REGEX.format('"email"')
 _T1_EMAIL_MASK = _REGEX.format('"t1"."email"')
 
@@ -150,7 +150,7 @@ class TestInjectMasking:
         )
         assert result == (
             "SELECT '***@***.***' AS \"email\", "
-            "REGEXP_REPLACE(\"name\", '^(.).* (.).*$', '$1. $2.', 'g') AS \"name\" "
+            "PROVISA_REGEX_REPLACE(\"name\", '^(.).* (.).*$', '$1. $2.', '****') AS \"name\" "
             'FROM "public"."customers"'
         )
 

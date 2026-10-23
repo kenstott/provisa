@@ -73,7 +73,7 @@ export function OntologyToggle({
     <Tip text={t("graph3d.ontologyView")} named>
       <ActionIcon
         size="input-sm"
-        variant={open ? "filled" : "default"}
+        variant={open ? "light" : "subtle"}
         onClick={() => onChange(!open)}
         aria-label={t("graph3d.ontologyView")}
         aria-pressed={open}

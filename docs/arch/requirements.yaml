@@ -2363,7 +2363,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   since: 2026-01
   scenario: 'Given a SQL-defined view registered in the Provisa config
 
@@ -2403,7 +2403,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/integration/test_schema_compiler_integration.py
   since: 2026-01
   scenario: 'Given a registered view with RLS rules and masking applied
@@ -2444,7 +2444,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/integration/test_registration_governance_integration.py
   since: 2026-01
   scenario: 'Given a view registered with materialize: true
@@ -2492,7 +2492,7 @@
   - provisa/mv/
   tests:
   - tests/unit/test_mv_registry.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/integration/test_schema_compiler_integration.py
   since: 2026-01
   scenario: 'Given a consumer who wants to expose aggregated or transformed data
@@ -21926,7 +21926,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/integration/test_security_integration_extra.py
   since: 2026-06
   scenario: 'Given a column masked for a role and referenced in the select list and in a JOIN ON
@@ -21968,7 +21968,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   since: 2026-06
   scenario: 'Given a masked column in queries against different source types
 
@@ -22003,7 +22003,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   since: 2026-06
   scenario: 'Given a masking rule configured with an incompatible type
 
@@ -22036,7 +22036,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   since: 2026-06
   scenario: 'Given various constant mask values (null, boolean, numeric, string with apostrophe)
 
@@ -22072,7 +22072,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/integration/test_security_integration_extra.py
   since: 2026-06
   scenario: 'Given a query with ORDER BY, LIMIT, GROUP BY, or other clauses
@@ -22106,7 +22106,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/integration/test_security_integration_extra.py
   since: 2026-06
   scenario: 'Given the same column with different masking rules per role
@@ -24556,7 +24556,7 @@
   - provisa/pgwire/_pipeline.py
   tests:
   - tests/integration/test_execution_routing.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_view_reinject.py
   since: 2026-03
   scenario: 'Given a materialized view covering a subset of a query''s joins
@@ -75658,7 +75658,7 @@
   - provisa/security/masking.py
   - provisa/compiler/stage2.py
   tests:
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/unit/test_inherited_roles.py
   scenario: 'Given a column with unmasked_to listing role A
 
@@ -77859,7 +77859,7 @@
   - provisa/compiler/stage2.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   - tests/unit/test_inherited_roles.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
@@ -77888,7 +77888,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -77916,7 +77916,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -77943,7 +77943,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -77971,7 +77971,7 @@
   - provisa/security/masking.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/e2e/test_masking.py
+  - tests/unit/test_masking_pipeline.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
@@ -78414,7 +78414,7 @@
   - tests/unit/test_mv_registry.py
   - tests/unit/test_mv_lifecycle.py
   - tests/unit/test_mv_tenant_isolation.py
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   scenario: 'Given a registered materialized view with expose_in_sdl unset
 
     When a query matches its join pattern and the view is fresh
@@ -78441,7 +78441,7 @@
   - provisa/mv/registry.py
   - provisa/api/data/table_written.py
   tests:
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_refresh_mv_mutation.py
   - tests/unit/test_mv_registry.py
   scenario: 'Given a fresh materialized view over table orders
@@ -78471,7 +78471,7 @@
   - provisa/mv/view_reinject.py
   - provisa/pgwire/_pipeline.py
   tests:
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_mv_expose_and_rls_rewrite.py
   scenario: 'Given a compiled join query carrying an RLS WHERE predicate and a matching fresh MV
 
@@ -78499,7 +78499,7 @@
   - provisa/api/app_loaders.py
   - provisa/mv/models.py
   tests:
-  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_optimization.py
   - tests/unit/test_mv_expose_and_rls_rewrite.py
   scenario: 'Given an MV with expose_in_sdl true and an sdl_config
 
@@ -87486,3 +87486,52 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2031
   - REQ-2042
   target: "2027-Q1"
+- id: REQ-2142
+  status: complete
+  since: "2026-10"
+  group: 1. Access Governance & Security
+  category: Column Masking
+  feature: row-security-and-masking-two-layers
+  priority: MUST
+  type: behavioral
+  description: >-
+    Every regex a user gives Provisa, a mask's pattern and replacement among them, is written in
+    one universal dialect: the portable subset of literals, ., sets [...] with ranges and negation,
+    the greedy quantifiers * + ? {n} {n,} {n,m}, the anchors ^ and $ (the whole value), groups ( )
+    and (?: ), alternation |, and \d \s \w as their ASCII classes; a replacement is literal text
+    with $1-$9 and $$. A pattern or replacement outside it (lookaround, backreferences in the
+    pattern, lazy or possessive quantifiers, named groups, \b, Unicode or POSIX classes, inline
+    flags) is refused at save, by the API and by config load, naming the construct, where it is
+    and why it is not universal; there is no per-engine check at save. An alternation where an
+    earlier all-literal branch is a strict prefix of a later branch is refused, because engines
+    that take the longest branch (PostgreSQL, Snowflake) and those that take the first would mask
+    differently; an alternation whose branches can begin with the same character is accepted
+    with a warning. When a mask is lowered to SQL the pattern and replacement are translated into
+    each engine's flavour (Trino, Databricks/Spark, MySQL, Exasol, DuckDB, BigQuery, ClickHouse,
+    PostgreSQL, Snowflake, Oracle), every match replaced, and a value is masked the same way on
+    each. A regex mask fails closed: a value its pattern does not match anywhere is fully masked,
+    read as '****' on a text column and as NULL on any other, never in clear; NULL stays NULL. The
+    model has no column-wide constant mask to fall back to (a constant mask is one reader's entry).
+    The admin mask check reports each entry's verdict as it is edited, and the editor's presets are
+    universal.
+  use_case: >-
+    A mask is written once and holds wherever the query runs; a pattern that would mask
+    differently, or fail, on some engine is refused when it is written, not when a query reaches
+    that engine.
+  code:
+    - provisa/security/universal_regex.py
+    - provisa/security/mask_presets.py
+    - provisa/security/masking.py
+    - provisa/transpiler/transpile.py
+    - provisa/api/admin/masks_router.py
+    - provisa/core/models.py
+  tests:
+    - tests/unit/test_universal_regex.py
+    - tests/unit/test_regex_mask_every_match.py
+    - tests/unit/test_mask_list.py
+  scenario: |
+    Given a column masked for analysts with pattern ^\d{3}-?\d{2}-?(\d{4})$ and replacement ***-**-$1
+    When an analyst reads it through DuckDB, PostgreSQL, Trino or Snowflake
+    Then each engine runs the pattern in its own regex flavour and every analyst reads ***-**-6789 for 123-45-6789
+    And saving a mask with the pattern \d(?=\d{4}) is refused, naming the lookahead and why it is not universal
+    And a value the pattern does not match, such as 12-3456, reads as **** on every engine

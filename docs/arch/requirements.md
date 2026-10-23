@@ -760,7 +760,7 @@ Views are SQL-defined computed datasets registered in the Provisa config with fu
 
 **Code:** `provisa/compiler/`, `provisa/mv/`
 
-**Tests:** `tests/unit/test_mv_registry.py`, `tests/e2e/test_mv_optimization.py`
+**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_optimization.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [configuration.md](../configuration.md)
 
@@ -774,7 +774,7 @@ Views go through the same governance pipeline as tables: RLS, masking, sampling,
 
 **Code:** `provisa/compiler/`, `provisa/mv/`
 
-**Tests:** `tests/unit/test_mv_registry.py`, `tests/e2e/test_mv_optimization.py`, `tests/integration/test_schema_compiler_integration.py`
+**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_optimization.py`, `tests/integration/test_schema_compiler_integration.py`
 
 **Docs:** [configuration.md](../configuration.md)
 
@@ -788,7 +788,7 @@ Views with `materialize: true` are backed by a periodically refreshed MV (CTAS).
 
 **Code:** `provisa/compiler/`, `provisa/mv/`
 
-**Tests:** `tests/unit/test_mv_registry.py`, `tests/e2e/test_mv_optimization.py`, `tests/integration/test_registration_governance_integration.py`
+**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_optimization.py`, `tests/integration/test_registration_governance_integration.py`
 
 **Docs:** [admin.md](../admin.md), [configuration.md](../configuration.md)
 
@@ -802,7 +802,7 @@ Views are the governed mechanism for adding computed semantics (aggregations, tr
 
 **Code:** `provisa/compiler/`, `provisa/mv/`
 
-**Tests:** `tests/unit/test_mv_registry.py`, `tests/e2e/test_mv_optimization.py`, `tests/integration/test_schema_compiler_integration.py`
+**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_optimization.py`, `tests/integration/test_schema_compiler_integration.py`
 
 **Docs:** [architecture.md](../architecture.md), [configuration.md](../configuration.md)
 
@@ -7286,7 +7286,7 @@ A masked column is its mask wherever the statement references it -- the select l
 
 **Code:** `provisa/compiler/stage2.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/integration/test_security_integration_extra.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`, `tests/integration/test_security_integration_extra.py`
 
 ### REQ-741 · Security {#REQ-741}
 
@@ -7298,7 +7298,7 @@ Column masking output uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL li
 
 **Code:** `provisa/security/masking.py`, `provisa/compiler/stage2.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`
 
 ### REQ-742 · Security {#REQ-742}
 
@@ -7310,7 +7310,7 @@ Masking respects column type constraints. NULL masks are allowed only on nullabl
 
 **Code:** `provisa/security/masking.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`
 
 ### REQ-743 · Security {#REQ-743}
 
@@ -7322,7 +7322,7 @@ Masking constant expressions must emit syntactically valid SQL for their type: n
 
 **Code:** `provisa/security/masking.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`
 
 ### REQ-744 · Security {#REQ-744}
 
@@ -7334,7 +7334,7 @@ Masking preserves query structure — ORDER BY, LIMIT, GROUP BY, and other claus
 
 **Code:** `provisa/compiler/stage2.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/integration/test_security_integration_extra.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`, `tests/integration/test_security_integration_extra.py`
 
 ### REQ-745 · Security {#REQ-745}
 
@@ -7346,7 +7346,7 @@ Role-based masking: different roles can have different masks for the same column
 
 **Code:** `provisa/compiler/stage2.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/integration/test_security_integration_extra.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`, `tests/integration/test_security_integration_extra.py`
 
 ### REQ-746 · Security {#REQ-746}
 
@@ -8150,7 +8150,7 @@ Materialized-view transparent rewriting supports partial join-pattern matches. r
 
 **Code:** `provisa/mv/view_reinject.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/integration/test_execution_routing.py`, `tests/e2e/test_mv_optimization.py`, `tests/unit/test_view_reinject.py`
+**Tests:** `tests/integration/test_execution_routing.py`, `tests/unit/test_mv_optimization.py`, `tests/unit/test_view_reinject.py`
 
 ### REQ-811 · Federation Performance {#REQ-811}
 
@@ -22018,7 +22018,7 @@ Column masking is determined by unmasked_to on each column, [SUPERSEDED by [REQ-
 
 **Code:** `provisa/security/masking.py`, `provisa/compiler/stage2.py`
 
-**Tests:** `tests/e2e/test_masking.py`, `tests/unit/test_inherited_roles.py`
+**Tests:** `tests/unit/test_masking_pipeline.py`, `tests/unit/test_inherited_roles.py`
 
 ### REQ-440 · Security {#REQ-440}
 
@@ -22962,7 +22962,7 @@ Per-column, per-role data masking at the SQL level. Masked columns return transf
 
 **Code:** `provisa/security/masking.py`, `provisa/compiler/stage2.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`, `tests/unit/test_inherited_roles.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`, `tests/unit/test_inherited_roles.py`
 
 ### REQ-088 · Column-Level Masking {#REQ-088}
 
@@ -22972,7 +22972,7 @@ Per-column, per-role data masking at the SQL level. Masked columns return transf
 
 **Code:** `provisa/security/masking.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`
 
 ### REQ-089 · Column-Level Masking {#REQ-089}
 
@@ -22982,7 +22982,7 @@ Per-column, per-role data masking at the SQL level. Masked columns return transf
 
 **Code:** `provisa/security/masking.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`
 
 ### REQ-090 · Column-Level Masking {#REQ-090}
 
@@ -22992,7 +22992,7 @@ Per-column, per-role data masking at the SQL level. Masked columns return transf
 
 **Code:** `provisa/security/masking.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`
 
 ### REQ-091 · Column-Level Masking {#REQ-091}
 
@@ -23002,7 +23002,7 @@ Type validation: regex masking only allowed on string types (varchar, char, text
 
 **Code:** `provisa/security/masking.py`
 
-**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_masking_pipeline.py`
 
 ## 4. Source Connectors
 
@@ -23152,7 +23152,7 @@ Materialized views are invisible in the GraphQL SDL by default: users query the 
 
 **Code:** `provisa/mv/models.py`, `provisa/mv/registry.py`, `provisa/mv/refresh.py`, `provisa/mv/view_reinject.py`
 
-**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_lifecycle.py`, `tests/unit/test_mv_tenant_isolation.py`, `tests/e2e/test_mv_optimization.py`
+**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_lifecycle.py`, `tests/unit/test_mv_tenant_isolation.py`, `tests/unit/test_mv_optimization.py`
 
 ### REQ-084 · Materialized View Optimization {#REQ-084}
 
@@ -23162,7 +23162,7 @@ Mutations on source tables mark affected materialized views as stale; a stale vi
 
 **Code:** `provisa/mv/registry.py`, `provisa/api/data/table_written.py`
 
-**Tests:** `tests/e2e/test_mv_optimization.py`, `tests/unit/test_refresh_mv_mutation.py`, `tests/unit/test_mv_registry.py`
+**Tests:** `tests/unit/test_mv_optimization.py`, `tests/unit/test_refresh_mv_mutation.py`, `tests/unit/test_mv_registry.py`
 
 ## 1. Access Governance & Security
 
@@ -23174,7 +23174,7 @@ The MV rewrite runs after row-level security is applied: the rewritten query kee
 
 **Code:** `provisa/mv/view_reinject.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/e2e/test_mv_optimization.py`, `tests/unit/test_mv_expose_and_rls_rewrite.py`
+**Tests:** `tests/unit/test_mv_optimization.py`, `tests/unit/test_mv_expose_and_rls_rewrite.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -23186,7 +23186,7 @@ A steward may set expose_in_sdl: true on an MV definition. The MV target table i
 
 **Code:** `provisa/api/app_loaders.py`, `provisa/mv/models.py`
 
-**Tests:** `tests/e2e/test_mv_optimization.py`, `tests/unit/test_mv_expose_and_rls_rewrite.py`
+**Tests:** `tests/unit/test_mv_optimization.py`, `tests/unit/test_mv_expose_and_rls_rewrite.py`
 
 ## 4. Source Connectors
 
@@ -26195,3 +26195,17 @@ The named demo "groupexposure" joins company data to public linked data by an id
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2142 · Column Masking {#REQ-2142}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Every regex a user gives Provisa, a mask's pattern and replacement among them, is written in one universal dialect: the portable subset of literals, ., sets [...] with ranges and negation, the greedy quantifiers * + ? {n} {n,} {n,m}, the anchors ^ and $ (the whole value), groups ( ) and (?: ), alternation |, and \d \s \w as their ASCII classes; a replacement is literal text with $1-$9 and $$. A pattern or replacement outside it (lookaround, backreferences in the pattern, lazy or possessive quantifiers, named groups, \b, Unicode or POSIX classes, inline flags) is refused at save, by the API and by config load, naming the construct, where it is and why it is not universal; there is no per-engine check at save. An alternation where an earlier all-literal branch is a strict prefix of a later branch is refused, because engines that take the longest branch (PostgreSQL, Snowflake) and those that take the first would mask differently; an alternation whose branches can begin with the same character is accepted with a warning. When a mask is lowered to SQL the pattern and replacement are translated into each engine's flavour (Trino, Databricks/Spark, MySQL, Exasol, DuckDB, BigQuery, ClickHouse, PostgreSQL, Snowflake, Oracle), every match replaced, and a value is masked the same way on each. A regex mask fails closed: a value its pattern does not match anywhere is fully masked, read as '****' on a text column and as NULL on any other, never in clear; NULL stays NULL. The model has no column-wide constant mask to fall back to (a constant mask is one reader's entry). The admin mask check reports each entry's verdict as it is edited, and the editor's presets are universal.
+
+**Use case:** A mask is written once and holds wherever the query runs; a pattern that would mask differently, or fail, on some engine is refused when it is written, not when a query reaches that engine.
+
+**Code:** `provisa/security/universal_regex.py`, `provisa/security/mask_presets.py`, `provisa/security/masking.py`, `provisa/transpiler/transpile.py`, `provisa/api/admin/masks_router.py`, `provisa/core/models.py`
+
+**Tests:** `tests/unit/test_universal_regex.py`, `tests/unit/test_regex_mask_every_match.py`, `tests/unit/test_mask_list.py`

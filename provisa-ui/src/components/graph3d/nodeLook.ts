@@ -40,8 +40,16 @@ export type Colour =
   | "cool"
   | "hl";
 
-/** A node kind's variant: a term concrete or abstract, a column in a data product or not. */
-export type Variant = "plain" | "concrete" | "abstract" | "in_product" | "out_of_product";
+/** A node kind's variant: a term's role, a column in a data product or not. */
+export type Variant = "plain" | "concept" | "class" | "property" | "in_product" | "out_of_product";
+
+/** A term's colour by its role, as its role badge colours it (TermRoleBadge); the shape is the
+ * term's own, so a grey concept is never taken for a grey column. */
+const ROLE_COLOUR: Record<"concept" | "class" | "property", Colour> = {
+  concept: "fam-other",
+  class: "fam-boolean",
+  property: "cool",
+};
 
 export interface Look {
   shape: Shape;
@@ -63,9 +71,10 @@ const BY_TYPE: Record<Exclude<NodeType, "term" | "column">, { shape: Shape; colo
 
 export function nodeLook(n: GraphNode): Look {
   if (n.type === "term") {
-    return n.abstract
-      ? { shape: "diamond", colour: "hl", variant: "abstract" }
-      : { shape: "diamond", colour: "cool", variant: "concrete" };
+    // A graph that does not read the role draws every term alike.
+    return n.role
+      ? { shape: "diamond", colour: ROLE_COLOUR[n.role], variant: n.role }
+      : { shape: "diamond", colour: "cool", variant: "plain" };
   }
   if (n.type === "column") {
     return n.inProduct

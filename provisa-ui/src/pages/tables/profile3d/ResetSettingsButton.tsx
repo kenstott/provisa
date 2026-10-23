@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A 3D graph's "Reset view settings": clears what the graph remembers (graphSettings.ts) and puts
+// A 3D graph's "Set Defaults", bordered as "Reset view" beside it: clears what the graph remembers (graphSettings.ts) and puts
 // its layout, layers, toggles and filters back to their defaults. The camera is "Reset view".
 
 import { useTranslation } from "react-i18next";
@@ -19,7 +19,12 @@ export function ResetSettingsButton({ onReset, testId }: { onReset: () => void; 
   const { t } = useTranslation();
   return (
     <Tip text={t("profile3d.resetSettingsHelp")}>
-      <Button size="xs" variant="subtle" onClick={onReset} data-testid={`${testId}-reset-settings`}>
+      <Button
+        size="xs"
+        variant="default"
+        onClick={onReset}
+        data-testid={`${testId}-reset-settings`}
+      >
         {t("profile3d.resetSettings")}
       </Button>
     </Tip>

@@ -75,16 +75,22 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
     await expect(page.getByTestId("glossary-list")).toHaveCount(0);
 
     expect(await legend(page, "ontology-stage")).toEqual(
-      expect.arrayContaining(["domain", "concrete term"]),
+      expect.arrayContaining(["domain", "property"]),
     );
-    // The status filters, retired hidden until asked for.
-    await expect(page.getByTestId("ontology-status-proposed")).toBeChecked();
-    await expect(page.getByTestId("ontology-status-deprecated")).toBeChecked();
-    await expect(page.getByTestId("ontology-status-retired")).not.toBeChecked();
+    // The Terms dropdown: retired terms hidden until asked for.
+    await expect(page.getByTestId("ontology-terms-menu")).toHaveText("Terms: 4 of 5");
+    await page.getByTestId("ontology-terms-menu").click();
+    const chosen = (value: string) => page.getByTestId(`ontology-terms-menu-option-${value}`);
+    await expect(chosen("proposed")).toHaveAttribute("data-combobox-active", "true");
+    await expect(chosen("deprecated")).toHaveAttribute("data-combobox-active", "true");
+    await expect(chosen("retired")).not.toHaveAttribute("data-combobox-active");
+    await page.keyboard.press("Escape");
 
     // The data layer, off by default, adds the bound columns' tables.
-    await expect(page.getByTestId("ontology-layer-data")).not.toBeChecked();
-    await page.getByTestId("ontology-layer-data").evaluate((el: HTMLElement) => el.click());
+    await expect(page.getByTestId("ontology-layers-menu")).toHaveText("Layers: Domains, Columns");
+    await page.getByTestId("ontology-layers-menu").click();
+    await page.getByTestId("ontology-layers-menu-option-data").click();
+    await page.keyboard.press("Escape");
     // In the Ontology View a table is a table (a cylinder), whether or not a product holds it.
     await expect.poll(() => legend(page, "ontology-stage")).toContain("table");
   });

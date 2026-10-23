@@ -85,8 +85,6 @@
     "allFocus": "Todos os produtos e termos",
     "someFocus": "{{count}} de {{total}} produtos e termos",
     "search": "Pesquisar…",
-    "look_concrete": "termo concreto",
-    "look_abstract": "termo abstrato",
     "look_in_product": "coluna num produto de dados",
     "look_out_of_product": "coluna fora dos produtos de dados",
     "look_stored": "tabela",
@@ -100,6 +98,15 @@
     "openAsQueryCompiling": "Compilando a consulta…",
     "openAsQueryNoCypher": "Esta consulta não tem forma Cypher.",
     "openAsQuerySparqlLater": "SPARQL abrirá quando seu endpoint estiver disponível.",
-    "identityGap": "Fundamentado em tabelas que não estão todas unidas como a mesma entidade: {{tables}}"
+    "identityGap": "Fundamentado em tabelas que não estão todas unidas como a mesma entidade: {{tables}}",
+    "layersMenu": "Camadas",
+    "termsMenu": "Termos",
+    "menuAll": "todos",
+    "menuSome": "{{count}} de {{total}}",
+    "unconnected": "Sem conexão",
+    "unconnectedHelp": "Termos sem relação ou ancoragem exibidas",
+    "look_class": "classe",
+    "look_concept": "conceito",
+    "look_property": "propriedade"
   }
 }

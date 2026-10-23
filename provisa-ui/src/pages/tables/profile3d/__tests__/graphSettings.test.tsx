@@ -10,7 +10,7 @@
 
 // A 3D graph's view settings are remembered across reloads, per graph (graphSettings.ts): restored
 // as the reader left them, a selection the graph no longer offers dropped rather than re-added, the
-// defaults where storage is unavailable, and cleared by "Reset view settings".
+// defaults where storage is unavailable, and cleared by "Set Defaults".
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -155,7 +155,7 @@ describe("the Ontology View's remembered settings", () => {
     expect(screen.getByTestId("x-filter-domain")).toHaveTextContent("sales");
   });
 
-  it("forget everything on Reset view settings", async () => {
+  it("forget everything on Set Defaults", async () => {
     render(explorer());
     fireEvent.click(screen.getByRole("checkbox", { name: "Rotate" }));
     expect(screen.getByRole("checkbox", { name: "Rotate" })).toBeChecked();

@@ -20,16 +20,26 @@ const COLOUR: Record<TermRole, string> = { class: "grape", property: "blue", con
 
 export function TermRoleBadge({
   term,
+  dangling = false,
   testId,
 }: {
   term: { table_count: number; ref_count: number };
+  /** A concept connected to no term that names data: said in red. */
+  dangling?: boolean;
   testId?: string;
 }) {
   const { t } = useTranslation();
   const role = termRole(term);
   return (
-    <Tip text={t(`glossaryTab.roleHelp_${role}`)}>
-      <Badge size="xs" variant="light" color={COLOUR[role]} data-testid={testId} data-role={role}>
+    <Tip text={dangling ? t("glossaryTab.danglingHelp") : t(`glossaryTab.roleHelp_${role}`)}>
+      <Badge
+        size="xs"
+        variant="light"
+        color={dangling ? "red" : COLOUR[role]}
+        data-testid={testId}
+        data-role={role}
+        data-dangling={dangling || undefined}
+      >
         {t(`glossaryTab.role_${role}`)}
       </Badge>
     </Tip>
@@ -41,23 +51,17 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
   const { t } = useTranslation();
   return (
     <Group gap={4} wrap="nowrap">
-      <TermRoleBadge term={term} testId={`glossary-role-${term.id}`} />
+      <TermRoleBadge
+        term={term}
+        dangling={termRole(term) === "concept" && !term.grounded}
+        testId={`glossary-role-${term.id}`}
+      />
       {term.identity_gap && (
         <Tip text={t("glossaryTab.identityGapHelp")}>
           <Badge size="xs" variant="light" color="orange" data-testid={`glossary-gap-${term.id}`}>
             {t("glossaryTab.identityGap")}
           </Badge>
         </Tip>
-      )}
-      {term.is_abstract && (
-        <Badge
-          size="xs"
-          variant="light"
-          color={term.grounded ? undefined : "red"}
-          data-testid={term.grounded ? undefined : `glossary-dangling-${term.id}`}
-        >
-          {t("glossaryTab.abstract")}
-        </Badge>
       )}
       {term.deprecated && (
         <Badge size="xs" color="gray" variant="light">
@@ -74,7 +78,7 @@ export function TermListBadges({ term }: { term: GlossaryTermSummary }) {
           {t("glossaryTab.proposed")}
         </Badge>
       )}
-      {!term.is_abstract && (
+      {termRole(term) === "property" && (
         <Badge size="xs" variant="default">
           {term.ref_count}
         </Badge>

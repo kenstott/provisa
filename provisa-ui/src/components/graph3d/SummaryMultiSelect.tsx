@@ -15,10 +15,15 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CheckIcon, Combobox, Group, InputBase, useCombobox } from "@mantine/core";
+import { Tip } from "../Tip";
 
 export interface SummaryOption {
   value: string;
   label: string;
+  /** Offered but not choosable now (Tables, until Columns is on). */
+  disabled?: boolean;
+  /** What the choice means, on hover. */
+  hint?: string;
 }
 
 export function SummaryMultiSelect({
@@ -30,6 +35,8 @@ export function SummaryMultiSelect({
   allText,
   someText,
   searchable = false,
+  prefix,
+  names = 1,
 }: {
   /** What the filter chooses; its placeholder and accessible name. */
   label: string;
@@ -43,6 +50,10 @@ export function SummaryMultiSelect({
   /** Said when several, not all, are chosen ("2 of 5 domains"). */
   someText: (count: number, total: number) => string;
   searchable?: boolean;
+  /** Said before the summary ("Layers: Domains, Columns"), as the closed control's own name. */
+  prefix?: string;
+  /** Up to this many chosen are named; more are counted. */
+  names?: number;
 }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
@@ -59,14 +70,15 @@ export function SummaryMultiSelect({
   const toggle = (v: string) =>
     onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   const every = options.length > 0 && options.every((o) => value.includes(o.value));
-  const summary =
+  const said =
     value.length === 0
       ? null
       : every
         ? allText
-        : value.length === 1
-          ? labelOf(value[0])
+        : value.length <= names
+          ? value.map(labelOf).join(", ")
           : someText(value.length, options.length);
+  const summary = said !== null && prefix ? `${prefix}: ${said}` : said;
   const listed = search
     ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
     : options;
@@ -90,7 +102,7 @@ export function SummaryMultiSelect({
           aria-label={label}
           data-testid={testId}
         >
-          {summary ?? <span className="g3d-placeholder">{label}</span>}
+          {summary ?? <span className="g3d-placeholder">{prefix ?? label}</span>}
         </InputBase>
       </Combobox.Target>
       <Combobox.Dropdown>
@@ -108,12 +120,19 @@ export function SummaryMultiSelect({
               value={o.value}
               key={o.value}
               active={value.includes(o.value)}
+              disabled={o.disabled}
               data-testid={`${testId}-option-${o.value}`}
             >
-              <Group gap={6} wrap="nowrap">
-                {value.includes(o.value) ? <CheckIcon size={10} /> : <span style={{ width: 10 }} />}
-                <span>{o.label}</span>
-              </Group>
+              <Tip text={o.hint} position="right">
+                <Group gap={6} wrap="nowrap">
+                  {value.includes(o.value) ? (
+                    <CheckIcon size={10} />
+                  ) : (
+                    <span style={{ width: 10 }} />
+                  )}
+                  <span>{o.label}</span>
+                </Group>
+              </Tip>
             </Combobox.Option>
           ))}
         </Combobox.Options>

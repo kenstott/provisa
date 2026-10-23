@@ -95,7 +95,7 @@ export function CanvasControls({
       <Divider orientation="horizontal" className="gf-ctrl-divider" />
       <Tip text={toggleLayoutLabel} named>
         <ActionIcon
-          variant={layoutMode === "hierarchy" ? "filled" : "subtle"}
+          variant={layoutMode === "hierarchy" ? "light" : "subtle"}
           size="md"
           aria-label={toggleLayoutLabel}
           aria-pressed={layoutMode === "hierarchy"}
