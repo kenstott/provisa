@@ -64,7 +64,6 @@
     "layer_domains": "Domänen",
     "layer_data": "Daten",
     "show": "Anzeigen",
-    "status_proposed": "Vorgeschlagen",
     "status_deprecated": "Veraltet",
     "status_retired": "Stillgelegt",
     "filterEdgeType": "Kantentypen",
@@ -109,6 +108,7 @@
     "look_property": "Eigenschaft",
     "overBudget": "{{count}} Treffer; Suche eingrenzen oder eine Domäne wählen",
     "domainCount": "{{domain}} ({{count}})",
-    "unlinkedTables": "In Tabellen verankert, die noch nicht als dieselbe Entität verknüpft sind: {{tables}}"
+    "unlinkedTables": "In Tabellen verankert, die noch nicht als dieselbe Entität verknüpft sind: {{tables}}",
+    "status_draft": "Entwurf"
   }
 }

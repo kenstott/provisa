@@ -107,9 +107,9 @@ describe("the Ontology View's terms", () => {
     expect(node("term:2")?.unlinkedTables).toBeUndefined();
   });
 
-  it("names a proposed term by its title, its standing marked by style alone", () => {
-    expect(node(G, "term:3")).toMatchObject({ status: "proposed", label: "Loyalty tier" });
-    expect(node(G, "term:4")).toMatchObject({ status: "proposed", label: "Concept" });
+  it("names a draft term by its title, its standing marked by style alone", () => {
+    expect(node(G, "term:3")).toMatchObject({ status: "draft", label: "Loyalty tier" });
+    expect(node(G, "term:4")).toMatchObject({ status: "draft", label: "Concept" });
     expect(node(G, "term:1")).toMatchObject({ status: "live", label: "Customer" });
     expect(G.nodes.some((n) => /undefined|·/.test(n.label))).toBe(false);
     // The definition rides along for the side panel, never in the label; none, nothing.
@@ -134,7 +134,7 @@ describe("the Ontology View's terms", () => {
     expect(node(G, "c:10:email")?.inProduct).toBe(true);
   });
 
-  it("shows proposed and deprecated terms by default and hides retired ones", () => {
+  it("shows draft and deprecated terms by default and hides retired ones", () => {
     const g = view(preset("ontology").layers);
     expect(ids(g)).toEqual(expect.arrayContaining(["term:3", "term:4", "term:5"]));
     expect(ids(g)).not.toContain("term:6");
@@ -143,7 +143,7 @@ describe("the Ontology View's terms", () => {
     expect(ids(all)).toContain("term:6");
     const noProposals = view(preset("ontology").layers, {
       ...defaults,
-      hiddenStatuses: ["proposed", "retired"],
+      hiddenStatuses: ["draft", "retired"],
     });
     expect(ids(noProposals)).not.toContain("term:3");
   });

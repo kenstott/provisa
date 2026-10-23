@@ -64,7 +64,6 @@
     "layer_domains": "網域",
     "layer_data": "數據",
     "show": "顯示",
-    "status_proposed": "提議中",
     "status_deprecated": "已棄用",
     "status_retired": "已停用",
     "filterEdgeType": "邊類型",
@@ -109,6 +108,7 @@
     "look_property": "屬性",
     "overBudget": "{{count}} 個相符；請收窄搜尋或選擇一個域",
     "domainCount": "{{domain}}（{{count}}）",
-    "unlinkedTables": "錨定在尚未關聯為同一實體的資料表上：{{tables}}"
+    "unlinkedTables": "錨定在尚未關聯為同一實體的資料表上：{{tables}}",
+    "status_draft": "草稿"
   }
 }

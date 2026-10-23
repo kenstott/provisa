@@ -64,7 +64,6 @@
     "layer_domains": "Domains",
     "layer_data": "Data",
     "show": "Show",
-    "status_proposed": "Proposed",
     "status_deprecated": "Deprecated",
     "status_retired": "Retired",
     "filterEdgeType": "Edge types",
@@ -109,6 +108,7 @@
     "look_property": "property",
     "overBudget": "{{count}} match; narrow the search or pick a domain",
     "domainCount": "{{domain}} ({{count}})",
-    "unlinkedTables": "Grounded in tables not yet linked as the same entity: {{tables}}"
+    "unlinkedTables": "Grounded in tables not yet linked as the same entity: {{tables}}",
+    "status_draft": "Draft"
   }
 }

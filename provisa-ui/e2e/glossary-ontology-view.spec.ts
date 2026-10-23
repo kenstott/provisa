@@ -81,7 +81,7 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
     await expect(page.getByTestId("ontology-terms-menu")).toHaveText("Terms: 4 of 5");
     await page.getByTestId("ontology-terms-menu").click();
     const chosen = (value: string) => page.getByTestId(`ontology-terms-menu-option-${value}`);
-    await expect(chosen("proposed")).toHaveAttribute("data-combobox-active", "true");
+    await expect(chosen("draft")).toHaveAttribute("data-combobox-active", "true");
     await expect(chosen("deprecated")).toHaveAttribute("data-combobox-active", "true");
     await expect(chosen("retired")).not.toHaveAttribute("data-combobox-active");
     await page.keyboard.press("Escape");

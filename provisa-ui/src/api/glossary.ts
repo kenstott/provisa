@@ -38,6 +38,9 @@ export const ENTERPRISE_DOMAIN = "*";
 export const GLOSSARY_EXPERT_KINDS = ["expert", "author"] as const;
 export type GlossaryExpertKind = (typeof GLOSSARY_EXPERT_KINDS)[number];
 
+/** A term's lifecycle (REQ-2144): draft until admitted, live, deprecated, retired. */
+export type TermStatus = "draft" | "live" | "deprecated" | "retired";
+
 export interface GlossaryTermSummary {
   id: number;
   name: string;
@@ -66,6 +69,12 @@ export interface GlossaryTermSummary {
   domains: string[];
   // REQ-2146: how many findings the term has (GET /admin/glossary/findings lists them).
   findings: number;
+  status: TermStatus;
+  // REQ-2144: why it was deprecated or retired, who said so, and a deprecation's planned
+  // retirement; none on a draft or a live term.
+  status_reason: string | null;
+  status_by: string | null;
+  retire_on: string | null;
 }
 
 export interface GlossaryRef {
@@ -389,6 +398,41 @@ export async function retireGlossaryTerm(
     throw new Error(serverMessage(data, requestFailed("retireGlossaryTerm", res.status)));
   }
   if (!res.ok) throw await mutationError(res, "retireGlossaryTerm");
+  return res.json();
+}
+
+/** Deprecate a live term (REQ-2144): it stays in service until ``retire_on``, if given, when it
+ * is retired. */
+export async function deprecateGlossaryTerm(
+  termId: number,
+  body: { reason: string; retire_on: string | null },
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/deprecate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await mutationError(res, "deprecateGlossaryTerm");
+}
+
+/** What a retired term applied to (REQ-2144): its columns (table path and column) and tables at
+ * the model commit before its retirement. None when the model's history holds no retirement of it
+ * (404 glossary.no_retirement_history). */
+export interface AppliedHistory {
+  retired_in: string;
+  as_of: string | null;
+  columns: { table: string; column: string }[];
+  tables: string[];
+}
+
+export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory | null> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/applied-history`);
+  if (res.status === 404) {
+    const data = await res.json();
+    if (data.code === "glossary.no_retirement_history") return null;
+    throw new Error(serverMessage(data, requestFailed("fetchAppliedHistory", res.status)));
+  }
+  if (!res.ok) throw await mutationError(res, "fetchAppliedHistory");
   return res.json();
 }
 

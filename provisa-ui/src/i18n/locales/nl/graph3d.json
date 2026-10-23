@@ -64,7 +64,6 @@
     "layer_domains": "Domeinen",
     "layer_data": "Data",
     "show": "Tonen",
-    "status_proposed": "Voorgesteld",
     "status_deprecated": "Verouderd",
     "status_retired": "Buiten gebruik",
     "filterEdgeType": "Randtypen",
@@ -109,6 +108,7 @@
     "look_property": "eigenschap",
     "overBudget": "{{count}} treffers; verfijn de zoekopdracht of kies een domein",
     "domainCount": "{{domain}} ({{count}})",
-    "unlinkedTables": "Verankerd in tabellen die nog niet als dezelfde entiteit zijn gekoppeld: {{tables}}"
+    "unlinkedTables": "Verankerd in tabellen die nog niet als dezelfde entiteit zijn gekoppeld: {{tables}}",
+    "status_draft": "Ontwerp"
   }
 }

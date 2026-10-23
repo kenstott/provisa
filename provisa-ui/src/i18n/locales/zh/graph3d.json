@@ -64,7 +64,6 @@
     "layer_domains": "域",
     "layer_data": "数据",
     "show": "显示",
-    "status_proposed": "提议中",
     "status_deprecated": "已弃用",
     "status_retired": "已停用",
     "filterEdgeType": "边类型",
@@ -109,6 +108,7 @@
     "look_property": "属性",
     "overBudget": "{{count}} 个匹配；请缩小搜索范围或选择一个域",
     "domainCount": "{{domain}}（{{count}}）",
-    "unlinkedTables": "锚定在尚未关联为同一实体的表上：{{tables}}"
+    "unlinkedTables": "锚定在尚未关联为同一实体的表上：{{tables}}",
+    "status_draft": "草稿"
   }
 }

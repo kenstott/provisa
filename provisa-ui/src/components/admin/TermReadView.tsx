@@ -26,7 +26,8 @@ import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
 import { GlossaryRelationships } from "./GlossaryRelationships";
-import { TermRoleBadge } from "./TermRoleBadge";
+import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
+import { RetiredTermRecord } from "./RetiredTermRecord";
 
 type Option = { value: string; label: string };
 
@@ -67,12 +68,27 @@ export function TermReadView({
             label: t("glossaryTab.roleLabel"),
             value: <TermRoleBadge term={term} testId="glossary-detail-role" />,
           },
-          { label: t("glossaryTab.proposed"), value: yesNo(!term.live) },
-          { label: t("glossaryTab.deprecated"), value: yesNo(term.deprecated) },
-          { label: t("glossaryTab.retired"), value: yesNo(term.retired) },
+          {
+            label: t("glossaryTab.statusLabel"),
+            value: <TermStatusBadge status={term.status} testId="glossary-detail-status" />,
+          },
+          // A deprecation or a retirement says why, who said so, and a deprecation when it ends.
+          ...(term.status === "deprecated" || term.status === "retired"
+            ? [
+                { label: t("glossaryTab.statusReasonLabel"), value: term.status_reason ?? "—" },
+                { label: t("glossaryTab.statusByLabel"), value: term.status_by ?? "—" },
+              ]
+            : []),
+          ...(term.status === "deprecated"
+            ? [{ label: t("glossaryTab.retireOnLabel"), value: term.retire_on ?? "—" }]
+            : []),
           { label: t("glossaryTab.excludeFromExportLabel"), value: yesNo(term.export_excluded) },
         ]}
       />
+
+      {term.status === "retired" && (
+        <RetiredTermRecord term={term} navigateToTerm={navigateToTerm} />
+      )}
 
       <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
       {term.refs.length === 0 ? (

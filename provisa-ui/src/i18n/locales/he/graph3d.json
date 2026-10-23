@@ -64,7 +64,6 @@
     "layer_domains": "תחומים",
     "layer_data": "נתונים",
     "show": "הצגה",
-    "status_proposed": "מוצע",
     "status_deprecated": "מיושן",
     "status_retired": "הוצא משימוש",
     "filterEdgeType": "סוגי קשתות",
@@ -109,6 +108,7 @@
     "look_property": "תכונה",
     "overBudget": "{{count}} התאמות; צמצמו את החיפוש או בחרו תחום",
     "domainCount": "{{domain}} ({{count}})",
-    "unlinkedTables": "מעוגן בטבלאות שעדיין לא קושרו כאותה ישות: {{tables}}"
+    "unlinkedTables": "מעוגן בטבלאות שעדיין לא קושרו כאותה ישות: {{tables}}",
+    "status_draft": "טיוטה"
   }
 }

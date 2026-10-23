@@ -87,8 +87,8 @@ export function nodeLook(n: GraphNode): Look {
 /** The label class a term's status puts on its name; a live term (or any other node) has none. */
 export function labelClass(status: TermStatus | undefined): string {
   switch (status) {
-    case "proposed":
-      return "g3d-label-proposed";
+    case "draft":
+      return "g3d-label-draft";
     case "deprecated":
       return "g3d-label-deprecated";
     case "retired":

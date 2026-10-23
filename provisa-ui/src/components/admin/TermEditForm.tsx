@@ -50,7 +50,7 @@ import { DetailFields } from "../detail/DetailFields";
 import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { columnKey, columnTerms, type ColumnTerm } from "./claimColumns";
 import { GlossaryRelationships } from "./GlossaryRelationships";
-import { TermRoleBadge } from "./TermRoleBadge";
+import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { changes, draftOf, type Change, type TermDraft } from "./termDraft";
 
 type Option = { value: string; label: string };
@@ -336,12 +336,9 @@ export function TermEditForm({
             value: <TermRoleBadge term={term} testId="glossary-detail-role" />,
           },
           {
-            label: t("glossaryTab.proposed"),
-            value: t(!term.live ? "detailFields.yes" : "detailFields.no"),
-          },
-          {
-            label: t("glossaryTab.deprecated"),
-            value: t(term.deprecated ? "detailFields.yes" : "detailFields.no"),
+            // Changed by Deprecate, Retire and Restore, each with a reason, not here.
+            label: t("glossaryTab.statusLabel"),
+            value: <TermStatusBadge status={term.status} testId="glossary-edit-status" />,
           },
         ]}
       />

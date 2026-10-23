@@ -67,11 +67,12 @@ export type LayerId =
 /** Force; lineage lanes left to right (REQ-1667); or a top-down tree (REQ-2130's Taxonomy). */
 export type LayoutKind = "force" | "lanes" | "tree";
 
-/** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides proposed). */
-export type TermStatus = "live" | "proposed" | "deprecated" | "retired";
+/** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides draft). */
+export type { TermStatus } from "../../api/glossary";
+import type { TermStatus } from "../../api/glossary";
 
 /** Every standing a term can have, in the order a reader picks them. */
-export const TERM_STATUSES: TermStatus[] = ["live", "proposed", "deprecated", "retired"];
+export const TERM_STATUSES: TermStatus[] = ["live", "draft", "deprecated", "retired"];
 
 export interface GraphNode {
   id: string;

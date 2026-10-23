@@ -64,7 +64,6 @@
     "layer_domains": "Домены",
     "layer_data": "Данные",
     "show": "Показать",
-    "status_proposed": "Предложен",
     "status_deprecated": "Устарел",
     "status_retired": "Выведен",
     "filterEdgeType": "Типы рёбер",
@@ -109,6 +108,7 @@
     "look_property": "свойство",
     "overBudget": "Совпадений: {{count}}; уточните поиск или выберите домен",
     "domainCount": "{{domain}} ({{count}})",
-    "unlinkedTables": "Привязан к таблицам, ещё не связанным как одна сущность: {{tables}}"
+    "unlinkedTables": "Привязан к таблицам, ещё не связанным как одна сущность: {{tables}}",
+    "status_draft": "Черновик"
   }
 }

@@ -60,7 +60,7 @@ import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
 /** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
-const STATUSES: TermStatus[] = ["proposed", "deprecated", "retired"];
+const STATUSES: TermStatus[] = ["draft", "deprecated", "retired"];
 
 /** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns,
  * and its Tables, which draws the tables of the columns drawn and so goes with Columns. */

@@ -64,7 +64,6 @@
     "layer_domains": "Domaines",
     "layer_data": "Données",
     "show": "Afficher",
-    "status_proposed": "Proposé",
     "status_deprecated": "Obsolète",
     "status_retired": "Retiré",
     "filterEdgeType": "Types d'arêtes",
@@ -109,6 +108,7 @@
     "look_property": "propriété",
     "overBudget": "{{count}} correspondances ; affinez la recherche ou choisissez un domaine",
     "domainCount": "{{domain}} ({{count}})",
-    "unlinkedTables": "Ancré dans des tables pas encore liées comme la même entité : {{tables}}"
+    "unlinkedTables": "Ancré dans des tables pas encore liées comme la même entité : {{tables}}",
+    "status_draft": "Brouillon"
   }
 }

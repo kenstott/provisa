@@ -41,6 +41,8 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   fetchGlossaryFindings: vi.fn(async () => []),
   retireGlossaryTerm: vi.fn(),
   restoreGlossaryTerm: vi.fn(),
+  deprecateGlossaryTerm: vi.fn(),
+  fetchAppliedHistory: vi.fn(),
 }));
 
 // A term's tag taken off from its To review finding.
@@ -154,6 +156,8 @@ import {
   generateGlossaryDefinition,
   generateGlossaryRelationships,
   listGlossaryTerms,
+  deprecateGlossaryTerm,
+  fetchAppliedHistory,
   fetchGlossaryFindings,
   moveGlossaryRef,
   restoreGlossaryTerm,
@@ -165,6 +169,8 @@ import {
 
 const mockRetire = vi.mocked(retireGlossaryTerm);
 const mockFindings = vi.mocked(fetchGlossaryFindings);
+const mockDeprecate = vi.mocked(deprecateGlossaryTerm);
+const mockHistory = vi.mocked(fetchAppliedHistory);
 const mockRestore = vi.mocked(restoreGlossaryTerm);
 const mockList = vi.mocked(listGlossaryTerms);
 const mockFetchTerm = vi.mocked(fetchGlossaryTerm);
@@ -187,6 +193,10 @@ const REVENUE: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
@@ -203,6 +213,10 @@ const CHURN: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
@@ -219,6 +233,10 @@ const MARGIN: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
+  status: "deprecated",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
@@ -236,6 +254,10 @@ const DANGLING: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
+  status: "draft",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: false,
@@ -300,6 +322,7 @@ const save = () => fireEvent.click(screen.getByTestId("glossary-edit-save"));
 describe("GlossaryTab", () => {
   beforeEach(() => {
     mockFindings.mockResolvedValue([]);
+    mockHistory.mockResolvedValue(null);
     mockList.mockReset();
     mockFetchTerm.mockReset();
     mockUpdate.mockReset();
@@ -342,7 +365,85 @@ describe("GlossaryTab", () => {
     expect(within(churn).queryByText("Abstract")).toBeNull();
 
     const margin = screen.getByTestId("glossary-item-3");
-    expect(within(margin).getByText(t("glossaryTab.deprecated"))).toBeInTheDocument();
+    expect(within(margin).getByTestId("glossary-status-3")).toHaveTextContent(
+      t("glossaryTab.status_deprecated"),
+    );
+    // A live term is the ordinary case: no status badge.
+    expect(within(revenue).queryByTestId("glossary-status-1")).toBeNull();
+  });
+
+  it("badges a draft term Draft in the list", async () => {
+    mockList.mockResolvedValue([REVENUE, DANGLING]);
+    render(<GlossaryTab />);
+    expect(await screen.findByTestId("glossary-status-4")).toHaveTextContent(
+      t("glossaryTab.status_draft"),
+    );
+  });
+
+  it("deprecates a live term with a reason", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    fireEvent.click(await screen.findByTestId("glossary-deprecate-btn"));
+    const submit = await screen.findByTestId("glossary-deprecate-submit");
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByTestId("glossary-deprecate-reason"), {
+      target: { value: "superseded by Net revenue" },
+    });
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(mockDeprecate).toHaveBeenCalledWith(1, {
+        reason: "superseded by Net revenue",
+        retire_on: null,
+      }),
+    );
+  });
+
+  it("offers no Deprecate on a term that is not live", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-3"));
+    expect(await screen.findByTestId("glossary-restore-btn")).toBeInTheDocument();
+    expect(screen.queryByTestId("glossary-deprecate-btn")).toBeNull();
+    expect(screen.getByTestId("glossary-retire-btn")).toBeInTheDocument();
+  });
+
+  it("shows a retired term's successor and what it last applied to", async () => {
+    mockFetchTerm.mockImplementation(async (id) =>
+      id === 1
+        ? {
+            ...REVENUE_DETAIL,
+            refs: [],
+            retired: true,
+            status: "retired",
+            status_reason: "merged into Churn",
+            status_by: "alice",
+            edges_in: [{ term_id: 2, rel_type: "REPLACES", name: "Churn" }],
+          }
+        : CHURN_DETAIL,
+    );
+    mockHistory.mockResolvedValue({
+      retired_in: "b2",
+      as_of: "a1",
+      columns: [{ table: "erp/public/orders.yaml", column: "revenue" }],
+      tables: [],
+    });
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    expect(await screen.findByTestId("glossary-applied-history")).toHaveTextContent(
+      "erp/public/orders.yaml.revenue",
+    );
+    expect(mockHistory).toHaveBeenCalledWith(1);
+    fireEvent.click(screen.getByTestId("glossary-replaced-by-2"));
+    await waitFor(() => expect(mockFetchTerm).toHaveBeenCalledWith(2));
+  });
+
+  it("says when the model's history holds no retirement of a retired term", async () => {
+    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true, status: "retired" });
+    mockHistory.mockResolvedValue(null);
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    expect(await screen.findByTestId("glossary-applied-none")).toHaveTextContent(
+      t("serverErrors.glossary.no_retirement_history"),
+    );
   });
 
   it("flags a dangling concept (no path to a term naming data) in red", async () => {
@@ -445,9 +546,11 @@ describe("GlossaryTab", () => {
       ["Domains", "finance, sales"],
       // Grounded in neither a table nor a column.
       ["Role", "Concept"],
-      ["Proposed", "No"],
-      ["Deprecated", "Yes"],
-      ["Retired", "No"],
+      // Deprecated by its last column leaving: no one gave a reason or a date.
+      ["Status", "Deprecated"],
+      ["Reason", "—"],
+      ["By", "—"],
+      ["Planned retirement", "—"],
       [t("glossaryTab.excludeFromExportLabel"), "No"],
     ]);
     // Nothing is edited in place: no input until Edit.
@@ -818,7 +921,7 @@ describe("GlossaryTab", () => {
       t("glossaryTab.loses", { tags: "pii" }),
     );
     mockRetire.mockResolvedValueOnce({ status: "retired", tag_changes: [] });
-    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true });
+    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true, status: "retired" });
     fireEvent.click(screen.getByTestId("glossary-tag-loss-carry"));
     await waitFor(() =>
       expect(mockRetire).toHaveBeenLastCalledWith(1, {
@@ -827,13 +930,9 @@ describe("GlossaryTab", () => {
         carry_tags: true,
       }),
     );
-    await waitFor(() =>
-      expect(screen.getByTestId("glossary-retire-btn")).toHaveTextContent(
-        t("glossaryTab.unretire"),
-      ),
-    );
-
-    fireEvent.click(screen.getByTestId("glossary-retire-btn"));
+    // Retired: Restore takes Retire's place.
+    fireEvent.click(await screen.findByTestId("glossary-restore-btn"));
+    expect(screen.queryByTestId("glossary-retire-btn")).toBeNull();
     await waitFor(() => expect(mockRestore).toHaveBeenCalledWith(1));
   });
 

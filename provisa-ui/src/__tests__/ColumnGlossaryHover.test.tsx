@@ -43,6 +43,10 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   refs: [
     {
       table_id: 10,

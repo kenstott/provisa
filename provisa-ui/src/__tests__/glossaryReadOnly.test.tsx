@@ -58,6 +58,10 @@ const REVENUE: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
+  status: "live",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
   export_excluded: false,
   retired: false,
   live: true,
@@ -73,6 +77,10 @@ const CHURN: GlossaryTermSummary = {
   table_count: 0,
   identity_gap: false,
   findings: 0,
+  status: "draft",
+  status_reason: null,
+  status_by: null,
+  retire_on: null,
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {

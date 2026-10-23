@@ -194,7 +194,7 @@ function GraphLegend({ graph }: { graph: GraphData }) {
         </span>
       ))}
       {statuses &&
-        (["live", "proposed", "deprecated", "retired"] as const).map((st) => (
+        (["live", "draft", "deprecated", "retired"] as const).map((st) => (
           <span
             key={st}
             className={`g3d-legend-status ${labelClass(st)}`.trim()}

@@ -64,7 +64,6 @@
     "layer_domains": "Domini",
     "layer_data": "Dati",
     "show": "Mostra",
-    "status_proposed": "Proposto",
     "status_deprecated": "Deprecato",
     "status_retired": "Ritirato",
     "filterEdgeType": "Tipi di arco",
@@ -109,6 +108,7 @@
     "look_property": "proprietà",
     "overBudget": "{{count}} corrispondenze; restringi la ricerca o scegli un dominio",
     "domainCount": "{{domain}} ({{count}})",
-    "unlinkedTables": "Ancorato a tabelle non ancora collegate come la stessa entità: {{tables}}"
+    "unlinkedTables": "Ancorato a tabelle non ancora collegate come la stessa entità: {{tables}}",
+    "status_draft": "Bozza"
   }
 }

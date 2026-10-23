@@ -64,7 +64,6 @@
     "layer_domains": "ドメイン",
     "layer_data": "データ",
     "show": "表示",
-    "status_proposed": "提案中",
     "status_deprecated": "非推奨",
     "status_retired": "廃止",
     "filterEdgeType": "エッジの種類",
@@ -109,6 +108,7 @@
     "look_property": "プロパティ",
     "overBudget": "{{count}} 件一致。検索を絞り込むかドメインを選んでください",
     "domainCount": "{{domain}}（{{count}}）",
-    "unlinkedTables": "同一エンティティとしてまだリンクされていないテーブルに基づいています: {{tables}}"
+    "unlinkedTables": "同一エンティティとしてまだリンクされていないテーブルに基づいています: {{tables}}",
+    "status_draft": "下書き"
   }
 }
