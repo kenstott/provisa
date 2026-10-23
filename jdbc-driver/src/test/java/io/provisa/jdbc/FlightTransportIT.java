@@ -56,14 +56,19 @@ class FlightTransportIT {
         assertNull(conn.flightTransport);
     }
 
+    /**
+     * REQ-2076: a role the user does not hold is refused as "not permitted", and the refusal says
+     * nothing about whether that role exists -- not even its name.
+     */
     @Test
-    void aRoleTheUserDoesNotHoldIsRefusedWithTheServersReason() throws SQLException {
+    void aRoleTheUserDoesNotHoldIsRefusedWithoutSayingWhetherItExists() throws SQLException {
         org.junit.jupiter.api.Assumptions.assumeTrue(
             UNHELD_ROLE != null, "provisa.unheldRole names a role the user does not hold");
         try (Connection conn = DriverManager.getConnection(BASE_URL, props(PASSWORD, UNHELD_ROLE));
              Statement stmt = conn.createStatement()) {
             SQLException refused = assertThrows(SQLException.class, () -> stmt.executeQuery(SQL));
-            assertTrue(refused.getMessage().contains(UNHELD_ROLE), refused.getMessage());
+            assertTrue(refused.getMessage().contains("not permitted"), refused.getMessage());
+            assertFalse(refused.getMessage().contains(UNHELD_ROLE), refused.getMessage());
         }
     }
 }

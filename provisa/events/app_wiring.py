@@ -533,6 +533,10 @@ def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> An
     given its first build, as the built view's change. A replica's landed build is told the same
     way (``state.on_input_landed``, called by replica_builds.run_build)."""
 
+    # The views a landing woke, each with the input it woke on, until the one rewire job takes
+    # them: a landing before that job runs replaces the job, never what an earlier one woke.
+    woken: dict[str, str] = {}
+
     def _built(mv: Any) -> None:
         _landed(view_node(mv))
 
@@ -540,6 +544,8 @@ def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> An
         waiting = [node for node, inputs in state.views_awaiting_input.items() if built in inputs]
         if not waiting:
             return
+        for node in waiting:
+            woken[node] = built
 
         async def _wire_again() -> None:
             from provisa.core.request_context import reset_current_org, set_current_org
@@ -549,15 +555,16 @@ def _wire_views_reading(scheduler: Any, state: Any, log: Any, org_id: str) -> An
             try:
                 await wire_event_loop(scheduler, state=state, log=log, seed=False)
                 wired = {p.node for p in state.event_loop_processors}
-                for node in waiting:
+                for node, by in list(woken.items()):
                     if node not in wired:
                         continue  # still awaiting another input
                     async with state.tenant_db.acquire() as conn:
                         event_id = await queue.post_event(
-                            conn, source_table=built, event_type="replace", payload={}
+                            conn, source_table=by, event_type="replace", payload={}
                         )
                         await queue.fan_out(conn, event_id, [node])
-                    log.info("event loop: %s wired after %s was first built", node, built)
+                    del woken[node]
+                    log.info("event loop: %s wired after %s was first built", node, by)
             finally:
                 reset_current_org(token)
 

@@ -28,6 +28,7 @@ import os
 import subprocess
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import httpx
 import pytest
@@ -121,10 +122,15 @@ def server(stack, tmp_path_factory):
             **stack.env,
             "PROVISA_DATA_DIR": str(home / "provisa"),
         },
+        await_flight=True,
     )
     srv.start(timeout=600)
-    # The demo's setup, as its template build runs it: the profiler's first run (setup.yaml).
-    assert _setup().run(_DEMO, srv.base_url) == 0
+    # The demo's setup, as its template build runs it (setup.yaml): two profile runs with
+    # setup_drift.py's change to the store between them, which reads the store's address from
+    # the environment as the bundle build gives it.
+    with mock.patch.dict(os.environ, stack.env):
+        flight = f"grpc://127.0.0.1:{srv.flight_port}"
+        assert _setup().run(_DEMO, srv.base_url, flight=flight) == 0
     try:
         yield srv
     finally:

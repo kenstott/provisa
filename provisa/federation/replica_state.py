@@ -1006,6 +1006,16 @@ async def unretire(conn: "Connection", key: ReplicaKey) -> bool:
     return (result.rowcount or 0) > 0
 
 
+async def unbuild_retired(conn: "Connection", key: ReplicaKey) -> bool:
+    """Mark the retired replica ``key`` as holding no replica, before its table is dropped: a
+    declaration that comes while the drop runs finds nothing built and asks for a build. False
+    when the model declared it again first, which keeps its table."""
+    result = await conn.execute_core(
+        update(replica_state).where(_is(key), _t.retired_at.is_not(None)).values(completed_at=None)
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def retired_before(conn: "Connection", before: datetime) -> list[ReplicaKey]:
     """The replicas retired at or before ``before``: those whose wait is over."""
     result = await conn.execute_core(

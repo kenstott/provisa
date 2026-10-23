@@ -78,6 +78,19 @@ class _Elastic:
             ["docker", "run", "-d", "--rm", "--memory", "1g", "--name", self._name]
             + ["-p", f"127.0.0.1:{self.port}:9200"]
             + ([] if sys.platform == "darwin" else ["-p", f"{self.gateway}:{self.port}:9200"])
+            # Trino's connector reads metadata from the configured host but scans each shard at its
+            # node's publish address -- by default the container's bridge address and port 9200,
+            # which Trino's network does not reach. The node publishes the address Trino dials.
+            + (
+                []
+                if sys.platform == "darwin"
+                else [
+                    "-e",
+                    f"http.publish_host={self.gateway}",
+                    "-e",
+                    f"http.publish_port={self.port}",
+                ]
+            )
             + ["-e", "discovery.type=single-node", "-e", "xpack.security.enabled=false"]
             + ["-e", "ES_JAVA_OPTS=-Xms512m -Xmx512m", _IMAGE],
             check=True,

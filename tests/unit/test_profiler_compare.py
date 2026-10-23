@@ -212,6 +212,17 @@ def test_a_measure_constant_across_its_window_that_changes_is_drifting():
     assert count["drifting"] is True
 
 
+def test_a_window_with_no_spread_that_is_not_constant_has_no_distance():
+    """Most of the window at one value and a run away from it: the MAD is 0, so there is no spread
+    to measure a distance in, and a change from the baseline is drifting."""
+    rows = _drift(_run(rows=101), _window([100, 100, 100, 104]))
+    count = rows[("table", None, None, "row_count")]
+    assert count["spread"] == 0 and count["distance"] is None
+    assert count["drifting"] is True
+    steady = _drift(_run(rows=100), _window([100, 100, 100, 104]))
+    assert steady[("table", None, None, "row_count")]["drifting"] is False
+
+
 def test_a_measure_differing_only_in_rounding_is_not_drifting():
     """A parallel engine's sums differ in their last bits from one run of the same rows to the
     next: neither against a constant window nor one whose spread is that rounding."""

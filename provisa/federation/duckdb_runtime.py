@@ -1077,6 +1077,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             table=table,
             columns=text_vectors(columns),
             pk_columns=pk_columns,
+            key_after_landing=True,
         )
 
     async def land_table(

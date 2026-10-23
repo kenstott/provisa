@@ -1,8 +1,8 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-192 — Hasura Migration Converters
-  # Converters emit warnings for unmappable features (event_triggers, remote_schemas, cron_triggers, BooleanExpressionType)…
+  # [SUPERSEDED by REQ-417, 2026-10-17 -- the v2 converter converts event triggers, cron triggers, actions and remote schema…
 
   Scenario: REQ-192 default behaviour
-    Given a Hasura project with event_triggers, remote_schemas, cron_triggers, or webhook-backed actions
+    Given a Hasura v2 project with event triggers, a cron trigger, an action and a section with no Provisa counterpart
     When the converter runs
-    Then warnings are emitted for unmappable features and conversion completes rather than aborting
+    Then each feature with a counterpart is converted and reported, what has none is warned about by name, and conversion completes

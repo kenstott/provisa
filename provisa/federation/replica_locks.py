@@ -13,7 +13,8 @@
 Three limits bound replica builds, each a lock the holder's death releases with nothing to renew
 and nobody to notice:
 
-- one build of a replica at a time, across every process and node: the REPLICA lock;
+- one build of a replica at a time, across every process and node of its region (REQ-1922):
+  the REPLICA lock;
 - at most ``replication.engine_jobs`` background jobs on one engine at once, across every node:
   an ENGINE SLOT, one of that many locks per engine;
 - at most ``replication.builds_per_node`` builds on one host at once: a NODE SLOT.
@@ -53,7 +54,13 @@ ReplicaKey = tuple[str, str, str]
 
 
 def replica_lock_name(org_id: str, key: ReplicaKey) -> str:
-    return "|".join((org_id, *key))
+    """The lock of the copy this node's region keeps (REQ-1922: each cluster applies REQ-1915's
+    limits to itself): another region builds its own copy, into its own store, beside it. The
+    one implicit region adds nothing to the name."""
+    from provisa.core import process_region
+    from provisa.core.environments import region_part
+
+    return "|".join((org_id, *key)) + region_part(process_region.region())
 
 
 class BuildClaim:

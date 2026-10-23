@@ -6432,7 +6432,7 @@ DDN AggregateExpression metadata preserved in sidecar `provisa-aggregates.yaml` 
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Converters emit warnings for unmappable features (event_triggers, remote_schemas, cron_triggers, BooleanExpressionType) without failing conversion. v2 Actions and DDN Commands convert to Provisa `functions` config where backed by stored procedures; webhook-backed actions emit warning with handler URL. Part of Phases AG/AH (Hasura Converters).
+[SUPERSEDED by [REQ-417](#REQ-417), 2026-10-17 -- the v2 converter converts event triggers, cron triggers, actions and remote schemas instead of warning about them. Kept here for history; do not implement against it.] Converters emit warnings for unmappable features (event_triggers, remote_schemas, cron_triggers, BooleanExpressionType) without failing conversion. v2 Actions and DDN Commands convert to Provisa `functions` config where backed by stored procedures; webhook-backed actions emit warning with handler URL. [END SUPERSEDED BLOCK] Part of Phases AG/AH (Hasura Converters). (Amended 2026-10-21, CONVERTED NOT WARNED, per [REQ-417](#REQ-417):) The v2 converter converts each feature that has a Provisa counterpart and reports it as carried or mapped: an event trigger becomes a change trigger on its table ([REQ-2054](#REQ-2054)), a cron trigger a scheduled trigger, an action a command calling the same handler, and a remote schema a GraphQL source. A warning names only what does not come across: a section of the export with no counterpart (query_collections, allowlist, rest_endpoints, network, opentelemetry), or the part of a mapped feature its counterpart lacks. No warning fails the conversion. DDN Commands still convert to Provisa `functions`.
 
 **Use case:** Hasura v2 parity: unmappable features emit warnings instead of failing so partial migrations complete.
 
@@ -6606,7 +6606,7 @@ REST endpoint auto-generation -- for each root query field, generate `GET /data/
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Both Hasura v2 and DDN converters emit placeholder connection credentials in the output config (host: localhost, password: ${env:DB_PASSWORD}). Operators must update connection details before starting Provisa.
+[SUPERSEDED by [REQ-417](#REQ-417), 2026-10-17 -- the v2 converter invents no connection for a source the export does not carry. Kept here for history; do not implement against it.] Both Hasura v2 and DDN converters emit placeholder connection credentials in the output config (host: localhost, password: ${env:DB_PASSWORD}). [END SUPERSEDED BLOCK] Operators must update connection details before starting Provisa. (Amended 2026-10-21, NO INVENTED CONNECTION, per [REQ-417](#REQ-417):) The DDN converter emits placeholder connection credentials (host: localhost, password: ${env:DB_PASSWORD}). The v2 converter makes nothing up for a source whose connection the export does not carry (a `from_env` URL, or none): the source has no host, and the import's report names the source and the variable it reads, and says to enter its host, port, database, user and password in the import's source settings and convert again.
 
 **Use case:** Placeholder credentials ensure the generated config is syntactically valid while signaling that real credentials must be supplied before production use.
 
@@ -6642,7 +6642,7 @@ v2 converter upgrades a role to `write` capability when that role has any `delet
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-When a Hasura v2 source `database_url` is an environment variable reference (`{"from_env": "VAR"}`) or cannot be parsed, the converter substitutes placeholder values: `host: localhost`, `port: 5432`, `database: default`, `username: postgres`, `password: ${env:DB_PASSWORD}`. Operators must fix these via `--source-overrides` before the config is used.
+[SUPERSEDED by [REQ-417](#REQ-417), 2026-10-17 -- no placeholder is substituted; an unparseable URL fails the conversion by name. Kept here for history; do not implement against it.] When a Hasura v2 source `database_url` is an environment variable reference (`{"from_env": "VAR"}`) or cannot be parsed, the converter substitutes placeholder values: `host: localhost`, `port: 5432`, `database: default`, `username: postgres`, `password: ${env:DB_PASSWORD}`. Operators must fix these via `--source-overrides` before the config is used. [END SUPERSEDED BLOCK] (Amended 2026-10-21, NO PLACEHOLDERS, per [REQ-417](#REQ-417):) When a Hasura v2 source's `database_url` is an environment variable reference (`{"from_env": "VAR"}`) or absent, no connection value is substituted: the source has no host, and the report names the variable and says to enter the connection in the import's source settings (`source_overrides`), which then supply it. A `database_url` that cannot be parsed fails the conversion, naming the URL (`import.conversion_failed`).
 
 **Use case:** Explicit placeholder values on parse failure make unparseable connection URLs visible rather than producing silent misconfiguration.
 

@@ -126,7 +126,7 @@ def source_pg():
 def test_a_landed_never_expiring_source_is_never_contacted_again(source_pg):
     from tests.integration.isolated_server import IsolatedServer
 
-    store = start_local_postgres()
+    store = start_local_postgres(fdws=True)
     try:
         with tempfile.TemporaryDirectory() as workdir:
             path = Path(workdir) / "config.yaml"
@@ -137,7 +137,9 @@ def test_a_landed_never_expiring_source_is_never_contacted_again(source_pg):
                     _NAME,
                     engine="pg",
                     config=str(path),
-                    env={"PROVISA_MATERIALIZE_URL": store.dsn()},
+                    # The engine runs on the store this test starts, beside its sources: left to the
+                    # control plane, it would run in the stack's container, where 127.0.0.1 is not them.
+                    env={"PROVISA_MATERIALIZE_URL": store.dsn(), "PROVISA_ENGINE_URL": store.dsn()},
                 )
 
             first = _server()

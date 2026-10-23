@@ -1145,6 +1145,7 @@ class TrinoBackend(EngineBackend):
                 table=address.table,
                 columns=columns,
                 pk_columns=pk_columns,
+                key_after_landing=True,
             )
             reconciled.append((src.id, table_name))
         return reconciled
