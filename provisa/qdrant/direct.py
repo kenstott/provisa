@@ -614,6 +614,16 @@ class QdrantDriver(DirectDriver):  # REQ-2000
             return str(refused)
         return None
 
+    async def plan_kind(self, sql: str, table: dict) -> tuple[str | None, str | None]:
+        """How Qdrant states the governed ``sql`` on ``table`` -- "retrieve", "scroll" or "query"
+        -- or why it does not state it exactly (REQ-2000, REQ-863's connector contract)."""
+        why = await self.reason(sql, table)
+        if why is not None:
+            return None, why
+        tree = sqlglot.parse_one(sql, read="postgres")
+        distances = await asyncio.to_thread(self.distance_of, table["table_name"])
+        return analyse(tree, table, distances).kind, None
+
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
         tree = sqlglot.parse_one(sql, read="postgres")
         if isinstance(tree, exp.Insert):

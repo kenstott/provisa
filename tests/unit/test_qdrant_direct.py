@@ -304,16 +304,17 @@ async def test_the_route_check_names_why_a_read_is_the_engines(qdrant):
     assert said == "the statement aggregates"
 
 
-def test_the_pipeline_asks_the_route_check_and_leaves_similarity_to_it():
+def test_the_pipeline_asks_the_route_check_for_a_search_and_qdrant_runs_its_similarity():
     import inspect
 
     from provisa.pgwire import _pipeline
+    from provisa.transpiler.dialect_capabilities import CAPABILITIES, SIMILARITY
 
-    source = inspect.getsource(_pipeline._optimize_and_route)
-    assert "route_reason(" in source
-    assert 'dialect == "qdrant"' in inspect.getsource(
-        getattr(_pipeline, "_similarity_needs_engine")
-    )
+    from provisa.federation import connector_contract
+
+    assert "plan_kind(" in inspect.getsource(connector_contract._qdrant_plan)
+    assert "connector.plan(" in inspect.getsource(_pipeline._connector_plan)
+    assert SIMILARITY in CAPABILITIES["qdrant"]
 
 
 # --- a statement the engine answers: the collection's part, read live (REQ-2000) ---

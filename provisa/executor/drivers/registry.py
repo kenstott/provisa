@@ -125,12 +125,6 @@ def _make_neo4j() -> DirectDriver:  # GitHub issue #119: single-source Cypher DI
 
 
 # source_type → factory function
-def _make_code() -> DirectDriver:  # REQ-2100: a single-source read of a code table
-    from provisa.codesource.direct import CodeDriver
-
-    return CodeDriver()
-
-
 _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "postgresql": _make_pg,
     "mysql": _make_mysql,
@@ -161,8 +155,6 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "trino": _make_trino,
     # REQ-2100: a read of one code table runs its function and applies the rest of the statement
     # to its rows; a read across sources is the engine's.
-    "node": _make_code,
-    "python": _make_code,
     # REQ-1731: a HiveServer2/Exasol endpoint reached directly (not through Trino's own lake-scan
     # hive connector or JDBC exasol connector) — read-then-land on ANY engine, same shape as the
     # warehouse drivers above.
