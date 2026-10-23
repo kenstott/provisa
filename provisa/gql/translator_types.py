@@ -26,6 +26,9 @@ class GraphVarKind(str, Enum):
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
     # column off the rows and reports it beside them.
     CUT = "CUT"
+    # REQ-2135: an RDF term, one JSON value (provisa.gql.terms); a subject's IRI is built from it
+    # outside SQL (provisa.gql.iri).
+    TERM = "TERM"
 
 
 # The column a statement carries when one of its paths is bounded by the depth limit.

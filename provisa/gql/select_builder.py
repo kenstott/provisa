@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Variable
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, Property, Term, Variable
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.ir import ReturnClause
 from provisa.gql.translator_helpers import junction_edge_fields  # REQ-1586
@@ -644,6 +644,14 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             alias = item.alias
             is_bare = isinstance(expr, Variable)
             expr_text = expr.name if isinstance(expr, Variable) else ""
+
+            # REQ-2135: an RDF term, a variable a triple binds or a Term the front end wrote
+            term_vars = getattr(self, "_term_vars", {})
+            if (is_bare and expr_text in term_vars) or isinstance(expr, Term):
+                name = alias or expr_text or item.name.strip()
+                self._graph_vars[name] = GraphVarKind.TERM
+                exprs.append(exp.alias_(self._parse_expr(expr), alias=name, quoted=True))
+                continue
 
             # Passthrough variable: pre-built JSON from all-rels union subquery
             if is_bare and expr_text in passthrough_vars:

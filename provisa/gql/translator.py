@@ -49,6 +49,7 @@ from provisa.gql.ir import (
 )
 from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.gql.path_expr import PathExprMixin
+from provisa.gql.terms import TermsMixin
 from provisa.gql.path_functions import PathFunctionsMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
@@ -222,6 +223,7 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
 
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
+    TermsMixin,
     PathFunctionsMixin,
     SelectBuilderMixin,
     CorrelatedCallMixin,
@@ -255,6 +257,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
         self._shortestpath_hops_col: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         self._shortestpath_is_all: bool = False
+        # REQ-2135: the variables a triple binds → the column holding each one's RDF term
+        self._term_vars: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-2135: one check per path bounded by the depth limit, true when it was cut there
         self._cut_checks: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Counter for unique UNNEST alias names across the translation
@@ -534,6 +538,31 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             result = exp.Union(this=result, expression=branch, distinct=False)
         return result
 
+    def _construct_union(
+        self,
+        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+        where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        selects: list[list["exp.Expr"]],
+    ) -> "exp.Select | exp.Union":
+        """REQ-2135: a CONSTRUCT's triples, one select per template triple, put together with
+        UNION ALL: the graph is a set, and its writer keeps each triple once."""
+        result: exp.Select | exp.Union | None = None
+        for select_exprs in selects:
+            query = self._build_main_query(
+                from_clause.copy(),
+                [{**j, "table": j["table"].copy(), "on": j["on"].copy()} for j in joins],
+                where_expr.copy() if where_expr is not None else None,
+                select_exprs,
+            )
+            result = (
+                query
+                if result is None
+                else exp.Union(this=result, expression=query, distinct=False)
+            )
+        assert result is not None
+        return result
+
     def _cut_column(self) -> "exp.Expr":
         """REQ-2135: 1 when any path bounded by the depth limit was cut there, else 0."""
         cut = self._cut_checks[0]
@@ -601,7 +630,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         return result
 
     def translate(self) -> tuple[exp.Select | exp.Union, list[str], dict[str, GraphVarKind]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        if self._ast.return_clause is None:
+        if self._ast.return_clause is None and self._ast.construct is None:
             raise CypherTranslateError(
                 "Cannot translate a CALL {}-only query directly. "
                 "Use cypher_calls_to_sql_list() instead."
@@ -627,9 +656,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         lateral_joins = self._translate_correlated_calls(self._ast.call_subqueries)
         joins = list(joins) + lateral_joins
 
-        select_exprs = self._build_select(self._ast.return_clause)
+        if self._ast.construct is not None:
+            # REQ-2135: one select list per template triple, over the same matches.
+            selects: list[list[exp.Expr]] = self._construct_selects(self._ast.construct)
+        else:
+            assert self._ast.return_clause is not None
+            selects = [self._build_select(self._ast.return_clause)]
         if self._cut_checks:
-            select_exprs.append(self._cut_column())
+            cut = self._cut_column()
+            for select_exprs in selects:
+                select_exprs.append(cut.copy())
         where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
 
         # Short-circuit: if any resolved node's WHERE props are all absent from its schema,
@@ -638,8 +674,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             where_expr = exp.false()
         order_exprs = self._build_order_by(self._ast.order_by)
 
-        query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
-        result: exp.Select | exp.Union = self._apply_extra_branches(query, select_exprs, where_expr)
+        if self._ast.construct is not None:
+            if self._extra_path_branches or self._ast.union_parts:
+                raise CypherTranslateError(
+                    "A CONSTRUCT's pattern is one match; it has no UNION and no several-path branch"
+                )
+            result: exp.Select | exp.Union = self._construct_union(
+                from_clause, joins, where_expr, selects
+            )
+        else:
+            select_exprs = selects[0]
+            query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
+            result = self._apply_extra_branches(query, select_exprs, where_expr)
 
         for cte_name, cte_query in cte_defs:
             result = result.with_(cte_name, as_=cte_query)

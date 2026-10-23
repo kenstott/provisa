@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
+from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr, Term
 from provisa.gql.translator_helpers import (  # REQ-1586
     _make_junction_joins,
     edge_properties_column,
@@ -106,7 +106,14 @@ class TranslatorExprContext:
 
     # -- symbol leaves ----------------------------------------------------- #
 
+    def resolve_term(self, node: Term) -> exp.Expression:
+        return self._t._term_sql(node)
+
     def resolve_variable(self, name: str) -> exp.Expression:
+        # REQ-2135: a variable a triple binds is the column of its term.
+        term = self._t._term_vars.get(name)
+        if term is not None:
+            return term.copy()
         # A CALL-subquery return var is qualified with its CROSS JOIN LATERAL alias; otherwise a bare
         # variable denotes its query-scope alias (CTE-sourced vars keep their mapped alias).
         lateral = self._t._call_var_to_lateral.get(name)

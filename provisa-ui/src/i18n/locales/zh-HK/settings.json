@@ -265,6 +265,10 @@
       "port": {
         "label": "HTTP API 連接埠",
         "help": "HTTP API 偵聽的連接埠。需要重新啟動；儲存前會要求確認，因為 UI 和所有用戶端都必須配合變更。"
+      },
+      "public_url": {
+        "label": "公開地址",
+        "help": "此部署對外使用的地址，例如 https://data.example.com。SPARQL 和 RDF 匯出中每個主體的 IRI 都以它開頭，因此在這些 IRI 被使用期間應保持不變。未設定時，返回主體 IRI 的查詢會被拒絕。"
       }
     },
     "tls": {

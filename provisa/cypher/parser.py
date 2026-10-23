@@ -143,6 +143,7 @@ def with_inline_conditions(matches: list[MatchClause], where: str | None) -> str
         pattern = (
             clause.pattern.pattern if isinstance(clause.pattern, PathFunction) else clause.pattern
         )
+        assert isinstance(pattern, PathPattern)  # Cypher's own patterns: it writes no triple
         for part in [*pattern.nodes, *pattern.rels]:
             for key, value in part.property_text.items():
                 conditions.append(f"{part.variable}.{key} = {value}")

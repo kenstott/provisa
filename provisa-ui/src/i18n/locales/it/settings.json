@@ -265,6 +265,10 @@
       "port": {
         "label": "Porta dell'API HTTP",
         "help": "La porta su cui è in ascolto l'API HTTP. Richiede un riavvio; protetta da conferma perché l'interfaccia e ogni client devono adeguarsi a una modifica."
+      },
+      "public_url": {
+        "label": "Indirizzo pubblico",
+        "help": "L'indirizzo con cui è nota questa installazione, ad esempio https://data.example.com. L'IRI di ogni soggetto in SPARQL e nelle esportazioni RDF inizia con esso, quindi deve restare lo stesso finché quelle IRI sono in uso. Se non è impostato, una query che restituisce l'IRI di un soggetto viene rifiutata."
       }
     },
     "tls": {

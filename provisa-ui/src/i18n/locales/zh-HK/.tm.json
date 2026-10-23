@@ -7923,5 +7923,7 @@
   "zh-HK/settings.json::settings.graph.depth_limit.help": "The most hops a Cypher variable-length path or a SPARQL property path walks when the query sets no bound of its own. A result cut at this depth says it was cut.",
   "zh-HK/settings.json::settings.graph.union_limit.label": "Most predicates a variable predicate covers",
   "zh-HK/settings.json::settings.graph.union_limit.help": "A SPARQL pattern whose predicate is a variable reads every mapped predicate it could match, one branch each. A query needing more branches than this is refused, naming the limit.",
-  "zh-HK/serverErrors.json::serverErrors.statement.path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer."
+  "zh-HK/serverErrors.json::serverErrors.statement.path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer.",
+  "zh-HK/settings.json::settings.server.public_url.label": "Public address",
+  "zh-HK/settings.json::settings.server.public_url.help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused."
 }

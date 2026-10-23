@@ -131,8 +131,9 @@ def _assemble_row(row: dict, graph_vars: dict[str, GraphVarKind]) -> dict:
 def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if value is None:
         return None
-    if kind == GraphVarKind.MAP:
+    if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
+        # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
         if isinstance(value, str):
             try:
                 return json.loads(value)

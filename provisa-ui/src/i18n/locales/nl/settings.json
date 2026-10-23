@@ -265,6 +265,10 @@
       "port": {
         "label": "HTTP API-poort",
         "help": "De poort waarop de HTTP API luistert. Opnieuw opstarten vereist; met bevestiging omdat de UI en elke client een wijziging moeten volgen."
+      },
+      "public_url": {
+        "label": "Openbaar adres",
+        "help": "Het adres waaronder deze installatie bekend is, zoals https://data.example.com. Elke IRI van een subject in SPARQL en RDF-exports begint ermee, dus het moet gelijk blijven zolang die IRI's worden gebruikt. Zonder waarde wordt een query die de IRI van een subject teruggeeft geweigerd."
       }
     },
     "tls": {

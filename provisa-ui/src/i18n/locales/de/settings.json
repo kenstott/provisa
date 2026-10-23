@@ -265,6 +265,10 @@
       "port": {
         "label": "HTTP-API-Port",
         "help": "Der Port, auf dem die HTTP-API lauscht. Neustart erforderlich; bestätigungspflichtig, da die UI und alle Clients einer Änderung folgen müssen."
+      },
+      "public_url": {
+        "label": "Öffentliche Adresse",
+        "help": "Die Adresse, unter der diese Bereitstellung bekannt ist, etwa https://data.example.com. Jede IRI eines Subjekts in SPARQL und in RDF-Exporten beginnt damit, daher sollte sie gleich bleiben, solange diese IRIs verwendet werden. Ist sie nicht gesetzt, wird eine Abfrage abgelehnt, die die IRI eines Subjekts liefert."
       }
     },
     "tls": {

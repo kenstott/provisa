@@ -176,9 +176,43 @@ class PathFunction:
     pattern: PathPattern
 
 
+@dataclass(frozen=True)
+class Predicate:
+    """One mapped predicate a variable predicate may stand for (REQ-2135): ``iri`` names it in the
+    answer, and it reads either a property of the subject's label (``property``, a literal of
+    ``datatype``) or an edge of ``rel_type`` from it (its object the edge's target node)."""
+
+    iri: str
+    property: str | None = None
+    rel_type: str | None = None
+    datatype: str | None = None
+
+
+@dataclass
+class TriplePattern:
+    """``subject ?predicate ?object`` (SPARQL's ``?s ?p ?o``): a compile-time union over the
+    mapped predicates the front end found for the subject's label, bounded by graph.union_limit.
+    ``subject`` is a node variable a node pattern binds earlier in the statement; ``predicate`` and
+    ``object`` are the variables the triple binds, each an RDF term."""
+
+    subject: str
+    predicate: str
+    object: str
+    candidates: tuple[Predicate, ...]
+
+
+@dataclass
+class TripleTemplate:
+    """One triple of a CONSTRUCT's template: three expressions, each an RDF term of the answer."""
+
+    subject: CypherExpr
+    predicate: CypherExpr
+    object: CypherExpr
+
+
 @dataclass
 class MatchClause:
-    pattern: PathPattern | PathFunction
+    pattern: PathPattern | PathFunction | TriplePattern
     variable: str | None  # path variable (p = shortestPath(...))
     optional: bool = False
 
@@ -248,6 +282,8 @@ class CypherAST:  # REQ-347, REQ-348, REQ-571
     call_subqueries: list[CallSubquery] = field(default_factory=list)
     # UNION / UNION ALL: list of (sub_ast, is_all)
     union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)
+    #: A CONSTRUCT's template (REQ-2135), in place of the RETURN: the answer is its triples.
+    construct: list[TripleTemplate] | None = None
     comments: list[str] = field(
         default_factory=list
     )  # // comment text (without //) in source order
