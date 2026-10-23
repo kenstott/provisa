@@ -110,17 +110,21 @@ def _routed_plan() -> MagicMock:
 
 
 def _pipeline_patches(result, *, govern=None):
-    """Patch the real _handle_query pipeline seams: gRPC lowers the request to a semantic SELECT,
-    then governs+routes it and executes the plan (the retired parse→compile→transpile→execute_direct
-    path no longer runs). ``govern`` may be an AsyncMock to capture/assert the govern call."""
+    """Patch the real _handle_query pipeline seams: gRPC lowers the request to GraphQL text,
+    compiles it (``compile_generated_graphql``), then governs+routes the statement and executes
+    the plan. ``govern`` may be an AsyncMock to capture/assert the govern call."""
     govern_patch = patch(
         "provisa.pgwire._pipeline._govern_and_route_compiled",
         govern if govern is not None else AsyncMock(return_value=_routed_plan()),
     )
     return (
         patch(
-            "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-            return_value=("SELECT id, amount FROM orders", []),
+            "provisa.grpc.query_ir.grpc_table_to_graphql",
+            return_value=("{ orders { id amount } }", {}),
+        ),
+        patch(
+            "provisa.api.generated_plan.compile_generated_graphql",
+            return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
         ),
         govern_patch,
         patch(

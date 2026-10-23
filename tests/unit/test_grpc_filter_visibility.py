@@ -26,11 +26,8 @@ import grpc
 import grpc.aio
 import pytest
 
-from provisa.compiler.sql_types import TableMeta
-from provisa.grpc.query_ir import (
-    grpc_table_to_group_by_graphql_text,
-    grpc_table_to_semantic_sql,
-)
+from provisa.grpc.query_ir import grpc_table_to_group_by_graphql_text
+from tests.grpc_model import compiled_read, grpc_model
 from tests.role_state import RoleState
 
 # The columns THIS role can read; ``amount`` exists on the table and in the wire proto's filter
@@ -38,22 +35,13 @@ from tests.role_state import RoleState
 _READABLE = [("order_id", "integer"), ("region", "varchar"), ("status", "varchar")]
 
 
+def _model():
+    """The role's schema and compiler context: ``orders`` with only the columns it can read."""
+    return grpc_model(_READABLE)
+
+
 def _ctx():
-    meta = TableMeta(
-        table_id=1,
-        field_name="orders",
-        type_name="Orders",
-        source_id="pg1",
-        catalog_name="pg1",
-        schema_name="public",
-        table_name="orders",
-    )
-    return SimpleNamespace(
-        tables={"orders": meta},
-        aggregate_columns={1: list(_READABLE)},
-        # Under the snake convention a column's GraphQL name is its physical name.
-        physical_to_gql={(1, column): column for column, _type in _READABLE},
-    )
+    return _model()[1]
 
 
 def _filter(**set_fields):
@@ -71,7 +59,7 @@ class TestLoweringRejectsAHiddenColumn:
         from provisa.grpc.query_ir import FilterError
 
         with pytest.raises(FilterError, match="amount") as failure:
-            grpc_table_to_semantic_sql(_ctx(), "Orders", 10, _filter(amount=10.5))
+            compiled_read(_model(), "Orders", 10, _filter(amount=10.5))
         assert failure.value.field == "amount"
 
     def test_group_by_filter_on_a_hidden_column_raises_naming_the_field(self):
@@ -87,8 +75,8 @@ class TestLoweringRejectsAHiddenColumn:
         from provisa.grpc.query_ir import FilterError
 
         with pytest.raises(FilterError, match="amount"):
-            grpc_table_to_semantic_sql(
-                _ctx(), "Orders", 10, _filter(region="east", amount=10.5, status="open")
+            compiled_read(
+                _model(), "Orders", 10, _filter(region="east", amount=10.5, status="open")
             )
 
     def test_the_error_does_not_depend_on_the_value(self):
@@ -98,14 +86,12 @@ class TestLoweringRejectsAHiddenColumn:
         messages = set()
         for value in (10.5, 999.0, 0.0):
             with pytest.raises(FilterError) as failure:
-                grpc_table_to_semantic_sql(_ctx(), "Orders", 10, _filter(amount=value))
+                compiled_read(_model(), "Orders", 10, _filter(amount=value))
             messages.add(str(failure.value))
         assert len(messages) == 1
 
     def test_filter_on_readable_columns_still_lowers(self):
-        lowered = grpc_table_to_semantic_sql(
-            _ctx(), "Orders", 10, _filter(region="east", order_id=3)
-        )
+        lowered = compiled_read(_model(), "Orders", 10, _filter(region="east", order_id=3))
         assert lowered is not None
         sql, params = lowered  # the values are bound, never text in the statement (REQ-1877)
         assert 'WHERE "order_id" = $1 AND "region" = $2' in sql

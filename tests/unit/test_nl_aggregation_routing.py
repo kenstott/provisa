@@ -29,7 +29,7 @@ intent the SQL branch's own LLM call already resolved. These tests cover:
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from provisa.compiler.sql_types import ColumnRef, CompiledQuery, JoinMeta, TableMeta
 from provisa.nl.runner import (
@@ -494,21 +494,31 @@ class TestExecutorRouting:
             "group_by": [{"group_key": '{"species": "dog"}', "aggregate": {"count": 3}}]
         }
 
-    async def test_execute_grpc_plain_falls_back_to_sql(self):
+    async def test_execute_grpc_plain_routes_through_graphql(self):
+        """Query{Type} is the servicer's row read: lowered to GraphQL text and run through the
+        compiled pipeline, its rows previewed as the columns and rows the client receives."""
         from provisa.nl import executor
 
-        app_state = RoleState(contexts={"admin": _ctx()})
+        schema = MagicMock()
+        app_state = RoleState(contexts={"admin": _ctx()}, schemas={"admin": schema})
+        result = _FakeResult([(1, "rex")])
+        result.column_names = ["id", "name"]
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT * FROM pet_store.pets LIMIT 20", []),
-            ),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ pets(limit: 20) { id name } }", {}),
+            ) as fake_text,
             patch.object(
-                executor, "_execute_sql", new=AsyncMock(return_value={"columns": [], "rows": []})
+                executor,
+                "_compile_and_execute_graphql",
+                new=AsyncMock(return_value=[(SimpleNamespace(), result, None)]),
             ) as fake_exec,
         ):
-            await executor._execute_grpc("QueryPets", "admin", app_state, None)
+            preview = await executor._execute_grpc("QueryPets", "admin", app_state, None)
+        fake_text.assert_called_once_with(app_state.contexts["admin"], schema, "Pets", limit=20)
         fake_exec.assert_awaited_once()
+        assert fake_exec.await_args.args[0] == "{ pets(limit: 20) { id name } }"
+        assert preview == {"columns": ["id", "name"], "rows": [{"id": 1, "name": "rex"}]}
 
     async def test_execute_jsonapi_aggregate_routes_through_graphql(self):
         from provisa.nl import executor
