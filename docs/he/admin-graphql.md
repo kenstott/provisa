@@ -454,9 +454,11 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 משנה קשר קיים עם אותן בדיקות כמו `createRelationship`. מזהה שאינו בבעלות אף קשר נדחה (`schema.relationship_not_found`). שינוי צריך את הזכות עצמה; הוא לעולם אינו נכנס לתור כבקשה.
 
-#### `deleteRelationship(id: String!) → MutationResult`
+שמירה שמעבירה עמודות מפתח בין תכונה למחלקה עלולה להסיר מהן את `pii`. היא נדחית אז עם `tag.move_loses`, ו-`params.columns` מפרט כל עמודה עם התגים שהיא מאבדת (`loses`) ומקבלת (`gains`). שמרו שוב עם `confirmTagLoss` שמונה כל תג שאבד, או עם `carryTags: true` כדי לשים אותם על המונח שאליו עוברת כל עמודה.
 
-מחיקת קשר לפי מזהה ובניה מחדש של סכמות.
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+מחיקת קשר לפי מזהה ובניה מחדש של סכמות. מחיקה שמעבירה עמודות מפתח מקבלת את אותם `confirmTagLoss` ו-`carryTags` כמו שמירה.
 
 ---
 
@@ -538,11 +540,19 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-שיוך תג למקור, טבלה, עמודה, קשר, או פקודה. אוכף את מדיניויות השדה של התג (`reason_policy`, `expires_policy`) — ועבור תגים בעלי פרמטרים — מאמת את ערך הפרמטר כנגד הרשימה המותרת של התג.
+שיוך תג למקור, טבלה, עמודה, קשר, או פקודה. אוכף את מדיניויות השדה של התג (`reason_policy`, `expires_policy`), ועבור תג בעל פרמטר, בודק את ערך הפרמטר כנגד הרשימה המותרת של התג.
+
+אפשר לשים `pii` גם על מונח במילון, כך שכל עמודה בעלת המשמעות הזו נושאת את התג, כולל עמודות שיירשמו בהמשך. קבעו `objectType: "term"` ו-`termId`:
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+על עמודה, `alsoTerm: true` שם את התג במקום זאת על המונח של העמודה. `params.covers` בתוצאה אומר לכמה עמודות התג מגיע: עבור עמודה, כמה עמודות אחרות מחזיק המונח שלה; עבור מונח, כמה הוא מחזיק. נדחים בשמם: תג שאינו `pii` על מונח (`tag.not_on_terms`), מונח שאינו תכונה (`tag.term_not_property`), מונח בטיוטה (`tag.term_not_live`, "הגדירו את *מונח* כדי לסמן אותו") ועם `alsoTerm`, עמודת מפתח (`tag.key_column`) או עמודה ללא מונח (`tag.column_has_no_term`). עמודה שמסומנת ישירות צריכה סיבה.
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-הסרת שיוך תג.
+הסרת שיוך תג, גם ממונח (`objectType: "term"`, `termId`). הסרת `pii` מעמודה שנושאת אותו דרך המונח שלה נדחית (`tag.inherited_from_term`): בטלו את הסימון של המונח, או העבירו את העמודה למונח שמתאים למה שהיא מחזיקה.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 

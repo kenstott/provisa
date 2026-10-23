@@ -83,6 +83,8 @@ interface GraphFrameProps {
   onColorChange: (label: string, color: string) => void;
   pkMap: Record<string, string[]>;
   labelToTableLabel: Record<string, string>;
+  /** Each node label's registered table, which the inspector links a node to. */
+  labelToTableId: Record<string, number>;
   relationships?: Relationship[];
   // Full relationship set (including meta:%-prefixed system relationships, e.g. HAS_TABLE_COLUMNS)
   // for graph traversal — expand/collapse affordances and exclude-node query rewriting need to see
@@ -120,6 +122,7 @@ export function GraphFrame({
   onColorChange,
   pkMap,
   labelToTableLabel,
+  labelToTableId,
   relationships,
   graphRelationships = relationships,
   autoImpute: autoImputeProp = false,
@@ -860,6 +863,7 @@ export function GraphFrame({
                 relationships={relationships}
                 onSaveEdgeAlias={onSaveEdgeAlias}
                 pkMap={pkMap}
+                labelToTableId={labelToTableId}
               />
             )}
           </div>

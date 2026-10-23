@@ -454,9 +454,11 @@ query {
 
 以與 `createRelationship` 相同的檢查修改已有關係。不屬於任何關係的 id 會被拒絕（`schema.relationship_not_found`）。修改需要該權利本身；它從不作為請求排隊。
 
-#### `deleteRelationship(id: String!) → MutationResult`
+在屬性和類之間重新安置鍵欄位的儲存操作可能會去掉這些欄位上的 `pii`。這時它會以 `tag.move_loses` 被拒絕，`params.columns` 會列出每個欄位失去（`loses`）和獲得（`gains`）的標籤。重新儲存時用 `confirmTagLoss` 列出每個遺失的標籤，或用 `carryTags: true` 把它們放到每個欄位要去的術語上。
 
-按 ID 刪除一個關係並重建結構描述。
+#### `deleteRelationship(id: String!, confirmTagLoss: [String!], carryTags: Boolean) → MutationResult`
+
+按 ID 刪除一個關係並重建結構描述。會重新安置鍵欄位的刪除操作接受與儲存相同的 `confirmTagLoss` 和 `carryTags`。
 
 ---
 
@@ -538,11 +540,19 @@ query {
 
 #### `assignTag(input: TagAssignmentInput!) → MutationResult`
 
-將一個標籤分配給數據來源、資料表、欄位、關係或命令。強制執行該標籤的欄位策略（`reason_policy`、`expires_policy`），並且——對於參數化標籤——根據標籤允許的清單驗證參數值。
+將一個標籤分配給數據來源、資料表、欄位、關係或命令。強制執行該標籤的欄位策略（`reason_policy`、`expires_policy`），對於參數化標籤，還會根據標籤允許的清單檢查參數值。
+
+`pii` 亦可以加在詞彙表的術語上，這樣具有該含義的每個欄位都會帶上這個標籤，包括日後登記的欄位。設定 `objectType: "term"` 和 `termId`：
+
+```graphql
+mutation { assignTag(input: {tagId: "pii", objectType: "term", termId: 12}) { success code params } }
+```
+
+在欄位上，`alsoTerm: true` 會改為把標籤加在該欄位的術語上。結果中的 `params.covers` 說明標籤涵蓋多少欄位：對於欄位，是它的術語持有的其他欄位數；對於術語，是它持有的欄位數。以下情況會被明確拒絕：術語上的非 `pii` 標籤（`tag.not_on_terms`）、不是屬性的術語（`tag.term_not_property`）、草稿術語（`tag.term_not_live`，「定義 *術語* 後才能標記」），以及使用 `alsoTerm` 時的鍵欄位（`tag.key_column`）或沒有術語的欄位（`tag.column_has_no_term`）。直接標記的欄位需要提供原因。
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-移除一個標籤分配。
+移除一個標籤分配，亦可從術語上移除（`objectType: "term"`、`termId`）。從一個透過其術語帶有 `pii` 的欄位上移除該標籤會被拒絕（`tag.inherited_from_term`）：請取消該術語的標記，或者把該欄位移到與其內容相符的術語上。
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 

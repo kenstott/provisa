@@ -87385,6 +87385,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2141
   status: proposed
+  docs:
+  - admin-graphql.md
+  - api-reference.md
+  - ontology.md
   since: 2026-10
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -87588,6 +87592,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2144
   status: complete
+  docs:
+  - api-reference.md
+  - ontology.md
   since: "2026-10"
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -87639,6 +87646,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And "note" is retired, keeps its definition, and is offered nowhere
 - id: REQ-2145
   status: in-progress
+  docs:
+  - admin-graphql.md
+  - api-reference.md
+  - ontology.md
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Governance
@@ -87712,6 +87723,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2146
   status: complete
+  docs:
+  - api-reference.md
+  - ontology.md
   since: "2026-10"
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology

@@ -97,6 +97,17 @@ describe("Admin > Domains: the domain tree", () => {
     expect(within(unit).queryByTestId("steward-inherited")).toBeNull();
   });
 
+  it("opens on a linked domain, its row marked and scrolled to", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    render(<AdminPage />, { initialEntries: ["/admin/domains?domain=sales"] });
+    const row = await screen.findByTestId("domain-row-sales");
+    expect(row.className).toContain("row-selected");
+    expect(screen.getByTestId("domain-row-retail").className).not.toContain("row-selected");
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+    expect(scrolled.mock.contexts[0]).toBe(row);
+  });
+
   it("adds a domain under the parent chosen", async () => {
     createDomain.mockResolvedValueOnce({ success: true, message: "created" });
     render(<AdminPage />, { initialEntries: ["/admin/domains"] });

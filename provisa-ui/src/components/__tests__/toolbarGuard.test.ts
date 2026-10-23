@@ -20,29 +20,25 @@ import { checkToolbarRules, type ToolbarViolation } from "./toolbarRules";
 
 const SRC = resolve(__dirname, "../..");
 
-/** Bordered icon-only buttons each file held when the rule came in. Fix one, lower its count. */
-const BORDERED_BEFORE_THE_RULE: Readonly<Record<string, number>> = {
-  "components/ChatPanel.tsx": 2,
-  "components/NavBar.tsx": 2,
-  "components/admin/GlossaryRelationships.tsx": 1,
-  "components/admin/ScheduledTasks.tsx": 3,
-  "components/graph/QueryBar.tsx": 2,
-  "components/list/SplitPane.tsx": 2,
-  "components/relationships/RelationshipDetail.tsx": 3,
-  "components/sql-modeling/ResultsPanel.tsx": 1,
-  "components/sql-modeling/SchemaSidebar.tsx": 1,
-  "pages/CommandsPage.tsx": 4,
-  "pages/JsonApiPage.tsx": 3,
-  "pages/SecurityPage.tsx": 2,
-  "pages/SourcesPage.tsx": 5,
-  "pages/TablesPage.tsx": 4,
-  "pages/metrics/MetricDetailPanel.tsx": 2,
-  "pages/security/DerivedRoles.tsx": 2,
-  "pages/security/SecurityRlsPage.tsx": 2,
-  "pages/sources/SourceDetailPanel.tsx": 5,
-  "pages/sql/SchemaBrowser.tsx": 1,
-  "pages/tables/TableReadView.tsx": 6,
-  "theme/ColorSchemeToggle.tsx": 1,
+/** The icon-only buttons drawn filled or bordered on purpose, and why: each file's count. */
+const DELIBERATE: Readonly<Record<string, [number, string]>> = {
+  "components/ChatPanel.tsx": [
+    2,
+    "Polly's launcher floats over every page and must stand out from it; the mic fills red " +
+      "only while it is listening, so a reader sees it is recording",
+  ],
+  "components/graph/QueryBar.tsx": [
+    1,
+    "Run is the query bar's send: the one filled button, as a chat's send is",
+  ],
+  "components/sql-modeling/SchemaSidebar.tsx": [
+    1,
+    "the sidebar's collapse handle sits on the panel's edge, and its border is what shows it there",
+  ],
+  "pages/sql/SchemaBrowser.tsx": [
+    1,
+    "the browser's collapse handle sits on the panel's edge, and its border is what shows it there",
+  ],
 };
 
 function componentFiles(dir: string): string[] {
@@ -82,6 +78,15 @@ describe("the toolbar rules fail what they are meant to fail", () => {
       rules(`const x = <ActionIcon variant={mode === "tree" ? "light" : "subtle"} />;`),
     ).toEqual([]);
     expect(rules(`const x = <ActionIcon variant="transparent" />;`)).toEqual([]);
+  });
+
+  it("leaves a panel head's actions to the head's own style", () => {
+    expect(
+      rules(`const x = <PanelActions><ActionIcon aria-label="edit" /></PanelActions>;`),
+    ).toEqual([]);
+    expect(
+      rules(`const x = <PanelHeadStyle><ActionIcon aria-label="close" /></PanelHeadStyle>;`),
+    ).toEqual([]);
   });
 
   it("a named control after an icon one, or anything after the help", () => {
@@ -128,9 +133,9 @@ describe("every toolbar", () => {
 });
 
 describe("every icon-only button", () => {
-  it("is borderless, but for the files listed from before the rule", () => {
+  it("is borderless, but for the few drawn filled or bordered on purpose", () => {
     expect(
       Object.fromEntries(of("bordered-icon-button").map((f) => [f.file, f.hits.length])),
-    ).toEqual(BORDERED_BEFORE_THE_RULE);
+    ).toEqual(Object.fromEntries(Object.entries(DELIBERATE).map(([f, [count]]) => [f, count])));
   });
 });

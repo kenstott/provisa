@@ -220,6 +220,7 @@ export function GraphPage() {
             domain_label: string | null;
             domain_id: string | null;
             table_label: string;
+            table_id: number;
             properties: string[];
             pk_columns: string[];
             id_column?: string;
@@ -232,6 +233,7 @@ export function GraphPage() {
             domainLabel: n.domain_label ?? null,
             domainId: n.domain_id ?? null,
             tableLabel: n.table_label,
+            tableId: n.table_id,
             properties: n.properties ?? [],
             pkColumns: n.pk_columns ?? [],
             idColumn: n.id_column ?? null,
@@ -457,9 +459,10 @@ export function GraphPage() {
   }, []);
 
   // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
-  const { pkMap, labelToTableLabel } = useMemo(() => {
+  const { pkMap, labelToTableLabel, labelToTableId } = useMemo(() => {
     const pk: Record<string, string[]> = {};
     const l2t: Record<string, string> = {};
+    const l2id: Record<string, number> = {};
     for (const node of schemaNodeLabels) {
       const compoundLabel = node.domainLabel
         ? `${node.domainLabel}:${node.tableLabel}`
@@ -467,8 +470,9 @@ export function GraphPage() {
       pk[compoundLabel] =
         node.pkColumns.length > 0 ? node.pkColumns : node.idColumn ? [node.idColumn] : [];
       l2t[compoundLabel] = node.tableLabel;
+      l2id[compoundLabel] = node.tableId;
     }
-    return { pkMap: pk, labelToTableLabel: l2t };
+    return { pkMap: pk, labelToTableLabel: l2t, labelToTableId: l2id };
   }, [schemaNodeLabels]);
 
   const rerunFrame = useCallback(
@@ -908,6 +912,7 @@ export function GraphPage() {
                 onColorChange={handleColorChange}
                 pkMap={pkMap}
                 labelToTableLabel={labelToTableLabel}
+                labelToTableId={labelToTableId}
                 relationships={adminRels}
                 graphRelationships={graphRels}
                 autoImpute={autoImpute}

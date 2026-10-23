@@ -65,7 +65,6 @@ from provisa.api.rest.cypher_exec import (
     _execute_call_body,
     _resolve_role_id,
 )
-from provisa.observability.span_attrs import span_attrs_from_semantic_sql
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
@@ -621,7 +620,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             ordered_params=tuple(ordered_params),
             param_names=tuple(param_names),
             graph_vars=graph_vars,
-            span_attrs=span_attrs_from_semantic_sql(semantic_sql, role_id),
         )
         kept.record(translation)
 
@@ -758,6 +756,8 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "domain_label": n.domain_label,
                     "domain_id": n.domain_id,
                     "table_label": n.table_label,
+                    # The registered table the label reads, so a client can link a node to it.
+                    "table_id": n.table_id,
                     "properties": list(n.properties.keys()),
                     # REQ-392: singular primary-key column name (first designated PK), or null.
                     "pk": n.property_of(n.pk_columns[0]) if n.pk_columns else None,

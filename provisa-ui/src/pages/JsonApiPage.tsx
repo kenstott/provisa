@@ -883,7 +883,7 @@ export function JsonApiPage() {
               <Tip text={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")} named>
                 <ActionIcon
                   className="jsonapi-copy-btn"
-                  variant="default"
+                  variant="subtle"
                   size="sm"
                   aria-label={copied ? t("jsonApiPage.copied") : t("jsonApiPage.copyUrlAria")}
                   onClick={handleCopy}
@@ -925,7 +925,7 @@ export function JsonApiPage() {
               <div className="jsonapi-pagination-bar">
                 <ActionIcon
                   className="jsonapi-page-btn"
-                  variant="default"
+                  variant="subtle"
                   size="sm"
                   disabled={!paginationLinks.first}
                   onClick={() => handlePaginate(paginationLinks!.first)}
@@ -958,7 +958,7 @@ export function JsonApiPage() {
                 </Button>
                 <ActionIcon
                   className="jsonapi-page-btn"
-                  variant="default"
+                  variant="subtle"
                   size="sm"
                   disabled={!paginationLinks.last}
                   onClick={() => handlePaginate(paginationLinks!.last)}

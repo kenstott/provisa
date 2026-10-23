@@ -29,13 +29,10 @@ const label = (t: { domain_id: string; table_name: string }) => `${t.domain_id}.
 export function GlossaryGroundedTables({
   termId,
   canEdit,
-  identityGap,
   onChanged,
 }: {
   termId: number;
   canEdit: boolean;
-  /** REQ-2130: the tables are not all joined by same-entity relationships (a curation gap). */
-  identityGap: boolean;
   /** After a table is grounded or ungrounded: the term's standing and role may have changed. */
   onChanged: () => void;
 }) {
@@ -97,11 +94,6 @@ export function GlossaryGroundedTables({
       {error && (
         <Alert color="red" data-testid="glossary-grounded-tables-error">
           {error}
-        </Alert>
-      )}
-      {identityGap && (
-        <Alert color="orange" data-testid="glossary-identity-gap">
-          {t("glossaryTab.identityGapHelp")}
         </Alert>
       )}
       {grounded === null ? (

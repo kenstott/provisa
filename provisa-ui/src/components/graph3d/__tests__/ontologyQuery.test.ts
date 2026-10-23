@@ -180,7 +180,7 @@ describe("the Ontology View's query", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"], { hiddenStatuses: ["retired"] })));
     expect(q).toContain("m__glossaryTerms(where: { retired: { eq: false } })");
     const two = squash(
-      ontologyQuery(reader(), scope(["ontology"], { hiddenStatuses: ["retired", "proposed"] })),
+      ontologyQuery(reader(), scope(["ontology"], { hiddenStatuses: ["retired", "draft"] })),
     );
     expect(two).toContain(
       "m__glossaryTerms(where: { _and: [{ retired: { eq: false } }, { _or: [{ retired: { eq: true } }, { deprecated: { eq: true } }, { live: { eq: true } }] }] })",

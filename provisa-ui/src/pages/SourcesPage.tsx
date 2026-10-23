@@ -1802,7 +1802,7 @@ export function SourcesPage() {
               return (
                 <Group justify="flex-end" gap="xs" align="center" py="xs">
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={t("sourcesPage.firstPage")}
                     onClick={() => setPage(0)}
                     disabled={page === 0}
@@ -1810,7 +1810,7 @@ export function SourcesPage() {
                     «
                   </ActionIcon>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={t("sourcesPage.previousPage")}
                     onClick={() => setPage((p) => p - 1)}
                     disabled={page === 0}
@@ -1819,7 +1819,7 @@ export function SourcesPage() {
                   </ActionIcon>
                   <Text fz="sm">{t("sourcesPage.pageStatus", { page: page + 1, totalPages })}</Text>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={t("sourcesPage.nextPage")}
                     onClick={() => setPage((p) => p + 1)}
                     disabled={page >= totalPages - 1}
@@ -1827,7 +1827,7 @@ export function SourcesPage() {
                     ›
                   </ActionIcon>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={t("sourcesPage.lastPage")}
                     onClick={() => setPage(totalPages - 1)}
                     disabled={page >= totalPages - 1}

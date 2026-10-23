@@ -43,6 +43,7 @@ function open(onSaveEdgeAlias: (id: number, cql: string, gql: string) => Promise
       relationships={[rel]}
       onSaveEdgeAlias={onSaveEdgeAlias}
       pkMap={{}}
+      labelToTableId={{}}
     />,
   );
   fireEvent.change(screen.getByTestId("inspector-gql-alias"), { target: { value: "placedBy" } });

@@ -16,6 +16,7 @@
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import {
+  termRole,
   addGlossaryEdge,
   removeGlossaryEdge,
   retypeGlossaryEdge,
@@ -26,7 +27,8 @@ import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
 import { GlossaryRelationships } from "./GlossaryRelationships";
-import { TermRoleBadge } from "./TermRoleBadge";
+import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
+import { RetiredTermRecord } from "./RetiredTermRecord";
 
 type Option = { value: string; label: string };
 
@@ -67,12 +69,45 @@ export function TermReadView({
             label: t("glossaryTab.roleLabel"),
             value: <TermRoleBadge term={term} testId="glossary-detail-role" />,
           },
-          { label: t("glossaryTab.proposed"), value: yesNo(!term.live) },
-          { label: t("glossaryTab.deprecated"), value: yesNo(term.deprecated) },
-          { label: t("glossaryTab.retired"), value: yesNo(term.retired) },
+          // REQ-2145: pii on a Property, which every column it means carries.
+          ...(termRole(term) === "property"
+            ? [
+                {
+                  label: t("glossaryTab.piiLabel"),
+                  value: term.tags.some((g) => g.tag_id === "pii") ? (
+                    <Group gap={6} data-testid="glossary-detail-pii">
+                      <Badge size="xs" color="red" variant="light">
+                        {t("glossaryTab.piiLabel")}
+                      </Badge>
+                      <Text size="sm">{t("glossaryTab.piiMarks", { count: term.ref_count })}</Text>
+                    </Group>
+                  ) : (
+                    yesNo(false)
+                  ),
+                },
+              ]
+            : []),
+          {
+            label: t("glossaryTab.statusLabel"),
+            value: <TermStatusBadge status={term.status} testId="glossary-detail-status" />,
+          },
+          // A deprecation or a retirement says why, who said so, and a deprecation when it ends.
+          ...(term.status === "deprecated" || term.status === "retired"
+            ? [
+                { label: t("glossaryTab.statusReasonLabel"), value: term.status_reason ?? "—" },
+                { label: t("glossaryTab.statusByLabel"), value: term.status_by ?? "—" },
+              ]
+            : []),
+          ...(term.status === "deprecated"
+            ? [{ label: t("glossaryTab.retireOnLabel"), value: term.retire_on ?? "—" }]
+            : []),
           { label: t("glossaryTab.excludeFromExportLabel"), value: yesNo(term.export_excluded) },
         ]}
       />
+
+      {term.status === "retired" && (
+        <RetiredTermRecord term={term} navigateToTerm={navigateToTerm} />
+      )}
 
       <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
       {term.refs.length === 0 ? (
@@ -122,12 +157,7 @@ export function TermReadView({
       )}
 
       <Title order={5}>{t("glossaryTab.groundedTablesTitle")}</Title>
-      <GlossaryGroundedTables
-        termId={term.id}
-        canEdit={false}
-        identityGap={term.identity_gap}
-        onChanged={() => undefined}
-      />
+      <GlossaryGroundedTables termId={term.id} canEdit={false} onChanged={() => undefined} />
 
       <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
       <GlossaryRelationships

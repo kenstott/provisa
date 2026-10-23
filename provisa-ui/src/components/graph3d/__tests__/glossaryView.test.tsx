@@ -105,7 +105,7 @@ const EDGES = [
 ];
 type Term = ReturnType<typeof term>;
 const standing = (t: Term) =>
-  t.retired ? "retired" : t.deprecated ? "deprecated" : t.live ? "live" : "proposed";
+  t.retired ? "retired" : t.deprecated ? "deprecated" : t.live ? "live" : "draft";
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
   dataGraphql: async (query: string) => {
@@ -245,7 +245,7 @@ describe("the Glossary page's Ontology View", () => {
     await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
   });
 
-  it("shows proposed and deprecated terms and hides retired ones, until asked", async () => {
+  it("shows draft and deprecated terms and hides retired ones, until asked", async () => {
     render(<GlossaryOntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(ids(made.scenes[0].setData.mock.calls[0][0])).toEqual([

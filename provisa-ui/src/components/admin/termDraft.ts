@@ -24,6 +24,7 @@ import {
   ungroundTermTable,
   updateGlossaryTerm,
   type GlossaryEdge,
+  type TagLossResolution,
   type GlossaryExpert,
   type GlossaryTermDetail,
 } from "../../api/glossary";
@@ -41,6 +42,8 @@ export interface TermDraft {
   name: string;
   definition: string;
   exportExcluded: boolean;
+  /** REQ-2145: pii on the term, which every column it holds carries (a Property's only). */
+  pii: boolean;
   /** Declared domains: a concept's only; a rooted term's come from its columns. */
   domains: string[];
   /** A column of the term moved to another term: its key, and the term it moves to. */
@@ -58,6 +61,7 @@ export function draftOf(term: GlossaryTermDetail, tables: number[]): TermDraft {
     name: term.name,
     definition: term.definition ?? "",
     exportExcluded: term.export_excluded,
+    pii: term.tags.some((g) => g.tag_id === "pii"),
     domains: [...term.domains],
     moves: {},
     claims: [],
@@ -68,16 +72,30 @@ export function draftOf(term: GlossaryTermDetail, tables: number[]): TermDraft {
   };
 }
 
-/** One change Save makes, named by the field it changes so a refusal is said beside it. */
+/** One change Save makes, named by the field it changes so a refusal is said beside it. A column's
+ * move names the term it moves to, and goes ahead over the tags it takes off (REQ-2145) as the
+ * reader resolves them. */
 export interface Change {
   field: "fields" | "columns" | "tables" | "relationships" | "experts";
-  run: () => Promise<{ termRemoved?: boolean } | void>;
+  run: (resolve?: TagLossResolution) => Promise<{ termRemoved?: boolean } | void>;
+  moveTo?: number;
 }
 
 const edgeKey = (from: number, to: number, rel: string) => `${from}>${to}:${rel}`;
 
+/** Marking and unmarking a tag on the term (REQ-2145): the tag picker's own mutations. */
+export interface TermTags {
+  mark: (tagId: string) => Promise<void>;
+  unmark: (tagId: string) => Promise<void>;
+}
+
 /** What Save does to make ``term`` (grounded in ``tables``) the draft, in order. */
-export function changes(term: GlossaryTermDetail, tables: number[], draft: TermDraft): Change[] {
+export function changes(
+  term: GlossaryTermDetail,
+  tables: number[],
+  draft: TermDraft,
+  termTags: TermTags,
+): Change[] {
   const out: Change[] = [];
   const patch: Parameters<typeof updateGlossaryTerm>[1] = {};
   if (draft.name.trim() !== term.name) patch.name = draft.name.trim();
@@ -89,15 +107,24 @@ export function changes(term: GlossaryTermDetail, tables: number[], draft: TermD
   if (term.is_abstract && !sameDomains) patch.domains = draft.domains;
   if (Object.keys(patch).length > 0)
     out.push({ field: "fields", run: () => updateGlossaryTerm(term.id, patch) });
+  // After the definition: a term is marked only once it is defined.
+  const pii = term.tags.some((g) => g.tag_id === "pii");
+  if (draft.pii !== pii)
+    out.push({
+      field: "fields",
+      run: () => (draft.pii ? termTags.mark("pii") : termTags.unmark("pii")),
+    });
 
   for (const c of draft.claims)
     out.push({
       field: "columns",
-      run: async () => {
+      moveTo: term.id,
+      run: async (resolve) => {
         await moveGlossaryRef({
           table_id: c.table_id,
           column_name: c.column_name,
           to_term_id: term.id,
+          ...resolve,
         });
       },
     });
@@ -106,11 +133,13 @@ export function changes(term: GlossaryTermDetail, tables: number[], draft: TermD
     if (to === undefined) continue;
     out.push({
       field: "columns",
-      run: async () => {
+      moveTo: to,
+      run: async (resolve) => {
         const moved = await moveGlossaryRef({
           table_id: ref.table_id,
           column_name: ref.column_name,
           to_term_id: to,
+          ...resolve,
         });
         return { termRemoved: moved.source_term_removed };
       },

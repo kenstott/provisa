@@ -45,6 +45,7 @@ fragment ColumnFields on TableColumnType {
   fakeStableVersion
   syntheticRule
   isPii
+  piiTerm
 }
 
 fragment WriteGrantFields on WriteGrantType {
@@ -1092,8 +1093,8 @@ mutation UpdateRelationship($input: RelationshipInput!) {
   }
 }
 
-mutation DeleteRelationship($id: String!) {
-  deleteRelationship(id: $id) {
+mutation DeleteRelationship($id: String!, $confirmTagLoss: [String!], $carryTags: Boolean! = false) {
+  deleteRelationship(id: $id, confirmTagLoss: $confirmTagLoss, carryTags: $carryTags) {
     ...MutationResult
   }
 }

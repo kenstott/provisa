@@ -40,6 +40,25 @@ def _json_agg_object(expr: exp.Expression) -> exp.JSONObject | None:
     return None
 
 
+def _coalesced(
+    expr: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> tuple[exp.Expression, exp.Expression | None]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``expr`` without the empty-list default a list field's subquery is coalesced with
+    (sql_selection.EMPTY_JSON_LIST), and that default; ``expr`` itself and None otherwise."""
+    if isinstance(expr, exp.Coalesce) and isinstance(expr.this, exp.Subquery):
+        defaults = expr.expressions or []
+        if len(defaults) == 1:
+            return expr.this, defaults[0]
+    return expr, None
+
+
+def _with_default(
+    expr: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    default: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    return expr if default is None else exp.Coalesce(this=expr, expressions=[default.copy()])
+
+
 def _rewrite_correlated_json_to_ctes(sql: str) -> str:
     """Rewrite correlated json_object/json_agg SELECT subqueries to CTEs."""
     # Parse failure must fail loud: returning input skips the required Trino CTE rewrite.
@@ -131,11 +150,13 @@ def _try_rewrite_to_cte(
 
     Returns the replacement SELECT expression, or None if not applicable.
     """
-    if not (isinstance(expr, exp.Alias) and isinstance(expr.this, exp.Subquery)):
+    if not isinstance(expr, exp.Alias):
+        return None
+    subquery, default = _coalesced(expr.this)
+    if not isinstance(subquery, exp.Subquery):
         return None
 
     alias_name = expr.alias
-    subquery = expr.this
     inner = subquery.this
     if not isinstance(inner, exp.Select):
         return None
@@ -266,9 +287,12 @@ def _try_rewrite_to_cte(
         )
         new_joins.append(join)
         replacement = exp.Alias(
-            this=exp.Column(
-                this=exp.to_identifier("_val"),
-                table=exp.to_identifier(agg_name),
+            this=_with_default(
+                exp.Column(
+                    this=exp.to_identifier("_val"),
+                    table=exp.to_identifier(agg_name),
+                ),
+                default,
             ),
             alias=exp.to_identifier(alias_name),
         )
@@ -292,7 +316,7 @@ def _flatten_json_subqueries(
             new_kvs.append(kv)
             continue
 
-        val = kv.expression
+        val, default = _coalesced(kv.expression)
         if not isinstance(val, exp.Subquery):
             new_kvs.append(kv)
             continue
@@ -368,9 +392,8 @@ def _flatten_json_subqueries(
         if is_jbo:
             new_val = flat_nested.copy()
         else:
-            new_val = exp.Anonymous(
-                this="JSON_AGG",
-                expressions=[flat_nested.copy()],
+            new_val = _with_default(
+                exp.Anonymous(this="JSON_AGG", expressions=[flat_nested.copy()]), default
             )
 
         new_kvs.append(exp.JSONKeyValue(this=kv.this.copy(), expression=new_val))
@@ -631,6 +654,12 @@ def _lift_correlated_in_expr(
     if isinstance(expr, exp.Subquery):
         result = _try_lift_subquery(expr, cte_defs, new_joins, cte_counter)
         return result  # Column reference or None
+
+    subquery, default = _coalesced(expr)
+    if default is not None:
+        # A list field's subquery with its empty-list default: lifted, the default kept (#286).
+        lifted = _lift_correlated_in_expr(subquery, outer_aliases, cte_defs, new_joins, cte_counter)
+        return None if lifted is None else _with_default(lifted, default)
 
     if isinstance(expr, exp.JSONObject):
         return _lift_in_json_object(expr, outer_aliases, cte_defs, new_joins, cte_counter)
