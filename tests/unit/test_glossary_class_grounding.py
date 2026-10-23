@@ -39,7 +39,13 @@ from provisa.core.env_project import project
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import domains, registered_tables, sources
+from provisa.core.schema_org import (
+    domains,
+    glossary_term_table_refs,
+    glossary_terms,
+    registered_tables,
+    sources,
+)
 
 SCHEMA = "org_default"
 
@@ -111,6 +117,8 @@ async def _surface(control_plane, monkeypatch, *, authority=None):
                 )
             ).fetchone()
             ids[name] = row.id
+        # Each keyed table proposes its own Class on sync (REQ-2141); grounding a curated term
+        # replaces the proposal, so these cases ground into the tables as they are.
         for name in ("party", "ledger"):
             ids[name] = await glossary_repo.create_abstract_term(conn, name, domains={"sales"})
     yield db, ids, notified
@@ -263,7 +271,7 @@ async def test_the_meta_view_resolves_each_grounding_and_a_table_names_its_class
                 await conn.execute(_META_TABLE_VIEWS[name])
             rows = await conn.fetch(
                 "SELECT term_id, table_id, source_id, schema_name, table_name, domain_id,"
-                " term_domains FROM glossary_term_table_refs_meta"
+                " term_domains FROM glossary_term_table_refs_meta WHERE table_name = 'customers'"
             )
             assert [tuple(r) for r in rows] == [
                 (
@@ -282,7 +290,11 @@ async def test_the_meta_view_resolves_each_grounding_and_a_table_names_its_class
                     "SELECT table_name, class_term_id FROM registered_tables_meta"
                 )
             )
-            assert classes == {"customers": ids["party"], "accounts": None, "notes": None}
+            [account] = [
+                t["id"] for t in await glossary_repo.list_terms(conn) if t["name"] == "account"
+            ]
+            # accounts keeps its proposal; notes, with no primary key, has no class
+            assert classes == {"customers": ids["party"], "accounts": account, "notes": None}
 
 
 def test_the_meta_schema_reaches_a_terms_tables_and_a_tables_class_term():
@@ -324,9 +336,9 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         assert tree[path]["class_term"] == [{"term": term_path}]
         assert term_path in requirements(path, tree[path], tree)
         rows = _decompose(tree, existing, frozenset())
-        assert rows["glossary_term_table_refs"] == [
-            {"table_id": ids["customers"], "term_id": ids["party"]}
-        ]
+        assert [
+            r for r in rows["glossary_term_table_refs"] if r["table_id"] == ids["customers"]
+        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "proposed": False}]
 
 
 # --- grounded to a table (REQ-1387): the admission rule and the derived domains ---------------
@@ -369,6 +381,10 @@ async def test_a_class_terms_domains_derive_from_the_tables_it_grounds(control_p
             ).fetchone()
             # Declared {sales}; grounded in an hr table, the term's domains are derived from it.
             assert (await glossary_repo.term_domains(conn))[ids["party"]] == {"sales"}
+            [proposed] = [
+                t["id"] for t in await glossary_repo.list_terms(conn) if t["name"] == "staff"
+            ]
+            assert await glossary_repo.unground_table(conn, proposed, staff.id)
             await glossary_repo.ground_table(conn, ids["party"], staff.id)
             assert (await glossary_repo.term_domains(conn))[ids["party"]] == {"hr"}
             await conn.execute(_META_TABLE_VIEWS["glossary_term_domains"])
@@ -399,47 +415,139 @@ async def test_the_meta_terms_view_counts_a_table_as_grounding(control_plane, mo
 
 
 @pytest.mark.asyncio
-async def test_a_class_term_keeps_its_term_when_its_columns_depart(control_plane, monkeypatch):
-    """A derived term grounding a table is rooted by the table, so losing its columns does not
-    remove or deprecate it."""
+async def test_a_term_that_owns_column_refs_cannot_ground_a_table(control_plane, monkeypatch):
+    """REQ-2141: a term is a Class or a Property, never both -- a Property (it owns column refs)
+    is refused a table grounding, naming its columns and why."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, notified):
+        async with db.acquire() as conn:
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+        assert note is not None
+        with pytest.raises(ApiError) as err:
+            await _ground(note["id"], ids["customers"])
+        assert (err.value.status_code, err.value.code) == (409, "glossary.term_is_property")
+        assert err.value.params == {
+            "term": "note",
+            # notes.id is the notes table's "note" too (its business name in its table's context)
+            "columns": "__derived__.s.accounts.note, __derived__.s.customers.note, "
+            "__derived__.s.notes.id, __derived__.s.notes.note",
+        }
+        assert "a term is either a Class, grounded in tables, or a Property" in err.value.detail
+        assert notified == []
+        async with db.acquire() as conn:
+            assert await glossary_repo.term_tables(conn, note["id"]) == []
+
+
+@pytest.mark.asyncio
+async def test_a_column_ref_cannot_move_into_a_term_grounded_in_tables(control_plane, monkeypatch):
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["customers"])
+        body = {"table_id": ids["accounts"], "column_name": "note", "to_term_id": ids["party"]}
+        with pytest.raises(ApiError) as err:
+            await glossary_router.move_ref(_with_json(_request(), body))
+        assert (err.value.status_code, err.value.code) == (409, "glossary.term_is_class")
+        assert err.value.params == {"term": "party", "tables": "__derived__.s.customers"}
+        assert "cannot own a column ref" in err.value.detail
+        async with db.acquire() as conn:
+            kept = await glossary_repo.get_term_by_ref(conn, ids["accounts"], "note")
+        assert kept is not None and kept["name"] == "note"
+
+
+@pytest.mark.asyncio
+async def test_a_column_named_for_a_class_is_a_property_of_its_own_table(
+    control_plane, monkeypatch
+):
+    """A column with no declared relationship is no key: named like a Class, it is not the
+    Class's -- it derives a Property qualified with its own table's concept."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["customers"])
+        named = _tbl("accounts", keyed=True).model_copy(
+            update={
+                "columns": [
+                    Column(name="id", data_type="integer", visible_to=[], is_primary_key=True),
+                    Column(name="party", data_type="text", visible_to=[]),
+                ]
+            }
+        )
+        async with db.acquire() as conn:
+            await table_repo.upsert(conn, named)
+            term = await glossary_repo.get_term_by_ref(conn, ids["accounts"], "party")
+        assert term is not None and term["name"] == "account party"
+
+
+@pytest.mark.asyncio
+async def test_the_check_reports_a_class_holding_non_key_refs_and_changes_nothing(
+    control_plane, monkeypatch
+):
+    """Data from before the rule: a term both grounding a table and holding non-key column refs
+    is reported with its tables and those columns, and left as it is."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["accounts"])  # a Class holding its keys is no conflict
         async with db.acquire() as conn:
             note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
             assert note is not None
-            await glossary_repo.ground_table(conn, note["id"], ids["customers"])
+            await conn.execute_core(  # planted past the rules: note made customers' class
+                glossary_term_table_refs.update()
+                .where(glossary_term_table_refs.c.table_id == ids["customers"])
+                .values(term_id=note["id"])
+            )
+        found = await glossary_router.role_conflicts(_request())
+        assert found == {
+            "terms": [
+                {
+                    "term_id": note["id"],
+                    "term": "note",
+                    "tables": ["__derived__.s.customers"],
+                    "columns": [
+                        "__derived__.s.accounts.note",
+                        "__derived__.s.customers.note",
+                        "__derived__.s.notes.id",
+                        "__derived__.s.notes.note",
+                    ],
+                }
+            ],
+            "tables": [],
+        }
+        assert await glossary_router.role_conflicts(_request()) == found  # nothing changed
+
+
+@pytest.mark.asyncio
+async def test_a_table_whose_concept_is_a_property_gets_no_class_and_is_reported(
+    control_plane, monkeypatch
+):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        with control_plane.engine().begin() as c:
+            c.exec_driver_sql(f'SET LOCAL search_path TO "{SCHEMA}"')
+            c.execute(insert(domains).values(id="hr", description=""))
+        async with db.acquire() as conn:
             await table_repo.upsert(
                 conn,
-                _tbl("accounts", keyed=True).model_copy(
-                    update={
-                        "columns": [
-                            Column(
-                                name="id", data_type="integer", visible_to=[], is_primary_key=True
-                            )
-                        ]
-                    }
+                _tbl("notes", keyed=True).model_copy(
+                    update={"schema_name": "t", "domain_id": "hr"}
                 ),
             )
-            await table_repo.upsert(
-                conn,
-                _tbl("notes", keyed=False).model_copy(
-                    update={"columns": [Column(name="id", data_type="integer", visible_to=[])]}
-                ),
+            keyed = (
+                await conn.execute_core(
+                    select(registered_tables.c.id).where(registered_tables.c.schema_name == "t")
+                )
+            ).fetchone()
+            assert (
+                await glossary_repo.term_tables(
+                    conn,
+                    ids_note := (
+                        await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+                    )["id"],
+                )
+                == []
             )
-            await table_repo.upsert(
-                conn,
-                _tbl("customers", keyed=True).model_copy(
-                    update={
-                        "columns": [
-                            Column(
-                                name="id", data_type="integer", visible_to=[], is_primary_key=True
-                            )
-                        ]
-                    }
-                ),
-            )
-            kept = await glossary_repo.get_term(conn, note["id"])
-            assert kept is not None and not kept["deprecated"]
-            assert [r for r in kept["refs"] if r["column_name"] == "note"] == []
+        found = await glossary_router.role_conflicts(_request())
+        [table] = found["tables"]
+        assert (table["table_id"], table["table"], table["concept"], table["term_id"]) == (
+            keyed.id,
+            "__derived__.t.notes",
+            "note",
+            ids_note,
+        )
+        assert "__derived__.s.customers.note" in table["columns"]
 
 
 # --- the export admits a class term by the tables it publishes --------------------------------
@@ -579,6 +687,28 @@ async def test_a_config_class_term_naming_nothing_or_on_an_unkeyed_table_is_refu
 
 
 @pytest.mark.asyncio
+async def test_a_config_class_term_that_owns_column_refs_is_refused(cfg_db):
+    """REQ-2141: the orders table's ``booking`` column makes ``booking`` a Property, so the same
+    config naming it the table's class term is refused, saying why."""
+    from provisa.core.config_loader import apply_config
+
+    config = _config(class_term="Booking")
+    [orders] = config.tables
+    config.tables[0] = orders.model_copy(
+        update={
+            "columns": [
+                *orders.columns,
+                orders.columns[0].model_copy(update={"name": "booking", "is_primary_key": False}),
+            ]
+        }
+    )
+    async with cfg_db.acquire() as conn:
+        with pytest.raises(ValueError, match="cfg.public.orders cannot have a class term") as err:
+            await apply_config(config, conn)
+    assert "term 'booking' owns column refs (cfg.public.orders.booking)" in str(err.value)
+
+
+@pytest.mark.asyncio
 async def test_the_term_list_and_detail_count_its_tables_beside_its_columns(
     control_plane, monkeypatch
 ):
@@ -586,10 +716,370 @@ async def test_the_term_list_and_detail_count_its_tables_beside_its_columns(
         await _ground(ids["party"], ids["customers"])
         await _ground(ids["party"], ids["accounts"])
         listed = {t["name"]: t for t in await glossary_router.list_terms(_request(), domains=None)}
-        assert (listed["party"]["table_count"], listed["party"]["ref_count"]) == (2, 0)
+        # its tables' primary keys are its own refs (REQ-2141, KEYS ON THE CLASS)
+        assert (listed["party"]["table_count"], listed["party"]["ref_count"]) == (2, 2)
         assert listed["ledger"]["table_count"] == 0
         async with db.acquire() as conn:
             note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
         assert note is not None and note["table_count"] == 0 and note["ref_count"] >= 1
         detail = await glossary_router.get_term(_request(), ids["party"])
-        assert (detail["table_count"], detail["ref_count"]) == (2, 0)
+        assert (detail["table_count"], detail["ref_count"]) == (2, 2)
+
+
+# --- abstract is derived from grounding: the role is the only classification (REQ-2141) ------
+
+
+@pytest.mark.asyncio
+async def test_abstract_is_derived_for_each_role(control_plane, monkeypatch):
+    """A Concept grounds nothing and is abstract; a Property (column refs) and a Class (tables)
+    are not -- in the list, the detail and the meta view alike."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["customers"])  # party: a Class; ledger: a Concept
+        async with db.acquire() as conn:
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+            assert note is not None  # note: a Property
+            listed = {t["name"]: t["is_abstract"] for t in await glossary_repo.list_terms(conn)}
+            detail = {
+                name: (await glossary_repo.get_term(conn, ids.get(name, note["id"])))["is_abstract"]
+                for name in ("party", "ledger", "note")
+            }
+            exported = {
+                t["name"]: t["is_abstract"]
+                for t in (await glossary_repo.export_graph(conn))["terms"]
+            }
+        expected = {"party": False, "ledger": True, "note": False}
+        assert {n: listed[n] for n in expected} == expected
+        assert detail == expected
+        assert {n: exported[n] for n in expected} == expected
+        # ungrounded, the Class is a Concept again
+        await glossary_router.remove_term_table(_request(), ids["party"], ids["customers"])
+        async with db.acquire() as conn:
+            party = await glossary_repo.get_term(conn, ids["party"])
+        assert party is not None and party["is_abstract"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_api_refuses_to_set_abstract(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (_db, ids, notified):
+        for call in (
+            lambda: glossary_router.create_abstract_term(
+                _with_json(_request(), {"name": "thing", "domains": ["sales"], "is_abstract": True})
+            ),
+            lambda: glossary_router.update_term(
+                _with_json(_request(), {"is_abstract": False}), ids["ledger"]
+            ),
+        ):
+            with pytest.raises(ApiError) as err:
+                await call()
+            assert (err.value.status_code, err.value.code) == (400, "glossary.abstract_is_derived")
+            assert "abstract is derived from grounding" in err.value.detail
+        assert notified == []
+
+
+def test_config_refuses_to_declare_abstract():
+    from provisa.core.models import GlossaryTermConfig
+
+    with pytest.raises(ValueError, match="'buyer': abstract is derived from grounding"):
+        GlossaryTermConfig.model_validate(
+            {"name": "buyer", "domains": ["sales"], "is_abstract": True}
+        )
+    assert GlossaryTermConfig.model_validate({"name": "buyer", "domains": ["sales"]}).name
+
+
+@pytest.mark.asyncio
+async def test_declared_domains_apply_to_a_concept_only(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        with control_plane.engine().begin() as c:
+            c.exec_driver_sql(f'SET LOCAL search_path TO "{SCHEMA}"')
+            c.execute(insert(domains).values(id="finance", description=""))
+        await glossary_router.update_term(
+            _with_json(_request(), {"domains": ["finance"]}), ids["ledger"]
+        )
+        async with db.acquire() as conn:
+            assert (await glossary_repo.term_domains(conn))[ids["ledger"]] == {"finance"}
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+        assert note is not None
+        await _ground(ids["party"], ids["customers"])
+        for term_id in (note["id"], ids["party"]):  # a Property, then a Class
+            with pytest.raises(ApiError) as err:
+                await glossary_router.update_term(
+                    _with_json(_request(), {"domains": ["finance"]}), term_id
+                )
+            assert (err.value.status_code, err.value.code) == (400, "glossary.invalid")
+            assert "only a Concept's domains can be set" in err.value.detail
+
+
+# --- table proposals and keys on the class (REQ-2141) ------------------------------------------
+
+
+def _keyed(name: str, *columns: str, keys: "tuple[str, ...]" = ("id",)) -> Table:
+    return Table(
+        source_id="__derived__",
+        domain_id="sales",
+        schema_name="m",
+        table_name=name,
+        columns=[
+            Column(name=c, data_type="text", visible_to=[], is_primary_key=c in keys)
+            for c in columns
+        ],
+        view_sql="SELECT 1",
+    )
+
+
+@asynccontextmanager
+async def _model(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, _ids, _notified):
+        async with db.acquire() as conn:
+            for table in (
+                _keyed("buyers", "id", "name"),
+                _keyed("buyer", "id", "since"),  # the same concept, singular
+                _keyed("employees", "id", "name", "manager_id"),
+                _keyed("users", "email", "nickname", keys=("email",)),
+                _keyed("orders", "id", "buyer_id", "total"),
+                _keyed("order_lines", "order_id", "line_no", "qty", keys=("order_id", "line_no")),
+                _keyed("shipments", "id", "order_id", "line_no"),
+                _keyed("buyer_profiles", "buyer_id", "bio", keys=("buyer_id",)),
+            ):
+                await table_repo.upsert(conn, table)
+        yield db
+
+
+async def _term_of(conn, table: str, column: str) -> str:
+    row = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                (registered_tables.c.table_name == table) & (registered_tables.c.schema_name == "m")
+            )
+        )
+    ).fetchone()
+    term = await glossary_repo.get_term_by_ref(conn, row.id, column)
+    assert term is not None
+    return term["name"]
+
+
+async def _class_of(conn, table: str) -> "str | None":
+    row = (
+        await conn.execute_core(
+            select(glossary_terms.c.name)
+            .join(
+                glossary_term_table_refs, glossary_term_table_refs.c.term_id == glossary_terms.c.id
+            )
+            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            .where(
+                (registered_tables.c.table_name == table) & (registered_tables.c.schema_name == "m")
+            )
+        )
+    ).fetchone()
+    return None if row is None else row.name
+
+
+async def _relate(conn, rel_id, source, column, target, target_column="id"):
+    from provisa.core.models import Cardinality, Relationship
+    from provisa.core.repositories import relationship as relationship_repo
+
+    await relationship_repo.upsert(
+        conn,
+        Relationship(
+            id=rel_id,
+            source_table_id=source,
+            target_table_id=target,
+            source_column=column,
+            target_column=target_column,
+            cardinality=Cardinality.many_to_one,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_keyed_table_proposes_its_class_and_its_key_is_the_class(
+    control_plane, monkeypatch
+):
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            assert await _class_of(conn, "employees") == "employee"
+            assert await _term_of(conn, "employees", "id") == "employee"
+            employee = next(
+                t for t in await glossary_repo.list_terms(conn) if t["name"] == "employee"
+            )
+            assert not (employee["definition"] or "")  # a draft, as a derived column term is
+            # a primary key of any name is its table's class, a natural key included
+            assert await _class_of(conn, "users") == "user"
+            assert await _term_of(conn, "users", "email") == "user"
+            assert await _term_of(conn, "users", "nickname") == "nickname"
+
+
+@pytest.mark.asyncio
+async def test_tables_of_one_concept_share_one_class(control_plane, monkeypatch):
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            assert await _class_of(conn, "buyers") == await _class_of(conn, "buyer") == "buyer"
+            [customer] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "buyer"]
+            assert customer["table_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_role_named_foreign_key_lands_on_its_targets_class_and_leaves_with_it(
+    control_plane, monkeypatch
+):
+    """manager_id -> employees: the role is the relationship's, the ref the employee class's."""
+    from provisa.core.repositories import relationship as relationship_repo
+
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            assert await _term_of(conn, "employees", "manager_id") == "manager"
+            await _relate(conn, "employee-manager", "employees", "manager_id", "employees")
+            assert await _term_of(conn, "employees", "manager_id") == "employee"
+            assert await relationship_repo.delete(conn, "employee-manager")
+            assert await _term_of(conn, "employees", "manager_id") == "manager"
+
+
+@pytest.mark.asyncio
+async def test_a_foreign_key_by_name_alone_stays_a_property_until_it_is_declared(
+    control_plane, monkeypatch
+):
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            # named for the buyer class, but no relationship says so
+            assert await _term_of(conn, "orders", "buyer_id") == "order buyer"
+            await _relate(conn, "order-buyer", "orders", "buyer_id", "buyers")
+            assert await _term_of(conn, "orders", "buyer_id") == "buyer"
+            names = {t["name"] for t in await glossary_repo.list_terms(conn)}
+            assert "order buyer" not in names  # the stand-in Property, blank, went
+
+
+@pytest.mark.asyncio
+async def test_every_part_of_a_composite_key_is_on_the_class(control_plane, monkeypatch):
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            assert await _class_of(conn, "order_lines") == "order line"
+            await _relate(
+                conn,
+                "shipment-line",
+                "shipments",
+                "order_id,line_no",
+                "order_lines",
+                "order_id,line_no",
+            )
+            assert await _term_of(conn, "shipments", "order_id") == "order line"
+            assert await _term_of(conn, "shipments", "line_no") == "order line"
+
+
+@pytest.mark.asyncio
+async def test_a_primary_key_that_is_a_foreign_key_is_on_the_parents_class(
+    control_plane, monkeypatch
+):
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            await _relate(conn, "profile-buyer", "buyer_profiles", "buyer_id", "buyers")
+            assert await _term_of(conn, "buyer_profiles", "buyer_id") == "buyer"
+            # the extension table still proposes its own class
+            assert await _class_of(conn, "buyer_profiles") == "buyer profile"
+            await _relate(conn, "line-order", "order_lines", "order_id", "orders")
+            assert await _term_of(conn, "order_lines", "order_id") == "order"
+            assert await _term_of(conn, "order_lines", "line_no") == "order line"
+
+
+@pytest.mark.asyncio
+async def test_sync_never_re_points_a_curated_class(control_plane, monkeypatch):
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
+            [employee] = [
+                t["id"] for t in await glossary_repo.list_terms(conn) if t["name"] == "employee"
+            ]
+            employees = (
+                await conn.execute_core(
+                    select(registered_tables.c.id).where(
+                        registered_tables.c.table_name == "employees"
+                    )
+                )
+            ).fetchone()
+            assert await glossary_repo.unground_table(conn, employee, employees.id)
+            await glossary_repo.ground_table(conn, client, employees.id)
+            assert await _term_of(conn, "employees", "id") == "client"
+            await table_repo.upsert(conn, _keyed("employees", "id", "name", "manager_id"))
+            assert await _class_of(conn, "employees") == "client"
+            assert await _term_of(conn, "employees", "id") == "client"
+
+
+@pytest.mark.asyncio
+async def test_a_key_column_is_not_moved_by_hand_whatever_the_target(control_plane, monkeypatch):
+    """A key's ref is placed by derivation alone: moving it anywhere is refused, naming its class."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        body = {"table_id": ids["customers"], "column_name": "id", "to_term_id": ids["ledger"]}
+        with pytest.raises(ApiError) as err:
+            await glossary_router.move_ref(_with_json(_request(), body))
+        assert (err.value.status_code, err.value.code) == (409, "glossary.key_column_derived")
+        assert err.value.params == {
+            "column": "id",
+            "table": "__derived__.s.customers",
+            "class": "customer",
+        }
+        async with db.acquire() as conn:
+            assert (await glossary_repo.get_term_by_ref(conn, ids["customers"], "id"))[
+                "name"
+            ] == "customer"
+
+
+@pytest.mark.asyncio
+async def test_grounding_carries_the_keys_and_ungrounding_returns_them_to_the_proposal(
+    control_plane, monkeypatch
+):
+    async with _model(control_plane, monkeypatch) as db:
+        async with db.acquire() as conn:
+            await _relate(conn, "order-buyer", "orders", "buyer_id", "buyers")
+            client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
+            buyers = (
+                await conn.execute_core(
+                    select(registered_tables.c.id).where(registered_tables.c.table_name == "buyers")
+                )
+            ).fetchone()
+            # the proposal gives way; the table's key and the key referring to it move at once
+            await glossary_repo.ground_table(conn, client, buyers.id)
+            assert await _class_of(conn, "buyers") == "client"
+            assert await _term_of(conn, "buyers", "id") == "client"
+            assert await _term_of(conn, "orders", "buyer_id") == "client"
+            # ungrounded, they go back to the table's proposed class, as a sync would put them
+            assert await glossary_repo.unground_table(conn, client, buyers.id)
+            assert await _class_of(conn, "buyers") == "buyer"
+            assert await _term_of(conn, "buyers", "id") == "buyer"
+            assert await _term_of(conn, "orders", "buyer_id") == "buyer"
+            assert (await glossary_repo.get_term(conn, client))["is_abstract"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_declared_class_named_for_its_tables_concept_is_curated(cfg_db):
+    """A configuration declaring orders' class as "order" -- the very name sync proposes -- states
+    a curated grounding: the export keeps it, and deleting the table keeps the term."""
+    from provisa.core.config_loader import apply_config
+
+    async with cfg_db.acquire() as conn:
+        await apply_config(_config(class_term="Order"), conn)
+        assert await _class_term_of_orders(conn) == "order"
+        [order] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "order"]
+        orders = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(registered_tables.c.table_name == "orders")
+            )
+        ).fetchone()
+        await table_repo.delete(conn, orders.id)
+        kept = await glossary_repo.get_term(conn, order["id"])
+    assert kept is not None and kept["is_abstract"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_proposal_is_not_stated_by_the_export_and_goes_with_its_table(cfg_db):
+    from provisa.core.config_loader import apply_config
+
+    async with cfg_db.acquire() as conn:
+        await apply_config(_config(class_term=None), conn)
+        assert await _class_term_of_orders(conn) is None  # proposed "order", derived
+        [order] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "order"]
+        assert order["table_count"] == 1
+        orders = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(registered_tables.c.table_name == "orders")
+            )
+        ).fetchone()
+        await table_repo.delete(conn, orders.id)
+        assert await glossary_repo.get_term(conn, order["id"]) is None

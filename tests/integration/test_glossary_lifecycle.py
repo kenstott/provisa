@@ -277,8 +277,8 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
     ):
         """Glossary term upsert (loader step 4.6) runs before table/column sync (step 5), so a
         config entry naming a column this same load derives -- to give it a definition -- creates
-        the row abstract first. Sync must then flip it back: a term holding a physical ref is
-        concrete regardless of which loader step touched it first.
+        the row before its ref. A term holding a physical ref is concrete regardless of which
+        loader step touched it first (abstract is derived from grounding, REQ-2141).
         """
         config = _config({"orders": [("cust_id", "customer")]})
         config["glossary_terms"] = [
@@ -297,14 +297,10 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
         assert customer["definition"] == "The party an order belongs to."
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_reload_demotes_an_already_held_ref_stuck_abstract(self, tenant_db):
-        """A ref created by the step-ordering bug (glossary upsert before table sync) points at
-        an abstract-but-curated term. On the NEXT load, sync sees the ref already held and the
-        term already curated/name-matched, so it takes the early-continue path instead of
-        ``_find_or_create_term`` -- that path must demote ``is_abstract`` too, or a term stays
-        stuck abstract forever even after the create-path fix, since every later reload just
-        re-confirms the same stale ref without ever re-resolving it.
-        """
+    async def test_a_term_holding_a_ref_is_never_abstract_across_reloads(self, tenant_db):
+        """REQ-2141: abstract is derived from grounding, so no load order can leave a term that
+        holds a column ref reading abstract -- there is no flag to go stale. A config entry
+        defining a column's term, loaded twice, is concrete both times and keeps its row."""
         config = _config({"orders": [("cust_id", "customer")]})
         config["glossary_terms"] = [
             {
@@ -317,18 +313,9 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
         async with tenant_db.acquire() as conn:
             await apply_config(parsed, conn)
             first = (await _terms(conn))["customer"]
-            assert first["is_abstract"] is False  # create-path fix already covers this load
-
-            # Simulate a row a pre-fix load left behind: concrete in every way (curated, holding
-            # a ref) but with the stale flag, so the SECOND load's early-continue path -- which
-            # sees the ref already held and skips ``_find_or_create_term`` entirely -- is what
-            # has to correct it, not the create path exercised above.
-            await conn.execute(
-                "UPDATE glossary_terms SET is_abstract = TRUE WHERE id = $1", first["id"]
-            )
-
             await apply_config(parsed, conn)
             second = (await _terms(conn))["customer"]
+        assert first["is_abstract"] is False
         assert second["is_abstract"] is False
         assert second["id"] == first["id"]
         assert second["ref_count"] == 1

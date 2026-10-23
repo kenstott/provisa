@@ -653,7 +653,6 @@ glossary_terms = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", Text, nullable=False),
     Column("definition", Text),
-    Column("is_abstract", Boolean, nullable=False, server_default=false()),
     Column("deprecated", Boolean, nullable=False, server_default=false()),
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),
@@ -687,6 +686,8 @@ glossary_term_table_refs = Table(
     Column(
         "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
     ),
+    # REQ-2141: proposed by sync, not declared by config or grounded by a person (schema.sql).
+    Column("proposed", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id"),
 )

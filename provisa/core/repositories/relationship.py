@@ -201,6 +201,12 @@ async def upsert(
                 )
                 .values(is_primary_key=True)
             )
+    # REQ-2141: a foreign key's ref is its target's Class term; the relationship says which.
+    from provisa.core.repositories import glossary as glossary_repo
+
+    await glossary_repo.rehome_keys(
+        conn, {t for t in (source_tbl["id"], target_tbl_id, via_tbl_id) if t is not None}
+    )
 
 
 #: The id every relationship a remote GraphQL source's schema offers is kept under
@@ -287,8 +293,19 @@ async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019, REQ-1918
         blocking = await guard(conn, ref)
         if blocking:
             raise RelationshipDeleteRefused(rel_id, blocking)
+        held = await get(conn, rel_id)
+        assert held is not None  # read above, in this transaction
+        joined = {
+            t
+            for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
+            if t is not None
+        }
         await remove_parts(conn, ref)
         await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
+        # REQ-2141: its foreign key is no longer a key; the ref goes back to a Property.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        await glossary_repo.rehome_keys(conn, joined)
     return True
 
 

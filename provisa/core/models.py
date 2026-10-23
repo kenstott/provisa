@@ -578,18 +578,29 @@ class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
 class GlossaryTermConfig(BaseModel):  # REQ-1641
     """A config-declared glossary term, upserted the same way an admin curates one by hand.
 
-    Config-declared terms are always abstract (``is_abstract``): they hold no column refs of
-    their own, so ``domains`` (required, non-empty) is the only thing that scopes them — see
-    ``create_abstract_term``'s docstring for why an unscoped term is a governance gap. An
-    abstract term is otherwise inert — the live/approved admission rule requires it be
-    *grounded*, reachable by an edge from a term that does hold a column ref — so ``edges``
-    is how config connects it to the concrete terms it actually means.
+    A config-declared term holds no column refs of its own, so ``domains`` (required,
+    non-empty) is the only thing that scopes it — see ``create_abstract_term``'s docstring for
+    why an unscoped term is a governance gap. Until it grounds something it is a Concept, and
+    otherwise inert — the live/approved admission rule requires it be *grounded*, reachable by
+    an edge from a term that does hold a column ref — so ``edges`` is how config connects it to
+    the concrete terms it actually means. Whether it is abstract is derived, never declared
+    (REQ-2141).
     """
 
     name: str
     definition: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _abstract_is_derived(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "is_abstract" in data:
+            raise ValueError(
+                f"glossary term {data.get('name')!r}: abstract is derived from grounding, not "
+                "declared -- a term with no column refs and no grounded tables is a Concept"
+            )
+        return data
 
 
 TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product")

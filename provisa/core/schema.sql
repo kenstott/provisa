@@ -698,7 +698,6 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     definition      TEXT,
-    is_abstract     BOOLEAN NOT NULL DEFAULT FALSE,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
     -- Soft delete. A rooted term cannot be deleted (its refs are derived and would recreate
     -- it on the next registration), so retiring is how a curator takes a term out of service:
@@ -734,9 +733,14 @@ CREATE TABLE IF NOT EXISTS glossary_term_table_refs (
     id          SERIAL PRIMARY KEY,
     term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
     table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    -- REQ-2141: TRUE when sync proposed this grounding from the table's concept; FALSE when a
+    -- configuration declared it or a person grounded it. A proposal whose term is not curated is
+    -- derived: the config export does not state it and it goes with its table.
+    proposed    BOOLEAN NOT NULL DEFAULT FALSE,
     tenant_id   UUID,
     UNIQUE (table_id)
 );
+ALTER TABLE glossary_term_table_refs ADD COLUMN IF NOT EXISTS proposed BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Closed, enum-typed relationship set (REQ-1387) — free-form edge types are not permitted.
 CREATE TABLE IF NOT EXISTS glossary_term_edges (

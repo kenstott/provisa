@@ -23,6 +23,7 @@ from sqlalchemy import delete, select, update
 
 from provisa.compiler.naming import SqlAddressTaken
 from provisa.core.models import DERIVED_SOURCE_ID
+from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import (
     file_source_mtimes,
     registered_tables,
@@ -578,6 +579,16 @@ async def register_table(
                     if carried(input.write_grants):
                         model = model.model_copy(update={"write_grants": _carried_grants})
                     table_id = await table_repo.upsert(_conn, model)
+                except glossary_repo.TermIsClass as _class:
+                    # REQ-2141: a column named for a class term is not claimed by it.
+                    raise TableSaveRefused(
+                        MutationResult(
+                            success=False,
+                            message=str(_class),
+                            code="glossary.term_is_class",
+                            params={"term": _class.term, "tables": ", ".join(_class.tables)},
+                        )
+                    )
                 except table_repo.ViewLoopRefused as _loop:
                     # REQ-1918: a view that would read itself through other views is refused at save.
                     raise TableSaveRefused(
