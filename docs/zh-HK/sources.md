@@ -245,6 +245,23 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 
 搜尋按每條語句、在其參數下讀取，其列在這些參數下保留一個表格 TTL 的時間。搜尋表格是唯讀的。
 
+**由連接提供參數的搜尋。** 關係可以用另一張資料表的欄位為搜尋的參數提供值，就像它為程式碼資料表提供參數一樣：它的 `parameters` 對應列出每個參數及其取值的來源欄位。把搜尋與該資料表連接的陳述式隨後會針對來源值的每一組不同取值（按陳述式角色所讀到的值）各執行一次 Qdrant 查詢，關係未提供的參數則使用陳述式自身的參數。搜尋傳回的點不保存找到它們的查詢的任何資訊，因此關係按查詢的參數欄位連接：每個點在該欄位中帶有它被搜尋時所用的值。
+
+```yaml
+relationships:
+- {id: line-searches, cardinality: one-to-many, source_table_id: line, source_column: text,
+   target_table_id: lines_like, target_column: _nf_query,
+   parameters: {query: text, sonnet: sonnet_number}}
+```
+
+```sql
+SELECT l.id, s.id AS near_id, s.score
+FROM line AS l JOIN lines_like AS s ON s._nf_query = l.text
+WHERE s._nf_k = 3
+```
+
+每一行詩句的字詞都會被搜尋，並透過搜尋的 `"@sonnet"` 篩選排除該行所屬十四行詩的點，每一行都會得到為它找到的三個點。自行給出某個被提供參數的陳述式，例如 `WHERE s._nf_query = 'the ravages of time'`，會按自身參數讀取搜尋，不再由關係提供參數。
+
 ### 串流 {: #streaming }
 
 | 數據來源類型 | 機制 | 變更操作 |
@@ -1594,7 +1611,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 
 #### 以設定檔及 UI 註冊 {: #config-file-and-ui-registration }
 
-`sparql` 數據來源的 `host` 是它的 SPARQL 端點 URL（Sources 表單以相同方式儲存）。其下的每張表帶有 `query_template`，是一個 SELECT，其變數即為資料行；每個繫結都是 `text`。
+`sparql` 數據來源的 `host` 是它的 SPARQL 端點 URL（Sources 表單以相同方式儲存）。其下的每張表帶有 `query_template`，是一個 SELECT，其變數即為欄位。預覽會按每個欄位繫結共有的 XSD 資料類型決定欄位類型：整數類型為 `integer`，`xsd:decimal`、`xsd:double` 與 `xsd:float` 為 `double`，`xsd:boolean` 為 `boolean`，`xsd:date` 為 `date`，`xsd:dateTime` 為 `timestamp`。IRI、空白節點、普通字串或帶語言標籤的字串，以及繫結類型不一致的變數，均為 `text`。
 
 ```yaml
 sources:
@@ -1615,6 +1632,64 @@ tables:
 ```
 
 Register Table 的運作方式與 Neo4j 相同：選擇數據來源，輸入表名稱與 SELECT，按 Preview（`sparqlPreview` 查詢以 `LIMIT 5` 執行它並填入資料行清單），然後註冊。註冊會持久化一列 `api_sources` 與一列 `api_endpoints`（以表單編碼 POST 到端點路徑，`sparql_bindings` 正規化器），與設定檔註冊寫入的資料列相同，而原生引擎經與 Neo4j 相同的取得鏈落地資料列。
+
+**下推。** 當陳述式單獨讀取一張 SPARQL 資料表（沒有連接）時，它在該資料表各欄位上的條件會進入傳送給端點的查詢。已登記的 SELECT 會變成子查詢 `SELECT * WHERE { { <the SELECT> } FILTER(...) }`，其 `PREFIX` 與 `BASE` 行保留在前面。
+- 會下推：`text` 欄位上的等值與 `IN`（按 `STR(?var)` 比較，因此 IRI 可以配對其文字）；`integer` 或 `double` 欄位上的任何比較；`boolean` 上的等值。
+- 不下推：其他條件，例如文字上的大小比較、日期、欄位的函數或繫結參數。它們會套用在 Provisa 收到的資料列上。
+- 每個條件都會再次套用在資料列上，因此下推一個條件只會縮小所擷取的內容。
+- 只有當所有條件都已下推，且陳述式不分組、不彙總、不使用 `DISTINCT`、`ORDER BY` 或 `OFFSET` 時，陳述式的 `LIMIT` 才會下推。
+- 縮小後的結果以其自身的查詢為鍵快取，與整張資料表的快取分開。
+
+#### 推理器 {: #reasoner }
+
+`sparql` 數據來源可以指定一個推理器和一份 OWL 公理文件。查詢為角括號中單一 IRI 的資料表，隨後會按公理推導的結果提供該類別或屬性：
+- 類別：一個欄位，即它的成員；
+- 物件屬性或資料屬性：兩個欄位，即每個主體及其值。
+
+```yaml
+sources:
+- id: kyc-graph
+  type: sparql
+  host: http://localhost:23030/kyc/query
+  cache_ttl: 3600
+  mapping:
+    reasoner: hermit
+    axioms: |
+      @prefix : <http://example.org/kyc#> .
+      @prefix owl: <http://www.w3.org/2002/07/owl#> .
+      :controls a owl:ObjectProperty, owl:TransitiveProperty .
+      :SanctionedParty a owl:Class .
+      :SanctionsExposed owl:equivalentClass [ a owl:Restriction ;
+        owl:onProperty [ owl:inverseOf :controls ] ; owl:someValuesFrom :SanctionedParty ] .
+tables:
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: sanctions_exposed
+  query_template: <http://example.org/kyc#SanctionsExposed>
+  columns:
+  - { name: party, data_type: text, visible_to: [compliance] }
+- source_id: kyc-graph
+  domain_id: kyc
+  schema: kyc
+  table: controls
+  query_template: <http://example.org/kyc#controls>
+  columns:
+  - { name: controller, data_type: text, visible_to: [compliance] }
+  - { name: controlled, data_type: text, visible_to: [compliance] }
+```
+
+公理可以用 OWL API 能讀取的任何語法書寫：Turtle、RDF/XML、OWL 函數式語法或 Manchester 語法。HermiT 是唯一的推理器。
+
+讀取推理資料表時，推理器會：
+1. 讀取公理中提到的類別和屬性；
+2. 向端點傳送一個 `CONSTRUCT`，請求這些屬性的每個三元組和這些類別的每個成員關係，格式為 N-Triples；
+3. 按公理對這部分資料進行分類；
+4. 傳回由此推出的事實。
+
+一個數據來源的所有推理資料表共用同一次分類，並在資料表的快取 TTL 內重用。因此，數據來源的新鮮度宣告就是它推理的頻率：即時資料表為 `cache_ttl`，副本為副本的重新整理，TTL 為 `-1` 時只推理一次。推理資料表提供的內容對每個讀者都像其他資料表一樣受治理。
+
+HermiT 作為獨立程式執行，絕不在伺服器內部執行。它在固定版本的 Eclipse Temurin JDK 21 上執行，HermiT、OWL API 及其程式庫位於類別路徑中。每個元件在首次使用時下載，按 Provisa 固定的 SHA-256 驗證，並快取在執行階段相依項快取根目錄下（`$PROVISA_RUNTIME_DEPS_CACHE`，預設 `~/.cache/provisa/runtime_deps`）。下載失敗，或檔案總和檢查碼與固定值不符，都會令讀取失敗並指明是哪個檔案。
 
 ## 連線範例 {: #connection-examples }
 

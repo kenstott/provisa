@@ -19,6 +19,8 @@
 | `grpc` | gRPC 一元呼叫；免 proto 的 JSON 橋接 |
 | `python` | 行程內的 Python 可呼叫物件（`module:attr`） |
 
+`script` 與 `python` 屬於主機程式碼：它們在伺服器自身的主機上執行，只有當部署的營運方開啟主機程式碼時才允許（參閱 [主機程式碼](#host-code)）。
+
 定址（目錄中的 `name` 與 `function_name`）與 `binding`（傳輸方式與位置）是解耦的。換掉 binding，命令的治理、血緣與呼叫方合約都維持不變。
 
 ## 引數種類 {: #argument-kinds }
@@ -60,6 +62,8 @@
 ## 撰寫一個命令 {: #authoring-a-command }
 
 ### 設定檔 {: #config-file }
+
+這個範例是一個 `python` 指令，所以只有在允許主機程式碼的地方才會載入（參閱 [主機程式碼](#host-code)）。
 
 ```yaml
 functions:
@@ -260,6 +264,31 @@ command 'create_issue' writes to its source and is called on its own: it cannot 
 ## 外連允許清單 {: #egress-allowlist }
 
 `http` 及 `grpc` 指令會呼叫外部端點。每個目標主機都必須出現在部署的 `udf_egress_allowlist` 中。回送位址（`localhost`、`127.0.0.1`、`::1`）一律允許。沒有允許清單時，所有外部輸出都會以 HTTP 403 拒絕，不存在靜默的預設值。
+
+## 主機程式碼 {: #host-code }
+
+`python` 指令在伺服器程序內呼叫一個 `module:attr`，`script` 指令在伺服器主機上執行一個子程序。兩者執行時都能觸及伺服器能觸及的一切：它的記憶體、憑證、檔案和網絡。惡意、有缺陷或貪婪的程式碼可以讀取其中任何東西，耗盡伺服器資源，或令它停機。指令的模型項目只保存對程式碼的參照（`module:attr` 或指令碼路徑），因此當模型被提升到另一個環境時，程式碼本身不會隨模型一起遷移。
+
+部署設定 `commands.allow_host_code` 同時管控這兩種類型。它預設為關閉。在關閉期間：
+
+- 登記任一類型的指令都會被拒絕，無論來自管理 API 還是設定檔；
+- 把指令更新為任一類型都會被拒絕；
+- 呼叫任一類型的現有指令都會被拒絕，傳回 HTTP 403 及代碼
+  `functions.host_code_refused`。
+
+該設定屬於營運方，絕不屬於某個組織。它位於「部署設定」頁面的「安全」之下，亦可在設定檔或環境中設定：
+
+```yaml
+server:
+  commands:
+    allow_host_code: true
+```
+
+```bash
+PROVISA_COMMANDS_ALLOW_HOST_CODE=true
+```
+
+[程式碼數據來源](code-sources.md) 是受治理的替代方案：它們的程式碼在沙盒中執行，固定在某個版本上，並隨模型一起提升。
 
 ## 呼叫追蹤 {: #invocation-tracing }
 

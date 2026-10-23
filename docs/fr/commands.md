@@ -19,6 +19,8 @@ Six valeurs d'`impl_kind` sont prises en charge :
 | `grpc` | gRPC unaire ; passerelle JSON sans proto |
 | `python` | Appelable Python en processus (`module:attr`) |
 
+`script` et `python` sont du code hôte : ils s'exécutent sur l'hôte même du serveur, et un déploiement ne les autorise que lorsque son opérateur active le code hôte (voir [Code hôte](#host-code)).
+
 L'adressage (le `name` du catalogue et `function_name`) est découplé du `binding` (transport et
 emplacement). Changez le binding et la gouvernance, la traçabilité et les contrats d'appel de la
 commande restent inchangés.
@@ -72,6 +74,8 @@ Les alias courants se résolvent automatiquement (`varchar` → `text`, `int4` �
 ## Écrire une commande {: #authoring-a-command }
 
 ### Fichier de configuration {: #config-file }
+
+Cet exemple est une commande `python` ; elle ne se charge donc que là où le code hôte est autorisé (voir [Code hôte](#host-code)).
 
 ```yaml
 functions:
@@ -285,6 +289,31 @@ Voir [Traçabilité](lineage.md) pour savoir comment les nœuds de commande appa
 ## Liste d'autorisation de sortie {: #egress-allowlist }
 
 Les commandes `http` et `grpc` appellent des points de terminaison externes. Chaque hôte cible doit figurer dans la `udf_egress_allowlist` du déploiement. Le loopback (`localhost`, `127.0.0.1`, `::1`) est toujours autorisé. Sans liste d'autorisation, toute sortie externe est refusée avec HTTP 403, sans valeur par défaut silencieuse.
+
+## Code hôte {: #host-code }
+
+Une commande `python` appelle un `module:attr` dans le processus du serveur, et une commande `script` lance un sous-processus sur l'hôte du serveur. L'une comme l'autre s'exécute avec tout ce que le serveur peut atteindre : sa mémoire, ses identifiants, ses fichiers et son réseau. Un code malveillant, bogué ou gourmand peut lire tout cela, affamer le serveur ou le faire tomber. L'entrée de la commande dans le modèle ne contient qu'une référence au code (`module:attr`, ou le chemin du script), donc le code lui-même ne voyage pas avec le modèle quand le modèle est promu vers un autre environnement.
+
+Le paramètre de déploiement `commands.allow_host_code` régit les deux types. Il est désactivé par défaut. Tant qu'il est désactivé :
+
+- enregistrer une commande de l'un ou l'autre type est refusé, que ce soit depuis l'API d'administration ou depuis un fichier de configuration ;
+- modifier une commande vers l'un ou l'autre type est refusé ;
+- appeler une commande existante de l'un ou l'autre type est refusé, avec HTTP 403 et le code
+  `functions.host_code_refused`.
+
+Le paramètre appartient à l'opérateur, jamais à une organisation. Il se trouve sur la page Paramètres de déploiement, sous Sécurité, et peut aussi être défini dans le fichier de configuration ou l'environnement :
+
+```yaml
+server:
+  commands:
+    allow_host_code: true
+```
+
+```bash
+PROVISA_COMMANDS_ALLOW_HOST_CODE=true
+```
+
+Les [sources de code](code-sources.md) sont l'alternative gouvernée : leur code s'exécute dans un bac à sable, est figé sur une version et est promu avec le modèle.
 
 ## Traçage des invocations {: #invocation-tracing }
 

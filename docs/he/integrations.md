@@ -240,17 +240,19 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | `grpc` | קריאת gRPC יוצאת לשרת חיצוני | `target`, `method` |
 | `python` | יישות Python ניתנת לקריאה המתארחת על ידי Provisa | `callable` (למשל `demo.py_functions:random_dataset`) |
 
-כאשר command מצהיר `return_schema` (JSON Schema עם `type: array, items: object`), הוא set-returning, וכל משטח משליך אותו כסט שורות בעל טיפוס. ה-commands לדוגמה `random_python_set` (impl_kind `python`) ו-`random_grpc_set` (impl_kind `grpc`) ממחישים גם יישות מתארחת ניתנת לקריאה וגם גשר gRPC חיצוני המחזיר שורות בעלות ערך אקראי; שניהם רשומים ב-`config/provisa-install.yaml`.
+`script` ו-`python` הם קוד מארח, ומותרים רק היכן שהמפעיל מפעיל את `commands.allow_host_code` (ראו [קוד מארח](commands.md#host-code)).
+
+כאשר פקודה מצהירה על `return_schema` (JSON Schema עם `type: array, items: object`), היא מחזירה קבוצה, וכל ממשק מקרין אותה כקבוצת שורות מוקלדת. פקודת ההדגמה `random_grpc_set` (impl_kind `grpc`) היא גשר gRPC חיצוני שמחזיר שורות עם ערכים אקראיים; היא רשומה ב-`config/provisa-install.yaml`.
 
 ### מטריצת פרוטוקולים {: #protocol-matrix }
 
 | משטח | תחביר | דוגמה |
 | --------- | -------- | --------- |
-| GraphQL | `kind=query` → שדה Query; `kind=mutation` → שדה Mutation; עם קידומת דומיין כאשר `domain_prefix: true` | `{ ps__random_python_set(rows: 5, seed: 42) { id region amount } }` |
-| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` או `SELECT fn(args)` | `SELECT * FROM random_python_set(5, 42)` |
-| Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_python_set(5, 42) YIELD id, region, amount` |
-| Bolt (Neo4j Browser / driver) | `CALL fn(args)` — ארגומנטים לפי מיקום ממופים לשמות הארגומנטים המוצהרים | `CALL random_python_set(3, 7)` |
-| Provisa gRPC (פורט 50051) | Unary `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
+| GraphQL | `kind=query` → שדה Query; `kind=mutation` → שדה Mutation; עם קידומת דומיין כאשר `domain_prefix: true` | `{ ps__random_grpc_set { id region amount } }` |
+| pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` או `SELECT fn(args)` | `SELECT * FROM random_grpc_set()` |
+| Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_grpc_set() YIELD id, region, amount` |
+| Bolt (Neo4j Browser / driver) | `CALL fn(args)` — ארגומנטים לפי מיקום ממופים לשמות הארגומנטים המוצהרים | `CALL random_grpc_set()` |
+| Provisa gRPC (פורט 50051) | Unary `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_grpc_set","args_json":"{}"}' ... ProvisaService/CallCommand` |
 
 שדה ה-`kind` שולט במיקום GraphQL בלבד. משטחי SQL, Cypher, Bolt, ו-gRPC מקבלים commands מסוג `query` ו-`mutation` באופן זהה.
 
