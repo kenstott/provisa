@@ -538,6 +538,10 @@ async def test_top_level_terms_sit_beneath_their_roles_group_and_carry_the_role(
     }
     declared = [b for m, url, b in calls if m == "PUT" and "/metadata/types/" in url]
     assert declared[0]["name"] == "provisaRole"
+    # Declared on the glossaryTerm entity type, typed as a string.
+    looked_up = [url.rsplit("/", 1)[-1] for m, url, _ in calls if "/metadata/types/name/" in url]
+    assert looked_up[:2] == ["glossaryTerm", "string"]
+    assert declared[0]["propertyType"] == {"id": "type-string", "type": "type"}
     assert not any("glossary/roles" in uri for uri in result.bindings)
 
 
@@ -549,3 +553,22 @@ async def test_a_stewards_custom_properties_stand_beside_the_role(monkeypatch):
     assert result.ok, result.errors
     (body,) = _term_puts(calls)
     assert body["extension"] == {"owner_team": "finance", "provisaRole": "concept"}
+
+
+@pytest.mark.asyncio
+async def test_a_role_property_that_cannot_be_declared_fails_the_publish(monkeypatch):
+    """The terms still publish, but the outcome says the role was not exported."""
+    calls = _mock_transport(monkeypatch)
+    get = httpx.AsyncClient.get
+
+    async def _no_types(self, url, params=None, headers=None):
+        if "/metadata/types/name/glossaryTerm" in url:
+            return httpx.Response(403, request=httpx.Request("GET", url))
+        return await get(self, url, params=params, headers=headers)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _no_types)
+    result = await OpenMetadataExport(_export_config()).publish(_snapshot([_term(3, "party")]))
+    assert not result.ok
+    assert any("the term role was not exported" in e.message for e in result.errors)
+    (body,) = _term_puts(calls)
+    assert "extension" not in body

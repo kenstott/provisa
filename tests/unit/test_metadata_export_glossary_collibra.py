@@ -170,6 +170,7 @@ def _fake_target(
     community_exists: bool,
     domain_exists: bool,
     relations: dict[str, list[dict]] | None = None,
+    role_attribute: bool = True,
 ) -> dict:
     """The Collibra surface the adapter touches, recording every call in order.
 
@@ -190,6 +191,8 @@ def _fake_target(
             results = [{"id": "comm-1", "name": COMMUNITY}] if community_exists else []
         elif url.endswith("/rest/2.0/domains"):
             results = [{"id": "dom-1", "name": GLOSSARY_DOMAIN}] if domain_exists else []
+        elif url.endswith("/rest/2.0/attributeTypes"):
+            results = [{"id": "at-role", "name": params["name"]}] if role_attribute else []
         elif url.endswith("/rest/2.0/domainTypes"):
             results = [{"id": "type-glossary", "name": "Glossary"}]
         else:
@@ -405,3 +408,17 @@ def test_every_term_row_carries_its_role():
     rows = {r["name"]: r for r in glossary_rows(snapshot, COMMUNITY, GLOSSARY_DOMAIN)}
     assert rows["order"]["attributes"][ROLE_ATTRIBUTE] == [{"value": "class"}]
     assert rows["party"]["attributes"][ROLE_ATTRIBUTE] == [{"value": "concept"}]
+
+
+async def test_a_target_without_the_role_attribute_type_fails_naming_it(snapshot, monkeypatch):
+    """The import would refuse every row carrying an unknown attribute type, so the terms go
+    out without the role and the publish fails, naming the attribute type to create."""
+    recorded = _fake_target(
+        monkeypatch, community_exists=True, domain_exists=True, role_attribute=False
+    )
+    result = await _export().publish(snapshot)
+    assert not result.ok
+    (error,) = result.errors
+    assert "the term role was not exported" in error.message
+    assert "'Provisa Role'" in error.message and "Business Term" in error.message
+    assert all(ROLE_ATTRIBUTE not in row["attributes"] for row in _imported_rows(recorded))

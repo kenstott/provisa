@@ -1003,7 +1003,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         ids: dict[str, str] = {}
         for type_name, category in ((entity, "entity"), ("string", "field")):
             response = await client.get(
-                self._url(f"/api/v1/metadata/types/name/{name}"),
+                self._url(f"/api/v1/metadata/types/name/{type_name}"),
                 params={"category": category},
                 headers=self._headers(),
             )
@@ -1429,8 +1429,9 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 AssetError(
                     asset=AssetRefStub(ROLE_PROPERTY),
                     message=(
-                        f"custom property {ROLE_PROPERTY}: {exc}. Terms were published "
-                        "without their role."
+                        f"the term role was not exported: declaring the custom property "
+                        f"{ROLE_PROPERTY} on the glossaryTerm type failed ({exc}). The terms "
+                        "were published without it."
                     ),
                 )
             )

@@ -596,6 +596,39 @@ class CollibraExport(MetadataExport):  # REQ-1069
                 return entry["id"]
         return None
 
+    async def _require_role_attribute(
+        self, client: httpx.AsyncClient, rows: list[dict[str, Any]], result: PublishResult
+    ) -> None:
+        """The term role needs the ``Provisa Role`` attribute type in the target (REQ-2141).
+
+        Without it the import would refuse every term row, so the role is taken off the rows
+        and the publish fails naming the attribute type to create; the terms still publish.
+        """
+        try:
+            found = await self._find_by_name(
+                client, "/rest/2.0/attributeTypes", {"name": ROLE_ATTRIBUTE}, ROLE_ATTRIBUTE
+            )
+        except httpx.HTTPStatusError as error:
+            reason = (
+                f"looking up the attribute type {ROLE_ATTRIBUTE!r} failed "
+                f"(HTTP {error.response.status_code})"
+            )
+        else:
+            if found is not None:
+                return
+            reason = (
+                f"the target has no attribute type named {ROLE_ATTRIBUTE!r}. Create it as a "
+                "Text attribute type, assign it to Business Term, and publish again"
+            )
+        for row in rows:
+            row["attributes"].pop(ROLE_ATTRIBUTE)
+        result.errors.append(
+            AssetError(
+                asset=AssetRefStub(ROLE_ATTRIBUTE),
+                message=f"the term role was not exported: {reason}.",
+            )
+        )
+
     async def _ensure_glossary_domain(
         self, client: httpx.AsyncClient, result: PublishResult
     ) -> bool:
@@ -675,7 +708,9 @@ class CollibraExport(MetadataExport):  # REQ-1069
             # REQ-1387: terms ride the same import job, contained in Provisa's own glossary
             # domain — created first, since the import rejects rows naming an absent domain.
             if snapshot.glossary_terms and await self._ensure_glossary_domain(client, result):
-                rows = rows + glossary_rows(snapshot, self.community, self.glossary_domain)
+                terms = glossary_rows(snapshot, self.community, self.glossary_domain)
+                await self._require_role_attribute(client, terms, result)
+                rows = rows + terms
             # REQ-1389: rebind by stored UUID happens BEFORE the name-keyed import.
             await self._rename_rebound_assets(client, rows, result)
             response = await client.post(
