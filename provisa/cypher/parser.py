@@ -235,10 +235,15 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             if kw in ("OPTIONAL",):
                 self._advance()
                 self._consume_keyword("MATCH")
+                # An OPTIONAL MATCH is a step of its own: its WHERE is its condition (REQ-345).
+                _flush_match_step()
                 current_matches.append(self._parse_match(optional=True))
 
             elif kw == "MATCH":
                 self._advance()
+                # A WHERE is its MATCH's; a MATCH after a WHERE or an OPTIONAL MATCH starts a step.
+                if current_where is not None or any(m.optional for m in current_matches):
+                    _flush_match_step()
                 current_matches.append(self._parse_match(optional=False))
 
             elif kw == "WHERE":

@@ -94,6 +94,11 @@ class ExprContext(Protocol):
         """A property access ``obj.name`` lowered against the object's already-lowered expression."""
         ...
 
+    def resolve_node_key(self, name: str) -> exp.Expression | None:
+        """The key column of the node variable ``name``, or None when ``name`` is no node: a node
+        is null exactly when its key is (an OPTIONAL MATCH that found none)."""
+        ...
+
     def property_is_table_column(self, obj: exp.Expression, name: str) -> bool:
         """Whether ``obj.name`` is a registered table's own (typed) column, as opposed to a value
         the translator builds itself — the VARCHAR identity of a node drawn from several tables,
@@ -273,7 +278,13 @@ class ExprLowering:
         return exp.In(this=left, field=right)
 
     def _lower_IsNull(self, node: IsNull) -> exp.Expression:
-        is_expr = exp.Is(this=self.lower(node.operand), expression=exp.Null())
+        key = (
+            self._ctx.resolve_node_key(node.operand.name)
+            if isinstance(node.operand, Variable)
+            else None
+        )
+        tested = key if key is not None else self.lower(node.operand)
+        is_expr = exp.Is(this=tested, expression=exp.Null())
         return exp.Not(this=is_expr) if node.negated else is_expr
 
     # -- calls / case ------------------------------------------------------ #

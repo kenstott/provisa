@@ -426,12 +426,16 @@ class _Lowering:
         labels: dict[str, str],
         bindings: dict[str, tuple[CypherExpr, str | None]],
         optional: bool,
+        filters: bool = True,
     ) -> MatchStep:
         """The MATCH of ``group`` with its nodes labelled ``labels``. ``bindings`` gains each
-        variable the group binds to a value: (its expression, its datatype)."""
+        variable the group binds to a value: (its expression, its datatype). ``filters``: the
+        group's FILTERs are its MATCH's condition (an OPTIONAL's); a query's own group lowers them
+        apart, after its OPTIONALs, which can bind what they name."""
         named: dict[str, str] = {}
         keys: dict[str, tuple] = {}
         conditions: list[CypherExpr] = []
+        held: list[CypherExpr] = []  # each bound property's own condition: it has a value
         edges: list[tuple[str, RelPattern, str]] = []
         triples: list[TriplePattern] = []
         nodes: list[str] = []
@@ -474,8 +478,9 @@ class _Lowering:
                     conditions.append(Binary("=", value, bindings[str(o)][0]))
                 else:
                     bindings[str(o)] = (value, cp.datatype)
-                    if not optional:
-                        conditions.append(IsNull(value, negated=True))
+                    # A triple holds only of a value: inside an OPTIONAL too, where it is part of
+                    # that OPTIONAL's condition (a null leaves the whole OPTIONAL unbound).
+                    held.append(IsNull(value, negated=True))
             else:
                 conditions.append(Binary("=", value, _literal(o)))
 
@@ -483,11 +488,22 @@ class _Lowering:
             conditions.extend(self._key_conditions(var, labels[var], iri))
         for var, expr in group.binds:
             bindings[var] = (self.expr(expr, bindings, labels), None)
-        for f in group.filters:
-            conditions.append(self.expr(f, bindings, labels))
+        if filters:
+            for f in group.filters:
+                conditions.append(self.expr(f, bindings, labels))
 
         matches = self._clauses(nodes, edges, labels, optional)
         matches.extend(MatchClause(t, None, optional=optional) for t in triples)
+        if optional and not matches:
+            # Only properties of nodes already matched: a value is null exactly when it is
+            # unbound, so its binding is the property itself, and nothing else can hold of it.
+            if conditions:
+                raise SparqlRefused(
+                    "An OPTIONAL holding only properties of nodes already matched, with a "
+                    "condition of its own, is not supported"
+                )
+            return MatchStep([], None)
+        conditions = [*held, *conditions]
         where = None
         if conditions:
             cond = conditions[0]
@@ -787,18 +803,16 @@ class _Lowering:
         """One UNION ALL part: ``group`` under one interpretation, answered as ``form``."""
         self._placed = set()
         bindings: dict[str, tuple[CypherExpr, str | None]] = {}
-        steps = [self.lower_group(group, labels, bindings, optional=False)]
-        for opt in group.optionals:
-            opt_labels = self.interpretations(opt, labels)
-            if len(opt_labels) != 1:
-                raise SparqlRefused(
-                    "An OPTIONAL whose nodes could be of several classes is not supported; "
-                    "give them a class"
-                )
-            steps.append(
-                self.lower_group(opt, {**labels, **opt_labels[0]}, bindings, optional=True)
-            )
-            labels = {**labels, **opt_labels[0]}
+        steps = [self.lower_group(group, labels, bindings, optional=False, filters=False)]
+        labels = self._lower_optionals(group, labels, bindings, steps)
+        if group.filters:
+            # The query's own FILTERs hold of its solutions, its OPTIONALs' bindings among them.
+            held: CypherExpr | None = None
+            for f in group.filters:
+                c = self.expr(f, bindings, labels)
+                held = c if held is None else Binary("AND", held, c)
+            assert held is not None
+            steps.append(MatchStep([], WhereClause(held)))
 
         group_keys: list[CypherExpr] | None = None
         having: CypherExpr | None = None
@@ -865,6 +879,35 @@ class _Lowering:
         )
         return ast
 
+    def _lower_optionals(
+        self,
+        group: _Group,
+        labels: dict[str, str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+        steps: list[MatchStep],
+    ) -> dict[str, str]:
+        """``group``'s OPTIONALs, each an OPTIONAL MATCH after the steps it extends, and the
+        OPTIONALs nested in each after it: an inner OPTIONAL extends its outer one's solutions.
+        Returns the labels with the OPTIONALs' nodes."""
+        for opt in group.optionals:
+            opt_labels = self.interpretations(opt, labels)
+            if len(opt_labels) != 1:
+                raise SparqlRefused(
+                    "An OPTIONAL whose nodes could be of several classes is not supported; "
+                    "give them a class"
+                )
+            inner = {str(v) for o in opt.optionals for v in _bound_vars(o)}
+            if any(v in inner for f in opt.filters for v in _expr_vars(f)):
+                raise SparqlRefused(
+                    "A FILTER in an OPTIONAL naming a variable an OPTIONAL inside it binds is not "
+                    "supported"
+                )
+            steps.append(
+                self.lower_group(opt, {**labels, **opt_labels[0]}, bindings, optional=True)
+            )
+            labels = self._lower_optionals(opt, {**labels, **opt_labels[0]}, bindings, steps)
+        return labels
+
     def _template_term(self, x: Any, term) -> CypherExpr:
         if isinstance(x, RdfVariable):
             return term(str(x))
@@ -885,6 +928,26 @@ class _Lowering:
             if isinstance(m.pattern, TriplePattern)
             for v in (m.pattern.predicate, m.pattern.object)
         }
+
+
+def _expr_vars(e: Any) -> set[str]:
+    """The variables a FILTER's expression names."""
+    if isinstance(e, RdfVariable):
+        return {str(e)}
+    if isinstance(e, (list, tuple)):
+        return {v for x in e for v in _expr_vars(x)}
+    if isinstance(e, CompValue):
+        return {v for x in e.values() for v in _expr_vars(x)}
+    return set()
+
+
+def _bound_vars(group: _Group) -> set[str]:
+    """The variables ``group`` and the OPTIONALs in it bind."""
+    out = {str(t) for triple in group.triples for t in triple if _is_var(t)}
+    out |= {var for var, _ in group.binds}
+    for o in group.optionals:
+        out |= _bound_vars(o)
+    return out
 
 
 def _literal(lit: Any) -> CypherExpr:
