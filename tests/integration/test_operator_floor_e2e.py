@@ -30,12 +30,13 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
-import time
 from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
+
+from tests.integration.isolated_server import audited_route_reason
 
 pytestmark = [
     pytest.mark.requires_trino,
@@ -201,32 +202,7 @@ async def test_a_direct_route_hint_is_ignored_naming_the_operator_setting(
     assert resp.status_code == 200 and not body.get("errors"), _explain(floor_server, resp)
     assert sorted(r["id"] for r in body["data"][field]) == [1, 2, 3]
     noted = f"route hint ignored: landed: not_forced: operator floor: {setting} on {source} "
-    assert await asyncio.to_thread(_route_reason, floor_server, noted)
-
-
-def _route_reason(server, noted: str) -> str | None:
-    """The newest route reason in the server's audit log that starts with ``noted``, waiting for
-    the writer (it inserts in batches)."""
-    import sqlalchemy as sa
-
-    from provisa.core.database import create_engine_from_url
-
-    url = server.plane.url if server.plane is not None else os.environ["TENANT_DATABASE_URL"]
-    engine = create_engine_from_url(url)
-    query = sa.text(
-        f"SELECT route_reason FROM org_{server.org_id}.query_audit_log "
-        "WHERE route_reason LIKE :noted ORDER BY id DESC LIMIT 1"
-    )
-    deadline = time.monotonic() + 60
-    try:
-        while True:
-            with engine.connect() as conn:
-                reason = conn.execute(query, {"noted": f"{noted}%"}).scalar()
-            if reason is not None or time.monotonic() > deadline:
-                return reason
-            time.sleep(0.5)
-    finally:
-        engine.dispose()
+    assert await asyncio.to_thread(audited_route_reason, floor_server, noted)
 
 
 async def test_a_federated_route_hint_is_served_from_the_landed_copy(floor_server):
