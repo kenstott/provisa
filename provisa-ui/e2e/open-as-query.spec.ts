@@ -102,6 +102,42 @@ test.describe("Open as query", () => {
     expect(run.data).toEqual(viewed.data);
   });
 
+  test("a searched view's query states its search and neighbourhood, and run answers what it read", async ({
+    page,
+  }) => {
+    await page.goto("/admin/ontology");
+    await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
+    await page.getByTestId("glossary-ontology-toggle").click();
+    await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
+      timeout: 60_000,
+    });
+    // REQ-2143: the search is the query's root filter, its neighbourhood read nested with it.
+    const viewed = await nextRead(
+      page,
+      (q) => q.startsWith("query Ontology") && q.includes("ilike"),
+      () => page.getByTestId("glossary-search").fill("species"),
+    );
+    expect(viewed.query).toContain('ilike: "%species%"');
+    const terms = (viewed.data as { glossary_terms: { name: string }[] }).glossary_terms;
+    expect(terms.map((t) => t.name)).toContain("species");
+
+    await page.getByTestId("ontology-open-as-query").click();
+    await page.getByTestId("ontology-open-as-graphql").click();
+    await page.waitForURL("**/query", { timeout: 60_000 });
+    const run = await nextRead(
+      page,
+      (q) => q === viewed.query,
+      async () => {
+        await expect(page.locator(".graphiql-execute-button")).toBeEnabled({ timeout: 60_000 });
+        await expect(page.locator(".graphiql-query-editor")).toContainText("query Ontology", {
+          timeout: 60_000,
+        });
+        await page.locator(".graphiql-execute-button").click();
+      },
+    );
+    expect(run.data).toEqual(viewed.data);
+  });
+
   test("its one Cypher pattern, run on the Cypher page, answers the same terms and edges", async ({
     page,
   }) => {

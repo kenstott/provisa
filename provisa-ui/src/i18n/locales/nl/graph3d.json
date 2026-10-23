@@ -107,6 +107,8 @@
     "unconnectedHelp": "Termen zonder getoonde relatie of verankering",
     "look_class": "klasse",
     "look_concept": "concept",
-    "look_property": "eigenschap"
+    "look_property": "eigenschap",
+    "overBudget": "{{count}} treffers; verfijn de zoekopdracht of kies een domein",
+    "domainCount": "{{domain}} ({{count}})"
   }
 }

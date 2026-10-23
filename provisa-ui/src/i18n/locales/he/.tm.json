@@ -7840,5 +7840,7 @@
   "he/graph3d.json::graph3d.look_concept": "concept",
   "he/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
   "he/glossaryTab.json::glossaryTab.keyColumn": "Key",
-  "he/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
+  "he/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class",
+  "he/graph3d.json::graph3d.overBudget": "{{count}} match; narrow the search or pick a domain",
+  "he/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})"
 }

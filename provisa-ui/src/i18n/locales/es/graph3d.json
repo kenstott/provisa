@@ -107,6 +107,8 @@
     "unconnectedHelp": "Términos sin relación ni anclaje mostrados",
     "look_class": "clase",
     "look_concept": "concepto",
-    "look_property": "propiedad"
+    "look_property": "propiedad",
+    "overBudget": "{{count}} coincidencias; acote la búsqueda o elija un dominio",
+    "domainCount": "{{domain}} ({{count}})"
   }
 }

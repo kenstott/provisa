@@ -107,6 +107,8 @@
     "unconnectedHelp": "未显示任何关系或依据的术语",
     "look_class": "类",
     "look_concept": "概念",
-    "look_property": "属性"
+    "look_property": "属性",
+    "overBudget": "{{count}} 个匹配；请缩小搜索范围或选择一个域",
+    "domainCount": "{{domain}}（{{count}}）"
   }
 }

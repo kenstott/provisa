@@ -14,6 +14,7 @@
 // set of layers with a layout. Pure data: the scene only draws what this decides.
 
 import type { TermRole } from "../../api/glossary";
+import { ONTOLOGY_NEIGHBOURHOOD, PRODUCT_NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
 import { lanesFrom } from "../lineage/lineage-layout";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 
@@ -201,6 +202,8 @@ export interface GraphScope {
   /** The layers, and the terms by status with the unconnected ones, are chosen in dropdowns
    * beside the other filters, not in rows of chips. */
   menus: boolean;
+  /** What a focus draws around each match (neighbourhood.ts). */
+  neighbourhood: Neighbourhood;
 }
 
 export const PRODUCT_SCOPE: GraphScope = {
@@ -215,6 +218,7 @@ export const PRODUCT_SCOPE: GraphScope = {
   betweenDrawn: [],
   implicitLayers: [],
   menus: false,
+  neighbourhood: PRODUCT_NEIGHBOURHOOD,
 };
 
 /** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
@@ -247,6 +251,7 @@ export const GLOSSARY_SCOPE: GraphScope = {
   betweenDrawn: ["relationship"],
   implicitLayers: ["ontology"],
   menus: true,
+  neighbourhood: ONTOLOGY_NEIGHBOURHOOD,
 };
 
 export interface GraphFilters {
@@ -274,6 +279,9 @@ export interface QueryScope {
   /** Whether a term with no relationship drawn (no edge of the types kept to a term kept, and no
    * column it IS under Columns) is drawn: the Ontology View's Orphans. */
   orphans: boolean;
+  /** The page's search, as searchItems splits it: the terms it matches and their neighbourhood
+   * (neighbourhood.ts) are read; none, the whole graph. */
+  search: string[];
 }
 
 export const NO_FILTERS: GraphFilters = {
@@ -443,7 +451,8 @@ export function visibleGraph(
   if (anchors.length > 0) {
     // The union of each focus's neighbourhood.
     const reached = new Set<string>();
-    for (const a of anchors) for (const id of reach(a, kept, byId)) reached.add(id);
+    for (const a of anchors)
+      for (const id of reach(a, kept, byId, scope.neighbourhood)) reached.add(id);
     for (const id of [...drawn]) if (!reached.has(id)) drawn.delete(id);
     kept = kept.filter((e) => drawn.has(e.a) && drawn.has(e.b));
   }
@@ -458,31 +467,40 @@ const judged = (n: GraphNode) =>
   n.tags !== undefined ||
   n.sensitivities !== undefined;
 
-/** Everything reached from ``start`` without passing through another product or a domain. A table
- * is an end too -- drawn where a reached column, term or table touches it, its other columns and
- * relationships not followed -- unless it is the start or a member of the start product. */
-function reach(start: string, edges: GraphEdge[], byId: Map<string, GraphNode>): Set<string> {
+/** What is reached from ``start`` within ``rule.depth`` hops, passing through no product or domain
+ * (``rule.stopAt``). A table is an end too -- drawn where a reached column, term or table touches
+ * it, its other columns and relationships not followed -- unless it is the start or entered by a
+ * member edge (a member of the start product). */
+export function reach(
+  start: string,
+  edges: GraphEdge[],
+  byId: Map<string, GraphNode>,
+  rule: Neighbourhood,
+): Set<string> {
   const next = new Map<string, [string, EdgeKind][]>();
   for (const e of edges) {
     next.set(e.a, [...(next.get(e.a) ?? []), [e.b, e.kind]]);
     next.set(e.b, [...(next.get(e.b) ?? []), [e.a, e.kind]]);
   }
   const seen = new Set([start]);
-  const stack: [string, EdgeKind | null][] = [[start, null]];
-  while (stack.length > 0) {
-    const [id, via] = stack.pop() as [string, EdgeKind | null];
-    if (id !== start) {
-      const t = byId.get(id)?.type;
-      if (t === "product" || t === "domain") continue;
-      // Only the start product's own members are entered by a member edge.
-      if (t === "table" && via !== "member") continue;
-    }
-    for (const [m, kind] of next.get(id) ?? []) {
-      if (!seen.has(m)) {
-        seen.add(m);
-        stack.push([m, kind]);
+  // Breadth first, so each node is met at its fewest hops.
+  let frontier: [string, EdgeKind | null][] = [[start, null]];
+  for (let hop = 0; hop < rule.depth && frontier.length > 0; hop++) {
+    const out: [string, EdgeKind | null][] = [];
+    for (const [id, via] of frontier) {
+      if (id !== start) {
+        const t = byId.get(id)?.type;
+        if (t !== undefined && rule.stopAt.includes(t)) continue;
+        if (t === "table" && via !== rule.tableEnteredBy) continue;
+      }
+      for (const [m, kind] of next.get(id) ?? []) {
+        if (!seen.has(m)) {
+          seen.add(m);
+          out.push([m, kind]);
+        }
       }
     }
+    frontier = out;
   }
   return seen;
 }

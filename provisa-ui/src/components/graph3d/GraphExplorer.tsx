@@ -101,6 +101,11 @@ export function GraphExplorer({
     /** The focus the query itself states (a product's graph, read for that product): no
      * neighbourhood beyond the query's own. */
     own?: string;
+    /** REQ-2143: said in place of the graph when the query would read more than the budget. */
+    notice?: string | null;
+    /** REQ-2143: ``data`` is the overview -- the domains with their counts -- and picking a domain
+     * narrows the graph to it. */
+    overview?: boolean;
   };
   testId?: string;
 }) {
@@ -254,18 +259,13 @@ export function GraphExplorer({
     orphans,
     narrowed.tags,
     narrowed.sensitivities,
+    searchItems(search ?? ""),
   ]);
   useEffect(() => {
     if (!onScope) return;
-    const [l, domains, types, statuses, kept, tags, sensitivities] = JSON.parse(scopeKey) as [
-      LayerId[],
-      string[],
-      string[],
-      TermStatus[],
-      boolean,
-      string[],
-      string[],
-    ];
+    const [l, domains, types, statuses, kept, tags, sensitivities, items] = JSON.parse(
+      scopeKey,
+    ) as [LayerId[], string[], string[], TermStatus[], boolean, string[], string[], string[]];
     onScope({
       layers: new Set(l),
       domains,
@@ -274,13 +274,13 @@ export function GraphExplorer({
       orphans: kept,
       tags,
       sensitivities,
+      search: items,
     });
   }, [onScope, scopeKey]);
 
-  // A focus draws a neighbourhood (reach), which no query states: the page's search or a node.
-  const focused =
-    (search !== undefined && searchItems(search).length > 0) ||
-    filters.focus.some((f) => f !== query?.own);
+  // REQ-2143: the page's search is the query's own (its root filter and its neighbourhood); a node
+  // focused by the focus field (the product graph's) is a neighbourhood no query states yet.
+  const focused = filters.focus.some((f) => f !== query?.own);
 
   const shown = useMemo(() => {
     // The page's search, when it drives the focus: what it matches, by title or definition.
@@ -340,13 +340,21 @@ export function GraphExplorer({
     save("layers", on ? [...layers, l] : [...layers].filter((x) => x !== l));
 
   const selected = shown.nodes.some((n) => n.id === picked) ? picked : null;
+  // In the overview a domain picked is the domain the graph is narrowed to.
+  const select = (id: string | null) => {
+    if (query?.overview && id !== null && id.startsWith("d:")) {
+      setFilters((f) => ({ ...f, domains: [id.slice(2)] }));
+      return;
+    }
+    setSelected(id);
+  };
   const s: StageState = {
     graph: shown,
     at,
     frame,
     frontal: layout !== "force",
     selected,
-    setSelected,
+    setSelected: select,
     hover,
     setHover,
     rotate,
@@ -534,7 +542,13 @@ export function GraphExplorer({
         )}
       </Group>
       <div className="p3d-body">
-        {shown.nodes.length === 0 ? (
+        {query?.notice ? (
+          <div className="p3d-stage g3d-empty" data-testid={`${testId}-over-budget`}>
+            <Text size="sm" c="dimmed">
+              {query.notice}
+            </Text>
+          </div>
+        ) : shown.nodes.length === 0 ? (
           <div className="p3d-stage g3d-empty" data-testid={`${testId}-empty`}>
             <Text size="sm" c="dimmed">
               {t("graph3d.empty")}

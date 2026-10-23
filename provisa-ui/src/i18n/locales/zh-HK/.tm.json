@@ -7841,5 +7841,7 @@
   "zh-HK/graph3d.json::graph3d.look_class": "class",
   "zh-HK/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
   "zh-HK/glossaryTab.json::glossaryTab.keyColumn": "Key",
-  "zh-HK/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
+  "zh-HK/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class",
+  "zh-HK/graph3d.json::graph3d.overBudget": "{{count}} match; narrow the search or pick a domain",
+  "zh-HK/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})"
 }

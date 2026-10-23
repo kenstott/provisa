@@ -7840,5 +7840,7 @@
   "nl/dataProductsTab.json::dataProductsTab.relatedTermsConcept": "concept",
   "nl/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
   "nl/glossaryTab.json::glossaryTab.keyColumn": "Key",
-  "nl/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
+  "nl/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class",
+  "nl/graph3d.json::graph3d.overBudget": "{{count}} match; narrow the search or pick a domain",
+  "nl/graph3d.json::graph3d.domainCount": "{{domain}} ({{count}})"
 }
