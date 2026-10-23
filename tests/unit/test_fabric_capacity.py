@@ -27,6 +27,24 @@ def configured(monkeypatch):
     monkeypatch.setenv("FABRIC_CAPACITY_NAME", "cap1")
     monkeypatch.setenv("FABRIC_RESOURCE_GROUP", "rg1")
     monkeypatch.setattr(fc, "_POLL_S", 0.0)
+    # Fabric's own listing reports the capacity Active (each test that asks otherwise says so).
+    monkeypatch.setattr(fc, "_fabric_client", lambda: _fabric(["Active"], []))
+
+
+def _fabric(states: list[str], calls: list[str], name: str = "cap1"):
+    """A fake Fabric REST API: ``GET /v1/capacities`` lists ``name``, its state walking
+    ``states``."""
+    seq = iter(states)
+    current = {"state": None}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.method} {request.url.path}")
+        assert request.url.path == "/v1/capacities"
+        current["state"] = next(seq, current["state"])
+        listed = [{"id": "c-9", "displayName": name, "state": current["state"]}]
+        return httpx.Response(200, json={"value": listed})
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
 
 
 def _arm(states: list[str], calls: list[str]):
@@ -100,6 +118,36 @@ def test_a_capacity_found_while_pausing_is_resumed_once_it_has_paused(configured
 def test_a_terminal_state_raises(configured, monkeypatch):
     monkeypatch.setattr(fc, "_client", lambda: _arm(["Failed"], []))
     with pytest.raises(RuntimeError, match="terminal state"):
+        fc.ensure_capacity_resumed()
+
+
+def test_a_capacity_active_in_azure_is_waited_for_until_fabric_serves_it(configured, monkeypatch):
+    """ARM reports a resumed capacity Active before Fabric's data plane serves it, and a statement
+    in between is refused CapacityNotActive (run 40024234397): the wait ends only when Fabric's
+    own listing says Active too."""
+    fabric_calls: list[str] = []
+    monkeypatch.setattr(
+        fc, "_fabric_client", lambda: _fabric(["Inactive", "Inactive", "Active"], fabric_calls)
+    )
+    monkeypatch.setattr(fc, "_client", lambda: _arm(["Paused", "Active"], []))
+    fc.ensure_capacity_resumed()
+    assert fabric_calls == ["GET /v1/capacities"] * 3
+
+
+def test_a_capacity_fabric_never_serves_raises_naming_it(configured, monkeypatch):
+    monkeypatch.setattr(fc, "_RESUME_TIMEOUT_S", 0.0)
+    monkeypatch.setattr(fc, "_fabric_client", lambda: _fabric(["Inactive"], []))
+    monkeypatch.setattr(fc, "_client", lambda: _arm(["Active"], []))
+    with pytest.raises(RuntimeError, match="'cap1' is Active in Azure but Fabric still reports"):
+        fc.ensure_capacity_resumed()
+
+
+def test_a_capacity_fabric_does_not_list_raises_saying_what_access_is_missing(
+    configured, monkeypatch
+):
+    monkeypatch.setattr(fc, "_fabric_client", lambda: _fabric(["Active"], [], name="other"))
+    monkeypatch.setattr(fc, "_client", lambda: _arm(["Active"], []))
+    with pytest.raises(RuntimeError, match="not in Fabric's capacity listing"):
         fc.ensure_capacity_resumed()
 
 
