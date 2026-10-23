@@ -151,6 +151,12 @@ SUITE: dict[str, tuple[int, int]] = {
 # A live lane runs only when the dispatch includes it (its include_<lane> input).
 OWN_JOBS = ("cluster",)
 LIVE = ("warehouse", "salesforce", "athena", "servicenow")
+# Lanes another workflow runs, with what they need that no integration-suite.yml dispatch has: a
+# targeted run naming a test only they select is refused, saying where it runs.
+ELSEWHERE = {
+    "demo_walk": "demo-bundles.yml, against the demo bundle it has just built",
+    "polly_bakeoff": "polly-bakeoff.yml",
+}
 
 
 def named_tests() -> list[str]:
@@ -391,7 +397,14 @@ def routes(runnable: tuple[str, ...]) -> dict[str, list[str]]:
                 lanes = [lane for lane in LANES if _in_lane(lane, path) and selects(lane, marks)]
                 here = [lane for lane in lanes if lane in runnable]
                 if not here:
-                    need = ", ".join(lanes) if lanes else "no lane at all"
+                    need = (
+                        ", ".join(
+                            f"{lane} (run by {ELSEWHERE[lane]})" if lane in ELSEWHERE else lane
+                            for lane in lanes
+                        )
+                        if lanes
+                        else "no lane at all"
+                    )
                     unrunnable.append(
                         f"{test} [{', '.join(sorted(marks)) or 'no markers'}] needs {need}"
                     )
@@ -471,8 +484,11 @@ def targets(lane_name: str, shard_spec: str | None) -> list[str]:
     """What the lane (or its shard) hands pytest: the lane's paths, or the shard's files."""
     lane = LANES[lane_name]
     if named_tests():
-        # A targeted run: only the named tests this lane selects.
-        return routes(runnable_lanes()).get(lane_name, [])
+        # A targeted run: only the named tests this lane selects. The plan refused every test the
+        # dispatch cannot run (routes over runnable_lanes); a lane's own job does not carry the
+        # dispatch's PROVISA_INCLUDE_LIVE, and is running, so it routes over every lane and takes
+        # its share.
+        return routes(tuple(LANES)).get(lane_name, [])
     if shard_spec is None:
         return list(lane.paths)
     index, total = (int(x) for x in shard_spec.split("/"))
@@ -510,7 +526,8 @@ def main(argv: list[str]) -> int:
         # A job of its own (cluster, warehouse, salesforce, athena, servicenow) runs when the run
         # names no tests (the whole lane) or names one the lane selects; otherwise it would collect
         # nothing, write no results and fail its required results upload.
-        print("true" if not named_tests() or targets(argv[1], None) else "false")
+        planned = not named_tests() or routes(runnable_lanes()).get(argv[1])
+        print("true" if planned else "false")
         return 0
     parser = argparse.ArgumentParser()
     parser.add_argument("lane", choices=sorted(LANES))
