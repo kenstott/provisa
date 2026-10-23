@@ -450,6 +450,32 @@ class MetadataSnapshot:  # REQ-1070
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]
 
+    def container_sources(self) -> list[SourceAsset]:
+        """The sources, and the derived layer a view is read from (REQ-2119).
+
+        A view's source is Provisa's own derived sentinel, not a federated source, so it is not
+        among ``sources``. A catalog that seats every table in a source container (Atlas's
+        provisa_source composition, OpenMetadata's service and database) refuses a table with
+        none, so the views are seated in a container for that layer.
+        """
+        from provisa.api.metadata_export.refs import source_uri
+
+        known = {source.id for source in self.sources}
+        derived = sorted({t.ref.parts[0] for t in self.tables if t.is_view} - known)
+        return [
+            *self.sources,
+            *(
+                SourceAsset(
+                    ref=AssetRef(kind=AssetKind.SOURCE, parts=(source_id,)),
+                    id=source_id,
+                    source_type="derived",
+                    description="Views Provisa defines over its governed tables.",
+                    semantic_uri=source_uri(self.org_id, source_id),
+                )
+                for source_id in derived
+            ),
+        ]
+
     def asset_count(self) -> dict[str, int]:
         return {
             AssetKind.SOURCE.value: len(self.sources),

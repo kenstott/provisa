@@ -31,7 +31,12 @@ import httpx
 import pytest
 
 from provisa.api.metadata_export.purview import API_VERSION
-from tests.integration.metadata_export_server import PRODUCT_FIELDS, publish, published_server
+from tests.integration.metadata_export_server import (
+    PRODUCT_FIELDS,
+    publish,
+    published_server,
+    refused,
+)
 
 pytestmark = [
     pytest.mark.integration,
@@ -185,7 +190,7 @@ async def published():
 
 async def test_the_publish_reports_the_product_and_its_assets(published):
     result = published[0]
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     assert result["published"]["data_products"] == 1
     assert result["published"]["data_assets"] == 2
 

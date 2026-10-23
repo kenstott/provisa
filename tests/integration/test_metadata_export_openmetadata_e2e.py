@@ -36,6 +36,7 @@ from tests.integration.metadata_export_server import (
     VIEW,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -96,7 +97,7 @@ async def published(token) -> dict:
                 "timeout_seconds": 60,
             },
         )
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     return {"result": result}
 
 

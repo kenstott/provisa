@@ -335,6 +335,20 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
     return Entity(asset=table.ref, path="/api/v1/tables", kind="table", body=body)
 
 
+def _with_member_list_team(contract: dict[str, Any]) -> dict[str, Any]:
+    """The contract with its team as ODCS 3.0's list of members, the only form OpenMetadata's
+    import reads (its ODCSDataContract has no 3.1 Team object). Each role the Team names is a
+    member, the role's purpose (owner, team) its role."""
+    team = contract.get("team")
+    if team is None:
+        return contract
+    members = [
+        {"name": prop["value"], "role": prop["property"].removesuffix("Role")}
+        for prop in team["customProperties"]
+    ]
+    return {**contract, "team": members}
+
+
 def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """Each data product member's ODCS 3.1 contract, through OpenMetadata's ODCS import
     (REQ-2118): the same document Provisa serves at /data-products/{id}/contracts/."""
@@ -350,7 +364,7 @@ def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
                     asset=table.ref,
                     path="/api/v1/dataContracts/odcs",
                     kind="data_contract",
-                    body=odcs_contract(snapshot, product, table),
+                    body=_with_member_list_team(odcs_contract(snapshot, product, table)),
                     for_table=_table_fqn(table),
                 )
             )
@@ -586,7 +600,9 @@ def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """
     entities: list[Entity] = _classification_entities(snapshot)
 
-    for source in snapshot.sources:
+    # A schema names its database and a database its service, so a view is seated in the derived
+    # layer's service.
+    for source in snapshot.container_sources():
         entities.append(
             Entity(
                 asset=source.ref,

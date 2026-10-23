@@ -39,10 +39,12 @@ from tests.integration.metadata_export_server import (
     ORDERS_AMOUNT_DESCRIPTION,
     RLS_FILTER,
     SCHEMA,
+    SERVER_ROLES,
     SOURCE,
     VIEW,
     publish,
     published_server,
+    refused,
 )
 
 # REQ-1388/1389: the native Atlas path (to_native_entities) rides its own typed attribute,
@@ -95,7 +97,7 @@ async def published():
     publishes over the admin API. The server stays up for the test, which republishes."""
     async with published_server(ORG) as client:
         result = await publish(client, _target())
-        assert result["ok"], result["errors"]
+        assert result["ok"], refused(result)
         yield client, result
 
 
@@ -144,7 +146,7 @@ async def test_governance_signals_arrive_as_atlas_classifications(published):
         == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:regex"
     )
     assert masked["attributes"]["exemptRoles"] == ["admin"]
-    assert masked["attributes"]["restrictedRoles"] == ["analyst", "data_owner"]
+    assert masked["attributes"]["restrictedRoles"] == sorted(set(SERVER_ROLES) - {"admin"})
 
     margin = await _entity("provisa_column", f"{_ORDERS}.margin@{CLUSTER}")
     assert [c["typeName"] for c in margin["classifications"]] == ["provisa_visibility_restricted"]
@@ -191,7 +193,7 @@ async def test_republishing_lands_the_same_catalog_state(published):
     has to be an upsert rather than a duplicate."""
     client, first = published
     (again,) = (await client.post("/admin/metadata-export/publish")).json()["targets"]
-    assert again["ok"], again["errors"]
+    assert again["ok"], refused(again)
     assert again["published"] == first["published"]
     orders = await _entity("provisa_table", ORDERS)
     assert [c["typeName"] for c in orders["classifications"]] == ["provisa_rls_restricted"]

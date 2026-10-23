@@ -516,7 +516,9 @@ def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-
     table_guids: dict[str, str] = {}
     domain_by_id = {domain.id: domain for domain in snapshot.domains}
 
-    for source in snapshot.sources:
+    # A provisa_table's source end is mandatory (ATLAS-404-00-007), so a view is seated in the
+    # derived layer's container.
+    for source in snapshot.container_sources():
         source_guid = guid.next()
         source_guids[source.id] = source_guid
         entities.append(
@@ -562,10 +564,7 @@ def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-
                 guid=table_guid,
                 attributes=attributes,
                 classifications=_classifications(snapshot, table.ref.fqn()),
-                # A view is Provisa's own, read from no source: it has no source container.
-                relationships=(
-                    {} if table.is_view else {"source": {"guid": source_guids[table.ref.parts[0]]}}
-                ),
+                relationships={"source": {"guid": source_guids[table.ref.parts[0]]}},
             )
         )
         for column in table.columns:

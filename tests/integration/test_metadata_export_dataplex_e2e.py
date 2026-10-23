@@ -42,6 +42,7 @@ from tests.integration.metadata_export_server import (
     SOURCE,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -168,7 +169,7 @@ async def published():
 
 async def test_the_publish_reports_the_data_product_and_its_assets(published):
     result = published[0]
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     assert result["published"] == {"data_products": 1, "data_assets": 2}
 
 
