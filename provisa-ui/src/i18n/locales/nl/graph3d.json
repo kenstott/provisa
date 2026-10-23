@@ -90,6 +90,15 @@
     "look_in_product": "kolom in een dataproduct",
     "look_out_of_product": "kolom buiten dataproducten",
     "look_stored": "tabel",
-    "status_live": "Actief"
+    "status_live": "Actief",
+    "openAsQuery": "Openen als query",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "Zoeken of focus toont een omgeving die de query niet uitdrukt.",
+    "openAsQueryCompiling": "Query wordt gecompileerd…",
+    "openAsQueryNoCypher": "Deze query heeft geen Cypher-vorm.",
+    "openAsQuerySparqlLater": "SPARQL opent zodra het endpoint beschikbaar is."
   }
 }

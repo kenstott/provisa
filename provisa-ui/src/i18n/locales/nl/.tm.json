@@ -7780,5 +7780,14 @@
   "nl/profile3d.json::profile3d.recording": "Recording the turn… {{percent}}%",
   "nl/profile3d.json::profile3d.cancelRecording": "Stop recording",
   "nl/profile3d.json::profile3d.exportFailed": "The view could not be exported: {{error}}",
-  "nl/profile3d.json::profile3d.lastFormat": "Last used"
+  "nl/profile3d.json::profile3d.lastFormat": "Last used",
+  "nl/graph3d.json::graph3d.openAsQuery": "Open as query",
+  "nl/graph3d.json::graph3d.openAs_graphql": "GraphQL",
+  "nl/graph3d.json::graph3d.openAs_sql": "SQL",
+  "nl/graph3d.json::graph3d.openAs_cypher": "Cypher",
+  "nl/graph3d.json::graph3d.openAs_sparql": "SPARQL",
+  "nl/graph3d.json::graph3d.openAsQueryFocused": "The search or focus draws a neighbourhood the query does not state.",
+  "nl/graph3d.json::graph3d.openAsQueryCompiling": "Compiling the query…",
+  "nl/graph3d.json::graph3d.openAsQueryNoCypher": "This query has no Cypher form.",
+  "nl/graph3d.json::graph3d.openAsQuerySparqlLater": "SPARQL opens once its endpoint is available."
 }

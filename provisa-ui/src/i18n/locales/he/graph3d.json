@@ -90,6 +90,15 @@
     "look_in_product": "עמודה במוצר נתונים",
     "look_out_of_product": "עמודה מחוץ למוצרי נתונים",
     "look_stored": "טבלה",
-    "status_live": "פעיל"
+    "status_live": "פעיל",
+    "openAsQuery": "פתח כשאילתה",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "החיפוש או המיקוד מציירים סביבה שהשאילתה אינה מבטאת.",
+    "openAsQueryCompiling": "מהדר את השאילתה…",
+    "openAsQueryNoCypher": "לשאילתה זו אין צורת Cypher.",
+    "openAsQuerySparqlLater": "SPARQL ייפתח כאשר נקודת הקצה שלו תהיה זמינה."
   }
 }

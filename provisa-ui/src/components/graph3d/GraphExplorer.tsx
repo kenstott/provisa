@@ -50,6 +50,7 @@ import {
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import { kindKey } from "./nodeLook";
+import { OpenAsQuery } from "./OpenAsQuery";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -91,7 +92,7 @@ export function GraphExplorer({
   /** REQ-2136: the layers and the domain, edge type and status filters run in the view's query.
    * The page reads ``data`` for the scope ``onScope`` reports; ``all`` (every layer, no filter)
    * is what the controls choose from, since ``data`` holds only what the filters keep. */
-  query?: { all: GraphData; onScope: (s: QueryScope) => void };
+  query?: { all: GraphData; onScope: (s: QueryScope) => void; text: string | null };
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -254,6 +255,10 @@ export function GraphExplorer({
     });
   }, [onScope, scopeKey]);
 
+  // A focus draws a neighbourhood (reach), which no query states: the page's search or a node.
+  const focused =
+    (search !== undefined && searchItems(search).length > 0) || filters.focus.length > 0;
+
   const shown = useMemo(() => {
     // The page's search, when it drives the focus: what it matches, by title or definition.
     const items = search === undefined ? null : searchItems(search);
@@ -351,6 +356,7 @@ export function GraphExplorer({
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}
         <ResetSettingsButton onReset={resetSettings} testId={testId} />
+        {query && <OpenAsQuery query={query.text} focused={focused} testId={testId} />}
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
       <Group className="p3d-toolbar" gap="xs" wrap="wrap" data-testid={`${testId}-layers`}>

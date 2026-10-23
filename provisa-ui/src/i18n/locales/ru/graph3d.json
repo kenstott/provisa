@@ -90,6 +90,15 @@
     "look_in_product": "столбец в продукте данных",
     "look_out_of_product": "столбец вне продуктов данных",
     "look_stored": "таблица",
-    "status_live": "Действующий"
+    "status_live": "Действующий",
+    "openAsQuery": "Открыть как запрос",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "Поиск или фокус показывают окрестность, которую запрос не выражает.",
+    "openAsQueryCompiling": "Компиляция запроса…",
+    "openAsQueryNoCypher": "У этого запроса нет формы Cypher.",
+    "openAsQuerySparqlLater": "SPARQL откроется, когда появится его endpoint."
   }
 }

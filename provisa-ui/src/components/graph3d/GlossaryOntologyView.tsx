@@ -41,11 +41,17 @@ const EVERYTHING: QueryScope = {
 
 /** The ontology as ``scope`` reads it, in one query (REQ-2136); null when the role cannot read the
  * glossary. */
-async function loadOntology(role: string, scope: QueryScope): Promise<GraphData | null> {
+async function loadOntology(
+  role: string,
+  scope: QueryScope,
+): Promise<{ data: GraphData; query: string } | null> {
   const query = ontologyQuery(await metaReader(role), scope);
   if (query === null) return null;
   const rows = await dataGraphql<OntologyRows>(query, {}, role);
-  return glossaryGraph(rows.glossary_terms, rows.glossary_term_edges ?? [], rows.data_products);
+  return {
+    data: glossaryGraph(rows.glossary_terms, rows.glossary_term_edges ?? [], rows.data_products),
+    query,
+  };
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
@@ -88,13 +94,14 @@ export function GlossaryOntologyView({ search }: { search: string }) {
   });
   // What the controls keep, read afresh whenever they change; the last read is drawn meanwhile.
   const [scope, setScope] = useState<QueryScope | null>(null);
-  const [data, setData] = useState<GraphData | null>(null);
+  // The scoped read: what is drawn, and the query that read it (Open as query's).
+  const [scoped, setScoped] = useState<{ data: GraphData; query: string } | null>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (actingRoles === null) return;
     let cancelled = false;
     loadOntology(actingRoles, EVERYTHING).then(
-      (all) => !cancelled && setRead({ all, error: null, done: true }),
+      (all) => !cancelled && setRead({ all: all?.data ?? null, error: null, done: true }),
       (e: unknown) =>
         !cancelled &&
         setRead({ all: null, error: e instanceof Error ? e.message : String(e), done: true }),
@@ -107,7 +114,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
     if (actingRoles === null || scope === null) return;
     let cancelled = false;
     loadOntology(actingRoles, scope).then(
-      (d) => !cancelled && setData(d),
+      (d) => !cancelled && setScoped(d),
       (e: unknown) =>
         !cancelled && setRead((r) => ({ ...r, error: e instanceof Error ? e.message : String(e) })),
     );
@@ -139,8 +146,8 @@ export function GlossaryOntologyView({ search }: { search: string }) {
       style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
     >
       <GraphExplorer
-        data={data ?? EMPTY}
-        query={{ all: read.all, onScope }}
+        data={scoped?.data ?? EMPTY}
+        query={{ all: read.all, onScope, text: scoped?.query ?? null }}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         zero={[]}
@@ -154,8 +161,8 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         opened={open}
         onClose={() => setOpen(false)}
         title={t("graph3d.ontologyTitle")}
-        data={data ?? EMPTY}
-        query={{ all: read.all, onScope }}
+        data={scoped?.data ?? EMPTY}
+        query={{ all: read.all, onScope, text: scoped?.query ?? null }}
         scope={GLOSSARY_SCOPE}
         preset="ontology"
         focus={null}

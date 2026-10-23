@@ -90,6 +90,15 @@
     "look_in_product": "Spalte in einem Datenprodukt",
     "look_out_of_product": "Spalte außerhalb von Datenprodukten",
     "look_stored": "Tabelle",
-    "status_live": "Aktiv"
+    "status_live": "Aktiv",
+    "openAsQuery": "Als Abfrage öffnen",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "Suche oder Fokus zeigen eine Umgebung, die die Abfrage nicht ausdrückt.",
+    "openAsQueryCompiling": "Abfrage wird kompiliert…",
+    "openAsQueryNoCypher": "Diese Abfrage hat keine Cypher-Form.",
+    "openAsQuerySparqlLater": "SPARQL ist verfügbar, sobald sein Endpunkt existiert."
   }
 }

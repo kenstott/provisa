@@ -90,6 +90,15 @@
     "look_in_product": "column in a data product",
     "look_out_of_product": "column outside data products",
     "look_stored": "table",
-    "status_live": "Live"
+    "status_live": "Live",
+    "openAsQuery": "Open as query",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "The search or focus draws a neighbourhood the query does not state.",
+    "openAsQueryCompiling": "Compiling the query…",
+    "openAsQueryNoCypher": "This query has no Cypher form.",
+    "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available."
   }
 }

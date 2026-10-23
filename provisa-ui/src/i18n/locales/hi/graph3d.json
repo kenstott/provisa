@@ -90,6 +90,15 @@
     "look_in_product": "डेटा उत्पाद में कॉलम",
     "look_out_of_product": "डेटा उत्पादों से बाहर कॉलम",
     "look_stored": "टेबल",
-    "status_live": "सक्रिय"
+    "status_live": "सक्रिय",
+    "openAsQuery": "क्वेरी के रूप में खोलें",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "खोज या फ़ोकस ऐसा पड़ोस दिखाता है जिसे क्वेरी व्यक्त नहीं करती।",
+    "openAsQueryCompiling": "क्वेरी कंपाइल हो रही है…",
+    "openAsQueryNoCypher": "इस क्वेरी का कोई Cypher रूप नहीं है।",
+    "openAsQuerySparqlLater": "SPARQL उसका endpoint उपलब्ध होने पर खुलेगा।"
   }
 }

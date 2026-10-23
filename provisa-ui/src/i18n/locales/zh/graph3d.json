@@ -90,6 +90,15 @@
     "look_in_product": "数据产品中的列",
     "look_out_of_product": "数据产品之外的列",
     "look_stored": "表",
-    "status_live": "有效"
+    "status_live": "有效",
+    "openAsQuery": "作为查询打开",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "搜索或聚焦绘制的邻域无法由查询表达。",
+    "openAsQueryCompiling": "正在编译查询…",
+    "openAsQueryNoCypher": "此查询没有 Cypher 形式。",
+    "openAsQuerySparqlLater": "SPARQL 将在其端点可用后开放。"
   }
 }

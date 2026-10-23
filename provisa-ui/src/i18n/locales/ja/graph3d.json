@@ -90,6 +90,15 @@
     "look_in_product": "データプロダクト内の列",
     "look_out_of_product": "データプロダクト外の列",
     "look_stored": "テーブル",
-    "status_live": "有効"
+    "status_live": "有効",
+    "openAsQuery": "クエリとして開く",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "検索またはフォーカスは、クエリが表さない近傍を描画します。",
+    "openAsQueryCompiling": "クエリをコンパイル中…",
+    "openAsQueryNoCypher": "このクエリには Cypher 形式がありません。",
+    "openAsQuerySparqlLater": "SPARQL はエンドポイントが利用可能になると開けます。"
   }
 }

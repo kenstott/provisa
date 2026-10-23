@@ -90,6 +90,15 @@
     "look_in_product": "coluna num produto de dados",
     "look_out_of_product": "coluna fora dos produtos de dados",
     "look_stored": "tabela",
-    "status_live": "Ativo"
+    "status_live": "Ativo",
+    "openAsQuery": "Abrir como consulta",
+    "openAs_graphql": "GraphQL",
+    "openAs_sql": "SQL",
+    "openAs_cypher": "Cypher",
+    "openAs_sparql": "SPARQL",
+    "openAsQueryFocused": "A pesquisa ou o foco desenham uma vizinhança que a consulta não expressa.",
+    "openAsQueryCompiling": "Compilando a consulta…",
+    "openAsQueryNoCypher": "Esta consulta não tem forma Cypher.",
+    "openAsQuerySparqlLater": "SPARQL abrirá quando seu endpoint estiver disponível."
   }
 }
