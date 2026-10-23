@@ -72,7 +72,7 @@ export function RegexMaskFields({
           placeholder={t("maskList.pattern")}
           value={pattern}
           onChange={(e) => onChange({ pattern: e.currentTarget.value })}
-          error={field("pattern") ? said(field("pattern")!) : undefined}
+          error={field("pattern") !== undefined}
           disabled={disabled}
           style={{ flex: 1, minWidth: 0 }}
           data-testid={`${testId}-pattern`}
@@ -82,7 +82,7 @@ export function RegexMaskFields({
           placeholder={t("maskList.replace")}
           value={replace}
           onChange={(e) => onChange({ replace: e.currentTarget.value })}
-          error={field("replace") ? said(field("replace")!) : undefined}
+          error={field("replace") !== undefined}
           disabled={disabled}
           style={{ flex: 1, minWidth: 0 }}
           data-testid={`${testId}-replace`}
@@ -141,6 +141,11 @@ export function RegexMaskFields({
           </Menu.Dropdown>
         </Menu>
       </Group>
+      {refused.map((v, k) => (
+        <Text key={k} size="xs" c="red" data-testid={`${testId}-refused`}>
+          {said(v)}
+        </Text>
+      ))}
       {warned.map((v, k) => (
         <Text key={k} size="xs" c="orange" data-testid={`${testId}-warning`}>
           {said(v)}

@@ -36,6 +36,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
     "one reusable control (a grant list and its combine popover), placed by the form that uses it",
   "components/MaskListEditor.tsx":
     "one reusable control (a column's ordered mask list), placed by the form that uses it",
+  "components/RegexMaskFields.tsx":
+    "a regex entry's fields within the mask list, the list's own row (MaskListEditor)",
   "pages/tables/DescriptionField.tsx": "one reusable control, placed by the form that uses it",
   "pages/tables/VectorModelCell.tsx": "one reusable control, placed by the form that uses it",
   "pages/tables/NumericSizeInputs.tsx": "one reusable control, placed by the form that uses it",

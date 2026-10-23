@@ -96,6 +96,7 @@ const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
   "components/graph/GraphFrame.tsx": 1, // the frame's download menu
   "components/graph/Inspector.tsx": 1, // the inspector's colour chip
   "pages/sql/ColumnFilterMenu.tsx": 1, // a result column's filter
+  "components/RegexMaskFields.tsx": 1, // a regex mask's common masks (masks-presets.cjs)
 };
 
 describe("a hint on a menu's or popover's trigger", () => {
