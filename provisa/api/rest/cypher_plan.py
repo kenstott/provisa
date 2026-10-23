@@ -138,7 +138,6 @@ class CypherTranslation:
     param_names: tuple[str, ...]
     # RETURN alias -> graph kind, read by row assembly. Shared: never mutated.
     graph_vars: dict[str, Any]
-    span_attrs: dict[str, str] | None = None
 
     def bind(self, params: dict[str, Any]) -> list[Any]:
         """This request's values in binding order; an unsupplied parameter is refused."""
