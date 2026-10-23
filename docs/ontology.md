@@ -8,8 +8,8 @@ That shared vocabulary connects business language to physical data. An AI agent 
 
 ## How terms are derived
 
-Provisa derives a term from every column name automatically, using a deterministic normalization
-rule: case folding, separator and camelCase tokenization, abbreviation expansion, and
+Provisa initially creates a draft term from every column name automatically, using a deterministic
+normalization rule: case folding, separator and camelCase tokenization, abbreviation expansion, and
 stripping of trailing proxy tokens.
 
 **Abbreviation expansion** maps common enterprise shorthands to their full forms: `cust` → `customer`, `txn` → `transaction`, `qty` → `quantity` and so on. Both `id` and `key` expand to `identifier`. The table is fixed and cautious: ambiguous shorthands like `st`, `min` and `no` stay as written, so nothing is guessed wrong.
