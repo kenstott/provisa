@@ -146,6 +146,129 @@ Le query GraphQL con più campi root (es. `{ orders { id } customers { name } }`
 - I campi sopra la soglia vengono reindirizzati, con voci per campo in `redirects`
 - I formati binari (Parquet, Arrow) sono supportati solo per query single-root
 
+## Pipeline di query {: #query-pipeline }
+
+Ogni lettura attraversa sei stadi, qualunque sia il linguaggio in cui la scrivete. Ogni stadio passa al successivo un'istruzione SQL. Il linguaggio decide solo dove la lettura entra.
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> SEM
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### Front-end {: #front-ends }
+
+Un front-end analizza un linguaggio e nomina ciò che legge nei termini del modello. GraphQL si compila direttamente in SQL semantico. Gli endpoint REST descritti dal documento OpenAPI e gli endpoint JSON:API costruiscono da ogni richiesta una query GraphQL e la compilano allo stesso modo. gRPC traduce una richiesta di tabella in SQL semantico senza passare da GraphQL. Cypher e SPARQL vengono analizzati in un'unica forma di pattern di grafo, condivisa dai due linguaggi di grafo, e quella forma si compila in SQL semantico. L'SQL che scrivete sulle tabelle del modello è già SQL semantico, quindi entra allo stadio successivo. Nessun front-end decide chi può leggere cosa.
+
+### SQL semantico {: #semantic-sql }
+
+L'SQL semantico legge il modello. Le sue tabelle sono qualificate per dominio (`sales.orders`), le sue colonne sono quelle che il modello pubblica e i suoi join sono le relazioni dichiarate. Non dice nulla su dove si trovano i dati.
+
+Una lettura annidata si compila in un'unica pipeline canonica di CTE, uguale per ogni motore e costruita solo dalle relazioni dichiarate. Una CTE radice legge la tabella radice con il suo filtro, il suo ordinamento, il suo limite e il suo offset. Ogni livello verso-molti è una CTE a sé. Unisce la sua tabella alla CTE del genitore sulle chiavi della relazione, prende le prime righe di ogni genitore con `ROW_NUMBER() OVER (PARTITION BY ...)` e le aggrega in una lista JSON per genitore. Il `SELECT` finale legge la CTE radice e fa un left join di ogni livello sulla chiave del genitore. Le letture GraphQL, Cypher e SPARQL che pongono la stessa domanda si compilano nella stessa istruzione.
+
+I compilatori attuali non hanno ancora raggiunto quella forma. Il compilatore GraphQL legge un campo annidato con argomenti tramite un `LEFT JOIN LATERAL` per genitore, e il traduttore Cypher scrive una CTE per ogni stadio `WITH`. L'esempio qui sotto mostra entrambe le forme.
+
+### SQL governato {: #governed-sql }
+
+La governance lavora sull'intera istruzione semantica in una volta. Ogni `SELECT` che contiene riceve le regole di visibilità, la sicurezza a livello di riga e le maschere del ruolo che legge, così ogni livello annidato viene filtrato alla propria profondità. Una regola di riga la cui condizione è una sottoquery legge un'altra tabella, quindi la governance può aggiungere sorgenti a un'istruzione.
+
+### SQL ottimizzato {: #optimized-sql }
+
+Lo stadio di ottimizzazione riscrive l'istruzione governata in modi validi su ogni motore. Reinserisce le viste materializzate dove rispondono a una parte dell'istruzione, incorpora come `VALUES` le tabelle piccole e molto lette, ed elimina i rami di cache API e di unione che l'istruzione non può raggiungere. Niente qui sa quale motore eseguirà l'istruzione. Queste riscritture possono rimuovere sorgenti. Una lettura federata le cui altre sorgenti sono tutte incorporate resta con un'unica sorgente live.
+
+### Pianificare e instradare {: #plan-and-route }
+
+L'instradamento legge le sorgenti dell'istruzione ottimizzata, mai quelle dell'istruzione governata. Una lettura che l'ottimizzazione ha ristretto a una sorgente può quindi comunque andare in diretta. Un'istruzione va in diretta quando legge una sorgente e quella sorgente ha un driver diretto. Altrimenti la esegue il motore di federazione. La regola ha una terza condizione: che la sorgente supporti ogni costrutto dell'istruzione. Il router non la verifica ancora e decide in base al numero di sorgenti e al driver. I casi di cache, replica e steward sono in [Decisioni di instradamento](#request-pipeline).
+
+### SQL nativo {: #native-sql }
+
+Lo stadio nativo scrive l'istruzione instradata nel dialetto della sorgente per una lettura diretta e in quello del motore per una federata. Sceglie la grafia delle funzioni di aggregazione e di oggetto JSON, scrive la lista vuota per un genitore senza righe, trasforma `DISTINCT ON` in `ROW_NUMBER()` dove il dialetto non lo ha, e sceglie forme specifiche del motore come un join `LATERAL` per genitore o un suggerimento di materializzazione delle CTE.
+
+### Un esempio completo {: #a-worked-example }
+
+Questa lettura GraphQL chiede un cliente e i suoi tre ordini più grandi:
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+Nella forma canonica si compila in questo SQL semantico:
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+L'id dell'ordine risolve i pareggi nella classifica, così due ordini dello stesso importo tornano sempre nello stesso ordine. Un cliente senza ordini non ha righe in `customers_orders`; lo stadio nativo scrive per lui la lista vuota.
+
+La stessa lettura in Cypher trova il cliente e legge i tre ordini più grandi in una sottoquery:
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+Nella forma canonica, questa lettura Cypher e la lettura GraphQL si compilano nell'istruzione qui sopra. È ciò che permette ad Apri come query di passare una lettura GraphQL alla pagina Cypher e ottenere la stessa risposta.
+
+Oggi il compilatore GraphQL scrive invece il livello annidato come un lateral join per genitore:
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+L'SQL semantico di qualsiasi lettura GraphQL è visibile nel pannello Provisa della pagina GraphQL.
+
 ## Percorsi di esecuzione della federazione {: #federation-execution-paths }
 
 | Path | Transport | Via | When used |

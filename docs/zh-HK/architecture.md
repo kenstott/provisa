@@ -146,6 +146,129 @@ flowchart TD
 - 超過門檻的欄位會被重新導向，並在 `redirects` 中提供逐欄位的項目
 - 二進位格式（Parquet、Arrow）僅支援單根查詢
 
+## 查詢管道 {: #query-pipeline }
+
+每次讀取都要經過六個階段，無論你用哪種語言編寫。每個階段都把一條 SQL 陳述式交給下一個階段。語言只決定讀取從哪裏進入。
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> SEM
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### 前端 {: #front-ends }
+
+前端解析一種語言，並以模型的術語說明它讀取的內容。GraphQL 直接編譯為語義 SQL。OpenAPI 文件描述的 REST 端點和 JSON:API 端點，會根據每個請求建構一條 GraphQL 查詢，再以同樣方式編譯。gRPC 把資料表請求直接轉換為語義 SQL，不經過 GraphQL。Cypher 和 SPARQL 被解析為兩種圖語言共用的同一種圖模式形式，再由這種形式編譯為語義 SQL。你針對模型的資料表編寫的 SQL 本身就是語義 SQL，因此它從下一個階段進入。沒有任何前端決定誰可以讀取甚麼。
+
+### 語義 SQL {: #semantic-sql }
+
+語義 SQL 讀取的是模型。它的資料表帶有網域限定（`sales.orders`），它的欄位是模型發佈的欄位，它的連接是已宣告的關係。它不涉及數據存放在哪裏。
+
+巢狀讀取會編譯為一條規範的 CTE 管道，對每個引擎都相同，並且只依據已宣告的關係建構。根 CTE 帶着篩選、排序、限制和偏移讀取根資料表。每個一對多層級都是一個獨立的 CTE。它按關係的鍵把自己的資料表與父層 CTE 連接，用 `ROW_NUMBER() OVER (PARTITION BY ...)` 取每個父層的前幾行，並按父層彙總成一個 JSON 清單。最後的 `SELECT` 讀取根 CTE，並按父鍵對每個層級做左連接。提出相同問題的 GraphQL、Cypher 和 SPARQL 讀取會編譯為同一條陳述式。
+
+目前的編譯器還沒有達到這種形式。GraphQL 編譯器透過每個父層一次的 `LEFT JOIN LATERAL` 讀取帶參數的巢狀欄位，Cypher 轉換器則為每個 `WITH` 階段寫一個 CTE。下面的範例展示了這兩種形式。
+
+### 受治理的 SQL {: #governed-sql }
+
+治理一次過作用於整條語義陳述式。其中每個 `SELECT` 都會套用讀取角色的可見性規則、列級安全和遮罩，因此每個巢狀層級都在自己的深度上被篩選。條件為子查詢的列級規則會讀取另一張資料表，所以治理可能為陳述式增加數據來源。
+
+### 優化後的 SQL {: #optimized-sql }
+
+優化階段以在每個引擎上都成立的方式改寫受治理的陳述式。它在具體化檢視表能回答部分陳述式的地方重新代入具體化檢視表，把細小而經常讀取的資料表內嵌為 `VALUES`，並去掉陳述式無法到達的 API 快取分支和 union 分支。這裏沒有任何部分知道將由哪個引擎執行陳述式。這些改寫可能去掉數據來源。一次聯邦讀取如果其餘數據來源都被內嵌，就只剩下一個即時數據來源。
+
+### 規劃與路由 {: #plan-and-route }
+
+路由讀取的是優化後陳述式的數據來源，而從不讀取受治理陳述式的數據來源。因此，被優化縮小到一個數據來源的讀取仍然可以直連執行。當陳述式只讀取一個數據來源而該數據來源有直連驅動程式時，陳述式直連執行。否則由聯邦引擎執行。這條規則還有第三個條件，即數據來源支援陳述式中的每一種結構。路由器目前還未檢查這一條，只根據數據來源數量和驅動程式作出決定。快取、副本和管理員（steward）的情況見[路由決策](#request-pipeline)。
+
+### 原生 SQL {: #native-sql }
+
+原生階段把路由後的陳述式寫成方言：直連讀取用數據來源的方言，聯邦讀取用引擎的方言。它選擇 JSON 彙總函數和物件函數的寫法，為沒有資料列的父層寫出空清單，在方言不支援 `DISTINCT ON` 時把它改寫為 `ROW_NUMBER()`，並選擇引擎特有的形式，例如每個父層一次的 `LATERAL` 連接或 CTE 具體化提示。
+
+### 完整範例 {: #a-worked-example }
+
+這條 GraphQL 讀取請求一個客戶及其金額最大的三張訂單：
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+在規範形式下，它編譯為以下語義 SQL：
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+訂單的 id 用來打破排名中的並列，因此金額相同的兩張訂單總是以相同的次序傳回。沒有訂單的客戶在 `customers_orders` 中沒有資料列；原生階段會為它寫出空清單。
+
+同樣的讀取以 Cypher 編寫，先配對客戶，再在子查詢中讀取最大的三張訂單：
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+在規範形式下，這條 Cypher 讀取和 GraphQL 讀取會編譯為上面的陳述式。「作為查詢開啟」正是依賴這一點：一條 GraphQL 讀取交給 Cypher 頁面後，傳回相同的結果。
+
+目前，GraphQL 編譯器會把巢狀層級寫成每個父層一次的 lateral 連接：
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+你可以在 GraphQL 頁面的 Provisa 面板中查看任何 GraphQL 讀取的語義 SQL。
+
 ## 聯邦執行路徑 {: #federation-execution-paths }
 
 | 路徑 | 傳輸方式 | 途徑 | 使用時機 |
