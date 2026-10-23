@@ -371,12 +371,18 @@ class _GlossaryApi:
         self.resources: dict[str, dict] = {}
         self.links: dict[str, dict] = {}
         self.calls: list[tuple[str, str]] = []
+        # The BigQuery entries Dataplex has catalogued.
+        self.entries: set[str] = {SALES_ENTRY}
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/v1/")
         params = dict(request.url.params)
         body = json.loads(request.content) if request.content else {}
         self.calls.append((request.method, path))
+        if path.endswith(":lookupEntry"):
+            if params["entry"] in self.entries:
+                return httpx.Response(200, json={"name": params["entry"]})
+            return httpx.Response(404, json={"error": {"message": "not found"}})
         if path.endswith(":lookupEntryLinks"):
             entry = params["entry"]
             found = [
@@ -503,3 +509,19 @@ async def test_a_stewards_links_and_labels_stand_and_provisas_stale_links_leave(
     # Only Provisa's synonym link was deleted.
     deleted = [path for method, path in fake.calls if method == "DELETE"]
     assert len(deleted) == 1 and "/entryLinks/provisa-" in deleted[0]
+
+
+async def test_a_table_dataplex_has_not_catalogued_yet_is_reported_by_name(
+    glossary_api, monkeypatch
+):
+    """The definition link waits, bounded, for the table's BigQuery entry; when it never
+    appears the table is reported by name and everything else still publishes."""
+    glossary_api.entries.clear()
+    monkeypatch.setattr(DataplexExport, "entry_wait_seconds", 0)
+    result = await _export().publish(_glossary_snapshot(_glossary()))
+    assert [e.message for e in result.errors] == [
+        "bigquery.googleapis.com/projects/proj-src/datasets/warehouse/tables/sales is not linked "
+        "to its term: Dataplex had no entry for it after 0 s"
+    ]
+    assert {kind for kind, _ in _link_kinds(glossary_api)} == {"synonym"}
+    assert result.published["glossary_term"] == 3

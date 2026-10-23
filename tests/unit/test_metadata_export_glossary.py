@@ -226,3 +226,20 @@ def test_each_term_carries_its_role():
         "party": "concept",
         "order": "class",
     }
+
+
+def test_a_class_proposal_no_one_has_defined_is_not_exported_or_assigned():
+    """REQ-2141: sync proposes a draft Class for a keyed table; until a curator defines it the
+    term is a proposal, not vocabulary, so it neither publishes nor is assigned to the table."""
+    glossary = _class_glossary()
+    glossary["terms"][3]["definition"] = None
+    glossary["table_refs"][0]["proposed"] = True
+    snapshot = build_snapshot(
+        _config([_table("orders", columns=["cust_id"])]),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        glossary=glossary,
+    )
+    assert "order" not in {t.name for t in snapshot.glossary_terms}
+    assert all(not t.tables for t in snapshot.glossary_terms)

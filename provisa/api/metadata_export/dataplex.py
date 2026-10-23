@@ -34,7 +34,8 @@ deprecated term carries ``provisa-deprecated``. A steward's own labels stand. SY
 synonym entry link and every other edge a related one: Dataplex's glossary has no hierarchy
 between terms. A Class term is linked to the BigQuery entries of the tables it grounds and a
 Property term to their columns, by definition entry links (REQ-1389); a table with no BigQuery
-object, or whose dataset is in another location than the target's, is reported. Provisa chooses
+object, or whose entry does not appear in the target's location within a minute (Dataplex catalogs
+a new BigQuery view some time after it is made), is reported by name. Provisa chooses
 every entry link's id, and the ``provisa-`` prefix is the ownership test: Provisa creates and
 deletes only its own links, and a term that left the snapshot keeps its entry and loses only
 those.
@@ -182,6 +183,8 @@ class DataplexExport(MetadataExport):  # REQ-2118
     provider_name = "dataplex"
     # REQ-1912: a replica-served member is published through its export view.
     needs_export_views = True
+    # REQ-1389: how long a definition link waits for its BigQuery table's entry to appear.
+    entry_wait_seconds = 60
 
     def _parent(self) -> str:
         return f"projects/{self._config.gcp_project}/locations/{self._config.gcp_location}"
@@ -459,8 +462,25 @@ class DataplexExport(MetadataExport):  # REQ-2118
                 _link("definition", [source, {"name": entries[term.term_id], "type": "TARGET"}])
         # Every term in the Provisa glossary, so a term that left the snapshot loses its links too.
         live = await self._provisa_links(client, await self._glossary_entries(client, glossary))
+        present: dict[str, bool] = {}
         for link_id in sorted(set(wanted) - set(live)):
             kind, refs = wanted[link_id]
+            if kind == "definition":
+                asset = refs[0]["name"]
+                if asset in present:
+                    if not present[asset]:
+                        continue  # reported with its first link
+                else:
+                    present[asset] = await self._entry_appears(client, asset)
+                if not present[asset]:
+                    result.errors.append(
+                        AssetError(
+                            asset=AssetRefStub(asset),
+                            message=f"{asset.rsplit('/entries/', 1)[-1]} is not linked to its "
+                            f"term: Dataplex had no entry for it after {self.entry_wait_seconds} s",
+                        )
+                    )
+                    continue
             group = (
                 refs[0]["name"].split("/entries/", 1)[0]
                 if kind == "definition"
@@ -540,6 +560,22 @@ class DataplexExport(MetadataExport):  # REQ-2118
         saved = response.json()["name"]
         prefix = "/".join(saved.split("/")[:4])
         return f"{prefix}/entryGroups/@dataplex/entries/{saved}"
+
+    async def _entry_appears(self, client: httpx.AsyncClient, entry: str) -> bool:
+        """Whether the catalog has ``entry``, waited for up to ``entry_wait_seconds``: Dataplex
+        catalogs a BigQuery table some time after it is created, so a view the reconcile just
+        published may not be there yet."""
+        deadline = time.monotonic() + self.entry_wait_seconds
+        while True:
+            found = await client.get(
+                self._url(f"{self._parent()}:lookupEntry"), params={"entry": entry}
+            )
+            if found.status_code != 404:
+                found.raise_for_status()
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(2)
 
     async def _glossary_entries(self, client: httpx.AsyncClient, glossary: str) -> list[str]:
         """The catalog entry of every term in the Provisa glossary."""
