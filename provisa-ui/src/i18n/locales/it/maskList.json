@@ -36,6 +36,54 @@
     "regexLabel": "regex {{pattern}} → {{replace}}",
     "truncateLabel": "troncato a {{precision}}",
     "constantLabel": "costante {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "Maschere comuni",
+    "presetsAria": "Maschere comuni per la voce {{n}}",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "Funziona su ogni motore",
+    "universalHelp": "I pattern usano un unico dialetto regex; Provisa lo traduce per ogni motore. I valori che non corrispondono al pattern vengono mascherati completamente.",
+    "notUniversal": "Non su ogni motore: {{construct}} al carattere {{position}}",
+    "preset": {
+      "ssn_last4": "SSN, ultime 4",
+      "card_last4": "Numero di carta, ultime 4",
+      "phone_last4": "Telefono, ultime 4",
+      "email_initial_domain": "Email, iniziale e dominio",
+      "all_but_last4": "Tutto tranne gli ultimi 4 caratteri",
+      "digits_keep_separators": "Cifre, separatori mantenuti",
+      "zip3": "ZIP USA, prime 3",
+      "birth_year": "Data di nascita, solo anno",
+      "iban_last4": "IBAN, ultime 4",
+      "keep_first_last": "Mantieni i primi e gli ultimi caratteri"
+    },
+    "presetParam": {
+      "first": "Primi",
+      "last": "Ultimi"
+    },
+    "construct": {
+      "lookahead": "un lookahead (?=…)",
+      "lookbehind": "un lookbehind (?<=…)",
+      "backreference": "un riferimento all’indietro \\1 nel pattern",
+      "lazy_quantifier": "un quantificatore lazy (*?, +?)",
+      "possessive_quantifier": "un quantificatore possessivo (*+, ++)",
+      "named_group": "un gruppo con nome (?<name>…)",
+      "word_boundary": "un confine di parola \\b",
+      "unicode_class": "una classe Unicode \\p{…}",
+      "posix_class": "una classe POSIX [[:…:]]",
+      "inline_flags": "flag inline (?i)",
+      "unknown_escape": "un escape che non tutti i motori conoscono",
+      "open_bound": "un limite aperto {n,}",
+      "bound_too_large": "un numero di ripetizioni troppo grande",
+      "unbalanced_paren": "una parentesi tonda non chiusa",
+      "unbalanced_bracket": "una parentesi quadra non chiusa",
+      "empty_class": "una classe vuota []",
+      "bad_range": "un intervallo il cui inizio segue la fine",
+      "nothing_to_repeat": "un quantificatore senza nulla da ripetere",
+      "replace_group_out_of_range": "un $n che indica un gruppo che il pattern non ha",
+      "replace_named_ref": "un riferimento con nome nella sostituzione",
+      "replace_bad_escape": "un escape che la sostituzione non accetta",
+      "alternation_prefix": "alternative di cui una è prefisso di un’altra",
+      "alternation_overlap": "alternative che possono corrispondere allo stesso testo",
+      "negated_class_escape_in_set": "un escape negato come \\D dentro un insieme [ ]"
+    }
   }
 }

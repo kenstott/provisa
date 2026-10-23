@@ -36,6 +36,54 @@
     "regexLabel": "正規表現 {{pattern}} → {{replace}}",
     "truncateLabel": "{{precision}} 単位に切り捨て",
     "constantLabel": "定数 {{value}}",
-    "constantNull": "NULL"
+    "constantNull": "NULL",
+    "presets": "よく使うマスク",
+    "presetsAria": "エントリ {{n}} のよく使うマスク",
+    "presetExample": "{{from}} → {{to}}",
+    "universal": "すべてのエンジンで動作します",
+    "universalHelp": "パターンは単一の正規表現方言を使います。Provisa がエンジンごとに変換します。 パターンに一致しない値は完全にマスクされます。",
+    "notUniversal": "すべてのエンジンでは使えません: {{position}} 文字目の{{construct}}",
+    "preset": {
+      "ssn_last4": "SSN、末尾 4 桁",
+      "card_last4": "カード番号、末尾 4 桁",
+      "phone_last4": "電話番号、末尾 4 桁",
+      "email_initial_domain": "メール、先頭文字とドメイン",
+      "all_but_last4": "末尾 4 文字以外すべて",
+      "digits_keep_separators": "数字のみ（区切り文字は保持）",
+      "zip3": "米国 ZIP、先頭 3 桁",
+      "birth_year": "生年月日、年のみ",
+      "iban_last4": "IBAN、末尾 4 桁",
+      "keep_first_last": "先頭と末尾の文字を残す"
+    },
+    "presetParam": {
+      "first": "先頭",
+      "last": "末尾"
+    },
+    "construct": {
+      "lookahead": "先読み (?=…)",
+      "lookbehind": "後読み (?<=…)",
+      "backreference": "パターン内の後方参照 \\1",
+      "lazy_quantifier": "最短一致の量指定子 (*?, +?)",
+      "possessive_quantifier": "強欲な量指定子 (*+, ++)",
+      "named_group": "名前付きグループ (?<name>…)",
+      "word_boundary": "単語境界 \\b",
+      "unicode_class": "Unicode クラス \\p{…}",
+      "posix_class": "POSIX クラス [[:…:]]",
+      "inline_flags": "インラインフラグ (?i)",
+      "unknown_escape": "すべてのエンジンが認識しないエスケープ",
+      "open_bound": "上限のない範囲 {n,}",
+      "bound_too_large": "大きすぎる繰り返し回数",
+      "unbalanced_paren": "閉じられていない丸括弧",
+      "unbalanced_bracket": "閉じられていない角括弧",
+      "empty_class": "空のクラス []",
+      "bad_range": "開始が終了より後の範囲",
+      "nothing_to_repeat": "繰り返す対象のない量指定子",
+      "replace_group_out_of_range": "パターンにないグループを指す $n",
+      "replace_named_ref": "置換文字列内の名前付き参照",
+      "replace_bad_escape": "置換文字列で使えないエスケープ",
+      "alternation_prefix": "一方が他方の接頭辞になっている選択肢",
+      "alternation_overlap": "同じテキストに一致し得る選択肢",
+      "negated_class_escape_in_set": "[ ] 集合内の \\D のような否定エスケープ"
+    }
   }
 }
