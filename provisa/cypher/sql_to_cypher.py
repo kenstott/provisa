@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 import string
+from typing import cast
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -91,6 +92,14 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     if not isinstance(tree, exp.Select):
         return None
+
+    if params:
+        # The Cypher stands on its own -- it is run as written, with no parameters of its own --
+        # so the values the SQL binds are written into it.
+        try:
+            tree = cast(exp.Select, tree.transform(lambda node: _bound_literal(node, params)))
+        except UntranslatableSubquery:
+            return None
 
     _normalize_json_builders(tree)
 
@@ -569,6 +578,23 @@ def _exists_pattern(
     for key, pattern in nested.items():
         body = re.sub(rf"\b{key}\b", lambda _m, p=pattern: p, body)
     return "EXISTS { " + body + " }"
+
+
+def _bound_literal(node: exp.Expression, params: list) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A bound ``$N`` as the literal its value is."""
+    if not (isinstance(node, exp.Parameter) and isinstance(node.this, exp.Literal)):
+        return node
+    value = params[int(node.this.this) - 1]
+    if value is None:
+        return exp.Null()
+    if isinstance(value, bool):
+        return exp.Boolean(this=value)
+    if isinstance(value, (int, float)):
+        return exp.Literal.number(value)
+    if isinstance(value, str) and "'" not in value and "\\" not in value:
+        # SQL and Cypher escape a quote differently; such a value is not written in.
+        return exp.Literal.string(value)
+    raise UntranslatableSubquery(f"parameter value {value!r}")
 
 
 def _normalize_json_builders(tree: exp.Select) -> None:

@@ -130,9 +130,11 @@ def _same_rows(model, con, query: str) -> str:
         params=root.params,
     )
     assert cypher is not None
+    # The Cypher is run as written, with no parameters: the values the SQL binds are in it.
+    assert "$" not in cypher, cypher
     sql_rows = _rows(con, _inline(make_semantic_sql(root.sql, ctx), root.params))
     assert sql_rows, "the case must answer some rows"
-    assert _cypher_rows(con, _inline(cypher, root.params), lm, ctx) == sql_rows, cypher
+    assert _cypher_rows(con, cypher, lm, ctx) == sql_rows, cypher
     return cypher
 
 
