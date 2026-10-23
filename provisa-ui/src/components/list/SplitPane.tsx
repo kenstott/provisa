@@ -137,7 +137,10 @@ export function SplitPane({
   useEffect(() => {
     if (open) {
       returnFocus.current = document.activeElement;
-      ref.current?.focus();
+      // A modal dialog over the page keeps the focus: a panel opening under it (a linked item whose
+      // data arrives after a first visit's welcome is up) would otherwise take the reader's Escape
+      // for the dialog as its own close.
+      if (!document.activeElement?.closest('[aria-modal="true"]')) ref.current?.focus();
       return;
     }
     const back = returnFocus.current;
