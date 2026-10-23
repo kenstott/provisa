@@ -888,16 +888,14 @@ class TestJsonAggChainedSubquery:
             ' FROM "shelter"."pets" AS t0 LIMIT 10000'
         )
 
-    def test_emits_two_optional_matches(self):
-        """json_agg(json_object) with nested json_object must emit OPTIONAL MATCH for assignments and employees."""
+    def test_matches_assignments_and_their_employees(self):
+        """json_agg(json_object) with a nested json_object matches the assignments, as the list
+        the field is (a COLLECT of its own, REQ-2136), and each one's employee inside it."""
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql(), lm, ctx)
         assert result is not None, "semantic_sql_to_cypher returned None"
-        assert result.count("OPTIONAL MATCH") == 2, (
-            f"Expected 2 OPTIONAL MATCHes (Assignments, Employees), got:\n{result}"
-        )
-        assert "Assignments" in result
-        assert "Employees" in result
+        assert "COLLECT { MATCH (a)-[:IS_ASSIGNMENT]->(b:Assignments)" in result, result
+        assert "OPTIONAL MATCH (b)-[:HAS_EMPLOYEE]->(c:Employees)" in result, result
 
     def test_employees_source_is_assignments_not_pets(self):
         """Bug: OPTIONAL MATCH for Employees must chain from Assignments, not Pets."""
@@ -943,7 +941,8 @@ class TestJsonAggChainedSubquery:
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql_direct(), lm, ctx)
         assert result is not None, "semantic_sql_to_cypher returned None"
-        assert "collect(" in result, f"Expected collect() in RETURN for one-to-many: {result}"
+        # REQ-2136: the one-to-many is the list of its maps, a COLLECT of its own.
+        assert "COLLECT {" in result and "RETURN {breedName:" in result, result
         # Must not return a bare node alias as 'assignment'
         import re
 
@@ -1119,11 +1118,12 @@ class TestFlatReturnClause:
         assert "pets__breedName" in result, f"Missing pets__breedName in: {result}"
 
     def test_non_flat_return_still_uses_collect_map(self):
-        """flat=False (Aggregated mode) must still emit collect({{...}}) AS assignment."""
+        """flat=False (Aggregated mode) returns the list of maps AS assignment (REQ-2136: a
+        COLLECT of its own)."""
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql(), lm, ctx, flat=False)
         assert result is not None, "semantic_sql_to_cypher returned None"
-        assert "collect(" in result, f"Expected collect() in non-flat RETURN: {result}"
+        assert "COLLECT {" in result, f"Expected COLLECT in non-flat RETURN: {result}"
         assert "AS assignment" in result, f"Missing AS assignment in: {result}"
 
 
@@ -1281,7 +1281,7 @@ class TestCorrelatedSubqueries:
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None, "jsonb_build_object subquery must translate"
         assert "JSONB_BUILD_OBJECT" not in result.upper(), result
-        assert "collect({" in result, result
+        assert "RETURN {pet_id: b.pet_id} } AS pet_details" in result, result
 
     def test_untranslatable_subquery_returns_none(self):
         """A subquery no pass claims must yield None — never SQL text pasted into RETURN."""

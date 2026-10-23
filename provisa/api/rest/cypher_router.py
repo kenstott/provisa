@@ -873,12 +873,14 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
 
     label_map = _build_label_map(ctx, role_id, state)
 
-    async def _run_count(cypher: str) -> int | None:
+    async def _run_count(cypher: str) -> dict[str, Any]:
+        """``{"count": n}``, or ``{"count": None, "error": why}`` when the statement could not be
+        built or run: an uncounted label is said with its reason, never counted as 0 rows."""
         ast = parse_cypher(cypher)
         body = CypherRequest(query=cypher, params={})
         result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
         if isinstance(result, Response):
-            return 0
+            return _uncounted(cypher, result)
         sql_str, _, _ = result
         semantic_sql = make_semantic_sql(sql_str, ctx)
         plan = await _govern_and_route_compiled(
@@ -886,11 +888,11 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
         )
         executed = await _run_plan(plan, state)
         if isinstance(executed, Response):
-            # A label the engine cannot count (its catalog is not attached on this engine) is
-            # omitted rather than reported as 0 rows; see below.
-            return None
+            # A label the engine cannot count (its catalog is not attached on this engine, a
+            # parameterized table with no snapshot): said, with the engine's reason.
+            return _uncounted(cypher, executed)
         rows = _dict_rows(executed)
-        return int(rows[0]["cnt"]) if rows else 0
+        return {"count": int(rows[0]["cnt"]) if rows else 0}
 
     from provisa.security.rights import reaches_all_domains
 
@@ -906,27 +908,40 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     # return sporadic zeros for attached/materialized sources. Sequential matches the single-query
     # path (/data/cypher) exactly.
     #
-    # A label whose count query the engine cannot execute (its meta/ops catalog is not attached on
-    # this engine, or a parameterized table has no snapshot) returns None — OMIT it rather than
-    # report a misleading 0 (which reads as "zero rows"). The panel then shows counts only for the
-    # labels this engine can actually count.
-    label_counts: dict[str, int] = {}
+    # Each label's entry is its count, or null with the reason the engine could not count it. A
+    # total is a total only when every label in it was counted: with any uncounted, it is null, and
+    # the entries say which and why.
+    label_counts: dict[str, dict[str, Any]] = {}
     for lbl in node_labels:
-        cnt = await _run_count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt")
-        if cnt is not None:
-            label_counts[lbl] = cnt
-
-    node_count = sum(label_counts.values())
-
-    rel_count = 0
+        label_counts[lbl] = await _run_count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt")
+    rel_counts: dict[str, dict[str, Any]] = {}
     for rt in rel_types:
-        cnt = await _run_count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt")
-        if cnt is not None:
-            rel_count += cnt
+        rel_counts[rt] = await _run_count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt")
 
     return JSONResponse(
-        content={"node_count": node_count, "rel_count": rel_count, "label_counts": label_counts}
+        content={
+            "node_count": _total(label_counts),
+            "rel_count": _total(rel_counts),
+            "label_counts": label_counts,
+            "rel_counts": rel_counts,
+        }
     )
+
+
+def _uncounted(cypher: str, refused: Response) -> dict[str, Any]:
+    """A count statement's refusal, as its entry: no count, and the reason it gave."""
+    import json as _json
+
+    why = _json.loads(bytes(refused.body))["error"]
+    log.warning("graph-counts: %s not counted (%s): %s", cypher, refused.status_code, why)
+    return {"count": None, "error": why}
+
+
+def _total(counts: dict[str, dict[str, Any]]) -> int | None:
+    """The sum of the counts, or None when any entry has none."""
+    if any(c["count"] is None for c in counts.values()):
+        return None
+    return sum(c["count"] for c in counts.values())
 
 
 # Register the graph-tools routes (/impute-relationships, /neo4j-export) on `router`.

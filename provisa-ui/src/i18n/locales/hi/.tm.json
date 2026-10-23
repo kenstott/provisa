@@ -7810,5 +7810,7 @@
   "hi.json::pageError.body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one.",
   "hi/sqlResultsPanel.json::sqlResultsPanel.statementTab": "Result {{n}} · {{name}}",
   "hi/sqlResultsPanel.json::sqlResultsPanel.statementTabUnnamed": "Result {{n}}",
-  "hi/sqlResultsPanel.json::sqlResultsPanel.statementFailed": "failed"
+  "hi/sqlResultsPanel.json::sqlResultsPanel.statementFailed": "failed",
+  "hi/graphSidebar.json::graphSidebar.notCounted": "Not counted: {{list}}",
+  "hi/serverErrors.json::serverErrors.cypher.count_unknown": "A count could not be made, so the total is unknown: {{statement}}: {{reason}}"
 }

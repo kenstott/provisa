@@ -523,7 +523,8 @@
       "username_taken": "उपयोगकर्ता '{{username}}' पहले से मौजूद है"
     },
     "cypher": {
-      "command_call_refused": "{{reason}}"
+      "command_call_refused": "{{reason}}",
+      "count_unknown": "एक गिनती नहीं हो सकी, इसलिए कुल अज्ञात है: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "संबंध बनाने का आपका अधिकार इस अनुरोध से जुड़े किसी डोमेन तक नहीं पहुँचता ({{domains}})",

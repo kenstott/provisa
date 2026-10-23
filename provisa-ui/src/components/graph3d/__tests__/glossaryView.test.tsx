@@ -140,11 +140,12 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
           ? t.domains.filter((d) => inDomains([d.domain_id]))
           : undefined,
         refs: s.layers.includes("columns") ? refsOf(t) : undefined,
+        // Under Ontology, each term is read with the edges leaving it.
+        edges_out: s.layers.includes("ontology")
+          ? edges.filter((e) => e.from_term_id === t.id)
+          : undefined,
       }));
-    return {
-      glossary_terms: terms,
-      ...(s.layers.includes("ontology") ? { glossary_term_edges: edges } : {}),
-    };
+    return { glossary_terms: terms };
   },
 }));
 
