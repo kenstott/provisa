@@ -14,7 +14,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ActionIcon, Menu } from "@mantine/core";
 import { fireEvent, render, screen, waitFor } from "../../test-utils/render";
-import { Tip } from "../Tip";
+import { Tip, TipSurface } from "../Tip";
 
 describe("Tip", () => {
   it("mounts nothing until the target is hovered or focused", () => {
@@ -157,5 +157,14 @@ describe("Tip", () => {
     fireEvent.mouseEnter(target);
     fireEvent.click(target);
     expect(seen).toEqual(["enter", "click"]);
+  });
+
+  it("held open from its first render, shows once its target has mounted, without throwing", async () => {
+    render(
+      <TipSurface opened content="Pointed at">
+        <div data-testid="placed" />
+      </TipSurface>,
+    );
+    expect(await screen.findByText("Pointed at")).toBeInTheDocument();
   });
 });

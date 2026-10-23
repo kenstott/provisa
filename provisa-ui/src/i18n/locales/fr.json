@@ -93,5 +93,9 @@
     "notGranted": "Le rôle sous lequel vous agissez n'accorde pas cette page. Un rôle que vous détenez l'accorde :",
     "switchTo": "Passer à {{role}}",
     "noneHeld": "Aucun des rôles que vous détenez n'accorde cette page."
+  },
+  "pageError": {
+    "title": "Cette page n’a pas pu être affichée",
+    "body": "Une erreur s’est produite lors du rendu. Le reste de l’application fonctionne : allez sur une autre page ou rechargez celle-ci."
   }
 }

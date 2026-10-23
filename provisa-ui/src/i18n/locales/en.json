@@ -93,5 +93,9 @@
     "notGranted": "The role you are acting as does not grant this page. A role you hold does:",
     "switchTo": "Switch to {{role}}",
     "noneHeld": "None of the roles you hold grants this page."
+  },
+  "pageError": {
+    "title": "This page could not be shown",
+    "body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one."
   }
 }
