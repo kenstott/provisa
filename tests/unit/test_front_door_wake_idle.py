@@ -419,6 +419,29 @@ def test_the_page_and_the_api_answer_say_which(proxy, monkeypatch, waking, headi
     assert body["code"] == code
 
 
+def test_the_waking_page_draws_binary_streams_from_one_sprite(proxy):
+    html = proxy.WAKE_HTML
+    script = html[html.index("<script>") : html.index("</script>")]
+    # 0 and 1 are rendered once into an offscreen sprite; frames only copy from it.
+    assert 'sc.fillText(b?"1":"0"' in script
+    assert script.count("fillText(") == 1
+    assert "ctx.drawImage(sprite," in script
+    # Self-contained: the front door serves this with the coordinator down.
+    assert "http://" not in html and "https://" not in html and "@font-face" not in html
+
+
+def test_reduced_motion_gets_one_static_frame(proxy):
+    html = proxy.WAKE_HTML
+    script = html[html.index("<script>") : html.index("</script>")]
+    assert '"(prefers-reduced-motion: reduce)"' in script
+    start = script.index("if(reduce){")
+    static = script[start : script.index("return;", start)]
+    assert "render(1);" in static
+    assert "requestAnimationFrame" not in static
+    # The canvas stays visible under reduced motion; only the logo's rise is turned off.
+    assert "#wake-canvas{display:none}" not in html
+
+
 class _FakeClient:
     def __init__(self):
         self.closed = False
