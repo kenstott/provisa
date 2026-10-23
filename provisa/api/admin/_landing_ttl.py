@@ -180,6 +180,20 @@ async def _stored_type(conn: Any, source_id: str) -> str | None:
     return None if row is None else row.type
 
 
+async def row_materialize_save_refusal(
+    conn: Any, source_id: str, table_name: str, row_materialize: bool
+) -> MutationResult | None:
+    """A failing MutationResult when a table saved with row_materialize is of a source whose type
+    has no row fetch by primary keys, or is refused it for a reason of its own (REQ-1865,
+    ``core.source_registry.row_materialize_refusal``); None otherwise."""
+    if not row_materialize:
+        return None
+    from provisa.core.source_registry import row_materialize_refusal
+
+    refused = row_materialize_refusal(table_name, await _stored_type(conn, source_id))
+    return None if refused is None else MutationResult(success=False, message=refused)
+
+
 def _engine_reads_in_place(source_type: str | None) -> bool:
     """Whether the bound engine reads a source of ``source_type`` live in place (an attach or a
     scan) rather than serving it from a replica (federation.strategy.engine_attaches). A source not

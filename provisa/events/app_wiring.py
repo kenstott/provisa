@@ -408,9 +408,14 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     from provisa.events.source_loader import make_direct_keyed_loader
     from provisa.transpiler.router import API_SOURCES, VIRTUAL_SOURCES
 
+    from provisa.core.source_registry import is_live_only
+
     direct_keyed = make_direct_keyed_loader(state, engine)
     for stype in set(getattr(state, "source_types", {}).values()):
         if stype in keyed_loaders or stype in VIRTUAL_SOURCES or stype in API_SOURCES:
+            continue
+        if is_live_only(stype):
+            # REQ-2000: a live-only source's tables have no replica, so no row is fetched by key.
             continue
         if has_driver(stype) and not engine_attaches(bare_engine, stype):
             keyed_loaders[stype] = direct_keyed

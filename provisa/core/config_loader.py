@@ -1853,40 +1853,6 @@ def _validate_file_globs(config) -> None:  # REQ-788
 #: filtered by its own parameters (its parameter sets are its row-level reads); govdata is read live
 #: on every request and never replicated; the remaining types have no connector or driver that
 #: reaches them yet (REQ-1874), so nothing can read their rows at all.
-_ROW_LEVEL_REFUSED: dict[str, str] = {
-    **{
-        t: "an API source is filtered by its own parameters, not replicated row by row"
-        for t in ("openapi", "graphql_remote", "grpc_remote")
-    },
-    "govdata": "a govdata source is read live on every request and is never replicated",
-    **{
-        t: "no connector or driver reaches this source type yet"
-        for t in (
-            "airtable",
-            "auth0",
-            "aws_cognito",
-            "dynamodb",
-            "firebase",
-            "logflare",
-            "s3_vectors",
-            "stripe",
-            "calcom",
-            "calendly",
-            "clerk",
-            "cloudflare_d1",
-            "gravatar",
-            "hubspot",
-            "infura",
-            "notion",
-            "orb",
-            "paddle",
-            "shopify",
-            "slack",
-        )
-    },
-}
-
-
 def _validate_row_materialize(config) -> None:  # REQ-1865
     """row_materialize needs a resolved cache_ttl (table's own OR inherited from its source) to
     drive each cached row's independent freshness clock (Table's own model_validator cannot see
@@ -1900,6 +1866,7 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
     a keyed-fetch translation wired at all (today: neo4j only — sparql has no parser/AST to safely
     resolve a projected property against, confirmed absent). Both are registration-time
     ValueErrors, never a silent fallback to an undefined TTL or an unbounded per-lookup scan."""
+    from provisa.core.source_registry import row_materialize_refusal
     from provisa.cypher.query_template_filter import (
         ProjectionFilterError,
         resolve_projected_property,
@@ -1912,12 +1879,10 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
         source = sources_by_id.get(table.source_id)
         if source is not None:
             stype = source.type.value if hasattr(source.type, "value") else str(source.type)
-            refused = _ROW_LEVEL_REFUSED.get(stype)
+            # REQ-1865, REQ-1915: the type's own declaration (core.source_registry).
+            refused = row_materialize_refusal(table.table_name, stype)
             if refused is not None:
-                raise ValueError(  # REQ-1915
-                    f"table {table.table_name!r}: row_materialize=True is refused for source type "
-                    f"{stype!r}: {refused}"
-                )
+                raise ValueError(refused)
         eff_ttl = (
             table.cache_ttl
             if table.cache_ttl is not None

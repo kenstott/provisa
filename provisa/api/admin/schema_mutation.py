@@ -103,6 +103,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     TableTtl,
     landing_ttl_refusal,
     replicate_contradiction_refusal,
+    row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
@@ -3665,6 +3666,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _ttl_refusal is not None:
                         raise TableSaveRefused(_ttl_refusal)
+                    _row_refusal = await row_materialize_save_refusal(  # REQ-1865
+                        _conn, model.source_id, model.table_name, model.row_materialize
+                    )
+                    if _row_refusal is not None:
+                        raise TableSaveRefused(_row_refusal)
                     from provisa.api.admin._change_feed import table_change_feed_refusal
 
                     _feed_refusal = await table_change_feed_refusal(  # REQ-1861
