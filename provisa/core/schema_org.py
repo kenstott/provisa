@@ -603,6 +603,8 @@ tag_assignments = Table(
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
+    # REQ-2143: the glossary term a tag is on (pii on a Property term).
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
@@ -619,7 +621,8 @@ tag_assignments = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
-        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product')",
+        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', "
+        "'term')",
         name="tag_assignments_object_type_check",
     ),
 )

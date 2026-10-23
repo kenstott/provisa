@@ -55,6 +55,7 @@ from provisa.core.schema_org import (
     registered_tables,
     relationships,
     table_columns,
+    tag_assignments,
 )
 
 if TYPE_CHECKING:
@@ -629,6 +630,17 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         await conn.execute_core(select(glossary_term_experts.c.term_id).distinct())
     ).fetchall()
     with_experts = {r.term_id for r in expert_rows}
+    # REQ-2143: a tag on a term is a curator's.
+    tagged = {
+        r.term_id
+        for r in (
+            await conn.execute_core(
+                select(tag_assignments.c.term_id)
+                .where(tag_assignments.c.object_type == "term")
+                .distinct()
+            )
+        ).fetchall()
+    }
     terms = {
         r.id: {
             "id": r.id,
@@ -637,6 +649,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             "retired": bool(r.retired),
             "definition": r.definition,
             "has_expert": r.id in with_experts,
+            "tagged": r.id in tagged,
             "ref_count": counts.get(r.id, 0),
             "rooted": counts.get(r.id, 0) > 0 or r.id in classes,
         }
@@ -680,12 +693,14 @@ def _is_curated(graph: _TermGraph, node: dict) -> bool:
     have come from a person; deleting the row would discard that silently and the next
     registration of the same column would put a blank term in its place. Such a term is
     deprecated instead — kept, out of service, and revived by ``_find_or_create_term`` if its
-    column comes back. ``retired`` counts too: a curator's withdrawal is itself the work.
+    column comes back. ``retired`` counts too: a curator's withdrawal is itself the work, and so
+    does a tag on the term (REQ-2143): sync never re-derives the term's columns away from it.
     """
     return bool(
         (node["definition"] or "").strip()
         or node["retired"]
         or node["has_expert"]
+        or node["tagged"]
         or any(node["id"] in edge for edge in graph.edges)
     )
 
@@ -850,6 +865,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
         )
     ).fetchall()
     term["experts"] = [dict(r._mapping) for r in experts]
+    term["tags"] = await term_tags(conn, term_id)  # REQ-2143
     term["live"] = term_id in await live_ids(conn)
     # REQ-1591: the same rule the list and the gates use, rather than reading the refs above —
     # those are empty for an abstract term and for a deprecated one whose columns have gone,
@@ -916,6 +932,11 @@ async def upsert_declared_term(
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
     if not name:
         raise ValueError("term name is required")
+    held = (
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
+    ).fetchone()
+    if held is not None:
+        await _refuse_clearing_tagged(conn, held.id, definition)  # REQ-2143
     term_id = await conn.upsert_returning(
         glossary_terms,
         {
@@ -950,7 +971,28 @@ async def rename_term(conn: "Connection", term_id: int, new_name: str) -> bool:
     return (result.rowcount or 0) > 0
 
 
+class TermIsTagged(ValueError):
+    """A definition cleared on a term that carries tags (REQ-2143): an undefined term governs
+    nothing, so clearing it would take the tags off every column the term means, unannounced."""
+
+    code = "tag.term_is_tagged"
+
+    def __init__(self, term: str, tags: list[str]) -> None:
+        super().__init__(f"Unmark {', '.join(tags)} first, or keep a definition")
+        self.term = term
+        self.tags = tags
+
+
+async def _refuse_clearing_tagged(conn: "Connection", term_id: int, definition: str | None) -> None:
+    if (definition or "").strip():
+        return
+    tags = [t["tag_id"] for t in await term_tags(conn, term_id)]
+    if tags:
+        raise TermIsTagged(await _term_name(conn, term_id), tags)
+
+
 async def set_definition(conn: "Connection", term_id: int, definition: str | None) -> bool:
+    await _refuse_clearing_tagged(conn, term_id, definition)  # REQ-2143
     result = await conn.execute_core(
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(definition=definition)
     )
@@ -1472,7 +1514,59 @@ async def role_conflicts(conn: "Connection") -> dict:
                     "columns": columns,
                 }
             )
-    return {"terms": terms, "tables": tables}
+    # REQ-2143: a tag stays on a term that has stopped being a Property, and is reported.
+    tag_rows = (
+        await conn.execute_core(
+            select(tag_assignments.c.tag_id, glossary_terms.c.id, glossary_terms.c.name)
+            .join(glossary_terms, glossary_terms.c.id == tag_assignments.c.term_id)
+            .where(tag_assignments.c.object_type == "term")
+            .order_by(glossary_terms.c.name, tag_assignments.c.tag_id)
+        )
+    ).fetchall()
+    tagged = []
+    for r in tag_rows:
+        role = await term_role(conn, r.id)
+        if role != "property":
+            tagged.append({"term_id": r.id, "term": r.name, "tag_id": r.tag_id, "role": role})
+    return {"terms": terms, "tables": tables, "tags": tagged}
+
+
+async def term_role(conn: "Connection", term_id: int) -> str:
+    """The term's role (REQ-2141): ``class`` when it grounds tables, ``property`` when it holds
+    column refs, ``concept`` when it does neither."""
+    if await _term_table_ids(conn, term_id):
+        return "class"
+    held = (
+        await conn.execute_core(select(func.count()).where(glossary_term_refs.c.term_id == term_id))
+    ).scalar_one()
+    return "property" if held else "concept"
+
+
+async def term_tags(conn: "Connection", term_id: int) -> list[dict]:
+    """The tags on the term (REQ-2143), each with its reason."""
+    rows = (
+        await conn.execute_core(
+            select(tag_assignments.c.tag_id, tag_assignments.c.reason)
+            .where(tag_assignments.c.object_type == "term", tag_assignments.c.term_id == term_id)
+            .order_by(tag_assignments.c.tag_id)
+        )
+    ).fetchall()
+    return [dict(r._mapping) for r in rows]
+
+
+async def term_column_count(conn: "Connection", term_id: int) -> int:
+    """How many columns the term holds."""
+    return (
+        await conn.execute_core(select(func.count()).where(glossary_term_refs.c.term_id == term_id))
+    ).scalar_one()
+
+
+async def is_key_column(conn: "Connection", table_id: int, column_name: str) -> bool:
+    """Whether the column is a key -- a primary key's, or a declared foreign key's -- whose ref is
+    placed on a Class by derivation (REQ-2141)."""
+    return column_name in await _primary_keys(conn, table_id) or column_name in (
+        await _references(conn, table_id)
+    )
 
 
 async def term_exists(conn: "Connection", term_id: int) -> bool:

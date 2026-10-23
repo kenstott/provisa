@@ -126,7 +126,8 @@ async def tag_target_domains(conn: "Connection", assignment: Any) -> set[str]:
     A table's, and the same for one of its columns. A relationship's is the domain of the table
     the edge STARTS at -- relationships are owned by direction. A command's is the domain it sits
     in (none, for a stored row that names none). A source belongs to every domain it is open to,
-    and one that names none is open to all of them. Raises :class:`DomainLookupError` when the
+    and one that names none is open to all of them. A glossary term's are its columns' (REQ-2143).
+    Raises :class:`DomainLookupError` when the
     target does not exist.
     """
     from sqlalchemy import select
@@ -162,6 +163,12 @@ async def tag_target_domains(conn: "Connection", assignment: Any) -> set[str]:
         if row is None:
             raise DomainLookupError(f"no source {assignment.source_id!r}")
         return set(row["allowed_domains"] or [_ALL_DOMAINS])
+    if kind == "term":  # REQ-2143: the domains of the columns the term holds
+        from provisa.core.repositories import glossary as glossary_repo
+
+        if not await glossary_repo.term_exists(conn, assignment.term_id):
+            raise DomainLookupError(f"no term {assignment.term_id!r}")
+        return (await glossary_repo.term_domains(conn)).get(assignment.term_id, set())
     raise DomainLookupError(f"a {kind!r} tag assignment has no target this gate can place")
 
 

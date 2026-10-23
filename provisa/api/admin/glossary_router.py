@@ -378,6 +378,10 @@ async def update_term(request: Request, term_id: int) -> dict:
                 )
             if "retired" in body:
                 found = await glossary_repo.set_retired(_conn, term_id, bool(body["retired"]))
+        except glossary_repo.TermIsTagged as exc:  # REQ-2143
+            raise ApiError(
+                409, exc.code, str(exc), term=exc.term, tags=", ".join(exc.tags)
+            ) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not found:
@@ -657,13 +661,36 @@ async def move_ref(request: Request) -> dict:
             raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
         await _require_term_curatable(_conn, losing["id"], request)
         await _require_term_curatable(_conn, int(body["to_term_id"]), request)
+        from provisa.core.term_tags import (
+            TagLossRefused,
+            TermTagRefused,
+            inherited_snapshot,
+            tag_changes_of_moves,
+        )
+
         try:
-            moved = await glossary_repo.move_ref(
-                _conn,
-                int(body["table_id"]),
-                str(body["column_name"]),
-                int(body["to_term_id"]),
-            )
+            # REQ-2143: a move that takes a tag off the column, inherited from the term it leaves,
+            # is undone unless each lost tag is confirmed or carried to the term it moves to.
+            async with _conn.transaction():
+                table_ids = {int(body["table_id"])}
+                tags_before = await inherited_snapshot(_conn, table_ids)
+                moved = await glossary_repo.move_ref(
+                    _conn,
+                    int(body["table_id"]),
+                    str(body["column_name"]),
+                    int(body["to_term_id"]),
+                )
+                changes = await tag_changes_of_moves(
+                    _conn,
+                    tags_before,
+                    table_ids,
+                    confirm_tag_loss=body.get("confirm_tag_loss") or (),
+                    carry_tags=bool(body.get("carry_tags")),
+                )
+        except TagLossRefused as exc:
+            raise ApiError(409, exc.code, str(exc), columns=exc.columns) from exc
+        except TermTagRefused as exc:
+            raise ApiError(409, exc.code, str(exc), **exc.params) from exc
         except glossary_repo.TermIsClass as exc:
             raise ApiError(
                 409, "glossary.term_is_class", str(exc), term=exc.term, tables=", ".join(exc.tables)
@@ -685,7 +712,7 @@ async def move_ref(request: Request) -> dict:
     await _notify(org_id, "ontology ref moved")
     # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
     # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
-    return {"ok": True, **moved}
+    return {"ok": True, **moved, "tag_changes": changes}  # REQ-2143
 
 
 @router.post("/terms/{term_id}/edges")
@@ -869,8 +896,9 @@ async def unground_term_table(
 @router.get("/role-conflicts")
 async def role_conflicts(request: Request) -> dict:
     """What breaks the exclusivity of a term's roles (REQ-2141), for the caller's domains: each
-    Class holding column refs a Class may not (``terms``), and each keyed table left without a
-    Class term because its concept is a Property (``tables``). It reports; it changes nothing."""
+    Class holding column refs a Class may not (``terms``), each keyed table left without a
+    Class term because its concept is a Property (``tables``), and each tag on a term that is no
+    longer a Property (``tags``, REQ-2143). It reports; it changes nothing."""
     from provisa.core.glossary import readable_term
 
     _require_glossary_read(request)
@@ -888,6 +916,9 @@ async def role_conflicts(request: Request) -> dict:
                 t for t in found["terms"] if readable_term(allowed, scopes.get(t["term_id"], set()))
             ],
             "tables": [t for t in found["tables"] if t["domain_id"] in allowed],
+            "tags": [
+                t for t in found["tags"] if readable_term(allowed, scopes.get(t["term_id"], set()))
+            ],
         }
 
 
@@ -927,3 +958,66 @@ async def remove_term_table(request: Request, term_id: int, table_id: int) -> di
         await unground_term_table(cast("Connection", conn), term_id, table_id, request)
     await _notify(org_id, "ontology table ungrounded")
     return {"ok": True}
+
+
+async def tag_term(  # REQ-2143
+    conn: "Connection", request: Request, term_id: int, tag_id: str, reason: str | None
+) -> int:
+    """Put tag ``tag_id`` on term ``term_id`` for a caller who may curate the term and assign the
+    tag: a sensitive tag needs sensitive_data in the domains of the columns the term holds. Refused
+    unless the term is defined, in service and a Property. Returns how many columns the tag now
+    covers through it."""
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.api.admin.schema_mutation import store_tag_assignment
+    from provisa.core.models import TagAssignment
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+    from provisa.security.sensitive import SENSITIVE_DATA
+
+    await _require_term_curatable(conn, term_id, request)
+    tag_row = await tag_repo.get(conn, tag_id)
+    if tag_row is None:
+        raise ApiError(404, "schema.tag_not_found", f"Tag {tag_id!r} not found", tag=tag_id)
+    if tag_row["sensitive"]:
+        domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
+        require_right_in_domains_request(request, SENSITIVE_DATA, domains)
+    else:
+        require_capability_request(request, Capability.TABLE_REGISTRATION.value)
+    try:
+        await refuse_term_tag(conn, term_id, tag_id)
+    except TermTagRefused as refused:
+        raise ApiError(409, refused.code, str(refused), **refused.params) from refused
+    model = TagAssignment(
+        tag_id=tag_id,
+        object_type="term",
+        term_id=term_id,
+        reason=(reason or "").strip() or None,
+    )
+    refused = await store_tag_assignment(conn, model, tag_row)
+    if refused is not None:
+        raise ApiError(400, refused.code or "schema.tag_refused", refused.message)
+    return await glossary_repo.term_column_count(conn, term_id)
+
+
+async def untag_term(  # REQ-2143
+    conn: "Connection", request: Request, term_id: int, tag_id: str
+) -> bool:
+    """Take tag ``tag_id`` off term ``term_id``, under the rights :func:`tag_term` asks."""
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.security.sensitive import SENSITIVE_DATA
+
+    await _require_term_curatable(conn, term_id, request)
+    tag_row = await tag_repo.get(conn, tag_id)
+    if tag_row is not None and tag_row["sensitive"]:
+        domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
+        require_right_in_domains_request(request, SENSITIVE_DATA, domains)
+    else:
+        require_capability_request(request, Capability.TABLE_REGISTRATION.value)
+    return await tag_repo.unassign(conn, tag_id, f"term:{term_id}")

@@ -412,9 +412,16 @@ def _model_tags(
     published_columns: set[tuple[str, ...]],
     published_relationships: set[str],
     published_source_ids: set[str],
-) -> list[ModelTag]:  # REQ-1377, REQ-1378
-    """Registry tags on published assets. Tags on withheld assets are withheld with them."""
+    glossary: dict | None = None,
+) -> list[ModelTag]:  # REQ-1377, REQ-1378, REQ-2143
+    """Registry tags on published assets. Tags on withheld assets are withheld with them. A tag on
+    a glossary term is on every published column the term holds (REQ-2143), from ``glossary``
+    (export_graph's), each saying the term it comes through."""
     tags: list[ModelTag] = []
+    refs_by_term: dict[int, list[dict]] = {}
+    for ref in (glossary or {}).get("refs", []):
+        refs_by_term.setdefault(ref["term_id"], []).append(ref)
+    names = {t["id"]: t["name"] for t in (glossary or {}).get("terms", [])}
     for assignment in config.tag_assignments:
         common = {
             "tag_id": assignment.tag_id,
@@ -447,6 +454,28 @@ def _model_tags(
         elif assignment.object_type == "relationship":
             if assignment.relationship_id in published_relationships:
                 tags.append(ModelTag(relationship_id=assignment.relationship_id, **common))
+        elif assignment.object_type == "term" and assignment.term_id is not None:
+            for ref in refs_by_term.get(assignment.term_id, []):
+                target = _resolve_assignment_table(
+                    assignment.model_copy(
+                        update={
+                            "table_ref": f"{ref['source_id']}.{ref['schema_name']}."
+                            f"{ref['table_name']}"
+                        }
+                    ),
+                    index,
+                )
+                if target is None:
+                    continue
+                column = column_ref(target, ref["column_name"])
+                if column.parts in published_columns:
+                    tags.append(
+                        ModelTag(
+                            asset=column,
+                            term=names.get(assignment.term_id, assignment.term),
+                            **common,
+                        )
+                    )
     return tags
 
 
@@ -742,6 +771,7 @@ def build_snapshot(
                 published_columns,
                 {edge.id for edge in relationships},
                 published_source_ids,
+                glossary,
             ),
             # REQ-1443: computed tags publish alongside assigned ones. They are the only
             # signal telling a consumer that a published table holds check outcomes rather

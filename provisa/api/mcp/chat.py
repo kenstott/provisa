@@ -467,6 +467,32 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "tag_glossary_term",
+        "description": (
+            "Put a tag (pii) on an ontology term that is a Property, so every column the term "
+            "holds, now and later, carries it; refused for a Class or a Concept. pii needs a "
+            "reason. Says how many columns it covers."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "tag_id": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            "required": ["term_id", "tag_id"],
+        },
+    },
+    {
+        "name": "untag_glossary_term",
+        "description": "Take a tag off an ontology term; its columns no longer carry it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}, "tag_id": {"type": "string"}},
+            "required": ["term_id", "tag_id"],
+        },
+    },
+    {
         "name": "list_data_products",
         "description": "list the org's data products (id, domain, name, purpose, owner/team role, status, etc.).",
         "input_schema": {"type": "object", "properties": {}},
@@ -926,6 +952,7 @@ _SYSTEM = (
     "Manage the glossary with list_glossary_terms/create_glossary_term/update_glossary_"
     "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge, and ground a term "
     "to a whole table with ground_glossary_term_to_table/unground_glossary_term_from_table, "
+    "and mark a Property term pii with tag_glossary_term/untag_glossary_term, "
     "directly — these "
     "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
     "need no admin_mutation. Still always confirm with the user "
@@ -1314,6 +1341,8 @@ async def _execute_tool(
         "remove_glossary_term_edge",
         "ground_glossary_term_to_table",
         "unground_glossary_term_from_table",
+        "tag_glossary_term",
+        "untag_glossary_term",
     ):
         if request is None:
             raise ValueError(f"{name} requires a verified request context")
@@ -1354,6 +1383,14 @@ async def _execute_tool(
         if name == "unground_glossary_term_from_table":
             return await mcp_tools.unground_glossary_term_from_table(
                 state, role, request, int(args["term_id"]), int(args["table_id"])
+            )
+        if name == "tag_glossary_term":  # REQ-2143
+            return await mcp_tools.tag_glossary_term(
+                state, role, request, int(args["term_id"]), args["tag_id"], args.get("reason")
+            )
+        if name == "untag_glossary_term":
+            return await mcp_tools.untag_glossary_term(
+                state, role, request, int(args["term_id"]), args["tag_id"]
             )
         return await mcp_tools.remove_glossary_term_edge(
             state, role, request, int(args["term_id"]), int(args["to_term_id"]), args["rel_type"]

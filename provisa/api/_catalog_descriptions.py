@@ -61,6 +61,9 @@ _META: dict[str, str] = {
     # REQ-2129
     "column_lineage_edges": "The model's column lineage — each column a view or command derives "
     "from another registered column, naming the view or command",
+    # REQ-2143
+    "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
+    "term it means, each saying where it comes from",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
@@ -396,6 +399,21 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
         "product_id": "Tagged data product, when the object is a data product",  # REQ-2125
+        "term_id": "Tagged glossary term, when the object is a term",  # REQ-2143
+    },
+    # REQ-2143
+    "effective_column_tags": {
+        "id": "Identity of the row: the assignment, and for a term's tag the column it reaches",
+        "column_key": "Synthesized column identity (table_id:column_name) of the column",
+        "table_id": "Table the column belongs to",
+        "column_name": "The column carrying the tag",
+        "tag_id": "Tag carried, with its parameter when it has one",
+        "base_tag_id": "Tag carried, parameter stripped — the registry id",
+        "via": "column when the tag is on the column itself, term when it is on its glossary term",
+        "term_id": "The glossary term the column carries the tag through, when via is term",
+        "term": "That term's name",
+        "reason": "Justification recorded with the assignment",
+        "tenant_id": _TENANT,
     },
     "tag_expiry": {
         "id": "Assignment identifier",

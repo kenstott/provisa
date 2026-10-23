@@ -506,6 +506,7 @@ async def test_the_check_reports_a_class_holding_non_key_refs_and_changes_nothin
                 }
             ],
             "tables": [],
+            "tags": [],
         }
         assert await glossary_router.role_conflicts(_request()) == found  # nothing changed
 

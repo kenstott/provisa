@@ -732,6 +732,55 @@ async def unground_glossary_term_from_table(
     return {"ok": True}
 
 
+async def tag_glossary_term(
+    state: Any, role: str, request: Any, term_id: int, tag_id: str, reason: str | None = None
+) -> dict:  # REQ-2143
+    """Put a tag (pii) on an ontology term that is a Property: every column the term holds, now
+    and later, carries it. Says how many columns it covers."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, tag_term
+    from provisa.api.admin.schema_mutation import _refresh_config_tags
+    from provisa.api.errors import ApiError
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        try:
+            covers = await tag_term(conn, request, term_id, tag_id, reason)
+        except ApiError as exc:
+            if exc.status_code == 403:
+                raise
+            raise ValueError(exc.detail) from exc
+    await _refresh_config_tags()
+    await _notify(org_id, "ontology term tagged")
+    return {"ok": True, "term_id": term_id, "tag_id": tag_id, "covers": covers}
+
+
+async def untag_glossary_term(
+    state: Any, role: str, request: Any, term_id: int, tag_id: str
+) -> dict:  # REQ-2143
+    """Take a tag off an ontology term: its columns no longer carry it through the term."""
+    require_role(role, state)
+    from provisa.api.admin._guards import require_active_org_id
+    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, untag_term
+    from provisa.api.admin.schema_mutation import _refresh_config_tags
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        removed = await untag_term(conn, request, term_id, tag_id)
+    if not removed:
+        raise ValueError(f"tag {tag_id!r} is not on term {term_id}")
+    await _refresh_config_tags()
+    await _notify(org_id, "ontology term untagged")
+    return {"ok": True}
+
+
 async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:  # REQ-1855
     """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
     require_role(role, state)

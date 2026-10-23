@@ -1086,6 +1086,8 @@ async def _load_after_tables(  # REQ-1919
             continue
         await tag_repo.upsert(conn, tg)
     for ta in config.tag_assignments:
+        if ta.object_type == "term":
+            continue  # REQ-2143: placed once the glossary has settled, below
         await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta))
 
     # 7. RLS rules (tables + roles must exist first)
@@ -1160,6 +1162,36 @@ async def _load_after_tables(  # REQ-1919
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
     await glossary_repo.sweep_refless_terms(conn, before=refs_before)
+
+    # 12. Tags on glossary terms (REQ-2143), once every term and its refs have settled.
+    for ta in config.tag_assignments:
+        if ta.object_type == "term":
+            await tag_repo.assign(conn, await _resolve_tag_assignment_term(conn, ta))
+
+
+async def _resolve_tag_assignment_term(
+    conn: "Connection", ta: TagAssignment
+) -> TagAssignment:  # REQ-2143
+    """The term assignment with ``term_id`` resolved by its term's name, refused as the term's own
+    tagging refuses it (provisa.core.term_tags.refuse_term_tag)."""
+    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+
+    if not ta.term:
+        raise ValueError(f"tag assignment {ta.tag_id!r} on a term names no term")
+    name = ta.term.strip().lower()  # REQ-1844: every term name in the catalog is lowercase
+    row = (
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"tag assignment {ta.tag_id!r} names term {ta.term!r}, which does not exist in this "
+            "config or the catalog"
+        )
+    try:
+        await refuse_term_tag(conn, row.id, ta.tag_id)
+    except TermTagRefused as refused:
+        raise ValueError(f"tag {ta.tag_id!r} cannot go on term {ta.term!r}: {refused}") from None
+    return ta.model_copy(update={"term_id": row.id})
 
 
 async def _check_identities(conn: "Connection", config: ProvisaConfig) -> None:

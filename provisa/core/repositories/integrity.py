@@ -308,6 +308,9 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("glossary_term_refs", "term_id", "glossary_term", "table", "table_id"),
     # REQ-2130: a class term's table groundings go with it (the schema cascades them).
     _part("glossary_term_table_refs", "term_id", "glossary_term"),
+    # REQ-2143: a term's tags go with it; a term holding columns is blocked above, so no column
+    # loses a tag it carried through the term.
+    _part("tag_assignments", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
     _part("glossary_term_edges", "from_term_id", "glossary_term"),

@@ -816,6 +816,25 @@ def build_mcp_server(state: Any):
         )
 
     @_tool
+    async def tag_glossary_term(
+        term_id: int, tag_id: str, reason: str | None = None, role: str | None = None
+    ) -> dict:
+        """Put a tag (pii) on a glossary term that is a Property: every column the term holds, now
+        and later, carries it."""
+        resolved = _role(role)
+        return await tools.tag_glossary_term(
+            state, resolved, _capability_request(resolved), term_id, tag_id, reason
+        )
+
+    @_tool
+    async def untag_glossary_term(term_id: int, tag_id: str, role: str | None = None) -> dict:
+        """Take a tag off a glossary term."""
+        resolved = _role(role)
+        return await tools.untag_glossary_term(
+            state, resolved, _capability_request(resolved), term_id, tag_id
+        )
+
+    @_tool
     async def list_data_products(role: str | None = None) -> list[dict]:
         """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
         resolved = _role(role)

@@ -606,7 +606,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -617,6 +617,9 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1660: explicit data-product-level tags, distinct from tags inherited/rolled up
     -- from member tables' own assignments (computed, not stored here).
     product_id      TEXT REFERENCES data_products(id) ON DELETE CASCADE,
+    -- REQ-2143: the glossary term a tag is on (pii on a Property term). Its reference to
+    -- glossary_terms is declared after that table, below.
+    term_id         INTEGER,
     object_key      TEXT NOT NULL,
     -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
     reason          TEXT,
@@ -649,7 +652,7 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
-        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product'));
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -712,6 +715,19 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     tenant_id       UUID,
     UNIQUE (name)
 );
+
+-- REQ-2143: a tag on a glossary term, on a table that predates it. The term's deletion takes its
+-- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a
+-- column's.
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS term_id INTEGER;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_term_id_fkey
+        FOREIGN KEY (term_id) REFERENCES glossary_terms(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- A physical ref binds a term to (table_id, column_name) — the stable column identity
 -- (table_columns.id is NOT stable: the table upsert replaces column rows wholesale).
