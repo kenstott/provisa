@@ -26,6 +26,8 @@ from provisa.api import demo_warmup
 
 DEMOS = Path(__file__).resolve().parents[2] / "demo" / "named"
 ALL = "sandbox,analyst"  # the visitor's "Role: All"
+#: What a stub answers every request with: a statement's answer, as /data/sql gives it.
+_ANSWER = json.dumps({"data": {"sql": []}}).encode()
 
 
 def test_every_step_that_runs_something_is_sent_in_tour_order_then_the_explorers():
@@ -93,7 +95,7 @@ def test_the_warmup_sends_each_request_as_the_visitor_and_carries_on_past_a_refu
         )
         status = 500 if len(seen) == 1 else 200
         await send({"type": "http.response.start", "status": status, "headers": []})
-        await send({"type": "http.response.body", "body": b"{}"})
+        await send({"type": "http.response.body", "body": _ANSWER})
 
     with caplog.at_level(logging.WARNING, logger="provisa.api.demo_warmup"):
         asyncio.run(
@@ -119,7 +121,7 @@ def test_the_warmup_s_requests_are_marked_as_its_own_and_no_one_else_s():
         await receive()
         marked.append(demo_warmup.WARMING.get())
         await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b"{}"})
+        await send({"type": "http.response.body", "body": _ANSWER})
 
     asyncio.run(
         demo_warmup._warm(app, "sbxabc", {"Authorization": "Bearer t"}, DEMOS / "weblogs", ALL)
