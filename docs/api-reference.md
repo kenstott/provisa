@@ -1341,7 +1341,7 @@ Normalization applies five rules in sequence:
 4. Strip a trailing **proxy token** (`identifier`, `code`, `index`, or `reference`). A column named for its key or code is pointing at the underlying concept through a stand-in value, so the term should be the concept itself. The last remaining token is never stripped.
 5. Qualify a **too-generic phrase** with the table's concept. When the full normalized phrase is a bare attribute word (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, and similar), the term becomes `<table concept> <phrase>`: `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. One shared `name` term across unrelated tables would merge distinct meanings; qualification connects each column to its enclosing concept instead. The table concept is the table's business name, normalized with a singular head noun (`order_lines` → `order line`).
 
-Native-filter pseudo-columns (`_nf_`-prefixed, or any column carrying `native_filter_type`) are query-parameter machinery, not business fields, and derive no terms.
+Native-filter pseudo-columns (`_nf_`-prefixed, or any column carrying `native_filter_type`) are query-parameter machinery and derive no terms.
 
 Because `id`, `key`, `pk`, and `sk` all expand to `identifier` before the proxy check, three physically different column names land on exactly the same term:
 
@@ -1354,30 +1354,38 @@ Because `id`, `key`, `pk`, and `sk` all expand to `identifier` before the proxy 
 
 The first three collapse to one term. `transaction amount` keeps both tokens because `amount` isn't a proxy. A bare `id` column, with no tokens before it, can't be stripped, so it normalizes to `identifier` and the term isn't empty.
 
+Key columns don't take a normalized term. Every column of a primary key puts its ref on its table's Class term, and every column of a declared foreign key puts its ref on the target table's Class, whatever it is called. A keyed table with no Class proposes a draft one, named for its concept. See [Ontology](ontology.md#classes-properties-and-concepts) for the roles and how keys are placed.
+
 ### Lifecycle
 
-Terms are **derived from semantic-layer membership**; users don't create them on demand. The table repository is the one write path: `sync_table_refs` runs inside every column-set upsert, and `sweep_refless_terms` runs after any deletion path.
+Terms are **derived from semantic-layer membership**. The table repository is the one write path: it reconciles a table's columns on every save, and settles the terms a deletion leaves without refs.
 
-**When a column is added:** Provisa looks up the normalized term by name. If it already exists, the column gets a ref to it (and if the term was deprecated, it is revived, with `deprecated` set back to `False`). If no term exists yet, one is created.
+**When a column is added:** Provisa looks up its term by name. If the term exists, the column gets a ref to it, and a term deprecated by losing its last column is revived. If no term exists yet, a draft one is created.
 
-**When a column departs** (a schema change or a table removal), its ref is deleted and the term is **settled** under a remove-or-deprecate rule. A rooted term with no refs left is removed outright, with its edges and expert assignments, unless removing it would leave an abstract term with no path through the term graph to any rooted term. In that case the term is **deprecated** (marked `deprecated=True`) instead of deleted, so the abstract term keeps its anchor in the graph.
+**When a column departs** (a schema change or a table removal), its ref is deleted and the term is **settled**. An uncurated term with no refs left is removed with its edges. A curated term (one with a definition, an edge, an expert, a tag or a retirement) is deprecated and kept, and so is any term whose removal would leave a Concept with no path to data.
 
-Abstract terms are never auto-removed; they exist outside the physical lifecycle and are only deleted explicitly via the admin API.
-
-**Revival:** if a deprecated term's normalized name reappears (a column is re-registered), the term is unmarked and its refs resume accumulating.
+Each term has one status: `draft`, `live`, `deprecated` or `retired`. The list, the detail and the meta view carry it. A curator changes it only through the status actions below; a `PATCH` that sets a status is refused. See [Ontology](ontology.md#status) for what each status means.
 
 ### Curation Endpoints
 
-All endpoints are under `/admin/glossary`. They require `org_admin` access and a configured org. Every mutation triggers a metadata publish.
+All endpoints are under `/admin/glossary` and need a configured org. Reading takes the `glossary_read` right, and every change takes `glossary_rw`, within the domains the caller may reach. Every change triggers a metadata publish.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | List terms. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
-| `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, physical refs, typed edges, experts |
-| `POST` | `/admin/glossary/terms` | Create an abstract term — user vocabulary with no physical refs |
-| `PATCH` | `/admin/glossary/terms/{term_id}` | Rename, set definition, or toggle export exclusion |
-| `DELETE` | `/admin/glossary/terms/{term_id}` | Delete a term that has no physical refs |
-| `POST` | `/admin/glossary/refs/move` | Move one physical ref to a different term (consolidation) |
+| `GET` | `/admin/glossary/terms` | List terms, each with its `status` and `findings` count. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, status, physical refs, typed edges, experts, tags |
+| `POST` | `/admin/glossary/terms` | Create a Concept, a term with no columns or tables |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | Rename, set the definition, set a Concept's domains, or toggle export exclusion |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | Delete a term that holds no columns |
+| `POST` | `/admin/glossary/refs/move` | Move one column's ref to a different term |
+| `GET` | `/admin/glossary/terms/{term_id}/tables` | List the tables a Class grounds |
+| `POST` | `/admin/glossary/terms/{term_id}/tables` | Ground a table on the term, making it the table's Class |
+| `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | Unground a table; its keys return to its proposed Class |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | Deprecate a live term |
+| `POST` | `/admin/glossary/terms/{term_id}/retire` | Retire a term, moving its columns or tables to a successor |
+| `POST` | `/admin/glossary/terms/{term_id}/restore` | Clear a retirement or a curator's deprecation |
+| `GET` | `/admin/glossary/terms/{term_id}/applied-history` | A retired term's columns and tables as of the commit before its retirement |
+| `GET` | `/admin/glossary/findings` | Each term with findings, and its findings |
 | `POST` | `/admin/glossary/terms/{term_id}/edges` | Add a typed relationship edge between two terms |
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Remove an edge (query params: `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | Tag a user as an expert or author for a term |
@@ -1385,6 +1393,8 @@ All endpoints are under `/admin/glossary`. They require `org_admin` access and a
 | `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Draft a definition for one term using the org's AI model — returns text only, nothing persists until saved |
 | `POST` | `/admin/glossary/definitions/generate` | Generate and persist definitions for every term that has none — never overwrites human-authored text |
 | `POST` | `/admin/glossary/relationships/generate` | Propose and persist typed edges across the whole glossary using the org's AI model |
+
+A term's role is derived from what it grounds and is never set. A `PATCH` or create that sets `is_abstract` is refused (`glossary.abstract_is_derived`).
 
 **`POST /admin/glossary/terms` body:**
 
@@ -1398,7 +1408,7 @@ All endpoints are under `/admin/glossary`. They require `org_admin` access and a
 {"to_term_id": 42, "rel_type": "KIND_OF"}
 ```
 
-Valid `rel_type` values: `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`.
+Valid `rel_type` values: `KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`.
 
 **`POST /admin/glossary/terms/{term_id}/experts` body:**
 
@@ -1414,9 +1424,56 @@ Valid `kind` values: `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Moving a ref settles the term that lost it under the remove-or-deprecate rule. Use it to merge two terms that normalization kept apart, for example when a source uses a non-standard abbreviation that the expansion table doesn't cover.
+Moving a ref settles the term that lost it. Use it to merge two terms that normalization kept apart, for example when a source uses a non-standard abbreviation that the expansion table doesn't cover.
 
-Deleting a rooted term (one with physical refs) returns `400 glossary.invalid`. Remove or move all refs first.
+A move into a Class is refused (`glossary.term_is_class`), and so is a move of a key column, whatever the target (`glossary.key_column_derived`, naming the column, its table and its Class).
+
+When the move would take `pii` off the column, it is refused with `409 tag.move_loses`, listing each column with the tags it `loses` and `gains`. Send the move again with `confirm_tag_loss` naming every lost tag, or with `carry_tags: true` to put the lost tags on the term the column moves to:
+
+```json
+{"table_id": 7, "column_name": "email", "to_term_id": 12, "confirm_tag_loss": ["pii"]}
+```
+
+Retirement and a relationship save or delete that re-homes key refs take the same two fields.
+
+Deleting a term that still holds columns returns `400 glossary.invalid`, naming the tables. Retire it, or move its columns, first. Deleting a Class ungrounds its tables first, so their keys return to their proposed Classes.
+
+**`POST /admin/glossary/terms/{term_id}/deprecate` body:**
+
+```json
+{"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
+```
+
+`reason` is required. `retire_on` is optional and can't be in the past; on that date the org's scheduler retires the term. Only a live term can be deprecated.
+
+**`POST /admin/glossary/terms/{term_id}/retire` body:**
+
+```json
+{"reason": "Merged into customer", "successor": 12}
+```
+
+`successor` is required when the term holds columns or tables. A Property's successor must be a Property or a Concept, and a Class's a Class or a Concept. The term's columns, or its tables with their keys, move to the successor, which gets a `REPLACES` edge to the retired term. The response lists each moved column's tag changes. Each refusal is a `400` naming the rule: `glossary.reason_required`, `glossary.successor_required`, `glossary.successor_is_self`, `glossary.successor_retired` or `glossary.successor_role`.
+
+**`GET /admin/glossary/findings` response:**
+
+```json
+[
+  {
+    "term_id": 3,
+    "term": "customer",
+    "findings": [
+      {
+        "kind": "unlinked_tables",
+        "code": "glossary.finding.unlinked_tables",
+        "message": "the class is grounded in tables that same-entity relationships do not all join",
+        "params": {"tables": "pg.public.customers, crm.public.contacts"}
+      }
+    ]
+  }
+]
+```
+
+The kinds are `unlinked_tables`, `class_and_attribute`, `tag_wrong_kind`, `retirement_blocked` and `no_data`. A term with no findings is left out, and a plain draft is not a finding. The endpoint reports and changes nothing.
 
 **`PATCH /admin/glossary/terms/{term_id}` — `export_excluded` field:**
 
@@ -1424,11 +1481,11 @@ Deleting a rooted term (one with physical refs) returns `400 glossary.invalid`. 
 {"export_excluded": true}
 ```
 
-Setting `export_excluded` to `true` withholds the term from all metadata export snapshots, regardless of its physical refs or abstract status. Setting it back to `false` restores the term to the snapshot on the next publish. Curation data (definition, edges, experts) is unaffected.
+Setting `export_excluded` to `true` withholds the term from all metadata export snapshots, whatever its refs or role. Setting it back to `false` restores the term to the snapshot on the next publish. Curation data (definition, edges, experts) is unaffected.
 
 ### AI-Assisted Curation
 
-The org's configured AI model can draft definitions and propose relationship edges across the whole glossary in one operation. Both bulk actions require `org_admin` access and a configured org.
+The org's configured AI model can draft definitions and propose relationship edges across the whole glossary in one operation. Both bulk actions take the `glossary_rw` right and a configured org.
 
 **`POST /admin/glossary/definitions/generate`**
 
@@ -1494,10 +1551,11 @@ The glossary term graph is included in every `MetadataSnapshot` built by `build_
 
 The export applies the same filters as the rest of the snapshot:
 
-- A term marked `export_excluded` is withheld outright, regardless of its physical refs, abstract status, or whether the org's catalog is configured.
-- A rooted term publishes only when at least one of its physical refs belongs to a column that passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld).
-- A rooted term whose refs are all withheld by those filters is withheld with them.
-- Abstract terms publish unconditionally: they are user vocabulary, not bound to physical columns.
+- Only live terms publish: in service, defined, and connected to a term whose column or table publishes.
+- A column publishes when it passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld). A term whose refs are all withheld this way isn't grounded for export.
+- A Concept publishes when it reaches a published term through the relationship graph.
+- A term marked `export_excluded` is withheld outright.
+- A deprecated term publishes with its `status`, `status_reason` and `retire_on`, for each catalog to map to its own deprecation marker.
 - An edge between two terms publishes only when both endpoint terms publish.
 
 Every vendor adapter publishes the term graph natively, into a glossary container that Provisa owns and creates idempotently, and never into an existing catalog glossary:
