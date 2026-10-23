@@ -7803,5 +7803,8 @@
   "de/tableSections.json::tableSections.classTerm": "Rows are instances of",
   "de/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "de/tableSections.json::tableSections.noClassTerm": "No term",
-  "de/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}"
+  "de/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
+  "de/sqlResultsPanel.json::sqlResultsPanel.statementTab": "Result {{n}} · {{name}}",
+  "de/sqlResultsPanel.json::sqlResultsPanel.statementTabUnnamed": "Result {{n}}",
+  "de/sqlResultsPanel.json::sqlResultsPanel.statementFailed": "failed"
 }

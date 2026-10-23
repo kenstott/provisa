@@ -21,6 +21,8 @@ import type { ExplainNodeDto, ExplainResponse } from "../../api/admin";
 import { MermaidDiagram } from "../../components/MermaidDiagram";
 import "./ResultsPanel.css";
 import { Tip } from "../../components/Tip";
+import { StatementTabs } from "./StatementTabs";
+import type { StatementResult } from "./statementResults";
 
 interface ResultsPanelProps {
   resultTab: ResultTab;
@@ -33,6 +35,10 @@ interface ResultsPanelProps {
   resultColumns: string[];
   /** REQ-1937: the rows held are only part of the result, so a filter applies to those loaded. */
   rowsPartial?: boolean;
+  /** A batch's results, one per statement; the result* props are the one shown. */
+  statements: StatementResult[];
+  statementIndex: number;
+  onStatement: (index: number) => void;
   grid: ResultsGridState;
   errors: string[];
   history: HistoryEntry[];
@@ -52,6 +58,9 @@ export function ResultsPanel({
   resultRedirect = null,
   resultRows,
   rowsPartial = false,
+  statements,
+  statementIndex,
+  onStatement,
   grid,
   errors,
   history,
@@ -131,6 +140,11 @@ export function ResultsPanel({
         </Tabs.List>
       </Tabs>
 
+      {statements.length > 1 &&
+        !running &&
+        (resultTab === "results" || resultTab === "profile") && (
+          <StatementTabs statements={statements} index={statementIndex} onChange={onStatement} />
+        )}
       <div style={{ flex: 1, overflow: "auto" }}>
         {resultTab === "results" &&
           (running ? (

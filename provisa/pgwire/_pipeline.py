@@ -4098,6 +4098,17 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
     return result
 
 
+@dataclass(frozen=True)
+class StatementOutcome:
+    """One statement of a batch answered on its own: its result, or the error that stopped it,
+    with the warnings its answer carries."""
+
+    statement: str
+    result: QueryResult | None
+    error: Exception | None
+    warnings: list[Any]
+
+
 async def execute_sql_batch(
     sql: str,
     role_id: str,
@@ -4124,14 +4135,70 @@ async def execute_sql_batch(
     every non-pgwire surface). A single statement behaves exactly like _govern_and_route + _execute_plan.
     Per statement, a standalone registered-command call is invoked through the shared function hook,
     matching the single-statement surface behaviour."""
+    outcomes = await _run_batch(
+        sql,
+        role_id,
+        state,
+        session_vars=session_vars,
+        as_of=as_of,
+        deliver=deliver,
+        buffered=buffered,
+        params=params,
+        each=False,
+    )
+    if not outcomes:
+        return QueryResult(rows=[], column_names=[])
+    result = outcomes[-1].result
+    assert result is not None
+    return result
+
+
+async def execute_sql_batch_each(
+    sql: str,
+    role_id: str,
+    state: Any | None = None,
+    *,
+    as_of: str | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
+    params: list | None = None,
+) -> list[StatementOutcome]:
+    """:func:`execute_sql_batch`, answered one outcome per statement: each statement governed,
+    routed and executed in order, in the one temp session, by the same loop. A statement that
+    fails is its outcome's error, and the statements after it still run. Every statement's result
+    is answered, so ``deliver`` and ``buffered`` apply to each."""
+    return await _run_batch(
+        sql,
+        role_id,
+        state,
+        session_vars=None,
+        as_of=as_of,
+        deliver=deliver,
+        buffered=buffered,
+        params=params,
+        each=True,
+    )
+
+
+async def _run_batch(
+    sql: str,
+    role_id: str,
+    state: Any | None,
+    *,
+    session_vars: dict[str, str] | None,
+    as_of: str | None,
+    deliver: Delivery | None,
+    buffered: bool,
+    params: list | None,
+    each: bool,
+) -> list[StatementOutcome]:
     from provisa.compiler.sql_rewrite import split_sql_statements
-    from provisa.pgwire.function_call import maybe_invoke_registered_function
 
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     statements = split_sql_statements(sql)
     if not statements:
-        return QueryResult(rows=[], column_names=[])
+        return []
     if params is not None:
         from provisa.compiler.params import ParametersDoNotFit, require_parameters_fit
 
@@ -4143,36 +4210,52 @@ async def execute_sql_batch(
         require_parameters_fit(statements[0], params)
     from provisa.compiler import temp_tables
 
-    if temp_tables.current() is None:
-        # REQ-615: a request that arrives in no session of its surface's own is one: its
-        # temporary tables live for its statements and end with it.
-        from provisa.pgwire.temp_exec import end
+    run = functools.partial(
+        _run_statements,
+        statements,
+        role_id,
+        state,
+        session_vars=session_vars,
+        as_of=as_of,
+        deliver=deliver,
+        buffered=buffered,
+        params=params,
+        each=each,
+    )
+    if temp_tables.current() is not None:
+        return await run()
+    # REQ-615: a request that arrives in no session of its surface's own is one: its temporary
+    # tables live for its statements and end with it.
+    from provisa.pgwire.temp_exec import end
 
-        session = temp_tables.TempSession()
-        token = temp_tables.bind(session)
-        try:
-            return await execute_sql_batch(
-                sql,
-                role_id,
-                state,
-                session_vars=session_vars,
-                as_of=as_of,
-                deliver=deliver,
-                buffered=buffered,
-                params=params,
-            )
-        finally:
-            temp_tables.unbind(token)
-            await end(session, state)
-    result: QueryResult | None = None
-    for _i, stmt in enumerate(statements):
+    session = temp_tables.TempSession()
+    token = temp_tables.bind(session)
+    try:
+        return await run()
+    finally:
+        temp_tables.unbind(token)
+        await end(session, state)
+
+
+async def _run_statements(
+    statements: list[str],
+    role_id: str,
+    state: Any,
+    *,
+    session_vars: dict[str, str] | None,
+    as_of: str | None,
+    deliver: Delivery | None,
+    buffered: bool,
+    params: list | None,
+    each: bool,
+) -> list[StatementOutcome]:
+    from provisa.core.statement_warnings import collecting_apart
+    from provisa.pgwire.function_call import maybe_invoke_registered_function
+
+    async def one(stmt: str, answered: bool) -> QueryResult:
         cmd = await maybe_invoke_registered_function(stmt, role_id, state)
         if cmd is not None:
-            result = cmd
-            continue
-        # Delivery applies only to the final (result) statement of the batch; leading statements run
-        # inline so their side effects land without spilling intermediate results to a sink.
-        _deliver = deliver if _i == len(statements) - 1 else None
+            return cmd
         # Bound values are handed on only when the caller sent some: a statement sent without
         # any is governed by the call it always was.
         govern = (
@@ -4185,13 +4268,29 @@ async def execute_sql_batch(
             role_id,
             session_vars=session_vars,
             as_of=as_of,
-            deliver=_deliver,
-            buffered=buffered and _i == len(statements) - 1,
+            deliver=deliver if answered else None,
+            buffered=buffered and answered,
             serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
         )
-        result = await _execute_plan(plan, state)
-    assert result is not None
-    return result
+        return await _execute_plan(plan, state)
+
+    outcomes: list[StatementOutcome] = []
+    last = len(statements) - 1
+    for i, stmt in enumerate(statements):
+        if not each:
+            # Delivery applies only to the final (result) statement of the batch; leading
+            # statements run inline so their side effects land without spilling intermediate
+            # results to a sink.
+            outcomes.append(StatementOutcome(stmt, await one(stmt, i == last), None, []))
+            continue
+        with collecting_apart() as found:
+            try:
+                result = await one(stmt, True)
+            except Exception as exc:  # allow-ble: answered as this statement's error; the caller turns it into the response the request boundary gives it
+                outcomes.append(StatementOutcome(stmt, None, exc, list(found)))
+                continue
+        outcomes.append(StatementOutcome(stmt, result, None, list(found)))
+    return outcomes
 
 
 async def govern_batch_final_plan(

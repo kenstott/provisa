@@ -23,7 +23,7 @@ from provisa.api.role_surface import role_surface
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import Response
@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
+    from provisa.pgwire._pipeline import StatementOutcome
 
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.params import ParametersDoNotFit
@@ -63,6 +64,14 @@ class SQLRequest(BaseModel):
         ),
     )
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
+    results: Literal["last", "each"] = Field(
+        default="last",
+        description=(
+            "'last' (the default): a batch answers its last statement's result, as psql and JDBC "
+            "do. 'each': one result per statement, in order -- its rows, or the error that "
+            "stopped it, the statements after it still run -- always as JSON."
+        ),
+    )
 
 
 def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, body: BaseModel) -> str:
@@ -228,6 +237,93 @@ def _with_warnings(body: dict) -> dict:
     return body
 
 
+def _sql_error(exc: Exception) -> Exception:
+    """The error /data/sql answers for ``exc``, raised by a statement it ran (the request
+    boundary, mirroring pgwire's handle_query). A governance denial (RLS, masking, visibility, a
+    relationship guard) raises PermissionError: 403. Any other error from an arbitrary user
+    query -- a source or engine rejection, a parse error -- is a client error: 400 with the
+    detail, as pgwire answers it with a SQLSTATE. An error the app answers by its own handler
+    (its code and parameters) is itself."""
+    if isinstance(exc, ParametersDoNotFit):
+        # The values sent are not the values the statement's placeholders number: refused by
+        # name, before the statement was governed or run.
+        return ApiError(400, "data.sql_parameters_do_not_fit", str(exc), reason=str(exc))
+    if isinstance(
+        exc,
+        # REQ-1174 (413), a refusal by name (core/read_refusal.py), a source still starting
+        # (503, REQ-1824), a statement this surface or the table cannot take: the app answers each.
+        ComplexityLimitExceeded
+        | ReadRefused
+        | SourceStillStartingError
+        | NotAvailableHere
+        | HTTPException,
+    ):
+        return exc
+    if isinstance(exc, PermissionError):
+        return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, TimeoutError):
+        # REQ-1905: the statement outran its request deadline (the message names the transport
+        # and the setting), or the server is stopping -- not a client error.
+        from provisa.api.errors import timeout_error
+
+        return timeout_error(exc)
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+async def _error_answer(raw_request: Request, exc: Exception) -> dict:
+    """``exc`` as the status and body the app's own handler answers it with: a statement's error
+    in a batch answered one result per statement says what the same statement alone would."""
+    import inspect
+    import json
+
+    handlers = raw_request.app.exception_handlers
+    for cls in type(exc).__mro__:
+        if cls in handlers:
+            response = handlers[cls](raw_request, exc)
+            if inspect.isawaitable(response):
+                response = await response
+            return {"status": response.status_code, "body": json.loads(bytes(response.body))}
+    raise exc
+
+
+async def _each_body(
+    raw_request: Request, outcomes: list[StatementOutcome], stats_enabled: bool, t0: float
+):
+    """A batch's answer, one entry per statement in order: its statement and warnings, and its
+    rows (with columns and their types), the handle of the results store it landed in, or the
+    error that stopped it."""
+    import time as _time
+
+    from provisa.api.json_response import OrjsonResponse
+    from provisa.executor import stats as _qs_mod
+
+    entries: list[dict] = []
+    for o in outcomes:
+        entry: dict[str, Any] = {
+            "statement": o.statement,
+            "warnings": [w.as_dict() for w in o.warnings],
+        }
+        if o.error is not None:
+            entry["error"] = await _error_answer(raw_request, _sql_error(o.error))
+            entries.append(entry)
+            continue
+        assert o.result is not None  # an outcome holds its result or its error
+        if o.result.redirect is not None:
+            entry["redirect"] = o.result.redirect
+        else:
+            entry["data"] = [dict(zip(o.result.column_names, row)) for row in o.result.rows]
+            entry["columns"] = list(o.result.column_names)
+            entry["column_types"] = _column_types(o.result)
+        entries.append(entry)
+    body: dict[str, Any] = {"results": entries}
+    if stats_enabled:
+        qs = _qs_mod.current()
+        if qs is not None:
+            qs.wall_ms = (_time.perf_counter() - t0) * 1000
+            body["provisa_stats"] = qs.to_dict()
+    return OrjsonResponse(body)
+
+
 @router.post("/sql")
 async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     raw_request: Request,
@@ -345,7 +441,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     role = state.roles.get(role_id)
     _check_sql_capabilities(role)
     from provisa.api.redirect_headers import delivery_from_headers
-    from provisa.pgwire._pipeline import execute_sql_batch
+    from provisa.pgwire._pipeline import execute_sql_batch, execute_sql_batch_each
 
     # REQ-1194: a redirect the request forces (X-Provisa-Redirect*); else REQ-1224's threshold
     # decides, SQL over HTTP being a buffered transport.
@@ -356,6 +452,23 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # parse error — is a client error → 400 with the detail, exactly as pgwire converts it to a SQLSTATE
     # error response. Converting a bad query to an error RESPONSE (not crashing the request) is the
     # documented boundary contract, not silent error handling.
+    if request.results == "each":
+        try:
+            outcomes = await execute_sql_batch_each(
+                request.sql,
+                role_id,
+                state,
+                as_of=_as_of,
+                deliver=delivery,
+                buffered=True,
+                params=request.params,
+            )
+        except Exception as exc:  # allow-ble: request boundary -- answered as _sql_error maps it
+            mapped = _sql_error(exc)
+            if mapped is exc:
+                raise
+            raise mapped from exc
+        return await _each_body(raw_request, outcomes, stats_enabled, _t0)
     try:
         result = await execute_sql_batch(
             request.sql,
@@ -366,33 +479,27 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             buffered=True,
             params=request.params,
         )
-    except ParametersDoNotFit as exc:
-        # The values sent are not the values the statement's placeholders number: refused by
-        # name, before the statement was governed or run.
-        raise ApiError(400, "data.sql_parameters_do_not_fit", str(exc), reason=str(exc)) from exc
-    except ComplexityLimitExceeded:
-        raise  # REQ-1174: answered as 413 by the app's handler
-    except ReadRefused:
-        raise  # refused by name; the app answers it (core/read_refusal.py)
-    except SourceStillStartingError:
-        raise  # a source still starting: the app answers 503 data.source_starting (REQ-1824)
-    except NotAvailableHere:
-        # A statement this surface or the table cannot take (a definition; a write the table's
-        # source cannot carry): answered by the app's handler with its code and parameters.
-        raise
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
-    except TimeoutError as exc:
-        # REQ-1905: the statement outran its request deadline (the message names the transport
-        # and the setting), or the server is stopping — not a client error.
-        from provisa.api.errors import timeout_error
-
-        raise timeout_error(exc) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:  # allow-ble: request boundary — an arbitrary user query can raise ANY engine/driver exception type
-        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # allow-ble: request boundary -- answered as _sql_error maps it
+        mapped = _sql_error(exc)
+        if mapped is exc:
+            raise
+        raise mapped from exc
     return _finalize(result)
+
+
+class SplitRequest(BaseModel):
+    sql: str
+
+
+@router.post("/sql/statements")
+async def sql_statements_endpoint(request: SplitRequest) -> dict:
+    """The statements of a batch, as /data/sql splits it (``split_sql_statements``: a ``;``
+    inside a string, a comment or a dollar-quoted block does not split). Nothing is governed or
+    run: the SQL page samples each statement before it sends the batch answered one result per
+    statement."""
+    from provisa.compiler.sql_rewrite import split_sql_statements
+
+    return {"statements": split_sql_statements(request.sql)}
 
 
 class ExplainRequest(BaseModel):

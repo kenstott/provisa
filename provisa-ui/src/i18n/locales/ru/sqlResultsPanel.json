@@ -101,6 +101,9 @@
     "provColumnsHeading": "Столбцы",
     "provTypeNumber": "Число",
     "provTypeDate": "Дата",
-    "provTypeText": "Текст"
+    "provTypeText": "Текст",
+    "statementTab": "Результат {{n}} · {{name}}",
+    "statementTabUnnamed": "Результат {{n}}",
+    "statementFailed": "ошибка"
   }
 }

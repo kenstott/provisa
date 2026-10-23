@@ -56,11 +56,17 @@ vi.mock("../../hooks/useCapability", () => ({
   useCapability: () => true,
 }));
 
-const runSql = vi.fn().mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
+// The page runs a batch answered one result per statement, split as the server splits it.
+const runSql = vi.fn().mockResolvedValue({
+  answers: [
+    { statement: "SELECT 1", columns: ["id"], column_types: null, rows: [{ id: 1 }], warnings: [] },
+  ],
+});
 const registerTable = vi.fn().mockResolvedValue({ success: true, message: "View created (id=7)" });
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  runSql: (...a: unknown[]) => runSql(...a),
+  runSqlEach: (...a: unknown[]) => runSql(...a),
+  splitSql: async (sql: string) => [sql],
 }));
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),

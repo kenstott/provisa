@@ -29,6 +29,9 @@ function renderResults(rows: Record<string, unknown>[]) {
       running={false}
       resultError=""
       resultRows={rows}
+      statements={[]}
+      statementIndex={0}
+      onStatement={vi.fn()}
       resultColumns={["id"]}
       grid={grid}
       errors={[]}

@@ -41,6 +41,9 @@ function renderStats(queryStats: unknown) {
       running={false}
       resultError=""
       resultRows={[]}
+      statements={[]}
+      statementIndex={0}
+      onStatement={vi.fn()}
       resultColumns={[]}
       grid={grid}
       errors={[]}

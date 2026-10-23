@@ -11,6 +11,7 @@
 import type { Metric, Relationship, RegisteredTable } from "../../types/admin";
 
 import type { MaskEntry } from "../../lib/masks";
+import type { StatementResult } from "./statementResults";
 
 export type ResultTab = "results" | "profile" | "errors" | "history" | "stats" | "analyze";
 export type TopTab = "sql" | "canvas";
@@ -87,6 +88,9 @@ export interface SqlResults {
   error: string;
   /** REQ-1937: the rows are part of a longer answer (cut at a row limit). */
   partial?: boolean;
+  /** A batch's results, one per statement; the fields above are the one shown. */
+  statements?: StatementResult[];
+  statementIndex?: number;
 }
 
 export interface SqlTab {
@@ -100,6 +104,9 @@ export interface SqlTab {
   resultPartial?: boolean;
   resultError: string;
   execMs: number | null;
+  /** A batch's results, one per statement; the result* fields are the one shown. */
+  statements?: StatementResult[];
+  statementIndex?: number;
   detached?: boolean; // REQ-1322: one-way detach from metric semantics → free-hand SQL
 }
 

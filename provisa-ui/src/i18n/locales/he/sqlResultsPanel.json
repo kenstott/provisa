@@ -101,6 +101,9 @@
     "provColumnsHeading": "עמודות",
     "provTypeNumber": "מספר",
     "provTypeDate": "תאריך",
-    "provTypeText": "טקסט"
+    "provTypeText": "טקסט",
+    "statementTab": "תוצאה {{n}} · {{name}}",
+    "statementTabUnnamed": "תוצאה {{n}}",
+    "statementFailed": "נכשל"
   }
 }
