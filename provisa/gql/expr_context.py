@@ -104,6 +104,9 @@ class TranslatorExprContext:
         # instead makes the engine read the whole-row struct (rendered client-side as [object Object]).
         if meta is None and alias != name and name in self._t._cte_sources:
             return _col(name, alias)
+        # An UNWIND variable is its UNNEST's column, not the alias's whole row (a struct).
+        if meta is None and alias in self._t._unwind_aliases:
+            return _col(name, alias)
         return exp.column(alias)
 
     def resolve_property(self, obj: exp.Expression, name: str) -> exp.Expression:
