@@ -43,6 +43,18 @@ class MaskType(str, Enum):
 # REQ-2142: the governed SQL's call for a regex mask, lowered per engine by the transpiler.
 UNIVERSAL_REGEX_REPLACE = "provisa_regex_replace"
 
+# REQ-2142: a regex mask fails closed. A value its pattern does not match reads as this (a text
+# column) or as NULL (any other column), never in clear. The model has no column-wide constant to
+# fall back to: a constant mask is one reader's entry, as a regex mask is.
+FULL_MASK_TEXT = "****"
+_TEXT_TYPES = {"varchar", "char", "text"}
+
+
+def full_mask(data_type: str) -> str | None:
+    """What a regex mask reads a value it does not match as, for a column of ``data_type``."""
+    return FULL_MASK_TEXT if _base_type(data_type) in _TEXT_TYPES else None
+
+
 # the engine base types that support regex masking
 _STRING_TYPES = {"varchar", "char", "text", "varbinary"}
 
@@ -186,9 +198,12 @@ def build_mask_expression(  # REQ-040, REQ-263
         assert rule.replace is not None
         pattern = sql_literal(rule.pattern, "postgres")
         replace = sql_literal(rule.replace, "postgres")
+        full = full_mask(data_type)
+        otherwise = "NULL" if full is None else sql_literal(full, "postgres")
         # REQ-2142: the pattern and replacement are universal; the transpiler lowers this call to
-        # the engine's own REGEXP_REPLACE, every match replaced, in its regex flavour.
-        return f"{UNIVERSAL_REGEX_REPLACE}({column_ref}, {pattern}, {replace})"
+        # the engine's own REGEXP_REPLACE, every match replaced, in its regex flavour -- and a
+        # value the pattern does not match to ``otherwise`` (fail closed).
+        return f"{UNIVERSAL_REGEX_REPLACE}({column_ref}, {pattern}, {replace}, {otherwise})"
 
     if rule.mask_type == MaskType.constant:
         return _resolve_constant(rule.value, data_type)
@@ -274,6 +289,8 @@ def apply_mask_to_value(rule: MaskingRule, value, data_type: str):  # REQ-040, R
         from provisa.security.universal_regex import lower
 
         pattern, replace = lower(rule.pattern, rule.replace, "python")
+        if re.search(pattern, str(value)) is None:
+            return full_mask(data_type)  # REQ-2142: fail closed
         return re.sub(pattern, replace, str(value))
     if rule.mask_type == MaskType.truncate:
         assert rule.precision is not None

@@ -55,8 +55,9 @@ CORPUS = [(p, r, x, y) for _id, p, r, x, y in _presets()] + [
     # . is any character but a newline, everywhere (PostgreSQL's own . takes one)
     (r"a.c", "X", "a\nc abc", "a\nc X"),
     # ^ and $ anchor to the whole value, never to a line, nor before a final newline
-    (r"^x$", "Y", "x\n", "x\n"),
-    (r"^b", "Y", "a\nb", "a\nb"),
+    # (neither matches, so each value is fully masked)
+    (r"^x$", "Y", "x\n", "****"),
+    (r"^b", "Y", "a\nb", "****"),
     # every match is replaced
     (r"o", "0", "foo boo", "f00 b00"),
     # \d \w \s are ASCII
@@ -216,10 +217,11 @@ def test_an_engine_with_no_lowering_is_refused_by_name() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _select(pattern: str, replace: str, value: str) -> str:
+def _select(pattern: str, replace: str, value: str | None) -> str:
     rule = MaskingRule(mask_type=MaskType.regex, pattern=pattern, replace=replace)
     expr = build_mask_expression(rule, '"t"."v"', "varchar")
-    return f'SELECT {expr} AS "m" FROM (SELECT {sql_literal(value, "postgres")} AS "v") AS "t"'
+    literal = "CAST(NULL AS VARCHAR)" if value is None else sql_literal(value, "postgres")
+    return f'SELECT {expr} AS "m" FROM (SELECT {literal} AS "v") AS "t"'
 
 
 @pytest.mark.parametrize(("pattern", "replace", "value", "masked"), CORPUS)
@@ -295,3 +297,96 @@ def test_every_preset_is_universal_and_warns_of_nothing(preset) -> None:
 def test_keep_first_last_fills_its_counts() -> None:
     [preset] = [p for p in PRESETS if p["id"] == "keep_first_last"]
     assert preset_pattern(preset, first=1, last=3) == r"^(.{1}).*(.{3})$"
+
+
+# --------------------------------------------------------------------------- #
+# Fail closed: a value the pattern does not match is fully masked
+# --------------------------------------------------------------------------- #
+
+# For each preset, a value its pattern does not match.
+UNMATCHED = {
+    "ssn_last4": "12-3456",
+    "card_last4": "no card on file",
+    "phone_last4": "ext. 12",
+    "email_initial_domain": "not an email",
+    "all_but_last4": "abc",
+    "digits_keep_separators": "no digits",
+    "zip3": "SW1A 1AA",
+    "birth_year": "12/07/1984",
+    "iban_last4": "gb82 west",
+    "keep_first_last": "abc",
+}
+
+
+def _unmatched() -> list[tuple[str, str, str]]:
+    return [
+        (preset_pattern(p, **p["example"].get("params", {})), p["replace"], UNMATCHED[p["id"]])
+        for p in PRESETS
+    ]
+
+
+def test_every_preset_has_an_unmatched_value() -> None:
+    assert set(UNMATCHED) == {p["id"] for p in PRESETS}
+    for pattern, _replace, value in _unmatched():
+        assert re.search(lower(pattern, "x", "python")[0], value) is None
+
+
+@pytest.mark.parametrize(("pattern", "replace", "value"), _unmatched())
+def test_an_unmatched_value_is_fully_masked_in_python(pattern, replace, value) -> None:
+    rule = MaskingRule(mask_type=MaskType.regex, pattern=pattern, replace=replace)
+    assert apply_mask_to_value(rule, value, "varchar") == "****"
+
+
+@pytest.mark.parametrize(("pattern", "replace", "value"), _unmatched())
+def test_an_unmatched_value_is_fully_masked_on_duckdb(pattern, replace, value) -> None:
+    assert duckdb.sql(transpile(_select(pattern, replace, value), "duckdb")).fetchall() == [
+        ("****",)
+    ]
+
+
+@pytest.mark.parametrize(("pattern", "replace", "value"), _unmatched())
+def test_an_unmatched_value_is_fully_masked_on_postgres(pg, pattern, replace, value) -> None:
+    sql = transpile(_select(pattern, replace, value), "postgres")
+    assert pg.execute(sql).fetchall() == [("****",)]
+
+
+def test_null_stays_null() -> None:
+    rule = MaskingRule(mask_type=MaskType.regex, pattern=r"\d", replace="#")
+    assert apply_mask_to_value(rule, None, "varchar") is None
+    assert duckdb.sql(transpile(_select(r"\d", "#", None), "duckdb")).fetchall() == [(None,)]
+
+
+def test_null_stays_null_on_postgres(pg) -> None:
+    assert pg.execute(transpile(_select(r"\d", "#", None), "postgres")).fetchall() == [(None,)]
+
+
+def test_a_column_that_is_not_text_is_fully_masked_as_null() -> None:
+    rule = MaskingRule(mask_type=MaskType.regex, pattern=r"^x", replace="y")
+    assert apply_mask_to_value(rule, b"abc", "varbinary") is None
+    assert build_mask_expression(rule, '"t"."v"', "varbinary").endswith(", NULL)")
+    assert build_mask_expression(rule, '"t"."v"', "varchar(20)").endswith(", '****')")
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_every_engine_masks_an_unmatched_value_fully(engine) -> None:
+    """The compiled SQL of the engines not run here: the replacement only where the pattern is
+    found, the full mask otherwise, NULL kept."""
+    sql = transpile(_select(r"^\d{3}", "###", "x"), engine)
+    upper = sql.upper()
+    assert "IS NULL THEN NULL WHEN" in upper and "ELSE '****' END" in upper
+    found = upper.split(" WHEN ")[2].split(" THEN ")[0]
+    assert any(
+        f in found
+        for f in (
+            "REGEXP_LIKE(",
+            "REGEXP_MATCHES(",
+            "REGEXP_CONTAINS(",
+            "MATCH(",
+            " ~ ",
+            " RLIKE ",
+            "REGEXP_INSTR(",
+        )
+    )
+    if engine == "snowflake":
+        # Snowflake's REGEXP_LIKE matches the whole value; the pattern is found by its position
+        assert "REGEXP_INSTR(" in found and "> 0" in found

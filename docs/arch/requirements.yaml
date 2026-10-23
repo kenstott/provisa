@@ -87441,8 +87441,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     with a warning. When a mask is lowered to SQL the pattern and replacement are translated into
     each engine's flavour (Trino, Databricks/Spark, MySQL, Exasol, DuckDB, BigQuery, ClickHouse,
     PostgreSQL, Snowflake, Oracle), every match replaced, and a value is masked the same way on
-    each. The admin mask check reports each entry's verdict as it is edited, and the editor's
-    presets are universal.
+    each. A regex mask fails closed: a value its pattern does not match anywhere is fully masked,
+    read as '****' on a text column and as NULL on any other, never in clear; NULL stays NULL. The
+    model has no column-wide constant mask to fall back to (a constant mask is one reader's entry).
+    The admin mask check reports each entry's verdict as it is edited, and the editor's presets are
+    universal.
   use_case: >-
     A mask is written once and holds wherever the query runs; a pattern that would mask
     differently, or fail, on some engine is refused when it is written, not when a query reaches
@@ -87463,3 +87466,4 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When an analyst reads it through DuckDB, PostgreSQL, Trino or Snowflake
     Then each engine runs the pattern in its own regex flavour and every analyst reads ***-**-6789 for 123-45-6789
     And saving a mask with the pattern \d(?=\d{4}) is refused, naming the lookahead and why it is not universal
+    And a value the pattern does not match, such as 12-3456, reads as **** on every engine

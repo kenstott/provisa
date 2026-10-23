@@ -362,9 +362,11 @@ def transpile(
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142
-    """``pg_sql`` parsed with each regex mask's call (provisa_regex_replace, universal pattern and
-    replacement) made the target's REGEXP_REPLACE in its own regex flavour, every match replaced;
-    None when it has none."""
+    """``pg_sql`` parsed with each regex mask's call (provisa_regex_replace: the value, universal
+    pattern and replacement, and what a value the pattern does not match reads as) written for the
+    target: the engine's REGEXP_REPLACE in its own regex flavour, every match replaced, where the
+    pattern matches; the full mask where it does not (fail closed); NULL for NULL. None when the
+    statement has no such call."""
     from provisa.security.masking import UNIVERSAL_REGEX_REPLACE
     from provisa.security.universal_regex import lower
 
@@ -379,18 +381,39 @@ def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:
     if not calls:
         return None
     for node in calls:
-        value, pattern, replace = node.expressions
+        value, pattern, replace, otherwise = node.expressions
         engine_pattern, engine_replace = lower(pattern.this, replace.this, target_dialect)
         # Without flags sqlglot's REGEXP_REPLACE replaces every match, and it writes the
         # target's spelling of that ('g' for PostgreSQL and DuckDB).
+        replaced = exp.RegexpReplace(
+            this=value.copy(),
+            expression=exp.Literal.string(engine_pattern),
+            replacement=exp.Literal.string(engine_replace),
+        )
         node.replace(
-            exp.RegexpReplace(
-                this=value,
-                expression=exp.Literal.string(engine_pattern),
-                replacement=exp.Literal.string(engine_replace),
+            exp.Case(
+                ifs=[
+                    exp.If(this=exp.Is(this=value.copy(), expression=exp.Null()), true=exp.Null()),
+                    exp.If(this=_regex_found(value, engine_pattern, target_dialect), true=replaced),
+                ],
+                default=otherwise.copy(),
             )
         )
     return tree
+
+
+# Where REGEXP_LIKE is a match of the whole value, a pattern is found anywhere by its position.
+_WHOLE_VALUE_REGEXP_LIKE = frozenset({"snowflake", "exasol"})
+
+
+def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr:
+    """Whether ``pattern`` (the target's flavour) matches anywhere in ``value``."""
+    if target_dialect in _WHOLE_VALUE_REGEXP_LIKE:
+        position = exp.Anonymous(
+            this="REGEXP_INSTR", expressions=[value.copy(), exp.Literal.string(pattern)]
+        )
+        return exp.GT(this=position, expression=exp.Literal.number(0))
+    return exp.RegexpLike(this=value.copy(), expression=exp.Literal.string(pattern))
 
 
 # Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere

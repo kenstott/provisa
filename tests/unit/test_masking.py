@@ -106,7 +106,9 @@ class TestBuildMaskExpression:
     def test_regex_expression(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2")
         expr = build_mask_expression(rule, '"t0"."email"', "varchar")
-        assert expr == "provisa_regex_replace(\"t0\".\"email\", '^(.{2}).*(@.*)$', '$1***$2')"
+        assert (
+            expr == "provisa_regex_replace(\"t0\".\"email\", '^(.{2}).*(@.*)$', '$1***$2', '****')"
+        )
 
     def test_constant_zero(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=0)
