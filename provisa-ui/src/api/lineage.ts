@@ -18,7 +18,14 @@ export interface LineageTransformOp {
   name: string;
   // REQ-2001: command_write names the statement command that writes the target; REQ-2116: rename
   // says how a source's raw field became the registered column (path, alias, naming).
-  kind: "sql_function" | "operator" | "command" | "identity" | "constant" | "command_write" | "rename";
+  kind:
+    | "sql_function"
+    | "operator"
+    | "command"
+    | "identity"
+    | "constant"
+    | "command_write"
+    | "rename";
   args?: string[]; // REQ-1160: literal arguments, so an edge reads as a formula — substring(1, 3)
 }
 

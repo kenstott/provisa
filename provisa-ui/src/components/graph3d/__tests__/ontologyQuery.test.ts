@@ -58,6 +58,8 @@ function reader(): MetaReader {
           termDomains: scalar,
           domains: list("M__GlossaryTermDomains"),
           refs: list("M__GlossaryTermRefs"),
+          edgesOut: list("M__GlossaryTermEdges"),
+          edgesIn: list("M__GlossaryTermEdges"),
         }),
         type("M__GlossaryTermDomains", { domainId: scalar }),
         type("M__GlossaryTermRefs", {
@@ -88,6 +90,8 @@ function reader(): MetaReader {
           fromTermId: scalar,
           toTermId: scalar,
           relType: scalar,
+          sourceTerm: one("M__GlossaryTerms"),
+          targetTerm: one("M__GlossaryTerms"),
         }),
         type("M__DataProducts", {
           id: scalar,
@@ -115,6 +119,7 @@ const scope = (layers: LayerId[], over: Partial<QueryScope> = {}): QueryScope =>
   domains: [],
   edgeTypes: [],
   hiddenStatuses: [],
+  orphans: true,
   ...over,
 });
 const squash = (q: string | null) => (q ?? "").replace(/\s+/g, " ");
@@ -185,6 +190,29 @@ describe("the Ontology View's query", () => {
     expect(q).toContain(
       'sourceRelationships(where: { _or: [{ alias: { in: ["KIND_OF","PLACED_BY"] } }, { _and: [{ alias: { is_null: true } }, { id: { in: ["KIND_OF","PLACED_BY"] } }] }] })',
     );
+  });
+
+  it("keeps, with Orphans off, the terms with an edge kept to a term kept or a column they are", () => {
+    const q = squash(
+      ontologyQuery(
+        reader(),
+        scope(["ontology", "columns"], {
+          orphans: false,
+          edgeTypes: ["KIND_OF"],
+          hiddenStatuses: ["retired"],
+        }),
+      ),
+    );
+    const kept = "{ retired: { eq: false } }";
+    expect(q).toContain(
+      `m__glossaryTerms(where: { _and: [${kept}, { _or: [` +
+        `{ edgesOut: { _and: [{ relType: { in: ["KIND_OF"] } }, { targetTerm: ${kept} }] } }, ` +
+        `{ edgesIn: { _and: [{ relType: { in: ["KIND_OF"] } }, { sourceTerm: ${kept} }] } }, ` +
+        `{ refs: { } }] }] })`,
+    );
+    // With no layer drawing a relationship every term is an orphan: none is kept.
+    const none = squash(ontologyQuery(reader(), scope(["domains"], { orphans: false })));
+    expect(none).toContain("m__glossaryTerms(where: { _or: [] })");
   });
 
   it("is null when the role cannot read the glossary", () => {

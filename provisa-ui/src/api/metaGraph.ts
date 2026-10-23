@@ -93,6 +93,14 @@ export class RoleSchema {
     return this.types.get(type)?.find((f) => norm(f.name) === want)?.name ?? null;
   }
 
+  /** A relationship of ``type`` by its snake_case name (``edges_out``), as the schema spells it,
+   * and the type it reaches; null when ``type`` has no such relationship the role can read. */
+  relationship(type: string, name: string): { name: string; type: string } | null {
+    const want = norm(name);
+    const f = this.types.get(type)?.find((x) => norm(x.name) === want);
+    return f?.type && this.types.has(f.type) ? { name: f.name, type: f.type } : null;
+  }
+
   /** The field ``name`` of ``type`` exactly (a root field, or a relationship's declared alias),
    * and the type it reaches; null when the role's schema has no such field. */
   exact(type: string, name: string): { name: string; type: string | null } | null {
@@ -148,8 +156,11 @@ export type Cond =
   | { like: string }
   | { is_null: boolean };
 
-/** A where: every column condition holds, and each of ``_and`` / any of ``_or``. */
-export type Where = { _and?: Where[]; _or?: Where[] } & { [column: string]: Cond | Where[] };
+/** A where: every column condition holds, each of ``_and`` and any of ``_or``, and for each
+ * relationship named, a related row matching its own where. */
+export type Where = { _and?: Where[]; _or?: Where[] } & {
+  [columnOrRelationship: string]: Cond | Where | Where[];
+};
 
 /** What to read of a type: its columns, and the relationships to follow, each answered under
  * ``key``; a one-to-many relationship can be narrowed by its own ``where``. */
@@ -208,6 +219,14 @@ export function whereText(m: MetaReader, type: string, where: Where): string | n
       const subs = (cond as Where[]).map((w) => whereText(m, type, w));
       if (subs.some((x) => x === null)) return null;
       conds.push(`${key}: [${subs.join(", ")}]`);
+      continue;
+    }
+    // A relationship's condition: a related row matching it (REQ-2136), on the type it reaches.
+    const rel = m.schema.relationship(type, key);
+    if (rel) {
+      const sub = whereText(m, rel.type, cond as Where);
+      if (sub === null) return null;
+      conds.push(`${rel.name}: ${sub}`);
       continue;
     }
     const name = m.schema.column(type, key);

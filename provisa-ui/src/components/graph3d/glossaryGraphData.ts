@@ -76,7 +76,8 @@ function relationships(s: QueryScope): Selection["rels"] {
     : {};
 }
 
-function termsField(m: MetaReader, s: QueryScope): string | null {
+/** The terms ``s`` keeps by their own columns: their standing and their domains. */
+function termKept(s: QueryScope): Where | undefined {
   const domainWhere: Where | undefined =
     s.domains.length === 0
       ? undefined
@@ -87,6 +88,32 @@ function termsField(m: MetaReader, s: QueryScope): string | null {
             term_domains: { like: `%|${d}|%` },
           })),
         };
+  return all([
+    ...(domainWhere ? [domainWhere] : []),
+    ...s.hiddenStatuses.map((st) => NOT_STATUS[st]),
+  ]);
+}
+
+/** A term with a relationship drawn: an edge of a type kept to a term kept (either way, under
+ * Ontology), or a column it IS in a domain kept (under Columns). With neither layer on, none. */
+function related(s: QueryScope): Where {
+  const kept = termKept(s);
+  const typed: Where | undefined =
+    s.edgeTypes.length === 0 ? undefined : { rel_type: { in: s.edgeTypes } };
+  const edge = (other: string): Where =>
+    all([...(typed ? [typed] : []), ...(kept ? [{ [other]: kept }] : [])]) ?? {};
+  return {
+    _or: [
+      ...(s.layers.has("ontology")
+        ? [{ edges_out: edge("target_term") }, { edges_in: edge("source_term") }]
+        : []),
+      ...(s.layers.has("columns") ? [{ refs: inDomains(s.domains) ?? {} }] : []),
+    ],
+  };
+}
+
+function termsField(m: MetaReader, s: QueryScope): string | null {
+  const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
   if (s.layers.has("domains"))
     rels.domains = {
@@ -125,7 +152,7 @@ function termsField(m: MetaReader, s: QueryScope): string | null {
       fields: ["id", "name", "definition", "is_abstract", "deprecated", "retired", "live"],
       rels,
     },
-    all([...(domainWhere ? [domainWhere] : []), ...s.hiddenStatuses.map((st) => NOT_STATUS[st])]),
+    all([...(kept ? [kept] : []), ...(s.orphans ? [] : [related(s)])]),
   );
 }
 

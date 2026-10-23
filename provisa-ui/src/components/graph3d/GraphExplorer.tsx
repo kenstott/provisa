@@ -234,16 +234,24 @@ export function GraphExplorer({
     narrowed.domains,
     narrowed.edgeTypes,
     filters.hiddenStatuses,
+    orphans,
   ]);
   useEffect(() => {
     if (!onScope) return;
-    const [l, domains, types, statuses] = JSON.parse(scopeKey) as [
+    const [l, domains, types, statuses, kept] = JSON.parse(scopeKey) as [
       LayerId[],
       string[],
       string[],
       TermStatus[],
+      boolean,
     ];
-    onScope({ layers: new Set(l), domains, edgeTypes: types, hiddenStatuses: statuses });
+    onScope({
+      layers: new Set(l),
+      domains,
+      edgeTypes: types,
+      hiddenStatuses: statuses,
+      orphans: kept,
+    });
   }, [onScope, scopeKey]);
 
   const shown = useMemo(() => {
@@ -266,7 +274,8 @@ export function GraphExplorer({
       ...(query ? { domains: [], edgeTypes: [], hiddenStatuses: [] } : narrowed),
     };
     const g = visibleGraph(data, on, narrowing, expanded, scope);
-    if (orphans) return g;
+    // Under a query its Orphans is its own too.
+    if (orphans || query) return g;
     // An orphan has no term relationship drawn, and no column it IS while Columns is on; its
     // domain does not count.
     const related = (e: GraphEdge) => e.kind === "term_edge" || e.kind === "term_binding";

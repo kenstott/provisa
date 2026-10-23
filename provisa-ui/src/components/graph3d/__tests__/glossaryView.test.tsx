@@ -111,31 +111,39 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
       domains: string[];
       edgeTypes: string[];
       hiddenStatuses: string[];
+      orphans: boolean;
     };
     asked.scopes.push(s);
     const inDomains = (ds: string[]) =>
       s.domains.length === 0 || ds.some((d) => d === "*" || s.domains.includes(d));
-    const terms = TERMS.filter(
+    const kept = TERMS.filter(
       (t) =>
         !s.hiddenStatuses.includes(standing(t)) && inDomains(t.domains.map((d) => d.domain_id)),
-    ).map((t) => ({
-      ...t,
-      domains: s.layers.includes("domains")
-        ? t.domains.filter((d) => inDomains([d.domain_id]))
-        : undefined,
-      refs: s.layers.includes("columns")
-        ? t.refs.filter((r) => inDomains([r.domain_id]))
-        : undefined,
-    }));
+    );
+    const keptIds = new Set(kept.map((t) => t.id));
+    const edges = EDGES.filter((e) => s.edgeTypes.length === 0 || s.edgeTypes.includes(e.rel_type));
+    const refsOf = (t: Term) => t.refs.filter((r) => inDomains([r.domain_id]));
+    // Orphans off: a term with an edge kept to a term kept, or a column it IS under Columns.
+    const related = (t: Term) =>
+      (s.layers.includes("ontology") &&
+        edges.some(
+          (e) =>
+            (e.from_term_id === t.id && keptIds.has(e.to_term_id)) ||
+            (e.to_term_id === t.id && keptIds.has(e.from_term_id)),
+        )) ||
+      (s.layers.includes("columns") && refsOf(t).length > 0);
+    const terms = kept
+      .filter((t) => s.orphans || related(t))
+      .map((t) => ({
+        ...t,
+        domains: s.layers.includes("domains")
+          ? t.domains.filter((d) => inDomains([d.domain_id]))
+          : undefined,
+        refs: s.layers.includes("columns") ? refsOf(t) : undefined,
+      }));
     return {
       glossary_terms: terms,
-      ...(s.layers.includes("ontology")
-        ? {
-            glossary_term_edges: EDGES.filter(
-              (e) => s.edgeTypes.length === 0 || s.edgeTypes.includes(e.rel_type),
-            ),
-          }
-        : {}),
+      ...(s.layers.includes("ontology") ? { glossary_term_edges: edges } : {}),
     };
   },
 }));
@@ -185,6 +193,7 @@ describe("the Glossary page's Ontology View", () => {
       domains: [],
       edgeTypes: [],
       hiddenStatuses: [],
+      orphans: true,
     });
     await waitFor(() =>
       expect(asked.scopes.at(-1)).toEqual({
@@ -192,6 +201,7 @@ describe("the Glossary page's Ontology View", () => {
         domains: [],
         edgeTypes: [],
         hiddenStatuses: ["retired"],
+        orphans: true,
       }),
     );
     // The Taxonomy preset's edge types and layers are the query's.
