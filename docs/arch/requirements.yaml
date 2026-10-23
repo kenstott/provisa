@@ -87282,7 +87282,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     REST profile-runs route, where governance.safe_run applies the profiled table's column rules.
     Their read moves to GraphQL, and they gain the control, only once that governance is expressed as
     the result tables' own column rules, never by loosening it. While a search focus (a neighbourhood
-    traversal) is set, the GraphQL target is disabled; Cypher and SQL carry the focus.
+    traversal) is set, the GraphQL target is disabled; Cypher and SQL carry the focus. (Amended 2026-10-24, AN EXPORT IS EXACT OR REFUSED) A GraphQL read exports to Cypher only where an exact Cypher form exists; otherwise the export is refused, naming the construct with no Cypher form, never a near answer. A to-many field's own order, offset and limit are each parent's: the export reads them per parent in a CALL that orders and cuts that parent's rows (a parent with none keeps one row of nulls). Refused, as the first list of boundaries: a to-many field's condition beside its relationship; its distinct_on; an ordering by anything but a column; nulls placed otherwise than Cypher places them (last ascending, first descending); an offset or limit that is no literal.
   use_case: >-
     A curator hands the vocabulary, or a slice of it with its data, to a knowledge-graph or catalog
     tool in a standard RDF format, scoped exactly as the page shows it, and can take the same scope
