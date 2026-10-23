@@ -576,3 +576,20 @@ async def test_a_config_class_term_naming_nothing_or_on_an_unkeyed_table_is_refu
     async with cfg_db.acquire() as conn:
         with pytest.raises(ValueError, match="cfg.public.orders has no primary key"):
             await apply_config(_config(class_term="Booking", keyed=False), conn)
+
+
+@pytest.mark.asyncio
+async def test_the_term_list_and_detail_count_its_tables_beside_its_columns(
+    control_plane, monkeypatch
+):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        await _ground(ids["party"], ids["customers"])
+        await _ground(ids["party"], ids["accounts"])
+        listed = {t["name"]: t for t in await glossary_router.list_terms(_request(), domains=None)}
+        assert (listed["party"]["table_count"], listed["party"]["ref_count"]) == (2, 0)
+        assert listed["ledger"]["table_count"] == 0
+        async with db.acquire() as conn:
+            note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
+        assert note is not None and note["table_count"] == 0 and note["ref_count"] >= 1
+        detail = await glossary_router.get_term(_request(), ids["party"])
+        assert (detail["table_count"], detail["ref_count"]) == (2, 0)
