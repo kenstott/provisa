@@ -12,6 +12,7 @@
 // useResultsGrid. Shared by the SQL workbench results tab, the admin Reports
 // viewer, and the table preview modal.
 
+import { columnLabel } from "../../lib/columnKeys";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Anchor, Badge, Button, Select, Text, TextInput } from "@mantine/core";
@@ -80,7 +81,11 @@ export function ResultsGrid({
 }: ResultsGridProps) {
   const { t } = useTranslation();
   // REQ-2115: Polly's read_screen reports the grid's columns and row count, never its rows.
-  useScreenGrid({ columns: grid.baseColumns, rows: totalRowCount, partial: rowsPartial });
+  useScreenGrid({
+    columns: grid.baseColumns.map(columnLabel),
+    rows: totalRowCount,
+    partial: rowsPartial,
+  });
   // Trace/span ids in any column drill down to the full span record.
   const [detail, setDetail] = useState<{ kind: TelemetryIdKind; id: string } | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -147,7 +152,7 @@ export function ResultsGrid({
         ? `"${s.replace(/"/g, '""')}"`
         : s;
     };
-    const lines = [displayColumns.map(escape).join(",")];
+    const lines = [displayColumns.map((c) => escape(columnLabel(c))).join(",")];
     for (const row of rows) lines.push(displayColumns.map((c) => escape(row[c])).join(","));
     const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
     const a = document.createElement("a");
@@ -176,9 +181,12 @@ export function ResultsGrid({
       },
       {
         label: t("sqlResultsPanel.provSort"),
-        value: sorts.map((s) => `${s.col} ${s.dir}`).join(", ") || none,
+        value: sorts.map((s) => `${columnLabel(s.col)} ${s.dir}`).join(", ") || none,
       },
-      { label: t("sqlResultsPanel.provGroupBy"), value: groupBy.join(", ") || none },
+      {
+        label: t("sqlResultsPanel.provGroupBy"),
+        value: groupBy.map(columnLabel).join(", ") || none,
+      },
     ];
     const labels: XlsxLabels = {
       dataSheet: t("sqlResultsPanel.sheetData"),
@@ -415,14 +423,14 @@ export function ResultsGrid({
                           flex: 1,
                         }}
                       >
-                        {c}
+                        {columnLabel(c)}
                       </span>
                       {isGroupable && (
                         <Tip
                           text={
                             isGrouped
                               ? t("sqlResultsPanel.ungroupLevel", { level: groupLevel + 1 })
-                              : t("sqlResultsPanel.groupByCol", { label: c })
+                              : t("sqlResultsPanel.groupByCol", { label: columnLabel(c) })
                           }
                           named
                         >
@@ -434,7 +442,7 @@ export function ResultsGrid({
                             aria-label={
                               isGrouped
                                 ? t("sqlResultsPanel.ungroupLevel", { level: groupLevel + 1 })
-                                : t("sqlResultsPanel.groupByCol", { label: c })
+                                : t("sqlResultsPanel.groupByCol", { label: columnLabel(c) })
                             }
                             onClick={(e) => {
                               e.stopPropagation();
@@ -489,7 +497,7 @@ export function ResultsGrid({
                             size="xs"
                             variant="unstyled"
                             className="th-filter"
-                            aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
+                            aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${columnLabel(c)}`}
                             value={filters[c] ?? ""}
                             onChange={(e) => {
                               // Read before the updater: React runs a functional updater on a later
@@ -570,7 +578,7 @@ export function ResultsGrid({
                         <ChevronDown size={12} aria-hidden="true" />
                       )}
                       <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-                        {item.col}:
+                        {columnLabel(item.col)}:
                       </span>
                       {item.value}
                       <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>

@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { columnLabel } from "../../lib/columnKeys";
 import type { ResultRedirect } from "../../types/resultRedirect";
 import { ResultRedirectNotice } from "../../components/ResultRedirectNotice";
 import React from "react";
@@ -306,7 +307,7 @@ export function ResultsPanel({
                       const isHighNull = nullPct >= 50;
                       const isConstant = p.constantValue !== undefined;
                       return (
-                        <Table.Tr key={p.col}>
+                        <Table.Tr key={columnLabel(p.col)}>
                           <Table.Td style={{ fontFamily: "monospace", fontWeight: 600 }}>
                             {p.col}
                           </Table.Td>
