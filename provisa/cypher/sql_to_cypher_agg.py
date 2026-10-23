@@ -17,9 +17,13 @@ sql_to_cypher.semantic_sql_to_cypher; depends only on sql_to_cypher_helpers.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 import sqlglot.expressions as exp
 
 from provisa.cypher.sql_to_cypher_helpers import (
+    _rel_type_from_on,
     _resolve_label,
     _src_alias_from_on,
     rel_pattern,
@@ -409,8 +413,15 @@ def _process_json_subqueries(
     letters: list[str],
     prop_map_for_label,
     node_fn,
+    join_to_rel,
+    key_prop_for_label,
 ) -> None:
-    """Process json_agg/json_object correlated subqueries; mutates cypher_lines and array_agg_return."""
+    """Process json_agg/json_object correlated subqueries; mutates cypher_lines and array_agg_return.
+
+    Unflattened, each field is the value it is in GraphQL (REQ-2136): a to-one relationship is its
+    node's map, NULL when there is none; a to-many one is the list of its nodes' maps, a COLLECT
+    subquery of its own -- so a list nested in a map is never an aggregate inside an aggregate,
+    and two lists never multiply each other's rows (:func:`_field_value`)."""
     for _expr in select_exprs:
         if not (isinstance(_expr, exp.Alias) and isinstance(_expr.this, exp.Subquery)):
             continue
@@ -423,6 +434,28 @@ def _process_json_subqueries(
             continue
         _from_node = _jbo_sel.args.get("from_")
         if not (_from_node and isinstance(_from_node.this, exp.Table)):
+            continue
+        if not flat:
+            if _top_alias in array_agg_return:
+                continue
+            _is_array = isinstance(
+                (_outer_sel.args.get("expressions") or [None])[0], exp.JSONArrayAgg
+            )
+            _fc = _FieldContext(
+                domain_to_label,
+                src_tgt_to_rel,
+                join_to_rel,
+                prop_map_for_label,
+                key_prop_for_label,
+                agg_seen,
+                agg_seen_label,
+                letters,
+                [agg_alias_counter],
+            )
+            array_agg_return[_top_alias] = _field_value(
+                _jbo_sel, _is_array, sql_base_alias, base_alias, base_label, cypher_lines, _fc
+            )
+            agg_alias_counter = _fc.counter[0]
             continue
 
         _queue: list[tuple[str, exp.Select]] = [(sql_base_alias, _jbo_sel)]
@@ -507,6 +540,131 @@ def _process_json_subqueries(
                 )
             else:
                 array_agg_return[_top_alias] = agg_seen.get(_first_sql_alias or "", base_alias)
+
+
+@dataclass
+class _FieldContext:
+    domain_to_label: dict[tuple[str, str], str]
+    src_tgt_to_rel: dict[tuple[str, str], str | None]
+    join_to_rel: dict
+    prop_map_for_label: Any
+    key_prop_for_label: Any
+    agg_seen: dict[str, str]
+    agg_seen_label: dict[str, str]
+    letters: list[str]
+    counter: list[int]
+
+    def fresh(self) -> str:
+        name = _next_short_alias(self.counter[0], self.letters)
+        self.counter[0] += 1
+        return name
+
+
+def _field_value(
+    sel: exp.Select,
+    is_array: bool,
+    parent_sql: str,
+    parent_var: str,
+    parent_label: str,
+    scope_lines: list[str],
+    fc: _FieldContext,
+) -> str:
+    """The Cypher value of the field ``sel`` selects, read off the node ``parent_var``.
+
+    A to-one field is matched in the enclosing scope (``scope_lines``, OPTIONAL MATCH) and is its
+    node's map, NULL when there is none. A to-many field is ``COLLECT { MATCH ... RETURN map }``:
+    its nodes, and the to-one fields under them, matched inside it."""
+    from_node = sel.args.get("from_")
+    tbl = from_node.this if from_node is not None else None
+    if not isinstance(tbl, exp.Table):
+        raise UntranslatableSubquery(f"nested field over {sel.sql()}")
+    label = _resolve_label(tbl, fc.domain_to_label)
+    if label is None:
+        raise UntranslatableSubquery(f"unmapped nested table: {tbl.sql()}")
+    inner = tbl.alias or tbl.name
+    var = fc.fresh()
+    fc.agg_seen[inner] = var
+    fc.agg_seen_label[inner] = label
+    where = sel.args.get("where")
+    correlation = None
+    if where is not None:
+        for eq in where.find_all(exp.EQ):
+            tables = {c.table for c in (eq.this, eq.expression) if isinstance(c, exp.Column)}
+            if inner in tables and len(tables) == 2:
+                correlation = eq
+                break
+        rest = [c for c in _conj(where.this) if c is not correlation and c.sql().upper() != "TRUE"]
+        if rest:
+            raise UntranslatableSubquery(f"nested field condition: {where.sql()}")
+    rel_type = _rel_type_from_on(correlation, fc.join_to_rel, label) if correlation else None
+    rel = rel_pattern(parent_label, label, fc.src_tgt_to_rel, rel_type=rel_type)
+    hop = f"({parent_var}){rel}({var}:{label})"
+    lines = [f"MATCH {hop}"] if is_array else scope_lines
+    if not is_array:
+        lines.append(f"OPTIONAL MATCH {hop}")
+
+    # Tables JOINed inside the subquery are further hops off the node.
+    for join in sel.args.get("joins") or []:
+        join_tbl = join.this
+        if not isinstance(join_tbl, exp.Table):
+            raise UntranslatableSubquery(f"non-table JOIN in subquery: {join.sql()}")
+        join_label = _resolve_label(join_tbl, fc.domain_to_label)
+        if join_label is None:
+            raise UntranslatableSubquery(f"unmapped JOIN table: {join_tbl.sql()}")
+        join_alias = join_tbl.alias or join_tbl.name
+        src = _src_alias_from_on(join.args.get("on"), join_alias, inner)
+        src_var = fc.agg_seen.get(src, var)
+        src_label = fc.agg_seen_label.get(src, label)
+        join_var = fc.fresh()
+        fc.agg_seen[join_alias] = join_var
+        fc.agg_seen_label[join_alias] = join_label
+        join_rel = rel_pattern(src_label, join_label, fc.src_tgt_to_rel)
+        lines.append(
+            f"{'MATCH' if is_array else 'OPTIONAL MATCH'} "
+            f"({src_var}){join_rel}({join_var}:{join_label})"
+        )
+
+    jbo = _extract_jbo_node_for_ret(sel)
+    if jbo is None:
+        raise UntranslatableSubquery(f"nested field with no object: {sel.sql()}")
+    pairs = []
+    for kv in jbo.expressions:
+        if not isinstance(kv, exp.JSONKeyValue):
+            continue
+        key = kv.this.sql().strip("'\"")
+        val = kv.expression
+        if isinstance(val, exp.Column):
+            t = val.table or inner
+            if t not in fc.agg_seen:
+                raise UntranslatableSubquery(f"unbound subquery alias in json_object: {t!r}")
+            pmap = fc.prop_map_for_label(fc.agg_seen_label[t])
+            pairs.append(f"{key}: {fc.agg_seen[t]}.{pmap.get(val.name, val.name)}")
+        elif isinstance(val, exp.Subquery) and isinstance(val.this, exp.Select):
+            outer_sel = val.this
+            child = _resolve_jbo_sel(outer_sel)
+            if child is None:
+                raise UntranslatableSubquery(f"nested field {key!r}: {outer_sel.sql()}")
+            child_is_array = isinstance(
+                (outer_sel.args.get("expressions") or [None])[0], exp.JSONArrayAgg
+            )
+            pairs.append(
+                f"{key}: " + _field_value(child, child_is_array, inner, var, label, lines, fc)
+            )
+        else:
+            raise UntranslatableSubquery(f"nested field value {val.sql()}")
+    value = "{" + ", ".join(pairs) + "}"
+    if is_array:
+        return "COLLECT { " + " ".join(lines) + f" RETURN {value} }}"
+    key_prop = fc.key_prop_for_label(label)
+    return f"CASE WHEN {var}.{key_prop} IS NULL THEN NULL ELSE {value} END"
+
+
+def _conj(node: exp.Expression) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if isinstance(node, exp.And):
+        return [*_conj(node.this), *_conj(node.expression)]
+    if isinstance(node, exp.Paren):
+        return _conj(node.this)
+    return [node]
 
 
 def _flat_return_items_from_jbo(
