@@ -30,7 +30,7 @@ on:
         required: false
         default: "all"
       tests:
-        description: "Targeted run: space-separated pytest node ids or files; each named lane runs only its own of them, unsharded (empty: the whole lane)"
+        description: "Targeted run: space-separated pytest node ids or files, each run unsharded in every lane whose markers select it, whatever lanes are listed; a test only an un-included live lane selects fails the plan (empty: the whole lanes listed)"
         required: false
         default: ""
       include_warehouse:

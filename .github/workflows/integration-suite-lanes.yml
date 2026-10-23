@@ -263,12 +263,21 @@ jobs:
           # The caller's choice: 'all' on a push, the dispatcher's list on demand.
           LANES: ${{ inputs.lanes }}
           PROVISA_LANE_TESTS: ${{ inputs.tests }}
+          # A targeted run is routed to the lanes whose markers select its tests, a live lane among
+          # them only when the dispatch includes it; one naming a test no such lane selects fails
+          # here, naming the test and the lane it needs (run_lane.py routes).
+          PROVISA_INCLUDE_LIVE: >-
+            ${{ inputs.include_warehouse && 'warehouse' || '' }},${{ inputs.include_salesforce && 'salesforce' || '' }},${{ inputs.include_athena && 'athena' || '' }},${{ inputs.include_servicenow && 'servicenow' || '' }}
         run: |
           matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           suite=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
           echo "suite=$suite" >> "$GITHUB_OUTPUT"
-          case ",${LANES// /}," in *,all,*|*,cluster,*) c=true;; *) c=false;; esac
+          if [ -n "$PROVISA_LANE_TESTS" ]; then
+            c=$(python3 scripts/ci/run_lane.py --has-targets cluster)
+          else
+            case ",${LANES// /}," in *,all,*|*,cluster,*) c=true;; *) c=false;; esac
+          fi
           echo "cluster=$c" >> "$GITHUB_OUTPUT"
           for lane in warehouse salesforce athena servicenow; do
             echo "$lane=$(python3 scripts/ci/run_lane.py --has-targets "$lane")" >> "$GITHUB_OUTPUT"
