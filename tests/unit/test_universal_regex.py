@@ -272,15 +272,13 @@ def test_the_editors_check_reports_each_entry_and_warns_without_refusing() -> No
         {"to": ["*"], "mask": None},
     ]
     report = pattern_report(masks)
-    assert [(p["entry"], p["field"], p["construct"]) for p in report["patterns"]] == [
-        (0, "pattern", "inline_flags"),
-        (2, "replace", "replace_group_out_of_range"),
+    assert [(p["entry"], p["field"], p["construct"], p["ok"]) for p in report["patterns"]] == [
+        (0, "pattern", "inline_flags", False),
+        (1, "pattern", "alternation_overlap", True),
+        (2, "replace", "replace_group_out_of_range", False),
     ]
-    assert all(p["ok"] is False and p["message"] for p in report["patterns"])
+    assert all(p["message"] for p in report["patterns"])
     assert report["patterns"][0]["position"] == 0
-    assert [(w["entry"], w["construct"]) for w in report["pattern_warnings"]] == [
-        (1, "alternation_overlap")
-    ]
 
 
 @pytest.mark.parametrize("preset", PRESETS, ids=[p["id"] for p in PRESETS])

@@ -41,11 +41,11 @@ class MasksCheckBody(BaseModel):
     roles: list[str] | None = None
 
 
-def _verdict(entry: int, field: str, exc: Any) -> dict:
+def _verdict(entry: int, field: str, exc: Any, *, ok: bool) -> dict:
     return {
         "entry": entry,
         "field": field,
-        "ok": False,
+        "ok": ok,
         "construct": exc.construct,
         "position": exc.position,
         "message": str(exc),
@@ -53,11 +53,11 @@ def _verdict(entry: int, field: str, exc: Any) -> dict:
 
 
 def pattern_report(masks: list[dict]) -> dict:
-    """Each regex entry's pattern and replacement that is not universal (``patterns``), and each
-    alternation engines may choose between differently (``pattern_warnings``) -- REQ-2142."""
+    """``patterns``: each regex entry's pattern or replacement that is not universal (ok false),
+    and each alternation engines may choose between differently (ok true, a warning) -- REQ-2142."""
     from provisa.security.universal_regex import NotUniversal, check, warnings
 
-    refused, warned = [], []
+    found = []
     for i, entry in enumerate(masks):
         mask = entry["mask"]
         if mask is None or mask.get("type") != "regex":
@@ -65,10 +65,10 @@ def pattern_report(masks: list[dict]) -> dict:
         try:
             parsed, _ = check(mask.get("pattern") or "", mask.get("replace") or "")
         except NotUniversal as exc:
-            refused.append(_verdict(i, getattr(exc, "field"), exc))
+            found.append(_verdict(i, getattr(exc, "field"), exc, ok=False))
             continue
-        warned += [_verdict(i, "pattern", w) for w in warnings(parsed)]
-    return {"patterns": refused, "pattern_warnings": warned}
+        found += [_verdict(i, "pattern", w, ok=True) for w in warnings(parsed)]
+    return {"patterns": found}
 
 
 def chain_of(state: Any, role_id: str) -> list[str]:

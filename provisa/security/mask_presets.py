@@ -86,7 +86,9 @@ PRESETS: list[dict[str, Any]] = [
         "id": "keep_first_last",
         "label": "Keep the first and last characters",
         "params": ["first", "last"],
-        "pattern_template": r"^(.{{{first}}}).*(.{{{last}}})$",
+        # {first} and {last} are placeholders, each replaced by a whole number.
+        "pattern_template": r"^(.{{first}}).*(.{{last}})$",
+        "placeholders": "{first} and {last} in pattern_template are each replaced by a whole number",
         "replace": "$1***$2",
         "example": {
             "params": {"first": 2, "last": 2},
@@ -101,4 +103,7 @@ def preset_pattern(preset: dict[str, Any], **params: int) -> str:
     """A preset's pattern; for a parameterised one, its template with ``params`` filled in."""
     if "pattern" in preset:
         return preset["pattern"]
-    return preset["pattern_template"].format(**params)
+    pattern = preset["pattern_template"]
+    for name in preset["params"]:
+        pattern = pattern.replace("{" + name + "}", str(int(params[name])))
+    return pattern
