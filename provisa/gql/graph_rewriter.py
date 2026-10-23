@@ -84,13 +84,16 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
 
         if graph_var is not None:
             kind = graph_vars[graph_var]
-            # EDGE, PATH, and PASSTHROUGH expressions are pre-built, and a MAP is a property column
-            # (REQ-1991); pass through.
+            # EDGE, PATH, and PASSTHROUGH expressions are pre-built, a MAP is a property column
+            # (REQ-1991), a SPARQL TERM is its own JSON term and the depth limit's CUT flag a
+            # number (REQ-2135); pass through.
             if kind in (
                 GraphVarKind.EDGE,
                 GraphVarKind.PATH,
                 GraphVarKind.PASSTHROUGH,
                 GraphVarKind.MAP,
+                GraphVarKind.TERM,
+                GraphVarKind.CUT,
             ):
                 new_expressions.append(sel_expr)
                 continue

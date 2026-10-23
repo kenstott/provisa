@@ -3615,6 +3615,7 @@ dependencies = [
     { name = "python-evtx" },
     { name = "pyyaml" },
     { name = "qdrant-client" },
+    { name = "rdflib" },
     { name = "redis", extra = ["hiredis"] },
     { name = "scipy" },
     { name = "signxml" },
@@ -3681,6 +3682,7 @@ dev = [
     { name = "respx" },
     { name = "ruff" },
     { name = "scikit-learn" },
+    { name = "sparqlwrapper" },
     { name = "syrupy" },
 ]
 docs = [
@@ -3868,6 +3870,7 @@ requires-dist = [
     { name = "python-pptx", marker = "extra == 'dev'" },
     { name = "pyyaml" },
     { name = "qdrant-client", specifier = ">=1.12,<2" },
+    { name = "rdflib", specifier = ">=7.1,<8" },
     { name = "redis", extras = ["hiredis"] },
     { name = "respx", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
@@ -3879,6 +3882,7 @@ requires-dist = [
     { name = "snowflake-connector-python", extras = ["pandas"] },
     { name = "snowflake-sqlalchemy" },
     { name = "soda-postgres", marker = "extra == 'soda'" },
+    { name = "sparqlwrapper", marker = "extra == 'dev'", specifier = ">=2,<3" },
     { name = "sqlalchemy", specifier = ">=2" },
     { name = "sqlalchemy-hana", marker = "extra == 'all-drivers'" },
     { name = "sqlalchemy-hana", marker = "extra == 'saphana'" },
@@ -4598,6 +4602,18 @@ wheels = [
 ]
 
 [[package]]
+name = "rdflib"
+version = "7.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyparsing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/98/f5/18bb77b7af9526add0c727a3b2048959847dc5fb030913e2918bf384fec3/rdflib-7.6.0.tar.gz", hash = "sha256:6c831288d5e4a5a7ece85d0ccde9877d512a3d0f02d7c06455d00d6d0ea379df", size = 4943826, upload-time = "2026-02-13T07:15:55.938Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/c2/6604a71269e0c1bd75656d5a001432d16f2cc5b8c057140ec797155c295e/rdflib-7.6.0-py3-none-any.whl", hash = "sha256:30c0a3ebf4c0e09215f066be7246794b6492e054e782d7ac2a34c9f70a15e0dd", size = 615416, upload-time = "2026-02-13T07:15:46.487Z" },
+]
+
+[[package]]
 name = "redis"
 version = "8.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5037,6 +5053,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e8/c4/ba2f8066cceb6f23394729afe52f3bf7adec04bf9ed2c820b39e19299111/sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88", size = 30594, upload-time = "2021-05-16T22:03:42.897Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/46/9cb0e58b2deb7f82b84065f37f3bffeb12413f947f9388e4cac22c4621ce/sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0", size = 29575, upload-time = "2021-05-16T22:03:41.177Z" },
+]
+
+[[package]]
+name = "sparqlwrapper"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "rdflib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4e/cc/453752fffa759ef41a3ceadb3f167e13dae1a74c1db057d9f6a7affa9240/SPARQLWrapper-2.0.0.tar.gz", hash = "sha256:3fed3ebcc77617a4a74d2644b86fd88e0f32e7f7003ac7b2b334c026201731f1", size = 98429, upload-time = "2022-03-13T23:14:00.671Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/89/176e3db96e31e795d7dfd91dd67749d3d1f0316bb30c6931a6140e1a0477/SPARQLWrapper-2.0.0-py3-none-any.whl", hash = "sha256:c99a7204fff676ee28e6acef327dc1ff8451c6f7217dcd8d49e8872f324a8a20", size = 28620, upload-time = "2022-03-13T23:13:58.969Z" },
 ]
 
 [[package]]

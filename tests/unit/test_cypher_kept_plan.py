@@ -272,6 +272,7 @@ class _Pipeline:
                 tier_caps=None,
                 tier_plan=None,
                 span_attrs=None,
+                warnings=[],  # as _Plan: the statement's own warnings (REQ-1350)
             )
 
         monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)

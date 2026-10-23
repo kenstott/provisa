@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from provisa.cypher.expr_parser import parse_expression
 from provisa.gql.ir import (
     NodePattern,
     RelPattern,
@@ -126,9 +127,12 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
 INLINE_PREFIX = "__inline"
 
 
-def with_inline_conditions(
-    matches: list[MatchClause], where: WhereClause | None
-) -> WhereClause | None:
+def _where(text: str | None) -> WhereClause | None:
+    """The IR's WHERE: the text a statement writes, parsed into its expression tree."""
+    return None if text is None else WhereClause(expression=parse_expression(text))
+
+
+def with_inline_conditions(matches: list[MatchClause], where: str | None) -> str | None:
     """``where`` with each inline property map of ``matches``' patterns as the equality it means
     in a read: ``(n {k: v})`` is ``WHERE n.k = v``, its value written as the statement wrote it,
     a ``$param`` included. A condition on a variable that only an OPTIONAL MATCH binds is moved
@@ -139,14 +143,15 @@ def with_inline_conditions(
         pattern = (
             clause.pattern.pattern if isinstance(clause.pattern, PathFunction) else clause.pattern
         )
+        assert isinstance(pattern, PathPattern)  # Cypher's own patterns: it writes no triple
         for part in [*pattern.nodes, *pattern.rels]:
             for key, value in part.property_text.items():
                 conditions.append(f"{part.variable}.{key} = {value}")
     if not conditions:
         return where
     if where is not None:
-        conditions.append(f"({where.expression})")
-    return WhereClause(expression=" AND ".join(conditions))
+        conditions.append(f"({where})")
+    return " AND ".join(conditions)
 
 
 class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
@@ -208,7 +213,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
     def parse(self) -> CypherAST:
         pipeline: list = []
         current_matches: list[MatchClause] = []
-        current_where: WhereClause | None = None
+        current_where: str | None = None  # the WHERE as written, until its match step is built
         return_clause: ReturnClause | None = None
         order_by: list[OrderItem] = []
         skip: int | None = None
@@ -220,7 +225,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             nonlocal current_matches, current_where
             if current_matches:
                 where = with_inline_conditions(current_matches, current_where)
-                pipeline.append(MatchStep(matches=list(current_matches), where=where))
+                pipeline.append(MatchStep(matches=list(current_matches), where=_where(where)))
                 current_matches = []
                 current_where = None
 
@@ -588,7 +593,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
     # --- WHERE ---
 
-    def _parse_where(self) -> WhereClause:
+    def _parse_where(self) -> str:
         _clause_kws = {
             "RETURN",
             "WITH",
@@ -620,7 +625,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                     else:
                         break
             parts.append(self._advance().value)
-        return WhereClause(expression=" ".join(parts))
+        return " ".join(parts)
 
     # --- WITH ---
 
@@ -643,7 +648,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         where: WhereClause | None = None
         if self._match_keyword("WHERE"):
             self._advance()
-            where = self._parse_where()
+            where = _where(self._parse_where())
         return WithClause(items=items, where=where, order_by=order_by, skip=skip, limit=limit)
 
     # --- RETURN ---
@@ -689,7 +694,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             alias: str | None = None
             if self._opt_keyword("AS"):
                 alias = self._expect("IDENT").value
-            items.append(ReturnItem(expression=expr, alias=alias))
+            items.append(ReturnItem(expression=parse_expression(expr), alias=alias, name=expr))
             if (_tri := self._peek()) and _tri.type == "COMMA":
                 self._advance()
             else:
@@ -719,7 +724,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         expr = " ".join(parts)
         self._consume_keyword("AS")
         variable = self._expect("IDENT").value
-        return UnwindClause(expression=expr, variable=variable)
+        return UnwindClause(expression=parse_expression(expr), variable=variable)
 
     # --- CALL subquery ---
 
@@ -817,7 +822,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             direction = "ASC"
             if self._match_keyword("ASC", "DESC"):
                 direction = self._advance().value.upper()
-            items.append(OrderItem(expression=expr, direction=direction))
+            items.append(OrderItem(expression=parse_expression(expr), direction=direction))
             if (_tob := self._peek()) and _tob.type == "COMMA":
                 self._advance()
             else:
@@ -908,6 +913,29 @@ def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
     tokens, comments = _tokenize(query)
     parser = _Parser(tokens, query, comments)
     return parser.parse()
+
+
+def parse_pattern(text: str) -> PathPattern:
+    """A graph pattern written on its own (a pattern comprehension's), as the IR's path pattern."""
+    tokens, comments = _tokenize(text)
+    parser = _Parser(tokens, text, comments)
+    pattern = parser._parse_path_pattern()
+    if parser._peek() is not None:
+        raise CypherParseError(f"Unexpected {parser._peek_val()!r} after the pattern {text!r}")
+    return pattern
+
+
+def subquery_statement(kind: str, body: str) -> CypherAST:
+    """An EXISTS / COUNT / COLLECT body as the statement it is: a body that is a pattern alone
+    matches it, and one without a RETURN returns 1 (EXISTS, COUNT) or its whole row (COLLECT)."""
+    text = body.strip()
+    if text.startswith("("):
+        text = "MATCH " + text
+    if kind in ("EXISTS", "COUNT") and "RETURN" not in text.upper():
+        text = text + " RETURN 1"
+    elif kind == "COLLECT" and "RETURN" not in text.upper():
+        text = text + " RETURN *"
+    return parse_cypher(text)
 
 
 def extract_parameters(query: str) -> list[str]:  # REQ-571

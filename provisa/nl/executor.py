@@ -90,7 +90,7 @@ async def _execute_cypher(
     from provisa.gql.translator import cypher_to_sql
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params
-    from provisa.gql.assembler import assemble_rows, to_serializable
+    from provisa.gql.assembler import assemble_rows, take_cut, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
@@ -125,7 +125,7 @@ async def _execute_cypher(
     result = await _execute_plan(plan, app_state)
     if result.redirect is not None:
         raise _Delivered(result.redirect)
-    rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
     assembled = assemble_rows(rows, graph_vars)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": [to_serializable(r) for r in assembled]}

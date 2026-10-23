@@ -206,6 +206,9 @@ async def _execute_multi_call(
     combined: list[dict] = [{}]
     for rs in all_rows:
         combined = [{**a, **b} for a in combined for b in (rs or [{}])]
+    from provisa.gql.assembler import take_cut
+
+    combined = take_cut(combined, None)  # rows of several plans: the request's collector
 
     try:
         assembled = assemble_rows(combined, merged_graph_vars)
@@ -330,6 +333,49 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
             return _exec_error(503, exc, physical_sql)
         log.exception("Cypher execution failed: %s", physical_sql)
         return _exec_error(500, exc, physical_sql)
+
+
+def access_violations(
+    semantic_sql: str, surface: Any, role_id: str, state: "AppState"
+) -> Response | None:
+    """The 403 naming each access violation of a graph statement the role sent, or None: the
+    validation every graph surface over HTTP runs before the pipeline (Cypher's, SPARQL's)."""
+    from provisa.compiler.sql_validator import validate_sql
+    from provisa.compiler.stage2 import build_governance_context
+    from provisa.pgwire._pipeline import relationship_guard_bypassed
+    from provisa.security.rights import effective_domain_access_role
+
+    role = effective_domain_access_role(role_id, state.roles)
+    ctx = surface.context
+    governance = build_governance_context(
+        role_id,
+        surface.rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+        role=role,
+        relationships=getattr(state, "relationships", None),
+    )
+    violations = validate_sql(
+        semantic_sql,
+        ctx,
+        governance,
+        role,
+        getattr(state, "tables", []),
+        # REQ-264: the relationship guard is held by the pipeline for every graph surface
+        # (provisa.pgwire._pipeline._govern_compiled), by the one bypass rule; here it is
+        # decided by that same rule, never switched off for the surface.
+        bypass_relationship_guard=relationship_guard_bypassed(
+            role, state, statement_opts_out=False
+        ),
+        bypass_uncovered_relationships=True,
+    )
+    if not violations:
+        return None
+    return JSONResponse(
+        status_code=403,
+        content={"violations": [{"code": v.code, "message": v.message} for v in violations]},
+    )
 
 
 def _dict_rows(result: QueryResult) -> list[dict]:
@@ -507,9 +553,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
         from provisa.gql.assembler import assemble_rows, to_serializable
         from provisa.compiler.sql_rewrite import make_semantic_sql
-        from provisa.compiler.stage2 import build_governance_context
-        from provisa.compiler.sql_validator import validate_sql as _validate_sql
-        from provisa.pgwire._pipeline import relationship_guard_bypassed
         from provisa.pgwire._pipeline import _govern_and_route_compiled
     except Exception as exc:
         log.exception("Cypher imports failed")
@@ -583,37 +626,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
         # Stage 3: Semantic conversion + access validation (transport responsibility)
         semantic_sql = make_semantic_sql(sql_str, ctx)
-        rls = surface.rls
-        _gov_ctx_for_validate = build_governance_context(
-            role_id,
-            rls,
-            state.masking_rules,
-            ctx,
-            getattr(state, "tables", []),
-            role=_role_dict,
-            relationships=getattr(state, "relationships", None),
-        )
-        _violations = _validate_sql(
-            semantic_sql,
-            ctx,
-            _gov_ctx_for_validate,
-            _role_dict,
-            getattr(state, "tables", []),
-            # REQ-264: the relationship guard is held by the pipeline for every Cypher surface
-            # (provisa.pgwire._pipeline._govern_compiled), by the one bypass rule; here it is
-            # decided by that same rule, never switched off for the surface.
-            bypass_relationship_guard=relationship_guard_bypassed(
-                _role_dict, state, statement_opts_out=False
-            ),
-            bypass_uncovered_relationships=True,
-        )
-        if _violations:
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "violations": [{"code": v.code, "message": v.message} for v in _violations]
-                },
-            )
+        _refusal = access_violations(semantic_sql, surface, role_id, state)
+        if _refusal is not None:
+            return _refusal
 
         translation = CypherTranslation(
             semantic_sql=semantic_sql,
@@ -689,7 +704,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         return JSONResponse(
             content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
         )
-    rows = _dict_rows(_executed)
+    from provisa.gql.assembler import take_cut
+
+    rows = take_cut(_dict_rows(_executed), plan.warnings)
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 
     # Assemble & serialize
