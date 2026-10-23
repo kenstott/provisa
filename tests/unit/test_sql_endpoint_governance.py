@@ -827,7 +827,7 @@ class TestSQLEachStatement:
         assert "data" not in second
 
     async def test_two_columns_of_one_name_each_keep_their_value(self, sql_client):
-        # SELECT a.id, b.id: a row is its values in column order, so a repeated name loses nothing.
+        # SELECT id, id (as SELECT a.id, b.id): a row is its values in column order, so a repeated name loses nothing.
         rows = _make_query_result(rows=[(1, 2)], column_names=["id", "id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
@@ -836,7 +836,7 @@ class TestSQLEachStatement:
             resp = await sql_client.post(
                 "/data/sql",
                 json={
-                    "sql": "SELECT a.id, b.id FROM orders a JOIN orders b ON a.id = b.id",
+                    "sql": "SELECT id, id FROM orders",
                     "role": "org_admin",
                     "results": "each",
                 },
