@@ -1072,7 +1072,7 @@
   "it/dataProductsTab.json::dataProductsTab.detail.lineageEmpty": "No lineage",
   "it/dataProductsTab.json::dataProductsTab.detail.lineageHint": "Column lineage graph showing this product's tables as the published endpoint, plus every upstream table used to derive them. Informational only — requires the view_governance capability.",
   "it/dataProductsTab.json::dataProductsTab.detail.lineageLoading": "Loading lineage…",
-  "it/dataProductsTab.json::dataProductsTab.detail.outputPortsHint": "This product's queryable surface: its member tables/columns and commands, with example queries below under Sample Queries and Commands.",
+  "it/dataProductsTab.json::dataProductsTab.detail.outputPortsHint": "This product's queryable surface: its member tables and commands. Example queries for each are under Access Patterns.",
   "it/dataProductsTab.json::dataProductsTab.detail.relatedTablesEmpty": "No related tables",
   "it/dataProductsTab.json::dataProductsTab.detail.relatedTablesHint": "Reachable from this product's tables through an approved relationship, but not (yet) part of it.",
   "it/dataProductsTab.json::dataProductsTab.detail.relationshipsEmpty": "No relationships between this product's tables",
@@ -8015,5 +8015,6 @@
   "it/settings.json::settings.graph.union_limit.help": "A SPARQL pattern whose predicate is a variable reads every mapped predicate it could match, one branch each. A query needing more branches than this is refused, naming the limit.",
   "it/serverErrors.json::serverErrors.statement.path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer.",
   "it/settings.json::settings.server.public_url.label": "Public address",
-  "it/settings.json::settings.server.public_url.help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused."
+  "it/settings.json::settings.server.public_url.help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused.",
+  "it/dataProductsTab.json::dataProductsTab.detail.field.details": "Details"
 }
