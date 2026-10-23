@@ -87418,3 +87418,52 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1584
   - REQ-1591
   target: "2027-Q1"
+- id: REQ-2142
+  status: complete
+  since: "2026-10"
+  group: 1. Access Governance & Security
+  category: Column Masking
+  feature: row-security-and-masking-two-layers
+  priority: MUST
+  type: behavioral
+  description: >-
+    Every regex a user gives Provisa, a mask's pattern and replacement among them, is written in
+    one universal dialect: the portable subset of literals, ., sets [...] with ranges and negation,
+    the greedy quantifiers * + ? {n} {n,} {n,m}, the anchors ^ and $ (the whole value), groups ( )
+    and (?: ), alternation |, and \d \s \w as their ASCII classes; a replacement is literal text
+    with $1-$9 and $$. A pattern or replacement outside it (lookaround, backreferences in the
+    pattern, lazy or possessive quantifiers, named groups, \b, Unicode or POSIX classes, inline
+    flags) is refused at save, by the API and by config load, naming the construct, where it is
+    and why it is not universal; there is no per-engine check at save. An alternation where an
+    earlier all-literal branch is a strict prefix of a later branch is refused, because engines
+    that take the longest branch (PostgreSQL, Snowflake) and those that take the first would mask
+    differently; an alternation whose branches can begin with the same character is accepted
+    with a warning. When a mask is lowered to SQL the pattern and replacement are translated into
+    each engine's flavour (Trino, Databricks/Spark, MySQL, Exasol, DuckDB, BigQuery, ClickHouse,
+    PostgreSQL, Snowflake, Oracle), every match replaced, and a value is masked the same way on
+    each. A regex mask fails closed: a value its pattern does not match anywhere is fully masked,
+    read as '****' on a text column and as NULL on any other, never in clear; NULL stays NULL. The
+    model has no column-wide constant mask to fall back to (a constant mask is one reader's entry).
+    The admin mask check reports each entry's verdict as it is edited, and the editor's presets are
+    universal.
+  use_case: >-
+    A mask is written once and holds wherever the query runs; a pattern that would mask
+    differently, or fail, on some engine is refused when it is written, not when a query reaches
+    that engine.
+  code:
+    - provisa/security/universal_regex.py
+    - provisa/security/mask_presets.py
+    - provisa/security/masking.py
+    - provisa/transpiler/transpile.py
+    - provisa/api/admin/masks_router.py
+    - provisa/core/models.py
+  tests:
+    - tests/unit/test_universal_regex.py
+    - tests/unit/test_regex_mask_every_match.py
+    - tests/unit/test_mask_list.py
+  scenario: |
+    Given a column masked for analysts with pattern ^\d{3}-?\d{2}-?(\d{4})$ and replacement ***-**-$1
+    When an analyst reads it through DuckDB, PostgreSQL, Trino or Snowflake
+    Then each engine runs the pattern in its own regex flavour and every analyst reads ***-**-6789 for 123-45-6789
+    And saving a mask with the pattern \d(?=\d{4}) is refused, naming the lookahead and why it is not universal
+    And a value the pattern does not match, such as 12-3456, reads as **** on every engine
