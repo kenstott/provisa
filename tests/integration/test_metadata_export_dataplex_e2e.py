@@ -182,7 +182,7 @@ async def test_the_data_product_carries_its_fields_and_owners(published):
     assert PRODUCT_FIELDS["purpose"] in product["description"]
     assert PRODUCT_FIELDS["limitations"] in product["description"]
     assert product["labels"]["provisa-version"] == "1_2_0"
-    assert product["labels"]["provisa-status"] == "active"
+    assert product["labels"]["provisa-status"] == "live"
 
 
 async def test_each_member_is_an_asset_through_its_export_view(published):

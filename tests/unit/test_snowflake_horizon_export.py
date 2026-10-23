@@ -49,7 +49,7 @@ class _FakeDataProduct:
     description: str
     members: list[AssetRef] = field(default_factory=list)
     support_contact: str | None = "data-team@example.com"
-    publish: bool = False
+    status: str = "draft"  # REQ-1634 STATUS: listed (PUBLISH = TRUE) while live or deprecated
     documentation_url: str | None = None
 
     def described(self) -> str:
@@ -616,7 +616,7 @@ def test_publish_creates_listing_with_publish_true_when_product_opts_in(monkeypa
         "customer_360",
         "Customer 360",
         [_table_ref("petstore-api", "public", "customers")],
-        publish=True,
+        status="live",
     )
     snapshot = SimpleNamespace(data_products=[product])
     result = asyncio.run(_exporter().publish(snapshot))
@@ -954,3 +954,27 @@ def test_publish_shares_a_live_attached_table_where_it_is_attached(monkeypatch):
     assert (
         'GRANT SELECT ON TABLE "landing"."sales"."events" TO SHARE "provisa_lake_share"' in joined
     )
+
+
+def test_a_retired_product_leaves_its_share_empty_and_its_listing_unpublished(monkeypatch):
+    """REQ-1634 STATUS: retired, its members went to its successor; the share's grants on them
+    are revoked and the listing is rewritten with PUBLISH = FALSE, so Snowflake no longer lists
+    it as published."""
+    rt = _runtime(
+        existing_objects=True,
+        kind="VIEW",
+        select_grants=[
+            ("VIEW", '"landing"."org_acme_export"."petstore-api__public__customers"'),
+        ],
+    )
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct("c360", "customer_360", "desc", [], status="retired")
+    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    assert result.ok, result.errors
+    sql = rt._conn.cursor_obj.sql
+    assert [s for s in sql if s.startswith("REVOKE")] == [
+        'REVOKE SELECT ON VIEW "landing"."org_acme_export"."petstore-api__public__customers" FROM SHARE "provisa_c360_share";'
+    ]
+    assert not [s for s in sql if s.startswith("GRANT SELECT")]
+    listing = [s for s in sql if "LISTING" in s and "PUBLISH =" in s]
+    assert listing and all(s.rstrip().endswith("PUBLISH = FALSE;") for s in listing)

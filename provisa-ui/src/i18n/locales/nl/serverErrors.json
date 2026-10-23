@@ -662,6 +662,34 @@
       "also_term_needs_column": "In plaats daarvan de term taggen vraagt een kolom.",
       "inherited_from_term": "Deze kolom is PII omdat hij {{term}} betekent. Haal de markering van die betekenis weg, of verplaats de kolom als hij iets anders betekent.",
       "move_loses": "Deze verplaatsing haalt tags weg van kolommen die ze daarna niet meer dragen. Bevestig het verlies van elke tag, of neem de tags mee naar de term waar de kolommen naartoe gaan."
+    },
+    "data_product": {
+      "status": {
+        "published": "Dataproduct {{data_product}} gepubliceerd.",
+        "deprecated": "Dataproduct {{data_product}} als verouderd gemarkeerd.",
+        "retired": "Dataproduct {{data_product}} buiten gebruik gesteld.",
+        "restored": "Dataproduct {{data_product}} hersteld.",
+        "reason_required": "Een reden is verplicht: geef aan waarom het dataproduct als verouderd wordt gemarkeerd of buiten gebruik wordt gesteld.",
+        "not_found": "Dataproduct {{data_product}} niet gevonden.",
+        "not_draft": "Alleen een dataproduct in concept kan worden gepubliceerd; dit is {{status}}.",
+        "not_live": "Alleen een actief dataproduct kan als verouderd worden gemarkeerd, en alleen een actief of verouderd dataproduct buiten gebruik worden gesteld; dit is {{status}}.",
+        "not_restorable": "Alleen een verouderd of buiten gebruik gesteld dataproduct kan worden hersteld; dit is {{status}}.",
+        "retire_on_past": "De geplande datum van buitengebruikstelling {{retire_on}} ligt in het verleden. Kies vandaag of een latere datum.",
+        "successor_required": "Dit dataproduct heeft {{members}} lid/leden; bij buitengebruikstelling gaan ze naar een opvolger. Kies er een.",
+        "successor_is_self": "Een dataproduct kan niet zijn eigen opvolger zijn.",
+        "successor_retired": "De opvolger '{{successor}}' is buiten gebruik gesteld. Kies een dataproduct dat in gebruik is.",
+        "successor_other_domain": "De opvolger '{{successor}}' hoort bij domein {{domain}}. De leden van een product delen zijn domein, dus kies een opvolger in hetzelfde domein."
+      },
+      "finding": {
+        "no_members": "Er hoort geen tabel, view of opdracht bij dit dataproduct.",
+        "member_deprecated": "Ledentabel {{table}} is verouderd.",
+        "no_owner": "Geen eigenaarsrol is verantwoordelijk voor dit dataproduct.",
+        "no_support_contact": "Dit dataproduct heeft geen supportcontact, wat een geconfigureerd exportdoel vereist.",
+        "retirement_blocked": "Dit dataproduct zou op {{retire_on}} buiten gebruik worden gesteld, maar heeft nog leden. Stel het buiten gebruik met een opvolger die ze overneemt.",
+        "domain_steward_unset": "Domein {{domain}} heeft geen steward.",
+        "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
+        "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."
+      }
     }
   }
 }

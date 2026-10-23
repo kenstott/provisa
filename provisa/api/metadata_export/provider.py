@@ -125,6 +125,12 @@ class MetadataExport(ABC):  # REQ-1068
     #: Horizon), where a replica-served table is published through its export view.
     needs_export_views = False
 
+    #: Whether this provider records each data product it publishes in its bindings, under the
+    #: product's URI (REQ-1389). The publish path records a product a provider that does not
+    #: (``False``) has published, so a retired product is withdrawn only where it was published
+    #: (REQ-1634 STATUS). A provider that reads its bindings back as vendor ids records its own.
+    binds_products = True
+
     @property
     def export_views(self) -> dict[tuple[str, str, str], tuple[str, str]]:
         """The export view of each replica-served table, as the publish path handed it in
