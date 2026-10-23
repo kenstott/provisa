@@ -7826,7 +7826,6 @@
   "es/graph3d.json::graph3d.menuSome": "{{count}} of {{total}}",
   "es/graph3d.json::graph3d.unconnected": "Unconnected",
   "es/graph3d.json::graph3d.unconnectedHelp": "Terms with no relationship or grounding shown",
-  "es/glossaryTab.json::glossaryTab.claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
   "es/glossaryTab.json::glossaryTab.claimColumns": "Claim columns",
   "es/glossaryTab.json::glossaryTab.claimHint": "Each column belongs to one term; claiming it moves it here.",
   "es/glossaryTab.json::glossaryTab.claimFromDraft": "from: {{term}} (draft)",
@@ -7839,5 +7838,8 @@
   "es/dataProductsTab.json::dataProductsTab.relatedTermsConcept": "concept",
   "es/glossaryTab.json::glossaryTab.danglingHelp": "Connected to no term that names a table or column: it names no data yet.",
   "es/graph3d.json::graph3d.look_property": "property",
-  "es/graph3d.json::graph3d.look_concept": "concept"
+  "es/graph3d.json::graph3d.look_concept": "concept",
+  "es/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
+  "es/glossaryTab.json::glossaryTab.keyColumn": "Key",
+  "es/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
 }

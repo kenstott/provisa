@@ -108,10 +108,12 @@
     "derivedReason": "Le rôle, Proposé et Obsolète découlent des colonnes, tables, de la définition et des relations du terme ; ils ne se règlent pas ici.",
     "claimColumns": "Revendiquer des colonnes",
     "claimHint": "Chaque colonne appartient à un terme ; la revendiquer la déplace ici.",
-    "claimDisabled": "Ce terme nomme des tables (une classe) ; il ne peut pas aussi nommer des colonnes",
     "groundDisabled": "Ce terme nomme des colonnes (une propriété) ; il ne peut pas aussi nommer des tables",
     "claimFrom": "de : {{term}}",
     "claimFromDraft": "de : {{term}} (brouillon)",
-    "danglingHelp": "Relié à aucun terme qui nomme une table ou une colonne : il ne nomme encore aucune donnée."
+    "danglingHelp": "Relié à aucun terme qui nomme une table ou une colonne : il ne nomme encore aucune donnée.",
+    "classKeys": "Les clés découlent de ses tables et des relations déclarées",
+    "keyColumn": "Clé",
+    "keyColumnClaim": "Cette colonne est une clé ; elle appartient à la classe de sa table"
   }
 }

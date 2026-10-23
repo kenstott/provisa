@@ -7831,7 +7831,6 @@
   "zh-HK/glossaryTab.json::glossaryTab.claimFrom": "from: {{term}}",
   "zh-HK/glossaryTab.json::glossaryTab.edit": "Edit",
   "zh-HK/glossaryTab.json::glossaryTab.domainsDerived": "Derived from its columns and tables",
-  "zh-HK/glossaryTab.json::glossaryTab.claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
   "zh-HK/glossaryTab.json::glossaryTab.claimColumns": "Claim columns",
   "zh-HK/glossaryTab.json::glossaryTab.derivedReason": "Role, Proposed and Deprecated follow from the term's columns, tables, definition and relationships, so they are not set here.",
   "zh-HK/glossaryTab.json::glossaryTab.claimHint": "Each column belongs to one term; claiming it moves it here.",
@@ -7839,5 +7838,8 @@
   "zh-HK/dataProductsTab.json::dataProductsTab.relatedTermsConcept": "concept",
   "zh-HK/graph3d.json::graph3d.look_concept": "concept",
   "zh-HK/graph3d.json::graph3d.look_property": "property",
-  "zh-HK/graph3d.json::graph3d.look_class": "class"
+  "zh-HK/graph3d.json::graph3d.look_class": "class",
+  "zh-HK/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
+  "zh-HK/glossaryTab.json::glossaryTab.keyColumn": "Key",
+  "zh-HK/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
 }

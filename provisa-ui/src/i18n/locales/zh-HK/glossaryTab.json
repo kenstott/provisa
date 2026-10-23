@@ -108,10 +108,12 @@
     "derivedReason": "角色、建議和已棄用取決於術語的欄、表、定義和關係，因此不在此設定。",
     "claimColumns": "認領欄",
     "claimHint": "每欄只屬於一個術語；認領後會移到此處。",
-    "claimDisabled": "此術語指代表（類別）；不能同時指代欄",
     "groundDisabled": "此術語指代欄（屬性）；不能同時指代表",
     "claimFrom": "來自：{{term}}",
     "claimFromDraft": "來自：{{term}}（草稿）",
-    "danglingHelp": "未連接到任何指代表或欄的術語：它尚未指代任何資料。"
+    "danglingHelp": "未連接到任何指代表或欄的術語：它尚未指代任何資料。",
+    "classKeys": "鍵由其表和已宣告的關係決定",
+    "keyColumn": "鍵",
+    "keyColumnClaim": "此欄是鍵；它屬於其表的類別"
   }
 }

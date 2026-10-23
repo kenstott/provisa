@@ -12,8 +12,9 @@
 // definition, export, the declared domains of a concept, the columns it names (moved away,
 // or claimed from another term), the tables it is grounded in, its relationships and its experts.
 // Save makes the changes (termDraft.ts) and Cancel drops them. What follows from the term's columns,
-// tables and relationships is shown with why it cannot be set here. A term names columns (a
-// property) or tables (a class), never both: whichever it holds, the other is offered disabled.
+// tables and relationships is shown with why it cannot be set here. A class (tables) holds its tables'
+// keys, shown and not claimed; a property (columns) claims attribute columns, the keys and its
+// tables offered disabled; a concept may do either.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -42,7 +43,7 @@ import {
   type GlossaryTermDetail,
 } from "../../api/glossary";
 import { useAuth } from "../../context/AuthContext";
-import { useTables } from "../../hooks/useAdminQueries";
+import { useRelationships, useTables } from "../../hooks/useAdminQueries";
 import { DescriptionField } from "../../pages/tables/DescriptionField";
 import { relationName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
@@ -85,6 +86,7 @@ export function TermEditForm({
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
   const { tables } = useTables();
+  const { relationships } = useRelationships();
   // The term's tables as read, and the draft made from the term and them.
   const [read, setRead] = useState<{ termId: number; tables: number[] } | null>(null);
   const [draft, setDraft] = useState<TermDraft | null>(null);
@@ -165,11 +167,22 @@ export function TermEditForm({
     );
 
   const set = (patch: Partial<TermDraft>) => setDraft({ ...draft, ...patch });
-  // A term names columns or tables, never both: what it would still hold after Save decides.
+  // A key column -- a table's primary key, or the column of a declared many-to-one relationship,
+  // whatever it is named -- follows from its table's class: no term claims it, and none moves it.
+  const keys = new Set<string>();
+  for (const tb of tables)
+    for (const c of tb.columns ?? []) if (c.isPrimaryKey) keys.add(columnKey(tb.id, c.columnName));
+  for (const r of relationships)
+    if (r.cardinality === "many-to-one" && r.viaTableId === null)
+      keys.add(columnKey(r.sourceTableId, r.sourceColumn));
+  // What the term would be after Save: a class (tables), a property (columns) or a concept.
   const keepsColumns =
-    term.refs.some((r) => draft.moves[columnKey(r.table_id, r.column_name)] === undefined) ||
-    draft.claims.length > 0;
-  const keepsTables = draft.tables.length > 0;
+    term.refs.some(
+      (r) =>
+        !keys.has(columnKey(r.table_id, r.column_name)) &&
+        draft.moves[columnKey(r.table_id, r.column_name)] === undefined,
+    ) || draft.claims.length > 0;
+  const role = draft.tables.length > 0 ? "class" : keepsColumns ? "property" : "concept";
   const said = (field: Change["field"]) =>
     refused?.field === field ? (
       <Alert color="red" data-testid={`glossary-edit-refused-${field}`}>
@@ -347,22 +360,28 @@ export function TermEditForm({
                 <Table.Tr key={key} data-testid={`glossary-ref-${ref.table_id}-${ref.column_name}`}>
                   <Table.Td>{`${ref.domain_id}.${ref.alias || ref.table_name}.${ref.column_name}`}</Table.Td>
                   <Table.Td>
-                    <Select
-                      size="xs"
-                      data={otherTermOptions}
-                      value={to === undefined ? null : String(to)}
-                      placeholder={t("glossaryTab.moveToPlaceholder")}
-                      onChange={(v) => {
-                        const moves = { ...draft.moves };
-                        if (v === null) delete moves[key];
-                        else moves[key] = Number(v);
-                        set({ moves });
-                      }}
-                      searchable
-                      clearable
-                      aria-label={t("glossaryTab.colMove")}
-                      data-testid={`glossary-move-select-${ref.table_id}-${ref.column_name}`}
-                    />
+                    {keys.has(key) ? (
+                      <Text size="xs" c="dimmed" data-testid={`glossary-key-ref-${key}`}>
+                        {t("glossaryTab.keyColumn")}
+                      </Text>
+                    ) : (
+                      <Select
+                        size="xs"
+                        data={otherTermOptions}
+                        value={to === undefined ? null : String(to)}
+                        placeholder={t("glossaryTab.moveToPlaceholder")}
+                        onChange={(v) => {
+                          const moves = { ...draft.moves };
+                          if (v === null) delete moves[key];
+                          else moves[key] = Number(v);
+                          set({ moves });
+                        }}
+                        searchable
+                        clearable
+                        aria-label={t("glossaryTab.colMove")}
+                        data-testid={`glossary-move-select-${ref.table_id}-${ref.column_name}`}
+                      />
+                    )}
                   </Table.Td>
                 </Table.Tr>
               );
@@ -370,60 +389,75 @@ export function TermEditForm({
           </Table.Tbody>
         </Table>
       )}
-      <FormLayout>
-        <FormField
-          size="long"
-          hint={keepsTables ? t("glossaryTab.claimDisabled") : t("glossaryTab.claimHint")}
-        >
-          <MultiSelect
-            label={t("glossaryTab.claimColumns")}
-            data={claimOptions.map((o) => ({ value: o.value, label: o.label }))}
-            value={draft.claims.map((c) => columnKey(c.table_id, c.column_name))}
-            onChange={(keys) =>
-              set({
-                claims: keys.map((key) => {
-                  const at = key.indexOf(":");
-                  return {
-                    table_id: Number(key.slice(0, at)),
-                    column_name: key.slice(at + 1),
-                    from: owners?.get(key) ?? null,
-                  };
-                }),
-              })
-            }
-            renderOption={({ option }) => {
-              const from = claimOptions.find((o) => o.value === option.value)?.from;
-              return (
-                <Stack gap={0}>
-                  <span>{option.label}</span>
-                  {from && (
-                    <Text size="xs" c="dimmed">
-                      {from.draft
-                        ? t("glossaryTab.claimFromDraft", { term: from.name })
-                        : t("glossaryTab.claimFrom", { term: from.name })}
-                    </Text>
-                  )}
-                </Stack>
-              );
-            }}
-            disabled={keepsTables}
-            searchable
-            limit={200}
-            data-testid="glossary-claim-columns"
-          />
-        </FormField>
-      </FormLayout>
+      {role === "class" ? (
+        <Text size="xs" c="dimmed" data-testid="glossary-class-keys">
+          {t("glossaryTab.classKeys")}
+        </Text>
+      ) : (
+        <FormLayout>
+          <FormField size="long" hint={t("glossaryTab.claimHint")}>
+            <MultiSelect
+              label={t("glossaryTab.claimColumns")}
+              data={claimOptions.map((o) => ({
+                value: o.value,
+                label: o.label,
+                disabled: keys.has(o.value),
+              }))}
+              value={draft.claims.map((c) => columnKey(c.table_id, c.column_name))}
+              onChange={(keys) =>
+                set({
+                  claims: keys.map((key) => {
+                    const at = key.indexOf(":");
+                    return {
+                      table_id: Number(key.slice(0, at)),
+                      column_name: key.slice(at + 1),
+                      from: owners?.get(key) ?? null,
+                    };
+                  }),
+                })
+              }
+              renderOption={({ option }) => {
+                const from = claimOptions.find((o) => o.value === option.value)?.from;
+                return (
+                  <Stack gap={0}>
+                    <span>{option.label}</span>
+                    {keys.has(option.value) ? (
+                      <Text size="xs" c="dimmed">
+                        {t("glossaryTab.keyColumnClaim")}
+                      </Text>
+                    ) : (
+                      from && (
+                        <Text size="xs" c="dimmed">
+                          {from.draft
+                            ? t("glossaryTab.claimFromDraft", { term: from.name })
+                            : t("glossaryTab.claimFrom", { term: from.name })}
+                        </Text>
+                      )
+                    )}
+                  </Stack>
+                );
+              }}
+              searchable
+              limit={200}
+              data-testid="glossary-claim-columns"
+            />
+          </FormField>
+        </FormLayout>
+      )}
       {said("columns")}
 
       <Title order={5}>{t("glossaryTab.groundedTablesTitle")}</Title>
       <FormLayout>
-        <FormField size="long" hint={keepsColumns ? t("glossaryTab.groundDisabled") : undefined}>
+        <FormField
+          size="long"
+          hint={role === "property" ? t("glossaryTab.groundDisabled") : undefined}
+        >
           <MultiSelect
             aria-label={t("glossaryTab.groundedTablesTitle")}
             data={tableOptions}
             value={draft.tables.map(String)}
             onChange={(ids) => set({ tables: ids.map(Number) })}
-            disabled={keepsColumns}
+            disabled={role === "property"}
             searchable
             clearable
             placeholder={t("glossaryTab.groundedTablesPlaceholder")}

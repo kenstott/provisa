@@ -58,7 +58,33 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
         domainId: "sales",
         tableName: "events",
         draft: false,
-        columns: [{ columnName: "churn_flag" }, { columnName: "at" }],
+        columns: [
+          { columnName: "event_id", isPrimaryKey: true },
+          { columnName: "churn_flag" },
+          { columnName: "at" },
+        ],
+      },
+      {
+        id: 12,
+        domainId: "sales",
+        tableName: "alerts",
+        draft: false,
+        columns: [{ columnName: "event_ref" }, { columnName: "note" }],
+      },
+    ],
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
+  // alerts.event_ref is declared many-to-one into events (11): a key of events', by declaration.
+  useRelationships: () => ({
+    relationships: [
+      {
+        sourceTableId: 12,
+        sourceColumn: "event_ref",
+        targetTableId: 11,
+        cardinality: "many-to-one",
+        viaTableId: null,
       },
     ],
     loading: false,
@@ -643,16 +669,34 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(screen.queryByTestId("glossary-item-2")).toBeNull());
   });
 
-  it("offers a property's tables and a class's columns disabled, saying why", async () => {
+  it("lets a property claim attribute columns, a concept do either, a class claim none", async () => {
     render(<GlossaryTab />);
-    // Revenue names a column: grounding it in tables would make it a class too.
+    // Revenue names a column (a property): no tables, and no key column to claim.
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     await edit();
     expect(screen.getByTestId("glossary-grounded-tables-select")).toBeDisabled();
     expect(screen.getByText(t("glossaryTab.groundDisabled"))).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-claim-columns")).toBeEnabled();
+    const listbox = await openSelect("glossary-claim-columns");
+    const option = (label: string) =>
+      within(listbox).getByText(label).closest('[role="option"]') as HTMLElement;
+    // events' primary key, and alerts.event_ref declared many-to-one into events: keys, each with why.
+    expect(option("sales.events.event_id")).toHaveAttribute("data-combobox-disabled");
+    expect(option("sales.alerts.event_ref")).toHaveAttribute("data-combobox-disabled");
+    expect(within(listbox).getAllByText(t("glossaryTab.keyColumnClaim"))).toHaveLength(2);
+    expect(option("sales.events.churn_flag")).not.toHaveAttribute("data-combobox-disabled");
+    expect(option("sales.alerts.note")).not.toHaveAttribute("data-combobox-disabled");
+    fireEvent.click(screen.getByTestId("glossary-edit-cancel"));
 
-    // Margin is grounded in a table: claiming a column would make it a property too.
+    // Margin names nothing (a concept): it may claim columns or be grounded in tables.
+    fireEvent.click(screen.getByTestId("glossary-item-3"));
+    await edit();
+    await waitFor(() =>
+      expect(screen.getByTestId("glossary-grounded-tables-select")).toBeEnabled(),
+    );
+    expect(screen.getByTestId("glossary-claim-columns")).toBeEnabled();
+    fireEvent.click(screen.getByTestId("glossary-edit-cancel"));
+
+    // Grounded in events, Margin is a class: its keys follow from its tables; it claims nothing.
     vi.mocked(listTermTables).mockImplementation(async (id) =>
       id === 3
         ? ([
@@ -666,11 +710,42 @@ describe("GlossaryTab", () => {
           ] as never)
         : [],
     );
-    fireEvent.click(screen.getByTestId("glossary-edit-cancel"));
-    fireEvent.click(screen.getByTestId("glossary-item-3"));
+    fireEvent.click(screen.getByTestId("glossary-item-2"));
+    fireEvent.click(await screen.findByTestId("glossary-item-3"));
     await edit();
-    await waitFor(() => expect(screen.getByTestId("glossary-claim-columns")).toBeDisabled());
-    expect(screen.getByText(t("glossaryTab.claimDisabled"))).toBeInTheDocument();
+    expect(await screen.findByTestId("glossary-class-keys")).toHaveTextContent(
+      t("glossaryTab.classKeys"),
+    );
+    expect(screen.queryByTestId("glossary-claim-columns")).toBeNull();
+    expect(screen.getByTestId("glossary-grounded-tables-select")).toBeEnabled();
+  });
+
+  it("shows a key column's ref without Move: it follows from its table's class", async () => {
+    mockFetchTerm.mockImplementation(async (id) => {
+      if (id === 1)
+        return {
+          ...REVENUE_DETAIL,
+          refs: [
+            {
+              table_id: 11,
+              column_name: "event_id",
+              source_id: "erp",
+              schema_name: "public",
+              table_name: "events",
+              alias: null,
+              domain_id: "sales",
+            },
+          ],
+        };
+      throw new Error(`no detail fixture for term ${id}`);
+    });
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await edit();
+    expect(screen.getByTestId("glossary-key-ref-11:event_id")).toHaveTextContent(
+      t("glossaryTab.keyColumn"),
+    );
+    expect(screen.queryByTestId("glossary-move-select-11-event_id")).toBeNull();
   });
 
   // Soft delete: a rooted term cannot be deleted (its refs would recreate it), so retiring is

@@ -7833,10 +7833,12 @@
   "ja/glossaryTab.json::glossaryTab.domainsDerived": "Derived from its columns and tables",
   "ja/glossaryTab.json::glossaryTab.claimFromDraft": "from: {{term}} (draft)",
   "ja/glossaryTab.json::glossaryTab.derivedReason": "Role, Proposed and Deprecated follow from the term's columns, tables, definition and relationships, so they are not set here.",
-  "ja/glossaryTab.json::glossaryTab.claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
   "ja/graph3d.json::graph3d.look_property": "property",
   "ja/dataProductsTab.json::dataProductsTab.relatedTermsConcept": "concept",
   "ja/glossaryTab.json::glossaryTab.danglingHelp": "Connected to no term that names a table or column: it names no data yet.",
   "ja/graph3d.json::graph3d.look_concept": "concept",
-  "ja/graph3d.json::graph3d.look_class": "class"
+  "ja/graph3d.json::graph3d.look_class": "class",
+  "ja/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
+  "ja/glossaryTab.json::glossaryTab.keyColumn": "Key",
+  "ja/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
 }

@@ -108,10 +108,12 @@
     "derivedReason": "El rol, Propuesto y Obsoleto se deducen de las columnas, tablas, definición y relaciones del término, por lo que no se establecen aquí.",
     "claimColumns": "Reclamar columnas",
     "claimHint": "Cada columna pertenece a un término; al reclamarla, se mueve aquí.",
-    "claimDisabled": "Este término nombra tablas (una clase); no puede nombrar también columnas",
     "groundDisabled": "Este término nombra columnas (una propiedad); no puede nombrar también tablas",
     "claimFrom": "de: {{term}}",
     "claimFromDraft": "de: {{term}} (borrador)",
-    "danglingHelp": "No está conectado a ningún término que nombre una tabla o columna: aún no nombra datos."
+    "danglingHelp": "No está conectado a ningún término que nombre una tabla o columna: aún no nombra datos.",
+    "classKeys": "Las claves se deducen de sus tablas y relaciones declaradas",
+    "keyColumn": "Clave",
+    "keyColumnClaim": "Esta columna es una clave; pertenece a la clase de su tabla"
   }
 }

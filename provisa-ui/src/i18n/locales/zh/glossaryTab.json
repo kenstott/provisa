@@ -108,10 +108,12 @@
     "derivedReason": "角色、提议和已弃用取决于术语的列、表、定义和关系，因此不在此设置。",
     "claimColumns": "认领列",
     "claimHint": "每列只属于一个术语；认领后会移到此处。",
-    "claimDisabled": "此术语指代表（类）；不能同时指代列",
     "groundDisabled": "此术语指代列（属性）；不能同时指代表",
     "claimFrom": "来自：{{term}}",
     "claimFromDraft": "来自：{{term}}（草稿）",
-    "danglingHelp": "未连接到任何指代表或列的术语：它尚未指代任何数据。"
+    "danglingHelp": "未连接到任何指代表或列的术语：它尚未指代任何数据。",
+    "classKeys": "键由其表和已声明的关系决定",
+    "keyColumn": "键",
+    "keyColumnClaim": "此列是键；它属于其表的类"
   }
 }

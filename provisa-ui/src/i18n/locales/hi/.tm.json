@@ -7828,7 +7828,6 @@
   "hi/graph3d.json::graph3d.unconnected": "Unconnected",
   "hi/graph3d.json::graph3d.unconnectedHelp": "Terms with no relationship or grounding shown",
   "hi/glossaryTab.json::glossaryTab.derivedReason": "Role, Proposed and Deprecated follow from the term's columns, tables, definition and relationships, so they are not set here.",
-  "hi/glossaryTab.json::glossaryTab.claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
   "hi/glossaryTab.json::glossaryTab.domainsDerived": "Derived from its columns and tables",
   "hi/glossaryTab.json::glossaryTab.claimFromDraft": "from: {{term}} (draft)",
   "hi/glossaryTab.json::glossaryTab.claimHint": "Each column belongs to one term; claiming it moves it here.",
@@ -7840,5 +7839,8 @@
   "hi/glossaryTab.json::glossaryTab.danglingHelp": "Connected to no term that names a table or column: it names no data yet.",
   "hi/dataProductsTab.json::dataProductsTab.relatedTermsConcept": "concept",
   "hi/graph3d.json::graph3d.look_class": "class",
-  "hi/graph3d.json::graph3d.look_concept": "concept"
+  "hi/graph3d.json::graph3d.look_concept": "concept",
+  "hi/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
+  "hi/glossaryTab.json::glossaryTab.keyColumn": "Key",
+  "hi/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
 }

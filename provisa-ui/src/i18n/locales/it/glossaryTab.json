@@ -108,10 +108,12 @@
     "derivedReason": "Ruolo, Proposto e Deprecato derivano da colonne, tabelle, definizione e relazioni del termine, quindi non si impostano qui.",
     "claimColumns": "Rivendica colonne",
     "claimHint": "Ogni colonna appartiene a un termine; rivendicarla la sposta qui.",
-    "claimDisabled": "Questo termine nomina tabelle (una classe); non può nominare anche colonne",
     "groundDisabled": "Questo termine nomina colonne (una proprietà); non può nominare anche tabelle",
     "claimFrom": "da: {{term}}",
     "claimFromDraft": "da: {{term}} (bozza)",
-    "danglingHelp": "Non collegato ad alcun termine che nomini una tabella o una colonna: non nomina ancora dati."
+    "danglingHelp": "Non collegato ad alcun termine che nomini una tabella o una colonna: non nomina ancora dati.",
+    "classKeys": "Le chiavi derivano dalle sue tabelle e dalle relazioni dichiarate",
+    "keyColumn": "Chiave",
+    "keyColumnClaim": "Questa colonna è una chiave; appartiene alla classe della sua tabella"
   }
 }

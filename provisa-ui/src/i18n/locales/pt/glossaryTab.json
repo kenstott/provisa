@@ -108,10 +108,12 @@
     "derivedReason": "Papel, Proposto e Obsoleto decorrem das colunas, tabelas, definição e relações do termo, por isso não são definidos aqui.",
     "claimColumns": "Reivindicar colunas",
     "claimHint": "Cada coluna pertence a um termo; reivindicá-la a move para cá.",
-    "claimDisabled": "Este termo nomeia tabelas (uma classe); não pode nomear também colunas",
     "groundDisabled": "Este termo nomeia colunas (uma propriedade); não pode nomear também tabelas",
     "claimFrom": "de: {{term}}",
     "claimFromDraft": "de: {{term}} (rascunho)",
-    "danglingHelp": "Não está ligado a nenhum termo que nomeie uma tabela ou coluna: ainda não nomeia dados."
+    "danglingHelp": "Não está ligado a nenhum termo que nomeie uma tabela ou coluna: ainda não nomeia dados.",
+    "classKeys": "As chaves decorrem de suas tabelas e relações declaradas",
+    "keyColumn": "Chave",
+    "keyColumnClaim": "Esta coluna é uma chave; pertence à classe de sua tabela"
   }
 }

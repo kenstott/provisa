@@ -7832,11 +7832,13 @@
   "he/glossaryTab.json::glossaryTab.claimHint": "Each column belongs to one term; claiming it moves it here.",
   "he/glossaryTab.json::glossaryTab.claimColumns": "Claim columns",
   "he/glossaryTab.json::glossaryTab.domainsDerived": "Derived from its columns and tables",
-  "he/glossaryTab.json::glossaryTab.claimDisabled": "This term names tables (a class); a property term can't also be grounded in tables",
   "he/glossaryTab.json::glossaryTab.claimFromDraft": "from: {{term}} (draft)",
   "he/glossaryTab.json::glossaryTab.danglingHelp": "Connected to no term that names a table or column: it names no data yet.",
   "he/graph3d.json::graph3d.look_property": "property",
   "he/graph3d.json::graph3d.look_class": "class",
   "he/dataProductsTab.json::dataProductsTab.relatedTermsConcept": "concept",
-  "he/graph3d.json::graph3d.look_concept": "concept"
+  "he/graph3d.json::graph3d.look_concept": "concept",
+  "he/glossaryTab.json::glossaryTab.classKeys": "Keys follow from its tables and declared relationships",
+  "he/glossaryTab.json::glossaryTab.keyColumn": "Key",
+  "he/glossaryTab.json::glossaryTab.keyColumnClaim": "This column is a key; it belongs to its table's class"
 }

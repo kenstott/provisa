@@ -108,10 +108,12 @@
     "derivedReason": "Rol, Voorgesteld en Verouderd volgen uit de kolommen, tabellen, definitie en relaties van de term en worden hier niet ingesteld.",
     "claimColumns": "Kolommen opeisen",
     "claimHint": "Elke kolom hoort bij één term; opeisen verplaatst hem hierheen.",
-    "claimDisabled": "Deze term benoemt tabellen (een klasse); hij kan niet ook kolommen benoemen",
     "groundDisabled": "Deze term benoemt kolommen (een eigenschap); hij kan niet ook tabellen benoemen",
     "claimFrom": "van: {{term}}",
     "claimFromDraft": "van: {{term}} (concept)",
-    "danglingHelp": "Met geen enkele term verbonden die een tabel of kolom benoemt: het benoemt nog geen gegevens."
+    "danglingHelp": "Met geen enkele term verbonden die een tabel of kolom benoemt: het benoemt nog geen gegevens.",
+    "classKeys": "Sleutels volgen uit zijn tabellen en gedeclareerde relaties",
+    "keyColumn": "Sleutel",
+    "keyColumnClaim": "Deze kolom is een sleutel; hij hoort bij de klasse van zijn tabel"
   }
 }
