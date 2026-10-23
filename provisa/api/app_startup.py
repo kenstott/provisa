@@ -535,6 +535,18 @@ async def _start_servers(_log: logging.Logger) -> None:
         except Exception:
             _log.exception("bolt server startup failed")
 
+    # REQ-2135: the SPARQL 1.1 Protocol endpoint is served on the HTTP listener; its subject IRIs
+    # start with server.public_url, so the line says where they do, or that they can't yet.
+    from provisa.core import settings_registry as _settings
+
+    _public_url = _settings.value("server.public_url")
+    _log.info(
+        "SPARQL endpoint listening at /data/sparql on the HTTP port (subject IRIs under %s)",
+        f"{str(_public_url).rstrip('/')}/id/"
+        if _public_url
+        else "nothing: server.public_url is unset, so a query answering with one is refused",
+    )
+
     # REQ-1008: MCP server (opt-in via PROVISA_MCP_PORT). Isolated one-line hook;
     # touches no scheduler/freshness/audit/meta-view code.
     try:

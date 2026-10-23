@@ -259,6 +259,9 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-timeout",  # scripts/ci/run_lane.py bounds every test, so a hang fails by name
+    # REQ-2135: the standard SPARQL 1.1 Protocol client the endpoint's integration test queries
+    # it with (W3C Software Notice and License, permissive).
+    "sparqlwrapper>=2,<3",
     "pytest-bdd",
     "pytest-cov",
     # REQ-1759: tests/unit/ alone collects ~12K tests, single-process at ~1%/19s (~50min
