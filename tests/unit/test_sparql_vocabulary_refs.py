@@ -44,3 +44,20 @@ async def test_live_terms_ground_classes_and_columns(control_plane, monkeypatch)
             )
             table_terms, _ = await glossary_repo.vocabulary_refs(conn)
             assert table_terms == {}
+
+
+@pytest.mark.asyncio
+async def test_the_live_concepts_are_the_terms_that_ground_nothing(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        async with db.acquire() as conn:
+            await glossary_repo.ground_table(conn, ids["party"], ids["customers"])
+            await glossary_repo.set_definition(conn, ids["party"], "Someone we deal with.")
+            counterparty = await glossary_repo.create_abstract_term(
+                conn, "counterparty", domains={"sales"}
+            )
+            await glossary_repo.add_edge(conn, counterparty, ids["party"], "KIND_OF")
+            await glossary_repo.set_definition(conn, counterparty, "The other side of a deal.")
+            concepts = await glossary_repo.concept_terms(conn)
+            # party grounds a table: a Class, not a Concept. counterparty grounds nothing.
+            assert "counterparty" in concepts
+            assert "party" not in concepts

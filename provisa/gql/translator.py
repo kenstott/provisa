@@ -62,6 +62,8 @@ from provisa.gql.translator_helpers import (
     _optional_vars,
     _rewrite_cypher_fn_node,
     _safe_alias,
+    fold_into_optional_join,
+    step_wheres,
 )
 from provisa.gql.translator_types import (
     CUT_COLUMN,
@@ -252,6 +254,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
         # (FROM, joins, path steps by alias, relationship type by variable) of each extra branch
         self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict, dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # Each OPTIONAL MATCH of the final segment with a WHERE of its own (step_wheres).
+        self._final_optional_wheres: list = []
         # WITH RECURSIVE CTEs for self-referential variable-length paths
         self._recursive_ctes: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
@@ -333,11 +337,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where, optional_wheres = step_wheres(match_steps)
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
@@ -363,6 +363,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             joins, where_expr = _fold_where_into_optional_joins(
                 where_expr, _optional_vars(all_matches), joins
             )
+        joins, where_expr = self._fold_optional_wheres(optional_wheres, joins, where_expr)
 
         stage_query = exp.select(*select_exprs).from_(from_clause)
         for join in joins:
@@ -432,11 +433,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in final_match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where, self._final_optional_wheres = step_wheres(final_match_steps)
 
         if not all_matches and not final_unwinds and cte_defs:
             last_cte_name = cte_defs[-1][0]
@@ -493,7 +490,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     )
                     for bf, bj, bps, types in self._extra_path_branches
                 ]
+        joins, where_expr = self._fold_optional_wheres(
+            self._final_optional_wheres, joins, where_expr
+        )
         return where_expr, joins
+
+    def _fold_optional_wheres(
+        self,
+        optional_wheres: list,
+        joins: list[dict],
+        where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[list[dict], "exp.Expression | None"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Each OPTIONAL MATCH's own WHERE as the condition of the join it introduces (REQ-345):
+        it never filters the rows. What stays in the WHERE (a ``_nf_`` condition) is ANDed to it."""
+        for step_vars, where in optional_wheres:
+            own = self._build_where(where)
+            if own is None:
+                continue
+            joins, rest = fold_into_optional_join(own, step_vars, joins)
+            if rest is not None:
+                where_expr = (
+                    rest if where_expr is None else exp.And(this=where_expr, expression=rest)
+                )
+        return joins, where_expr
 
     def _build_main_query(
         self,
