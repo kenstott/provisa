@@ -287,8 +287,8 @@ export function GlossaryTab() {
     try {
       await fn();
       if (successMessage) notifications.show({ color: "green", message: successMessage });
-      if (selectedId !== null) await loadDetail(selectedId);
-      await refreshList();
+      // The term and the list are read again together: neither waits on the other.
+      await Promise.all([selectedId !== null ? loadDetail(selectedId) : null, refreshList()]);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : String(e));
     }
@@ -383,14 +383,16 @@ export function GlossaryTab() {
       setSelectedId(null);
       setDetail(null);
       setEditing(false);
-    } else if (selectedId !== null) {
-      await loadDetail(selectedId, true);
     }
+    // The term (unless removed) and the list are read again together.
+    await Promise.all([
+      !removed && selectedId !== null ? loadDetail(selectedId, true) : null,
+      refreshList(),
+    ]);
     if (done) {
       setEditing(false);
       notifications.show({ color: "green", message: t("glossaryTab.updated") });
     }
-    await refreshList();
   };
 
   const relTypeOptions = GLOSSARY_REL_TYPES.map((rt) => ({

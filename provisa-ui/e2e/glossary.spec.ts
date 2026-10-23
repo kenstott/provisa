@@ -48,22 +48,27 @@ async function openGlossary(page: Page) {
   ).toBeVisible({ timeout: 30000 });
 }
 
+/** A wait on what follows a server round-trip (a term read, a save and the reads after it). With
+ * the suite's specs sharing one server, one read has taken 3 s and a save's two reads after it
+ * over 3 s together: 5 s was not enough. */
+const ROUND_TRIP = { timeout: 30_000 };
+
 /** Click a term in the left-hand list and wait for its detail panel, read. */
 async function selectTerm(page: Page, name: string) {
   await page.getByTestId("glossary-list").getByText(name, { exact: true }).click();
-  await expect(page.getByTestId("glossary-read-fields")).toContainText(name);
+  await expect(page.getByTestId("glossary-read-fields")).toContainText(name, ROUND_TRIP);
 }
 
 /** Open the term shown as one form. */
 async function editTerm(page: Page) {
   await page.getByTestId("glossary-edit-btn").click();
-  await expect(page.getByTestId("glossary-edit-form")).toBeVisible();
+  await expect(page.getByTestId("glossary-edit-form")).toBeVisible(ROUND_TRIP);
 }
 
 /** Save the form, and wait for the term to be read again. */
 async function saveTerm(page: Page) {
   await page.getByTestId("glossary-edit-save").click();
-  await expect(page.getByTestId("glossary-edit-form")).toHaveCount(0);
+  await expect(page.getByTestId("glossary-edit-form")).toHaveCount(0, ROUND_TRIP);
 }
 
 // Every test here starts with openGlossary, whose two waits alone budget 90 s for the first paint
@@ -125,12 +130,15 @@ test.describe("REQ-1387 glossary curation", () => {
       .getByRole("textbox")
       .fill(EMPLOYEE_DEFINITION);
     await saveTerm(page);
-    await expect(list.getByText(RENAMED_EMPLOYEE, { exact: true })).toBeVisible();
+    await expect(list.getByText(RENAMED_EMPLOYEE, { exact: true })).toBeVisible(ROUND_TRIP);
 
     await page.reload();
     await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 60000 });
     await selectTerm(page, RENAMED_EMPLOYEE);
-    await expect(page.getByTestId("glossary-read-fields")).toContainText(EMPLOYEE_DEFINITION);
+    await expect(page.getByTestId("glossary-read-fields")).toContainText(
+      EMPLOYEE_DEFINITION,
+      ROUND_TRIP,
+    );
   });
 
   test("a concept takes a KIND_OF edge to a rooted term", async ({ page }) => {
@@ -161,7 +169,7 @@ test.describe("REQ-1387 glossary curation", () => {
     await page.getByTestId("glossary-add-save-btn").click();
 
     // Creation selects the new term; it is a concept, so it has no refs.
-    await expect(page.getByTestId("glossary-read-fields")).toContainText(abstractName);
+    await expect(page.getByTestId("glossary-read-fields")).toContainText(abstractName, ROUND_TRIP);
     await expect(page.getByTestId("glossary-detail").getByText("No physical refs.")).toBeVisible();
 
     // KIND_OF edge to the rooted "species" term, in the term's Edit form.
@@ -176,7 +184,7 @@ test.describe("REQ-1387 glossary curation", () => {
 
     // Read again: the edge's type is said as text.
     const edge = page.locator('[data-testid^="glossary-edge-out-"][data-testid$="-KIND_OF"]');
-    await expect(edge).toBeVisible();
+    await expect(edge).toBeVisible(ROUND_TRIP);
     await expect(edge).toContainText("Kind of");
     await expect(edge).toContainText(DERIVED_SPECIES);
 
@@ -197,7 +205,7 @@ test.describe("REQ-1387 glossary curation", () => {
     const incoming = page
       .locator('[data-testid^="glossary-edge-in-"][data-testid$="-KIND_OF"]')
       .filter({ hasText: abstractName });
-    await expect(incoming).toHaveCount(1);
+    await expect(incoming).toHaveCount(1, ROUND_TRIP);
   });
 
   test("an expert attaches to a term and shows in its detail", async ({ page }) => {
@@ -218,7 +226,7 @@ test.describe("REQ-1387 glossary curation", () => {
     await saveTerm(page);
 
     const expert = page.getByTestId("glossary-expert-jane.doe");
-    await expect(expert).toBeVisible();
+    await expect(expert).toBeVisible(ROUND_TRIP);
     await expect(expert).toContainText("jane.doe");
     await expect(expert).toContainText("Expert");
 
