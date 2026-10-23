@@ -149,6 +149,11 @@ class TranslatorExprContext:
                 if name in info[1].native_filter_columns:
                     return _col(f"_nf_{name}", info[0])
             return _col(name, info[0] if info else var)
+        if isinstance(obj, exp.Column) and obj.table and obj.name in t._map_vars:
+            # A map literal a WITH carries: its key is the column that WITH carries it in (#287).
+            if name not in t._map_vars[obj.name]:
+                return exp.Null()
+            return exp.column(f"{obj.name}.{name}", table=obj.table, quoted=True)
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)
@@ -163,6 +168,7 @@ class TranslatorExprContext:
             or var in t._all_rels_rel_vars
             or var in t._all_rels_node_vars
             or var in t._map_unwind_vars
+            or var in t._map_vars
         ):
             return False
         via_bound = t._rel_var_via.get(var)

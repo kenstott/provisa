@@ -222,6 +222,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._map_unwind_vars: set[str] = set()
         # Variables whose value is a MAP array (from collect({...}) or similar)
         self._map_array_vars: set[str] = set()
+        # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
+        # which m.key reads (#287)
+        self._map_vars: dict[str, set[str]] = {}
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
@@ -885,6 +888,30 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 text = re.sub(rf"\b{re.escape(var)}\.", f"{sql_alias}.", text)
         return text
 
+    def _carried_map_keys(self, expr_text: str, alias: str) -> list[exp.Expr]:
+        """A map literal the WITH carries as ``alias``: each key's own value as a column of its
+        own, ``"alias.key"``, which ``alias.key`` after the WITH reads -- the value as it is, not
+        its JSON-encoded copy in the map (#287)."""
+        from provisa.cypher.expr_parser import parse_expression
+        from provisa.gql.expr_ast import MapLiteral
+
+        literal = parse_expression(expr_text)
+        if not isinstance(literal, MapLiteral):
+            return []
+        self._map_vars[alias] = {key for key, _value in literal.entries}
+        return [
+            exp.alias_(self._lower_ast(value), f"{alias}.{key}", quoted=True)
+            for key, value in literal.entries
+        ]
+
+    def _lower_ast(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        from provisa.gql.expr_context import TranslatorExprContext
+        from provisa.gql.expr_visitor import ExprLowering
+
+        return (
+            ExprLowering(TranslatorExprContext(self)).lower(node).transform(_rewrite_cypher_fn_node)
+        )
+
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
         exprs: list[exp.Expr] = []
         for item in items:
@@ -896,6 +923,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     # A value an earlier WITH carries: one column of that WITH's rows.
                     carried = exp.column(expr_text, table=held_in, quoted=True)
                     exprs.append(exp.alias_(carried, alias or expr_text, quoted=True))
+                    # A map literal goes on with the columns its keys are read from (#287).
+                    keys = self._map_vars.get(expr_text)
+                    if keys is not None:
+                        self._map_vars[alias or expr_text] = keys
+                        exprs.extend(
+                            exp.alias_(
+                                exp.column(f"{expr_text}.{key}", table=held_in, quoted=True),
+                                f"{alias or expr_text}.{key}",
+                                quoted=True,
+                            )
+                            for key in sorted(keys)
+                        )
                     continue
                 tbl_col = exp.Column(
                     this=exp.Star(),
@@ -909,6 +948,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 parsed = self._parse_expr(expr_text)
                 if alias:
                     exprs.append(exp.alias_(parsed, alias))
+                    exprs.extend(self._carried_map_keys(expr_text, alias))
                 else:
                     exprs.append(parsed)
         return exprs
