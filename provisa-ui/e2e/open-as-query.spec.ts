@@ -124,7 +124,13 @@ test.describe("Open as query", () => {
     await page.locator(".graph-run-btn").click();
     const response = await (await asked).response();
     expect(response?.status(), "the Cypher pattern is answered").toBe(200);
-    const body = (await response?.json()) as { error?: unknown; rows?: unknown };
+    // The Cypher page asks for each statement's own result (results: "each"); the pattern is one.
+    const { results } = (await response?.json()) as {
+      results: { status: number; body: { error?: unknown; rows?: unknown } }[];
+    };
+    expect(results, "one statement, one result").toHaveLength(1);
+    const [{ status, body }] = results;
+    expect(status, "the statement is answered").toBe(200);
     expect(body.error).toBeUndefined();
     // The same graph: every term the view read, and every edge type it drew between them.
     const said = strings(body.rows);
