@@ -101,7 +101,9 @@ def find_source_files() -> list[Path]:
         if not rel:
             continue
         p = PROJECT_ROOT / rel
-        if set(Path(rel).parts) & EXCLUDE_DIRS or not p.is_file():
+        # A symlink is its target's path a second time: stamping through it reissued the
+        # target's canary on every commit, so only the target is stamped.
+        if set(Path(rel).parts) & EXCLUDE_DIRS or p.is_symlink() or not p.is_file():
             continue
         if p.suffix == ".py" or p.suffix in TS_EXTENSIONS:
             results.append(p)
