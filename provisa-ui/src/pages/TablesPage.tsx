@@ -1365,7 +1365,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               return (
                 <Group gap="sm" justify="flex-end" py="sm">
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.firstPage")}
                     onClick={() => setPage(0)}
                     disabled={page === 0}
@@ -1373,7 +1373,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     «
                   </ActionIcon>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.prevPage")}
                     onClick={() => setPage((p) => p - 1)}
                     disabled={page === 0}
@@ -1384,7 +1384,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     {translate("tablesPage.pageOf", { page: page + 1, totalPages })}
                   </Text>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.nextPage")}
                     onClick={() => setPage((p) => p + 1)}
                     disabled={page >= totalPages - 1}
@@ -1392,7 +1392,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     ›
                   </ActionIcon>
                   <ActionIcon
-                    variant="default"
+                    variant="subtle"
                     aria-label={translate("tablesPage.lastPage")}
                     onClick={() => setPage(totalPages - 1)}
                     disabled={page >= totalPages - 1}

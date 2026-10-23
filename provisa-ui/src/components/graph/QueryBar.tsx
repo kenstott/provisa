@@ -173,7 +173,7 @@ export function QueryBar({
       <Tip text={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")} named>
         <ActionIcon
           className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
-          variant={autoImpute ? "filled" : "subtle"}
+          variant={autoImpute ? "light" : "subtle"}
           aria-label={t(autoImpute ? "queryBar.autoImputeOn" : "queryBar.autoImputeOff")}
           aria-pressed={autoImpute}
           onClick={onToggleAutoImpute}

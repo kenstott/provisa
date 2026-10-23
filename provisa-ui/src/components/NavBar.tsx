@@ -278,7 +278,7 @@ export function NavBar() {
           {tourAvailable && (
             <Tip text={tourLabel} named>
               <ActionIcon
-                variant="default"
+                variant="subtle"
                 size="lg"
                 aria-label={tourLabel}
                 className="navbar-tour-btn"
@@ -295,7 +295,7 @@ export function NavBar() {
             <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
               <Menu.Target>
                 <ActionIcon
-                  variant="default"
+                  variant="subtle"
                   size="lg"
                   className="navbar-user-btn"
                   aria-label={displayName ?? email ?? t("navBar.userMenu")}
