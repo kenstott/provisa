@@ -303,3 +303,59 @@ def test_the_process_lands_traces_only_while_the_engine_reads_them(monkeypatch, 
     otel_setup.land_traces_natively(False)
     assert exports.current() == []
     processor.shutdown()
+
+
+def _vanishing(gone: set[str]) -> duckdb.DuckDBPyConnection:
+    """A connection whose ``vanish://`` filesystem lists the files named in ``gone`` but has
+    them no longer there when they are opened: compaction removed them between glob and read."""
+    from fsspec.implementations.memory import MemoryFileSystem
+
+    class Vanishing(MemoryFileSystem):
+        protocol = ("vanish",)
+        store: dict = {}
+        pseudo_dirs = [""]
+
+        def _open(self, path, mode="rb", *args, **kwargs):
+            if mode.startswith("r") and any(path.endswith(f"/{name}") for name in gone):
+                raise FileNotFoundError(path)
+            return super()._open(path, mode, *args, **kwargs)
+
+    con = duckdb.connect()
+    con.register_filesystem(Vanishing())
+    return con
+
+
+def test_defining_the_view_opens_no_batch_compaction_may_have_removed(tmp_path):
+    """The warm-up's CREATE VIEW once read every listed file to bind the columns, and a batch
+    compaction removed after the listing failed it. It binds from the schema file alone."""
+    local = str(tmp_path / "traces")
+    nt.ensure_schema_file(local)
+    _land(local, {"2026-10-23": 1})
+    [(day, [batch])] = _files(local).items()
+    con = _vanishing({batch})
+    for name in (nt.SCHEMA_FILE, f"{day}/{batch}"):
+        con.execute(f"COPY (SELECT * FROM read_parquet('{local}/{name}')) TO 'vanish://t/{name}'")
+    listed = sorted(
+        r[0] for r in con.execute("SELECT * FROM glob('vanish://t/**/*.parquet')").fetchall()
+    )
+    assert listed == [f"vanish://t/{day}/{batch}", f"vanish://t/{nt.SCHEMA_FILE}"]
+    every_file = (
+        "SELECT * FROM read_parquet('vanish://t/**/*.parquet', "
+        "union_by_name = true, hive_partitioning = false)"
+    )
+    with pytest.raises(duckdb.Error, match="FileNotFoundError"):
+        con.execute(f"CREATE VIEW bound_from_every_file AS {every_file}")
+    con.execute(f"CREATE VIEW traces AS {nt.traces_scan('vanish://t')}")
+    cols = [r[0] for r in con.execute("DESCRIBE traces").fetchall()]
+    assert cols == [c for c, _t, _k in OPS_TABLES["traces"]]
+
+
+def test_a_read_after_compaction_lists_the_folder_again(tmp_path):
+    """The view names a glob, not the files listed when it was defined: a read after compaction
+    finds the merged file and no removed batch."""
+    root = str(tmp_path / "traces")
+    con = _engine(root)
+    _land(root, {"2026-10-23": 3})
+    before = sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall())
+    assert nt.compact(root) == 3
+    assert sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall()) == before

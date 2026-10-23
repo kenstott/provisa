@@ -46,8 +46,9 @@ log = logging.getLogger(__name__)
 #: The size a compacted file is filled to.
 COMPACT_TARGET_BYTES = 64 * 1024 * 1024
 
-#: A zero-row file of the traces schema at the folder's root: the engine's view over the folder
-#: binds its columns from it while nothing has landed yet (DuckDB refuses a glob matching no file).
+#: A zero-row file of the traces schema at the folder's root, never removed: the engine's view
+#: over the folder binds its columns from it alone (traces_scan), and the folder's glob always
+#: matches it (DuckDB refuses a glob matching no file).
 SCHEMA_FILE = "_schema.parquet"
 
 _ARROW = {
@@ -68,9 +69,23 @@ def traces_dir() -> str:
 def traces_scan(root: str) -> str:
     """The DuckDB scan the engine's ``otel.signals.traces`` view reads: every Parquet file under
     ``root``, the schema file included. A file being written is a dot-named ``.tmp`` until it is
-    renamed into place, so the scan never reads one partly written."""
-    path = os.path.join(root, "**", "*.parquet").replace("'", "''")
-    return f"SELECT * FROM read_parquet('{path}', union_by_name = true, hive_partitioning = false)"
+    renamed into place, so the scan never reads one partly written.
+
+    The view binds its columns from the schema file alone, the first file named, so defining it
+    opens no batch: compaction removes the batches it merged, and a batch listed by a bind that
+    read every file (``union_by_name``) could be gone by the time it was opened. Every file is
+    written with ``TRACES_SCHEMA`` (``write_batch``, ``compact``), so none needs its columns
+    matched by name.
+
+    Known limitation: a query of the view lists the folder and then opens each file, so one
+    running while ``compact`` removes a batch it listed fails with DuckDB's "Cannot open file".
+    It touches only reads of the traces and is reported, never silent. Moving merged batches out
+    of the folder fails the same way (the listed path is gone either way); what closes it is a
+    batch kept in place, read alongside its merged copy, until no read can still hold its listing
+    (a grace longer than the request timeout), with the view reading each row once."""
+    schema = os.path.join(root, SCHEMA_FILE).replace("'", "''")
+    every = os.path.join(root, "**", "*.parquet").replace("'", "''")
+    return f"SELECT * FROM read_parquet(['{schema}', '{every}'], hive_partitioning = false)"
 
 
 def signal_views(root: str, transpile: Callable[[str], str]) -> dict[str, str]:
