@@ -265,6 +265,10 @@
       "port": {
         "label": "Port de l'API HTTP",
         "help": "Le port sur lequel l'API HTTP écoute. Redémarrage requis ; confirmation demandée car l'interface et chaque client doivent suivre un changement."
+      },
+      "public_url": {
+        "label": "Adresse publique",
+        "help": "L'adresse sous laquelle ce déploiement est connu, par exemple https://data.example.com. L'IRI de chaque sujet en SPARQL et dans les exports RDF commence par elle ; elle doit donc rester la même tant que ces IRI sont utilisées. Si elle n'est pas définie, une requête qui renvoie l'IRI d'un sujet est refusée."
       }
     },
     "tls": {

@@ -265,6 +265,10 @@
       "port": {
         "label": "HTTP API 端口",
         "help": "HTTP API 监听的端口。需要重启；因 UI 和所有客户端都必须随之调整，保存前需确认。"
+      },
+      "public_url": {
+        "label": "公开地址",
+        "help": "此部署对外使用的地址，例如 https://data.example.com。SPARQL 和 RDF 导出中每个主体的 IRI 都以它开头，因此在这些 IRI 被使用期间应保持不变。未设置时，返回主体 IRI 的查询会被拒绝。"
       }
     },
     "tls": {

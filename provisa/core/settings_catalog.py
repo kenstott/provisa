@@ -701,6 +701,20 @@ DECLARED: list[Setting] = [
         default="localhost",
     ),
     Setting(
+        key="server.public_url",
+        card="network",
+        type="str",
+        effect="live",  # read when a graph query names a subject by its IRI
+        # REQ-2135: the base of every subject IRI ({public URL}/id/{domain}/{table}/{key}); an IRI
+        # must not change with how a client reaches the server, so it is not derived from the
+        # hostname. Unset, a query whose answer holds a subject IRI is refused, naming it.
+        req="REQ-2135",
+        env="PROVISA_PUBLIC_URL",
+        config_path=("server", "public_url"),
+        default=None,
+        nullable=True,
+    ),
+    Setting(
         key="server.grpc_port",
         card="network",
         type="int",

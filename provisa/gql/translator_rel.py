@@ -21,7 +21,14 @@ from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.ir import MatchClause, NodePattern, PathPattern, PathFunction, RelPattern
+from provisa.gql.ir import (
+    MatchClause,
+    NodePattern,
+    PathFunction,
+    PathPattern,
+    RelPattern,
+    TriplePattern,
+)
 from provisa.gql.label_map import NodeMapping, RelationshipMapping
 from provisa.gql.translator_helpers import (
     _is_bwd_for_candidate,
@@ -96,6 +103,8 @@ class _RelJoinMixin:  # mixin for _Translator
         def _translate_path_expr(
             self, clause: _MatchClause, nodes: list, rel: RelPattern, joined: set[str]
         ) -> list[dict]: ...
+
+        def _translate_triple(self, clause: _MatchClause, triple: TriplePattern) -> list[dict]: ...
 
     def _node_alias(self, node, nm: "NodeMapping", *, as_source: bool) -> str:
         """REQ-1586: the SQL alias for a pattern node, unique within the query.
@@ -605,6 +614,13 @@ class _RelJoinMixin:  # mixin for _Translator
         tgt_nm: NodeMapping | None = None
 
         for clause in match_clauses:
+            if isinstance(clause.pattern, TriplePattern):
+                if from_expr is None:
+                    raise CypherTranslateError(
+                        "A variable predicate follows the node pattern that binds its subject"
+                    )
+                joins.extend(self._translate_triple(clause, clause.pattern))
+                continue
             if isinstance(clause.pattern, PathFunction):
                 pf_from, pf_joins = self._translate_path_function(clause)
                 if from_expr is None:

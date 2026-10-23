@@ -227,6 +227,39 @@ class SubqueryExpr(CypherExpr):
     body: CypherAST
 
 
+# --- RDF values (REQ-2135) ----------------------------------------------- #
+
+
+@dataclass
+class IriConst(CypherExpr):
+    """An absolute IRI written in the query (``<http://…>``, ``skos:Concept``). It is a value of
+    the answer only; one that names a subject is parsed back to its table and keys by the front
+    end (:func:`provisa.gql.iri.parse_subject_iri`) before the back end sees it."""
+
+    iri: str
+
+
+@dataclass
+class TypedLiteral(CypherExpr):
+    """A literal with a datatype IRI (``"42"^^xsd:integer``) or a language tag (``"chat"@fr``),
+    lowered to the SQL value of its datatype."""
+
+    lexical: str
+    datatype: str | None = None
+    lang: str | None = None
+
+
+@dataclass
+class Term(CypherExpr):
+    """``value`` as an RDF term of the answer: a node variable as its subject (its table and key
+    values, the IRI built outside SQL), an IriConst as that IRI, anything else as a literal with
+    ``datatype`` or ``lang`` when given. Lowered to one JSON value (:mod:`provisa.gql.terms`)."""
+
+    value: CypherExpr
+    datatype: str | None = None
+    lang: str | None = None
+
+
 AnyExpr = Union[
     Literal,
     Variable,
@@ -248,6 +281,9 @@ AnyExpr = Union[
     Quantifier,
     Reduce,
     SubqueryExpr,
+    IriConst,
+    TypedLiteral,
+    Term,
 ]
 
 
