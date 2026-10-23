@@ -741,18 +741,19 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         None,
         None,
     ),
-    # REQ-2136: a table's sensitive columns, so the product graph reads them in its one query.
+    # REQ-2136: a column's sensitivity (its row in sensitive_coverage, when it is sensitive), so the
+    # product graph reads it, and filters by it, in its one query.
     (
-        "meta:registered_tables:sensitive_coverage",
+        "meta:table_columns:sensitive_coverage",
         _ADMIN,
-        "registered_tables",
-        "id",
-        "table_id",
+        "table_columns",
+        "column_key",
+        "column_key",
         "one-to-many",
         _ADMIN,
         "sensitive_coverage",
         None,
-        "sensitiveColumns",
+        "sensitivity",
     ),
     (
         "meta:registered_tables:profile_results",
