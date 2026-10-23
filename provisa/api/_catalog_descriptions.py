@@ -283,6 +283,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "graphql_alias": "Name the edge is exposed under in GraphQL, when it differs",
         "disable_cypher": "Whether the edge is hidden from Cypher traversal",
         "hide_target_meta": "Whether the target's metadata is withheld from consumers of the edge",
+        "same_entity": "Whether the rows the edge joins are the same entity, in two tables one term grounds",
         "source_json_key": "Key inside a JSON source column that carries the join value",
         "parameters": "Target parameters the edge feeds, each from a source column",
         "via_table_id": "Junction table the edge traverses through, for a junction-backed edge",

@@ -336,6 +336,9 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- REQ-1132: opt this edge OUT of discovery — its target table's metadata is not exposed to a role
     -- that reaches the target only via this relationship (a sensitive target behind an innocuous edge).
     hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2141: the rows this edge joins are the same entity (both tables grounded in one class
+    -- term, joined one-to-one on a key of each; repositories/identity.py holds the rule).
+    same_entity      BOOLEAN NOT NULL DEFAULT FALSE,
     -- The Cypher type name a steward pinned on this edge; also what the 'fixed' junction
     -- nomination below reads, which is why it is declared here rather than added by the
     -- ALTER block that follows.

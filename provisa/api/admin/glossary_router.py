@@ -18,6 +18,7 @@ queues a metadata publish after every mutation because the term graph exports.
 
 # Requirements: REQ-1387, REQ-1590, REQ-1591, REQ-2130
 
+from provisa.core.repositories.identity import TableInIdentity
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Query, Request
@@ -812,7 +813,17 @@ async def unground_term_table(
 ) -> None:
     """Gate and unground, shared by the route and the MCP tool."""
     await _require_table_groundable(conn, term_id, table_id, request)
-    if not await glossary_repo.unground_table(conn, term_id, table_id):
+    try:
+        ungrounded = await glossary_repo.unground_table(conn, term_id, table_id)
+    except TableInIdentity as exc:
+        raise ApiError(
+            409,
+            "glossary.table_in_identity",
+            str(exc),
+            table=exc.table,
+            relationship=exc.relationship,
+        ) from exc
+    if not ungrounded:
         raise ApiError(
             404, "glossary.table_ref_not_found", f"term {term_id} does not ground table {table_id}"
         )

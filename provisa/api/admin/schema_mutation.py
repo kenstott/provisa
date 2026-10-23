@@ -311,6 +311,30 @@ async def _relationship_id_refusal(
     return None
 
 
+async def _same_entity_refusal(
+    conn: "Connection", input: RelationshipInput, source: dict, target: dict | None
+) -> "MutationResult | None":
+    """REQ-2141: a relationship marked same entity, refused by name when it does not join two
+    tables one class term grounds, one-to-one on a key of each (repositories/identity.py)."""
+    from provisa.core.repositories.identity import same_entity_refusal
+
+    refused = await same_entity_refusal(
+        conn,
+        relationship=input.id,
+        source_table_id=source["id"],
+        target_table_id=None if target is None else target["id"],
+        source_column=input.source_column,
+        target_column=input.target_column or "",
+        cardinality=input.cardinality,
+        junction=bool(input.via_table) or bool(input.target_function_name),
+    )
+    if refused is None:
+        return None
+    return MutationResult(
+        success=False, message=refused.message, code=refused.code, params=refused.params
+    )
+
+
 async def _relationship_alias_refusal(
     conn: "Connection", input: RelationshipInput, source_table_id: int
 ) -> "MutationResult | None":
@@ -874,6 +898,7 @@ async def save_relationship(
         alias=input.alias or None,
         graphql_alias=getattr(input, "graphql_alias", None) or None,
         disable_cypher=getattr(input, "disable_cypher", False),
+        same_entity=input.same_entity,  # REQ-2141
         # REQ-1586: the junction declaration travels with the edge on save.
         via_table=input.via_table,
         via_source_column=input.via_source_column,
@@ -895,6 +920,9 @@ async def save_relationship(
         if _refusal is None:
             assert _src_row is not None  # _relationship_tables refuses an unresolved source
             _refusal = await _relationship_alias_refusal(_conn, input, _src_row["id"])
+        if _refusal is None and input.same_entity:
+            assert _src_row is not None
+            _refusal = await _same_entity_refusal(_conn, input, _src_row, _tgt_row)
         if _refusal is not None:
             return _refusal
         try:

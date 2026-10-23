@@ -627,6 +627,24 @@ _META_TABLE_VIEWS: dict[str, str] = {
             SELECT ce.b
             FROM grounded g
             JOIN conducting_edges ce ON ce.a = g.id
+        ),
+        -- REQ-2141: a class term grounded in several tables is a curation gap until same-entity
+        -- relationships join them all -- every one reached from one of them (identity.py's
+        -- identity_gap_ids is the same rule).
+        same_entity_edges AS (
+            SELECT r.source_table_id AS a, r.target_table_id AS b
+            FROM relationships r WHERE r.same_entity
+            UNION ALL
+            SELECT r.target_table_id, r.source_table_id
+            FROM relationships r WHERE r.same_entity
+        ),
+        identity_reach (term_id, table_id) AS (
+            SELECT term_id, MIN(table_id) FROM glossary_term_table_refs GROUP BY term_id
+            UNION
+            SELECT ir.term_id, se.b
+            FROM identity_reach ir
+            JOIN same_entity_edges se ON se.a = ir.table_id
+            JOIN glossary_term_table_refs gt ON gt.term_id = ir.term_id AND gt.table_id = se.b
         )
         SELECT t.id, t.name, t.definition, t.is_abstract, t.deprecated, t.retired,
                t.export_excluded,
@@ -639,6 +657,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
                     THEN TRUE ELSE FALSE END AS live,
                t.tenant_id,
                CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded,
+               CASE WHEN (SELECT COUNT(*) FROM glossary_term_table_refs r WHERE r.term_id = t.id)
+                         > (SELECT COUNT(*) FROM identity_reach ir WHERE ir.term_id = t.id)
+                    THEN TRUE ELSE FALSE END AS identity_gap,
                (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = t.id) AS term_domains
         FROM glossary_terms t
     """,
