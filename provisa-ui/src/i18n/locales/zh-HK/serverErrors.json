@@ -662,6 +662,34 @@
       "also_term_needs_column": "改為給詞彙加標籤需要指定一個欄位。",
       "inherited_from_term": "此欄位是 PII，因為它表示 {{term}}。請取消該含義的標記，或者如果此欄位表示其他含義，請移動它。",
       "move_loses": "此次移動會使欄位失去標籤，之後這些欄位將不再帶有它們。請確認失去每個標籤，或將標籤帶到欄位移入的詞彙上。"
+    },
+    "data_product": {
+      "status": {
+        "published": "數據產品 {{data_product}} 已發佈。",
+        "deprecated": "數據產品 {{data_product}} 已標記為棄用。",
+        "retired": "數據產品 {{data_product}} 已停用。",
+        "restored": "數據產品 {{data_product}} 已還原。",
+        "reason_required": "需要填寫原因：說明為何棄用或停用此數據產品。",
+        "not_found": "找不到數據產品 {{data_product}}。",
+        "not_draft": "只有草稿狀態的數據產品可以發佈；此產品為 {{status}}。",
+        "not_live": "只有已上線的數據產品可以棄用，只有已上線或已棄用的可以停用；此產品為 {{status}}。",
+        "not_restorable": "只有已棄用或已停用的數據產品可以還原；此產品為 {{status}}。",
+        "retire_on_past": "計劃停用日期 {{retire_on}} 已過。請選擇今天或之後的日期。",
+        "successor_required": "此數據產品有 {{members}} 個成員；停用後它們會轉給繼任者。請選擇一個。",
+        "successor_is_self": "數據產品不能是自己的繼任者。",
+        "successor_retired": "繼任者「{{successor}}」已停用。請選擇一個正在使用的數據產品。",
+        "successor_other_domain": "繼任者「{{successor}}」屬於網域 {{domain}}。產品的成員與其共用同一網域，因此請選擇同一網域中的繼任者。"
+      },
+      "finding": {
+        "no_members": "沒有任何表格、檢視或指令屬於此數據產品。",
+        "member_deprecated": "成員表格 {{table}} 已棄用。",
+        "no_owner": "沒有擁有者角色對此數據產品負責。",
+        "no_support_contact": "此數據產品沒有支援聯絡人，而已設定的匯出目標要求提供。",
+        "retirement_blocked": "此數據產品原定於 {{retire_on}} 停用，但仍有成員。請指定一個繼任者接收這些成員後再停用。",
+        "domain_steward_unset": "網域 {{domain}} 沒有數據管家。",
+        "no_description": "此數據產品既未說明用途，也未說明使用方式。",
+        "successor_retired": "接收此產品成員的數據產品「{{successor}}」亦已停用。"
+      }
     }
   }
 }

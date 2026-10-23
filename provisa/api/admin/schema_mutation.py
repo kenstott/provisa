@@ -391,6 +391,48 @@ async def _relationship_alias_refusal(
     )
 
 
+async def _change_product_status(
+    info: StrawberryInfo, product_id: str, done: str, change: Any
+) -> MutationResult:  # REQ-1634
+    """One status action on a data product, in one transaction, by the product's domain's writer;
+    a refusal names its code (data_product.status.<code>) and writes nothing."""
+    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability(info, "data_product_rw")
+    identity = getattr(info.context["request"].state, "identity", None)
+    user_id = getattr(identity, "user_id", None)
+    by = None if user_id is None or user_id == "anonymous" else str(user_id)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        conn = cast("Connection", conn)
+        stored = await data_product_repo.get(conn, product_id)
+        if stored is None:
+            return MutationResult(
+                success=False,
+                message=f"Data product {product_id!r} not found",
+                code="schema.data_product_not_found",
+                params={"data_product": product_id},
+            )
+        require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
+        try:
+            async with conn.transaction():
+                await change(conn, by)
+        except data_product_repo.StatusRefused as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code=f"data_product.status.{refused.code}",
+                params={"data_product": product_id, **refused.params},
+            )
+    return MutationResult(
+        success=True,
+        message=f"Data product {product_id!r} {done}",
+        code=f"data_product.status.{done}",
+        params={"data_product": product_id},
+    )
+
+
 async def _save_data_product(
     info: StrawberryInfo, input: DataProductInput, *, creating: bool
 ) -> MutationResult:  # REQ-1634
@@ -446,7 +488,17 @@ async def _save_data_product(
             limitations=input.limitations,
             usage=input.usage,
             version=input.version,
-            status=input.status,
+            # REQ-1634 STATUS: the lifecycle changes only by its actions; an edit keeps it.
+            **(
+                {
+                    "status": stored["status"],
+                    "status_reason": stored["status_reason"],
+                    "retire_on": stored["retire_on"],
+                    "successor": stored["successor_id"],
+                }
+                if stored is not None
+                else {}
+            ),
             sla=input.sla,
             support=input.support,
             # Absent or null is "no custom properties" (DataProductInput says why).
@@ -3011,6 +3063,54 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Data product {id!r} not found",
             code="schema.data_product_not_found",
             params={"data_product": id},
+        )
+
+    # REQ-1634 STATUS: a data product's lifecycle, one mutation per action.
+
+    @strawberry.mutation
+    async def publish_data_product(self, info: StrawberryInfo, id: str) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info, id, "published", lambda conn, by: data_product_repo.publish(conn, id, by=by)
+        )
+
+    @strawberry.mutation
+    async def deprecate_data_product(
+        self, info: StrawberryInfo, id: str, reason: str, retire_on: date | None = None
+    ) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info,
+            id,
+            "deprecated",
+            lambda conn, by: data_product_repo.deprecate(
+                conn, id, reason=reason, retire_on=retire_on, by=by, today=date.today()
+            ),
+        )
+
+    @strawberry.mutation
+    async def retire_data_product(
+        self, info: StrawberryInfo, id: str, reason: str, successor: str | None = None
+    ) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info,
+            id,
+            "retired",
+            lambda conn, by: data_product_repo.retire(
+                conn, id, reason=reason, successor=successor, by=by
+            ),
+        )
+
+    @strawberry.mutation
+    async def restore_data_product(self, info: StrawberryInfo, id: str) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info, id, "restored", lambda conn, by: data_product_repo.restore(conn, id, by=by)
         )
 
     @strawberry.mutation
