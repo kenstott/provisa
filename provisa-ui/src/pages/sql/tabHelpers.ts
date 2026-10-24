@@ -11,9 +11,10 @@
 import { SQL_QUERY_KEY, NL_PROMPT_KEY, TABS_KEY, tabSqlKey, tabNlKey } from "./types";
 import type { SqlTab } from "./types";
 import { getStored, setStored } from "../../lib/browserStorage";
+import { uuid } from "../../lib/uuid";
 
 export function newTabId(): string {
-  return crypto?.randomUUID?.() ?? `tab-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  return uuid();
 }
 
 export function emptyTab(id: string, title: string, sqlText = "", nlText = ""): SqlTab {
