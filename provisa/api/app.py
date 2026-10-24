@@ -2153,6 +2153,22 @@ async def _region_lane_of(org_id: str, env: str):
     return region_lane(org_id, regions, stores)
 
 
+async def _sandbox_store(org_id: str, env: str, storage_url: str | None) -> str:
+    """REQ-2006, REQ-2068: the store a demo sandbox's or template's engine lands in: the file in
+    its folder (REQ-1992), or on the regions sandbox tier the store its region names (its own
+    schemas in that region's PostgreSQL). Asked once its model is loaded: a template's first build
+    loads the model that names its region's store."""
+    from provisa.api.demo_region_seed import regional
+    from provisa.federation.engine import embedded_store_dsn
+
+    if not regional():
+        return embedded_store_dsn(org_id)
+    if storage_url is not None:
+        return storage_url
+    bound = await _region_lane_of(org_id, env)
+    return embedded_store_dsn(org_id) if bound is None else bound.materialize_url
+
+
 async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> None:
     """REQ-1922: once the org's model is loaded, its state and record handles are bound to the
     stores the model names for this node's region (a no-op with no platform regions)."""
@@ -2476,22 +2492,15 @@ async def _build_org_runtime(
             # orgs run on: the isolated-org seam (native_backend._attach_registered) lets an org
             # that owns its runtime run a native kind. This process is the only one that opens
             # the file (sandbox_tier.require_this_tier, above).
-            from provisa.federation.engine import build_engine, embedded_store_dsn
+            from provisa.federation.engine import build_engine
             from provisa.federation.runtime import EngineRuntime
 
             from provisa.core import settings_registry
 
             rt.isolated_engine = True
             rt.federation_engine = EngineRuntime(build_engine("duckdb"), state)
-            # REQ-2068: on the regions sandbox tier the org's region names its store (its own
-            # schemas in that region's PostgreSQL, the region lane's ``storage_url``).
-            from provisa.api.demo_region_seed import regional
-
-            rt.federation_engine.engine.pin_materialize_store(
-                storage_url
-                if regional() and storage_url is not None
-                else embedded_store_dsn(org_id)
-            )
+            # Its store is pinned once its model is loaded (_sandbox_store, below): the engine
+            # attaches it at its first landing, which the model's load does not make.
             rt.federation_engine.engine.memory_limit = int(
                 settings_registry.value("sandbox.memory_limit")
             )
@@ -2706,6 +2715,10 @@ async def _build_org_runtime(
         from provisa.api.model_reload import prune_region_state
 
         await prune_region_state(rt)  # REQ-1922
+        if is_sandbox_tier_org(org_id):
+            rt.federation_engine.engine.pin_materialize_store(
+                await _sandbox_store(org_id, env, storage_url)
+            )
 
         # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
         # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
