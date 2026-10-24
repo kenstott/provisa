@@ -587,6 +587,23 @@ async def test_a_ttl_outrun_asks_for_a_rebuild_and_waits_for_it(wiring, plane):
 
 
 @pytest.mark.asyncio
+async def test_a_read_of_a_table_with_a_ttl_of_0_is_answered_by_the_build_it_waited_for(
+    wiring, plane
+):
+    """REQ-2003: a cache_ttl of 0 keeps no copy current past its landing, so a replica is stale
+    the moment it lands. A read that asked for a build is answered by the landing it waited for,
+    not left to poll until its deadline for a copy that can never be current."""
+    pets = _table("pets-db", "pets", cache_ttl=0)
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    from provisa.core import request_deadline
+
+    with request_deadline.within(5.0):
+        assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
+        assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]  # each read, its own
+    assert wiring.built == [_key(pets), _key(pets)]
+
+
+@pytest.mark.asyncio
 async def test_a_replica_built_in_another_store_is_one_never_built_here(wiring, plane):
     """REQ-1730: the record is per table, not per engine. A deployment moved to another engine
     or store finds the old record and no table: the read asks for a build in this store."""
