@@ -495,6 +495,13 @@ def rebind_to_live_identities(
             entity.guid = live_guid
     if not guid_map:
         return 0
+    remap_references(entities, guid_map)
+    return len(guid_map)
+
+
+def remap_references(entities: list[AtlasEntity], guid_map: dict[str, str]) -> None:
+    """Point every reference to a guid in ``guid_map`` (containments, lineage inputs/outputs)
+    at the guid it maps to."""
     for entity in entities:
         for value in entity.relationships.values():
             # A SET-cardinality end (e.g. a data product's "members") carries a list of refs
@@ -507,7 +514,6 @@ def rebind_to_live_identities(
             for ref in entity.attributes.get(key) or []:
                 if isinstance(ref, dict) and ref.get("guid") in guid_map:
                     ref["guid"] = guid_map[ref["guid"]]
-    return len(guid_map)
 
 
 def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-1388/1389
@@ -939,16 +945,19 @@ class AtlasExport(MetadataExport):  # REQ-1069
     entitydef_path = "/api/atlas/v2/types/entitydef/name"
     relationshipdef_path = "/api/atlas/v2/types/relationshipdef/name"
     unique_attr_path = "/api/atlas/v2/entity/uniqueAttribute/type"
+    entity_guid_path = "/api/atlas/v2/entity/guid"
+    search_basic_path = "/api/atlas/v2/search/basic"
     health_path = "/api/atlas/v2/types/typedefs/headers"
     # REQ-1387: the native glossary routes. Attributes for the same reason as the entity
     # routes above — an Atlas-shaped vendor with a different mount is a subclass, not a fork.
     glossary_path = "/api/atlas/v2/glossary"
     glossary_term_path = "/api/atlas/v2/glossary/term"
     # REQ-1389: reconcile provisa_* classifications after the bulk upsert — Atlas applies
-    # classifications only on CREATE, so updates need the read-merge pass. Atlan's
-    # Atlas-shaped API has not been verified for the per-guid classification routes, so the
-    # subclass keeps this off until it is.
+    # classifications only on CREATE, so updates need the read-merge pass.
     classification_merge = True
+    # REQ-1389: whether the basic-search index is read to rebind an entity no stored binding
+    # names. The stored binding is the identity of record either way.
+    live_search = True
 
     def _url(self, path: str) -> str:
         return f"{self._config.endpoint.rstrip('/')}{path}"
@@ -1114,7 +1123,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 if to_add:
                     (
                         await client.post(
-                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classifications"),
+                            self._url(f"{self.entity_guid_path}/{guid}/classifications"),
                             json=to_add,
                             headers=headers,
                         )
@@ -1122,14 +1131,14 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 if to_update:
                     (
                         await client.put(
-                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classifications"),
+                            self._url(f"{self.entity_guid_path}/{guid}/classifications"),
                             json=to_update,
                             headers=headers,
                         )
                     ).raise_for_status()
                 for name in to_delete:
                     resp = await client.delete(
-                        self._url(f"/api/atlas/v2/entity/guid/{guid}/classification/{name}"),
+                        self._url(f"{self.entity_guid_path}/{guid}/classification/{name}"),
                         headers=headers,
                     )
                     if resp.status_code != 404:
@@ -1210,7 +1219,8 @@ class AtlasExport(MetadataExport):  # REQ-1069
         glossary_qn: str,
         result: PublishResult,
     ) -> str | None:
-        """Create or update one term inside the Provisa glossary; returns its guid.
+        """Create or update one term inside the Provisa glossary; returns its guid, or None when
+        it was refused (reported).
 
         The stored binding is preferred over any name lookup, so a term renamed in Provisa
         UPDATES the same catalog term in place instead of duplicating it. An update is
@@ -1230,6 +1240,19 @@ class AtlasExport(MetadataExport):  # REQ-1069
             fetch = await client.get(
                 self._url(f"{self.glossary_term_path}/{guid}"), headers=headers
             )
+            if fetch.status_code != 404 and fetch.status_code >= 400:
+                # Unreadable is not gone: a create would duplicate the term, an update sent
+                # blind would replace the steward's enrichment. Refused, by name.
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=(
+                            f"term {term.name!r}: not written: the live read its steward "
+                            f"enrichment is kept from failed (HTTP {fetch.status_code})"
+                        ),
+                    )
+                )
+                return None
             if fetch.status_code < 400:
                 live = fetch.json()
                 body = {
@@ -1515,7 +1538,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
-            await self._canonicalize_identity(client, headers, entities)
+            entities = await self._canonicalize_identity(client, headers, entities, result)
+            if not entities:
+                # Every entity was refused, each reported by name; Atlas rejects an empty bulk.
+                return result
             if defs:
                 try:
                     await self._register_classifications(client, defs, headers)
@@ -1587,6 +1613,8 @@ class AtlasExport(MetadataExport):  # REQ-1069
         canonical identity the rebind keys on.
         """
         index: dict[str, tuple[str, str]] = {}
+        if not self.live_search:
+            return index
         for type_name in (
             PROVISA_SOURCE_TYPE,
             PROVISA_TABLE_TYPE,
@@ -1596,7 +1624,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             offset = 0
             while True:
                 response = await client.post(
-                    self._url("/api/atlas/v2/search/basic"),
+                    self._url(self.search_basic_path),
                     json={
                         "typeName": type_name,
                         "excludeDeletedEntities": True,
@@ -1621,8 +1649,12 @@ class AtlasExport(MetadataExport):  # REQ-1069
         return index
 
     async def _canonicalize_identity(
-        self, client: httpx.AsyncClient, headers: dict[str, str], entities: list[AtlasEntity]
-    ) -> None:
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        entities: list[AtlasEntity],
+        result: PublishResult,
+    ) -> list[AtlasEntity]:
         """URN-canonical upsert (REQ-1389). Two duties, both keyed on the Provisa URN:
 
         1. An entity Provisa published before under a different physical qualifiedName
@@ -1631,6 +1663,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
            (empirically verified — a steward's userDescription was wiped by an update),
            so every outgoing update starts from the LIVE attributes and overlays only
            what Provisa authors. Fields Provisa never populates survive verbatim.
+
+        The entities to send. One whose live read failed is left out, reported by name: sent
+        with Provisa's attributes alone it would wipe the steward's. The rest are sent.
 
         Atlan overrides to a no-op until its search route is verified."""
         live = await self._live_identity_index(client, headers)
@@ -1641,22 +1676,43 @@ class AtlasExport(MetadataExport):  # REQ-1069
         for uri, (vendor_ref, physical_key) in self._bindings.items():
             live[uri] = (vendor_ref, physical_key)
         if not live:
-            return
+            return entities
         rebind_to_live_identities(entities, live)
+        sent: list[AtlasEntity] = []
+        refused: dict[str, str] = {}  # a refused entity's outgoing guid -> its live guid
         for entity in entities:
             uri = entity.attributes.get("provisaUri")
             if not uri or uri not in live:
+                sent.append(entity)
                 continue
             guid = live[uri][0]
             fetch = await client.get(
-                self._url(f"/api/atlas/v2/entity/guid/{guid}"),
+                self._url(f"{self.entity_guid_path}/{guid}"),
                 params={"ignoreRelationships": "true"},
                 headers=headers,
             )
+            if fetch.status_code == 404:
+                sent.append(entity)  # gone from the catalog: nothing live to preserve
+                continue
             if fetch.status_code >= 400:
-                continue  # a create will happen instead; nothing live to preserve
+                result.errors.append(
+                    AssetError(
+                        asset=entity.asset or AssetRefStub(uri),
+                        message=(
+                            f"{entity.kind} {entity.attributes['qualifiedName']}: not written: "
+                            "the live read its steward attributes are kept from failed "
+                            f"(HTTP {fetch.status_code})"
+                        ),
+                    )
+                )
+                # It stands in the catalog: what the bulk still sends refers to it there.
+                refused[entity.guid] = guid
+                continue
             live_attributes = fetch.json().get("entity", {}).get("attributes") or {}
             entity.attributes = {**live_attributes, **entity.attributes}
+            sent.append(entity)
+        remap_references(sent, refused)
+        return sent
 
     async def health(self) -> None:
         # A freshly-started Atlas can reset a connection moments after its own Docker

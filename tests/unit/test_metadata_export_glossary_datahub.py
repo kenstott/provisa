@@ -183,8 +183,9 @@ def test_edges_map_onto_the_native_related_terms_fields():
     assert related[glossary_term_urn(ORG, "client")]["relatedTerms"] == [
         glossary_term_urn(ORG, "customer")
     ]
-    # No aspect for a term with no edges pointing at it in a mapped direction.
-    assert glossary_term_urn(ORG, "party") not in related
+    # A term with no edges in a mapped direction is proposed with none, so a relation Provisa
+    # withdrew leaves (REQ-1389); the publish keeps a person's relations outside the glossary.
+    assert related[glossary_term_urn(ORG, "party")] == {}
 
 
 # --- Ownership boundaries -------------------------------------------------------------------
@@ -414,3 +415,77 @@ def test_a_curators_deprecation_carries_its_reason_and_retirement_date():
     ]
     assert aspect["note"] == "Use net margin."
     assert aspect["decommissionTime"] == 1801353600000
+
+
+def _related_transport(monkeypatch, live_by_urn: dict, failing: frozenset = frozenset()):
+    """GMS with each term's live ``glossaryRelatedTerms``; a urn in ``failing`` answers 500."""
+    from urllib.parse import quote
+
+    posted: list[dict] = []
+
+    async def _get(self, url, headers=None):
+        request = httpx.Request("GET", url)
+        for urn in failing:
+            if url.endswith(
+                f"/aspects/{quote(urn, safe='')}?aspect=glossaryRelatedTerms&version=0"
+            ):
+                return httpx.Response(500, request=request)
+        for urn, live in live_by_urn.items():
+            if url.endswith(
+                f"/aspects/{quote(urn, safe='')}?aspect=glossaryRelatedTerms&version=0"
+            ):
+                body = {"aspect": {"com.linkedin.glossary.GlossaryRelatedTerms": live}}
+                return httpx.Response(200, json=body, request=request)
+        return httpx.Response(404, request=request)
+
+    async def _post(self, url, json=None, headers=None):
+        posted.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    return posted
+
+
+def _posted_related(posted: list[dict], urn: str) -> dict | None:
+    found = [
+        p["proposal"]
+        for p in posted
+        if p["proposal"]["aspectName"] == "glossaryRelatedTerms"
+        and p["proposal"]["entityUrn"] == urn
+    ]
+    return json.loads(found[0]["aspect"]["value"]) if found else None
+
+
+async def test_a_relation_a_person_made_outside_the_glossary_stands_and_a_stale_one_leaves(
+    monkeypatch,
+):
+    """REQ-1389: relations among the Provisa terms track the snapshot; a person's relation to a
+    term outside the Provisa glossary is theirs."""
+    customer = glossary_term_urn(ORG, "customer")
+    foreign = "urn:li:glossaryTerm:corporate.Party"
+    live = {"relatedTerms": [foreign, glossary_term_urn(ORG, "stale")]}
+    posted = _related_transport(monkeypatch, {customer: live})
+    snapshot = _snapshot(
+        [_term(1, "customer"), _term(2, "client")],
+        [GlossaryTermEdge(from_term_id=1, to_term_id=2, rel_type="SYNONYM_OF")],
+    )
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    assert _posted_related(posted, customer) == {
+        "relatedTerms": [foreign, glossary_term_urn(ORG, "client")]
+    }
+
+
+async def test_a_term_whose_related_terms_cannot_be_read_is_not_written(monkeypatch):
+    customer = glossary_term_urn(ORG, "customer")
+    posted = _related_transport(monkeypatch, {}, failing=frozenset({customer}))
+    snapshot = _snapshot(
+        [_term(1, "customer"), _term(2, "client")],
+        [GlossaryTermEdge(from_term_id=1, to_term_id=2, rel_type="SYNONYM_OF")],
+    )
+    result = await _export().publish(snapshot)
+    assert _posted_related(posted, customer) is None
+    assert _posted_related(posted, glossary_term_urn(ORG, "client")) is not None
+    refused = [e for e in result.errors if "glossaryRelatedTerms: not written" in e.message]
+    assert len(refused) == 1

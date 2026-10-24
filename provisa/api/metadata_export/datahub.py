@@ -303,14 +303,17 @@ def _schema_metadata(
 
 
 def _ownership(steward_id: str) -> dict[str, Any]:
+    """The owner Provisa authors, attributed to Provisa's actor so a read-merge tells it from the
+    owners people add in DataHub (REQ-1389)."""
     return {
         "owners": [
             {
                 "owner": f"urn:li:corpuser:{steward_id}",
                 "type": "DATAOWNER",
+                "attribution": {"time": 0, "actor": PROVISA_ACTOR},
             }
         ],
-        "lastModified": {"time": 0, "actor": "urn:li:corpuser:provisa"},
+        "lastModified": {"time": 0, "actor": PROVISA_ACTOR},
     }
 
 
@@ -508,17 +511,18 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
                     aspect=deprecation,
                 )
             )
-        if term.term_id in related:
-            proposals.append(
-                AspectProposal(
-                    asset=AssetRefStub(term.semantic_uri),
-                    kind="glossary_edges",
-                    entity_type="glossaryTerm",
-                    urn=urn,
-                    aspect_name="glossaryRelatedTerms",
-                    aspect=related[term.term_id],
-                )
+        # REQ-1389: proposed for every term, so an edge Provisa withdrew leaves; ``publish``
+        # keeps the relations a person made to terms outside the Provisa glossary.
+        proposals.append(
+            AspectProposal(
+                asset=AssetRefStub(term.semantic_uri),
+                kind="glossary_edges",
+                entity_type="glossaryTerm",
+                urn=urn,
+                aspect_name="glossaryRelatedTerms",
+                aspect=related.get(term.term_id, {}),
             )
+        )
     return proposals
 
 
@@ -884,16 +888,15 @@ class DataHubExport(MetadataExport):  # REQ-1069
         headers: dict[str, str],
         proposal: AspectProposal,
         result: PublishResult,
-    ) -> AspectProposal:
+    ) -> AspectProposal | None:
         """Read-merge the dataset's live ``globalTags`` into the proposal (REQ-1389).
 
         The live aspect is read from the same GMS endpoint the ingest posts to
         (``GET /aspects/<urlencoded urn>?aspect=globalTags&version=0``, same auth headers).
         Every live tag whose urn is NOT ``provisa_``-prefixed was attached by a human and is
         carried through verbatim; the ``provisa_`` tags become exactly the snapshot's, so a
-        stale one drops out. A read failure never aborts the publish: the proposal goes out
-        with only Provisa's tags and the merge failure is reported as an AssetError — the
-        clobber is surfaced, never silent.
+        stale one drops out. A failed read refuses the aspect, reported by name -- proposed
+        blind it would replace the people's tags -- and the publish continues.
         """
         route = f"{self.aspects_path}/{quote(proposal.urn, safe='')}?aspect=globalTags&version=0"
         try:
@@ -903,12 +906,12 @@ class DataHubExport(MetadataExport):  # REQ-1069
                 AssetError(
                     asset=proposal.asset,
                     message=(
-                        f"globalTags merge: live aspect read failed ({exc}); published "
-                        "Provisa tags only — human-attached tags may be overwritten"
+                        f"globalTags: not written: the live read the people's tags are kept "
+                        f"from failed ({exc})"
                     ),
                 )
             )
-            return proposal
+            return None
         if response.status_code == 404:
             # No live aspect: nothing human-attached to preserve.
             return proposal
@@ -917,13 +920,12 @@ class DataHubExport(MetadataExport):  # REQ-1069
                 AssetError(
                     asset=proposal.asset,
                     message=(
-                        f"globalTags merge: live aspect read failed (HTTP "
-                        f"{response.status_code}); published Provisa tags only — "
-                        "human-attached tags may be overwritten"
+                        f"globalTags: not written: the live read the people's tags are kept "
+                        f"from failed (HTTP {response.status_code})"
                     ),
                 )
             )
-            return proposal
+            return None
         # GMS wraps the aspect value in its record-class key
         # ({"aspect": {"com.linkedin.common.GlobalTags": {"tags": [...]}}}).
         live_tags: list[dict[str, Any]] = []
@@ -1039,6 +1041,94 @@ class DataHubExport(MetadataExport):  # REQ-1069
             proposal,
             aspect={"terms": terms, "auditStamp": {"actor": PROVISA_ACTOR, "time": now_ms}},
         )
+
+    async def _merge_ownership(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        proposal: AspectProposal,
+        result: PublishResult,
+        now_ms: int,
+    ) -> AspectProposal | None:
+        """Read-merge a dataset's live ``ownership`` into Provisa's owner (REQ-1389).
+
+        An owner attributed to Provisa's actor is Provisa's and tracks the snapshot; any other is
+        a person's and stands. An owner Provisa wrote before owners carried an attribution has
+        none, in an aspect Provisa last modified: it is Provisa's too. Nothing is written when the
+        live aspect cannot be read -- written blind it would replace the people's owners.
+        """
+        read, live = await self._live_aspect(client, headers, proposal, result)
+        if not read:
+            result.errors.append(
+                AssetError(
+                    asset=proposal.asset,
+                    message="ownership: not written, so the live owners stand",
+                )
+            )
+            return None
+        live_owners = (live or {}).get("owners") or []
+        provisa_last = ((live or {}).get("lastModified") or {}).get("actor") == PROVISA_ACTOR
+
+        def _provisas(owner: dict[str, Any]) -> bool:
+            actor = (owner.get("attribution") or {}).get("actor")
+            return actor == PROVISA_ACTOR or (actor is None and provisa_last)
+
+        wanted = {(o["owner"], o.get("type")): o for o in proposal.aspect["owners"]}
+        held = {(o["owner"], o.get("type")) for o in live_owners if not _provisas(o)}
+        owners: list[dict[str, Any]] = []
+        for live_owner in live_owners:
+            key = (live_owner["owner"], live_owner.get("type"))
+            if not _provisas(live_owner):
+                owners.append(live_owner)  # a person's: it stands, where it stands
+            elif key in wanted and key not in held:
+                time = (live_owner.get("attribution") or {}).get("time") or now_ms
+                owners.append(
+                    {**wanted.pop(key), "attribution": {"actor": PROVISA_ACTOR, "time": time}}
+                )
+        for key, owner in wanted.items():
+            if key not in held:
+                owners.append({**owner, "attribution": {"actor": PROVISA_ACTOR, "time": now_ms}})
+        if owners == live_owners:
+            return None
+        return replace(
+            proposal,
+            aspect={"owners": owners, "lastModified": {"time": now_ms, "actor": PROVISA_ACTOR}},
+        )
+
+    async def _merge_related_terms(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        proposal: AspectProposal,
+        result: PublishResult,
+        provisa_prefix: str,
+    ) -> AspectProposal | None:
+        """Read-merge a term's live ``glossaryRelatedTerms`` (REQ-1389): the relations among the
+        org's Provisa terms are Provisa's and track the snapshot; a relation a person made to a
+        term outside the Provisa glossary stands. Nothing is written when the live aspect cannot
+        be read, or when nothing would change."""
+        read, live = await self._live_aspect(client, headers, proposal, result)
+        if not read:
+            result.errors.append(
+                AssetError(
+                    asset=proposal.asset,
+                    message="glossaryRelatedTerms: not written, so the live relations stand",
+                )
+            )
+            return None
+        live = live or {}
+        merged: dict[str, list[str]] = {}
+        for field in sorted(set(live) | set(proposal.aspect)):
+            if not isinstance(live.get(field, []), list):
+                continue
+            foreign = [u for u in live.get(field) or [] if not str(u).startswith(provisa_prefix)]
+            ours = [u for u in proposal.aspect.get(field, []) if u not in foreign]
+            if foreign or ours:
+                merged[field] = foreign + ours
+        current = {k: v for k, v in live.items() if isinstance(v, list) and v}
+        if merged == current:
+            return None
+        return replace(proposal, aspect=merged)
 
     async def _stamp_field_terms(
         self,
@@ -1157,6 +1247,7 @@ class DataHubExport(MetadataExport):  # REQ-1069
         proposals.extend(self._rebind_deprecations(proposals))
         proposals.extend(self._term_rename_deprecations(snapshot))  # REQ-1387
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        provisa_prefix = glossary_term_urn(snapshot.org_id, "")
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             for proposal in proposals:
                 if (
@@ -1164,7 +1255,29 @@ class DataHubExport(MetadataExport):  # REQ-1069
                     and proposal.aspect_name == "globalTags"
                     and proposal.entity_type == "dataset"
                 ):
-                    proposal = await self._merge_global_tags(client, headers, proposal, result)
+                    merged_tags = await self._merge_global_tags(client, headers, proposal, result)
+                    if merged_tags is None:
+                        continue
+                    proposal = merged_tags
+                if (
+                    self.tag_merge
+                    and proposal.aspect_name == "ownership"
+                    and proposal.entity_type == "dataset"
+                ):
+                    # REQ-1389: Provisa's owner beside the people's.
+                    merged_owners = await self._merge_ownership(
+                        client, headers, proposal, result, now_ms
+                    )
+                    if merged_owners is None:
+                        continue
+                    proposal = merged_owners
+                if self.tag_merge and proposal.aspect_name == "glossaryRelatedTerms":
+                    merged_related = await self._merge_related_terms(
+                        client, headers, proposal, result, provisa_prefix
+                    )
+                    if merged_related is None:
+                        continue
+                    proposal = merged_related
                 if proposal.aspect_name == "glossaryTerms" and proposal.entity_type == "dataset":
                     # REQ-1389: Provisa's term assignments beside the people's.
                     if self.tag_merge:

@@ -866,7 +866,17 @@ class CollibraExport(MetadataExport):  # REQ-1069
             params={"sourceId": term_asset, "relationTypeId": relation_type, "limit": "1000"},
             headers=self._headers(),
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            # Without the live relations a person's could be duplicated, so this term's are not
+            # written; it is reported by name and the other terms' sync.
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(term_asset),
+                    message=f"term asset {term_asset}: assignments not written: the read of its "
+                    f"live relations failed (HTTP {response.status_code})",
+                )
+            )
+            return
         live = response.json().get("results", [])
         ours = {r["target"]["id"]: r["id"] for r in live if r.get("createdBy") == author}
         held = {r["target"]["id"] for r in live if r.get("createdBy") != author}

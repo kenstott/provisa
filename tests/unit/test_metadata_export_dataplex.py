@@ -582,3 +582,28 @@ async def test_a_table_dataplex_has_not_catalogued_yet_is_reported_by_name(
     ]
     assert {kind for kind, _ in _link_kinds(glossary_api)} == {"synonym"}
     assert result.published["glossary_term"] == 3
+
+
+async def test_a_term_whose_read_failed_is_refused_and_the_others_publish(glossary_api):
+    """REQ-1389: written blind, the term would lose a steward's labels; it is refused by name
+    and the rest of the glossary publishes."""
+    fake = glossary_api
+    await _export().publish(_glossary_snapshot(_glossary()))
+    fake.resources[f"{GLOSSARY}/terms/sale"]["labels"]["team"] = "finance"
+    handle = fake.handle
+
+    def _unreadable_sale(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.endswith(f"{GLOSSARY}/terms/sale"):
+            return httpx.Response(503, json={"error": {"message": "unavailable"}})
+        return handle(request)
+
+    fake.handle = _unreadable_sale
+    fake.calls.clear()
+    result = await _export().publish(_glossary_snapshot(_glossary()))
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.message.split(":")[0] for e in refused] == ["term 'sale'"]
+    assert "HTTP 503" in refused[0].message
+    patched = {path for method, path in fake.calls if method == "PATCH"}
+    assert f"{GLOSSARY}/terms/sale" not in patched
+    assert f"{GLOSSARY}/terms/deal" in patched
+    assert fake.resources[f"{GLOSSARY}/terms/sale"]["labels"]["team"] == "finance"

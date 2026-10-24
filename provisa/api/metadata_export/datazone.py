@@ -390,7 +390,8 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         glossary_id = self._glossary_id(client, snapshot.org_id, result)
         found: dict[str, str] | None = None
         ids: dict[int, str] = {}
-        live_isa: dict[int, list[str]] = {}
+        # term id -> its live termRelations, as the upsert answered them
+        live_relations: dict[int, dict[str, list[str]]] = {}
         for term in snapshot.glossary_terms:
             fields = {
                 "name": term.name,
@@ -413,7 +414,7 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                 ),
             )
             ids[term.term_id] = saved["id"]
-            live_isa[term.term_id] = (saved.get("termRelations") or {}).get("isA") or []
+            live_relations[term.term_id] = saved.get("termRelations") or {}
             # REQ-1389: the next publish revises this term by its id.
             result.bindings[term.semantic_uri] = (saved["id"], term.name)
             result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
@@ -421,16 +422,31 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         for edge in snapshot.glossary_edges:
             if edge.rel_type == "KIND_OF" and edge.to_term_id in ids:
                 parents.setdefault(edge.from_term_id, []).append(ids[edge.to_term_id])
+        # REQ-1389: termRelations is replaced whole, so what Provisa does not author is carried:
+        # "classifies", and an isA parent that is not one of the org's Provisa terms.
+        prefix = f"provisa://{snapshot.org_id}/terms/"
+        provisa_ids = set(ids.values()) | {
+            bound[0] for uri, bound in self.stored_bindings.items() if uri.startswith(prefix)
+        }
         for tid, term_ref in ids.items():
-            wanted = sorted(parents.get(tid, []))
-            if wanted == sorted(live_isa[tid]):
+            live = live_relations[tid]
+            foreign = [t for t in live.get("isA") or [] if t not in provisa_ids]
+            relations = {
+                "isA": foreign + sorted(parents.get(tid, [])),
+                "classifies": list(live.get("classifies") or []),
+            }
+            # Each relation takes at least one term; an empty one is left out.
+            relations = {k: v for k, v in relations.items() if v}
+            current = {k: v for k, v in live.items() if v}
+            if {k: sorted(v) for k, v in relations.items()} == {
+                k: sorted(v) for k, v in current.items()
+            }:
                 continue
             client.update_glossary_term(
                 **self._scope(),
                 identifier=term_ref,
                 glossaryIdentifier=glossary_id,
-                # isA takes at least one term; an empty relation set clears it.
-                termRelations={"isA": wanted} if wanted else {},
+                termRelations=relations,
             )
 
     def _glossary_terms(self, client: Any, glossary_id: str) -> dict[str, str]:

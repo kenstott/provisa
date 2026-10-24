@@ -637,3 +637,64 @@ async def test_a_republish_revises_bound_terms_and_a_deprecated_one_is_disabled(
     # isA already stands, so no relation update follows.
     result = await export.publish(_glossary_snapshot(deprecated=True))
     assert result.ok, result.errors
+
+
+async def test_the_isa_update_keeps_a_stewards_classifies_and_foreign_parent(stubbed):
+    """REQ-1389: termRelations is replaced whole. Provisa authors the isA among the org's terms;
+    "classifies" and an isA parent outside the Provisa glossary are a steward's and are sent back
+    as they stand."""
+    export = metadata_export(_target())
+    export.stored_bindings = {
+        "provisa://acme/glossary": (GLOSSARY_ID, "Provisa glossary (acme)"),
+        "provisa://acme/terms/party": ("t-party", "party"),
+        "provisa://acme/terms/order": ("t-order", "order"),
+    }
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-party",
+            "party",
+            {
+                **SCOPE,
+                "identifier": "t-party",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "name": "party",
+                "longDescription": "Anyone the business deals with.",
+                "status": "ENABLED",
+            },
+        )
+    )
+    op, response, params = _term_saved(
+        "update_glossary_term",
+        "t-order",
+        "order",
+        {
+            **SCOPE,
+            "identifier": "t-order",
+            "glossaryIdentifier": GLOSSARY_ID,
+            "name": "order",
+            "longDescription": "A request to buy.",
+            "status": "ENABLED",
+        },
+    )
+    response["termRelations"] = {"isA": ["t-corporate-request"], "classifies": ["t-sales-doc"]}
+    stubbed.add_response(op, response, params)
+    stubbed.add_response(
+        *_term_saved(
+            "update_glossary_term",
+            "t-order",
+            "order",
+            {
+                **SCOPE,
+                "identifier": "t-order",
+                "glossaryIdentifier": GLOSSARY_ID,
+                "termRelations": {
+                    "isA": ["t-corporate-request", "t-party"],
+                    "classifies": ["t-sales-doc"],
+                },
+            },
+        )
+    )
+    result = await export.publish(_glossary_snapshot())
+    assert result.ok, result.errors
+    stubbed.assert_no_pending_responses()

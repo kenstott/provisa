@@ -130,10 +130,18 @@ TERM_DEPRECATION_MESSAGE = "Deprecated in the Provisa registry."
 class AtlanExport(AtlasExport):  # REQ-1069
     """Publish a snapshot to Atlan over its Atlas-shaped ingestion API.
 
+    Unproven against a live Atlan tenant: the routes and update semantics below are Atlas's, as
+    Atlan documents its Atlas-shaped API, and are exercised only by unit tests until a tenant
+    proves them (the provider is marked beta until then).
+
+    REQ-1389: the Atlas authorship merges apply here too. An update starts from the live
+    entity's attributes (``_canonicalize_identity``, by the stored binding: Atlan's basic-search
+    route is not used, so ``live_search`` is off) and the ``provisa_*`` classifications are
+    read-merged per entity (``classification_merge``); a failed live read refuses that entity.
+
     REQ-1443: contract checks ride the inherited Atlas governance document rather than Atlan's
-    own data-quality rules. That surface is addressed through routes this adapter has not
-    verified — the same reason ``_canonicalize_identity`` and ``classification_merge`` are off
-    here — so the checks publish where every Atlan consumer can already read them.
+    own data-quality rules, so the checks publish where every Atlan consumer can already read
+    them.
     """
 
     provider_name = "atlan"
@@ -144,15 +152,11 @@ class AtlanExport(AtlasExport):  # REQ-1069
     unique_attr_path = "/api/meta/entity/uniqueAttribute/type"
     entity_guid_path = "/api/meta/entity/guid"
     health_path = "/api/meta/types/typedefs/headers"
-    # Atlan's per-guid classification routes are unverified; REQ-1389 merge stays off here.
-    classification_merge = False
+    live_search = False
 
     async def _ensure_type_system(self, client, headers) -> None:
         """Atlan publishes through its own built-in types (REQ-1388's documented caveat:
         custom types get reduced native UI treatment there), so no provisa_* typedefs."""
-
-    async def _canonicalize_identity(self, client, headers, entities) -> None:
-        """Atlan's search route for the URN-canonical rebind is unverified; off until then."""
 
     def _connection_qn(self, snapshot: MetadataSnapshot) -> str:
         """Atlan's root address for everything this org publishes.

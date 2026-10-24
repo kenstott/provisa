@@ -1115,15 +1115,16 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         entity: Entity,
         result: PublishResult,
         glossary: GlossaryOutcome,
-    ) -> None:
-        """Overlay the live table's human-owned state onto the outgoing PUT body (REQ-1389).
+    ) -> bool:
+        """Overlay the live table's human-owned state onto the outgoing PUT body (REQ-1389);
+        whether the table may be written.
 
         Preserved: steward tag labels at table and column level, extension keys other than
         Provisa's relationship property, and the PUT-body fields the exporter never authors
         (``_CARRIED_TABLE_FIELDS``). Overwritten: everything Provisa authored — description,
-        columns, ``Provisa.*`` tags, the relationship extension. A failed read must not
-        abort the publish: the PUT proceeds with Provisa's own body and the merge failure is
-        reported against the asset.
+        columns, ``Provisa.*`` tags, the relationship extension. A failed read refuses the
+        table's write, reported by name: a PUT sent blind would replace the extension a
+        steward keeps custom properties in. The publish continues with the other assets.
         """
         fqn = f"{entity.body['databaseSchema']}.{entity.body['name']}"
         try:
@@ -1137,29 +1138,28 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 AssetError(
                     asset=entity.asset,
                     message=(
-                        f"table {entity.asset.fqn()}: live read for the tag merge failed "
-                        f"({exc}); published Provisa-authored fields only, which may drop "
-                        "steward tags on this table"
+                        f"table {entity.asset.fqn()}: not written: the live read its "
+                        f"steward state is kept from failed ({exc})"
                     ),
                 )
             )
-            return
+            return False
         if response.status_code == 404:
             # First publish of this table: nothing live, nothing human to preserve.
-            return
+            return True
         if response.status_code >= 400:
             result.errors.append(
                 AssetError(
                     asset=entity.asset,
                     message=(
-                        f"table {entity.asset.fqn()}: live read for the tag merge failed "
-                        f"(HTTP {response.status_code}); published Provisa-authored fields "
-                        "only, which may drop steward tags on this table"
+                        f"table {entity.asset.fqn()}: not written: the live read its "
+                        f"steward state is kept from failed (HTTP {response.status_code})"
                     ),
                 )
             )
-            return
+            return False
         self._overlay_live_table(entity, response.json(), glossary)
+        return True
 
     def _overlay_live_table(
         self, entity: Entity, live: dict[str, Any], glossary: GlossaryOutcome
@@ -1193,16 +1193,19 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         new_fqn: str,
         result: PublishResult,
         glossary: GlossaryOutcome,
-    ) -> None:
-        """Succession for a physically re-addressed table (REQ-1389).
+    ) -> bool:
+        """Succession for a physically re-addressed table (REQ-1389); whether the new table may
+        be written.
 
         The stored binding says this Provisa asset was last published under a different FQN.
         PATCH-by-id cannot rename or re-parent a table (see the module docstring for the
         cited OpenMetadata docs and server source), so the old entity — read by its stored
         UUID, immune to the name change — donates its human enrichment to the new entity's
         first publish, and its own description is marked superseded with a pointer to the
-        new FQN and the Provisa URN. Any failure here is reported and the publish proceeds
-        with Provisa's own body: a lost carry-forward must never block the asset itself.
+        new FQN and the Provisa URN. A failed read of the predecessor refuses the new table's
+        write, reported by name: published without the enrichment, the binding would move and
+        the next publish would never carry it. A failed superseded-note PATCH is reported; the
+        enrichment is already carried, so the table publishes.
         """
         old_id, old_fqn = stored
         uri = entity.body["sourceUrl"]
@@ -1217,28 +1220,28 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 AssetError(
                     asset=entity.asset,
                     message=(
-                        f"table {entity.asset.fqn()}: rebind read of predecessor "
-                        f"{old_fqn!r} (id {old_id}) failed ({exc}); published without its "
-                        "steward enrichment"
+                        f"table {entity.asset.fqn()}: not written: the read of its "
+                        f"predecessor {old_fqn!r} (id {old_id}), whose steward enrichment it "
+                        f"carries, failed ({exc})"
                     ),
                 )
             )
-            return
+            return False
         if response.status_code == 404:
             # The predecessor is gone from the catalog: nothing to carry, nothing to mark.
-            return
+            return True
         if response.status_code >= 400:
             result.errors.append(
                 AssetError(
                     asset=entity.asset,
                     message=(
-                        f"table {entity.asset.fqn()}: rebind read of predecessor "
-                        f"{old_fqn!r} (id {old_id}) failed (HTTP {response.status_code}); "
-                        "published without its steward enrichment"
+                        f"table {entity.asset.fqn()}: not written: the read of its "
+                        f"predecessor {old_fqn!r} (id {old_id}), whose steward enrichment it "
+                        f"carries, failed (HTTP {response.status_code})"
                     ),
                 )
             )
-            return
+            return False
         live = response.json()
         self._overlay_live_table(entity, live, glossary)
         note = (
@@ -1268,7 +1271,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     ),
                 )
             )
-            return
+            return True
         if deprecate.status_code >= 400:
             result.errors.append(
                 AssetError(
@@ -1279,16 +1282,18 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     ),
                 )
             )
+        return True
 
     async def _read_live_term(
         self, client: httpx.AsyncClient, fqn: str, result: PublishResult
-    ) -> dict[str, Any] | None:
-        """The live term, for the enrichment merge — None when it does not exist yet.
+    ) -> tuple[bool, dict[str, Any] | None]:
+        """Whether the live term could be read, and the term for the enrichment merge -- None
+        when it does not exist yet.
 
         Same single-writer discipline as the table merge (REQ-1389): a PUT replaces the
-        fields sent, and tags/reviewers on a Provisa term are steward work inside
-        OpenMetadata. A failed read is reported and the PUT proceeds with Provisa's own
-        body rather than blocking the term.
+        fields sent, and reviewers, references and extension on a Provisa term are steward
+        work inside OpenMetadata. A failed read is reported and refuses the term's write; the
+        other terms publish.
         """
         try:
             response = await client.get(
@@ -1301,29 +1306,27 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 AssetError(
                     asset=AssetRefStub(fqn),
                     message=(
-                        f"glossary_term {fqn}: live read for the enrichment merge failed "
-                        f"({exc}); published Provisa-authored fields only, which may drop "
-                        "steward curation on this term"
+                        f"glossary_term {fqn}: not written: the live read its steward "
+                        f"curation is kept from failed ({exc})"
                     ),
                 )
             )
-            return None
+            return False, None
         if response.status_code == 404:
             # First publish of this term: nothing live, nothing human to preserve.
-            return None
+            return True, None
         if response.status_code >= 400:
             result.errors.append(
                 AssetError(
                     asset=AssetRefStub(fqn),
                     message=(
-                        f"glossary_term {fqn}: live read for the enrichment merge failed "
-                        f"(HTTP {response.status_code}); published Provisa-authored fields "
-                        "only, which may drop steward curation on this term"
+                        f"glossary_term {fqn}: not written: the live read its steward "
+                        f"curation is kept from failed (HTTP {response.status_code})"
                     ),
                 )
             )
-            return None
-        return response.json()
+            return False, None
+        return True, response.json()
 
     async def _rebind_term(
         self,
@@ -1510,7 +1513,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
             stored = self._bindings.get(plan.term.semantic_uri)
             if stored is not None and stored[1] != plan.fqn:
                 await self._rebind_term(client, plan, stored, gname, term_ids, result)
-            live = await self._read_live_term(client, plan.fqn, result)
+            read, live = await self._read_live_term(client, plan.fqn, result)
+            if not read:
+                outcome.failed.add(plan.fqn)
+                continue
             if live is not None:
                 live_by_fqn[plan.fqn] = live
                 for field in _CARRIED_TERM_FIELDS:
@@ -1685,13 +1691,15 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     if stored is not None and stored[1] != fqn:
                         # REQ-1389: the stored binding says the physical FQN changed —
                         # succession by stored UUID, since PATCH cannot rename a table.
-                        await self._succeed_rebound_table(
+                        if not await self._succeed_rebound_table(
                             client, entity, stored, fqn, result, glossary
-                        )
+                        ):
+                            continue
                     if self.tag_merge:
                         # REQ-1389: a PUT replaces the fields sent, so the live entity's
                         # human-owned state is read and carried through first.
-                        await self._merge_live_table(client, entity, result, glossary)
+                        if not await self._merge_live_table(client, entity, result, glossary):
+                            continue
                 params: dict[str, str] = {}
                 if entity.for_table is not None:
                     table_id = table_ids.get(entity.for_table)

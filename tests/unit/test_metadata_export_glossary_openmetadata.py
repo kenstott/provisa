@@ -573,3 +573,25 @@ async def test_a_role_property_that_cannot_be_declared_fails_the_publish(monkeyp
     assert any("the term role was not exported" in e.message for e in result.errors)
     (body,) = _term_puts(calls)
     assert "extension" not in body
+
+
+@pytest.mark.asyncio
+async def test_a_term_whose_live_read_failed_is_not_written_and_the_others_are(monkeypatch):
+    """REQ-1389: a term written blind would replace its reviewers, references and extension;
+    the one whose read failed is refused by name and the rest publish."""
+    calls = _mock_transport(monkeypatch)
+    get = httpx.AsyncClient.get
+
+    async def _unreadable_order(self, url, params=None, headers=None):
+        if url.endswith(f"/glossaryTerms/name/{CONCEPTS}.Order"):
+            return httpx.Response(503, request=httpx.Request("GET", url))
+        return await get(self, url, params=params, headers=headers)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _unreadable_order)
+    result = await OpenMetadataExport(_export_config()).publish(
+        _snapshot([_term(1, "Customer"), _term(2, "Order")])
+    )
+    assert [body["name"] for body in _term_puts(calls)] == ["Customer"]
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == [f"{CONCEPTS}.Order"]
+    assert "HTTP 503" in refused[0].message

@@ -426,3 +426,26 @@ async def test_a_target_without_the_role_attribute_type_fails_naming_it(snapshot
     assert "the term role was not exported" in error.message
     assert "'Provisa Role'" in error.message and "Business Term" in error.message
     assert all(ROLE_ATTRIBUTE not in row["attributes"] for row in _imported_rows(recorded))
+
+
+async def test_a_term_whose_relations_cannot_be_read_is_refused_and_the_others_sync(
+    monkeypatch,
+):
+    """REQ-1389: without the live relations a person's could be duplicated, so the term whose
+    read failed writes nothing, reported by name, and the other terms' assignments land."""
+    recorded = _fake_target(monkeypatch, community_exists=True, domain_exists=True)
+    get = httpx.AsyncClient.get
+
+    async def _unreadable_order(self, url, params=None, headers=None):
+        if url.endswith("/rest/2.0/relations") and params["sourceId"] == "uuid-order":
+            return httpx.Response(503, request=httpx.Request("GET", url))
+        return await get(self, url, params=params, headers=headers)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _unreadable_order)
+    order = _term(1, "order", role="class", tables=(ORDERS,))
+    amount = _term(2, "amount", role="property", refs=(AMOUNT,))
+    result = await _export().publish(_with_table([order, amount]))
+    assert [r["sourceId"] for r in recorded["assigned"]] == ["uuid-amount"]
+    refused = [e for e in result.errors if "assignments not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == ["uuid-order"]
+    assert "HTTP 503" in refused[0].message

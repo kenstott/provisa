@@ -213,11 +213,13 @@ def test_urn_rebind_leaves_unmoved_entities_alone():
     assert table.guid == placeholder
 
 
-def test_atlan_keeps_builtin_types_and_no_classification_merge():
+def test_atlan_keeps_builtin_types_and_merges_classifications_on_its_own_routes():
     # REQ-1388 caveat: Atlan's layered type system gives custom types reduced UI treatment,
-    # so its adapter maps to built-ins; the per-guid classification sync stays off there
-    # until those routes are verified.
-    assert AtlanExport.classification_merge is False
+    # so its adapter maps to built-ins. REQ-1389: the per-guid classification sync and the live
+    # attribute merge run on Atlan's /api/meta routes; the basic-search index is not read.
+    assert AtlanExport.classification_merge is True
+    assert AtlanExport.entity_guid_path == "/api/meta/entity/guid"
+    assert AtlanExport.live_search is False
     exporter = AtlanExport.__new__(AtlanExport)
     entities = exporter._atlan_entities(_snapshot())
     assert {e.type_name for e in entities} <= {

@@ -35,6 +35,7 @@ import httpx
 import pytest
 
 from provisa.api.metadata_export import build_snapshot
+from provisa.api.metadata_export.atlan import AtlanExport
 from provisa.api.metadata_export.atlas import AtlasExport
 from provisa.api.metadata_export.collibra import CollibraExport
 from provisa.api.metadata_export.datahub import DataHubExport
@@ -92,8 +93,9 @@ def _config(provider: str) -> MetadataExportTarget:
 # --- Apache Atlas ---------------------------------------------------------------------------
 
 
-def _mock_atlas(monkeypatch, *, search_entities=None, live_attributes=None):
-    """Route the Atlas exporter's calls: typedef probes miss, the bulk POST assigns guids."""
+def _mock_atlas(monkeypatch, *, search_entities=None, live_attributes=None, unreadable=()):
+    """Route the Atlas exporter's calls: typedef probes miss, the bulk POST assigns guids, and
+    a live entity read of a guid in ``unreadable`` answers 503."""
     calls: dict[str, list] = {"posts": [], "gets": []}
 
     async def _post(self, url, json=None, headers=None):
@@ -113,6 +115,8 @@ def _mock_atlas(monkeypatch, *, search_entities=None, live_attributes=None):
     async def _get(self, url, params=None, headers=None):
         req = httpx.Request("GET", url)
         calls["gets"].append(url)
+        if "/entity/guid/" in url and url.rsplit("/", 1)[-1] in unreadable:
+            return httpx.Response(503, request=req)
         if "/entity/guid/" in url:
             return httpx.Response(
                 200, json={"entity": {"attributes": live_attributes or {}}}, request=req
@@ -168,6 +172,51 @@ async def test_atlas_prefers_the_stored_guid_over_the_laggy_search_index(snapsho
     assert table_entity["guid"] == "stored-guid"
     # The rebound guid is what the capture records for the next publish.
     assert result.bindings[table.semantic_uri] == ("stored-guid", f"{TABLE_FQN}@provisa")
+
+
+@pytest.mark.asyncio
+async def test_atlas_republish_keeps_the_attributes_a_steward_wrote(snapshot, monkeypatch):
+    """REQ-1389: Atlas's bulk update replaces the attribute map, so it starts from the live one;
+    a steward's userDescription stands beside what Provisa authors."""
+    monkeypatch.setattr(AtlasExport, "classification_merge", False)
+    table = snapshot.tables[0]
+    calls = _mock_atlas(monkeypatch, live_attributes={"userDescription": "Ask finance first."})
+    export = AtlasExport(_config("atlas"))
+    export.stored_bindings = {table.semantic_uri: ("table-guid", f"{TABLE_FQN}@provisa")}
+    result = await export.publish(snapshot)
+    assert result.ok
+    bulk = next(body for url, body in calls["posts"] if url.endswith("/entity/bulk"))
+    (sent,) = [
+        e for e in bulk["entities"] if e["attributes"].get("provisaUri") == table.semantic_uri
+    ]
+    assert sent["attributes"]["userDescription"] == "Ask finance first."
+
+
+@pytest.mark.asyncio
+async def test_atlas_an_entity_whose_live_read_failed_is_not_written_and_the_rest_are(
+    snapshot, monkeypatch
+):
+    """REQ-1389: sent with Provisa's attributes alone the table would lose the steward's; it is
+    refused by name, and its columns still publish, attached to the table that stands."""
+    monkeypatch.setattr(AtlasExport, "classification_merge", False)
+    table = snapshot.tables[0]
+    calls = _mock_atlas(monkeypatch, unreadable={"table-guid"})
+    export = AtlasExport(_config("atlas"))
+    export.stored_bindings = {table.semantic_uri: ("table-guid", f"{TABLE_FQN}@provisa")}
+    result = await export.publish(snapshot)
+    bulk = next(body for url, body in calls["posts"] if url.endswith("/entity/bulk"))
+    uris = {e["attributes"].get("provisaUri") for e in bulk["entities"]}
+    assert table.semantic_uri not in uris
+    assert {c.semantic_uri for c in table.columns} <= uris
+    columns = [
+        e
+        for e in bulk["entities"]
+        if e["attributes"].get("provisaUri") in {c.semantic_uri for c in table.columns}
+    ]
+    assert all(c["relationshipAttributes"]["table"]["guid"] == "table-guid" for c in columns)
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == [TABLE_FQN]
+    assert "HTTP 503" in refused[0].message
 
 
 @pytest.mark.asyncio
@@ -595,3 +644,73 @@ async def test_datahub_unchanged_urn_proposes_no_deprecation(snapshot, monkeypat
     result = await export.publish(snapshot)
     assert result.ok
     assert not any(p["proposal"]["aspectName"] == "deprecation" for p in posts)
+
+
+# --- Atlan: the Atlas authorship merges on Atlan's routes (unproven against a live tenant) ---
+
+
+ATLAN_TABLE_QN = "default/provisa/acme/wh/public/orders"
+
+
+@pytest.mark.asyncio
+async def test_atlan_republish_keeps_the_attributes_a_steward_wrote(snapshot, monkeypatch):
+    """REQ-1389: an Atlan update starts from the live entity, read by its stored binding on
+    Atlan's own route; the steward's attribute stands beside what Provisa authors."""
+    monkeypatch.setattr(AtlanExport, "classification_merge", False)
+    table = snapshot.tables[0]
+    calls = _mock_atlas(monkeypatch, live_attributes={"announcementMessage": "Ask finance first."})
+    export = AtlanExport(_config("atlan"))
+    export.stored_bindings = {table.semantic_uri: ("table-guid", ATLAN_TABLE_QN)}
+    result = await export.publish(snapshot)
+    assert result.ok, result.errors
+    assert any(url.endswith("/api/meta/entity/guid/table-guid") for url in calls["gets"])
+    assert not any("/search/basic" in url for url, _ in calls["posts"])
+    bulk = next(body for url, body in calls["posts"] if url.endswith("/api/meta/entity/bulk"))
+    (sent,) = [
+        e for e in bulk["entities"] if e["attributes"].get("provisaUri") == table.semantic_uri
+    ]
+    assert sent["attributes"]["announcementMessage"] == "Ask finance first."
+
+
+@pytest.mark.asyncio
+async def test_atlan_an_entity_whose_live_read_failed_is_not_written(snapshot, monkeypatch):
+    monkeypatch.setattr(AtlanExport, "classification_merge", False)
+    table = snapshot.tables[0]
+    calls = _mock_atlas(monkeypatch, unreadable={"table-guid"})
+    export = AtlanExport(_config("atlan"))
+    export.stored_bindings = {table.semantic_uri: ("table-guid", ATLAN_TABLE_QN)}
+    result = await export.publish(snapshot)
+    bulk = next(body for url, body in calls["posts"] if url.endswith("/api/meta/entity/bulk"))
+    assert table.semantic_uri not in {e["attributes"].get("provisaUri") for e in bulk["entities"]}
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == [TABLE_FQN]
+
+
+@pytest.mark.asyncio
+async def test_atlan_classification_merge_keeps_a_stewards_tag(snapshot, monkeypatch):
+    """REQ-1389: only provisa_* classifications are Provisa's; a steward's tag on the entity is
+    never removed. Atlan's per-guid routes are /api/meta."""
+    calls = _mock_atlas(monkeypatch)
+    deletes: list[str] = []
+    get = httpx.AsyncClient.get
+
+    async def _get(self, url, params=None, headers=None):
+        if "/api/meta/entity/uniqueAttribute/type/" in url:
+            live = {
+                "guid": "live-guid",
+                "classifications": [{"typeName": "Finance"}, {"typeName": "provisa_stale"}],
+            }
+            return httpx.Response(200, json={"entity": live}, request=httpx.Request("GET", url))
+        return await get(self, url, params=params, headers=headers)
+
+    async def _delete(self, url, headers=None):
+        deletes.append(url)
+        return httpx.Response(204, request=httpx.Request("DELETE", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+    monkeypatch.setattr(httpx.AsyncClient, "delete", _delete)
+    await AtlanExport(_config("atlan")).publish(snapshot)
+    assert deletes
+    assert all(url.startswith("https://catalog.example/api/meta/entity/guid/") for url in deletes)
+    assert all(url.endswith("/classification/provisa_stale") for url in deletes)
+    assert calls["posts"]

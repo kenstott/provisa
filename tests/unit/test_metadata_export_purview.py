@@ -140,6 +140,8 @@ class _Purview:
         self.terms: dict[str, dict] = {}
         # term id -> its relationships, as the catalog lists them
         self.term_relations: dict[str, list[dict]] = {}
+        # term ids whose read answers 503
+        self.unreadable: set[str] = set()
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         url, method = request.url, request.method
@@ -206,6 +208,8 @@ class _Purview:
         if path.startswith("/terms/"):
             tid = path.split("/")[2]
             if method == "GET":
+                if tid in self.unreadable:
+                    return httpx.Response(503, json={"error": {"code": "ServiceUnavailable"}})
                 if tid not in self.terms:
                     return httpx.Response(404, json={"error": {"code": "NotFound"}})
                 return httpx.Response(200, json=self.terms[tid])
@@ -424,6 +428,25 @@ async def test_a_republish_keeps_a_stewards_curation_and_adds_nothing(api, data_
     assert result.ok, result.errors
     assert api.terms[ids["order"]]["acronyms"] == ["ORD"]
     assert api.term_relations == before
+
+
+async def test_a_term_whose_read_failed_is_refused_and_the_others_publish(api, data_map):
+    """REQ-1389: written blind, the term would lose what a steward keeps on it; it is refused by
+    name and the rest of the glossary publishes."""
+    await _export().publish(_snapshot(glossary=_glossary()))
+    ids = _ids(_snapshot(glossary=_glossary()))
+    api.terms[ids["party"]]["acronyms"] = ["PTY"]
+    api.unreadable.add(ids["party"])
+    api.calls.clear()
+    result = await _export().publish(_snapshot(glossary=_glossary()))
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.message.split(":")[0] for e in refused] == ["term 'party'"]
+    assert "HTTP 503" in refused[0].message
+    puts = {p.rsplit("/", 1)[-1] for m, p in api.calls if m == "PUT" and "/terms/" in p}
+    assert ids["party"] not in puts
+    assert {ids["order"], ids["client"]} <= puts
+    assert api.terms[ids["party"]]["acronyms"] == ["PTY"]
+    assert result.published["glossary_term"] == 2
 
 
 async def test_a_stewards_relationships_stand_and_provisas_stale_ones_leave(api, data_map):

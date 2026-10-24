@@ -561,6 +561,17 @@ class DataplexExport(MetadataExport):  # REQ-2118
             "parent": category,
         }
         found = await client.get(self._url(name))
+        if found.status_code != 404 and found.status_code >= 400:
+            # Written blind, the term would lose a steward's labels; refused by name, and the
+            # other terms publish.
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(term.semantic_uri),
+                    message=f"term {term.name!r}: not written: the live read its steward "
+                    f"labels are kept from failed (HTTP {found.status_code})",
+                )
+            )
+            return None
         if found.status_code == 404:
             response = await client.post(
                 self._url(f"{glossary}/terms"),
@@ -568,7 +579,6 @@ class DataplexExport(MetadataExport):  # REQ-2118
                 json={**body, "labels": labels},
             )
         else:
-            found.raise_for_status()
             live = found.json()
             # Provisa's labels track the snapshot; a steward's stand.
             steward = {

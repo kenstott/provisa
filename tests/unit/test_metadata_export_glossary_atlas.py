@@ -476,3 +476,34 @@ async def test_every_term_carries_its_role_and_a_stewards_attributes_stand(fake)
     assert updated["additionalAttributes"] == {"owner_team": "finance", "provisaRole": "class"}
     (created,) = fake.term_creates
     assert created["additionalAttributes"] == {"provisaRole": "concept"}
+
+
+async def test_a_bound_term_that_cannot_be_read_is_refused_not_recreated(fake, monkeypatch):
+    """REQ-1389: unreadable is not gone. A create would duplicate the term and an update sent
+    blind would replace the steward's enrichment, so it is refused by name; the others publish."""
+    fake.terms["term-live"] = {
+        "guid": "term-live",
+        "name": "Revenue",
+        "qualifiedName": f"Revenue@{GLOSSARY_QN}",
+    }
+    get = httpx.AsyncClient.get
+
+    async def _unreadable_margin(self, url, headers=None, params=None):
+        if url.endswith("/glossary/term/term-unreadable"):
+            return httpx.Response(503, request=httpx.Request("GET", url))
+        return await get(self, url, headers=headers, params=params)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _unreadable_margin)
+    export = _export()
+    export.stored_bindings = {
+        GLOSSARY_URI: ("glossary-live", GLOSSARY_QN),
+        f"provisa://{ORG}/terms/Revenue": ("term-live", f"Revenue@{GLOSSARY_QN}"),
+        f"provisa://{ORG}/terms/Margin": ("term-unreadable", f"Margin@{GLOSSARY_QN}"),
+    }
+    fake.glossaries.append({"guid": "glossary-live", "qualifiedName": GLOSSARY_QN})
+    result = await export.publish(_snapshot([_term(1, "Revenue"), _term(2, "Margin")]))
+    assert fake.term_creates == []
+    assert [guid for guid, _ in fake.term_puts] == ["term-live"]
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == [f"provisa://{ORG}/terms/Margin"]
+    assert "HTTP 503" in refused[0].message

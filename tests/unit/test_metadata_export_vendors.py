@@ -432,10 +432,11 @@ async def test_datahub_tag_merge_preserves_human_tags_and_reconciles_provisa_one
     ]
 
 
-async def test_datahub_tag_merge_fetch_failure_reports_but_still_publishes_our_tags(
+async def test_datahub_a_failed_tag_read_refuses_the_aspect_and_the_rest_publishes(
     snapshot, monkeypatch
 ):
-    """A dead read path must not abort the publish and must not fail silently (REQ-1389)."""
+    """REQ-1389: proposed blind, globalTags would replace the people's tags; it is refused by
+    name and the rest of the snapshot still goes out."""
     posted: list[dict] = []
 
     async def _get(self, url, headers=None):
@@ -449,14 +450,17 @@ async def test_datahub_tag_merge_fetch_failure_reports_but_still_publishes_our_t
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
     result = await _datahub_export().publish(snapshot)
     assert not result.ok
-    merge_errors = [e for e in result.errors if "globalTags merge" in e.message]
-    assert merge_errors and merge_errors[0].asset.fqn() == ORDERS
-    assert "HTTP 500" in merge_errors[0].message
-    # The publish itself still went out, carrying exactly Provisa's tags.
-    assert result.published["tags"] == 1
-    assert _posted_global_tags(posted, _urn(ORDERS)) == [
-        {"tag": "urn:li:tag:provisa_rls_restricted"}
+    refused = [e for e in result.errors if e.message.startswith("globalTags: not written")]
+    assert [e.asset.fqn() for e in refused] == [ORDERS]
+    assert "HTTP 500" in refused[0].message
+    assert "tags" not in result.published
+    assert not [
+        p
+        for p in posted
+        if p["proposal"]["aspectName"] == "globalTags"
+        and p["proposal"]["entityUrn"] == _urn(ORDERS)
     ]
+    assert result.published["table"] == len(snapshot.tables)
 
 
 async def test_datahub_tag_merge_flag_off_never_reads_the_live_aspect(snapshot, monkeypatch):
@@ -608,3 +612,78 @@ def test_each_vendor_name_resolves_to_its_adapter(name, expected):
     )
     assert isinstance(export, expected)
     assert export.provider_name == name
+
+
+def _posted_aspect(posted: list[dict], aspect: str, urn: str) -> dict | None:
+    found = [
+        p["proposal"]
+        for p in posted
+        if p["proposal"]["aspectName"] == aspect and p["proposal"]["entityUrn"] == urn
+    ]
+    assert len(found) <= 1
+    return json.loads(found[0]["aspect"]["value"]) if found else None
+
+
+def _live_ownership_transport(monkeypatch, live_by_urn: dict, failing: frozenset = frozenset()):
+    """GMS with each dataset's live ``ownership`` (``live_by_urn``); a urn in ``failing``
+    answers 500; every other aspect read is a 404."""
+    from urllib.parse import quote
+
+    posted: list[dict] = []
+
+    async def _get(self, url, headers=None):
+        request = httpx.Request("GET", url)
+        for urn in failing:
+            if url.endswith(f"/aspects/{quote(urn, safe='')}?aspect=ownership&version=0"):
+                return httpx.Response(500, request=request)
+        for urn, live in live_by_urn.items():
+            if url.endswith(f"/aspects/{quote(urn, safe='')}?aspect=ownership&version=0"):
+                body = {"aspect": {"com.linkedin.common.Ownership": live}}
+                return httpx.Response(200, json=body, request=request)
+        return httpx.Response(404, request=request)
+
+    async def _post(self, url, json=None, headers=None):
+        posted.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    return posted
+
+
+async def test_datahub_republish_keeps_an_owner_a_person_added(snapshot, monkeypatch):
+    """REQ-1389: ownership is one aspect; the owner a person added in DataHub stands beside the
+    steward Provisa authors."""
+    person = {"owner": "urn:li:corpuser:jane", "type": "TECHNICAL_OWNER"}
+    live = {
+        "owners": [
+            {
+                "owner": "urn:li:corpuser:data-steward",
+                "type": "DATAOWNER",
+                "attribution": {"time": 5, "actor": "urn:li:corpuser:provisa"},
+            },
+            person,
+        ],
+        "lastModified": {"time": 6, "actor": "urn:li:corpuser:jane"},
+    }
+    posted = _live_ownership_transport(monkeypatch, {_urn(ORDERS): live})
+    result = await _datahub_export().publish(snapshot)
+    assert result.ok, result.errors
+    # Nothing changed for orders: the aspect is not rewritten at all.
+    assert _posted_aspect(posted, "ownership", _urn(ORDERS)) is None
+    # A steward change rewrites Provisa's owner and keeps the person's.
+    live["owners"][0]["owner"] = "urn:li:corpuser:old-steward"
+    posted.clear()
+    result = await _datahub_export().publish(snapshot)
+    owners = _posted_aspect(posted, "ownership", _urn(ORDERS))["owners"]
+    assert person in owners
+    assert [o["owner"] for o in owners if o != person] == ["urn:li:corpuser:data-steward"]
+
+
+async def test_datahub_a_failed_ownership_read_refuses_that_aspect_alone(snapshot, monkeypatch):
+    posted = _live_ownership_transport(monkeypatch, {}, failing=frozenset({_urn(ORDERS)}))
+    result = await _datahub_export().publish(snapshot)
+    assert _posted_aspect(posted, "ownership", _urn(ORDERS)) is None
+    assert _posted_aspect(posted, "ownership", _urn("wh.public.customers")) is not None
+    refused = [e for e in result.errors if e.message.startswith("ownership: not written")]
+    assert [e.asset.fqn() for e in refused] == [ORDERS]

@@ -443,8 +443,18 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 response = await client.post(
                     self._catalog("/terms"), params=params, json=body, headers=catalog
                 )
+            elif found.status_code >= 400:
+                # Written blind, the term would lose what a steward keeps on it; refused by
+                # name, and the other terms publish.
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=f"term {term.name!r}: not written: the live read its steward "
+                        f"fields are kept from failed (HTTP {found.status_code})",
+                    )
+                )
+                continue
             else:
-                found.raise_for_status()
                 # A steward's contacts, acronyms, resources and attributes stand.
                 live = found.json()
                 live.pop("parentId", None)
