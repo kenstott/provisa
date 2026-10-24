@@ -371,6 +371,13 @@ def _null_order_as_key(sql: str) -> str:
                 # ORDER BY 2: its null test is of the second item the SELECT returns.
                 item = select.expressions[int(key.name) - 1]
                 key = exp.column(item.alias, quoted=True) if item.alias else item.unalias()
+            elif isinstance(key, exp.Column) and not key.table:
+                # A bare output name: inside an expression DuckDB reads it as a source's column
+                # of that name when there is one (SUM(t.customers) AS customers), so the null test
+                # is of the output's own expression.
+                named = next((e for e in select.expressions if e.alias == key.name), None)
+                if named is not None:
+                    key = named.unalias()
             is_null = exp.Paren(this=exp.Is(this=key.copy(), expression=exp.Null()))
             # A boolean key is never null, and DuckDB puts nulls last by default in either
             # direction: neither key needs a NULLS clause.
