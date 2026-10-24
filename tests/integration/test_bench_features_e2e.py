@@ -558,6 +558,40 @@ def test_each_source_answers_over_each_transport_that_spells_it(stack, transport
         assert run_cell(stack, transport, f"source:{source}", setup) > 0, source
 
 
+def _neo4j_filtered_on_customer_only(c: dict[str, Any]) -> None:
+    for t in c["sources"]["bench-neo4j"]["tables"]:
+        for col in t["columns"]:
+            col.pop("domain", None)
+            if col["name"] == "customer_id":
+                col["domain"] = {"kind": "int_range", "min": 1, "max": 250000}
+
+
+@pytest.mark.parametrize("transport", TRANSPORTS)
+def test_a_non_key_filter_on_a_row_level_neo4j_table_is_refused_by_name(stack, transport):
+    """REQ-1915: bench_order_node is replicated row by row and Neo4j has no direct driver to apply
+    a filter on a column other than the key, so such a read is refused with the reason, on every
+    transport that spells the table -- never answered from the rows replicated so far."""
+    table = next(t for t in stack.bound.sources["bench-neo4j"].tables)
+    if not table.has(cm.TRANSPORT_LANGUAGE[transport]):
+        return  # the contract sends nothing there (test_each_source_...)
+    weights = {s: 1.0 if s == "bench-neo4j" else 0.0 for s in SOURCES}
+    setup = variant(
+        stack,
+        transport,
+        weights=weights,
+        knobs={"filters": 1},
+        raw_edit=_neo4j_filtered_on_customer_only,
+    )
+    sent = 0
+    for spec, query in specs(setup, transport, f"features/row-level-refusal/{transport}"):
+        assert [f[0] for f in spec.filters] == ["customer_id"]
+        # each transport reports it in its own error type; the message is the same everywhere
+        with pytest.raises(Exception, match="cannot apply this filter itself"):
+            send(stack, setup, transport, query, spec.role, "row-level-refusal")
+        sent += 1
+    assert sent > 0
+
+
 @pytest.mark.parametrize("transport", TRANSPORTS)
 def test_each_table_answers_by_its_weight(stack, transport):
     """tables.weight: order_items (weight 0 in the contract) read alone, its weight 1."""

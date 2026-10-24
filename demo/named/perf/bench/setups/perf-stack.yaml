@@ -116,7 +116,9 @@ sources:
         base_column: order_id
         columns:
           - {name: order_id, domain: {kind: int_range, min: 1, max: 2000000}}
-          - {name: customer_id, domain: {kind: int_range, min: 1, max: 250000}}
+          # No domain, so never filtered: the table is row_materialize on Neo4j, which has no direct
+          # driver to apply a non-key filter, so only its key binds one (REQ-1915).
+          - {name: customer_id}
           - {name: region}
           - {name: status}
     joins: []
