@@ -68,8 +68,8 @@ def test_unsupported_write_pattern_rejected(client):
     )
     assert resp.status_code == 400
     data = resp.json()
-    assert "error" in data
-    err = data["error"]
+    assert data["code"] == "cypher.refused", data
+    err = data["detail"]
     # Behavior: MERGE is an unsupported write pattern and is rejected by name.
     assert "MERGE" in err.upper(), err
 
@@ -84,9 +84,8 @@ def test_supported_write_reaches_write_pipeline(client):
     )
     assert resp.status_code == 400
     data = resp.json()
-    assert "error" in data
-    assert "label" in data["error"].lower() and "Person" in data["error"]
-    assert "read-only" not in data["error"].lower()
+    assert "label" in data["detail"].lower() and "Person" in data["detail"], data
+    assert "read-only" not in data["detail"].lower()
 
 
 def test_apoc_rejected(client):
@@ -96,7 +95,7 @@ def test_apoc_rejected(client):
     )
     assert resp.status_code == 400
     data = resp.json()
-    assert "APOC" in data["error"].upper() or "apoc" in data["error"].lower()
+    assert "APOC" in data["detail"].upper(), data
 
 
 def test_parse_error_returns_400(client):
@@ -105,7 +104,7 @@ def test_parse_error_returns_400(client):
         json={"query": "MERGE (n:Person {name: 'Eve'})"},
     )
     assert resp.status_code == 400
-    assert "error" in resp.json()
+    assert resp.json()["code"] == "cypher.refused"
 
 
 def test_valid_query_returns_columns_and_rows(client):
@@ -163,4 +162,4 @@ def test_named_params_bound_correctly(client):
     # the param path is what's under test, not whether rows exist.
     assert resp.status_code in (200, 400, 500, 503)
     if resp.status_code == 400:
-        assert "error" in resp.json()
+        assert resp.json()["detail"]

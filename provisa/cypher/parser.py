@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from provisa.cypher.expr_parser import parse_expression
+from provisa.gql.mistakes import aggregate_misuse, undefined_variable
+from provisa.gql.translator_types import CypherMistake
 from provisa.gql.ir import (
     NodePattern,
     RelPattern,
@@ -43,6 +45,11 @@ from provisa.gql.ir import (
 
 class CypherParseError(Exception):
     """Raised for invalid or unsupported Cypher syntax."""
+
+
+class CypherParseMistake(CypherMistake, CypherParseError):
+    """REQ-778: a mistake the parse finds, coded and worded for the user; every surface that
+    refuses a parse error refuses it as one."""
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +185,26 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         self._pos += 1
         return t
 
+    def _row_count(self, clause: str) -> int:
+        """The whole number of rows SKIP or LIMIT takes. REQ-778: anything else -- a fraction, a
+        negative, a string, a name -- is the user's mistake, refused naming what was written and
+        the fix (a fraction was once cut to its whole part without a word)."""
+        t = self._peek()
+        written = t.value if t is not None else ""
+        if t is not None and t.type == "MINUS":
+            self._advance()
+            following = self._peek()
+            written = "-" + (following.value if following is not None else "")
+        elif t is not None and t.type == "NUMBER" and t.value.isdigit():
+            return int(self._advance().value)
+        raise CypherParseMistake(
+            f"cypher.invalid_{clause.lower()}",
+            f"{clause} {written} is not a whole number of rows: {clause} takes a count of 0 or "
+            f"more, e.g. {clause} 10.",
+            clause=clause,
+            value=written,
+        )
+
     def _expect(self, ttype: str, value: str | None = None) -> Token:
         t = self._peek()
         if t is None:
@@ -282,13 +309,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
 
             elif kw == "SKIP":
                 self._advance()
-                t = self._expect("NUMBER")
-                skip = int(float(t.value))
+                skip = self._row_count("SKIP")
 
             elif kw == "LIMIT":
                 self._advance()
-                t = self._expect("NUMBER")
-                limit = int(float(t.value))
+                limit = self._row_count("LIMIT")
 
             else:
                 _bad = self._peek()
@@ -640,11 +665,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         skip: int | None = None
         if self._match_keyword("SKIP"):
             self._advance()
-            skip = int(float(self._expect("NUMBER").value))
+            skip = self._row_count("SKIP")
         limit: int | None = None
         if self._match_keyword("LIMIT"):
             self._advance()
-            limit = int(float(self._expect("NUMBER").value))
+            limit = self._row_count("LIMIT")
         where: WhereClause | None = None
         if self._match_keyword("WHERE"):
             self._advance()
@@ -885,6 +910,19 @@ def refuse_multiple_statements(query: str) -> None:
 
 
 def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
+    """Parse a read-only Cypher statement into a CypherAST (``_parse_statement``), refusing a
+    variable nothing in it binds or an aggregate where none is taken (REQ-778): the user's mistake, said before any translation. A
+    statement inside it (EXISTS { }, COUNT { }, COLLECT { }) reads its outer variables, so it is
+    checked as part of the whole, never on its own."""
+    ast = _parse_statement(query)
+    for check in (undefined_variable, aggregate_misuse):
+        mistake = check(ast)
+        if mistake is not None:
+            raise CypherParseMistake(mistake.code, str(mistake), **mistake.params)
+    return ast
+
+
+def _parse_statement(query: str) -> CypherAST:
     """Parse a read-only Cypher query into a CypherAST.
 
     Raises CypherParseError for write clauses, APOC references, or unbounded
@@ -935,7 +973,7 @@ def subquery_statement(kind: str, body: str) -> CypherAST:
         text = text + " RETURN 1"
     elif kind == "COLLECT" and "RETURN" not in text.upper():
         text = text + " RETURN *"
-    return parse_cypher(text)
+    return _parse_statement(text)
 
 
 def extract_parameters(query: str) -> list[str]:  # REQ-571

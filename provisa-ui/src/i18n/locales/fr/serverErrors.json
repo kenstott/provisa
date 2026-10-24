@@ -529,7 +529,22 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}"
+      "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}",
+      "access_violations": "Ce rôle ne peut pas exécuter cette requête :",
+      "invalid_regex": "Le motif \"{{pattern}}\" dans {{expression}} n'est pas une expression régulière valide : {{reason}}. =~ attend une expression régulière, par ex. \".*{{word}}.*\", ou utilisez CONTAINS \"{{word}}\".",
+      "unknown_label": "Il n'existe pas de libellé :{{label}}. Libellés enregistrés : {{suggestions}}.",
+      "no_labels": "Il n'existe pas de libellé :{{label}} : ce rôle ne peut lire aucune table.",
+      "unknown_relationship_type": "Il n'existe pas de type de relation {{types}}. Types enregistrés : {{suggestions}}.",
+      "no_relationship_types": "Il n'existe pas de type de relation {{types}} : ce rôle ne peut parcourir aucune relation.",
+      "type_mismatch": "Dans {{expression}}, {{value}} ne peut pas être comparé à {{property}}, de type {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE ne peut pas utiliser l'agrégat {{aggregate}} : WHERE filtre les lignes avant leur regroupement. Agrégez dans un WITH et filtrez ensuite.",
+      "nested_aggregate": "{{outer}} agrège l'agrégat {{inner}} : on ne peut pas agréger un autre agrégat. Agrégez d'abord dans un WITH.",
+      "undefined_variable": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} n'est pas un nombre entier de lignes : LIMIT attend un nombre supérieur ou égal à 0, par ex. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} n'est pas un nombre entier de lignes : SKIP attend un nombre supérieur ou égal à 0, par ex. SKIP 10.",
+      "engine_refused": "Le moteur a refusé la requête : {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL."
     },
     "requests": {
       "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
