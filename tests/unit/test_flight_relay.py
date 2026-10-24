@@ -296,9 +296,11 @@ def _as_http2(raw: bytes) -> str:
 
 
 def _where(sock) -> tuple:
-    """A socket's descriptor and peer, as the operating system says them now."""
+    """A socket's descriptor and both its ends, as the operating system says them now. Both ends:
+    every relayed upstream socket has the one peer (the Flight server), so only its own end tells
+    one upstream connection from another."""
     try:
-        return (sock.fileno(), sock.getpeername())
+        return (sock.fileno(), sock.getsockname(), sock.getpeername())
     except OSError as exc:
         return (sock.fileno(), f"{type(exc).__name__}: {exc}")
 
@@ -353,6 +355,7 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
             "packer": zlib.compressobj(1),
             "packed": [],
             "source": _where(source),
+            "sink": _where(sink),
             "moved": [],
         }
         with copies_lock:
@@ -360,8 +363,11 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
         real_copy(_Watched(source, this_copy.record), sink)
 
     def _send_all(sink, data) -> None:
-        real_send_all(sink, data)
         record = this_copy.record
+        now = _where(sink)
+        if now != record["sink"]:
+            record["moved"].append({"sink_after_bytes": record["bytes"], "now": now})
+        real_send_all(sink, data)
         record["bytes"] += len(data)
         record["packed"].append(record["packer"].compress(data))  # sequential integers: small
 
@@ -412,7 +418,11 @@ def test_many_large_streams_at_once_each_arrive_whole_through_the_relay(started,
     ]
     # Whether a socket's descriptor or peer changed while it was read: a descriptor closed under
     # the relay and reused by another connection would splice that connection's bytes in.
-    moved = [{"source": c["source"], "moved": c["moved"][:5]} for c in copies if c["moved"]]
+    moved = [
+        {"source": c["source"], "sink": c["sink"], "moved": c["moved"][:5]}
+        for c in copies
+        if c["moved"]
+    ]
     assert failures == [], {
         "failures": failures,
         "carried": carried,
