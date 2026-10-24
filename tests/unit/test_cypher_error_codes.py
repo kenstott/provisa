@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f4863de7-7ed2-4adc-b4d5-8c72fe483dcb
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-778 (amended 2026-10-24): what a Cypher read cannot answer is answered with a code.
 
 - ``toInteger``, ``toFloat`` and ``toBoolean`` of a value that is no such thing are null, as
