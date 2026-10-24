@@ -24,7 +24,11 @@ import provisa.bolt.messages as msg
 from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
-from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
+from provisa.compiler.directives import (
+    NO_CACHE_HINT,
+    cache_hint_for,
+    extract_directives_from_cypher_comments,
+)
 from provisa.core import request_deadline
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
@@ -1732,6 +1736,8 @@ async def _execute_cypher(
         buffered=True,
         # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
         cache_hint=cache_hint_for("cypher", cypher),
+        # REQ-030: the statement's own `// @provisa route=...` comment.
+        steward_hint=extract_directives_from_cypher_comments(cypher).steward_hint,
         # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
         serve_cached=True,
         sdl_joins=False,
