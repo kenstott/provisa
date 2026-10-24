@@ -668,6 +668,17 @@ def non_strict_sql(sql: str, ctx: Any) -> str:
     return f"{GUARD_OPT_OUT}\n{make_semantic_sql(rewrite_semantic_to_physical(sql, ctx), ctx)}"
 
 
+def _nl_cypher_compiler(surface: Any, role: str, app_state: AppState) -> Any:
+    """The validator non-strict NL's Cypher is refined against: with the role's label map, an
+    unbound name that is a bound variable's property is offered as it in the refusal the retry is
+    given (REQ-778), as every other Cypher surface offers it."""
+    if surface is None:
+        # No schema for the role: no graph to read a label map from. The SQL branch refuses the
+        # job by name ("No schema context for role"); Cypher is checked for its syntax alone.
+        return make_cypher_compiler()
+    return make_cypher_compiler(_build_cypher_label_map(surface.context, role, app_state))
+
+
 def _build_cypher_label_map(
     ctx: object,  # object-ok: circular-import boundary — CompilationContext lives in provisa.compiler
     role: str,
@@ -875,7 +886,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     if not strict:
         # Non-strict: each of SQL, GraphQL and Cypher is the model's best effort from the question,
         # generated on its own (REQ-603); Cypher is generated like GraphQL, not derived from SQL.
-        compilers["cypher"] = make_cypher_compiler()
+        compilers["cypher"] = _nl_cypher_compiler(surface, role, app_state)
         if graphql_schema is not None:
             compilers["graphql"] = make_graphql_compiler(graphql_schema)
 
