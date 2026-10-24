@@ -67,3 +67,17 @@ def test_a_row_filter_or_a_mask_on_anything_else_leaves_the_table():
 def test_a_view_over_another_catalogs_table_of_the_same_name_does_not_answer():
     other = _rollup(_VIEW_SQL.replace('"sales_pg"', '"crm_pg"'))
     assert _answer(f'SELECT SUM("amount") FROM {_ORDERS}', other) is None
+
+
+def test_a_view_never_answers_its_own_build():
+    """Its build is its own definition: answered by the view, it would read back what the view
+    held, and an empty first build would keep it empty (the quality demo's gold, REQ-2051)."""
+    from provisa.mv.view_reinject import building
+
+    assert _answer(_VIEW_SQL) is not None
+    with building("orders_by_region"):
+        assert _answer(_VIEW_SQL) is None
+        # Another view's build is answered as any statement is.
+        with building("another_view"):
+            assert _answer(_VIEW_SQL) is not None
+    assert _answer(_VIEW_SQL) is not None

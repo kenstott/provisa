@@ -28,6 +28,10 @@ Two kinds of view answer:
 
 A statement is rewritten only when every column it reads of a covered table is qualified by
 that table's alias, and reads none of them through ``*``: anything else is left as it is.
+
+A view's own build is never answered by that view (:func:`building`): its definition is what
+it holds, so a build would read back what the view held before it, and an empty first build
+would keep it empty.
 """
 
 # Requirements: REQ-849, REQ-882, REQ-1586
@@ -35,6 +39,9 @@ that table's alias, and reads none of them through ``*``: anything else is left 
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -49,6 +56,20 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 Relation = tuple[str, str, str]  # (catalog, schema, table), lowercased
+
+#: The view whose build the current statement is, if it is one (:func:`building`).
+_building: ContextVar[str | None] = ContextVar("view_reinject_building", default=None)
+
+
+@contextmanager
+def building(mv_id: str) -> Iterator[None]:
+    """The statements planned in this block are the build of view ``mv_id``: it answers none of
+    them."""
+    token = _building.set(mv_id)
+    try:
+        yield
+    finally:
+        _building.reset(token)
 
 
 @dataclass(frozen=True)
@@ -252,7 +273,9 @@ def reinject(sql: str, fresh_mvs: list[MVDefinition], ctx: CompilationContext) -
     that covers fewer; among partial ones, the widest; then an aggregate view."""
     from provisa.mv.aggregate_catalog import rewrite_aggregate_query
 
-    fresh_mvs = [mv for mv in fresh_mvs if mv.is_fresh]  # a stale view answers nothing
+    # A stale view answers nothing, nor a view its own build.
+    built = _building.get()
+    fresh_mvs = [mv for mv in fresh_mvs if mv.is_fresh and mv.id != built]
     if not fresh_mvs:
         return None
     try:

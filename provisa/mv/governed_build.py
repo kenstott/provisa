@@ -241,6 +241,7 @@ async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | No
     engine otherwise. ``route_hint`` "engine" asks the engine for it (its shape, see
     :func:`_direct_columns`)."""
     from provisa.core import region_admin
+    from provisa.mv.view_reinject import building
     from provisa.pgwire._pipeline import _govern_and_route
     from provisa.transpiler.router import Route
 
@@ -250,12 +251,13 @@ async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | No
         semantic = await _join_semantic_sql(state, mv)
     else:
         raise ViewNotBuildable(mv.id, "it has no definition in the model's terms to govern")
-    plan = await _govern_and_route(
-        semantic,
-        region_admin.ROLE,
-        session_vars=region_admin.session_vars(state),
-        route_hint=route_hint,
-    )
+    with building(mv.id):
+        plan = await _govern_and_route(
+            semantic,
+            region_admin.ROLE,
+            session_vars=region_admin.session_vars(state),
+            route_hint=route_hint,
+        )
     if plan.route not in (Route.ENGINE, Route.DIRECT):
         raise ViewNotBuildable(
             mv.id, f"its definition routes {plan.route}, not to its source or the engine"
