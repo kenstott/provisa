@@ -160,6 +160,7 @@
     "moveOneUnnamed": "{{column}} ले जाएँ?",
     "moveManyUnnamed_one": "{{count}} कॉलम ले जाएँ?",
     "moveManyUnnamed_other": "{{count}} कॉलम ले जाएँ?",
-    "moveCarryUnnamed": "ले जाएँ और उनके नए शब्दों को {{tags}} से चिह्नित करें"
+    "moveCarryUnnamed": "ले जाएँ और उनके नए शब्दों को {{tags}} से चिह्नित करें",
+    "termGraphTitle": "पद ग्राफ़"
   }
 }

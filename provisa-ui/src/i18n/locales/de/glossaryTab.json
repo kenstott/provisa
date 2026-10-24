@@ -160,6 +160,7 @@
     "moveOneUnnamed": "{{column}} verschieben?",
     "moveManyUnnamed_one": "{{count}} Spalte verschieben?",
     "moveManyUnnamed_other": "{{count}} Spalten verschieben?",
-    "moveCarryUnnamed": "Verschieben und ihre neuen Begriffe mit {{tags}} markieren"
+    "moveCarryUnnamed": "Verschieben und ihre neuen Begriffe mit {{tags}} markieren",
+    "termGraphTitle": "Begriffsgraph"
   }
 }

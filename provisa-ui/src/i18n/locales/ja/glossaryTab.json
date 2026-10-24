@@ -160,6 +160,7 @@
     "moveOneUnnamed": "{{column}} を移しますか?",
     "moveManyUnnamed_one": "{{count}} 列を移しますか?",
     "moveManyUnnamed_other": "{{count}} 列を移しますか?",
-    "moveCarryUnnamed": "移して新しい用語に {{tags}} を付ける"
+    "moveCarryUnnamed": "移して新しい用語に {{tags}} を付ける",
+    "termGraphTitle": "用語グラフ"
   }
 }
