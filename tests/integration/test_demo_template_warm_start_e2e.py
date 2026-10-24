@@ -50,6 +50,9 @@ def tier(tmp_path_factory):
         "sbxwarme2e",
         engine="duckdb",
         config=str(config),
+        # Its own control plane: a template another test recorded ready in the shared one has
+        # no folder under this tier's data directory, and its readiness check reads that folder.
+        control_plane="own",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={
             "PROVISA_SANDBOX_TIER": "true",
