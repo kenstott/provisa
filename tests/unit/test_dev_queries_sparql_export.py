@@ -101,3 +101,16 @@ async def test_a_root_with_no_sparql_form_says_why(model):
     ctx, _lm, _vocab = model
     ((_, _, sparql, why),) = await _export(ctx, "{ orders { id customer { name } } }")
     assert sparql is None and why is not None and "nested object" in why
+
+
+async def test_with_no_public_address_a_root_has_no_sparql_and_says_why(model, monkeypatch):
+    from provisa.gql.iri import IriBaseUnset
+
+    async def _no_base(*_a):
+        raise IriBaseUnset()
+
+    monkeypatch.setattr("provisa.api.rest.sparql_router.vocabulary_for", _no_base)
+    sparql, why = await dev_queries._compile_sparql_for_result(
+        "MATCH (a:Orders) RETURN a.id", None, model[0], SimpleNamespace(), "org_admin"
+    )
+    assert sparql is None and why is not None and "public_url" in why
