@@ -22,6 +22,9 @@ selection the traversal a Cypher read of the same data is.
   it groups by) and ``{count: count(*), sum: {col: sum(n0.col), …}, …} AS aggregate``: Cypher
   groups by the items that aggregate nothing, so by the group key. Its order_by orders by a group
   key (``groupKey.key``) or an aggregate.
+- An aggregate root field is the same MATCH returning ``{count: count(*), sum: {…}, …} AS
+  aggregate`` and, for its nodes, ``collect({col: n0.col, …}) AS nodes``: one row, of every row
+  its where keeps.
 - A where is the expression tree its operators state: eq, neq, gt, gte, lt, lte, in, nin,
   is_null, _and, _or, _not. (Cypher has no LIKE: like and ilike are refused.)
 
@@ -75,7 +78,9 @@ class GraphQLLoweringRefused(ValueError):
 _ARGUMENTS = frozenset({"where", "order_by", "limit", "offset"})
 _GROUP_BY_ARGUMENTS = _ARGUMENTS | {"by"}
 #: A group-by's aggregate functions, as Cypher names them.
-_AGGREGATES = {"sum": "sum", "avg": "avg", "min": "min", "max": "max"}
+_AGGREGATE_ARGUMENTS = frozenset({"where"})
+#: An aggregate's functions, as Cypher names them (stDev is the sample's, as SQL's STDDEV is).
+_AGGREGATES = {"sum": "sum", "avg": "avg", "min": "min", "max": "max", "stddev": "stDev"}
 _COMPARISONS = {"eq": "=", "neq": "<>", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 #: GraphQL's directions, as Cypher orders (its nulls last ascending, first descending).
 _DIRECTIONS = {
@@ -300,6 +305,73 @@ class _Lowering:
             _AGGREGATES[func], [Property(Variable(var), self.prop(table, nm, column))]
         )
 
+    def aggregates(
+        self, table: Any, nm: Any, var: str, f: FieldNode, *, function_aliases: bool
+    ) -> list[tuple[str, CypherExpr]]:
+        """The entries of an ``aggregate`` field's map: ``count`` and each function's map of the
+        columns it aggregates, keyed as the GraphQL compiler keys them (a column's alias; a
+        function's alias where the compiler honours one)."""
+        assert f.selection_set is not None
+        entries: list[tuple[str, CypherExpr]] = []
+        for a in f.selection_set.selections:
+            if not isinstance(a, FieldNode) or a.arguments:
+                raise GraphQLLoweringRefused("a fragment or arguments in aggregate")
+            func = a.name.value
+            if a.alias and (func == "count" or not function_aliases):
+                raise GraphQLLoweringRefused(f"an alias on the aggregate {func}")
+            if func == "count":
+                entries.append(("count", self.aggregate(table, nm, var, "count", "")))
+                continue
+            if func not in _AGGREGATES or a.selection_set is None:
+                raise GraphQLLoweringRefused(f"the aggregate {func}")
+            columns: list[tuple[str, CypherExpr]] = []
+            for c in a.selection_set.selections:
+                if not isinstance(c, FieldNode):
+                    raise GraphQLLoweringRefused("a fragment")
+                columns.append(
+                    (
+                        c.alias.value if c.alias else c.name.value,
+                        self.aggregate(table, nm, var, func, c.name.value),
+                    )
+                )
+            entries.append((a.alias.value if a.alias else func, MapLiteral(columns)))
+        return entries
+
+    def nodes(self, table: Any, nm: Any, var: str, f: FieldNode) -> ReturnItem:
+        """An aggregate root's ``nodes``: ``collect({…})`` of the rows it aggregates, a map of
+        each row's columns (in no order, as the GraphQL compiler's nodes are in none)."""
+        if f.alias:
+            raise GraphQLLoweringRefused("an alias on nodes")
+        assert f.selection_set is not None
+        entries: list[tuple[str, CypherExpr]] = []
+        for c in f.selection_set.selections:
+            if not isinstance(c, FieldNode) or c.arguments or c.name.value.startswith("_"):
+                raise GraphQLLoweringRefused("a fragment, arguments or a meta field in nodes")
+            if (table.type_name, c.name.value) in self.ctx.joins:
+                raise GraphQLLoweringRefused(f"the relationship {c.name.value} in nodes")
+            key = c.alias.value if c.alias else c.name.value
+            entries.append((key, Property(Variable(var), self.prop(table, nm, c.name.value))))
+        return ReturnItem(FunctionCall("collect", [MapLiteral(entries)]), alias="nodes")
+
+    def aggregate_root(self, table: Any, nm: Any, var: str, sel: FieldNode) -> list[ReturnItem]:
+        """An aggregate root's RETURN items: its ``aggregate`` map and its ``nodes``, one row
+        over every row."""
+        assert sel.selection_set is not None
+        items: list[ReturnItem] = []
+        for f in sel.selection_set.selections:
+            if not isinstance(f, FieldNode) or f.arguments:
+                raise GraphQLLoweringRefused("a fragment or arguments on an aggregate root's field")
+            if f.name.value == "nodes":
+                items.append(self.nodes(table, nm, var, f))
+                continue
+            if f.name.value != "aggregate":
+                raise GraphQLLoweringRefused(f"the aggregate field {f.name.value}")
+            entries = self.aggregates(table, nm, var, f, function_aliases=True)
+            items.append(
+                ReturnItem(MapLiteral(entries), alias=f.alias.value if f.alias else "aggregate")
+            )
+        return items
+
     def group_by(
         self, table: Any, nm: Any, var: str, sel: FieldNode, args: dict
     ) -> tuple[list[ReturnItem], list[OrderItem]]:
@@ -320,28 +392,7 @@ class _Lowering:
                 continue
             if f.name.value != "aggregate":
                 raise GraphQLLoweringRefused(f"the group-by field {f.name.value}")
-            assert f.selection_set is not None
-            entries: list[tuple[str, CypherExpr]] = []
-            for a in f.selection_set.selections:
-                if not isinstance(a, FieldNode) or a.alias or a.arguments:
-                    raise GraphQLLoweringRefused("a fragment, alias or arguments in aggregate")
-                func = a.name.value
-                if func == "count":
-                    entries.append(("count", self.aggregate(table, nm, var, "count", "")))
-                    continue
-                if func not in _AGGREGATES or a.selection_set is None:
-                    raise GraphQLLoweringRefused(f"the aggregate {func}")
-                columns: list[tuple[str, CypherExpr]] = []
-                for c in a.selection_set.selections:
-                    if not isinstance(c, FieldNode):
-                        raise GraphQLLoweringRefused("a fragment")
-                    columns.append(
-                        (
-                            c.alias.value if c.alias else c.name.value,
-                            self.aggregate(table, nm, var, func, c.name.value),
-                        )
-                    )
-                entries.append((func, MapLiteral(columns)))
+            entries = self.aggregates(table, nm, var, f, function_aliases=False)
             if entries:
                 items.append(ReturnItem(MapLiteral(entries), alias="aggregate"))
         order: list[OrderItem] = []
@@ -400,12 +451,18 @@ def lower_read(
             raise GraphQLLoweringRefused("a fragment")
         lowering = _Lowering(ctx, label_map, variables)
         table = ctx.tables.get(sel.name.value)
-        grouped = table is not None and sel.name.value == f"{table.field_name}GroupBy"
-        if table is None or (table.field_name != sel.name.value and not grouped):
-            raise GraphQLLoweringRefused(f"the root field {sel.name.value}")
+        name = sel.name.value
+        base = table.field_name if table is not None else None
+        grouped = name in (f"{base}GroupBy", f"{base}_group_by")
+        aggregated = name in (f"{base}Aggregate", f"{base}_aggregate")
+        if table is None or (base != name and not grouped and not aggregated):
+            raise GraphQLLoweringRefused(f"the root field {name}")
         nm = lowering.node_of(table)
         var = lowering.var()
-        args = lowering.arguments(sel, _GROUP_BY_ARGUMENTS if grouped else _ARGUMENTS)
+        args = lowering.arguments(
+            sel,
+            _GROUP_BY_ARGUMENTS if grouped else _AGGREGATE_ARGUMENTS if aggregated else _ARGUMENTS,
+        )
         steps: list[MatchStep | WithClause] = [
             MatchStep(
                 [
@@ -419,6 +476,8 @@ def lower_read(
         ]
         if grouped:
             returned, order = lowering.group_by(table, nm, var, sel, args)
+        elif aggregated:
+            returned, order = lowering.aggregate_root(table, nm, var, sel), []
         else:
             returned = [
                 ReturnItem(expr, alias=key)

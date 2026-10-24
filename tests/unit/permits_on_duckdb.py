@@ -40,6 +40,11 @@ def model() -> tuple[Any, Any, dict]:
 
 def answer(sql: str, params: list, model: tuple, rows: list[dict]) -> list:
     """The first column of semantic ``sql``'s answer over a permits table of ``rows``."""
+    return [next(iter(r.values())) for r in answer_rows(sql, params, model, rows)]
+
+
+def answer_rows(sql: str, params: list, model: tuple, rows: list[dict]) -> list[dict]:
+    """Semantic ``sql``'s answer over a permits table of ``rows``, a row a map of its columns."""
     from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
     from provisa.compiler.view_expand import expand_view_refs
     from provisa.transpiler.transpile import transpile_to_duckdb
@@ -63,13 +68,22 @@ def answer(sql: str, params: list, model: tuple, rows: list[dict]) -> list:
             f"VALUES ({', '.join('?' for _ in columns)})",
             [i, *row.values()],
         )
-    out = con.execute(transpile_to_duckdb(physical), params).fetchall()
+    cursor = con.execute(transpile_to_duckdb(physical), params)
+    names = [d[0] for d in cursor.description]
+    out = [dict(zip(names, r, strict=True)) for r in cursor.fetchall()]
     con.close()
-    return [r[0] for r in out]
+    return out
 
 
 def cypher_answer(text: str, model: tuple, rows: list[dict]) -> list:
-    """Cypher ``text``'s answer, through the Cypher front end, over a permits table of ``rows``."""
+    """The first column of Cypher ``text``'s answer, through the Cypher front end, over a
+    permits table of ``rows``."""
+    return [next(iter(r.values())) for r in cypher_answer_rows(text, model, rows)]
+
+
+def cypher_answer_rows(text: str, model: tuple, rows: list[dict]) -> list[dict]:
+    """Cypher ``text``'s answer, through the Cypher front end, over a permits table of ``rows``,
+    a row a map of its columns."""
     from provisa.cypher.parser import parse_cypher
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.gql.translator import cypher_to_sql
@@ -77,4 +91,4 @@ def cypher_answer(text: str, model: tuple, rows: list[dict]) -> list:
     _ctx, lm, _view_sql = model
     sql, _params, graph_vars = cypher_to_sql(parse_cypher(text), lm, {})
     sql = apply_graph_rewrites(sql, graph_vars, lm)
-    return answer(sql.sql(dialect="postgres"), [], model, rows)
+    return answer_rows(sql.sql(dialect="postgres"), [], model, rows)

@@ -25,7 +25,7 @@
   "root_field": "s__viewViewedNotBoughtGroupBy"
  },
  {
-  "lowered": "the root field s__viewSlowStatementsByTableAggregate",
+  "lowered": "reads other sources",
   "origin": "demo:weblogs/6-statement-times-overall.graphql",
   "root_field": "s__viewSlowStatementsByTableAggregate"
  }
