@@ -80,6 +80,32 @@ def test_a_request_without_a_query_or_with_a_dataset_is_refused():
     assert _text(_request("GET", "query=ASK%7B%7D&default-graph-uri=x")).status_code == 400
 
 
+def test_a_refusal_is_the_apps_error_body_with_its_code():
+    """REQ-778/REQ-1350: SPARQL answers its refusals as the Cypher routes do -- detail, code and
+    params -- so every client reads the reason."""
+
+    def body(response) -> dict:
+        return json.loads(bytes(response.body))
+
+    assert body(_text(_request("GET"))) == {
+        "detail": "The request carries no query",
+        "code": "sparql.no_query",
+        "params": {},
+    }
+    dataset = body(_text(_request("GET", "query=ASK%7B%7D&default-graph-uri=x")))
+    assert dataset["code"] == "sparql.dataset_not_supported" and dataset["detail"]
+    other = body(_text(_request("POST", body=b"{}", content_type="application/json")))
+    assert other["code"] == "sparql.unsupported_content_type" and "error" not in other
+
+
+def test_no_sparql_refusal_answers_an_error_field():
+    import inspect
+
+    from provisa.api.rest import sparql_router
+
+    assert 'content={"error"' not in inspect.getsource(sparql_router)
+
+
 @pytest.mark.parametrize(
     "accept, form, media",
     [
