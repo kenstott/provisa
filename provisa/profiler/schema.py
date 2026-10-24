@@ -101,10 +101,10 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
             "Each read of the dependence statements, as JSON [{statement, percent, rows}]; a block "
             "sample under half its target is read again at four times the percentage.",
         ),
-        (
+        (  # REQ-2147
             "classification_attempts",
             "varchar",
-            "The classification statement's read of the sample (REQ-2147), as JSON "
+            "The classification statement's read of the sample, as JSON "
             "[{statement, percent, rows}], rows the sample held; empty where none ran.",
         ),
         ("duration_ms", "bigint", "How long the run took."),
