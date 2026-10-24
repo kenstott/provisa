@@ -46,6 +46,7 @@ import re as _re
 from sqlalchemy import select
 
 from provisa.core import request_deadline
+from provisa.core.parameters import ParameterRequired
 from provisa.core.read_refusal import ReadRefused
 from provisa.executor.result import QueryResult
 from provisa.core.schema_org import node_ids
@@ -679,6 +680,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
+    except ParameterRequired as exc:
+        # REQ-1986: a read leaving a required parameter without a value -- the caller's to give.
+        return JSONResponse(status_code=400, content={"error": str(exc)})
     except Exception as exc:
         log.exception("Cypher governance/routing failed")
         return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
@@ -876,7 +880,6 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     from provisa.gql.translator import cypher_to_sql
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
-    from provisa.core.parameters import ParameterRequired
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 
     role_id = _resolve_role_id(request, state)
