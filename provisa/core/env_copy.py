@@ -57,6 +57,7 @@ from provisa.core.environments import org_schema
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import org_settings
 from provisa.core.schema_org import roles as org_roles
+from provisa.core.org_forget import on_forget, schema_of_org
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -66,6 +67,12 @@ if TYPE_CHECKING:
 _MAX_BIND_PARAMS = 30000
 
 _scoped_metadata: dict[str, MetaData] = {}
+
+
+@on_forget
+def _forget_scoped_metadata(org_id: str) -> None:
+    for schema in [s for s in _scoped_metadata if schema_of_org(org_id, s)]:
+        _scoped_metadata.pop(schema, None)
 
 
 def _scoped(table: Table, schema: str) -> Table:
