@@ -37,6 +37,7 @@ import {
   type MetadataExportTarget,
   type PublishOutcome,
 } from "../../api/metadataExport";
+import { exportProviderName } from "../../lib/exportProviders";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
 // REQ-1074, REQ-2118: configure and operate the org's metadata export targets -- every catalog it
@@ -227,6 +228,7 @@ export function MetadataExportTab() {
     );
 
   const c = s.config;
+  const betaProviders = new Set(s.beta_providers);
 
   const targetForm = ({ target, secrets }: Row, i: number) => {
     // A target's test ids carry its place in the list, so two of one provider stay apart.
@@ -250,7 +252,9 @@ export function MetadataExportTab() {
         <Group justify="space-between" mb="xs">
           <Title order={6}>
             {target.id || t("metadataExportTab.newTarget")}
-            {target.provider ? ` · ${target.provider}` : ""}
+            {target.provider
+              ? ` · ${exportProviderName(target.provider, target.provider, t, betaProviders)}`
+              : ""}
           </Title>
           <Button
             variant="subtle"
@@ -276,7 +280,10 @@ export function MetadataExportTab() {
             <Select
               label={t("metadataExportTab.provider")}
               data-testid={tid("provider")}
-              data={s.providers.map((p) => ({ value: p, label: p }))}
+              data={s.providers.map((p) => ({
+                value: p,
+                label: exportProviderName(p, p, t, betaProviders),
+              }))}
               value={target.provider || null}
               onChange={(v) => patchRow(i, { provider: v ?? "" })}
             />

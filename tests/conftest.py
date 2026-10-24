@@ -238,9 +238,9 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     # S3-backed Hive: the metastore plus the core MinIO (reused) hold the table data on s3a://.
     "requires_hive_s3": ["hive-s3-metastore"],
     # REQ-1069 metadata-export targets. Marquez brings its own Postgres; OpenMetadata brings its
-    # own MySQL and reuses the core-stack Elasticsearch for search.
+    # own MySQL and its own Elasticsearch 9 (docker-compose.test.yml says why).
     "requires_marquez": ["marquez-db", "marquez"],
-    "requires_openmetadata": ["openmetadata-db", "elasticsearch", "openmetadata"],
+    "requires_openmetadata": ["openmetadata-db", "openmetadata-search", "openmetadata"],
     # Atlas embeds its own HBase and Solr, so the one service is the whole target.
     "requires_atlas": ["atlas"],
     # REQ-2119: GMS starts after its one-shot setup jobs, which compose runs as its dependencies
@@ -282,7 +282,7 @@ _HEAVY_MARKERS = frozenset(
         "requires_druid",
         "requires_hive",
         "requires_airport",
-        # A 1G JVM plus MySQL plus the Elasticsearch cluster. Session-provisioning it would leave
+        # A 1G JVM plus MySQL plus its own Elasticsearch. Session-provisioning it would leave
         # that resident for every unrelated integration test in the run.
         "requires_openmetadata",
         # An embedded HBase, an embedded Solr and the Atlas JVM in one container.

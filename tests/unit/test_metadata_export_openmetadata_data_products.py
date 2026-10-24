@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import pytest
 
@@ -72,11 +74,16 @@ def _export_config() -> MetadataExportTarget:
 
 
 def _mock_transport(monkeypatch):
-    """Every PUT succeeds; tables/users echo a server-assigned id for later requests to resolve."""
+    """Every PUT succeeds; tables/users echo a server-assigned id for later requests to resolve; a
+    data product holds no assets until they are added."""
     puts: list[tuple[str, dict]] = []
 
-    async def _put(self, url, json=None, headers=None, params=None):
+    async def _put(self, url: str, json: Any = None, headers: Any = None, params: Any = None):
         puts.append((url, json))
+        if "/assets/" in url:
+            return httpx.Response(
+                200, json={"status": "success"}, request=httpx.Request("PUT", url)
+            )
         body = dict(json)
         if url.endswith("/tables"):
             body["id"] = "table-uuid-1"
@@ -85,7 +92,9 @@ def _mock_transport(monkeypatch):
             body["id"] = f"user-uuid-{json['name']}"
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))
 
-    async def _get(self, url, params=None, headers=None):
+    async def _get(self, url: str, params: Any = None, headers: Any = None):
+        if url.endswith("/dataProducts/name/customer_360/assets"):
+            return httpx.Response(200, json={"data": []}, request=httpx.Request("GET", url))
         return httpx.Response(404, text="not found", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
@@ -108,8 +117,10 @@ async def test_data_product_publishes_with_resolved_member_and_owner(monkeypatch
     body = _data_product_put(puts)
     assert body["name"] == "customer_360"
     assert body["domains"] == ["sales"]
-    assert body["assets"] == [
-        {"fullyQualifiedName": TABLE_FQN, "type": "table", "id": "table-uuid-1"}
+    # OpenMetadata 2 ignores a body's assets; the member is added by the id its upsert returned.
+    assert "assets" not in body
+    assert [b for u, b in puts if u.endswith("/dataProducts/customer_360/assets/add")] == [
+        {"assets": [{"id": "table-uuid-1", "type": "table"}]}
     ]
     assert body["owners"] == [{"id": "user-uuid-alice", "type": "user"}]
     assert result.published["data_product"] == 1
@@ -144,7 +155,7 @@ async def test_data_product_owner_is_upserted_as_a_user_even_without_a_stewarded
 async def test_data_product_reports_error_when_member_table_upsert_failed(monkeypatch):
     snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
 
-    async def _put(self, url, json=None, headers=None, params=None):
+    async def _put(self, url: str, json: Any = None, headers: Any = None, params: Any = None):
         if url.endswith("/tables"):
             return httpx.Response(500, text="boom", request=httpx.Request("PUT", url))
         body = dict(json)
@@ -152,7 +163,7 @@ async def test_data_product_reports_error_when_member_table_upsert_failed(monkey
             body["id"] = f"user-uuid-{json['name']}"
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))
 
-    async def _get(self, url, params=None, headers=None):
+    async def _get(self, url: str, params: Any = None, headers: Any = None):
         return httpx.Response(404, text="not found", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
@@ -175,7 +186,7 @@ async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
     puts = _mock_transport(monkeypatch)
     put = httpx.AsyncClient.put
 
-    async def _put(self, url, json=None, headers=None, params=None):
+    async def _put(self, url: str, json: Any = None, headers: Any = None, params: Any = None):
         if url.endswith("/dataContracts/odcs"):
             contracts.append((url, json, params))
         return await put(self, url, json=json, headers=headers, params=params)
@@ -193,12 +204,75 @@ async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
     assert puts  # the tables went first
 
 
+def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
+    """OpenMetadata reads ODCS's team only as 3.0's list of members, so the 3.1 Team's roles are
+    sent as members, each with its purpose as its role."""
+    from provisa.api.metadata_export.openmetadata import _data_contract_entities
+
+    config = _config()
+    config.data_products[0].team_role = "analyst"
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    (contract,) = _data_contract_entities(snapshot)
+    assert contract.body["team"] == [
+        {"name": "alice", "role": "owner"},
+        {"name": "analyst", "role": "team"},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("cache_ttl", "value", "unit"),
+    [(3600, 1, "hour"), (172800, 2, "day"), (300, 5, "minute"), (90, 2, "minute")],
+)
+def test_a_contracts_latency_goes_to_openmetadata_in_its_units(cache_ttl, value, unit):  # REQ-2118
+    """OpenMetadata's maxLatency has no seconds: the largest unit the seconds fill exactly, else
+    whole minutes rounded up, so the bound it states still holds."""
+    from provisa.api.metadata_export.openmetadata import _data_contract_entities
+
+    config = _config()
+    config.tables[0].cache_ttl = cache_ttl
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    (contract,) = _data_contract_entities(snapshot)
+    (latency,) = contract.body["slaProperties"]
+    assert (latency["property"], latency["value"], latency["unit"]) == ("latency", value, unit)
+
+
+def test_a_view_is_seated_in_the_derived_layers_service_and_database():  # REQ-2119
+    """A view's schema names a database, and the database a service; the view's source is the
+    derived layer, so that layer gets the service and database its schema names."""
+    from provisa.api.metadata_export.openmetadata import to_entities
+
+    config = _config()
+    config.tables.append(
+        Table(
+            source_id="__derived__",
+            domain_id="sales",
+            schema_name="views",
+            table_name="order_ids",
+            product_id="customer_360",
+            view_sql='SELECT o.id AS id FROM "sales"."orders" o',
+            columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
+        )
+    )
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    entities = to_entities(snapshot)
+    order = [
+        (e.kind, e.body.get("name"), e.body.get("service") or e.body.get("database"))
+        for e in entities
+        if e.kind in ("service", "database", "schema")
+    ]
+    assert (
+        order.index(("service", "__derived__", None))
+        < order.index(("database", "default", "__derived__"))
+        < order.index(("schema", "views", "__derived__.default"))
+    )
+
+
 @pytest.mark.asyncio
 async def test_a_contract_whose_table_failed_is_reported_not_sent(monkeypatch):
     snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     sent: list[str] = []
 
-    async def _put(self, url, json=None, headers=None, params=None):
+    async def _put(self, url: str, json: Any = None, headers: Any = None, params: Any = None):
         sent.append(url)
         if url.endswith("/tables"):
             return httpx.Response(500, text="boom", request=httpx.Request("PUT", url))
@@ -207,7 +281,7 @@ async def test_a_contract_whose_table_failed_is_reported_not_sent(monkeypatch):
             body["id"] = f"user-uuid-{json['name']}"
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))
 
-    async def _get(self, url, params=None, headers=None):
+    async def _get(self, url: str, params: Any = None, headers: Any = None):
         return httpx.Response(404, text="not found", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
@@ -217,3 +291,25 @@ async def test_a_contract_whose_table_failed_is_reported_not_sent(monkeypatch):
 
     assert not any(url.endswith("/dataContracts/odcs") for url in sent)
     assert any("has nothing to attach to" in e.message for e in result.errors)
+
+
+@pytest.mark.asyncio
+async def test_a_held_asset_that_is_not_a_member_is_removed(monkeypatch):
+    # REQ-1634: the product's assets are exactly its members.
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    puts = _mock_transport(monkeypatch)
+
+    async def _get(self, url: str, params: Any = None, headers: Any = None):
+        held = [
+            {"id": "table-uuid-1", "type": "table"},
+            {"id": "table-uuid-gone", "type": "table"},
+        ]
+        return httpx.Response(200, json={"data": held}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+
+    result = await OpenMetadataExport(_export_config()).publish(snapshot)
+
+    assert result.ok, result.errors
+    calls = [(u.rsplit("/", 1)[-1], b) for u, b in puts if "/assets/" in u]
+    assert calls == [("remove", {"assets": [{"id": "table-uuid-gone", "type": "table"}]})]

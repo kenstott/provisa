@@ -6,6 +6,7 @@
     "notEntitled": "元数据导出需要 {{tier}} 套餐。升级后即可配置目录目标。",
     "enabled": "将元数据发布到外部目录",
     "provider": "目标目录",
+    "betaProvider": "{{name}}（测试版）",
     "endpoint": "终结点 URL",
     "authMode": "身份验证",
     "apiKey": "API 密钥",

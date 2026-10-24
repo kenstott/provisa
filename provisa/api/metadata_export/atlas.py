@@ -97,6 +97,10 @@ class AtlasEntity:  # REQ-1069
     guid: str
     classifications: list[dict[str, Any]] = field(default_factory=list)
     relationships: dict[str, Any] = field(default_factory=dict)
+    # Atlan's bulk route adds to and removes from a relationship list without replacing it
+    # (REQ-1389: Provisa's own term assignments beside a steward's).
+    append_relationships: dict[str, Any] = field(default_factory=dict)
+    remove_relationships: dict[str, Any] = field(default_factory=dict)
 
     def payload(self) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -108,6 +112,10 @@ class AtlasEntity:  # REQ-1069
             body["classifications"] = self.classifications
         if self.relationships:
             body["relationshipAttributes"] = self.relationships
+        if self.append_relationships:
+            body["appendRelationshipAttributes"] = self.append_relationships
+        if self.remove_relationships:
+            body["removeRelationshipAttributes"] = self.remove_relationships
         return body
 
 
@@ -487,6 +495,13 @@ def rebind_to_live_identities(
             entity.guid = live_guid
     if not guid_map:
         return 0
+    remap_references(entities, guid_map)
+    return len(guid_map)
+
+
+def remap_references(entities: list[AtlasEntity], guid_map: dict[str, str]) -> None:
+    """Point every reference to a guid in ``guid_map`` (containments, lineage inputs/outputs)
+    at the guid it maps to."""
     for entity in entities:
         for value in entity.relationships.values():
             # A SET-cardinality end (e.g. a data product's "members") carries a list of refs
@@ -499,7 +514,6 @@ def rebind_to_live_identities(
             for ref in entity.attributes.get(key) or []:
                 if isinstance(ref, dict) and ref.get("guid") in guid_map:
                     ref["guid"] = guid_map[ref["guid"]]
-    return len(guid_map)
 
 
 def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-1388/1389
@@ -516,7 +530,9 @@ def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-
     table_guids: dict[str, str] = {}
     domain_by_id = {domain.id: domain for domain in snapshot.domains}
 
-    for source in snapshot.sources:
+    # A provisa_table's source end is mandatory (ATLAS-404-00-007), so a view is seated in the
+    # derived layer's container.
+    for source in snapshot.container_sources():
         source_guid = guid.next()
         source_guids[source.id] = source_guid
         entities.append(
@@ -562,10 +578,7 @@ def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-
                 guid=table_guid,
                 attributes=attributes,
                 classifications=_classifications(snapshot, table.ref.fqn()),
-                # A view is Provisa's own, read from no source: it has no source container.
-                relationships=(
-                    {} if table.is_view else {"source": {"guid": source_guids[table.ref.parts[0]]}}
-                ),
+                relationships={"source": {"guid": source_guids[table.ref.parts[0]]}},
             )
         )
         for column in table.columns:
@@ -825,6 +838,11 @@ GLOSSARY_NAME = "Provisa Glossary"
 # snapshot and preserves whatever a steward wrote after it.
 DEPRECATION_MARKER = "[DEPRECATED]"
 
+# REQ-2141: the key a term's ontology role rides under in the glossary term's
+# ``additionalAttributes`` map, the free-form map Atlas's own glossary model carries for this.
+# Provisa owns only this key; every other entry in the map is a steward's.
+ROLE_ATTRIBUTE = "provisaRole"
+
 # REQ-1387: the closed Provisa term-edge set onto Atlas's native term relations.
 #   KIND_OF             → isA             (Atlas's classifies/isA taxonomy pair, seen from
 #                                          the child)
@@ -866,6 +884,28 @@ TERM_RELATION_MAP = {
 }
 
 
+# REQ-1389 (amended): a term-to-entity assignment Provisa makes is an AtlasGlossarySemanticAssignment
+# relationship carrying these attributes. ``source`` is the ownership test -- Provisa writes and
+# withdraws only assignments whose source is Provisa; every other assignment is a person's and
+# stands. Atlas's glossary model types the relationship's ``status`` as
+# AtlasGlossaryTermRelationshipStatus (DRAFT, ACTIVE, DEPRECATED, OBSOLETE, OTHER), not the
+# assignment-header enum DISCOVERED belongs to; it refuses DISCOVERED (ATLAS-404-00-00D). A
+# Provisa assignment comes from the governed model, so it is ACTIVE.
+SEMANTIC_ASSIGNMENT = "AtlasGlossarySemanticAssignment"
+ASSIGNMENT_SOURCE = "provisa"
+ASSIGNMENT_ATTRIBUTES = {
+    "source": ASSIGNMENT_SOURCE,
+    "createdBy": ASSIGNMENT_SOURCE,
+    "status": "ACTIVE",
+    "description": "Assigned by Provisa from the term's grounding in the governed model.",
+}
+
+
+def _is_provisa_assignment(assigned: dict[str, Any]) -> bool:
+    attributes = (assigned.get("relationshipAttributes") or {}).get("attributes") or {}
+    return attributes.get("source") == ASSIGNMENT_SOURCE
+
+
 def _glossary_qn(org_id: str) -> str:
     """The Provisa-owned container's stable per-org qualifiedName (REQ-1387)."""
     return f"provisa_glossary.{org_id}@{CLUSTER}"
@@ -905,16 +945,19 @@ class AtlasExport(MetadataExport):  # REQ-1069
     entitydef_path = "/api/atlas/v2/types/entitydef/name"
     relationshipdef_path = "/api/atlas/v2/types/relationshipdef/name"
     unique_attr_path = "/api/atlas/v2/entity/uniqueAttribute/type"
+    entity_guid_path = "/api/atlas/v2/entity/guid"
+    search_basic_path = "/api/atlas/v2/search/basic"
     health_path = "/api/atlas/v2/types/typedefs/headers"
     # REQ-1387: the native glossary routes. Attributes for the same reason as the entity
     # routes above — an Atlas-shaped vendor with a different mount is a subclass, not a fork.
     glossary_path = "/api/atlas/v2/glossary"
     glossary_term_path = "/api/atlas/v2/glossary/term"
     # REQ-1389: reconcile provisa_* classifications after the bulk upsert — Atlas applies
-    # classifications only on CREATE, so updates need the read-merge pass. Atlan's
-    # Atlas-shaped API has not been verified for the per-guid classification routes, so the
-    # subclass keeps this off until it is.
+    # classifications only on CREATE, so updates need the read-merge pass.
     classification_merge = True
+    # REQ-1389: whether the basic-search index is read to rebind an entity no stored binding
+    # names. The stored binding is the identity of record either way.
+    live_search = True
 
     def _url(self, path: str) -> str:
         return f"{self._config.endpoint.rstrip('/')}{path}"
@@ -1080,7 +1123,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 if to_add:
                     (
                         await client.post(
-                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classifications"),
+                            self._url(f"{self.entity_guid_path}/{guid}/classifications"),
                             json=to_add,
                             headers=headers,
                         )
@@ -1088,14 +1131,14 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 if to_update:
                     (
                         await client.put(
-                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classifications"),
+                            self._url(f"{self.entity_guid_path}/{guid}/classifications"),
                             json=to_update,
                             headers=headers,
                         )
                     ).raise_for_status()
                 for name in to_delete:
                     resp = await client.delete(
-                        self._url(f"/api/atlas/v2/entity/guid/{guid}/classification/{name}"),
+                        self._url(f"{self.entity_guid_path}/{guid}/classification/{name}"),
                         headers=headers,
                     )
                     if resp.status_code != 404:
@@ -1107,13 +1150,24 @@ class AtlasExport(MetadataExport):  # REQ-1069
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = await self._publish_entities(to_native_entities(snapshot), snapshot)
-        if snapshot.glossary_terms:
+        if snapshot.glossary_terms or self._departed_terms(snapshot):
             # REQ-1387: the glossary publishes even when no entity does — an abstract term
             # is user vocabulary, not physical binding, and exists without a data product.
             async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
                 headers = await self._headers(client)
                 await self._publish_glossary(client, headers, snapshot, result)
         return result
+
+    def _departed_terms(self, snapshot: MetadataSnapshot) -> dict[str, str]:
+        """Terms Provisa created that this snapshot no longer carries: URI → guid. They are
+        never deleted, but the assignments Provisa made for them are withdrawn (REQ-1389)."""
+        prefix = f"provisa://{snapshot.org_id}/terms/"
+        published = {term.semantic_uri for term in snapshot.glossary_terms}
+        return {
+            uri: guid
+            for uri, (guid, _) in self._bindings.items()
+            if uri.startswith(prefix) and uri not in published
+        }
 
     async def _ensure_glossary(
         self,
@@ -1164,8 +1218,16 @@ class AtlasExport(MetadataExport):  # REQ-1069
         glossary_guid: str,
         glossary_qn: str,
         result: PublishResult,
+        live_terms: dict[str, dict[str, Any]] | None,
     ) -> str | None:
-        """Create or update one term inside the Provisa glossary; returns its guid.
+        """Create or update one term inside the Provisa glossary; returns its guid, or None when
+        it was refused (reported).
+
+        ``live_terms`` is the Provisa glossary's terms by qualifiedName, read when a term has no
+        binding (None: that read failed). A term with no binding whose name is already there is
+        Provisa's when it carries ``ROLE_ATTRIBUTE``, which Provisa sets on every term it makes:
+        it is updated as if bound, so a catalog that outlived its bindings is not handed a
+        duplicate (409). One without the attribute is a person's and is never modified.
 
         The stored binding is preferred over any name lookup, so a term renamed in Provisa
         UPDATES the same catalog term in place instead of duplicating it. An update is
@@ -1180,11 +1242,46 @@ class AtlasExport(MetadataExport):  # REQ-1069
         # an empty longDescription rather than the string "None".
         definition = term.definition or ""
         stored = self._bindings.get(term.semantic_uri)
+        if stored is None:
+            if live_terms is None:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=f"term {term.name!r}: not written: the read of the Provisa "
+                        "glossary's terms, which tells whether it is already there, failed",
+                    )
+                )
+                return None
+            found = live_terms.get(term_qn)
+            if found is not None:
+                if ROLE_ATTRIBUTE not in (found.get("additionalAttributes") or {}):
+                    result.errors.append(
+                        AssetError(
+                            asset=AssetRefStub(term.semantic_uri),
+                            message=f"term {term.name!r}: not written: the Provisa glossary "
+                            "holds a term of that name Provisa did not make",
+                        )
+                    )
+                    return None
+                stored = (found["guid"], term_qn)
         if stored is not None:
             guid = stored[0]
             fetch = await client.get(
                 self._url(f"{self.glossary_term_path}/{guid}"), headers=headers
             )
+            if fetch.status_code != 404 and fetch.status_code >= 400:
+                # Unreadable is not gone: a create would duplicate the term, an update sent
+                # blind would replace the steward's enrichment. Refused, by name.
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=(
+                            f"term {term.name!r}: not written: the live read its steward "
+                            f"enrichment is kept from failed (HTTP {fetch.status_code})"
+                        ),
+                    )
+                )
+                return None
             if fetch.status_code < 400:
                 live = fetch.json()
                 body = {
@@ -1193,9 +1290,13 @@ class AtlasExport(MetadataExport):  # REQ-1069
                     "qualifiedName": term_qn,
                     "longDescription": definition,
                     "shortDescription": _term_short_description(
-                        live.get("shortDescription"), term.deprecated
+                        live.get("shortDescription"), term.in_deprecation
                     ),
                     "anchor": {"glossaryGuid": glossary_guid},
+                    "additionalAttributes": {
+                        **(live.get("additionalAttributes") or {}),
+                        ROLE_ATTRIBUTE: term.role,
+                    },
                 }
                 update = await client.put(
                     self._url(f"{self.glossary_term_path}/{guid}"),
@@ -1212,8 +1313,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
             "qualifiedName": term_qn,
             "longDescription": definition,
             "anchor": {"glossaryGuid": glossary_guid},
+            "additionalAttributes": {ROLE_ATTRIBUTE: term.role},  # REQ-2141
         }
-        short = _term_short_description(None, term.deprecated)
+        short = _term_short_description(None, term.in_deprecation)
         if short:
             body["shortDescription"] = short
         created = await client.post(self._url(self.glossary_term_path), json=body, headers=headers)
@@ -1235,8 +1337,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
         Provisa created there (its guid captured in ``bindings``). Glossary objects without a
         Provisa binding — other glossaries, steward-created terms — are never modified, and
         nothing is ever deleted: a term that left the snapshot stays in the catalog, exactly
-        as vendor-side assets do (bindings prune separately).
+        as vendor-side assets do (bindings prune separately). Last, each term's assignments to
+        the published entities (REQ-1389).
         """
+        departed = self._departed_terms(snapshot)
         try:
             glossary_guid = await self._ensure_glossary(client, headers, snapshot.org_id, result)
         except httpx.HTTPError as exc:
@@ -1246,11 +1350,14 @@ class AtlasExport(MetadataExport):  # REQ-1069
             return
         result.published["glossary"] = 1
         glossary_qn = _glossary_qn(snapshot.org_id)
+        live_terms: dict[str, dict[str, Any]] | None = {}
+        if any(self._bindings.get(t.semantic_uri) is None for t in snapshot.glossary_terms):
+            live_terms = await self._live_glossary_terms(client, headers, glossary_guid, result)
         term_guids: dict[int, str] = {}
         for term in snapshot.glossary_terms:
             try:
                 guid = await self._upsert_term(
-                    client, headers, term, glossary_guid, glossary_qn, result
+                    client, headers, term, glossary_guid, glossary_qn, result, live_terms
                 )
             except httpx.HTTPError as exc:
                 result.errors.append(
@@ -1264,6 +1371,145 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 term_guids[term.term_id] = guid
                 result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
         await self._publish_term_relations(client, headers, snapshot, term_guids, result)
+        await self._publish_term_assignments(
+            client, headers, snapshot, term_guids, departed, result
+        )
+
+    async def _live_glossary_terms(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        glossary_guid: str,
+        result: PublishResult,
+    ) -> dict[str, dict[str, Any]] | None:
+        """The Provisa glossary's live terms by qualifiedName; None, reported, when they cannot
+        be read."""
+        response = await client.get(
+            self._url(f"{self.glossary_path}/{glossary_guid}/terms"),
+            params={"limit": "-1"},
+            headers=headers,
+        )
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(GLOSSARY_NAME),
+                    message=f"glossary terms: read failed (HTTP {response.status_code})",
+                )
+            )
+            return None
+        return {t["qualifiedName"]: t for t in response.json() if t.get("qualifiedName")}
+
+    def _assignment_path(self, term_guid: str) -> str:
+        return self._url(f"{self.glossary_path}/terms/{term_guid}/assignedEntities")
+
+    async def _publish_term_assignments(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        snapshot: MetadataSnapshot,
+        term_guids: dict[int, str],
+        departed: dict[str, str],
+        result: PublishResult,
+    ) -> None:
+        """Assign each term to the entities it grounds, as Provisa's own (REQ-1389, amended).
+
+        A Class term is assigned to its tables, a Property term to its columns, each by an
+        AtlasGlossarySemanticAssignment whose ``source`` is Provisa. Provisa adds and
+        withdraws only those: an assignment with any other source is a person's and stands,
+        and where a person assigned the same entity Provisa adds nothing beside it. A term
+        that left the snapshot keeps its catalog entry and loses only Provisa's assignments.
+        """
+        uris = {table.ref.fqn(): table.semantic_uri for table in snapshot.tables}
+        uris.update({column.ref.fqn(): column.semantic_uri for column in snapshot.columns()})
+
+        def _guid(uri: str) -> str | None:
+            bound = result.bindings.get(uri) or self._bindings.get(uri)
+            return bound[0] if bound is not None else None
+
+        wanted: dict[str, tuple[str, set[str]]] = {
+            uri: (guid, set()) for uri, guid in departed.items()
+        }
+        for term in snapshot.glossary_terms:
+            term_guid = term_guids.get(term.term_id)
+            if term_guid is None:
+                continue  # its upsert failure is already reported; its assignments stand
+            entities: set[str] = set()
+            for ref in term.assigned_to():
+                entity_guid = _guid(uris[ref.fqn()])
+                if entity_guid is None:
+                    result.errors.append(
+                        AssetError(
+                            asset=ref,
+                            message=(
+                                f"term {term.name!r}: {ref.fqn()} has no catalog entity, so "
+                                "the term is not assigned to it"
+                            ),
+                        )
+                    )
+                    continue
+                entities.add(entity_guid)
+            wanted[term.semantic_uri] = (term_guid, entities)
+        for uri, (term_guid, entities) in wanted.items():
+            try:
+                await self._sync_assignments(client, headers, term_guid, entities, result)
+            except httpx.HTTPError as exc:
+                message = str(exc)
+                if isinstance(exc, httpx.HTTPStatusError):
+                    # Atlas's errorCode and message are in the body; the status line alone
+                    # does not say which guid or check it refused.
+                    message = (
+                        f"{exc.request.method} {exc.request.url.path}: HTTP "
+                        f"{exc.response.status_code}: {exc.response.text[:500]}"
+                    )
+                result.errors.append(
+                    AssetError(asset=AssetRefStub(uri), message=f"term assignments: {message}")
+                )
+
+    async def _sync_assignments(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        term_guid: str,
+        entities: set[str],
+        result: PublishResult,
+    ) -> None:
+        fetch = await client.get(
+            self._url(f"{self.glossary_term_path}/{term_guid}"), headers=headers
+        )
+        fetch.raise_for_status()
+        assigned = fetch.json().get("assignedEntities") or []
+        ours = {a["guid"]: a["relationshipGuid"] for a in assigned if _is_provisa_assignment(a)}
+        held = {a["guid"] for a in assigned if not _is_provisa_assignment(a)}
+        add = sorted(entities - set(ours) - held)
+        withdraw = sorted(guid for guid in ours if guid not in entities)
+        if add:
+            response = await client.post(
+                self._assignment_path(term_guid),
+                json=[
+                    {
+                        "guid": guid,
+                        "relationshipAttributes": {
+                            "typeName": SEMANTIC_ASSIGNMENT,
+                            "attributes": ASSIGNMENT_ATTRIBUTES,
+                        },
+                    }
+                    for guid in add
+                ],
+                headers=headers,
+            )
+            response.raise_for_status()
+            result.published["term_assignment"] = result.published.get("term_assignment", 0) + len(
+                add
+            )
+        if withdraw:
+            # Atlas dissociates by relationship guid, so only the named relationships go.
+            response = await client.request(
+                "DELETE",
+                self._assignment_path(term_guid),
+                json=[{"guid": guid, "relationshipGuid": ours[guid]} for guid in withdraw],
+                headers=headers,
+            )
+            response.raise_for_status()
 
     async def _publish_term_relations(
         self,
@@ -1348,7 +1594,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
-            await self._canonicalize_identity(client, headers, entities)
+            entities = await self._canonicalize_identity(client, headers, entities, result)
+            if not entities:
+                # Every entity was refused, each reported by name; Atlas rejects an empty bulk.
+                return result
             if defs:
                 try:
                     await self._register_classifications(client, defs, headers)
@@ -1420,6 +1669,8 @@ class AtlasExport(MetadataExport):  # REQ-1069
         canonical identity the rebind keys on.
         """
         index: dict[str, tuple[str, str]] = {}
+        if not self.live_search:
+            return index
         for type_name in (
             PROVISA_SOURCE_TYPE,
             PROVISA_TABLE_TYPE,
@@ -1429,7 +1680,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             offset = 0
             while True:
                 response = await client.post(
-                    self._url("/api/atlas/v2/search/basic"),
+                    self._url(self.search_basic_path),
                     json={
                         "typeName": type_name,
                         "excludeDeletedEntities": True,
@@ -1454,8 +1705,12 @@ class AtlasExport(MetadataExport):  # REQ-1069
         return index
 
     async def _canonicalize_identity(
-        self, client: httpx.AsyncClient, headers: dict[str, str], entities: list[AtlasEntity]
-    ) -> None:
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        entities: list[AtlasEntity],
+        result: PublishResult,
+    ) -> list[AtlasEntity]:
         """URN-canonical upsert (REQ-1389). Two duties, both keyed on the Provisa URN:
 
         1. An entity Provisa published before under a different physical qualifiedName
@@ -1464,6 +1719,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
            (empirically verified — a steward's userDescription was wiped by an update),
            so every outgoing update starts from the LIVE attributes and overlays only
            what Provisa authors. Fields Provisa never populates survive verbatim.
+
+        The entities to send. One whose live read failed is left out, reported by name: sent
+        with Provisa's attributes alone it would wipe the steward's. The rest are sent.
 
         Atlan overrides to a no-op until its search route is verified."""
         live = await self._live_identity_index(client, headers)
@@ -1474,22 +1732,43 @@ class AtlasExport(MetadataExport):  # REQ-1069
         for uri, (vendor_ref, physical_key) in self._bindings.items():
             live[uri] = (vendor_ref, physical_key)
         if not live:
-            return
+            return entities
         rebind_to_live_identities(entities, live)
+        sent: list[AtlasEntity] = []
+        refused: dict[str, str] = {}  # a refused entity's outgoing guid -> its live guid
         for entity in entities:
             uri = entity.attributes.get("provisaUri")
             if not uri or uri not in live:
+                sent.append(entity)
                 continue
             guid = live[uri][0]
             fetch = await client.get(
-                self._url(f"/api/atlas/v2/entity/guid/{guid}"),
+                self._url(f"{self.entity_guid_path}/{guid}"),
                 params={"ignoreRelationships": "true"},
                 headers=headers,
             )
+            if fetch.status_code == 404:
+                sent.append(entity)  # gone from the catalog: nothing live to preserve
+                continue
             if fetch.status_code >= 400:
-                continue  # a create will happen instead; nothing live to preserve
+                result.errors.append(
+                    AssetError(
+                        asset=entity.asset or AssetRefStub(uri),
+                        message=(
+                            f"{entity.kind} {entity.attributes['qualifiedName']}: not written: "
+                            "the live read its steward attributes are kept from failed "
+                            f"(HTTP {fetch.status_code})"
+                        ),
+                    )
+                )
+                # It stands in the catalog: what the bulk still sends refers to it there.
+                refused[entity.guid] = guid
+                continue
             live_attributes = fetch.json().get("entity", {}).get("attributes") or {}
             entity.attributes = {**live_attributes, **entity.attributes}
+            sent.append(entity)
+        remap_references(sent, refused)
+        return sent
 
     async def health(self) -> None:
         # A freshly-started Atlas can reset a connection moments after its own Docker

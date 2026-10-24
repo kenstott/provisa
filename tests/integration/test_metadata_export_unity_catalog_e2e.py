@@ -38,6 +38,7 @@ from tests.integration.metadata_export_server import (
     SOURCE,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -106,7 +107,7 @@ async def published():
                 assert read.status_code == 200, read.text
             result = await publish(client, {"provider": "unity_catalog", "delta_share": True})
         # What the publish refused is the finding: read back only what it says it published.
-        assert result["ok"], result["errors"]
+        assert result["ok"], refused(result)
         conn = _connect(creds)
         try:
             views = {
@@ -146,7 +147,7 @@ async def published():
 
 async def test_the_publish_reports_the_product_its_views_and_its_share(published):
     result = published[0]
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     assert result["published"] == {"data_products": 1, "views": 2, "shares": 1}
 
 

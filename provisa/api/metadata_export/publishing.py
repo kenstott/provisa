@@ -40,9 +40,11 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
-from provisa.api.metadata_export.provider import PublishResult
+from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.control_plane.entitlements import (
     EntitlementError,
@@ -285,7 +287,24 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
                 from provisa.federation.replica_routing import export_view_addresses
 
                 exporter.export_views = await export_view_addresses(state)
-            result = await exporter.publish(snapshot)
+            try:
+                result = await exporter.publish(snapshot)
+            except httpx.HTTPStatusError as exc:
+                # A refusal the adapter does not report per asset (its token, a listing) is the
+                # target's failure, named by the request and the catalog's answer, rather than
+                # a 500 that names neither and stops the targets after it.
+                result = PublishResult(
+                    provider_name=target.provider,
+                    errors=[
+                        AssetError(
+                            asset=AssetRefStub(target.id),
+                            message=(
+                                f"{exc.request.method} {exc.request.url}: HTTP "
+                                f"{exc.response.status_code}: {exc.response.text[:500]}"
+                            ),
+                        )
+                    ],
+                )
             if result.bindings:
                 async with model_db.acquire() as conn:
                     await catalog_binding.upsert_bindings(conn, target.id, result.bindings)

@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "組織のツールに公開",
-        "description": "📤 <strong>組織がすでに見ている場所へ公開します。</strong>カタログエントリ(テーブル、列、ドメイン、スチュワード、承認済みリレーションシップ)、データプロダクト、列レベルのリネージが送られ、各送信先は対応するものを受け取ります。カタログとしては <strong>DataHub、OpenMetadata、Collibra、Atlan、Apache Atlas</strong>、データプロダクトの掲載先としては <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong>、リネージは <strong>OpenLineage</strong> 経由です。<p>公開は外向きのみです。Provisa が送信先を真実の情報源として読み戻すことはありません。</p>"
+        "description": "📤 <strong>組織がすでに見ている場所へ公開します。</strong>カタログエントリ(テーブル、列、ドメイン、スチュワード、承認済みリレーションシップ)、データプロダクト、列レベルのリネージが送られ、各送信先は対応するものを受け取ります。カタログとしては <strong>DataHub、OpenMetadata、Collibra、{{atlan}}、Apache Atlas</strong>、データプロダクトの掲載先としては <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong>、リネージは <strong>OpenLineage</strong> 経由です。<p>公開は外向きのみです。Provisa が送信先を真実の情報源として読み戻すことはありません。</p>"
       },
       "stepRelsAgents": {
         "title": "リレーションシップと AI エージェント",

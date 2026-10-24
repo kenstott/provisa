@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publicar en las herramientas de su organización",
-        "description": "📤 <strong>Publíquelo donde su organización ya mira.</strong> Salen las entradas de catálogo (tablas, columnas, dominios, responsables, relaciones aprobadas), los productos de datos y el linaje a nivel de columna, y cada destino recibe lo que admite: <strong>DataHub, OpenMetadata, Collibra, Atlan y Apache Atlas</strong> como catálogos, <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong> como listados de productos de datos, y el linaje mediante <strong>OpenLineage</strong>.<p>La publicación es solo de salida: Provisa nunca vuelve a leer un destino como fuente de verdad.</p>"
+        "description": "📤 <strong>Publíquelo donde su organización ya mira.</strong> Salen las entradas de catálogo (tablas, columnas, dominios, responsables, relaciones aprobadas), los productos de datos y el linaje a nivel de columna, y cada destino recibe lo que admite: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} y Apache Atlas</strong> como catálogos, <strong>Snowflake Horizon</strong> y <strong>BigQuery Dataplex</strong> como listados de productos de datos, y el linaje mediante <strong>OpenLineage</strong>.<p>La publicación es solo de salida: Provisa nunca vuelve a leer un destino como fuente de verdad.</p>"
       },
       "stepRelsAgents": {
         "title": "Relaciones y agentes de IA",

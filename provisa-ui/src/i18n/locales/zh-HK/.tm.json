@@ -3623,7 +3623,6 @@
   "zh-HK/registerTableForm.json::registerTableForm.cosmosQueryHint": "{\"container\": …, \"query\": \"SELECT … @name\"} -- each @name is an argument, sent beside the query",
   "zh-HK/registerTableForm.json::registerTableForm.cosmosQueryLabel": "Query",
   "zh-HK/registerTableForm.json::registerTableForm.cosmosQueryPlaceholder": "{\"container\": \"products\", \"query\": \"SELECT TOP 10 c.id, c.name, VectorDistance(c.embedding, @query_vector) AS score FROM c ORDER BY VectorDistance(c.embedding, @query_vector)\"}",
-  "zh-HK/registerTableForm.json::registerTableForm.dataProductHint": "(publish to catalog / export to Atlas, Atlan, etc.)",
   "zh-HK/registerTableForm.json::registerTableForm.dataProductLabel": "Data Product",
   "zh-HK/registerTableForm.json::registerTableForm.dataTypePlaceholder": "Assign type...",
   "zh-HK/registerTableForm.json::registerTableForm.descriptionColPlaceholder": "description",
@@ -6179,7 +6178,7 @@
   "zh-HK/tableEditForm.json::tableEditForm.csProbe": "probe (freshness query)",
   "zh-HK/tableEditForm.json::tableEditForm.csTtl": "ttl (timer)",
   "zh-HK/tableEditForm.json::tableEditForm.csTtlProbe": "probe + ttl",
-  "zh-HK/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, Atlan and others.",
+  "zh-HK/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, {{atlan}} and others.",
   "zh-HK/tableEditForm.json::tableEditForm.dataProductInherited": "Inherited from the table this contract scans",
   "zh-HK/tableEditForm.json::tableEditForm.dataProductLabel": "Data Product",
   "zh-HK/tableEditForm.json::tableEditForm.dataProductNone": "None",
@@ -7499,7 +7498,7 @@
   "zh-HK/tour.json::tour.steps.stepProductForm.title": "Define a data product",
   "zh-HK/tour.json::tour.steps.stepProfilerChecks.description": "Every run adds rows to its result tables: per-column measures (null share, distinct count, range), per-run measures (row count), children per parent, quantiles and drift. Once you register a result table, a data-quality checker can scan it like any other table. That checker is a <strong>Soda</strong> or <strong>Great Expectations</strong> source, so any measure a profile produces can carry a check that raises an issue. <strong>Drift</strong> is one such measure. Each run is compared with the table's recent runs, and a measure that moves is flagged. From the profiler's runs you can add an accepted constraint, a drift check, or a check against expectations from outside Provisa to the checker's contract.",
   "zh-HK/tour.json::tour.steps.stepProfilerChecks.title": "Checks on profile results",
-  "zh-HK/tour.json::tour.steps.stepPublish.description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, Atlan and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>",
+  "zh-HK/tour.json::tour.steps.stepPublish.description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>",
   "zh-HK/tour.json::tour.steps.stepPublish.title": "Publish to the tools your org uses",
   "zh-HK/tour.json::tour.steps.stepPython.description": "🐍 The Python tab runs Python in your browser, signed in as you:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>The answer comes back as a pandas DataFrame, read through the same governed pipeline, so your role's row rules and masks apply to it too.</p><p>🔌 The same <strong>provisa-client</strong> package installs with pip on any desktop Python, so a script written here runs unchanged in your own environment.</p>",
   "zh-HK/tour.json::tour.steps.stepPython.title": "Python (8 of 9 surfaces)",
@@ -8033,5 +8032,6 @@
   "zh-HK/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
   "zh-HK/graphFrame.json::graphFrame.deleteFrame": "Delete this result",
   "zh-HK/serverErrors.json::serverErrors.cypher.undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
-  "zh-HK/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
+  "zh-HK/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}.",
+  "zh-HK/metadataExportTab.json::metadataExportTab.betaProvider": "{{name}} (beta)"
 }

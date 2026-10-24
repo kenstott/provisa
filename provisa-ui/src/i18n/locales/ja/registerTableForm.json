@@ -23,7 +23,6 @@
     "descriptionLabel": "説明",
     "descriptionPlaceholder": "SDL ドキュメントに表示されます",
     "dataProductLabel": "データプロダクト",
-    "dataProductHint": "（カタログへ公開 / Atlas、Atlan などへエクスポート）",
     "discoverLabel": "列を検出",
     "discoverHint": "（登録時にライブソースから列を推測 — スキーマレス/NoSQL ソース向け。手動での列選択は不要）",
     "watermarkLabel": "ウォーターマーク列",
