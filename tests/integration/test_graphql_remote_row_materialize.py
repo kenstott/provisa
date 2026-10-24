@@ -208,7 +208,9 @@ def test_the_rows_named_by_key_are_fetched_in_one_request_and_kept_for_the_ttl(s
 
     sql = "SELECT id, title FROM albums WHERE id IN (1, 3) ORDER BY id"
     first = _sql(server, sql)
-    assert first == [{"id": 1, "title": "Let It Be"}, {"id": 3, "title": "Revolver"}]
+    assert first == [{"id": 1, "title": "Let It Be"}, {"id": 3, "title": "Revolver"}], (
+        f"remote reads: {remote.reads}\n{server.dump_stderr_debug()[-6000:]}"
+    )
     (fetch,) = remote.reads  # one request, for exactly the keys named
     assert sorted(fetch["variables"]["where"]["id"]["_in"]) == [1, 3]
 
