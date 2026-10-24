@@ -18,7 +18,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.gql.ir import ReturnClause, ReturnItem
-from provisa.gql.expr_ast import CypherExpr, FunctionCall, Variable, walk
+from provisa.gql.expr_ast import CypherExpr, FunctionCall, MapLiteral, Variable, walk
 
 # Requirements: REQ-347
 
@@ -34,6 +34,14 @@ def _has_aggregate(expr: CypherExpr) -> bool:
     return any(
         isinstance(node, FunctionCall) and node.name.lower() in _AGGREGATES for node in walk(expr)
     )
+
+
+def _group_keys(expr: CypherExpr) -> list[CypherExpr]:
+    """The keys an item that aggregates nothing groups by: a map literal groups by its values
+    (the same groups as by the map, and each value is then a key an ORDER BY can read)."""
+    if isinstance(expr, MapLiteral):
+        return [key for _name, value in expr.entries for key in _group_keys(value)]
+    return [expr]
 
 
 class GroupByMixin:  # REQ-653
@@ -62,16 +70,18 @@ class GroupByMixin:  # REQ-653
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._group_by_expr_for_item(item.expression)
+            self._group_by_expr_for_item(key)
             for item in items
             if not _has_aggregate(item.expression)
+            for key in _group_keys(item.expression)
         ]
 
     def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._group_by_expr_for_item(item.expression)
+            self._group_by_expr_for_item(key)
             for item in items
             if not _has_aggregate(item.expression)
+            for key in _group_keys(item.expression)
         ]
