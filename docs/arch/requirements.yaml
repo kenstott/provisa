@@ -87234,7 +87234,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2104
   target: "2027-Q1"
 - id: REQ-2135
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
   category: SPARQL Query Frontend
@@ -87376,6 +87376,35 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1387
   - REQ-1913
   target: "2027-Q1"
+  code:
+    - provisa/sparql_query/compiler.py
+    - provisa/sparql_query/results.py
+    - provisa/sparql_query/vocabulary.py
+    - provisa/api/rest/sparql_router.py
+    - provisa/gql/ir.py
+    - provisa/gql/translator.py
+    - provisa/gql/select_builder.py
+    - provisa/gql/assembler.py
+    - provisa/gql/graph_rewriter.py
+    - provisa/gql/path_expr.py
+    - provisa/gql/path_functions.py
+    - provisa/gql/iri.py
+    - provisa/gql/terms.py
+    - provisa/gql/expr_ast.py
+    - provisa/graphql_front/lower.py
+    - provisa/core/settings_catalog.py
+    - provisa/api/app_startup.py
+  tests:
+    - tests/unit/test_sparql_compiler.py
+    - tests/unit/test_sparql_protocol.py
+    - tests/unit/test_sparql_vocabulary_refs.py
+    - tests/unit/test_gql_path_expr.py
+    - tests/unit/test_gql_terms.py
+    - tests/unit/test_graph_depth_limit.py
+    - tests/unit/test_cypher_golden_sql.py
+    - tests/unit/test_graphql_golden_sql.py
+    - tests/unit/test_graphql_front_answers.py
+    - tests/integration/test_sparql_endpoint.py
 - id: REQ-2136
   status: proposed
   since: 2026-10
