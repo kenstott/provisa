@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:datavault/1-what-was-known.graphql",
+  "root_field": "v__viewHubCustomer"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:datavault/2-customer-orders-products.graphql",
+  "root_field": "v__viewHubCustomer"
+ }
+]

@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:banking/1-eod-dashboard.graphql",
+  "root_field": "b__viewEodTotals"
+ }
+]

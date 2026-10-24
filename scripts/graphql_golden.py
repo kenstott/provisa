@@ -606,8 +606,9 @@ def _rows(cursor: Any) -> tuple[list[str], list[list]]:
     return columns, [[_plain(v) for v in row] for row in cursor.fetchall()]
 
 
-def answer_on_duckdb(pg: Any, databases: dict[str, str], stmt: dict) -> dict:
-    """``stmt`` run on DuckDB, each catalog it reads attached from its seeded database."""
+def answer_on_duckdb(pg: Any, databases: dict[str, str], stmt: dict, plain: bool = True) -> dict:
+    """``stmt`` run on DuckDB, each catalog it reads attached from its seeded database; its cells
+    as JSON holds them, or (``plain`` false) as DuckDB returns them."""
     import duckdb
 
     from provisa.transpiler.transpile import transpile_to_duckdb
@@ -618,7 +619,11 @@ def answer_on_duckdb(pg: Any, databases: dict[str, str], stmt: dict) -> dict:
             f"ATTACH '{pg.dsn(databases[catalog])}' AS \"{catalog}\" (TYPE POSTGRES, READ_ONLY)"
         )
     # As the DuckDB engine writes a statement (provisa.transpiler.transpile).
-    columns, rows = _rows(con.execute(transpile_to_duckdb(stmt["sql"]), stmt["params"]))
+    cursor = con.execute(transpile_to_duckdb(stmt["sql"]), stmt["params"])
+    if plain:
+        columns, rows = _rows(cursor)
+    else:
+        columns, rows = [d[0] for d in cursor.description], [list(r) for r in cursor.fetchall()]
     con.close()
     return {"columns": columns, "rows": rows}
 
@@ -703,3 +708,131 @@ def answered_demos() -> list[Path]:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
+
+
+def _cypher_value(value: Any) -> Any:
+    """A Cypher answer's cell as JSON holds it: a map's values are JSON text (MAP(VARCHAR, JSON)),
+    and what that text decodes to is plain JSON already."""
+    if isinstance(value, dict):
+        return {k: json.loads(v) if isinstance(v, str) else v for k, v in value.items()}
+    if isinstance(value, list):
+        return [_cypher_value(v) for v in value]
+    return value
+
+
+def _compared(value: Any) -> Any:
+    """A cell as the gate compares it: a number as a float, whichever type it had (a decimal sum is
+    a JSON number in a Cypher map), anything else as JSON holds it."""
+    import decimal
+
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    if isinstance(value, (list, tuple)):
+        return [_compared(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _compared(v) for k, v in value.items()}
+    return _plain(value)
+
+
+def _canonical(row: dict) -> str:
+    """A response object as text that does not depend on its keys' order: rows held as a multiset
+    are sorted by it."""
+    return json.dumps(row, sort_keys=True, default=str)
+
+
+def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
+    """Each root of each corpus read of ``demo`` as the GraphQL front end lowers it, printed as
+    Cypher and read back by the Cypher front end, answered on DuckDB over the seeded sources, with
+    the read's own statement's answer there (the one answers/ holds) as the GraphQL endpoint
+    serializes it ('expected'); a root the front end does not lower says why ('lowered')."""
+    from graphql import parse
+
+    from provisa.compiler.parser import coerce_variable_defaults
+    from provisa.compiler.sql_gen import compile_query
+    from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
+    from provisa.compiler.view_expand import expand_view_refs
+    from provisa.cypher.parser import parse_cypher
+    from provisa.cypher.printer import print_cypher
+    from provisa.executor.serialize import serialize_rows
+    from provisa.gql.assembler import assemble_rows
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.graphql_front.lower import GraphQLLoweringRefused, lower_read
+
+    config = demo / "config.yaml"
+    reads = [r for r in corpus() if r.config == config]
+    if not reads:
+        return []
+    created = seed_demo(pg, demo, prefix)
+    catalogs = {
+        source_id.replace("-", "_"): created[db]
+        for source_id, db in _pg_sources(config).items()
+        if db in created
+    }
+    schema, ctx = model(config)
+    view_sql = _view_sql(config)
+    lm = _cypher_golden().model_label_map(config)
+    out = []
+    for read in reads:
+        statements = {s["root_field"]: s for s in physical_statements(schema, ctx, read, view_sql)}
+        roots = list(statements)
+        try:
+            lowered = lower_read(parse(read.text), ctx, lm, read.variables)
+        except GraphQLLoweringRefused as exc:
+            out += [{"origin": read.origin, "root_field": r, "lowered": str(exc)} for r in roots]
+            continue
+        document = parse(read.text)
+        columns = {
+            c.root_field: c.columns
+            for c in compile_query(
+                document, ctx, coerce_variable_defaults(document, read.variables)
+            )
+        }
+        for root_field, root in zip(roots, lowered, strict=True):
+            cypher = print_cypher(root.statement)
+            sql_ast, _params, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
+            sql_ast = apply_graph_rewrites(sql_ast, graph_vars, lm)
+            semantic = make_semantic_sql(sql_ast.sql(dialect="postgres"), ctx)
+            physical = lower_to_catalog_physical(expand_view_refs(semantic, view_sql), ctx)
+            import sqlglot
+
+            tree = sqlglot.parse_one(physical, read="postgres")
+            stmt = {
+                "sql": physical,
+                "params": [],
+                "catalogs": sorted(
+                    {t.catalog for t in tree.find_all(sqlglot.exp.Table) if t.catalog}
+                ),
+            }
+            if [c for c in stmt["catalogs"] if c not in catalogs] or not stmt["catalogs"]:
+                out.append(
+                    {
+                        "origin": read.origin,
+                        "root_field": root_field,
+                        "lowered": "reads other sources",
+                    }
+                )
+                continue
+            answer = answer_on_duckdb(pg, catalogs, stmt, plain=False)
+            named = [dict(zip(answer["columns"], r, strict=True)) for r in answer["rows"]]
+            rows = [
+                {k: _compared(_cypher_value(v)) for k, v in r.items()}
+                for r in assemble_rows(named, graph_vars)
+            ]
+            own = answer_on_duckdb(pg, catalogs, statements[root_field], plain=False)
+            expected = serialize_rows(
+                [tuple(_compared(v) for v in r) for r in own["rows"]],
+                columns[root_field],
+                root_field,
+            )["data"][root_field]
+            out.append(
+                {
+                    "origin": read.origin,
+                    "root_field": root_field,
+                    "lowered": True,
+                    "cypher": cypher,
+                    "rows": sorted(rows, key=_canonical),
+                    "expected": sorted(expected, key=_canonical),
+                }
+            )
+    return out

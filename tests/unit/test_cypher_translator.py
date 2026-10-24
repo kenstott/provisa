@@ -2571,3 +2571,19 @@ def test_an_untyped_relationship_from_a_labeled_node_reads_only_that_node_types_
     sql = sql_ast.sql(dialect="trino")
     assert "'EMPLOYS'" in sql
     assert "'WORKS_AT'" not in sql and "'KNOWS'" not in sql
+
+
+def test_map_group_key_groups_by_its_values_and_orders_by_alias_key():
+    # REQ-2135: a GraphQL group-by lowers to RETURN {age: n.age} AS groupKey, {...count(*)...}.
+    # The map groups by its values (the same groups), and ORDER BY groupKey.age orders by the
+    # value itself: grouped by the map alone, an engine refuses n.age in the ORDER BY, and the
+    # map's column holds the value JSON-encoded.
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN {age: n.age} AS groupKey, {count: count(*)} AS aggregate "
+        "ORDER BY groupKey.age DESC"
+    )
+    sql = cypher_to_sql(ast, lm, {})[0].sql(dialect="postgres")
+    group_by = sql.split("GROUP BY", 1)[1].split("ORDER BY", 1)[0].strip()
+    assert group_by == 'n."age"'
+    assert sql.split("ORDER BY", 1)[1].strip().startswith('n."age" DESC')

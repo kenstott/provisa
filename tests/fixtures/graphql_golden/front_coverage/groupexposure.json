@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:groupexposure/1-groups-over-limit.graphql",
+  "root_field": "g__viewGroupExposure"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:groupexposure/2-by-sector.graphql",
+  "root_field": "g__viewBorrowerExposureGroupBy"
+ }
+]

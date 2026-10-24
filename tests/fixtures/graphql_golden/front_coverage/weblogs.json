@@ -1,0 +1,32 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:weblogs/1-slowest-pages-by-path.graphql",
+  "root_field": "s__viewSlowestPagesGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:weblogs/2-slow-statements-by-table.graphql",
+  "root_field": "s__viewRequestSqlGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:weblogs/3-customers-served-errors-by-region.graphql",
+  "root_field": "s__viewCustomersWith_5xxGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:weblogs/4-database-errors-by-page.graphql",
+  "root_field": "s__viewRequestsWithDbErrorsGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:weblogs/5-viewed-not-bought-by-category.graphql",
+  "root_field": "s__viewViewedNotBoughtGroupBy"
+ },
+ {
+  "lowered": "the root field s__viewSlowStatementsByTableAggregate",
+  "origin": "demo:weblogs/6-statement-times-overall.graphql",
+  "root_field": "s__viewSlowStatementsByTableAggregate"
+ }
+]
