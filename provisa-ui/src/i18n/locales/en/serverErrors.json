@@ -256,7 +256,12 @@
       "database_unavailable": "Database unavailable",
       "query_engine_unavailable": "Query engine unavailable",
       "role_header_required": "X-Provisa-Role header required to profile a view",
-      "table_not_found": "Table {{table_id}} not found"
+      "table_not_found": "Table {{table_id}} not found",
+      "column_not_found": "Column {{column}} is not a column of the table the org admin reads",
+      "classification_kind_unknown": "Unknown classification kind {{kind}}",
+      "classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
+      "classification_decision_not_found": "No decision on {{column}} as {{kind}}",
+      "classification_pii_refused": "The column could not be marked PII"
     },
     "replication": {
       "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",

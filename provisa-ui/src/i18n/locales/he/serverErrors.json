@@ -256,7 +256,12 @@
       "database_unavailable": "מסד הנתונים אינו זמין",
       "query_engine_unavailable": "מנוע השאילתות אינו זמין",
       "role_header_required": "נדרשת כותרת X-Provisa-Role כדי לבצע פרופיל של תצוגה (View)",
-      "table_not_found": "הטבלה {{table_id}} לא נמצאה"
+      "table_not_found": "הטבלה {{table_id}} לא נמצאה",
+      "column_not_found": "העמודה {{column}} אינה עמודה של הטבלה ש-org_admin קורא",
+      "classification_kind_unknown": "סוג סיווג לא ידוע {{kind}}",
+      "classification_status_invalid": "החלטת סיווג היא התקבל או נדחה, לא {{status}}",
+      "classification_decision_not_found": "אין החלטה לגבי {{column}} כ-{{kind}}",
+      "classification_pii_refused": "לא ניתן היה לסמן את העמודה כ-PII"
     },
     "replication": {
       "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: [{{content_type}}] {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",

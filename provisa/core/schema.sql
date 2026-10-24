@@ -1274,6 +1274,19 @@ CREATE TABLE IF NOT EXISTS profiler_constraints (
     UNIQUE (table_id, signature)
 );
 
+-- REQ-2147: a steward's decision on a classification a profile suggested for a column.
+CREATE TABLE IF NOT EXISTS profiler_classifications (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    evidence         TEXT NOT NULL,
+    run_id           TEXT NOT NULL,
+    decided_by       TEXT,
+    decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (table_id, physical_column, kind)
+);
+
 CREATE TABLE IF NOT EXISTS synthetic_report (
     id               SERIAL PRIMARY KEY,
     dataset_id       TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,

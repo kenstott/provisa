@@ -289,6 +289,22 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("pass_share", "double", "1 - violations / rows_checked."),
         ("detail", "varchar", "Why it was not checked; empty when it was."),
     ),
+    "classifications": (
+        ("column_name", "varchar", "The profiled column."),
+        ("physical_column", "varchar", "The column's registered name."),
+        ("kind", "varchar", "The classification kind its sampled values passed."),
+        ("sensitive", "boolean", "Whether the kind is sensitive (accepting marks the column pii)."),
+        ("values_tested", "bigint", "Sampled non-null values the kind's test was applied to."),
+        ("values_passed", "bigint", "Of them, the values that passed it."),
+        ("share", "double", "values_passed / values_tested."),
+        ("threshold", "double", "The share the kind needs."),
+        ("evidence", "varchar", "The suggestion, in words."),
+        (
+            "status",
+            "varchar",
+            "suggested | accepted | rejected -- the steward's decision at the run's time.",
+        ),
+    ),
     "repeats": (
         ("rank", "integer", "Rank by repeat count, from 1."),
         ("row_count", "bigint", "How many rows hold one of the most repeated rows."),
