@@ -74474,6 +74474,8 @@
   tests:
   - tests/unit/perf_bench/test_mix.py
   - tests/unit/perf_bench/test_filters_knob.py
+  - tests/unit/perf_bench/test_bench_features_checks.py
+  - tests/integration/test_bench_features_e2e.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1912
   status: complete
