@@ -190,3 +190,52 @@ def test_a_spill_that_reaches_the_end_of_its_volume_is_refused_naming_the_cap():
     assert "codesource.duckdb_spill_cap_mb" in str(named)
     other = duckdb.IOException("IO Error: Permission denied")
     assert residual._named(other) is other  # noqa: SLF001
+
+
+_FAILS_MIDWAY = """
+import sys, threading, time
+sys.path.insert(0, sys.argv[1])
+import pyarrow as pa
+import residual
+residual.configure(memory_mb=128, threads=4, spill_cap_mb=1024, spill_dir=sys.argv[2])
+schema = pa.schema([("s", pa.utf8())])
+pulled = [0]
+def rows():
+    for i in range(400):
+        pulled[0] += 1
+        time.sleep(0.01)
+        yield pa.RecordBatch.from_arrays([pa.array(["x" if i == 3 else "1"] * 1000)], schema=schema)
+reader = pa.RecordBatchReader.from_batches(schema, rows())
+try:
+    for _ in residual.answer("SELECT CAST(s AS INTEGER) AS n FROM t", "duckdb", "t", reader):
+        pass
+except Exception as failed:
+    print("FAILED", type(failed).__name__, flush=True)
+at_failure = pulled[0]
+time.sleep(0.5)
+print("PULLED AFTER", pulled[0] - at_failure, flush=True)
+"""
+
+
+def test_a_statement_that_fails_stops_reading_the_functions_rows_and_lets_the_host_exit(tmp_path):
+    """DuckDB scans a reader through Arrow's read-ahead, which kept pulling the function's rows
+    on Arrow's threads after the statement failed -- the function went on running, and a host
+    exiting then hung (or, in a built image, crashed) with those threads still in Python."""
+    spill = tmp_path / "spill"
+    spill.mkdir()
+    run = subprocess.run(  # noqa: S603 -- the test's own interpreter
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            _FAILS_MIDWAY,
+            str(Path(front.__file__).parent),
+            str(spill),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "FAILED ConversionException" in run.stdout, run.stdout
+    assert "PULLED AFTER 0" in run.stdout, run.stdout

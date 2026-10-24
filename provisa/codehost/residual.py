@@ -436,18 +436,49 @@ def _reader(rows: pa.RecordBatchReader | pa.Table) -> pa.RecordBatchReader:
     return rows.to_reader() if isinstance(rows, pa.Table) else rows
 
 
-def _kept(rows: pa.RecordBatchReader, failed: list[BaseException]) -> pa.RecordBatchReader:
-    """``rows``, what fails as they are read kept in ``failed``: DuckDB, reading them, reports it
-    inside an error of its own, and the answer raises it as it was."""
+class _Kept:
+    """``rows`` as DuckDB reads them, what fails as they are read kept in ``failed``: DuckDB,
+    reading them, reports it inside an error of its own, and the answer raises it as it was.
 
-    def each() -> Iterator[pa.RecordBatch]:
-        try:
-            yield from rows
-        except BaseException as exc:
-            failed.append(exc)
-            raise
+    DuckDB scans a reader through Arrow's read-ahead, which goes on pulling the rows on Arrow's
+    threads after the statement has failed: :meth:`stop` ends that -- the function is read no
+    further -- and returns once no pull is in progress, so no Arrow thread is left in Python (a
+    host exiting with one hung, or in a built image crashed)."""
 
-    return pa.RecordBatchReader.from_batches(rows.schema, each())
+    def __init__(self, rows: pa.RecordBatchReader, failed: list[BaseException]) -> None:
+        self._rows = rows
+        self._failed = failed
+        self._pulling = threading.Condition()
+        self._stopped = False
+        self._pulls = 0
+        self.reader = pa.RecordBatchReader.from_batches(rows.schema, self._each())
+
+    def _each(self) -> Iterator[pa.RecordBatch]:
+        rows = iter(self._rows)
+        while True:
+            with self._pulling:
+                if self._stopped:
+                    return
+                self._pulls += 1
+            try:
+                batch = next(rows, None)
+            except BaseException as exc:
+                self._failed.append(exc)
+                raise
+            finally:
+                with self._pulling:
+                    self._pulls -= 1
+                    self._pulling.notify_all()
+            if batch is None:
+                return
+            yield batch
+
+    def stop(self) -> None:
+        """Read no further; return once the pull in progress (the function's next batch) is
+        done."""
+        with self._pulling:
+            self._stopped = True
+            self._pulling.wait_for(lambda: self._pulls == 0)
 
 
 def answer(
@@ -467,12 +498,14 @@ def answer_reads(
     tree = sqlglot.parse_one(sql, read=dialect)
     relations: dict[str, pa.RecordBatchReader | pa.Table] = {}
     failed: list[BaseException] = []
+    kept: list[_Kept] = []
     for i, (table, held) in enumerate(rows.items()):
         relation = f"{ROWS}_{i}"
         reads = _reading(tree, table)
-        typed_rows = _kept(typed(_reader(held)), failed)
+        typed_rows = _Kept(typed(_reader(held)), failed)
+        kept.append(typed_rows)
         # A reader is scanned once: a table the statement reads twice has its rows held for it.
-        relations[relation] = typed_rows.read_all() if len(reads) > 1 else typed_rows
+        relations[relation] = typed_rows.reader.read_all() if len(reads) > 1 else typed_rows.reader
         for read in reads:
             alias = read.alias_or_name
             read.replace(exp.alias_(exp.to_table(relation), alias, table=True))
@@ -481,12 +514,18 @@ def answer_reads(
         column.set("db", None)
         column.set("catalog", None)
     con = _connection()
+
+    def done() -> None:
+        for each in kept:
+            each.stop()
+        con.close()
+
     try:
         for relation, held in relations.items():
             con.register(relation, held)
         answered = con.execute(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
     except duckdb.Error as exc:
-        con.close()
+        done()
         if failed:
             raise failed[0] from None
         named = _named(exc)
@@ -494,7 +533,7 @@ def answer_reads(
             raise
         raise named from None
     except BaseException:
-        con.close()
+        done()
         raise
 
     def each() -> Iterator[pa.RecordBatch]:
@@ -512,6 +551,6 @@ def answer_reads(
                 raise failed[0] from None
             raise
         finally:
-            con.close()
+            done()
 
     return pa.RecordBatchReader.from_batches(answered.schema, each())
