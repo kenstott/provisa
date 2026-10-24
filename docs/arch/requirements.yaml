@@ -79276,7 +79276,7 @@
     values, shapes and fitted parameters -- left out; every other column shows in full. It shows each
     run''s comparison with the previous run beside the run, and a measure''s history across the drift
     window with its drift marked, safe for its viewer as the run is. The table view''s Quick Profile --
-    a sample computed in the browser and stored nowhere -- stays as it is. The result kinds also include duplicates and repeats (the duplicate rows and duplicate keys of a run), constraints (the proposals and their decisions) and constraint_checks (each accepted constraint''s pass share and violations per run). A profiler''s run defaults also bound the number of category columns entered in the correlation matrix and the joint counts, the most frequent categories being kept.'
+    a sample computed in the browser and stored nowhere -- stays as it is. The result kinds also include duplicates and repeats (the duplicate rows and duplicate keys of a run), constraints (the proposals and their decisions) and constraint_checks (each accepted constraint''s pass share and violations per run). A profiler''s run defaults also bound the number of category columns entered in the correlation matrix and the joint counts, the most frequent categories being kept. (Amended 2026-10-24, CLASSIFICATION, REQ-2147:) A run also tests a sample of each column''s values against the profiler''s classification kinds (REQ-2147): one further statement over the run''s sample draws at random up to the run default classification sample rows (default 500, a field on the profiler''s form); the values are tested in memory and never stored, and only the counts are recorded. The result kinds also include classifications: one row per column and kind whose test the column''s sampled values passed at the kind''s threshold, with the values tested and passed, the share, the evidence and the steward''s decision at the run''s time. A column that passed a classification kind has that kind as its plausible type -- the first passing kind in the catalogue''s order, sensitive kinds first -- so the plausible types also include the classification kinds. A classifications row holds no value of its column, so it is shown for a column masked to the viewer or tagged pii, as its plausible type is. (Amended 2026-10-24, CLASSIFICATION READ:) The classification statement is a further statement over the run''s sample, as the dependence statements are: a block or row-filter sample is its own draw at the same method and size, and its read, the rows the sample held, is recorded on the runs row as classification_attempts, as the dependence statements'' reads are recorded as dependence_attempts.'
   use_case: 'A steward registers the orders table on the profiler and gives analysts read access to its
     profile: they see each column''s null share, distinct count and spread without reading a row, and
     a masked column''s profile shows its shape but never a real value. A data-quality check written over
@@ -87915,7 +87915,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the class is listed with an unlinked_tables finding naming both tables
     And a term that is only an undefined draft is not listed
 - id: REQ-2147
-  status: proposed
+  status: in-progress
   target: "2027-Q1"
   group: 4. Source Connectors
   category: Data Quality Sources
@@ -87939,6 +87939,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     raised again for the same column and kind. The classification kinds are listed in the admin UI,
     each with its test, threshold and whether it is sensitive; an org admin can disable a kind, and a
     disabled kind is not tested and raises no suggestions until it is enabled again.
+    (Amended 2026-10-24, DECISIONS AND KINDS:) A decision is made by a holder of sensitive_data in the
+    table's own domain: a data steward in its domains, an org admin in every one. On a key column,
+    accepting marks the column PII and offers the mask but does not link the Property term, because a
+    key column's meaning is its Class term (REQ-2141); the answer says so. A suggestion needs at least
+    ten sampled non-null values; a number column is tested by its whole numbers, any other number
+    failing. A decision can be withdrawn, which makes the suggestion new again and undoes nothing
+    accepting did. The shipped kinds are the US social security number, payment card number, IBAN, UK
+    National Insurance number, Canadian social insurance number, Spanish DNI or NIE, Dutch citizen
+    service number, Indian Aadhaar number and US passport number (sensitive), and the country name, ISO
+    3166 country code, ISO 4217 currency code, ISO 639 language code and world city (reference, the
+    lists derived from GeoNames under CC BY 4.0), each with a threshold of 90%. A kind's test,
+    threshold, term and mask are the shipped catalogue's; only whether it is enabled is the org's.
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
@@ -87952,6 +87964,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Given an org admin has disabled the world-city kind
     When a profile run completes
     Then no column gets a world-city suggestion
+  code:
+    - provisa/profiler/classify.py
+    - provisa/profiler/classifications.py
+    - provisa/profiler/classification_kinds.yaml
+    - provisa/profiler/run.py
+    - provisa/api/admin/profiler_classifications_router.py
+    - provisa-ui/src/pages/tables/ProfileClassificationsModal.tsx
+    - provisa-ui/src/components/admin/ClassificationKindsTab.tsx
+  tests:
+    - tests/unit/test_profiler_classify.py
+    - tests/unit/test_profiler_classifications.py
+    - provisa-ui/src/pages/tables/__tests__/ProfileClassificationsModal.test.tsx
+    - provisa-ui/src/__tests__/ClassificationKindsTab.test.tsx
+    - tests/integration/test_profiler_classification_e2e.py
 - id: REQ-2148
   status: proposed
   target: "2027-Q1"

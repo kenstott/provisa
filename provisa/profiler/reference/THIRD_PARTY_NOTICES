@@ -1,0 +1,13 @@
+Third-party notices
+===================
+
+provisa/profiler/reference/*.txt.gz
+-----------------------------------
+The reference lists the profiler's classification kinds test column values against (countries,
+country codes, currency codes, language codes and cities) are derived from the GeoNames
+geographical database (https://www.geonames.org/), files countryInfo.txt, iso-languagecodes.txt
+and cities15000.txt of https://download.geonames.org/export/dump/, used under the Creative Commons
+Attribution 4.0 International License (https://creativecommons.org/licenses/by/4.0/).
+
+Changes: the values were normalised (trimmed, case-folded, inner spaces collapsed), reduced to the
+columns named in scripts/build_classification_reference.py, sorted and deduplicated.

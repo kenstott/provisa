@@ -23,10 +23,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.schema import CreateTable
-
 from provisa.profiler.declared import measured
-from provisa.profiler.schema import result_sa_table
+from provisa.profiler.schema import ensure_result_table
 
 # The kinds a run's measures are read from (``compare.measures_of``).
 MEASURE_KINDS: tuple[str, ...] = (
@@ -46,9 +44,7 @@ MEASURE_KINDS: tuple[str, ...] = (
 async def relation(conn: Any, table_name: str, table_id: int, kind: str) -> Any:
     """The relation ``kind`` of the member table, created empty if its first run has not written
     it: a member that has not run yet has an empty history, not a missing one."""
-    table = result_sa_table(table_name, table_id, kind)
-    await conn.execute_core(CreateTable(table, if_not_exists=True))
-    return table
+    return await ensure_result_table(conn, table_name, table_id, kind)
 
 
 async def previous_runs(
