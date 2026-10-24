@@ -49,10 +49,10 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
         ),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
-    # In name order, as the union's property columns were.
+    # In name order, as the union's property columns were; every column under its own name, ``id``
+    # and ``label`` included, held apart from the node's own keys.
+    props: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for prop in sorted(nm.properties):
-        if prop in ("id", "label"):
-            continue
         # As a property column of the arm is: its physical column as text, null with none.
         phys_col = nm.physical_properties.get(prop)
         value = (
@@ -63,7 +63,12 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
             if phys_col
             else exp.null()
         )
-        kv.append(exp.JSONKeyValue(this=exp.Literal.string(prop), expression=value))
+        props.append(exp.JSONKeyValue(this=exp.Literal.string(prop), expression=value))
+    kv.append(
+        exp.JSONKeyValue(
+            this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
+        )
+    )
     return exp.JSONObject(expressions=kv)
 
 
