@@ -51,6 +51,7 @@ const FEDERATION: LineageGraphData = {
   nodes: [
     col("native:pet_store.pets", "pet_id", "native"),
     col("pet_store.breeds", "name"),
+    col("staging.pet_prices", "price"),
     col("pet_store.pets", "name"),
     col("pet_store.pets", "id"),
     col("pet_store.dim_pet", "id", "derived"),
@@ -60,6 +61,7 @@ const FEDERATION: LineageGraphData = {
   edges: [
     edge("native:pet_store.pets.pet_id", "pet_store.pets.id"),
     edge("pet_store.breeds.name", "pet_store.pets.name"),
+    edge("staging.pet_prices.price", "pet_store.pets.name"),
     edge("pet_store.pets.id", "pet_store.dim_pet.id"),
     edge("pet_store.dim_pet.id", "pet_store.fact_pet.pet_id"),
     edge("pet_store.pets.id", "pet_store.pets_quality.scan_id"),
@@ -174,7 +176,13 @@ describe("product detail lineage scope (REQ-1666)", () => {
     const { graph: g } = await opened();
     const relations = new Set(g.nodes.map((n) => n.relation));
     expect(relations).toEqual(
-      new Set(["native:pet_store.pets", "pet_store.breeds", "pet_store.pets", "pet_store.dim_pet"]),
+      new Set([
+        "native:pet_store.pets",
+        "pet_store.breeds",
+        "staging.pet_prices",
+        "pet_store.pets",
+        "pet_store.dim_pet",
+      ]),
     );
     // price was never in the federation graph; it is still a column of the published table.
     expect(g.nodes.map((n) => n.id)).toContain("pet_store.pets.price");
@@ -206,10 +214,12 @@ describe("the product's Input Ports (REQ-1660)", () => {
   it("are one row per upstream table, named as the catalog does, its columns behind an expand", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
     const ports = await screen.findByTestId("data-product-detail-input-ports-pet_health");
-    // pets' native read and breeds: two datasets, not one row per column.
-    expect(ports.children).toHaveLength(2);
+    // pets' native read, breeds and an unregistered staging relation: three datasets, not one row
+    // per column. The unregistered one (REQ-1626) is named by its relation.
+    expect(ports.children).toHaveLength(3);
     expect(within(ports).getByText("pet-store.pets")).toBeInTheDocument();
     expect(within(ports).getByText("pet-store.breeds")).toBeInTheDocument();
+    expect(within(ports).getByText("staging.pet_prices")).toBeInTheDocument();
     const toggle = screen.getByTestId("input-port-toggle-pet_store.pets");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByTestId("input-port-columns-pet_store.pets")).toBeNull();

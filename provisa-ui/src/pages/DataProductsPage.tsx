@@ -36,7 +36,7 @@ import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
 import { NATIVE_PREFIX } from "../components/lineage/lineage-layout";
-import { catalogTableName, relationName } from "../naming";
+import { catalogTableName, lineageRelationLabel, relationName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
@@ -185,11 +185,10 @@ export function DataProductsPage() {
   // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
   // consumer's column is as hoverable as a member's.
   const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
-  // A lineage relation as the catalog names its table (domain.table_name, as Access Patterns shows
-  // it). A relation that is no table this role sees keeps the name the lineage reports it by.
+  // A lineage relation as a reader is shown it (naming.lineageRelationLabel).
   const relationLabel = useMemo(() => {
-    const named = new Map(tables.map((tb) => [relationName(tb), catalogTableName(tb)]));
-    return (relation: string) => named.get(relation) ?? relation;
+    const catalog = new Map(tables.map((tb) => [relationName(tb), catalogTableName(tb)]));
+    return (relation: string) => lineageRelationLabel(relation, catalog);
   }, [tables]);
   const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
 
