@@ -654,6 +654,25 @@ async def _generate_sql_from_nl(
     return non_strict_sql(last_sql, ctx), None
 
 
+def _relationship_hints(refused: Any, role: str, app_state: AppState) -> list[str]:
+    """The registered path between each pair of tables ``refused`` (a GovernanceRefused) names
+    as joined outside a relationship, in the role's graph and named as its SQL writes them."""
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.nl.paths import relationship_hints
+
+    if not any(v.tables is not None for v in refused.violations):
+        return []
+    surface = role_surface(app_state, role)
+    if surface is None:
+        return []  # no schema for the role: the refusal alone (run_nl refuses it first)
+    label_map = _build_cypher_label_map(surface.context, role, app_state)
+    return relationship_hints(
+        label_map,
+        refused.violations,
+        lambda domain_id: domain_to_sql_name(domain_id) if domain_id else "default",
+    )
+
+
 def non_strict_sql(sql: str, ctx: Any) -> str:
     """Non-strict NL's statement for the model's ``sql``: its semantic SQL, opting out of the
     relationship guard (REQ-603) -- the bypass takes effect only for a role whose flag allows it.
@@ -937,10 +956,16 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     checked: dict[tuple[str, str], Any] = {}
 
     async def _governed(target: NlTarget, query: str) -> str | None:
+        from provisa.compiler.sql_validator import GovernanceRefused
+
         try:
             checked[(target, query)] = await _execute(
                 query, target, role, app_state, deliver=deliver
             )
+        except GovernanceRefused as refused:
+            # Two tables joined outside a relationship: the retry is given the registered path
+            # between them, and a strict "Not available" names it (REQ-603).
+            return "\n".join([str(refused), *_relationship_hints(refused, role, app_state)])
         # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL execution boundary: running a generated query against the pluggable engine has an unbounded failure surface; a failure is that query's error, which its generation loop refines against or its panel shows as the reason it has no query -- never an abort of the other branches."
         except Exception as exc:
             return str(exc)
