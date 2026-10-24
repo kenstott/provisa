@@ -795,6 +795,7 @@
   gap: 0.5rem;
 }
 .gf-error-text { flex: 1; }
+.gf-error-violations { margin: 0.35rem 0 0; padding-inline-start: 1.1rem; }
 
 /* REQ-1224: a result delivered to a file, said where the graph would be. */
 .gf-redirect { margin: 0.75rem 1rem; }

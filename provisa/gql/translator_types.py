@@ -14,7 +14,9 @@ break the mixin↔translator import cycle."""
 
 from __future__ import annotations
 
+import difflib
 from enum import Enum
+from typing import Any
 
 
 class GraphVarKind(str, Enum):
@@ -39,14 +41,44 @@ class CypherTranslateError(Exception):
     pass
 
 
-class UnregisteredRelationshipType(CypherTranslateError):
+class CypherMistake(CypherTranslateError):
+    """REQ-778: a mistake in the user's statement, refused at translation in the user's own terms
+    -- the clause or expression, what is wrong, and the fix -- before any engine runs it. ``code``
+    and ``params`` let a client word it in the reader's language (serverErrors catalog)."""
+
+    def __init__(self, code: str, message: str, **params: Any) -> None:
+        self.code = code
+        self.params = params
+        super().__init__(message)
+
+
+class UnregisteredRelationshipType(CypherMistake):
     """A Cypher statement names a relationship type the model does not register (REQ-603): a
     traversal exists only along a registered relationship, so the statement is refused -- on
-    every surface that carries Cypher, since every one of them translates it here."""
+    every surface that carries Cypher, since every one of them translates it here. Naming a type
+    that does not exist is the user's mistake (REQ-778): the message offers the registered types
+    nearest the first one named."""
 
-    def __init__(self, types: list[str]) -> None:
+    def __init__(self, types: list[str], registered: set[str]) -> None:
         self.types = types
-        super().__init__(f"Unregistered relationship type(s): {', '.join(types)}")
+        named = ", ".join(f":{t}" for t in types)
+        if not registered:
+            super().__init__(
+                "cypher.no_relationship_types",
+                f"There is no relationship type {named}: this role can traverse no relationship.",
+                types=named,
+            )
+            return
+        near = ", ".join(
+            f":{t}"
+            for t in difflib.get_close_matches(types[0], sorted(registered), n=3, cutoff=0.0)
+        )
+        super().__init__(
+            "cypher.unknown_relationship_type",
+            f"There is no relationship type {named}. Registered types: {near}.",
+            types=named,
+            suggestions=near,
+        )
 
 
 class CypherCrossSourceError(CypherTranslateError):
