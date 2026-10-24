@@ -34,6 +34,12 @@ from provisa.node.worker import HOST
 
 pytestmark = pytest.mark.unit
 
+BOUNDS = {
+    "memory_mb": 256,
+    "threads": 2,
+    "spill_cap_mb": 1024,
+}  # the host's DuckDB, given at pairing
+
 _CODE = """
 export function add(a, b) { return a + b; }
 export async function greet(name) { return { greeting: `hi ${name}` }; }
@@ -55,7 +61,15 @@ def started(tmp_path):
     names.write_text("{}")
     worker = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
     process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's front end
-        [sys.executable, front.__file__, str(port), str(tmp_path / "state"), str(names), *worker],
+        [
+            sys.executable,
+            front.__file__,
+            str(port),
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *worker,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -106,7 +120,7 @@ def test_its_certificate_is_a_self_signed_p256_certificate_its_code_names(starte
 def test_provisa_pairs_dials_and_calls_it(started):
     port, pairing, state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     assert pin == pairing.split(".")[0]
     assert (state / "provisa.crt").read_text() == identity.certificate
     assert not (state / "pairing.secret").exists()
@@ -126,7 +140,9 @@ def test_another_secret_is_refused_and_the_host_stays_unpaired(started):
     port, pairing, state = started
     fingerprint = pairing.split(".")[0]
     with pytest.raises(remote.PairingRefused) as refused:
-        remote.pair("127.0.0.1", port, f"{fingerprint}.not-the-secret", remote.new_identity())
+        remote.pair(
+            "127.0.0.1", port, f"{fingerprint}.not-the-secret", remote.new_identity(), BOUNDS
+        )
     assert "not this host's pairing code" in str(refused.value)
     assert not (state / "provisa.crt").exists()
 
@@ -134,23 +150,96 @@ def test_another_secret_is_refused_and_the_host_stays_unpaired(started):
 def test_once_paired_only_the_paired_provisa_is_served(started):
     port, pairing, _state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     stranger = remote.RemoteWorker(
         "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=remote.new_identity()
     )
     with pytest.raises(WorkerFailed):
         stranger.start(timeout=5)
     with pytest.raises(remote.PairingRefused):
-        remote.pair("127.0.0.1", port, pairing, identity)  # paired: it takes no pair message
+        remote.pair(
+            "127.0.0.1", port, pairing, identity, BOUNDS
+        )  # paired: it takes no pair message
 
 
 def test_a_host_running_other_code_is_refused_by_name(started):
     port, pairing, _state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     other = remote.RemoteWorker(
         "shop", "h2", address="127.0.0.1", port=port, pin=pin, identity=identity
     )
     with pytest.raises(WorkerFailed) as refused:
         other.start()
     assert "h1" in str(refused.value) and "h2" in str(refused.value)
+
+
+_ARROW_CODE = """
+import { createRequire } from "node:module";
+const A = createRequire(import.meta.url)(`${process.env.PROVISA_HOST_LIB}/package/Arrow.es2015.min.js`);
+export function table(n) {
+  return A.tableFromArrays({ extra: Array.from({ length: n }, () => "-"), n: BigInt64Array.from({ length: n }, (_, i) => BigInt(i)) });
+}
+export function* yielded(n) {
+  yield { n: -1 };
+  for (let i = 0; i < n; i += 2) {
+    yield A.tableFromArrays({ n: BigInt64Array.from({ length: Math.min(2, n - i) }, (_, k) => BigInt(i + k)) });
+  }
+}
+"""
+
+
+def test_arrow_the_code_returns_or_yields_is_sent_as_it_is(tmp_path):
+    """REQ-2100: an Arrow Table the code returns, or yields between plain rows, goes as it is,
+    its columns the declared ones by name; over each of the front's connections to the host."""
+    import pyarrow as pa
+
+    from provisa.codesource.arrow_rows import schema_text
+    from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
+
+    lib = CodeRuntimeResolver().resolve("apache-arrow").parent.parent
+    (tmp_path / "index.mjs").write_text(_ARROW_CODE)
+    names = tmp_path / "names.json"
+    names.write_text("{}")
+    host = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
+    process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's front end
+        [
+            sys.executable,
+            front.__file__,
+            "0",
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *host,
+        ],
+        env={**os.environ, "PROVISA_CODE_HASH": "h1", "PROVISA_HOST_LIB": str(lib)},
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stderr is not None
+    pairing, port = None, 0
+    until = time.monotonic() + 20
+    while time.monotonic() < until:
+        line = process.stderr.readline()
+        if line.startswith("pairing code: "):
+            pairing = line.removeprefix("pairing code: ").strip()
+        if line.startswith("remote host listening on "):
+            port = int(line.rsplit(" ", 1)[1])
+            break
+    assert pairing is not None and port, "the host did not start"
+    identity = remote.new_identity()
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    worker = remote.RemoteWorker(
+        "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
+    )
+    worker.start()
+    schema = schema_text(pa.schema([("n", pa.int64())]))
+    try:
+        returned = [r for b in worker.rows("table", "table", [3], ["n"], schema=schema) for r in b]
+        assert returned == [{"n": 0}, {"n": 1}, {"n": 2}]
+        yielded = [r for b in worker.rows("yielded", "table", [5], ["n"], schema=schema) for r in b]
+        assert [r["n"] for r in yielded] == [-1, 0, 1, 2, 3, 4]
+    finally:
+        worker.stop()
+        process.terminate()
+        process.wait(timeout=10)

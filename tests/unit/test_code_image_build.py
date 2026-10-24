@@ -107,6 +107,7 @@ FRONT = [
     "/opt/provisa/front/front.py",
     "7443",
     "/var/lib/provisa",
+    "/var/lib/provisa-spill",
     "/opt/provisa/front/names.json",
 ]
 
@@ -167,7 +168,7 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         ran.append(list(argv))
         target = Path(argv[argv.index("--target") + 1])
         front = argv[-1].endswith("front_requirements.txt")
-        (target / ("cryptography.py" if front else "six.py")).write_text("")
+        (target / ("duckdb.py" if front else "six.py")).write_text("")
 
     built = image_build.assemble(
         _plan(code, "python", "python", cache, "rates"), None, None, "amd64", tmp_path / "w",
@@ -203,19 +204,19 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "opt/provisa/hostlib/pyarrow/__init__.py",
         "opt/provisa/host/host.py",
         "opt/provisa/front/front.py",
+        "opt/provisa/front/residual.py",
+        "opt/provisa/front/duckdb_sql.py",
+        "opt/provisa/front/pgfront.py",
+        "opt/provisa/front/pgcatalog.py",
         "opt/provisa/front/names.json",
-        "opt/provisa/frontlib/cryptography.py",
+        "opt/provisa/frontlib/duckdb.py",
+        "opt/provisa/frontlib/buenavista/postgres.py",
         "opt/provisa/venv/pyvenv.cfg",
         "opt/provisa/venv/bin/python",
         "opt/provisa/venv/lib/python3.12/site-packages/six.py",
         "opt/provisa/code/rates.py",
         "var/lib/provisa",
     } <= paths
-    # The front end serves no reads of its own (REQ-2100): it carries no statement applier.
-    assert {p for p in paths if p.startswith("opt/provisa/front/")} == {
-        "opt/provisa/front/front.py",
-        "opt/provisa/front/names.json",
-    }
 
 
 def test_a_node_source_installs_its_packages_for_the_images_platform(
@@ -238,7 +239,7 @@ def test_a_node_source_installs_its_packages_for_the_images_platform(
     def run(argv, cwd, env):
         ran.append(list(argv))
         if "--target" in argv:  # the front end's own libraries
-            (Path(argv[argv.index("--target") + 1]) / "cryptography.py").write_text("")
+            (Path(argv[argv.index("--target") + 1]) / "duckdb.py").write_text("")
             return
         (cwd / "node_modules" / "dayjs").mkdir(parents=True)
 
@@ -272,7 +273,7 @@ def test_a_node_source_installs_its_packages_for_the_images_platform(
         "opt/provisa/host/host.mjs",
         f"opt/provisa/front-runtime/{python}",
         "opt/provisa/front/front.py",
-        "opt/provisa/frontlib/cryptography.py",
+        "opt/provisa/frontlib/duckdb.py",
         "opt/provisa/code/node_modules/dayjs",
     } <= paths
     assert not (code / ".npmrc").exists()
@@ -348,4 +349,7 @@ def test_the_compose_service_requires_its_host_port_and_keeps_its_state():
         '"${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"' in snippet
     )
     assert "provisa-code-rates-state:/var/lib/provisa" in snippet
+    # REQ-2100: the spill on a volume of its own, sized to the cap by the platform's quota.
+    assert "provisa-code-rates-spill:/var/lib/provisa-spill" in snippet
+    assert "codesource.duckdb_spill_cap_mb" in snippet
     assert "image: ghcr.io/acme/provisa-code-rates:abc" in snippet

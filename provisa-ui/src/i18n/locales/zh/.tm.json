@@ -8020,5 +8020,11 @@
   "zh/graphSidebar.json::graphSidebar.schemaFailed": "Schema unavailable: {{error}}",
   "zh/rowMaterialize.json::rowMaterialize.label": "Replicate row by row",
   "zh/rowMaterialize.json::rowMaterialize.help": "Keep only the rows statements ask for: each is fetched from the source by its primary key and kept for the Cache TTL, instead of a copy of the whole table. Needs one primary-key column and a source that fetches rows by key.",
-  "zh/serverErrors.json::serverErrors.schema.row_materialize_no_key_fetch": "{{table}} cannot be replicated row by row: its remote schema has no field that returns its rows for a list of its primary key."
+  "zh/serverErrors.json::serverErrors.schema.row_materialize_no_key_fetch": "{{table}} cannot be replicated row by row: its remote schema has no field that returns its rows for a list of its primary key.",
+  "zh/settings.json::settings.codesource.duckdb_memory_mb.label": "Code source DuckDB memory",
+  "zh/settings.json::settings.codesource.duckdb_memory_mb.help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk.",
+  "zh/settings.json::settings.codesource.duckdb_spill_cap_mb.label": "Code source DuckDB spill cap",
+  "zh/settings.json::settings.codesource.duckdb_spill_cap_mb.help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound.",
+  "zh/settings.json::settings.codesource.duckdb_threads.label": "Code source DuckDB threads",
+  "zh/settings.json::settings.codesource.duckdb_threads.help": "The threads a code source's DuckDB answers its statements on."
 }
