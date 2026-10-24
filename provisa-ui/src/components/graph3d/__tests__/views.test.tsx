@@ -192,6 +192,10 @@ describe("the Knowledge Graph panel", () => {
     expect(legend.querySelector('[data-testid="legend-table:plain"] i')).toHaveClass(
       "g3d-shape-cylinder",
     );
+    // A data product is drawn an icosahedron, seen as a hexagon: its glyph is clipped to one.
+    const product = legend.querySelector('[data-testid="legend-product:plain"] i') as HTMLElement;
+    expect(product).toHaveClass("g3d-shape-icosahedron");
+    expect(product.dataset.glyph?.split(" ")).toHaveLength(6);
   });
 
   it("drops a layer's entry from the full graph's legend as the layer goes", async () => {
