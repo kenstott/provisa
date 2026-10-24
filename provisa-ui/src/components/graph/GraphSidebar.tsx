@@ -63,6 +63,8 @@ interface SidebarProps {
   counts?: GraphCounts | null;
   maxNodes: number;
   onMaxNodesChange: (n: number) => void;
+  /** A second vocabulary's panel (SPARQL's) in place of Cypher's labels, types and keys. */
+  vocabulary?: React.ReactNode;
 }
 
 const NUMERIC_TYPES = new Set([
@@ -119,6 +121,7 @@ export function Sidebar({
   counts = null,
   maxNodes,
   onMaxNodesChange,
+  vocabulary,
 }: SidebarProps) {
   const { t } = useTranslation();
   const [section, setSection] = useState<"db" | "history" | "favorites" | "settings">("db");
@@ -351,7 +354,9 @@ export function Sidebar({
       </div>
 
       <div className="graph-sidebar-body">
-        {section === "db" && (
+        {/* REQ-2135: SPARQL's vocabulary, where Cypher's labels and types are. */}
+        {section === "db" && vocabulary}
+        {section === "db" && !vocabulary && (
           <>
             {!schemaLoading &&
               (() => {

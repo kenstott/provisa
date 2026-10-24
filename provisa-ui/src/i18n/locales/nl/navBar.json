@@ -74,6 +74,7 @@
     "sandboxExitLogOut": "Alleen uitloggen",
     "itemPython": "Python",
     "itemNotebook": "Notebook",
-    "itemContainerRegistries": "Containerregisters"
+    "itemContainerRegistries": "Containerregisters",
+    "itemSparql": "SPARQL"
   }
 }

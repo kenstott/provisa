@@ -96,7 +96,6 @@
     "openAsQueryFocused": "Le voisinage de la recherche ou du focus ne s’exprime pas encore en une seule requête.",
     "openAsQueryCompiling": "Compilation de la requête…",
     "openAsQueryNoCypher": "Cette requête n’a pas de forme Cypher.",
-    "openAsQuerySparqlLater": "SPARQL s’ouvrira quand son point d’accès existera.",
     "layersMenu": "Couches",
     "termsMenu": "Termes",
     "menuAll": "tous",
@@ -109,6 +108,8 @@
     "overBudget": "{{count}} correspondances ; affinez la recherche ou choisissez un domaine",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Ancré dans des tables pas encore liées comme la même entité : {{tables}}",
-    "status_draft": "Brouillon"
+    "status_draft": "Brouillon",
+    "openAsQueryNoSparql": "Cette requête n'a pas de forme SPARQL.",
+    "openAsQuerySparqlRoots": "Chaque racine de cette requête est sa propre requête SPARQL : ouvrez le GraphQL pour les lire une à une."
   }
 }

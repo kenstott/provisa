@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "डोमेन",
+    "classes": "क्लास",
+    "properties": "प्रॉपर्टी",
+    "relationships": "संबंध",
+    "concepts": "अवधारणाएँ",
+    "prefixes": "प्रीफ़िक्स",
+    "none": "आपकी भूमिका के लिए यहाँ कुछ नहीं है।",
+    "domainTip": "इस डोमेन का प्रीफ़िक्स घोषित करता है और सूचियों को इसकी शब्दावली तक सीमित करता है ({{namespace}})।",
+    "domainPicked": "सूचियाँ केवल {{namespace}} दिखाती हैं। सभी डोमेन के लिए फिर से क्लिक करें।",
+    "classTerm": "क्लास शब्द {{term}}",
+    "tableClass": "किसी टेबल की अपनी क्लास",
+    "propertyTerm": "प्रॉपर्टी शब्द {{term}}",
+    "columnPredicate": "कॉलम {{column}}"
+  }
+}

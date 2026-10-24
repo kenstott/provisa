@@ -87200,9 +87200,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     VISUALIZER:) Phase 5's SPARQL visualizer is the Cypher visualizer (GraphSidebar and the graph
     canvas) with a second vocabulary: one component, not a separate visualizer. It keeps the same
     shell (history, favorites, settings, export, the canvas and how results are drawn), and its
+    [SUPERSEDED by REQ-2135, 2026-10-23 -- the pills follow the term roles (Class, Property, Concept);
+    see VISUALIZER VOCABULARY below. Kept here for history; do not implement against it.]
     left-hand pills are in SPARQL's vocabulary: Domains; Classes (terms typing a table, with abstract
     terms as superclasses); Properties (term-linked columns); Relationships (edge-type predicates:
-    declared relationships and term edges); Concepts (the SKOS vocabulary); and Prefixes. Clicking a
+    declared relationships and term edges); Concepts (the SKOS vocabulary); and Prefixes.
+    [END SUPERSEDED BLOCK] Clicking a
     pill adds a triple pattern to the current query rather than replacing it. IRIs are shown compacted
     by prefix, with the full IRI on hover; literals are drawn distinct from resources; and CONSTRUCT
     results are drawn as a graph.
@@ -87232,6 +87235,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property term
     has the term's IRI as its predicate, and its direct predicate stays usable. A class term types
     the instances of the tables it grounds in addition to their table class (REQ-2141).
+    (Amended 2026-10-23, VISUALIZER VOCABULARY:) The visualizer's pills follow the term roles
+    (REQ-2141), read from GET /data/sparql/vocabulary as the acting role: Domains, each a domain's
+    prefix, which, picked, also narrows the other lists to that domain's vocabulary; Classes, the
+    Class terms and the tables' own classes, each Class term shown with the classes it is a KIND_OF
+    as its superclasses; Properties, the Property terms and the columns' predicates; Relationships,
+    the declared relationships and term edges as predicates; Concepts, the live Concept terms (the
+    SKOS vocabulary); and Prefixes. A class pill types the query's subject ?s, a property or
+    relationship pill adds a fresh object to ?s, a concept pill reads what is said of the concept,
+    and a prefix or domain pill declares its PREFIX; each adds to the query in the bar. The SPARQL
+    tab keeps its own frames, history, favorites and settings, apart from Cypher's. The Ontology
+    page's Open as query (REQ-2136) offers SPARQL when the query has one root with a SPARQL form,
+    and otherwise says why: the root's reason, or that each root is its own SPARQL query.
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

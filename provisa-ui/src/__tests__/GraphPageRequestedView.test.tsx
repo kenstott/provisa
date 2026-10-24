@@ -48,7 +48,9 @@ vi.mock("../components/graph/Neo4jExportModal", () => ({ Neo4jExportModal: () =>
 
 import { GraphPage } from "../pages/GraphPage";
 import { useRequestedView } from "../components/graph/use-requested-view";
-import { graphState } from "../components/graph/graph-persistence";
+import { graphStateOf } from "../components/graph/graph-persistence";
+
+const graphState = graphStateOf("cypher");
 import { MAX_NODES_KEY } from "../components/graph/graph-drawing";
 import { getStored } from "../lib/browserStorage";
 

@@ -74,6 +74,7 @@
     "sandboxExitLogOut": "केवल लॉग आउट करें",
     "itemPython": "Python",
     "itemNotebook": "नोटबुक",
-    "itemContainerRegistries": "कंटेनर रजिस्ट्री"
+    "itemContainerRegistries": "कंटेनर रजिस्ट्री",
+    "itemSparql": "SPARQL"
   }
 }

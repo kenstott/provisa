@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "Domänen",
+    "classes": "Klassen",
+    "properties": "Eigenschaften",
+    "relationships": "Beziehungen",
+    "concepts": "Konzepte",
+    "prefixes": "Präfixe",
+    "none": "Für Ihre Rolle gibt es hier nichts.",
+    "domainTip": "Deklariert das Präfix dieser Domäne und beschränkt die Listen auf ihr Vokabular ({{namespace}}).",
+    "domainPicked": "Die Listen zeigen nur {{namespace}}. Erneut klicken für alle Domänen.",
+    "classTerm": "Klassenbegriff {{term}}",
+    "tableClass": "Die eigene Klasse einer Tabelle",
+    "propertyTerm": "Eigenschaftsbegriff {{term}}",
+    "columnPredicate": "Spalte {{column}}"
+  }
+}

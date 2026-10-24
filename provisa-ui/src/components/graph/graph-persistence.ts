@@ -48,10 +48,25 @@ export function useLocalStorage<T>(
 }
 
 // ── Module-level state (survives SPA navigation, persisted to localStorage) ───
-const LS_KEY = "provisa.graph.state";
-export const DEFAULT_QUERY = "MATCH (n) RETURN n LIMIT 25";
+/** The graph visualizer's query languages (REQ-2135): Cypher, and SPARQL with its own vocabulary. */
+export type GraphLanguage = "cypher" | "sparql";
+
+/** Each language's own frames, history and query, kept apart. */
+const LS_KEY: Record<GraphLanguage, string> = {
+  cypher: "provisa.graph.state",
+  sparql: "provisa.sparql.state",
+};
+export const DEFAULT_QUERY: Record<GraphLanguage, string> = {
+  cypher: "MATCH (n) RETURN n LIMIT 25",
+  sparql: "SELECT * WHERE {\n  ?s ?p ?o\n}\nLIMIT 25",
+};
+
+/** A setting's key in the browser, kept apart per language: Cypher's as it always was. */
+export const settingKey = (language: GraphLanguage, name: string): string =>
+  language === "cypher" ? `provisa.graph.${name}` : `provisa.sparql.${name}`;
 
 export interface GraphState {
+  language: GraphLanguage;
   frames: FrameData[];
   history: string[];
   currentQuery: string;
@@ -129,7 +144,7 @@ function deserializeFrame(s: SerializedFrame): FrameData {
 export function saveGraphState(state: GraphState): void {
   try {
     setStored(
-      LS_KEY,
+      LS_KEY[state.language],
       JSON.stringify({
         frames: state.frames.map(serializeFrame),
         history: state.history,
@@ -141,23 +156,31 @@ export function saveGraphState(state: GraphState): void {
   }
 }
 
-function loadGraphState(): GraphState {
+function loadGraphState(language: GraphLanguage): GraphState {
+  const empty = { language, frames: [], history: [], currentQuery: DEFAULT_QUERY[language] };
   try {
-    const raw = getStored(LS_KEY);
-    if (!raw) return { frames: [], history: [], currentQuery: DEFAULT_QUERY };
+    const raw = getStored(LS_KEY[language]);
+    if (!raw) return empty;
     const s = JSON.parse(raw) as {
       frames?: SerializedFrame[];
       history?: string[];
       currentQuery?: string;
     };
     return {
+      language,
       frames: (s.frames ?? []).map(deserializeFrame),
       history: s.history ?? [],
-      currentQuery: s.currentQuery ?? DEFAULT_QUERY,
+      currentQuery: s.currentQuery ?? DEFAULT_QUERY[language],
     };
   } catch {
-    return { frames: [], history: [], currentQuery: DEFAULT_QUERY };
+    return empty;
   }
 }
 
-export const graphState: GraphState = loadGraphState();
+// Module-level, so each survives SPA navigation; read from the browser the first time asked for.
+const states: Partial<Record<GraphLanguage, GraphState>> = {};
+
+/** The language's state, loaded once. */
+export function graphStateOf(language: GraphLanguage): GraphState {
+  return (states[language] ??= loadGraphState(language));
+}

@@ -96,7 +96,6 @@
     "openAsQueryFocused": "検索またはフォーカスの近傍は、まだ 1 つのクエリでは表せません。",
     "openAsQueryCompiling": "クエリをコンパイル中…",
     "openAsQueryNoCypher": "このクエリには Cypher 形式がありません。",
-    "openAsQuerySparqlLater": "SPARQL はエンドポイントが利用可能になると開けます。",
     "layersMenu": "レイヤー",
     "termsMenu": "用語",
     "menuAll": "すべて",
@@ -109,6 +108,8 @@
     "overBudget": "{{count}} 件一致。検索を絞り込むかドメインを選んでください",
     "domainCount": "{{domain}}（{{count}}）",
     "unlinkedTables": "同一エンティティとしてまだリンクされていないテーブルに基づいています: {{tables}}",
-    "status_draft": "下書き"
+    "status_draft": "下書き",
+    "openAsQueryNoSparql": "このクエリには SPARQL 形式がありません。",
+    "openAsQuerySparqlRoots": "このクエリの各ルートはそれぞれ別の SPARQL クエリです。1 つずつ読むには GraphQL を開いてください。"
   }
 }

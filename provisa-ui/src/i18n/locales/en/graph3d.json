@@ -96,7 +96,6 @@
     "openAsQueryFocused": "The search or focus neighbourhood isn’t expressible as one query yet.",
     "openAsQueryCompiling": "Compiling the query…",
     "openAsQueryNoCypher": "This query has no Cypher form.",
-    "openAsQuerySparqlLater": "SPARQL opens once its endpoint is available.",
     "layersMenu": "Layers",
     "termsMenu": "Terms",
     "menuAll": "all",
@@ -109,6 +108,8 @@
     "overBudget": "{{count}} match; narrow the search or pick a domain",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Grounded in tables not yet linked as the same entity: {{tables}}",
-    "status_draft": "Draft"
+    "status_draft": "Draft",
+    "openAsQueryNoSparql": "This query has no SPARQL form.",
+    "openAsQuerySparqlRoots": "Each root of this query is its own SPARQL query: open the GraphQL to read them one by one."
   }
 }

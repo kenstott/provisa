@@ -31,7 +31,26 @@ import {
 import { tableRef } from "../components/relationships/relationship-types";
 import { useAuth } from "../context/AuthContext";
 import "./GraphPage.css";
-import { useLocalStorage, graphState, saveGraphState } from "../components/graph/graph-persistence";
+import {
+  useLocalStorage,
+  graphStateOf,
+  saveGraphState,
+  settingKey,
+  type GraphLanguage,
+} from "../components/graph/graph-persistence";
+import {
+  addPattern,
+  compactIri,
+  freshVariable,
+  sparqlStatement,
+  withPrefixes,
+  SPARQL_ACCEPT,
+  type SparqlVocabulary,
+} from "../components/graph/sparql";
+import {
+  SparqlVocabularyPanel,
+  type VocabularyPick,
+} from "../components/graph/SparqlVocabularyPanel";
 import type { Favorite } from "../components/graph/graph-persistence";
 import type {
   SchemaNodeLabel,
@@ -49,8 +68,12 @@ import { useMaxNodes } from "../components/graph/graph-drawing";
 import { frameStatement, showing, type CypherAnswer } from "../components/graph/frameStatements";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-export function GraphPage() {
+export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } = {}) {
   const { t } = useTranslation();
+  // REQ-2135: Cypher and SPARQL share this page, each with its own frames, history, favorites and
+  // settings; SPARQL's vocabulary stands where Cypher's labels are.
+  const graphState = graphStateOf(language);
+  const sparql = language === "sparql";
   const { role, selectedRoles, loading: authLoading } = useAuth();
   // REQ-1620: under "Role: All" the acting set is every active role, sent as one
   // comma-separated X-Provisa-Role so the server unions their domain_access — sending only
@@ -72,7 +95,7 @@ export function GraphPage() {
     seq: number;
     view?: FrameView;
   } | null>(() => {
-    const pending = getStored("provisa.graph.pending_query");
+    const pending = getStored(settingKey(language, "pending_query"));
     return pending ? { query: pending, seq: 0 } : null;
   });
   const ranSeqRef = useRef<number | null>(null);
@@ -107,34 +130,40 @@ export function GraphPage() {
   // What /data/graph-counts last said for this role and domain selection; null until it has.
   const [counts, setCounts] = useState<GraphCounts | null>(null);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
-    "provisa.graph.sidebarWidth",
+    settingKey(language, "sidebarWidth"),
     240,
   );
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
-    "provisa.graph.colorOverrides",
+    settingKey(language, "colorOverrides"),
     {},
   );
   const [sizeOverrides, setSizeOverrides] = useLocalStorage<Record<string, number>>(
-    "provisa.graph.sizeOverrides",
+    settingKey(language, "sizeOverrides"),
     {},
   );
   const [labelProperty, setLabelProperty] = useLocalStorage<Record<string, string>>(
-    "provisa.graph.labelProperty",
+    settingKey(language, "labelProperty"),
     {},
   );
   const [sizeByProperty, setSizeByProperty] = useLocalStorage<Record<string, string>>(
-    "provisa.graph.sizeByProperty",
+    settingKey(language, "sizeByProperty"),
     {},
   );
   const [sizeMultiplier, setSizeMultiplier] = useLocalStorage<Record<string, number>>(
-    "provisa.graph.sizeMultiplier",
+    settingKey(language, "sizeMultiplier"),
     {},
   );
-  const [autoImpute, setAutoImpute] = useLocalStorage<boolean>("provisa.graph.autoImpute", false);
-  const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.favorites", []);
+  const [autoImpute, setAutoImpute] = useLocalStorage<boolean>(
+    settingKey(language, "autoImpute"),
+    false,
+  );
+  const [favorites, setFavorites] = useLocalStorage<Favorite[]>(
+    settingKey(language, "favorites"),
+    [],
+  );
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>(
-    "provisa.graph.relLineOverrides",
+    settingKey(language, "relLineOverrides"),
     {},
   );
   const { relationships: adminRels, refetch: refetchRelationships } = useRelationships();
@@ -206,8 +235,32 @@ export function GraphPage() {
     [favorites],
   );
 
+  // REQ-2135: SPARQL's vocabulary, for the role (read again when the role changes).
+  const [vocabulary, setVocabulary] = useState<SparqlVocabulary | null>(null);
+  const [vocabularyError, setVocabularyError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sparql) return;
+    const headers: Record<string, string> = {};
+    if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
+    let cancelled = false;
+    fetch("/data/sparql/vocabulary", { headers })
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? r.statusText);
+        return r.json() as Promise<SparqlVocabulary>;
+      })
+      .then(
+        (v) => !cancelled && (setVocabulary(v), setVocabularyError(null)),
+        (e: unknown) =>
+          !cancelled && setVocabularyError(e instanceof Error ? e.message : String(e)),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [sparql, roleHeaderValue]);
+
   // Fetch schema when role changes via dedicated graph-schema endpoint
   useEffect(() => {
+    if (sparql) return;
     setSchemaLoading(true);
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
@@ -280,7 +333,7 @@ export function GraphPage() {
       })
       .catch(() => {})
       .finally(() => setSchemaLoading(false));
-  }, [roleHeaderValue]);
+  }, [roleHeaderValue, sparql]);
 
   useEffect(() => {
     if (schemaNodeLabels.length === 0 && schemaRels.length === 0) return;
@@ -313,6 +366,40 @@ export function GraphPage() {
   // Run ``query`` and put what it answered in frame ``id``: one result per statement it holds.
   const answer = useCallback(
     async (id: string, query: string, start: number) => {
+      if (sparql) {
+        // REQ-2135: one SPARQL query, answered in the form it asks for (rows, or triples drawn).
+        const hdrs: Record<string, string> = {
+          "Content-Type": "application/sparql-query",
+          Accept: SPARQL_ACCEPT,
+        };
+        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
+        let statement;
+        try {
+          const res = await fetch("/data/sparql", { method: "POST", headers: hdrs, body: query });
+          statement = await sparqlStatement(query, res, vocabulary?.prefixes ?? {});
+        } catch (err) {
+          statement = null;
+          const message = String(err);
+          setFrames((f) => {
+            const next = f.map((fr) =>
+              fr.id === id ? { ...fr, status: "error" as const, error: message } : fr,
+            );
+            graphState.frames = next;
+            saveGraphState(graphState);
+            return next;
+          });
+        }
+        if (statement === null) return;
+        const elapsed = Date.now() - start;
+        const shown = statement;
+        setFrames((f) => {
+          const next = f.map((fr) => (fr.id === id ? { ...fr, ...showing(shown), elapsed } : fr));
+          graphState.frames = next;
+          saveGraphState(graphState);
+          return next;
+        });
+        return;
+      }
       try {
         const hdrs: Record<string, string> = { "Content-Type": "application/json" };
         if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
@@ -374,7 +461,7 @@ export function GraphPage() {
         });
       }
     },
-    [roleHeaderValue, maxNodes],
+    [roleHeaderValue, maxNodes, sparql, vocabulary, graphState],
   );
 
   // One statement's result, of the frame's, shown: its drawing, rows and error.
@@ -389,7 +476,7 @@ export function GraphPage() {
       saveGraphState(graphState);
       return next;
     });
-  }, []);
+  }, [graphState]);
 
   const runQuery = useCallback(
     async (query: string, view?: FrameView, frameId?: string) => {
@@ -422,7 +509,7 @@ export function GraphPage() {
       });
       await answer(id, query, start);
     },
-    [answer],
+    [answer, graphState],
   );
 
   // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
@@ -433,12 +520,12 @@ export function GraphPage() {
     // has resolved, then run exactly once with the correct role.
     if (authLoading || !forwarded || ranSeqRef.current === forwarded.seq) return;
     ranSeqRef.current = forwarded.seq;
-    removeStored("provisa.graph.pending_query");
+    removeStored(settingKey(language, "pending_query"));
     setHistoryQuery(forwarded.query);
     const frameId = crypto.randomUUID();
     setHandoffFrameId(frameId);
     runQuery(forwarded.query, forwarded.view, frameId);
-  }, [runQuery, authLoading, forwarded]);
+  }, [runQuery, authLoading, forwarded, language]);
 
   const closeFrame = useCallback((id: string) => {
     setFrames((f) => {
@@ -447,7 +534,7 @@ export function GraphPage() {
       saveGraphState(graphState);
       return next;
     });
-  }, []);
+  }, [graphState]);
 
   const handlePin = useCallback((id: string) => {
     setFrames((f) => {
@@ -456,7 +543,7 @@ export function GraphPage() {
       saveGraphState(graphState);
       return next;
     });
-  }, []);
+  }, [graphState]);
 
   // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
   const { pkMap, labelToTableLabel, labelToTableId } = useMemo(() => {
@@ -505,7 +592,7 @@ export function GraphPage() {
       });
       await answer(id, query, start);
     },
-    [answer],
+    [answer, graphState],
   );
 
   const framesRef = useRef(frames);
@@ -725,6 +812,33 @@ export function GraphPage() {
   };
 
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
+
+  // REQ-2135: a SPARQL pill adds to the query in the bar. Its patterns share one subject, ?s: a
+  // class types it, a property or a relationship hangs a fresh object off it; a concept is read for
+  // what is said of it; a prefix or a domain is declared.
+  const handleVocabularyPick = useCallback(
+    (pick: VocabularyPick) => {
+      if (!vocabulary) return;
+      const p = vocabulary.prefixes;
+      const q = graphState.currentQuery;
+      let next: string;
+      if (pick.kind === "prefix") next = withPrefixes(q, [pick.prefix], p);
+      else {
+        const term = compactIri(pick.iri, p);
+        const pattern =
+          pick.kind === "class"
+            ? `?s a ${term} .`
+            : pick.kind === "concept"
+              ? `${term} ${freshVariable(q, "p")} ${freshVariable(q, "o")} .`
+              : `?s ${term} ${freshVariable(q, "o")} .`;
+        next = addPattern(q, pattern, [term], p);
+      }
+      graphState.currentQuery = next;
+      saveGraphState(graphState);
+      setHistoryQuery(next);
+    },
+    [vocabulary, graphState],
+  );
   const handleDomainClick = useCallback(
     (domainId: string) => {
       runQuery(`MATCH (n:${domainId}) RETURN n LIMIT 25`);
@@ -859,6 +973,15 @@ export function GraphPage() {
         counts={counts}
         maxNodes={maxNodes}
         onMaxNodesChange={setMaxNodes}
+        vocabulary={
+          sparql ? (
+            <SparqlVocabularyPanel
+              vocabulary={vocabulary}
+              error={vocabularyError}
+              onPick={handleVocabularyPick}
+            />
+          ) : undefined
+        }
       />
 
       <div className="graph-content">
@@ -872,6 +995,7 @@ export function GraphPage() {
           cypherSchema={schemaLoading ? undefined : cypherSchema}
           autoImpute={autoImpute}
           onToggleAutoImpute={() => setAutoImpute((v) => !v)}
+          language={language}
           key={historyQuery ?? "initial"}
         />
 
@@ -886,7 +1010,7 @@ export function GraphPage() {
               <div className="graph-stream-empty-icon" aria-hidden="true">
                 ⬡
               </div>
-              <Text component="div">{t("graphPage.emptyStateHint")}</Text>
+              <Text component="div">{t(language === "sparql" ? "graphPage.emptyStateHintSparql" : "graphPage.emptyStateHint")}</Text>
               <Text component="div" className="graph-stream-hint">
                 {t("graphPage.emptyStateShortcut")}
               </Text>
@@ -901,8 +1025,10 @@ export function GraphPage() {
                 requestedView={frameViews[frame.id]}
                 onClose={closeFrame}
                 onRerun={rerunFrame}
-                onTableDrop={onTableDrop}
-                onDomainDrop={onDomainDrop}
+                // A drop, an expansion and an exclusion write Cypher against the model's labels and
+                // relationships: none of them acts on a SPARQL frame.
+                onTableDrop={sparql ? undefined : onTableDrop}
+                onDomainDrop={sparql ? undefined : onDomainDrop}
                 colorOverrides={colorOverrides}
                 sizeOverrides={sizeOverrides}
                 labelProperty={labelProperty}
@@ -913,8 +1039,8 @@ export function GraphPage() {
                 pkMap={pkMap}
                 labelToTableLabel={labelToTableLabel}
                 labelToTableId={labelToTableId}
-                relationships={adminRels}
-                graphRelationships={graphRels}
+                relationships={sparql ? [] : adminRels}
+                graphRelationships={sparql ? [] : graphRels}
                 autoImpute={autoImpute}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}

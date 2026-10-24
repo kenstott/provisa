@@ -96,7 +96,6 @@
     "openAsQueryFocused": "L’intorno della ricerca o del focus non è ancora esprimibile come una sola query.",
     "openAsQueryCompiling": "Compilazione della query…",
     "openAsQueryNoCypher": "Questa query non ha forma Cypher.",
-    "openAsQuerySparqlLater": "SPARQL si aprirà quando il suo endpoint sarà disponibile.",
     "layersMenu": "Livelli",
     "termsMenu": "Termini",
     "menuAll": "tutti",
@@ -109,6 +108,8 @@
     "overBudget": "{{count}} corrispondenze; restringi la ricerca o scegli un dominio",
     "domainCount": "{{domain}} ({{count}})",
     "unlinkedTables": "Ancorato a tabelle non ancora collegate come la stessa entità: {{tables}}",
-    "status_draft": "Bozza"
+    "status_draft": "Bozza",
+    "openAsQueryNoSparql": "Questa query non ha una forma SPARQL.",
+    "openAsQuerySparqlRoots": "Ogni radice di questa query è una query SPARQL a sé: apri il GraphQL per leggerle una per una."
   }
 }
