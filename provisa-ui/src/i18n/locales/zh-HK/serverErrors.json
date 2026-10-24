@@ -256,7 +256,12 @@
       "database_unavailable": "數據庫不可用",
       "query_engine_unavailable": "查詢引擎不可用",
       "role_header_required": "剖析檢視需要 X-Provisa-Role 標頭",
-      "table_not_found": "找不到資料表 {{table_id}}"
+      "table_not_found": "找不到資料表 {{table_id}}",
+      "column_not_found": "欄位 {{column}} 不是 org_admin 讀取的表中的欄位",
+      "classification_kind_unknown": "未知的分類類型 {{kind}}",
+      "classification_status_invalid": "分類決定只可以是已接受或已拒絕，而不是 {{status}}",
+      "classification_decision_not_found": "沒有關於 {{column}} 作為 {{kind}} 的決定",
+      "classification_pii_refused": "無法將該欄位標記為 PII"
     },
     "replication": {
       "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",

@@ -46,6 +46,7 @@ const KINDS = [
   "joint_counts",
   "constraints",
   "constraint_checks",
+  "classifications",
   "duplicates",
   "repeats",
 ] as const;

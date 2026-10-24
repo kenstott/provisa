@@ -256,7 +256,12 @@
       "database_unavailable": "База данных недоступна",
       "query_engine_unavailable": "Движок запросов недоступен",
       "role_header_required": "Для профилирования представления требуется заголовок X-Provisa-Role",
-      "table_not_found": "Таблица {{table_id}} не найдена"
+      "table_not_found": "Таблица {{table_id}} не найдена",
+      "column_not_found": "Столбец {{column}} не является столбцом таблицы, которую читает org_admin",
+      "classification_kind_unknown": "Неизвестный вид классификации {{kind}}",
+      "classification_status_invalid": "Решение по классификации — принято или отклонено, а не {{status}}",
+      "classification_decision_not_found": "Нет решения по {{column}} как {{kind}}",
+      "classification_pii_refused": "Не удалось пометить столбец как PII"
     },
     "replication": {
       "answer_not_json": "Ответ, прочитанный для реплики {{table}}, не является корректным JSON: [{{content_type}}] {{cause}} (в {{kib}} КиБ перед байтом {{before_byte}} ответа).",

@@ -4687,6 +4687,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_checks_router)
+    from provisa.api.admin.profiler_classifications_router import (  # REQ-2147
+        router as profiler_classifications_router,
+    )
+
+    app.include_router(profiler_classifications_router)
     from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
 
     app.include_router(synthetic_router)

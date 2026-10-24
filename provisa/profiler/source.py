@@ -56,6 +56,9 @@ class ProfilerSettings:
     joint_max_distinct: int
     # The most category columns entered, the most frequently held kept.
     category_max_columns: int
+    # REQ-2147: the most rows whose values the classification kinds are tested against, drawn
+    # at random from the run's sample.
+    classification_sample: int
 
 
 # none: every previous run; daily: runs at the same hour of the day; weekly: on the same weekday;
@@ -75,6 +78,7 @@ _SETTINGS = (
     "correlation_max_columns",
     "joint_max_distinct",
     "category_max_columns",
+    "classification_sample",
 )
 
 
@@ -139,6 +143,7 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
         correlation_max_columns=_positive_int(source_id, mapping, "correlation_max_columns"),
         joint_max_distinct=_positive_int(source_id, mapping, "joint_max_distinct"),
         category_max_columns=_positive_int(source_id, mapping, "category_max_columns"),
+        classification_sample=_positive_int(source_id, mapping, "classification_sample"),
     )
 
 

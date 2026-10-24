@@ -365,6 +365,28 @@ def _base_sql(table: str, base_cols: list[str], sample: Sample) -> str:
     return f"{select} WHERE RANDOM() < {sample.fraction!r}"
 
 
+def classification_sql(table: str, columns: list[ColumnSpec], sample: Sample, limit: int) -> str:
+    """Up to ``limit`` rows of ``columns``, as text, drawn at random from the run's sample, whose
+    values the classification kinds are tested against (REQ-2147). The values are tested in memory
+    and never stored."""
+    inner = _base_sql(
+        table, [f"{read_column('t', c)} AS {_ident(c.name)}" for c in columns], sample
+    )
+    cols = ", ".join(f"CAST(s.{_ident(c.name)} AS VARCHAR) AS {_ident(c.name)}" for c in columns)
+    return f"SELECT {cols} FROM ({inner}) s ORDER BY RANDOM() LIMIT {int(limit)}"
+
+
+def parse_classification_result(
+    names: list[str], rows: list[tuple], columns: list[ColumnSpec]
+) -> dict[str, list[str | None]]:
+    """Each column's sampled values, by its name."""
+    index = {n: i for i, n in enumerate(names)}
+    return {
+        c.name: [None if r[index[c.name]] is None else str(r[index[c.name]]) for r in rows]
+        for c in columns
+    }
+
+
 def profile_sql(
     table: str,
     columns: list[ColumnSpec],

@@ -256,7 +256,12 @@
       "database_unavailable": "डेटाबेस अनुपलब्ध है",
       "query_engine_unavailable": "क्वेरी इंजन अनुपलब्ध है",
       "role_header_required": "व्यू की प्रोफ़ाइलिंग के लिए X-Provisa-Role हेडर आवश्यक है",
-      "table_not_found": "टेबल {{table_id}} नहीं मिली"
+      "table_not_found": "टेबल {{table_id}} नहीं मिली",
+      "column_not_found": "कॉलम {{column}} उस टेबल का कॉलम नहीं है जिसे org_admin पढ़ता है",
+      "classification_kind_unknown": "अज्ञात वर्गीकरण प्रकार {{kind}}",
+      "classification_status_invalid": "वर्गीकरण निर्णय स्वीकृत या अस्वीकृत होता है, {{status}} नहीं",
+      "classification_decision_not_found": "{{column}} पर {{kind}} के रूप में कोई निर्णय नहीं",
+      "classification_pii_refused": "कॉलम को PII के रूप में चिह्नित नहीं किया जा सका"
     },
     "replication": {
       "answer_not_json": "{{table}} की रेप्लिका के लिए पढ़ा गया उत्तर मान्य JSON नहीं है: [{{content_type}}] {{cause}} (उत्तर के बाइट {{before_byte}} से पहले के {{kib}} KiB में)।",

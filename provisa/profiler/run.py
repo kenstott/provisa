@@ -42,7 +42,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.schema import CreateTable
 
-from provisa.profiler import constraints, dependence, measures, plausible
+from provisa.profiler import classifications, classify, constraints, dependence, measures, plausible
 from provisa.profiler.dependence import ParentSpec
 from provisa.profiler.source import ProfilerSettings
 from provisa.profiler.schema import (
@@ -55,6 +55,7 @@ from provisa.profiler.statement import (
     CheckSpec,
     TOP_N,
     ColumnSpec,
+    classification_sql,
     FanoutSpec,
     KeySpec,
     ProfileAggregates,
@@ -64,6 +65,7 @@ from provisa.profiler.statement import (
     is_integer_key,
     key_bounds_sql,
     key_ranges,
+    parse_classification_result,
     parse_profile_result,
     profile_sql,
 )
@@ -85,6 +87,7 @@ NOT_FROM_THE_PROFILE_STATEMENT = frozenset(
         "joint_counts",
         "constraints",
         "constraint_checks",
+        "classifications",
     }
 )
 
@@ -552,7 +555,7 @@ async def _run_further(
             sample.method, _executed_sql(plan), plan.dialect, where, len(sample.ranges)
         )
     except SampleClauseLost as exc:
-        raise ProfileError(f"dependence of {table_name!r}: {exc}") from exc
+        raise ProfileError(f"a further statement of {table_name!r}: {exc}") from exc
     return await _execute(plan)
 
 
@@ -581,6 +584,52 @@ async def _sampled_further(
             return found, sample
         assert sample.fraction is not None  # a block sample always states its fraction
         sample = Sample("block", min(1.0, sample.fraction * 4))
+
+
+async def read_classifications(
+    target: Target,
+    read: ProfileRead,
+    kinds: tuple[classify.Kind, ...],
+    limit: int,
+) -> list[classifications.Suggestion]:
+    """The classification suggestions of the run (REQ-2147): up to ``limit`` rows drawn at random
+    from the run's sample, in one further statement over it, each column's values tested in
+    memory against the enabled ``kinds`` and never stored."""
+    families = frozenset(f for k in kinds for f in k.families)
+    columns = [c for c in target.columns if c.family in families]
+    if not columns:
+        return []
+    names, rows = await _run_further(
+        classification_sql(target.pgwire_name, columns, read.sample, limit),
+        read.sample,
+        read.where,
+        target.table_name,
+    )
+    values = parse_classification_result(names, rows, columns)
+    return [
+        classifications.Suggestion(c.name, c.physical, match)
+        for c in columns
+        for match in classify.classify(c.family, values[c.name], kinds)
+    ]
+
+
+def classified_plausible_types(
+    results: dict[str, list[dict]], suggestions: list[classifications.Suggestion], table_name: str
+) -> None:
+    """A column whose values passed a kind holds that kind (REQ-2147): the first passing kind in
+    the catalogue's order, sensitive kinds first, replaces the column's plausible type."""
+    first: dict[str, classifications.Suggestion] = {}
+    order = {k.id: i for i, k in enumerate(classify.catalogue())}
+    for s in suggestions:
+        held = first.get(s.column)
+        if held is None or order[s.match.kind.id] < order[held.match.kind.id]:
+            first[s.column] = s
+    for row in results["plausible_type"]:
+        s = first.get(row["column_name"])
+        if s is not None:
+            row["plausible_type"] = s.match.kind.id
+            row["confidence"] = s.match.share
+            row["evidence"] = s.match.evidence(table_name, s.column)
 
 
 @dataclass(frozen=True)
@@ -775,6 +824,8 @@ async def profile_table(
             decided = {
                 d["signature"]: d["status"] for d in await constraints.decisions(conn, table_id)
             }
+            classified = await classifications.decisions(conn, table_id)
+        kinds = await classifications.enabled_kinds(state.model_db)
         target = resolve_target(state, table_id, table_name, tags)
         readable_names = {c.name for c in target.columns}
         readable = [c for c in accepted if set(c.constraint.involved) <= readable_names]
@@ -791,6 +842,10 @@ async def profile_table(
         results = result_rows(target, read.agg, run_id, run_time, settings.low_cardinality_max)
         wanted = row_count if fraction is None else fraction * row_count
         dep = await read_dependence(target, read, settings, wanted)
+        suggestions = await read_classifications(
+            target, read, kinds, settings.classification_sample
+        )
+        classified_plausible_types(results, suggestions, table_name)
         proposals = [
             p
             for col in read.agg.columns
@@ -804,6 +859,7 @@ async def profile_table(
                 proposals, decided, sampled=read.method != "whole"
             ),
             "constraint_checks": constraints.check_rows(accepted, readable, read.agg),
+            "classifications": classifications.result_rows(table_name, suggestions, classified),
         }
         for kind, kind_rows in further.items():
             results[kind] = [{"run_id": run_id, "run_time": run_time, **r} for r in kind_rows]

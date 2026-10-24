@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "Classifications of {{table}}",
+    "suggested": "Suggested by the latest run",
+    "none": "The latest run suggests no classification.",
+    "column": "Column",
+    "kindHeader": "Looks like",
+    "evidence": "Evidence",
+    "sensitive": "Sensitive",
+    "suggestion": "{{table}}.{{column}} looks like {{kind}}: {{share}} of sampled values pass its test.",
+    "accept": "Accept",
+    "reject": "Reject",
+    "status_suggested": "Suggested",
+    "status_accepted": "Accepted",
+    "status_rejected": "Rejected",
+    "decided": "Decisions",
+    "noneDecided": "No suggestion has been accepted or rejected yet.",
+    "withdraw": "Withdraw",
+    "linked": "The column now means {{term}}.",
+    "keyColumn": "The column keeps its Class term: a key column's meaning is its Class term.",
+    "markedPii": "It is marked PII.",
+    "maskOffered": "Suggested mask: {{mask}}. Add it in the column's masks."
+  }
+}
