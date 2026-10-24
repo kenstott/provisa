@@ -64,9 +64,9 @@ def test_every_trino_connector_declares_using_name(source_type):
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("source_type", _NATIVE_JDBC_TYPES, ids=lambda s: s)
 def test_native_relational_type_builds_jdbc_url(source_type):
-    """The per-type Source.jdbc_url template must yield a real url carrying host,
-    port and database — a broken template silently disables that source's direct
-    route."""
+    """The per-type Source.jdbc_url template must yield a real url carrying host, port and --
+    where the engine's connector takes one -- the database: a broken template leaves the source
+    with no catalog."""
     src = Source(
         id=f"contract-{source_type}",
         type=SourceType(source_type),
@@ -77,8 +77,32 @@ def test_native_relational_type_builds_jdbc_url(source_type):
     )
     url = src.jdbc_url()
     assert url.startswith("jdbc:"), f"{source_type}: not a jdbc url: {url!r}"
-    assert "db.internal" in url and "1234" in url and "warehouse" in url, (
-        f"{source_type}: url missing host/port/database: {url!r}"
+    assert "db.internal" in url and "1234" in url, f"{source_type}: url missing host/port: {url!r}"
+    if source_type in _NO_DATABASE_IN_URL:
+        assert "warehouse" not in url, f"{source_type}: url names the database: {url!r}"
+    else:
+        assert "warehouse" in url, f"{source_type}: url missing the database: {url!r}"
+
+
+# Trino's MySQL and MariaDB connectors read each database as a schema and refuse a connection-url
+# that names one ("Database (catalog) must not be specified in JDBC URL").
+_NO_DATABASE_IN_URL = _MYSQL_WIRE_TYPES | {"mariadb"}
+
+
+def test_a_mariadb_catalog_names_no_database():
+    from provisa.federation.trino_connectors import TRINO_CONNECTORS
+
+    src = Source(
+        id="maria",
+        type=SourceType.mariadb,
+        host="mariadb",
+        port=3306,
+        database="provisa",
+        username="root",
+        password="provisa",
+    )
+    assert (
+        TRINO_CONNECTORS["mariadb"].details(src)["connection-url"] == "jdbc:mariadb://mariadb:3306"
     )
 
 

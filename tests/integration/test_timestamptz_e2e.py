@@ -193,6 +193,10 @@ def _config(engine: str) -> dict:
         source = {"id": sid, "type": kind, "host": host, "port": port(), "cache_ttl": 300}
         if database is not None:
             source.update({"database": database, "username": user, "password": password})
+        if kind == "sqlserver":
+            # The test SQL Server's certificate is self-signed: trusted by declaration, as a
+            # deployment declares one (Source.jdbc_url).
+            source["federation_hints"] = {"trust_server_certificate": "true"}
         sources.append(source)
         columns = [
             {"name": "id", "data_type": "integer", "visible_to": [_ROLE], "is_primary_key": True},
