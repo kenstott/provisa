@@ -72,6 +72,7 @@ def _table(**overrides: Any) -> RegisteredTableType:
         replicate=None,
         region=None,
         draft=False,
+        row_materialize=False,
         load_protected=None,
         off_peak_window=None,
         off_peak_tz=None,

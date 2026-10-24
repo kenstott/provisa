@@ -336,6 +336,7 @@
       "change_signal_no_topic": "資料來源 '{{source}}' 的表 '{{table}}' 使用 kafka 變更訊號，但未在 live.kafka.topic 中指定 topic，因此不會有任何東西重新整理它。",
       "change_signal_no_receiver": "Provisa 不會從 {{type}} 類型的資料來源接收變更訊號 {{signal}}，因此資料來源 '{{source}}' 的資料表永遠不會因此重新整理。請使用 Debezium 擷取該資料來源，並使用 debezium。",
       "change_signal_not_honoured": "類型為 {{type}} 的數據來源尚不能檢查是否有變更，因此變更訊號 {{signal}} 永遠不會被詢問。請為數據來源「{{source}}」使用 ttl。",
+      "row_materialize_no_key_fetch": "{{table}} 無法按列複製：其遠端結構描述中沒有可按主索引鍵清單傳回其資料列的欄位。",
       "sentinel_path_not_applicable": "類型為 {{type}} 的數據來源不能有哨兵路徑：沒有您自己的生產方可以標記其數據的變更，或者該數據來源不被探測。請從數據來源「{{source}}」中移除哨兵路徑。",
       "source_cache_ttl_required": "數據來源「{{source}}」需要快取 TTL：它的每個表格都是複本，在 {{signal}} 變更訊號下按該時鐘重新整理。請在數據來源的「負載管理與時效性」中設定。",
       "landing_ttl_required": "表格「{{table}}」是按快取 TTL 重新整理的複本，但它和它的數據來源「{{source}}」都沒有設定。請在數據來源的「負載管理與時效性」中設定快取 TTL，或在表格註冊後在表格本身設定。",
