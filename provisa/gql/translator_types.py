@@ -25,6 +25,10 @@ class GraphVarKind(str, Enum):
     PATH = "PATH"
     PASSTHROUGH = "PASSTHROUGH"  # pre-built JSON from rel/node union subquery
     MAP = "MAP"  # a map property: a declared object column, returned as a map (REQ-1991)
+    # REQ-345: a map literal -- bare, in a list, collected, or a COLLECT { } subquery's rows. Built
+    # with each value JSON-encoded (so a map of several types is one engine type); the answer
+    # decodes them.
+    JSON_MAP = "JSON_MAP"
     # REQ-2135: 1 when a path bounded by the depth limit was cut there; the transport takes the
     # column off the rows and reports it beside them.
     CUT = "CUT"

@@ -118,17 +118,8 @@ def test_its_cypher_collects_each_group_s_rows_and_reads_back_to_the_same_groups
     names = [d[0] for d in cur.description]
     rows = assemble_rows([dict(zip(names, r, strict=True)) for r in cur.fetchall()], graph_vars)
 
-    def plain(value):
-        """A Cypher cell as JSON holds it: a map's values are JSON text."""
-        if isinstance(value, str) and value[:1] in "[{":
-            return plain(json.loads(value))
-        if isinstance(value, dict):
-            return {k: plain(json.loads(v) if isinstance(v, str) else v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [plain(v) for v in value]
-        return value
-
-    groups = [plain(r) for r in rows]
+    # Each group's collected rows answer as maps of their values (REQ-345).
+    groups = rows
     assert _groups(
         [
             {"groupKey": g["groupKey"], "aggregate": g["aggregate"], "nodes": g["nodes"]}
