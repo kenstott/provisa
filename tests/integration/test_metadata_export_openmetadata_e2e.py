@@ -214,6 +214,15 @@ async def test_each_member_carries_its_odcs_contract(published, token):
     assert odcs["apiVersion"] == "v3.1.0"
     # OpenMetadata 2.0.5 keeps no imported ODCS ``version``: its import keeps the contract
     # entity's own revision and its export reports that (ODCSConverter.toODCS/fullReplace).
+    assert odcs["version"] == str(contract["version"])
+    # What Provisa sent, as OpenMetadata keeps it: the member's name, the product's status
+    # (active is OpenMetadata's APPROVED, and back), and the description's three parts in one.
+    assert odcs["name"] == "orders"
+    assert odcs["status"] == PRODUCT_FIELDS["status"]
+    assert odcs["description"] == {
+        "purpose": f"{PRODUCT_FIELDS['purpose']}\n\n**Limitations:**\n"
+        f"{PRODUCT_FIELDS['limitations']}\n\n**Usage:**\n{PRODUCT_FIELDS['usage']}"
+    }
     (schema,) = odcs["schema"]
     columns = {p["name"]: p for p in schema["properties"]}
     assert set(columns) == {"id", "customer_id", "amount", "region", "ssn", "margin"}
