@@ -229,7 +229,9 @@ def _config(engine: str) -> dict:
     }
 
 
-@pytest.fixture(scope="module", params=["duckdb", "trino"])
+# Per test, not per module: Oracle, SQL Server and MariaDB are brought up for each test and removed
+# after it (tests/conftest.py _heavy_db_service), so each test seeds them and boots its own server.
+@pytest.fixture(params=["duckdb", "trino"])
 def server(tmp_path_factory, request):
     from tests.integration.isolated_server import IsolatedServer
 

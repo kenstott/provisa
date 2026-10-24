@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """REQ-2050: a zoned timestamp is read as the instant it is -- by the readers that would lose its
-offset (SQL Server's datetimeoffset, Oracle's TIMESTAMP WITH [LOCAL] TIME ZONE) and through every
+offset (the MySQL family's TIMESTAMP, SQL Server's datetimeoffset, Oracle's TIMESTAMP WITH [LOCAL]
+TIME ZONE) and through every
 Arrow path, where it is UTC with its zone marked."""
 
 # Requirements: REQ-2050
@@ -29,6 +30,7 @@ from provisa.executor.drivers.zoned import (
     datetimeoffset,
     mssql_connection,
 )
+from provisa.executor.drivers.mysql import CONVERSIONS
 
 _UTC = datetime(2024, 1, 2, 1, 4, 5, 123456, tzinfo=timezone.utc)
 
@@ -51,6 +53,15 @@ def test_a_sql_server_connection_reads_datetimeoffset_through_the_converter():
 
     conn = mssql_connection(_Conn())
     assert conn.converters == {SQL_SS_TIMESTAMPOFFSET: datetimeoffset}
+
+
+def test_a_mysql_timestamp_is_its_instant_in_utc_and_a_datetime_stays_a_wall_time():
+    from pymysql.constants import FIELD_TYPE
+
+    conv = CONVERSIONS
+    assert conv[FIELD_TYPE.TIMESTAMP]("2024-01-02 01:04:05.123456") == _UTC
+    assert conv[FIELD_TYPE.TIMESTAMP]("0000-00-00 00:00:00") == "0000-00-00 00:00:00"
+    assert conv[FIELD_TYPE.DATETIME]("2024-01-02 01:04:05") == datetime(2024, 1, 2, 1, 4, 5)
 
 
 def test_oracle_zoned_values_are_their_instants_in_utc():
