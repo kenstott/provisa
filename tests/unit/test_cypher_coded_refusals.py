@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 44b705f2-7571-4c45-8e57-1c0ecd666a89
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-1350, REQ-1915: a Cypher read refused by name is answered with that refusal's own status
 and code, as every other surface answers it -- never as a 500. The bench's filtered read of a
 row-level Neo4j table answered REST with the refusal (400) and Cypher with "Governance failed"
