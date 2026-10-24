@@ -643,7 +643,7 @@ def _make_fake_msg_cls(name, scalar_fields=(), message_fields=None):
 
 
 class TestDictRowToMessage:
-    """REQ-1405: server.py's recursive dict -> proto message builder for nodes_sql rows."""
+    """REQ-1405: server.py's recursive dict -> proto message builder for a node's dict."""
 
     def test_scalar_fields_assigned(self):
         User = _make_fake_msg_cls("User", scalar_fields=["name", "email"])

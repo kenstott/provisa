@@ -61,18 +61,9 @@ def test_a_lowered_aggregate_root_answers_as_its_sql_does(model, selection, wher
     ctx, lm, _view_sql = model
     document = parse(f"query {{ c__permitsAggregate{where} {{ {selection} }} }}")
     [own] = compile_query(document, ctx, {})
-    nodes = (
-        _answer_rows(own.nodes_sql, list(own.nodes_params), model)
-        if own.nodes_sql is not None
-        else None
-    )
+    # One statement: its nodes, when selected, a column of its one row.
     expected = serialize_aggregate(
-        _answer_rows(own.sql, own.params, model),
-        own.columns,
-        nodes,
-        own.nodes_columns,
-        own.root_field,
-        own.agg_alias,
+        _answer_rows(own.sql, own.params, model), own.columns, own.root_field, own.agg_alias
     )["data"][own.root_field]
 
     [root] = lower_read(document, ctx, lm, {})
