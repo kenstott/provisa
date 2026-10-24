@@ -61,9 +61,10 @@ def nl(monkeypatch):
     monkeypatch.setattr(nl_router, "_run_job", _run_job)
     monkeypatch.setattr(nl_router, "_get_llm", _llm)
     monkeypatch.setattr(nl_router, "_job_store", jobs)
-    monkeypatch.setattr(
-        app_mod, "state", SimpleNamespace(rate_limiter=None, config=None), raising=False
+    state = SimpleNamespace(
+        rate_limiter=None, config=None, security_high=False, roles={"analyst": _guarded_role()}
     )
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
 
     app = FastAPI()
 
@@ -74,7 +75,12 @@ def nl(monkeypatch):
 
     app.include_router(nl_router.router)
     client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
-    return SimpleNamespace(client=client, ran=ran, jobs=jobs)
+    return SimpleNamespace(client=client, ran=ran, jobs=jobs, state=state)
+
+
+def _guarded_role() -> dict:
+    """A role held to the approved relationships: its relationship guard is on."""
+    return {"id": "analyst", "capabilities": [], "domain_access": ["*"], "relationship_guard": True}
 
 
 async def _settle() -> None:
@@ -123,3 +129,29 @@ def test_the_acting_role_rule():
     bare = SimpleNamespace(state=SimpleNamespace())
     assert acting_role(bare, None, "analyst", "default") == "analyst"
     assert acting_role(bare, None, None, "default") == "default"
+
+
+# REQ-603: non-strict NL is the bypass's, by the one bypass rule.
+
+
+async def test_a_role_held_to_the_approved_relationships_runs_strict_when_it_asks_non_strict(nl):
+    mode = await nl.client.get("/query/nl/mode")
+    assert mode.status_code == 200 and mode.json() == {"non_strict": False}
+    resp = await nl.client.post("/query/nl", json={"q": "count orders", "strict": False})
+    assert resp.status_code == 202, resp.text
+    await _settle()
+    assert (await nl.jobs.get(resp.json()["job_id"])).strict is True
+
+
+async def test_a_role_that_may_bypass_the_guard_runs_non_strict_as_asked(nl):
+    nl.state.roles["analyst"]["relationship_guard"] = False
+    assert (await nl.client.get("/query/nl/mode")).json() == {"non_strict": True}
+    resp = await nl.client.post("/query/nl", json={"q": "count orders", "strict": False})
+    await _settle()
+    assert (await nl.jobs.get(resp.json()["job_id"])).strict is False
+
+
+async def test_high_security_mode_holds_every_role_to_strict(nl):
+    nl.state.roles["analyst"]["relationship_guard"] = False
+    nl.state.security_high = True
+    assert (await nl.client.get("/query/nl/mode")).json() == {"non_strict": False}
