@@ -87863,3 +87863,36 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When a curator opens the findings
     Then the class is listed with an unlinked_tables finding naming both tables
     And a term that is only an undefined draft is not listed
+- id: REQ-2147
+  status: proposed
+  target: "2027-Q1"
+  group: 4. Source Connectors
+  category: Data Quality Sources
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The profiler classifies columns from their profiled values, as Purview's classification rules do.
+    Its plausible types (REQ-1934) gain classification kinds, each recognised by a test applied to the
+    profile's sampled values, not only a shape. Most kinds are sensitive, each with a value validator:
+    US social security numbers (area, group and serial rules), payment card numbers (Luhn), IBANs
+    (mod-97), passport and national-identifier formats, and similar. Others are reference data,
+    recognised by membership in a shipped reference list: world cities, countries, currency codes,
+    language codes, and similar. When the share of a column's sampled non-null values that pass a
+    kind's test reaches that kind's threshold, the column gets a classification suggestion stating the
+    kind and its evidence, for example "customers.tax_id looks like a US SSN: 97% of sampled values pass
+    the SSN rules" or "stores.city looks like a world city: 99% of sampled values are known cities". A
+    data steward accepts or rejects it. Accepting links the column to the glossary Property term for
+    that kind; for a sensitive kind it also marks the column PII (PII lives on columns or Property
+    terms) and offers the kind's mask preset (for example ssn_last4). A rejected suggestion is not
+    raised again for the same column and kind.
+  scenario: |
+    Given a profiled column whose sampled values are valid US social security numbers
+    When the profile run completes
+    Then the column has a suggestion that it looks like a US SSN, with the share of values that passed
+    When a steward accepts the suggestion
+    Then the column is PII, linked to the SSN Property term, and the ssn_last4 mask is offered
+    Given a profiled column whose sampled values are world cities
+    When a steward accepts its world-city suggestion
+    Then the column is linked to the City Property term and is not marked PII
+    And a rejected suggestion for a column and kind is not raised on the next run
