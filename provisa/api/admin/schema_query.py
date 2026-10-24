@@ -697,6 +697,7 @@ class Query:  # REQ-021, REQ-042
                 version=r["version"],
                 sla=r["sla"],
                 support=r["support"],
+                support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
                 status=r["status"],
                 status_reason=r["status_reason"],

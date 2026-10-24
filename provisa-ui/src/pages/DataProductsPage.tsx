@@ -240,6 +240,7 @@ export function DataProductsPage() {
   };
 
   const openCreate = () => {
+    setFormFocus(undefined);
     setEditingId(null);
     setForm({ ...EMPTY_FORM });
     setSelectedTableIds([]);
@@ -248,7 +249,10 @@ export function DataProductsPage() {
     setCreating(true);
   };
 
-  const openEdit = (p: DataProduct) => {
+  // The field the edit form opens on, where a finding's fix sent the reader.
+  const [formFocus, setFormFocus] = useState<"supportContact" | undefined>(undefined);
+  const openEdit = (p: DataProduct, focus?: "supportContact") => {
+    setFormFocus(focus);
     setCreating(false);
     setEditingId(p.id);
     setExpanded(p.id);
@@ -264,6 +268,7 @@ export function DataProductsPage() {
       version: p.version ?? "",
       sla: p.sla ?? "",
       support: p.support ?? "",
+      supportContact: p.supportContact ?? "",
       // The editor works on Record<string, string>; ODPS customProperties values are
       // arbitrary JSON, so a non-string existing value is rendered as its string form.
       customProperties: Object.fromEntries(
@@ -297,6 +302,7 @@ export function DataProductsPage() {
       version: form.version.trim() || null,
       sla: form.sla.trim() || null,
       support: form.support.trim() || null,
+      supportContact: form.supportContact.trim() || null,
       customProperties: form.customProperties,
     });
     if (!result.success) {
@@ -399,6 +405,7 @@ export function DataProductsPage() {
       msg={msg}
       onSave={handleSave}
       onCancel={closeForm}
+      focus={formFocus}
     />
   );
 
@@ -602,7 +609,7 @@ export function DataProductsPage() {
                                 canEdit={canEdit}
                                 canSeeLineage={canSeeLineage}
                                 inputPorts={inputPortsFor(p.id)}
-                                onEdit={() => openEdit(p)}
+                                onEdit={(focus) => openEdit(p, focus)}
                                 onDelete={() => setDeleteTarget(p.id)}
                                 products={dataProducts}
                                 members={[

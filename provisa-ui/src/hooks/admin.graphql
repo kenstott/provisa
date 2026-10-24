@@ -175,6 +175,7 @@ query DataProductsQuery {
     status
     sla
     support
+    supportContact
     customProperties
   }
 }

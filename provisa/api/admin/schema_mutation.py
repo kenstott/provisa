@@ -501,6 +501,7 @@ async def _save_data_product(
             ),
             sla=input.sla,
             support=input.support,
+            support_contact=input.support_contact or None,
             # Absent or null is "no custom properties" (DataProductInput says why).
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
         )

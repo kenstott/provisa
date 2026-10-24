@@ -22,6 +22,7 @@ export interface DataProductForm {
   version: string;
   sla: string;
   support: string;
+  supportContact: string;
   customProperties: Record<string, string>;
 }
 
@@ -37,5 +38,6 @@ export const EMPTY_FORM: DataProductForm = {
   version: "",
   sla: "",
   support: "",
+  supportContact: "",
   customProperties: {},
 };

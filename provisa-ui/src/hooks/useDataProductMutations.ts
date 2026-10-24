@@ -40,6 +40,7 @@ export interface DataProductInput {
   version: string | null;
   sla: string | null;
   support: string | null;
+  supportContact: string | null;
   customProperties: Record<string, unknown>;
 }
 

@@ -124,7 +124,8 @@ interface DataProductDetailPanelProps {
   canSeeLineage: boolean;
   // REQ-1660 (ODPS inputPorts): derived by the parent page from the federation lineage graph.
   inputPorts: InputPortRow[];
-  onEdit: () => void;
+  /** Opens the edit form, on ``focus`` where given. */
+  onEdit: (focus?: "supportContact") => void;
   onDelete: () => void;
   // REQ-1634 STATUS, REQ-2146: its lifecycle -- the products a successor is chosen from, the
   // members a retirement moves, its findings, and what follows a status change.
@@ -416,6 +417,7 @@ export function DataProductDetailPanel({
       ) : null,
     },
     { label: t("dataProductsTab.supportLabel"), value: product.support },
+    { label: t("dataProductsTab.supportContactLabel"), value: product.supportContact },
     { label: t("dataProductsTab.slaLabel"), value: product.sla },
     { label: t("dataProductsTab.purposeLabel"), value: product.purpose },
     { label: t("dataProductsTab.limitationsLabel"), value: product.limitations },

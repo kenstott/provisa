@@ -223,6 +223,7 @@ export function asProduct(row: ProductRow): DataProduct {
     successorId: text(row.successor_id),
     sla: text(row.sla),
     support: text(row.support),
+    supportContact: text(row.support_contact),
     customProperties:
       typeof custom === "string"
         ? (JSON.parse(custom) as Record<string, unknown>)

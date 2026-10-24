@@ -332,9 +332,10 @@ describe("a data product's findings", () => {
     fireEvent.click(chip(3));
     fireEvent.click(screen.getByText("Edit product"));
     expect(onEdit).toHaveBeenCalled();
-    // The support contact is set where the product is exported: nothing to do here.
+    // The form opens on the support contact.
     fireEvent.click(chip(4));
-    expect(fixes()).toEqual([]);
+    fireEvent.click(screen.getByText("Edit product"));
+    expect(onEdit).toHaveBeenLastCalledWith("supportContact");
     unmount();
 
     render(
@@ -343,6 +344,8 @@ describe("a data product's findings", () => {
     fireEvent.click(chip(2));
     expect(fixes()).toEqual([]);
     fireEvent.click(chip(3));
+    expect(fixes()).toEqual([]);
+    fireEvent.click(chip(4));
     expect(fixes()).toEqual([]);
   });
 });

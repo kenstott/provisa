@@ -8073,5 +8073,8 @@
   "zh-HK/dataProductsTab.json::dataProductsTab.findingFix_member_deprecated": "Open {{table}}",
   "zh-HK/dataProductsTab.json::dataProductsTab.findingFix_retirement_blocked": "Choose a successor…",
   "zh-HK/dataProductsTab.json::dataProductsTab.findingFix_domain_steward_unset": "Open domain {{domain}}",
-  "zh-HK/dataProductsTab.json::dataProductsTab.findingFix_successor_retired": "Open {{successor}}"
+  "zh-HK/dataProductsTab.json::dataProductsTab.findingFix_successor_retired": "Open {{successor}}",
+  "zh-HK/dataProductsTab.json::dataProductsTab.supportContactLabel": "Support contact",
+  "zh-HK/dataProductsTab.json::dataProductsTab.supportContactPlaceholder": "e.g. data-team@example.com",
+  "zh-HK/dataProductsTab.json::dataProductsTab.supportContactHelp": "The email address or web page a catalog listing names for support. Some export targets require it."
 }

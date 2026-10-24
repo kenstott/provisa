@@ -63,7 +63,7 @@ export function useProductLifecycle({
   /** A change was made: the products are read again, and ``message`` told. */
   onChanged: (message: string) => void;
   onFailed: (message: string) => void;
-  onEdit: () => void;
+  onEdit: (focus?: "supportContact") => void;
   openProduct: (id: string) => void;
   /** The status actions, as the server takes them. */
   status: DataProductStatus;
@@ -185,7 +185,7 @@ export function useProductLifecycle({
 
   const edit: FindingFix = {
     label: t("dataProductsTab.findingFix_edit"),
-    run: onEdit,
+    run: () => onEdit(),
     testId: `data-product-finding-fix-edit-${id}`,
   };
   const fixesOf = (f: ProductFinding): FindingFix[] => {
@@ -228,13 +228,14 @@ export function useProductLifecycle({
               },
             ]
           : [];
+      case "no_support_contact":
+        // The form opens on the support contact.
+        return canEdit ? [{ ...edit, run: () => onEdit("supportContact") }] : [];
       case "no_members":
       case "no_owner":
       case "no_description":
         return canEdit ? [edit] : [];
       default:
-        // no_support_contact: the support contact is set where the product is exported, not on
-        // its form.
         return [];
     }
   };

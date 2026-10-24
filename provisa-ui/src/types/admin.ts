@@ -105,6 +105,8 @@ export interface DataProduct {
   successorId?: string | null;
   sla?: string | null;
   support?: string | null;
+  /** The support contact (email or URL) a catalog listing requires. */
+  supportContact?: string | null;
   customProperties: Record<string, unknown>;
 }
 

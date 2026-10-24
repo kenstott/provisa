@@ -175,6 +175,8 @@ class DataProductType:  # REQ-1634
     version: str | None = None
     sla: str | None = None
     support: str | None = None
+    # REQ-1635: the support contact (email or URL) a catalog listing requires.
+    support_contact: str | None = None
     custom_properties: JsonScalar
     # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
     status: str = "draft"
@@ -1030,6 +1032,8 @@ class DataProductInput:  # REQ-1634
     version: str | None = None
     sla: str | None = None
     support: str | None = None
+    # REQ-1635: the support contact (email or URL) a catalog listing requires.
+    support_contact: str | None = None
     # Nullable, default null: a default of `{}` on the JSON scalar cannot be printed as a GraphQL
     # default value, and the standard introspection query (which asks every input's defaultValue)
     # then answered with an error. Absent or null means no custom properties.
