@@ -6,6 +6,7 @@
     "notEntitled": "L'export de métadonnées nécessite le plan {{tier}}. Passez à l'offre supérieure pour configurer des catalogues cibles.",
     "enabled": "Publier les métadonnées vers des catalogues externes",
     "provider": "Catalogue cible",
+    "betaProvider": "{{name}} (bêta)",
     "endpoint": "URL de l'endpoint",
     "authMode": "Authentification",
     "apiKey": "Clé API",

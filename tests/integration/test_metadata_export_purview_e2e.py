@@ -30,8 +30,15 @@ import uuid
 import httpx
 import pytest
 
-from provisa.api.metadata_export.purview import API_VERSION
-from tests.integration.metadata_export_server import PRODUCT_FIELDS, publish, published_server
+from provisa.api.metadata_export.purview import API_VERSION, token_oid
+from provisa.api.metadata_export.refs import data_product_uri, term_uri
+from tests.integration.metadata_export_server import (
+    CLASS_TERM,
+    PRODUCT_FIELDS,
+    publish,
+    published_server,
+    refused,
+)
 
 pytestmark = [
     pytest.mark.integration,
@@ -121,19 +128,39 @@ async def _hold_owner_role(client: httpx.AsyncClient, email: str) -> None:
         await conn.close()
 
 
-def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict], list[str]]:
-    """The Unified Catalog product named ``name``, its related data assets and their Data Map
-    guids, then all of them deleted."""
+def _term(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict]]:
+    """The org's Unified Catalog term ``name``, by the id its Provisa URI derives, and its data
+    asset relationships. Read before the run's data assets are removed; the term stays, it is
+    the org's."""
+    headers = {"Authorization": f"Bearer {_token(creds, 'https://purview.azure.net/.default')}"}
+    params = {"api-version": API_VERSION}
+    term_id = str(uuid.uuid5(uuid.NAMESPACE_URL, term_uri(ORG, name)))
+    with httpx.Client(headers=headers, timeout=60) as http:
+        got = http.get(f"{_catalog(creds)}/terms/{term_id}", params=params)
+        if got.status_code == 404:
+            return None, []
+        got.raise_for_status()
+        related = http.get(
+            f"{_catalog(creds)}/terms/{term_id}/relationships",
+            params={**params, "entityType": "DATAASSET"},
+        )
+        related.raise_for_status()
+    return got.json(), related.json().get("value", [])
+
+
+def _read_back(creds: dict[str, str], product_id: str) -> tuple[dict | None, list[dict], list[str]]:
+    """The Unified Catalog product the publish wrote, read by the id the adapter gives it, so the
+    read needs no permission the publish lacks; its related data assets and their Data Map guids,
+    then all of them deleted."""
     headers = {"Authorization": f"Bearer {_token(creds, 'https://purview.azure.net/.default')}"}
     params = {"api-version": API_VERSION}
     base = _catalog(creds)
     with httpx.Client(headers=headers, timeout=60) as http:
-        listed = http.post(f"{base}/dataProducts/query", params=params, json={"nameKeyword": name})
-        listed.raise_for_status()
-        found = [p for p in listed.json().get("value", []) if p["name"] == name]
-        if not found:
+        got_product = http.get(f"{base}/dataProducts/{product_id}", params=params)
+        if got_product.status_code == 404:
             return None, [], []
-        product = found[0]
+        got_product.raise_for_status()
+        product = got_product.json()
         related = http.get(
             f"{base}/dataProducts/{product['id']}/relationships",
             params={**params, "entityType": "DATAASSET"},
@@ -166,7 +193,6 @@ async def published():
         ORG, with_view=False, product=product, domain=DOMAIN, product_name=name
     ) as client:
         await _hold_owner_role(client, email)
-        # The run's product carries the run's name, so it is found and deleted by it.
         result = await publish(
             client,
             {
@@ -179,13 +205,16 @@ async def published():
                 "timeout_seconds": 120,
             },
         )
-    found, assets, guids = _read_back(creds, name)
-    yield result, found, assets, guids, oid
+    term, term_assets = _term(creds, CLASS_TERM)
+    found, assets, guids = _read_back(
+        creds, str(uuid.uuid5(uuid.NAMESPACE_URL, data_product_uri(ORG, DOMAIN, product)))
+    )
+    yield result, found, assets, guids, oid, term, term_assets
 
 
 async def test_the_publish_reports_the_product_and_its_assets(published):
     result = published[0]
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     assert result["published"]["data_products"] == 1
     assert result["published"]["data_assets"] == 2
 
@@ -202,3 +231,16 @@ async def test_the_product_is_in_its_governance_domain_with_its_owner(published)
 async def test_each_member_is_a_data_asset_over_its_data_map_entity(published):
     assets, guids = published[2], published[3]
     assert len(assets) == 2 and len(set(guids)) == 2
+
+
+async def test_the_class_term_is_in_its_domain_and_related_to_its_tables_asset(published):
+    """REQ-1387/1389: the Class term lands in the Unified Catalog glossary, in its domain's
+    governance domain, and is related to the data asset of the table it grounds, as Provisa's
+    own relationship."""
+    result, term, term_assets = published[0], published[5], published[6]
+    assert term is not None, "the Unified Catalog has no term for the class term"
+    assert term["name"] == CLASS_TERM and term["status"] == "PUBLISHED"
+    assert result["published"]["glossary_term"] == 2
+    assert len(term_assets) == 1
+    provisa = token_oid(_token(_credentials(), "https://purview.azure.net/.default"))
+    assert term_assets[0]["systemData"]["createdBy"] == provisa
