@@ -7740,7 +7740,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Cypher /query/cypher endpoint returns a typed response with `columns` (array of column names), `rows` (array of result objects), `error` (null or error detail), and `type` (always "cypher"). No row truncation or implicit result limiting occurs beyond query-specified LIMIT.
+[SUPERSEDED by REQ-778, 2026-10-24 -- an error is answered in the app's ApiError body, not an `error` field. Kept here for history; do not implement against it.] Cypher /query/cypher endpoint returns a typed response with `columns` (array of column names), `rows` (array of result objects), `error` (null or error detail), and `type` (always "cypher"). [END SUPERSEDED BLOCK] No row truncation or implicit result limiting occurs beyond query-specified LIMIT. (Amended 2026-10-24, ERRORS IN THE APP'S ERROR BODY:) A successful answer is `columns`, `rows` and `type` ("cypher"). Every error of the graph routes (/data/cypher and its graph-schema, graph-counts and export routes) is answered in the app's ApiError body ([REQ-1350](#REQ-1350)): `detail` (the English reason), `code` (stable, e.g. cypher.refused, cypher.access_violations, cypher.execution_failed) and `params`, so every client reads the reason the same way. An access refusal also lists each violation (`violations`: code and message), which `detail` joins; an execution failure also carries the physical `sql`. (Amended 2026-10-24, A MISTAKE IS REFUSED IN THE USER'S TERMS:) A mistake in the user's statement is refused at translation, before any engine runs it, with status 400, its own code and a message naming the clause or expression, what is wrong, and the fix: a literal =~ pattern that RE2 (DuckDB) or Java (Trino) would reject (cypher.invalid_regex), a label no table this role reads has (cypher.unknown_label, offering registered labels, the nearest first; a label beside a known one is refused, never widened to the domain), a relationship type that is not registered (cypher.unknown_relationship_type, 400 -- a registered type the role may not traverse stays a 403 refusal), a property compared with a literal its registered type never compares to (cypher.type_mismatch), an aggregate in a WHERE or inside another aggregate (cypher.aggregate_in_where, cypher.nested_aggregate), a variable nothing in the statement binds (cypher.undefined_variable), and a LIMIT or SKIP that is not a whole number of 0 or more (cypher.invalid_limit, cypher.invalid_skip -- a fraction is never cut to its whole part). The engine's own text is said only for what the engine refused, as "The engine refused the query: ..." (cypher.engine_refused). Each code is worded in the UI's serverErrors catalog in every locale.
 
 **Use case:** Consistent response shape enables client libraries to deserialize typed Cypher query results.
 
@@ -26285,3 +26285,15 @@ The profiler classifies columns from their profiled values, as Purview's classif
 **Code:** `provisa/profiler/classify.py`, `provisa/profiler/classifications.py`, `provisa/profiler/classification_kinds.yaml`, `provisa/profiler/run.py`, `provisa/api/admin/profiler_classifications_router.py`, `provisa-ui/src/pages/tables/ProfileClassificationsModal.tsx`, `provisa-ui/src/components/admin/ClassificationKindsTab.tsx`
 
 **Tests:** `tests/unit/test_profiler_classify.py`, `tests/unit/test_profiler_classifications.py`, `provisa-ui/src/pages/tables/__tests__/ProfileClassificationsModal.test.tsx`, `provisa-ui/src/__tests__/ClassificationKindsTab.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-2148 · Data Catalog Integration {#REQ-2148}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A feature that works but is not yet proven for production, such as a metadata export target not yet verified against a live tenant of that product, is shown as "<Name> (beta)" wherever a user picks or sees it, and its documentation states why it is beta. The label comes from one flag on the feature (for an export target, a beta attribute on its provider, returned by the admin API and written into a generated list for pages that cannot call that API), so clearing it is a one-line change followed by regenerating the list. The Atlan export is the first beta feature.
+
+**Code:** —
+
+**Tests:** —

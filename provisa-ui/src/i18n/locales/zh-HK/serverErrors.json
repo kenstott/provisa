@@ -534,7 +534,22 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}"
+      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}",
+      "access_violations": "此角色無權執行此查詢：",
+      "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正則表達式：{{reason}}。=~ 需要正則表達式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
+      "unknown_label": "沒有標籤 :{{label}}。已登記的標籤：{{suggestions}}。",
+      "no_labels": "沒有標籤 :{{label}}：此角色無法讀取任何表。",
+      "unknown_relationship_type": "沒有關係類型 {{types}}。已登記的類型：{{suggestions}}。",
+      "no_relationship_types": "沒有關係類型 {{types}}：此角色無法遍歷任何關係。",
+      "type_mismatch": "在 {{expression}} 中，{{value}} 無法與類型為 {{property_type}} 的 {{property}} 比較。{{fix}}",
+      "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分組之前篩選行。請在 WITH 中聚合，之後再篩選。",
+      "nested_aggregate": "{{outer}} 對聚合 {{inner}} 再次聚合：不能對另一個聚合取聚合。請先在 WITH 中聚合。",
+      "undefined_variable": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。",
+      "invalid_limit": "LIMIT {{value}} 不是整數行數：LIMIT 需要 0 或以上的計數，例如 LIMIT 10。",
+      "invalid_skip": "SKIP {{value}} 不是整數行數：SKIP 需要 0 或以上的計數，例如 SKIP 10。",
+      "engine_refused": "引擎拒絕了查詢：{{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。"
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",

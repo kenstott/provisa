@@ -534,7 +534,22 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Eine Zählung war nicht möglich, daher ist die Summe unbekannt: {{statement}}: {{reason}}"
+      "count_unknown": "Eine Zählung war nicht möglich, daher ist die Summe unbekannt: {{statement}}: {{reason}}",
+      "access_violations": "Diese Rolle darf diese Abfrage nicht ausführen:",
+      "invalid_regex": "Das Muster \"{{pattern}}\" in {{expression}} ist kein gültiger regulärer Ausdruck: {{reason}}. =~ erwartet einen regulären Ausdruck, z. B. \".*{{word}}.*\", oder verwenden Sie CONTAINS \"{{word}}\".",
+      "unknown_label": "Es gibt kein Label :{{label}}. Registrierte Labels: {{suggestions}}.",
+      "no_labels": "Es gibt kein Label :{{label}}: Diese Rolle kann keine Tabelle lesen.",
+      "unknown_relationship_type": "Es gibt keinen Beziehungstyp {{types}}. Registrierte Typen: {{suggestions}}.",
+      "no_relationship_types": "Es gibt keinen Beziehungstyp {{types}}: Diese Rolle kann keine Beziehung durchlaufen.",
+      "type_mismatch": "In {{expression}} kann {{value}} nicht mit {{property}} (Typ {{property_type}}) verglichen werden. {{fix}}",
+      "aggregate_in_where": "WHERE kann das Aggregat {{aggregate}} nicht verwenden: WHERE filtert Zeilen, bevor sie gruppiert werden. Aggregieren Sie in einem WITH und filtern Sie danach.",
+      "nested_aggregate": "{{outer}} aggregiert das Aggregat {{inner}}: Ein Aggregat kann nicht über ein anderes gebildet werden. Aggregieren Sie zuerst in einem WITH.",
+      "undefined_variable": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} ist keine ganze Zeilenzahl: LIMIT erwartet eine Anzahl ab 0, z. B. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} ist keine ganze Zeilenzahl: SKIP erwartet eine Anzahl ab 0, z. B. SKIP 10.",
+      "engine_refused": "Die Engine hat die Abfrage abgelehnt: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} liest {{variable}}, aber die Anweisung bindet keine Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden."
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",

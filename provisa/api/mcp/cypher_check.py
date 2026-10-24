@@ -80,7 +80,8 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
         return GraphRead(f"the schema of role {role_id!r} is not loaded", {})
     try:
         ast = parse_cypher(query)
-    except CypherParseError as exc:
+    except (CypherParseError, CypherTranslateError) as exc:
+        # A parse refusal, or the user's mistake the parse finds (REQ-778, a CypherMistake).
         return GraphRead(str(exc), {})
     label_map = _build_label_map(surface.context, role_id, state)
     try:

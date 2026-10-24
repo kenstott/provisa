@@ -15,26 +15,14 @@
 // checker's or profile run's results, read in their own domains as the same user.
 
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import {
-  ActionIcon,
-  Alert,
-  CopyButton,
-  Group,
-  List,
-  Loader,
-  Stack,
-  Table,
-  Text,
-} from "@mantine/core";
+import { ActionIcon, Alert, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
 import {
   Braces,
   Cable,
-  Check,
   CircleHelp,
-  Copy,
   FileJson,
   Globe,
   ListChecks,
@@ -48,18 +36,17 @@ import { DqRulesModal } from "./DqRulesModal";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import { cypherRelType, tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
+import { LineageDag } from "../../components/lineage/LineageDag";
+import type { DescribeColumn } from "../../components/lineage/column-descriptions";
+import type { LineageGraphData } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
+import { InputPort, type InputPortRow } from "./InputPort";
+import { ClampedDetail } from "./ClampedDetail";
+
+export type { InputPortRow };
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
-
-// ODPS inputPorts: a derived (not stored) 1-hop input(s) -> transform -> output projection over
-// this product's lineage, computed by the parent page's inputPortsFor() from the raw lineage graph.
-export interface InputPortRow {
-  output: string;
-  transform: string;
-  inputs: string[];
-}
 
 interface TableRef {
   domain_id: string;
@@ -120,6 +107,18 @@ interface DataProductDetailPanelProps {
   canEdit: boolean;
   // REQ-1640: lineage and input ports need view_governance; without it they are absent.
   canSeeLineage: boolean;
+  lineageLoading: boolean;
+  lineageError: string;
+  // REQ-1640: the product's member tables, their full upstream ancestry and one hop downstream
+  // (the parent page's lineageFor()) -- rendered with the same LineageDag component the Lineage
+  // page uses (REQ-1161/1627).
+  lineageGraph: LineageGraphData | null;
+  // REQ-1667: the member relations the DAG's swimlanes are built around (lane 0).
+  lineageMembers?: ReadonlySet<string>;
+  // A field's registered description for the lineage hover, over every table (not just members).
+  describeColumn?: DescribeColumn;
+  // A lineage relation as the catalog names its table.
+  relationLabel?: (relation: string) => string;
   // REQ-1660 (ODPS inputPorts): derived by the parent page from the federation lineage graph.
   inputPorts: InputPortRow[];
   onEdit: () => void;
@@ -208,93 +207,6 @@ function Muted({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The panel's own reads, each copyable and opened in its explorer: the same answer either way. */
-function MetaQueries({ core, testId }: { core: ProductCore; testId: string }) {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const rows: {
-    key: string;
-    label: string;
-    text: string;
-    open: () => void;
-    icon: React.ReactNode;
-  }[] = [
-    {
-      key: "graphql",
-      label: "GraphQL",
-      text: core.queries.graphql,
-      icon: <Braces size={14} />,
-      open: () =>
-        navigate("/query", {
-          state: { query: core.queries.graphql, autoRun: true },
-        }),
-    },
-    {
-      key: "sql",
-      label: "SQL",
-      text: core.queries.sql,
-      icon: <TableIcon size={14} />,
-      open: () => navigate("/sql", { state: { sql: core.queries.sql, autoRun: true } }),
-    },
-    {
-      key: "jsonapi",
-      label: "JSON:API",
-      text: core.queries.jsonapi,
-      icon: <FileJson size={14} />,
-      open: () =>
-        navigate("/jsonapi", { state: { jsonapiUrl: core.queries.jsonapi, autoRun: true } }),
-    },
-  ];
-  return (
-    <Stack gap={6} data-testid={testId}>
-      {rows.map((r) => (
-        <div key={r.key}>
-          <Group gap={4} wrap="nowrap">
-            <Text size="xs" fw={600}>
-              {r.label}
-            </Text>
-            <CopyButton value={r.text}>
-              {({ copied, copy }) => (
-                <Tip text={copied ? t("dataProductCore.copied") : t("dataProductCore.copy")}>
-                  <ActionIcon
-                    variant="subtle"
-                    size="sm"
-                    onClick={copy}
-                    aria-label={t("dataProductCore.copyQuery", { surface: r.label })}
-                    data-testid={`${testId}-copy-${r.key}`}
-                  >
-                    {copied ? <Check size={14} /> : <Copy size={14} />}
-                  </ActionIcon>
-                </Tip>
-              )}
-            </CopyButton>
-            <Tip text={t("dataProductCore.openQuery", { surface: r.label })} named>
-              <ActionIcon
-                variant="subtle"
-                size="sm"
-                onClick={r.open}
-                aria-label={t("dataProductCore.openQuery", { surface: r.label })}
-                data-testid={`${testId}-open-${r.key}`}
-              >
-                {r.icon}
-              </ActionIcon>
-            </Tip>
-          </Group>
-          <Text
-            component="pre"
-            size="xs"
-            ff="monospace"
-            style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}
-            data-testid={`${testId}-${r.key}`}
-          >
-            {r.text}
-          </Text>
-        </div>
-      ))}
-    </Stack>
-  );
-}
-
 function relatedLabel(e: CoreEdge): string {
   if (e.target_product) return e.target_product.name;
   if (e.target_table) return `${e.target_table.domain_id}.${e.target_table.table_name}`;
@@ -312,12 +224,43 @@ export function DataProductDetailPanel({
   internalRelationships,
   canEdit,
   canSeeLineage,
+  lineageLoading,
+  lineageError,
+  lineageGraph,
+  lineageMembers,
+  describeColumn,
+  relationLabel,
   inputPorts,
   onEdit,
   onDelete,
 }: DataProductDetailPanelProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // REQ-1640/REQ-1627: expanded by default, same as statement lineage's initial view — this
+  // subgraph (member tables + one relation-hop) is small like a single query's lineage, not
+  // federation-scale, so it reads better column-by-column with the real role colours than
+  // collapsed to indigo dataset boxes.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // REQ-1667: the same graph at 90% of the viewport; collapse state is shared with the inline one.
+  const [lineageModalOpen, setLineageModalOpen] = useState(false);
+  // REQ-1667: lane 0 is the product's published surface; the others are named by distance.
+  const laneTitle = useCallback(
+    (lane: number) =>
+      lane === 0
+        ? t("dataProductsTab.tablesLabel")
+        : lane === -1
+          ? t("dataProductsTab.detail.field.inputPorts")
+          : lane > 0
+            ? t("dataProductsTab.detail.lineageLaneDownstream", { n: lane })
+            : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane }),
+    [t],
+  );
+  const toggleRelation = (relation: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(relation)) next.add(relation);
+      return next;
+    });
   // REQ-1443 clause 10: the checker table whose rules modal is open, by table id.
   const [rulesFor, setRulesFor] = useState<number | null>(null);
 
@@ -349,14 +292,6 @@ export function DataProductDetailPanel({
   const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
   const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
   const related = core.edges?.filter((e) => e.kind === "relationship");
-  const lineage = core.edges?.filter((e) => e.kind === "lineage");
-  const upstream = lineage
-    ?.filter((e) => e.direction === "upstream")
-    .sort(
-      (a, b) =>
-        b.hops - a.hops || String(a.target_relation).localeCompare(String(b.target_relation)),
-    );
-  const downstream = lineage?.filter((e) => e.direction === "downstream");
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
   // Every value of the product, under the labels its form gives them.
@@ -764,29 +699,34 @@ export function DataProductDetailPanel({
               <List size="sm" data-testid={`data-product-detail-related-tables-${p.id}`}>
                 {related.map((e) => (
                   <List.Item key={`${e.target_product_id}:${e.target_table_id}`} ff="monospace">
-                    {relatedLabel(e)}
-                    {e.target_product && <Muted>({t("dataProductCore.aProduct")})</Muted>}
-                    <Text size="xs" c="var(--text-muted)">
-                      {[
-                        e.aliases,
-                        e.direct
-                          ? t("dataProductCore.direct")
-                          : t("dataProductCore.hops", { count: e.hops }),
-                        e.path_count > 1
-                          ? t("dataProductCore.paths", { count: e.path_count })
-                          : null,
-                        e.supporting_tables
-                          ? t("dataProductCore.through", { tables: e.supporting_tables })
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                    {e.target_table?.description && (
+                    {/* The whole entry at most three lines; its ellipsis opens it in place. */}
+                    <ClampedDetail
+                      testId={`data-product-related-${p.id}-${e.target_product_id ?? e.target_table_id}`}
+                    >
+                      {relatedLabel(e)}
+                      {e.target_product && <Muted>({t("dataProductCore.aProduct")})</Muted>}
                       <Text size="xs" c="var(--text-muted)">
-                        {e.target_table.description}
+                        {[
+                          e.aliases,
+                          e.direct
+                            ? t("dataProductCore.direct")
+                            : t("dataProductCore.hops", { count: e.hops }),
+                          e.path_count > 1
+                            ? t("dataProductCore.paths", { count: e.path_count })
+                            : null,
+                          e.supporting_tables
+                            ? t("dataProductCore.through", { tables: e.supporting_tables })
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </Text>
-                    )}
+                      {e.target_table?.description && (
+                        <Text size="xs" c="var(--text-muted)">
+                          {e.target_table.description}
+                        </Text>
+                      )}
+                    </ClampedDetail>
                   </List.Item>
                 ))}
               </List>
@@ -829,105 +769,99 @@ export function DataProductDetailPanel({
             {inputPorts.length === 0 ? (
               <Empty text={t("dataProductsTab.detail.inputPortsEmpty")} />
             ) : (
-              // Identifiers read whole: the table keeps each on one line and scrolls within its card.
-              <Table
-                striped
-                withTableBorder
-                style={{ whiteSpace: "nowrap", overflowWrap: "normal" }}
-                data-testid={`data-product-detail-input-ports-${p.id}`}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColInputs")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColTransform")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColOutput")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {inputPorts.map((row, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td ff="monospace">{row.inputs.join(", ")}</Table.Td>
-                      <Table.Td ff="monospace">{row.transform}</Table.Td>
-                      <Table.Td ff="monospace">{row.output}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            )}
-          </DetailCard>
-        )}
-        {/* REQ-1640: data_product_edges answers lineage rows only to view_governance. */}
-        {canSeeLineage && upstream !== undefined && downstream !== undefined && (
-          <DetailCard
-            section="lineage"
-            testId={`data-product-card-lineage-${p.id}`}
-            label={t("dataProductsTab.detail.field.lineage")}
-            hint={t("dataProductsTab.detail.lineageHint")}
-          >
-            {upstream.length + downstream.length === 0 ? (
-              <Empty text={t("dataProductsTab.detail.lineageEmpty")} />
-            ) : (
-              <Stack gap={4} data-testid={`data-product-detail-lineage-${p.id}`}>
-                {(
-                  [
-                    ["upstream", upstream],
-                    ["downstream", downstream],
-                  ] as const
-                ).map(
-                  ([dir, rows]) =>
-                    rows.length > 0 && (
-                      <div key={dir}>
-                        <Text size="xs" fw={600} tt="uppercase" c="dimmed">
-                          {t(`dataProductCore.${dir}`)}
-                        </Text>
-                        <List size="sm" data-testid={`data-product-detail-lineage-${dir}-${p.id}`}>
-                          {rows.map((e) => (
-                            // A lineage edge reaches a relation, or a registered table (a source
-                            // read): each row names the one it reaches.
-                            <List.Item
-                              key={e.target_relation ?? `t:${e.target_table_id}`}
-                              ff="monospace"
-                            >
-                              {e.target_relation ?? relatedLabel(e)}
-                              <Muted>
-                                {[
-                                  dir === "upstream"
-                                    ? t("dataProductCore.hops", { count: e.hops })
-                                    : null,
-                                  e.vias ? t("dataProductCore.via", { vias: e.vias }) : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </Muted>
-                            </List.Item>
-                          ))}
-                        </List>
-                      </div>
-                    ),
-                )}
+              <Stack gap={2} data-testid={`data-product-detail-input-ports-${p.id}`}>
+                {inputPorts.map((row) => (
+                  <InputPort key={row.id} row={row} />
+                ))}
               </Stack>
             )}
           </DetailCard>
         )}
-
+        {/* Compact: the product, its members, commands and bound terms; the full graph opens
+            from its expand button. */}
         <DetailCard
-          section="queries"
-          testId={`data-product-card-queries-${p.id}`}
-          label={t("dataProductCore.metaQueries")}
-          hint={t("dataProductCore.metaQueriesHint")}
+          section="knowledgeGraph"
+          testId={`data-product-card-knowledgeGraph-${p.id}`}
+          label={t("graph3d.panelTitle")}
         >
-          <MetaQueries core={core} testId={`data-product-detail-meta-queries-${p.id}`} />
+          <KnowledgeGraphPanel productId={p.id} productName={product.name} />
         </DetailCard>
       </div>
-      {/* The graph needs the panel's width: below the cards, as the Ontology View fills its page. */}
-      <DetailCard
-        section="knowledgeGraph"
-        testId={`data-product-card-knowledgeGraph-${p.id}`}
-        label={t("graph3d.panelTitle")}
-        wide
-      >
-        <KnowledgeGraphPanel productId={p.id} productName={product.name} />
-      </DetailCard>
+      {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws
+          it; the tallest panel on the page, so it starts closed. */}
+      {canSeeLineage && (
+        <div>
+          <Collapsibles id="data-products.lineage">
+            <CollapsibleItem
+              value="lineage"
+              defaultOpen={false}
+              controlTestId={`data-product-detail-lineage-toggle-${p.id}`}
+              title={
+                <Group gap={4} align="baseline" component="span">
+                  <span>{t("dataProductsTab.detail.field.lineage")}</span>
+                  <Tip text={t("dataProductsTab.detail.lineageHint")}>
+                    <Text
+                      size="xs"
+                      c="var(--text-muted)"
+                      component="span"
+                      style={{ cursor: "help" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      ⓘ
+                    </Text>
+                  </Tip>
+                </Group>
+              }
+            >
+              {lineageLoading ? (
+                <Text size="sm" c="var(--text-muted)">
+                  {t("dataProductsTab.detail.lineageLoading")}
+                </Text>
+              ) : lineageError ? (
+                <Text size="sm" c="red">
+                  {lineageError}
+                </Text>
+              ) : !lineageGraph || lineageGraph.nodes.length === 0 ? (
+                <Text size="sm" c="var(--text-muted)">
+                  {t("dataProductsTab.detail.lineageEmpty")}
+                </Text>
+              ) : (
+                <div data-testid={`data-product-detail-lineage-${p.id}`}>
+                  <LineageDag
+                    graph={lineageGraph}
+                    height={720}
+                    readable
+                    relationLabel={relationLabel}
+                    collapsedRelations={collapsed}
+                    onToggleRelation={toggleRelation}
+                    lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                    onOpenModal={() => setLineageModalOpen(true)}
+                    describeColumn={describeColumn}
+                  />
+                  <Modal
+                    opened={lineageModalOpen}
+                    onClose={() => setLineageModalOpen(false)}
+                    size="90%"
+                    title={t("dataProductsTab.detail.field.lineage")}
+                    data-testid={`data-product-detail-lineage-modal-${p.id}`}
+                    styles={{ body: { padding: "var(--mantine-spacing-xs)" } }}
+                  >
+                    <LineageDag
+                      graph={lineageGraph}
+                      height="calc(90vh - 140px)"
+                      relationLabel={relationLabel}
+                      collapsedRelations={collapsed}
+                      onToggleRelation={toggleRelation}
+                      lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                      describeColumn={describeColumn}
+                    />
+                  </Modal>
+                </div>
+              )}
+            </CollapsibleItem>
+          </Collapsibles>
+        </div>
+      )}
       {canEdit && (
         <Group gap="xs" mt={4}>
           <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>

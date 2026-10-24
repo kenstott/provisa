@@ -534,7 +534,22 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Een telling kon niet worden gemaakt, dus het totaal is onbekend: {{statement}}: {{reason}}"
+      "count_unknown": "Een telling kon niet worden gemaakt, dus het totaal is onbekend: {{statement}}: {{reason}}",
+      "access_violations": "Deze rol mag deze query niet uitvoeren:",
+      "invalid_regex": "Het patroon \"{{pattern}}\" in {{expression}} is geen geldige reguliere expressie: {{reason}}. =~ verwacht een reguliere expressie, bijv. \".*{{word}}.*\", of gebruik CONTAINS \"{{word}}\".",
+      "unknown_label": "Er is geen label :{{label}}. Geregistreerde labels: {{suggestions}}.",
+      "no_labels": "Er is geen label :{{label}}: deze rol kan geen enkele tabel lezen.",
+      "unknown_relationship_type": "Er is geen relatietype {{types}}. Geregistreerde typen: {{suggestions}}.",
+      "no_relationship_types": "Er is geen relatietype {{types}}: deze rol kan geen enkele relatie doorlopen.",
+      "type_mismatch": "In {{expression}} kan {{value}} niet worden vergeleken met {{property}}, van type {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE kan het aggregaat {{aggregate}} niet gebruiken: WHERE filtert rijen voordat ze worden gegroepeerd. Aggregeer in een WITH en filter daarna.",
+      "nested_aggregate": "{{outer}} aggregeert het aggregaat {{inner}}: een aggregaat kan niet over een ander worden genomen. Aggregeer eerst in een WITH.",
+      "undefined_variable": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} is geen geheel aantal rijen: LIMIT verwacht een aantal van 0 of meer, bijv. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} is geen geheel aantal rijen: SKIP verwacht een aantal van 0 of meer, bijv. SKIP 10.",
+      "engine_refused": "De engine heeft de query geweigerd: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL."
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",

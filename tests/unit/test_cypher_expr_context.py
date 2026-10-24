@@ -108,15 +108,23 @@ class TestLabelPredicate:
 
 
 class TestMapProjection:
+    # Each selector is read as var.prop is (age is the column age_col), each value encoded to JSON
+    # as a map literal's are, so a map of values of several types is one.
     def test_dotted_selectors(self):
-        assert _sql("n{.name, .age}") == "MAP(ARRAY['name', 'age'], ARRAY[n.\"name\", n.\"age\"])"
+        assert (
+            _sql("n{.name, .age}")
+            == "MAP(ARRAY['name', 'age'], ARRAY[TO_JSON(n.\"name\"), TO_JSON(n.\"age_col\")])"
+        )
 
     def test_all_props_expands_sorted(self):
-        # .* expands the node's known cypher property names, sorted (raw names, not SQL aliases).
-        assert _sql("n{.*}") == "MAP(ARRAY['age', 'name'], ARRAY[n.\"age\", n.\"name\"])"
+        # .* expands the node's known cypher property names, sorted.
+        assert (
+            _sql("n{.*}")
+            == "MAP(ARRAY['age', 'name'], ARRAY[TO_JSON(n.\"age_col\"), TO_JSON(n.\"name\")])"
+        )
 
     def test_literal_entry_lowers_value(self):
-        assert _sql("n{label: n.name}") == "MAP(ARRAY['label'], ARRAY[n.\"name\"])"
+        assert _sql("n{label: n.name}") == "MAP(ARRAY['label'], ARRAY[TO_JSON(n.\"name\")])"
 
 
 class TestPatternComprehension:

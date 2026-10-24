@@ -534,7 +534,22 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Не удалось выполнить подсчёт, поэтому итог неизвестен: {{statement}}: {{reason}}"
+      "count_unknown": "Не удалось выполнить подсчёт, поэтому итог неизвестен: {{statement}}: {{reason}}",
+      "access_violations": "Этой роли запрещено выполнять этот запрос:",
+      "invalid_regex": "Шаблон \"{{pattern}}\" в {{expression}} не является допустимым регулярным выражением: {{reason}}. =~ принимает регулярное выражение, например \".*{{word}}.*\", или используйте CONTAINS \"{{word}}\".",
+      "unknown_label": "Метки :{{label}} нет. Зарегистрированные метки: {{suggestions}}.",
+      "no_labels": "Метки :{{label}} нет: эта роль не может читать ни одной таблицы.",
+      "unknown_relationship_type": "Типа связи {{types}} нет. Зарегистрированные типы: {{suggestions}}.",
+      "no_relationship_types": "Типа связи {{types}} нет: эта роль не может проходить ни по одной связи.",
+      "type_mismatch": "В {{expression}} значение {{value}} нельзя сравнить с {{property}} типа {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE не может использовать агрегат {{aggregate}}: WHERE фильтрует строки до группировки. Выполните агрегацию в WITH и фильтруйте после него.",
+      "nested_aggregate": "{{outer}} агрегирует агрегат {{inner}}: агрегат нельзя брать от другого агрегата. Сначала выполните агрегацию в WITH.",
+      "undefined_variable": "{{clause}} читает {{variable}}, но ничто в запросе не связывает эту переменную: переменная связывается шаблоном MATCH, WITH, UNWIND или CALL. Связаны здесь: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} — не целое число строк: LIMIT принимает число от 0 и больше, например LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} — не целое число строк: SKIP принимает число от 0 и больше, например SKIP 10.",
+      "engine_refused": "Движок отклонил запрос: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} читает {{variable}}, но запрос не связывает ни одной переменной: переменная связывается шаблоном MATCH, WITH, UNWIND или CALL."
     },
     "requests": {
       "approver_outside_domains": "Ваше право создавать связи не распространяется ни на один домен, которого касается этот запрос ({{domains}})",
