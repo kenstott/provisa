@@ -882,6 +882,20 @@
         "label": "Most predicates a variable predicate covers",
         "help": "A SPARQL pattern whose predicate is a variable reads every mapped predicate it could match, one branch each. A query needing more branches than this is refused, naming the limit."
       }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "Code source DuckDB memory",
+        "help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk."
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "Code source DuckDB spill cap",
+        "help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound."
+      },
+      "duckdb_threads": {
+        "label": "Code source DuckDB threads",
+        "help": "The threads a code source's DuckDB answers its statements on."
+      }
     }
   }
 }

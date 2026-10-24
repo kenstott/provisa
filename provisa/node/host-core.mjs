@@ -162,7 +162,19 @@ export class Connection {
     return this.sendTable(id, new A.Table(batch));
   }
 
-  sendTable(id, table) {
+  /** REQ-2100: a rows frame waits for its call's credit -- the reader's window -- so the code is
+   * pulled no further ahead of its reader than that. */
+  async takeCredit(id) {
+    const state = this.running.get(id);
+    if (!state) return; // the call has ended: nothing more of it is sent
+    while (state.credit <= 0 && !state.cancelled) {
+      await new Promise((resolve) => (state.wake = resolve));
+    }
+    state.credit -= 1;
+  }
+
+  async sendTable(id, table) {
+    await this.takeCredit(id);
     const ipc = arrow().tableToIPC(table, "stream");
     const head = Buffer.alloc(9);
     head.write("A", 0);
@@ -188,10 +200,10 @@ export class Connection {
   /** The call: the function once per argument set -- the one `args`, or a table's several
    * (`calls`, REQ-2099) in order -- every set's rows sent under the call's id. A `keyed` call
    * (REQ-2100) passes a loader and is answered with each key's rows (`serveKeyed`). */
-  async serve({ id, export: name, kind, args, calls, schema: schemaText, keyed }) {
+  async serve({ id, export: name, kind, args, calls, schema: schemaText, keyed, window }) {
     const fn = this.bundle[name];
     if (typeof fn !== "function") throw new Error(`the bundle exports no function ${name}`);
-    const state = { cancelled: false, iterator: null };
+    const state = { cancelled: false, iterator: null, credit: Number(window), wake: null };
     this.running.set(id, state);
     try {
       const sets = calls ? calls.map((c) => c.args) : [args];
@@ -274,6 +286,16 @@ export class Connection {
       if (state) {
         state.cancelled = true;
         state.iterator?.return?.();
+        state.wake?.();
+      }
+      return;
+    }
+    if (message.op === "credit") {
+      // The call's reader took n of its rows frames: as many more may go.
+      const state = this.running.get(message.id);
+      if (state) {
+        state.credit += Number(message.n);
+        state.wake?.();
       }
       return;
     }
@@ -315,6 +337,7 @@ export class Connection {
     for (const state of this.running.values()) {
       state.cancelled = true;
       state.iterator?.return?.();
+      state.wake?.();
     }
   }
 }

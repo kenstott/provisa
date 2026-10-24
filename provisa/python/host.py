@@ -224,6 +224,9 @@ class Host:
         self.module = module
         self.writer = writer
         self.running: dict[int, asyncio.Task] = {}
+        #: Each call's credit (REQ-2100): how many more rows frames it may send before its
+        #: reader takes one.
+        self.credits: dict[int, asyncio.Semaphore] = {}
 
     async def send(self, message: dict) -> None:
         body = b"J" + json.dumps(message, separators=(",", ":")).encode()
@@ -247,7 +250,9 @@ class Host:
         await self.send_batch(call_id, pa.RecordBatch.from_pylist(values, schema=schema))
 
     async def send_batch(self, call_id: int, batch: typing.Any) -> None:  # a pyarrow RecordBatch
-        """One Arrow IPC frame of ``batch``, already in the call's schema."""
+        """One Arrow IPC frame of ``batch``, already in the call's schema, once the call has a
+        credit for it: the function is pulled no further than its reader's window ahead."""
+        await self.credits[call_id].acquire()
         pa = _arrow()
         sink = pa.BufferOutputStream()
         with pa.ipc.new_stream(sink, batch.schema) as stream:
@@ -317,6 +322,7 @@ class Host:
             )
         finally:
             self.running.pop(call_id, None)
+            self.credits.pop(call_id, None)
 
     async def _run(
         self,
@@ -491,6 +497,12 @@ async def serve(
             task = host.running.get(message["id"])
             if task is not None:
                 task.cancel()
+        elif op == "credit":
+            # The call's reader took ``n`` of its rows frames: as many more may go.
+            credits = host.credits.get(message["id"])
+            if credits is not None:
+                for _ in range(int(message["n"])):
+                    credits.release()
         elif op == "call":
             # One argument set, or a table's several (REQ-2099: ``calls``), served in order.
             calls = (
@@ -498,6 +510,7 @@ async def serve(
                 if "calls" in message
                 else [(message["args"], message["names"])]
             )
+            host.credits[message["id"]] = asyncio.Semaphore(int(message["window"]))
             host.running[message["id"]] = asyncio.create_task(
                 host.serve(
                     message["id"],

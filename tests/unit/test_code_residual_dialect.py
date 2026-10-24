@@ -28,6 +28,16 @@ import pytest
 from provisa.codehost import residual
 from provisa.transpiler.transpile import transpile
 
+
+@pytest.fixture(autouse=True)
+def _bounded():
+    """The process's DuckDB under the operator's bounds, spilling where dev mode spills."""
+    from provisa.codesource.worker import duckdb_bounds
+    from provisa.core.org_files import data_dir
+
+    residual.configure(**duckdb_bounds(), spill_dir=str(data_dir() / "code-spill"))
+
+
 _ROWS = [
     ("a%b", 1),
     ("axb", None),

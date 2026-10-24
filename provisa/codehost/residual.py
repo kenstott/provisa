@@ -32,6 +32,12 @@ that does not fit refused by name, never rounded), and the answer comes out of D
 a time: no read collects the function's rows or the answer whole. A statement that reads one
 table twice (a self-join) scans its rows twice, so that table's rows are held for it.
 
+BOUNDED (REQ-2100). Every statement runs on one DuckDB instance per process (:func:`configure`):
+its memory, its threads and its spill to disk are the operator's settings. A statement that
+spills past the cap -- DuckDB's own limit, or the end of the spill volume a built image is given
+at the cap's size -- is refused naming ``codesource.duckdb_spill_cap_mb`` (:class:`SpillCapped`). Without an ORDER BY a statement's rows come in no particular order, as
+SQL has it, which leaves DuckDB free to answer without holding them in order.
+
 This module is carried, as it is, by the front end of every built image and used by Provisa for a
 dev-mode source; it imports nothing of Provisa's but duckdb_sql, carried beside it: the standard
 library, sqlglot, DuckDB and Arrow.
@@ -42,6 +48,7 @@ from __future__ import annotations
 
 import datetime
 import importlib
+import threading
 from collections.abc import Iterable, Iterator, Mapping
 from decimal import Decimal
 from typing import Any
@@ -62,6 +69,82 @@ IR_KEY = b"provisa.ir"
 NUMERIC = pa.decimal128(38, 9)
 #: How many rows each of the answer's batches holds at most.
 ANSWER_ROWS = 65_536
+#: The operator setting that caps a statement's spill to disk, named when a statement reaches it.
+SPILL_CAP_SETTING = "codesource.duckdb_spill_cap_mb"
+
+
+class SpillCapped(ValueError):
+    """A statement needed more disk to spill to than the operator's cap allows."""
+
+
+class Unbounded(RuntimeError):
+    """A statement before this process's DuckDB was given its bounds."""
+
+
+_database: duckdb.DuckDBPyConnection | None = None
+_bounds: tuple[int, int, int, str] | None = None
+_database_lock = threading.Lock()
+
+
+def configure(*, memory_mb: int, threads: int, spill_cap_mb: int, spill_dir: str) -> None:
+    """This process's DuckDB bounds: the memory its statements run in, the threads they run on,
+    the most they spill and where. Made on the first call; a later call with other bounds sets
+    them on the running instance."""
+    global _database, _bounds
+    wanted = (memory_mb, threads, spill_cap_mb, spill_dir)
+    with _database_lock:
+        if wanted == _bounds:
+            return
+        if _database is None:
+            _database = duckdb.connect(
+                config={
+                    "memory_limit": f"{memory_mb}MiB",
+                    "threads": threads,
+                    "max_temp_directory_size": f"{spill_cap_mb}MiB",
+                    "temp_directory": spill_dir,
+                    "preserve_insertion_order": False,
+                }
+            )
+        else:
+            _database.execute(f"SET memory_limit = '{int(memory_mb)}MiB'")
+            _database.execute(f"SET threads = {int(threads)}")
+            _database.execute(f"SET max_temp_directory_size = '{int(spill_cap_mb)}MiB'")
+            # Where it spills is the process's own, fixed when the instance was made.
+            assert _bounds is not None and spill_dir == _bounds[3], "the spill directory is fixed"
+        _bounds = wanted
+
+
+def _connection() -> duckdb.DuckDBPyConnection:
+    """A connection of its own to the process's DuckDB, for one statement."""
+    with _database_lock:
+        if _database is None:
+            raise Unbounded(
+                "this code host's DuckDB has no bounds yet: Provisa gives them when it pairs "
+                "with the host and with every call"
+            )
+        return _database.cursor()
+
+
+#: What DuckDB says when its spill reaches the end of the disk it spills to: in a built image, the
+#: spill volume the operator sizes to the cap (image_build.compose_snippet).
+_NO_SPACE = "No space left on device"
+
+
+def _named(exc: duckdb.Error) -> Exception:
+    """DuckDB's error, or the refusal naming the spill cap when that is what it hit: its own
+    temporary-directory limit, or the end of the volume it spills to."""
+    said = str(exc)
+    if _NO_SPACE in said or (
+        isinstance(exc, duckdb.OutOfMemoryException) and "max_temp_directory_size" in said
+    ):
+        assert _bounds is not None  # the statement ran on the configured instance
+        cap = _bounds[2]
+        return SpillCapped(
+            f"the statement needs more disk to spill to than {SPILL_CAP_SETTING} allows "
+            f"({cap} MiB): raise it, or narrow the statement"
+        )
+    return exc
+
 
 _COMPARISONS: dict[type, str] = {
     exp.EQ: "eq",
@@ -302,16 +385,19 @@ def answer_reads(
         # A column the statement qualifies by its table's schema or catalog is the table's.
         column.set("db", None)
         column.set("catalog", None)
-    con = duckdb.connect()
+    con = _connection()
     try:
         for relation, held in relations.items():
             con.register(relation, held)
-        answered = con.execute(duckdb_sql.as_duckdb(tree)).fetch_record_batch(ANSWER_ROWS)
-    except duckdb.Error:
+        answered = con.execute(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
+    except duckdb.Error as exc:
         con.close()
         if failed:
             raise failed[0] from None
-        raise
+        named = _named(exc)
+        if named is exc:
+            raise
+        raise named from None
     except BaseException:
         con.close()
         raise
@@ -319,7 +405,14 @@ def answer_reads(
     def each() -> Iterator[pa.RecordBatch]:
         try:
             yield from answered
-        except (duckdb.Error, pa.ArrowException):
+        except duckdb.Error as exc:
+            if failed:
+                raise failed[0] from None
+            named = _named(exc)
+            if named is exc:
+                raise
+            raise named from None
+        except pa.ArrowException:
             if failed:
                 raise failed[0] from None
             raise

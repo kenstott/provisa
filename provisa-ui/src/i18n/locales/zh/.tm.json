@@ -8015,5 +8015,11 @@
   "zh/serverErrors.json::serverErrors.statement.path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer.",
   "zh/settings.json::settings.server.public_url.label": "Public address",
   "zh/settings.json::settings.server.public_url.help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused.",
-  "zh/dataProductsTab.json::dataProductsTab.detail.field.details": "Details"
+  "zh/dataProductsTab.json::dataProductsTab.detail.field.details": "Details",
+  "zh/settings.json::settings.codesource.duckdb_memory_mb.label": "Code source DuckDB memory",
+  "zh/settings.json::settings.codesource.duckdb_memory_mb.help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk.",
+  "zh/settings.json::settings.codesource.duckdb_spill_cap_mb.label": "Code source DuckDB spill cap",
+  "zh/settings.json::settings.codesource.duckdb_spill_cap_mb.help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound.",
+  "zh/settings.json::settings.codesource.duckdb_threads.label": "Code source DuckDB threads",
+  "zh/settings.json::settings.codesource.duckdb_threads.help": "The threads a code source's DuckDB answers its statements on."
 }
