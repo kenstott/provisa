@@ -237,3 +237,55 @@ def test_a_write_matches_an_unknown_property_as_a_read_does_and_its_key_by_id():
     # Read in a write's match, the unknown name is null: the write touches no row.
     assert "WHERE NULL = 'x'" in _write("MATCH (o:Orders) WHERE o.nope = 'x' DELETE o")
     assert 'WHERE "id" = 10' in _write("MATCH (o:Orders) WHERE o._id = 10 DELETE o")
+
+
+def _compound_chain() -> tuple[CypherLabelMap, duckdb.DuckDBPyConnection]:
+    """The compound-keyed terms, (1, 'ab') NEXT (2, 'cd'); (1, 'a|b') shares (1, 'ab')'s first
+    key column and has no NEXT."""
+    from provisa.gql.label_map import RelationshipMapping
+
+    term = _term_node()
+    term.pk_columns = ["id", "name"]
+    term.key_columns = ("id", "name")
+    term.properties = {**term.properties, "nextId": "next_id"}
+    nxt = RelationshipMapping(
+        rel_type="NEXT",
+        source_label="GlossaryTerm",
+        target_label="GlossaryTerm",
+        join_source_column="next_id",
+        join_target_column="id",
+        field_name="next",
+    )
+    lm = CypherLabelMap(
+        nodes={"GlossaryTerm": term}, relationships={"NEXT": nxt}, aliases={"NEXT": [nxt]}
+    )
+    con = duckdb.connect()
+    con.execute("ATTACH ':memory:' AS provisa_admin")
+    con.execute("CREATE SCHEMA provisa_admin.public")
+    con.execute(
+        "CREATE TABLE provisa_admin.public.glossary_terms (id INTEGER, name VARCHAR, next_id INTEGER)"
+    )
+    con.execute(
+        "INSERT INTO provisa_admin.public.glossary_terms VALUES "
+        "(1, 'ab', 2), (1, 'a|b', NULL), (2, 'cd', NULL)"
+    )
+    return lm, con
+
+
+def test_a_node_a_graph_function_returns_has_the_identity_return_n_gives_it():
+    chain = _compound_chain()
+    (row,) = _rows(
+        chain,
+        "MATCH (a:GlossaryTerm)-[r:NEXT]->(b:GlossaryTerm) RETURN a, startNode(r), endNode(r), b",
+    )
+    a, start, end, b = (json.loads(v) for v in row)
+    assert a["id"] == start["id"] == "GlossaryTerm|1|ab"
+    assert b["id"] == end["id"] == "GlossaryTerm|2|cd"
+
+
+def test_a_variable_length_path_tells_rows_sharing_a_key_column_apart():
+    chain = _compound_chain()
+    walk = "MATCH (a:GlossaryTerm)-[:NEXT*1..2]->(b:GlossaryTerm) WHERE a.name = '{}' RETURN b.name"
+    assert _rows(chain, walk.format("ab")) == [("cd",)]
+    # (1, 'a|b') has no NEXT: the walk from (1, 'ab') is not its.
+    assert _rows(chain, walk.format("a|b")) == []
