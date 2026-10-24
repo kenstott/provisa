@@ -221,8 +221,10 @@ def test_the_rows_named_by_key_are_fetched_in_one_request_and_kept_for_the_ttl(s
     _release(server, whole)  # an update puts the table back in draft
     remote.reads.clear()
     assert _sql(server, sql) == first
-    (landing,) = remote.reads
-    assert "where" not in (landing.get("variables") or {}), landing  # the whole table
+    # The release's landing reconcile and the read may each land the table: every request is
+    # for the whole table, none for keys.
+    assert remote.reads, "the whole table was never read from the remote"
+    assert all("where" not in (r.get("variables") or {}) for r in remote.reads), remote.reads
 
 
 def test_a_table_its_remote_cannot_fetch_by_key_is_refused_by_name(server):
