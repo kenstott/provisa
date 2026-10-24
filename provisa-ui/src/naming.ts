@@ -164,6 +164,27 @@ export function relationName(table: { domainId: string; tableName: string }): st
   return `${domainToSqlName(table.domainId)}.${table.tableName}`;
 }
 
+/** A registered table as the catalog names it to a reader: its domain, then its table name. */
+export function catalogTableName(table: { domainId: string; tableName: string }): string {
+  return `${table.domainId}.${table.tableName}`;
+}
+
+/**
+ * A lineage relation as a reader is shown it. A registered table is named as the catalog names it.
+ * Lineage also holds relations that are no registered table — what a view's SQL reads that the
+ * registry does not describe (REQ-1626: the graph is the whole model) and what a statement command
+ * writes (REQ-2001) — and such a relation's name is its identity, so it is shown by that name.
+ * ``catalog`` maps each registered table's relation name to its catalog name.
+ */
+export function lineageRelationLabel(
+  relation: string,
+  catalog: ReadonlyMap<string, string>,
+): string {
+  const registered = catalog.get(relation);
+  if (registered !== undefined) return registered;
+  return relation;
+}
+
 /** Mirror of Python source_to_catalog (REQ-471): a source id as the engine catalog name. */
 export function sourceToCatalog(sourceId: string): string {
   return sourceId.replace(/-/g, "_");

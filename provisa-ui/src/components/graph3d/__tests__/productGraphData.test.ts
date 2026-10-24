@@ -407,6 +407,17 @@ describe("the product's links (REQ-2126)", () => {
           path_count: 1,
           aliases: null,
         },
+        {
+          kind: "lineage",
+          direction: "upstream",
+          target_product_id: null,
+          target_table_id: 7,
+          target_relation: "pet_store.pets",
+          hops: 1,
+          path_count: 1,
+          aliases: null,
+          target_table: { domain_id: "pet-store", table_name: "pets" },
+        },
       ],
     },
   ];
@@ -421,6 +432,13 @@ describe("the product's links (REQ-2126)", () => {
     });
   });
 
+  it("names a registered lineage table as the catalog does, an unregistered relation by its name", () => {
+    const g = toGraphData(linked, null, null);
+    const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
+    expect(label("l:pet_store.pets")).toBe("pet-store.pets");
+    expect(label("l:raw.d")).toBe("raw.d");
+  });
+
   it("stands lineage in lanes: ancestry by its distance upstream, a consumer one lane down", () => {
     const g = toGraphData(linked, null, null);
     const lane = (id: string) => g.nodes.find((n) => n.id === id)?.lane;
@@ -428,6 +446,7 @@ describe("the product's links (REQ-2126)", () => {
     expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
       ["l:raw.d", "p:p1"],
       ["p:p1", "l:mart.e"],
+      ["l:pet_store.pets", "p:p1"],
     ]);
   });
 });
