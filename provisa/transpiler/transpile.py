@@ -539,6 +539,102 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     return tree.sql(dialect="postgres")
 
 
+def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
+    """``tree`` for a PostgreSQL server, which has no TRY_CAST: each null-on-failure cast (the
+    semantic SQL keeps them, ``semantic_dialect``) is ``CASE WHEN pg_input_is_valid(text, type)
+    THEN CAST(...) END`` -- null where the value does not convert. PostgreSQL 16 or later."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.TryCast):
+            return node
+        valid = exp.Anonymous(
+            this="PG_INPUT_IS_VALID",
+            expressions=[
+                exp.Cast(this=node.this.copy(), to=exp.DataType.build("TEXT")),
+                exp.Literal.string(node.to.sql(dialect="postgres")),
+            ],
+        )
+        cast = exp.Cast(this=node.this.copy(), to=node.to.copy())
+        return exp.Case(ifs=[exp.If(this=valid, true=cast)])
+
+    return tree.transform(_lowered)
+
+
+def snowflake_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
+    """``tree`` for Snowflake, whose TRY_CAST takes text only (sqlglot writes a plain CAST of a
+    value it cannot see is text): each null-on-failure cast reads its value as text first."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.TryCast):
+            return node
+        text = exp.Cast(this=node.this.copy(), to=exp.DataType.build("VARCHAR"))
+        return exp.TryCast(this=text, to=node.to.copy(), requires_string=True)
+
+    return tree.transform(_lowered)
+
+
+# A number as MySQL's CAST reads one -- the text it converts, rather than reading 0 or a prefix.
+_MYSQL_INTEGER = "^[+-]?[0-9]+$"
+_MYSQL_REAL = "^[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?$"
+
+
+def mysql_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
+    """``tree`` for MySQL, which has no null-on-failure cast and whose CAST of 'ab' is 0: a number
+    is converted where its text reads as one, a boolean where it is 'true' or 'false', else null.
+    A cast to text never fails and stays one."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.TryCast):
+            return node
+        value, to = node.this, node.to
+        cast = exp.Cast(this=value.copy(), to=to.copy())
+        trimmed = exp.Trim(this=value.copy())
+        if to.is_type(*exp.DataType.INTEGER_TYPES):
+            pattern = _MYSQL_INTEGER
+        elif to.is_type(*exp.DataType.REAL_TYPES):
+            pattern = _MYSQL_REAL
+        elif to.is_type(exp.DataType.Type.BOOLEAN):
+            return exp.Case(
+                this=exp.Lower(this=trimmed),
+                ifs=[
+                    exp.If(this=exp.Literal.string("true"), true=exp.true()),
+                    exp.If(this=exp.Literal.string("false"), true=exp.false()),
+                ],
+            )
+        else:
+            return cast
+        matches = exp.RegexpLike(this=trimmed, expression=exp.Literal.string(pattern))
+        return exp.Case(ifs=[exp.If(this=matches, true=cast)])
+
+    return tree.transform(_lowered)
+
+
+def clickhouse_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
+    """``tree`` for ClickHouse, whose CAST to a Nullable type still fails on text that does not
+    parse: each null-on-failure cast is ``accurateCastOrNull``."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.TryCast):
+            return node
+        to = node.to.copy()
+        to.set("nullable", False)
+        return exp.Anonymous(
+            this="accurateCastOrNull",
+            expressions=[node.this.copy(), exp.Literal.string(to.sql(dialect="clickhouse"))],
+        )
+
+    return tree.transform(_lowered)
+
+
+#: The targets whose own null-on-failure cast sqlglot does not write (REQ-778).
+_OWN_TRY_CASTS = {
+    "postgres": postgres_try_casts,
+    "snowflake": snowflake_try_casts,
+    "mysql": mysql_try_casts,
+    "clickhouse": clickhouse_try_casts,
+}
+
+
 def transpile(
     pg_sql: str, target_dialect: str, *, pgvector: bool = False
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423
@@ -576,6 +672,10 @@ def transpile(
     pg_sql = _like_escape_written(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
+    if target_dialect in _OWN_TRY_CASTS and "TRY_CAST" in pg_sql.upper():
+        lowered = _OWN_TRY_CASTS[target_dialect](
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if target_dialect == "exasol":
         result = _exasol_stored_case(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")

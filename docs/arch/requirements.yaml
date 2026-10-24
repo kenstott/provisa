@@ -23339,7 +23339,17 @@
     (cypher.undefined_variable), and a LIMIT or SKIP that is not a whole number of 0 or more
     (cypher.invalid_limit, cypher.invalid_skip -- a fraction is never cut to its whole part). The engine''s
     own text is said only for what the engine refused, as "The engine refused the query: ..."
-    (cypher.engine_refused). Each code is worded in the UI''s serverErrors catalog in every locale.'
+    (cypher.engine_refused). Each code is worded in the UI''s serverErrors catalog in every locale.
+    (Amended 2026-10-24, WHAT A READ CANNOT ANSWER HAS A CODE:) toInteger, toFloat and toBoolean of a
+    value that does not convert are null, as Neo4j''s are: the semantic SQL keeps TRY_CAST through
+    every rewrite and each engine writes its own null-on-failure cast (TRY_CAST, SAFE_CAST,
+    Snowflake''s TRY_CAST of the value as text, ClickHouse''s accurateCastOrNull, MySQL''s CAST where
+    the text reads as the type, or pg_input_is_valid on PostgreSQL, which needs PostgreSQL 16 or
+    later; an older one refuses it by name, cypher.try_cast_needs_postgres_16). Every route
+    transpiles the statement for its target: none sends the semantic SQL to a source as it is. An answer holding a number JSON cannot carry (Infinity,
+    NaN) is a 400 naming the column (cypher.non_finite_number). What the engine refused is
+    cypher.engine_refused on every engine, each by its own driver''s errors (a value it cannot
+    convert, a name it does not know); a lost engine is a 503.'
   use_case: Consistent response shape enables client libraries to deserialize typed Cypher query results.
   code:
   - provisa/api/rest/cypher_router.py
