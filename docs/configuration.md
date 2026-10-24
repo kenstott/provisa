@@ -1731,8 +1731,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_DATA_DIR` | `~/.provisa` | Data directory for the embedded DuckDB store |
 | `TRINO_HOST` | `localhost` | Trino coordinator host |
 | `TRINO_PORT` | `8080` | Trino coordinator HTTP port |
-| `PROVISA_ENGINE_FILES_GID` | `1000` | Group Trino reads its secret files as (a Kafka source's SASL settings, a code host's client key) when Provisa runs as neither root nor Trino's user, as a native app beside Trino's container does. Provisa's user must be a member of it, or the file is refused by name. |
-| `PROVISA_PG_ENGINE_FILES_GID` | `999` | The same, for a Postgres engine's server reading a code host's client key |
+| `PROVISA_ENGINE_FILES_GID` | `1000` | Group Trino reads its secret files as (a Kafka source's SASL settings) when Provisa runs as neither root nor Trino's user, as a native app beside Trino's container does. Provisa's user must be a member of it, or the file is refused by name. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Path to GCP service-account key JSON (BigQuery engine/source) |
 | `GOOGLE_CLOUD_PROJECT` | — | Default GCP project (BigQuery; overridden by URL) |
 | `FABRIC_SQL_SERVER` | — | Fabric Warehouse SQL endpoint (alternative to `PROVISA_ENGINE_URL`) |

@@ -157,7 +157,7 @@ engine_tree() {
         cp -R "${PROJECT_DIR}/trino/etc" "${PROVISA_TRINO_ETC_HOST}/"
     fi
     mkdir -p "${PROVISA_TRINO_ETC_HOST}/kafka" "${PROVISA_TRINO_ETC_HOST}/kafka-client" \
-        "${PROVISA_TRINO_ETC_HOST}/codehost-client" "${PROVISA_TRINO_ETC_HOST}/redis"
+        "${PROVISA_TRINO_ETC_HOST}/redis"
     # REQ-2072: what the engine starts on next that compose itself decides (the coordinator's pinned
     # address). Only these names are taken from the file.
     local launch="${PROVISA_TRINO_ETC_HOST}/launch-settings.env" key value

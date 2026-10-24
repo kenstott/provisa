@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.transpiler.router import OperatorFloorViolation, Route, decide_route
+from provisa.transpiler.router import Route, decide_route
 
 _TYPES = {
     "pg-main": "postgresql",
@@ -36,34 +36,45 @@ _SAME_DB = {"pg-main": "db:5432/app", "pg-other": "db:5432/app"}
 
 def test_a_load_protected_source_never_routes_direct():
     decision = decide_route(
-        {"pg-main"}, _TYPES, _DIALECTS, operator_floor={"pg-main": "load_protected"}
+        {"pg-main"},
+        _TYPES,
+        _DIALECTS,
+        operator_floor={"pg-main": "load_protected"},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
     assert "load_protected" in decision.reason
 
 
 def test_a_replicate_source_never_routes_direct():
-    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, operator_floor={"pg-main": "replicate"})
+    decision = decide_route(
+        {"pg-main"},
+        _TYPES,
+        _DIALECTS,
+        operator_floor={"pg-main": "replicate"},
+        statement="SELECT 1",
+    )
     assert decision.route == Route.ENGINE
     assert "replicate" in decision.reason
 
 
 @pytest.mark.parametrize("setting", ["load_protected", "replicate"])
-def test_a_direct_hint_below_the_floor_is_rejected_naming_the_setting(setting):
-    with pytest.raises(OperatorFloorViolation) as exc:
-        decide_route(
-            {"pg-main"},
-            _TYPES,
-            _DIALECTS,
-            steward_hint="direct",
-            operator_floor={"pg-main": setting},
-        )
-    assert setting in str(exc.value)
-    assert "pg-main" in str(exc.value)
-
-
-def test_the_violation_is_a_permission_error_every_transport_already_maps():
-    assert issubclass(OperatorFloorViolation, PermissionError)
+def test_a_direct_hint_below_the_floor_is_ignored_and_said(setting):
+    # REQ-030 (amended 2026-10-23): the hint cannot apply, so it is ignored -- never refused --
+    # and the read goes to the engine, which serves the landed copy.
+    decision = decide_route(
+        {"pg-main"},
+        _TYPES,
+        _DIALECTS,
+        steward_hint="direct",
+        operator_floor={"pg-main": setting},
+        statement="SELECT 1",
+    )
+    assert decision.route == Route.ENGINE
+    assert decision.reason == (
+        f"route hint ignored: landed: not_forced: operator floor: {setting} on pg-main "
+        "(read from the replica)"
+    )
 
 
 def test_a_federated_hint_on_a_floored_source_is_allowed():
@@ -73,6 +84,7 @@ def test_a_federated_hint_on_a_floored_source_is_allowed():
         _DIALECTS,
         steward_hint="federated",
         operator_floor={"pg-main": "load_protected"},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 
@@ -84,6 +96,7 @@ def test_colocated_sources_with_one_floored_never_route_direct():
         _DIALECTS,
         source_dsns=_SAME_DB,
         operator_floor={"pg-other": "load_protected"},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
     assert "pg-other" in decision.reason
@@ -91,7 +104,11 @@ def test_colocated_sources_with_one_floored_never_route_direct():
 
 def test_a_floored_api_source_is_not_called_live():
     decision = decide_route(
-        {"pets-api"}, _TYPES, _DIALECTS, operator_floor={"pets-api": "load_protected"}
+        {"pets-api"},
+        _TYPES,
+        _DIALECTS,
+        operator_floor={"pets-api": "load_protected"},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 
@@ -103,19 +120,30 @@ def test_writes_to_a_floored_source_still_route_direct():
         _DIALECTS,
         is_mutation=True,
         operator_floor={"pg-main": "load_protected"},
+        statement="SELECT 1",
     )
     assert decision.route == Route.DIRECT
 
 
 def test_an_unfloored_source_is_unchanged():
-    assert decide_route({"pg-main"}, _TYPES, _DIALECTS, operator_floor={}).route == Route.DIRECT
-    hinted = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="direct", operator_floor={})
+    assert (
+        decide_route({"pg-main"}, _TYPES, _DIALECTS, operator_floor={}, statement="SELECT 1").route
+        == Route.DIRECT
+    )
+    hinted = decide_route(
+        {"pg-main"},
+        _TYPES,
+        _DIALECTS,
+        steward_hint="direct",
+        operator_floor={},
+        statement="SELECT 1",
+    )
     assert hinted.route == Route.DIRECT
 
 
 def test_the_floor_is_required_so_no_caller_can_silently_skip_it():
     with pytest.raises(TypeError):
-        decide_route({"pg-main"}, _TYPES, _DIALECTS)  # type: ignore[call-arg]
+        decide_route({"pg-main"}, _TYPES, _DIALECTS, statement="SELECT 1")  # type: ignore[call-arg]
 
 
 def test_a_direct_hint_never_sends_sql_to_a_neo4j_source():
@@ -128,6 +156,7 @@ def test_a_direct_hint_never_sends_sql_to_a_neo4j_source():
         {"graph": ""},
         steward_hint="direct",
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 

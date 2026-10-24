@@ -352,13 +352,9 @@ A source runs on the Provisa server by default; this is dev mode.
 
 ### Reading a table {: #reading-a-table }
 
-How a read reaches your function depends on what else it reads:
+Every read of a code table, dev-mode or built, reaches your function the same way. Provisa calls it with the read's arguments and the values its pushed-down filters give, lands the rows under those arguments for the table's cache TTL, and the federation engine runs the whole statement over them. A pushed-down filter is only a pre-filter: the engine applies it again, so a function that ignores or loosens a value never returns wrong rows.
 
-- **A read of one code table alone** goes straight to your function. Nothing is landed. Provisa calls it with the read's arguments and its pushed-down filters, and applies the rest of the statement to the rows it returns.
-- **A read that joins other tables** is the federation engine's. A dev-mode source's table is landed for it: the rows are kept under those arguments for the table's cache TTL.
-- **A built source's table** in such a join is read live from its remote host, which the engine attaches as a Postgres catalog. It is landed instead when its source is replicated or floored, when the table is kept for good, when it declares a landing TTL above 0, or on an engine that can't attach a host.
-
-Either way, visibility, masks and row rules apply to the rows, as they do for any table. You pass arguments the way you pass any table parameter: `_nf_` conditions in SQL, field arguments in GraphQL.
+Visibility, masks and row rules apply to the rows, as they do for any table. You pass arguments the way you pass any table parameter: `_nf_` conditions in SQL, field arguments in GraphQL.
 
 ### Running on a remote host {: #running-on-a-remote-host }
 

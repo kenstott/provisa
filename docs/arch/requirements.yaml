@@ -84784,9 +84784,7 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_kafka_on_engine_shard.py
   - tests/unit/test_redis_on_engine_shard.py
   - tests/integration/test_trino_memory_catalog_store.py
-  - tests/unit/test_code_attach.py
   - tests/unit/test_trino_catalog_files.py
-  - tests/integration/test_code_source_attach_trino.py
   docs:
   - sources.md
   - security.md
@@ -85896,9 +85894,7 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - tests/unit/test_code_remote_host.py
   - tests/unit/test_code_remote_host_node.py
   - tests/unit/test_code_image_build.py
-  - tests/unit/test_code_pgfront.py
-  - tests/unit/test_code_attach.py
-  - tests/integration/test_code_source_attach_trino.py
+  - tests/integration/test_code_source_built_host_trino.py
   - tests/unit/test_code_loader.py
   - tests/unit/test_node_host_argument_sets.py
   docs:
