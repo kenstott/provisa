@@ -179,13 +179,16 @@ class _Read:
     """One table of a direct statement: its function, the arguments the statement gives it, and
     the schema of its rows."""
 
-    def __init__(self, table: dict, export: Any, args: list, names: list, arguments: Any) -> None:
+    def __init__(
+        self, table: dict, export: Any, args: list, names: list, arguments: Any, context: dict
+    ) -> None:
         self.table = table
         self.name = table["table_name"]
         self.export = export
         self.args = args
         self.names = names
         self.arguments = arguments  # one-row Arrow table: each parameter's value
+        self.context = context  # REQ-2100: what the statement asks of the table's rows
 
     @classmethod
     def of(cls, prepared: Any, table: dict, sql: str) -> _Read:
@@ -193,7 +196,12 @@ class _Read:
 
         from provisa.codehost import residual
         from provisa.codesource.arrow_rows import field_of
-        from provisa.codesource.table import CodeTableRefused, call_arguments, export_of
+        from provisa.codesource.table import (
+            CodeTableRefused,
+            call_arguments,
+            export_of,
+            landed_context,
+        )
         from provisa.codesource.worker import ABSENT
 
         name = table["table_name"]
@@ -204,22 +212,19 @@ class _Read:
         )
         if export is None:
             raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
-        pushdown = {
-            p.name: {"column": p.pushes.column, "op": p.pushes.op}
-            for p in export.parameters
-            if p.pushes is not None
-        }
-        given = {
-            **residual.pushed(sql, DIALECT, name, pushdown),
-            **residual.nf_given(sql, DIALECT, name),
-        }
+        # Its inputs are the statement's own conditions on its parameters' columns; what it asks
+        # of the rows is the function's read context (REQ-2100).
+        given = residual.nf_given(sql, DIALECT, name)
         args, names = call_arguments(table, export, given)
+        context = residual.read_context(
+            sql, DIALECT, name, landed_context(prepared.manifest, export)["columns"]
+        )
         values = {n: (None if a is ABSENT else a) for n, a in zip(names, args, strict=True)}
         fields = [field_of(p.name, p.shape, prepared.manifest) for p in export.parameters]
         arguments = pa.Table.from_pylist(
             [{f.name: _argument(values.get(f.name), f) for f in fields}], schema=pa.schema(fields)
         )
-        return cls(table, export, args, names, arguments)
+        return cls(table, export, args, names, arguments, context)
 
     def _schema(self, prepared: Any) -> Any:
         from provisa.codesource.arrow_rows import row_schema
@@ -252,6 +257,8 @@ class _Read:
                 self.args,
                 self.names,
                 schema=schema,
+                takes=self.export.takes,
+                context=self.context,
                 residual={
                     "sql": sql,
                     "dialect": DIALECT,
@@ -274,7 +281,13 @@ class _Read:
 
         schema = self._schema(prepared)
         ipcs = prepared.worker().batches(
-            self.export.name, "table", self.args, self.names, schema=schema_text(schema)
+            self.export.name,
+            "table",
+            self.args,
+            self.names,
+            schema=schema_text(schema),
+            takes=self.export.takes,
+            context=self.context,
         )
         rows = (
             _registered(self.table, self.name, ipcs)

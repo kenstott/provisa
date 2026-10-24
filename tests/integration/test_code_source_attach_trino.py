@@ -66,12 +66,17 @@ class Region:
     asked: str
 
 
-def regions(tag: str = "none") -> list[Region]:
+@dataclass
+class RegionInputs:
+    tag: str = "none"
+
+
+def regions(inputs: RegionInputs) -> list[Region]:
     """The regions orders are placed in.
 
     @table
     """
-    return [Region(r, label, tag) for r, label in sorted(_LABELS.items())]
+    return [Region(r, label, inputs.tag) for r, label in sorted(_LABELS.items())]
 ''',
 }
 

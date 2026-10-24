@@ -30,15 +30,14 @@ from provisa.federation.connector_contract import Plan, Read, SourceContract
 class CodeProxy(SourceContract):
     async def plan(self, state: Any, read: Read, ctx: Any = None) -> Plan:
         from provisa.codesource.attach import answered_live
-        from provisa.codesource.table import pushed_arguments
 
-        # The function is given its read's arguments and the values the statement's predicates
-        # give the parameters it declares a pushdown for. A statement that reads this source's
-        # tables alone (routing's one_source gate) is answered whole by DuckDB over their rows --
-        # when the table is answered from its function. One the operator floors on its replica,
-        # or that declares a landing TTL, is read from its landed rows, which the engine reads.
-        pushed = await pushed_arguments(state, read.table, read.name, read.statement)
-        arguments = {**pushed, **(read.arguments or {})}
+        # The function is given its read's arguments, its inputs (REQ-2100: what the statement
+        # asks of its rows reaches it as its read context, on a direct or attached read). A
+        # statement that reads this source's tables alone (routing's one_source gate) is answered
+        # whole by DuckDB over their rows -- when the table is answered from its function. One
+        # the operator floors on its replica, or that declares a landing TTL, is read from its
+        # landed rows, which the engine reads.
+        arguments = dict(read.arguments or {})
         if not answered_live(state, read.table):
             return Plan(
                 read=read,

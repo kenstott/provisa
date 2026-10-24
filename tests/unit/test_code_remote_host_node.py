@@ -243,3 +243,85 @@ def test_arrow_the_code_returns_or_yields_is_sent_as_it_is(tmp_path):
         worker.stop()
         process.terminate()
         process.wait(timeout=10)
+
+
+_CONTEXT_CODE = """
+export function asked({ region = "EU", n }, context) {
+  const filters = context.filters.map((f) => `${f.column} ${f.op} ${f.value}`).join(",");
+  return [{ asked: `region=${region};n=${n};filters=${filters};limit=${context.limit}` }];
+}
+"""
+
+
+def test_a_table_is_called_with_its_inputs_object_and_its_read_context(tmp_path):
+    """REQ-2100: a Node @table function takes (inputs, context): an object of the inputs the read
+    gives -- one it leaves out absent, so the function's default applies -- and the read context."""
+    import pyarrow as pa
+
+    from provisa.codesource.arrow_rows import schema_text
+    from provisa.codesource.worker import ABSENT
+    from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
+
+    lib = CodeRuntimeResolver().resolve("apache-arrow").parent.parent
+    (tmp_path / "index.mjs").write_text(_CONTEXT_CODE)
+    names = tmp_path / "names.json"
+    names.write_text("{}")
+    host = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
+    process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's front end
+        [
+            sys.executable,
+            front.__file__,
+            "0",
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *host,
+        ],
+        env={**os.environ, "PROVISA_CODE_HASH": "h1", "PROVISA_HOST_LIB": str(lib)},
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stderr is not None
+    pairing, port = None, 0
+    until = time.monotonic() + 20
+    while time.monotonic() < until:
+        line = process.stderr.readline()
+        if line.startswith("pairing code: "):
+            pairing = line.removeprefix("pairing code: ").strip()
+        if line.startswith("remote host listening on "):
+            port = int(line.rsplit(" ", 1)[1])
+            break
+    assert pairing is not None and port, "the host did not start"
+    identity = remote.new_identity()
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
+    worker = remote.RemoteWorker(
+        "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
+    )
+    worker.start()
+    schema = schema_text(pa.schema([("asked", pa.utf8())]))
+    context = {
+        "filters": [{"column": "asked", "op": "ne", "value": "x"}],
+        "order_by": [],
+        "limit": 3,
+        "columns": ["asked"],
+        "keys": None,
+    }
+    try:
+        rows = [
+            r
+            for b in worker.rows(
+                "asked",
+                "table",
+                [ABSENT, 7],
+                ["region", "n"],
+                schema=schema,
+                takes=("inputs", "context"),
+                context=context,
+            )
+            for r in b
+        ]
+        assert rows == [{"asked": "region=EU;n=7;filters=asked ne x;limit=3"}]
+    finally:
+        worker.stop()
+        process.terminate()
+        process.wait(timeout=10)
