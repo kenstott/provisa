@@ -175,15 +175,23 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
             this=exp.Literal.string("tableLabel"), expression=exp.Literal.string(nm.table_label)
         ),
     ]
-    reserved = {"id", "label"}
-    for prop_key, col_name in nm.properties.items():
-        if col_name in reserved:
-            continue
-        col_expr = exp.Column(
-            this=exp.Identifier(this=col_name, quoted=True),
-            table=exp.Identifier(this=tbl),
+    # Every column is a property under its own name -- ``id`` and ``label`` included -- held apart
+    # from the node's own keys, so the node's identity never shadows a column of the same name.
+    props: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        exp.JSONKeyValue(
+            this=exp.Literal.string(prop_key),
+            expression=exp.Column(
+                this=exp.Identifier(this=col_name, quoted=True),
+                table=exp.Identifier(this=tbl),
+            ),
         )
-        kv.append(exp.JSONKeyValue(this=exp.Literal.string(prop_key), expression=col_expr))
+        for prop_key, col_name in nm.properties.items()
+    ]
+    kv.append(
+        exp.JSONKeyValue(
+            this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
+        )
+    )
     json_obj = exp.JSONObject(expressions=kv)
     return exp.Case(
         ifs=[exp.If(this=exp.Is(this=id_col_check, expression=exp.null()), true=exp.null())],
@@ -209,19 +217,22 @@ def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expressi
             ),
         ),
     ]
-    _reserved = {"id", "label"}
-    for prop in props or []:
-        if prop in _reserved:
-            continue
-        kv.append(
-            exp.JSONKeyValue(
-                this=exp.Literal.string(prop),
-                expression=exp.Column(
-                    this=exp.Identifier(this=prop, quoted=True),
-                    table=exp.Identifier(this=var),
-                ),
-            )
+    # Every column is a property under its own name, ``id`` included, apart from the node's keys.
+    held = [
+        exp.JSONKeyValue(
+            this=exp.Literal.string(prop),
+            expression=exp.Column(
+                this=exp.Identifier(this=prop, quoted=True),
+                table=exp.Identifier(this=var),
+            ),
         )
+        for prop in props or []
+    ]
+    kv.append(
+        exp.JSONKeyValue(
+            this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=held)
+        )
+    )
     return exp.JSONObject(expressions=kv)
 
 
