@@ -8013,5 +8013,6 @@
   "de/rowMaterialize.json::rowMaterialize.help": "Keep only the rows statements ask for: each is fetched from the source by its primary key and kept for the Cache TTL, instead of a copy of the whole table. Needs one primary-key column and a source that fetches rows by key.",
   "de/serverErrors.json::serverErrors.schema.row_materialize_no_key_fetch": "{{table}} cannot be replicated row by row: its remote schema has no field that returns its rows for a list of its primary key.",
   "de/dataProductsTab.json::dataProductsTab.detail.lineageLaneUpstream": "Upstream, hop {{n}}",
-  "de/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}"
+  "de/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}",
+  "de/serverErrors.json::serverErrors.cypher.access_violations": "This role may not run this query:"
 }

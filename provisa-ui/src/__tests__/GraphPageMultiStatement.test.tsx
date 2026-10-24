@@ -91,7 +91,11 @@ describe("the Cypher page with two statements", () => {
               {
                 statement: "MATCH (s:Secret) RETURN s",
                 status: 403,
-                body: { error: "Label Secret is not visible to role org_admin" },
+                body: {
+                  detail: "Label Secret is not visible to role org_admin",
+                  code: "cypher.permission_denied",
+                  params: {},
+                },
               },
             ],
           };

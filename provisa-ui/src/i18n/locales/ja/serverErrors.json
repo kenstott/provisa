@@ -529,7 +529,8 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}"
+      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}",
+      "access_violations": "このロールはこのクエリを実行できません:"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",

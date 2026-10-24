@@ -529,7 +529,8 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "לא ניתן היה לבצע ספירה, ולכן הסכום אינו ידוע: {{statement}}: {{reason}}"
+      "count_unknown": "לא ניתן היה לבצע ספירה, ולכן הסכום אינו ידוע: {{statement}}: {{reason}}",
+      "access_violations": "תפקיד זה אינו רשאי להריץ שאילתה זו:"
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם ליצור קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",

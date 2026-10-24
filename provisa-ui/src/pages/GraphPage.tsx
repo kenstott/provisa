@@ -46,7 +46,12 @@ import { Neo4jExportModal } from "../components/graph/Neo4jExportModal";
 import { buildDropExpansion, withExpansion } from "./graph-drop";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
-import { frameStatement, showing, type CypherAnswer } from "../components/graph/frameStatements";
+import {
+  cypherError,
+  frameStatement,
+  showing,
+  type CypherAnswer,
+} from "../components/graph/frameStatements";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 /** A refused request's error: its body's ``detail`` or ``error`` when it is JSON that has one, else
@@ -367,15 +372,17 @@ export function GraphPage() {
         const elapsed = Date.now() - start;
         if (!res.ok) {
           const text = await res.text();
-          let msg: string;
+          let refused: { error: string; violations?: string[] };
           try {
-            msg = (JSON.parse(text) as { error?: string }).error ?? text;
+            refused = cypherError(JSON.parse(text), res.status);
           } catch {
-            msg = text;
+            refused = { error: text }; // no JSON body (a proxy's page): the response as it came
           }
           setFrames((f) => {
             const next = f.map((fr) =>
-              fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr,
+              fr.id === id
+                ? { ...fr, status: "error" as const, violations: undefined, ...refused }
+                : fr,
             );
             graphState.frames = next;
             saveGraphState(graphState);
