@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0a8b0f69-e9b6-4d72-b219-ff8dfbbd6fd5
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A property of a node or relationship is one its label publishes for the role (REQ-2136): any
 other name -- one the label does not have, a column it does not publish (a governed object
 column) or one the role may not see -- is null, as a graph's missing property is, in WHERE,
