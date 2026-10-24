@@ -59,6 +59,8 @@ export interface Source {
   passwordRef?: string | null;
   changeSignal: string; // REQ-929: source default change signal, inherited by its tables
   cdc?: SourceCdcConfig | null;
+  // REQ-1865: its type fetches rows by key, so a table of it may be replicated row by row.
+  rowFetchByKeys: boolean;
 }
 
 // REQ-1143: server-derived plain-English summary of a table's effective refresh/serving policy.
@@ -355,6 +357,7 @@ export interface RegisteredTable {
   replicate: number | null; // REQ-826: null = inherit source
   region: string | null; // REQ-1921: where its data lives; null = no region
   draft: boolean; // REQ-1921: out of service until its domain's owners release it
+  rowMaterialize: boolean; // REQ-1865: replicated row by row, fetched by key
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
   offPeakTz: string | null; // REQ-1141: window zone override

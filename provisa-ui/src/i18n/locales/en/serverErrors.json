@@ -336,6 +336,7 @@
       "change_signal_no_topic": "Table '{{table}}' of source '{{source}}' is on the kafka change signal but names no topic in its live.kafka.topic, so nothing would refresh it.",
       "change_signal_no_receiver": "Provisa does not receive the {{signal}} change signal from a {{type}} source, so a table of source '{{source}}' would never be refreshed by it. Capture the source with Debezium and use debezium.",
       "change_signal_not_honoured": "A {{type}} source cannot yet be checked for changes, so the {{signal}} change signal would never be asked. Use ttl for source '{{source}}'.",
+      "row_materialize_no_key_fetch": "{{table}} cannot be replicated row by row: its remote schema has no field that returns its rows for a list of its primary key.",
       "sentinel_path_not_applicable": "A {{type}} source cannot have a sentinel path: no producer of yours can mark a change in its data, or the source is not probed. Remove the sentinel path from source '{{source}}'.",
       "source_cache_ttl_required": "Source '{{source}}' needs a Cache TTL: every table of it is a replica, refreshed on that clock under the {{signal}} change signal. Set it under Load Management and Timeliness on the source.",
       "landing_ttl_required": "Table '{{table}}' is a replica refreshed on a Cache TTL, and neither it nor its source '{{source}}' has one. Set the Cache TTL under Load Management and Timeliness on the source, or on the table itself once it is registered.",

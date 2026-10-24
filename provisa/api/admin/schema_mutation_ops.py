@@ -478,6 +478,17 @@ async def register_table(
                 )
                 if _ttl_refusal is not None:
                     raise TableSaveRefused(_ttl_refusal)
+                from provisa.api.admin._landing_ttl import row_materialize_save_refusal
+
+                _row_refusal = await row_materialize_save_refusal(  # REQ-1865
+                    _conn,
+                    model.source_id,
+                    model.table_name,
+                    model.row_materialize,
+                    [c.name for c in model.columns if c.is_primary_key],
+                )
+                if _row_refusal is not None:
+                    raise TableSaveRefused(_row_refusal)
                 from provisa.api.admin._change_feed import table_change_feed_refusal
 
                 _feed_refusal = await table_change_feed_refusal(  # REQ-1861

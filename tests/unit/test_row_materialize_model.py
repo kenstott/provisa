@@ -63,6 +63,7 @@ class _FakeSource:
         self.id = "src1"
         self.cache_ttl = cache_ttl
         self.type = type
+        self.mapping: dict = {}  # as Source declares it: nothing stored
 
 
 class _FakeConfig:
@@ -130,7 +131,6 @@ def test_config_loader_rejects_query_template_on_non_neo4j_source():
     ("source_type", "why"),
     [
         ("openapi", "filtered by its own parameters"),
-        ("graphql_remote", "filtered by its own parameters"),
         ("grpc_remote", "filtered by its own parameters"),
         ("govdata", "read live on every request"),
     ],

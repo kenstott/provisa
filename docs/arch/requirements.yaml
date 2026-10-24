@@ -69917,10 +69917,28 @@
     held to the code in both directions: every entry resolves, and the declared types are exactly those the
     key fetch is wired for. A table whose source''s type declares none is refused at config load and on save,
     by name: "<table>: row_materialize needs row fetch by primary keys, which <source type> sources don''t
-    support" -- among them REST/OpenAPI, GraphQL-remote, gRPC-remote, SPARQL, code sources and Qdrant (a
-    live-only type has no key fetch). API sources and govdata keep their own reasons (filtered by their own
-    parameters; read live). The declaration is one of the source contract''s capabilities, to be absorbed by
-    it (REQ-1756), not a second mechanism.'
+    support" [SUPERSEDED by REQ-1865, 2026-10-23 -- a GraphQL-remote table now has a fetch by keys of its
+    own where its remote''s schema offers one, and is refused for lacking it. Kept here for history; do not
+    implement against it.] -- among them REST/OpenAPI, GraphQL-remote, gRPC-remote, SPARQL, code sources and
+    Qdrant (a live-only type has no key fetch). API sources and govdata keep their own reasons (filtered by
+    their own parameters; read live). [END SUPERSEDED BLOCK] The declaration is one of the source
+    contract''s capabilities, to be absorbed by it (REQ-1756), not a second mechanism.
+    (Amended 2026-10-23, a remote GraphQL table fetches by keys where its schema offers it:) For a remote
+    GraphQL source the fetch by keys is each table''s own (ROW_FETCH_BY_KEYS_PER_TABLE): the type declares
+    one (its keyed loader), and a table has it only where the remote''s schema has a field returning the
+    table''s full rows for a LIST of its primary key in one request -- a Hasura-style `where: {<pk>: {_in:
+    [...]}}` on the table''s own root field, or a root field taking one list of IDs and returning the
+    table''s type or an interface or union it is one of (Relay `nodes(ids:)`); the list is of the type''s
+    `id`. The fetch is read off the schema when the table is registered or refreshed
+    (`graphql_remote.by_keys`) and stored with the table''s spec on the source; a table registered before
+    it was kept has it read off the schema when row_materialize is next saved. row_materialize is set on
+    registerTable and on an update (TableInput.rowMaterialize; left out, a registration is not
+    row-materialized and an update keeps what the table has), and in the table form''s Load and timeliness
+    tab, offered only for a source whose type declares a fetch by keys (Source.rowFetchByKeys). A table
+    with a single primary-key column whose remote has such a field is fetched in ONE request for the keys a
+    statement names and kept for its TTL; one without is refused by name at registration and on save,
+    code schema.row_materialize_no_key_fetch: "<table>: row_materialize needs row fetch by primary keys,
+    and its remote schema has no field that returns its rows for a list of its primary key".'
   use_case: A large, expensive-to-fully-land source table (e.g. a multi-million-row Neo4j query_template
     scan) can serve point-lookup queries in milliseconds via a per-row cache instead of paying a 60-120s
     full re-land for a handful of rows, without ever pre-warming keys nothing has asked for.
@@ -69944,11 +69962,18 @@
   - provisa/events/app_wiring.py
   - provisa/executor/drivers/clickhouse.py
   - provisa/federation/materialize_broker.py
+  - provisa/core/source_registry.py
+  - provisa/graphql_remote/by_keys.py
+  - provisa/api/admin/_graphql_table_registration.py
+  - provisa/api/admin/_landing_ttl.py
+  - provisa-ui/src/pages/tables/RowMaterializeField.tsx
   tests:
   - tests/unit/pgwire/test_statement_stages.py - tests/unit/federation/test_row_materialize_attach_rule.py - tests/unit/events/test_source_loader_load_keys.py - tests/unit/test_duckdb_store_native.py - tests/unit/test_row_materialize_model.py - tests/unit/compiler/test_pk_bounds.py - tests/unit/federation/test_materialize_exec_land_rows.py - tests/unit/federation/test_row_lock.py - tests/unit/federation/test_ensure_rows_resident.py - tests/unit/test_operator_floor_routing.py
   - tests/unit/test_pk_bounds.py
   - tests/unit/test_row_materialize_model.py
   - tests/unit/test_row_fetch_by_keys.py
+  - tests/unit/test_graphql_remote_by_keys.py
+  - tests/integration/test_graphql_remote_row_materialize.py
   since: 2026-09
   scenario: 'Given a registered table with row_materialize=true, a declared primary key column, and a
 

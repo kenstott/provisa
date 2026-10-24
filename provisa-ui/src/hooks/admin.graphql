@@ -114,6 +114,7 @@ query SourcesQuery {
     federationHintsJson
     passwordRef
     changeSignal
+    rowFetchByKeys
     cdc {
       bootstrapServers
       topicPrefix
@@ -241,6 +242,7 @@ query TablesQuery {
     replicate
     region
     draft
+    rowMaterialize
     loadProtected
     offPeakWindow
     offPeakTz

@@ -30,7 +30,11 @@ import pytest
 from provisa.core import source_registry
 from provisa.core.config_loader import _validate_row_materialize
 from provisa.core.models import SourceType
-from provisa.core.source_registry import ROW_FETCH_BY_KEYS, supports_row_fetch_by_keys
+from provisa.core.source_registry import (
+    ROW_FETCH_BY_KEYS,
+    ROW_FETCH_BY_KEYS_PER_TABLE,
+    supports_row_fetch_by_keys,
+)
 from tests.unit.test_row_materialize_model import _FakeConfig, _FakeSource, _table
 
 _EVERY_TYPE = sorted(t.value for t in SourceType)
@@ -86,20 +90,26 @@ def test_a_live_only_type_declares_no_fetch_and_is_not_wired():
     assert "qdrant" not in _wired()
 
 
-def _validate(source_type: str) -> None:
+def _validate(source_type: str, mapping: dict | None = None) -> None:
     table = _table(row_materialize=True, cache_ttl=60)
-    _validate_row_materialize(_FakeConfig([table], [_FakeSource(type=source_type)]))
+    source = _FakeSource(type=source_type)
+    source.mapping = mapping or {}
+    _validate_row_materialize(_FakeConfig([table], [source]))
 
 
 @pytest.mark.parametrize(
     "source_type",
-    sorted(t for t in ROW_FETCH_BY_KEYS if t not in {"govdata", "neo4j"}),
+    sorted(
+        t
+        for t in ROW_FETCH_BY_KEYS
+        if t not in {"govdata", "neo4j"} and t not in ROW_FETCH_BY_KEYS_PER_TABLE
+    ),
 )
 def test_a_type_with_a_fetch_by_keys_is_accepted(source_type):
     _validate(source_type)  # does not raise
 
 
-_DISTINCT = {"openapi", "graphql_remote", "grpc_remote", "govdata"}
+_DISTINCT = {"openapi", "grpc_remote", "govdata"}
 
 
 @pytest.mark.parametrize(
@@ -122,9 +132,16 @@ def test_a_type_refused_for_its_own_reason_says_that_reason(source_type):
 
 
 def test_the_maintainers_list_is_refused():
-    """REST/OpenAPI, GraphQL-remote, gRPC-remote, SPARQL, code sources and Qdrant."""
-    for source_type in ("openapi", "graphql_remote", "grpc_remote", "sparql", "node", "python"):
+    """REST/OpenAPI, gRPC-remote, SPARQL, code sources and Qdrant; a GraphQL-remote table with no
+    field returning its rows for a list of its key."""
+    for source_type in ("openapi", "grpc_remote", "sparql", "node", "python"):
         assert source_registry.row_materialize_refusal("t", source_type) is not None
+    assert source_registry.row_materialize_refusal(
+        "t", "graphql_remote", table_fetches_by_keys=False
+    ) == (
+        "t: row_materialize needs row fetch by primary keys, and its remote schema has no field "
+        "that returns its rows for a list of its primary key"
+    )
     assert source_registry.row_materialize_refusal("t", "qdrant") == (
         "t: row_materialize needs row fetch by primary keys, which qdrant sources don't support"
     )
@@ -139,13 +156,42 @@ async def test_saving_a_table_refuses_it_by_its_sources_stored_type(monkeypatch)
 
     monkeypatch.setattr(_landing_ttl, "_stored_type", _stored)
     refusal = _landing_ttl.row_materialize_save_refusal
-    assert await refusal(None, "pg", "orders", True) is None
-    assert await refusal(None, "graph", "orders", False) is None  # not asked for
-    sparql = await refusal(None, "graph", "orders", True)
+    assert await refusal(None, "pg", "orders", True, ["id"]) is None
+    assert await refusal(None, "graph", "orders", False, ["id"]) is None  # not asked for
+    sparql = await refusal(None, "graph", "orders", True, ["id"])
     assert sparql is not None and sparql.success is False
     assert sparql.message == (
         "orders: row_materialize needs row fetch by primary keys, which sparql sources don't "
         "support"
     )
-    api = await refusal(None, "svc", "orders", True)
+    api = await refusal(None, "svc", "orders", True, ["id"])
     assert api is not None and "filtered by its own parameters" in api.message
+
+
+# -- a remote GraphQL table: its own fetch by keys --------------------------------------------
+
+
+def _by_keys(column: str) -> dict:
+    """A source's stored mapping in which ``orders`` fetches its rows by ``column``."""
+    fetch = {"style": "where_in", "field": "orders", "arg": "where", "arg_type": "x", "key": column}
+    return {"tables": {"orders": {"by_keys": {column: fetch}}}}
+
+
+def test_a_remote_graphql_table_with_a_field_for_its_key_is_accepted():
+    _validate("graphql_remote", _by_keys("id"))  # does not raise
+
+
+@pytest.mark.parametrize(
+    "mapping",
+    [{}, {"tables": {"orders": {}}}, _by_keys("status")],
+    ids=["no spec", "no fetch", "a fetch by another column"],
+)
+def test_a_remote_graphql_table_without_one_is_refused_by_name(mapping):
+    with pytest.raises(ValueError) as refused:
+        _validate("graphql_remote", mapping)
+    assert str(refused.value).startswith("orders: row_materialize needs row fetch by primary keys")
+
+
+def test_a_per_table_type_must_be_told_the_tables_answer():
+    with pytest.raises(TypeError):
+        source_registry.row_materialize_refusal("t", "graphql_remote")

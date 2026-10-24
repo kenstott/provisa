@@ -155,11 +155,20 @@ ROW_FETCH_BY_KEYS: dict[str, str] = {
         for t in _PGWIRE_BRIDGE_KEYED
     },
     **{t: f"{_KEYED_LOADERS}:SourceRowLoader.load_keys" for t in _ENGINE_TERMINAL_KEYED},
+    # Only for a table whose remote schema has a field returning its rows for a list of its key
+    # (ROW_FETCH_BY_KEYS_PER_TABLE).
+    "graphql_remote": f"{_KEYED_LOADERS}:make_graphql_remote_keyed_loader",
 }
+
+# Types whose fetch by keys is each table's own: the type declares one, and a table has it only
+# where its source offers it for that table -- a remote GraphQL schema with a field that returns
+# the table's rows for a list of its key (graphql_remote.by_keys).
+ROW_FETCH_BY_KEYS_PER_TABLE: frozenset[str] = frozenset({"graphql_remote"})
 
 
 def supports_row_fetch_by_keys(source_type: str | None) -> bool:
-    """Whether ``source_type`` declares a row fetch by primary keys (``ROW_FETCH_BY_KEYS``)."""
+    """Whether ``source_type`` declares a row fetch by primary keys (``ROW_FETCH_BY_KEYS``); for
+    a type in ``ROW_FETCH_BY_KEYS_PER_TABLE``, whether some of its tables may have one."""
     return source_type in ROW_FETCH_BY_KEYS
 
 
@@ -167,16 +176,33 @@ def supports_row_fetch_by_keys(source_type: str | None) -> bool:
 _ROW_MATERIALIZE_REFUSED: dict[str, str] = {
     **{
         t: "an API source is filtered by its own parameters, not replicated row by row"
-        for t in ("openapi", "graphql_remote", "grpc_remote")
+        for t in ("openapi", "grpc_remote")
     },
     "govdata": "a govdata source is read live on every request and is never replicated",
 }
 
 
-def row_materialize_refusal(table_name: str, source_type: str | None) -> str | None:
+def no_key_fetch_refusal(table_name: str) -> str:
+    """The refusal of row_materialize for a table whose own fetch by keys its remote lacks."""
+    return (
+        f"{table_name}: row_materialize needs row fetch by primary keys, and its remote "
+        "schema has no field that returns its rows for a list of its primary key"
+    )
+
+
+def row_materialize_refusal(
+    table_name: str, source_type: str | None, *, table_fetches_by_keys: bool | None = None
+) -> str | None:
     """Why ``table_name``, of a ``source_type`` source, may not set row_materialize (REQ-1865), or
     None when it may: a type refused for a reason of its own says it; any other type without a
-    row fetch by keys is refused for that."""
+    row fetch by keys is refused for that. For a type in ``ROW_FETCH_BY_KEYS_PER_TABLE`` the
+    caller says whether this table has one (``table_fetches_by_keys``)."""
+    if source_type in ROW_FETCH_BY_KEYS_PER_TABLE:
+        if table_fetches_by_keys is None:
+            raise TypeError(
+                f"a {source_type} table's fetch by keys is its own: say whether it has one"
+            )
+        return None if table_fetches_by_keys else no_key_fetch_refusal(table_name)
     reason = _ROW_MATERIALIZE_REFUSED.get(source_type or "")
     if reason is not None:
         return (

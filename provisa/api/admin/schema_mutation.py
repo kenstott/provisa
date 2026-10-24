@@ -3667,7 +3667,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     if _ttl_refusal is not None:
                         raise TableSaveRefused(_ttl_refusal)
                     _row_refusal = await row_materialize_save_refusal(  # REQ-1865
-                        _conn, model.source_id, model.table_name, model.row_materialize
+                        _conn,
+                        model.source_id,
+                        model.table_name,
+                        model.row_materialize,
+                        [c.name for c in model.columns if c.is_primary_key],
                     )
                     if _row_refusal is not None:
                         raise TableSaveRefused(_row_refusal)
