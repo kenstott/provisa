@@ -76,7 +76,7 @@ _MODELS = {
 }
 
 
-_ADDED_AFTER_THE_SPLIT = frozenset({"property_types"})
+_ADDED_AFTER_THE_SPLIT = frozenset({"property_types", "key_columns"})
 
 
 def _structure(value):
@@ -85,7 +85,8 @@ def _structure(value):
 
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         # A field added after the split carries what the split never built (REQ-778: each
-        # property's registered type); the comparison is of what the split moved.
+        # property's registered type; REQ-2136: a compound key's columns); the comparison is of
+        # what the split moved.
         return (
             type(value).__name__,
             {
