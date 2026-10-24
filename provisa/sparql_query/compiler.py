@@ -40,11 +40,13 @@ import itertools
 from dataclasses import dataclass, field
 from typing import Any
 
+from pyparsing import MatchFirst, Suppress
 from rdflib import BNode, Literal as RdfLiteral, URIRef, Variable as RdfVariable
 from rdflib.paths import AlternativePath, InvPath, MulPath, NegatedPath, Path, SequencePath
 from rdflib.plugins.sparql.algebra import translateQuery
+from rdflib.plugins.sparql import parser as _rdf_parser
 from rdflib.plugins.sparql.parser import parseQuery
-from rdflib.plugins.sparql.parserutils import CompValue
+from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
 from provisa.core import settings_registry
 from provisa.gql.expr_ast import (
@@ -233,6 +235,28 @@ def _solution_modifiers(p: CompValue) -> tuple[CompValue, dict[str, Any]]:
 # --- paths -------------------------------------------------------------------------------------
 
 
+def _keep_negated_inverse_iris() -> None:
+    """rdflib's grammar (7.6) parses a negated set's inverse member, the ``^b`` of ``!(a|^b)``, as
+    an InversePath that keeps no IRI: its rule names no Param, so the IRI is dropped. Give the rule
+    the Param it lacks, so the member reaches the algebra as ``InversePath(part=b)``."""
+    one_of = _rdf_parser.PathOneInPropertySet
+    assert isinstance(one_of, MatchFirst)  # iri | A | '^' (iri | A)
+    inverse = next(e for e in one_of.exprs if isinstance(e, Comp) and e.name == "InversePath")
+    inverse.expr = Suppress("^") + Param("part", _rdf_parser.iri | _rdf_parser.A)
+
+
+_keep_negated_inverse_iris()
+
+
+def _negated_member(arg: Any) -> tuple[Any, bool]:
+    """A negated set's member: its IRI, and whether it is an inverse edge."""
+    if isinstance(arg, InvPath):
+        return arg.arg, True
+    if isinstance(arg, CompValue) and arg.name == "InversePath":
+        return arg.part, True
+    return arg, False
+
+
 def _path_expr(path: Any, vocab: Vocabulary) -> PathExpr:
     if isinstance(path, URIRef):
         return EdgeStep(_edge_type(str(path), vocab))
@@ -246,14 +270,15 @@ def _path_expr(path: Any, vocab: Vocabulary) -> PathExpr:
         lo, hi = {"*": (0, None), "+": (1, None), "?": (0, 1)}[path.mod]
         return RepeatPath(_path_expr(path.path, vocab), lo, hi)
     if isinstance(path, NegatedPath):
-        forward = [a for a in path.args if isinstance(a, URIRef)]
-        backward = [a.arg for a in path.args if isinstance(a, InvPath)]
-        if forward and backward:
-            raise SparqlRefused("A negated set of both forward and inverse edges is not supported")
-        names = tuple(
-            _edge_type(str(a), vocab) for a in (forward or backward) if str(a) in vocab.edges
-        )
-        return NegatedEdges(names, inverse=bool(backward))
+        members = [_negated_member(a) for a in path.args]
+        sets = []
+        for inverse in (False, True):
+            iris = [str(iri) for iri, inv in members if inv == inverse]
+            if iris:
+                names = tuple(_edge_type(iri, vocab) for iri in iris if iri in vocab.edges)
+                sets.append(NegatedEdges(names, inverse=inverse))
+        # !(a|^b) is either: an edge forward that is not a, or one backward that is not b.
+        return sets[0] if len(sets) == 1 else AltPath(tuple(sets))
     raise SparqlRefused(f"The property path {path} is not supported")
 
 

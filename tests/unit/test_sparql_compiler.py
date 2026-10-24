@@ -372,3 +372,45 @@ def test_group_by_a_value_and_order_by_its_count(con):
 def test_an_aggregate_over_no_solution_is_one_row(con):
     rows = _answer(con, "SELECT (COUNT(*) AS ?n) WHERE { ?s <http://example.org/nope> ?o }")
     assert rows == [{"n": 0}]
+
+
+def _sql(con, sql: str) -> list[tuple]:
+    """The equivalent SQL's answer, over the same tables: what each lowering is checked by."""
+    return sorted(con.execute(sql).fetchall())
+
+
+def test_a_negated_set_of_forward_and_inverse_edges_is_either(con):
+    # !(KNOWS|^WORKS_AT) from a person: any edge out of it but KNOWS (its WORKS_AT), or any edge
+    # into it but WORKS_AT (a KNOWS of someone who knows it).
+    rows = _answer(
+        con,
+        f"SELECT ?s ?o WHERE {{ ?s a <{PERSON}> . ?s !(rel:KNOWS|^rel:WORKS_AT) ?o }}",
+    )
+    got = sorted((r["s"], r["o"]) for r in rows)
+    out = _sql(con, "SELECT id, company_id FROM pg.public.persons WHERE company_id IS NOT NULL")
+    back = _sql(
+        con,
+        "SELECT p.id, q.id FROM pg.public.persons p JOIN pg.public.persons q ON q.knows_id = p.id",
+    )
+    want = sorted(
+        [
+            (subject_iri(BASE, "hr", "persons", [s]), subject_iri(BASE, "hr", "companies", [o]))
+            for s, o in out
+        ]
+        + [
+            (subject_iri(BASE, "hr", "persons", [s]), subject_iri(BASE, "hr", "persons", [o]))
+            for s, o in back
+        ]
+    )
+    assert got == want and want
+
+
+def test_a_negated_set_of_inverse_edges_alone_walks_backward(con):
+    # !(^WORKS_AT) into a person: an edge into it that is not WORKS_AT -- someone who knows it.
+    rows = _answer(con, f"SELECT ?s ?o WHERE {{ ?s a <{PERSON}> . ?s !(^rel:WORKS_AT) ?o }}")
+    back = _sql(
+        con,
+        "SELECT p.id, q.id FROM pg.public.persons p JOIN pg.public.persons q ON q.knows_id = p.id",
+    )
+    person = lambda k: subject_iri(BASE, "hr", "persons", [k])  # noqa: E731
+    assert sorted((r["s"], r["o"]) for r in rows) == [(person(s), person(o)) for s, o in back]
