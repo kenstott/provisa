@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2149: a term's graph -- its layers left to right, each arrow named by its relationship type,
+// REQ-2150: a term's graph -- its layers left to right, each arrow named by its relationship type,
 // each node by its catalog name; a click on a term opens it; the expand control shows it full size.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";

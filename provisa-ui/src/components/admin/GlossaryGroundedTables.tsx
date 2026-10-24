@@ -36,7 +36,7 @@ export function GlossaryGroundedTables({
   canEdit: boolean;
   /** After a table is grounded or ungrounded: the term's standing and role may have changed. */
   onChanged: () => void;
-  /** The tables as read, for a view that draws them too (the term graph, REQ-2149). */
+  /** The tables as read, for a view that draws them too (the term graph, REQ-2150). */
   onRead?: (tables: GlossaryTermTable[]) => void;
 }) {
   const { t } = useTranslation();

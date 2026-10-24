@@ -466,7 +466,7 @@ export function GlossaryTab() {
     }
   };
 
-  // Kept from render to render: the term graph (REQ-2149) is drawn again only when its words change.
+  // Kept from render to render: the term graph (REQ-2150) is drawn again only when its words change.
   const relTypeOptions = useMemo(
     () => GLOSSARY_REL_TYPES.map((rt) => ({ value: rt, label: t(`glossaryTab.rel_${rt}`) })),
     [t],

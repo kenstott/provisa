@@ -50,7 +50,7 @@ export function TermReadView({
 }) {
   const { t } = useTranslation();
   const yesNo = (v: boolean) => (v ? t("detailFields.yes") : t("detailFields.no"));
-  // REQ-2149: the graph draws the grounded tables the section below reads (no request of its own),
+  // REQ-2150: the graph draws the grounded tables the section below reads (no request of its own),
   // kept with the term they were read for.
   const [read, setRead] = useState<{ termId: number; tables: GlossaryTermTable[] } | null>(null);
   const onTablesRead = useCallback(

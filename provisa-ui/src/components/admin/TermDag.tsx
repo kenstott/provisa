@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2149: a term's neighbourhood drawn as a layered graph, left to right (term-graph.ts), laid
+// REQ-2150: a term's neighbourhood drawn as a layered graph, left to right (term-graph.ts), laid
 // out by ELK as the lineage DAG is. Compact in the term's panel; the expand control opens it at
 // full size. A click on a term opens that term.
 

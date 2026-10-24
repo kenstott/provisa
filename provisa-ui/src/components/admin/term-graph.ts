@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2149: a term's neighbourhood as layers, left to right -- the terms whose relationships
+// REQ-2150: a term's neighbourhood as layers, left to right -- the terms whose relationships
 // point to it, the term, the terms its relationships point to, then what it refers to (its
 // columns, and for a Class term its tables). One hop each way, each arrow named by its
 // relationship type, each node by its catalog name.
