@@ -66,6 +66,7 @@ async def generation_loop(  # REQ-355, REQ-356
     llm: LLMClient,
     max_iterations: int = MAX_ITERATIONS,
     relevant_entities: str = "",
+    best_effort: bool = False,
 ) -> tuple[str | None, str | None]:
     """Run a single generate→validate loop for one target language.
 
@@ -76,6 +77,8 @@ async def generation_loop(  # REQ-355, REQ-356
         compiler: Callable that validates a query string → CompileResult.
         llm: LLM client used to generate query text.
         max_iterations: Maximum number of generate-validate cycles.
+        best_effort: non-strict -- a retry whose error says the language cannot express part of
+            the question answers with the closest query it can (build_prompt).
 
     Returns:
         (valid_query, None) on success, or (None, last_error) on exhaustion.
@@ -83,7 +86,9 @@ async def generation_loop(  # REQ-355, REQ-356
     prior_error: str | None = None
 
     for iteration in range(max_iterations):
-        prompt = build_prompt(nl_query, target, schema_sdl, prior_error, relevant_entities)
+        prompt = build_prompt(
+            nl_query, target, schema_sdl, prior_error, relevant_entities, best_effort=best_effort
+        )
         try:
             generated = await llm.complete(prompt)
         except Exception as exc:
