@@ -18,10 +18,12 @@ over a Unix domain socket in a private directory: Provisa listens, the host conn
 the protocol; what it prints to stderr is kept (the last lines) to name a crash.
 
 A CONNECTION PER CONCURRENT CALL. Each call leases one of the worker's connections for its whole
-run, and a call that finds every one leased waits for one. What the host sends on a connection
-waits for the call's thread, at most :data:`_QUEUED` frames: past that the connection is not read,
-so a call whose reader is slower than its function holds back the host's writes on its own
-connection alone, never another call's rows (REQ-2100).
+run, and a call that finds every one leased waits for one (REQ-2100).
+
+CREDIT. A call's host sends at most :data:`_QUEUED` rows frames (the call's ``window``) ahead of
+the call's thread: each frame the thread takes gives one back (``credit``). So the function is
+pulled at most a window of frames, and the one it is building, ahead of its reader, whatever the
+sockets between them buffer, and a slow reader holds back its own function and no other call.
 
 A frame is a 4-byte big-endian length, then that many bytes: a kind byte and its body. ``J`` is
 a control message, UTF-8 JSON. ``A`` is rows: the call's id (8 bytes, big-endian) and an Arrow IPC
@@ -34,7 +36,9 @@ the order ``args`` gives them, for a host whose language passes arguments by nam
 
     Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream"|"columns", args, names,
                       schema,  -- the rows' Arrow schema, base64 IPC; null for a single value
-                      traceparent}  -- the request's trace (W3C), or null (REQ-2106)
+                      traceparent,  -- the request's trace (W3C), or null (REQ-2106)
+                      window}  -- how many rows frames the host may send before a credit
+                     {op: "credit", id, n}  -- the call's thread took n of its rows frames
                      {op: "call", id, export, kind: "table", calls: [{args, names}, ...], schema,
                       traceparent}  -- REQ-2099: a table called once per argument set, in
                                        order, in the host, its rows sent under the one call id
@@ -99,6 +103,19 @@ CONNECTIONS = 8
 CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
 #: How many of a call's frames its connection holds for the call's thread before it stops reading.
 _QUEUED = 4
+
+
+def duckdb_bounds() -> dict[str, int]:
+    """REQ-2100: the operator's bounds on a code source's DuckDB -- its memory, threads and spill
+    cap -- as a code host is given them, with pairing and with every call."""
+    from provisa.core import settings_registry
+
+    return {
+        "memory_mb": int(settings_registry.value("codesource.duckdb_memory_mb")),
+        "threads": int(settings_registry.value("codesource.duckdb_threads")),
+        "spill_cap_mb": int(settings_registry.value("codesource.duckdb_spill_cap_mb")),
+    }
+
 
 #: The variable a host reads the content hash of its code from, which its hello names.
 CODE_HASH_ENV = "PROVISA_CODE_HASH"
@@ -636,6 +653,12 @@ class Worker:
             raise WorkerFailed(self.source_id, message.message, export=export)
         if message["op"] == "error":
             raise CodeFailed(self.source_id, export, message["message"], message.get("stack", ""))
+        if message["op"] == "rows":
+            # Taken: the host may send one more of the call's frames.
+            try:
+                self._send(lane, {"op": "credit", "id": call_id, "n": 1})
+            except (OSError, WorkerFailed):
+                pass  # the worker has ended: the call fails on its next message, naming it
         return message
 
     def rows(
@@ -854,6 +877,7 @@ class Worker:
             "names": list(names),
             "schema": schema,
             "traceparent": current_traceparent(),
+            "window": _QUEUED,
         }
 
     def ping(self, timeout: float = 5.0) -> bool:

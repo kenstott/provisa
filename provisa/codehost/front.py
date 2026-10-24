@@ -10,7 +10,7 @@
 
 """The front end of every built image, Node or Python (REQ-2098, REQ-2100).
 
-    <python> front.py <port> <state directory> <names file> <worker argv ...>
+    <python> front.py <port> <state directory> <spill directory> <names file> <worker argv ...>
 
 It serves the image's one port, 7443, over TLS, and runs the code's worker beside it: the
 language's host program (Python's host.py, Node's host.mjs), started once with a connected socket
@@ -186,8 +186,9 @@ class Identity:
         der = ssl.PEM_cert_to_DER_cert((self.state / CERTIFICATE).read_text())
         return pairing_code(der, (self.state / SECRET).read_text())
 
-    def pair(self, conn: ssl.SSLSocket) -> None:
-        """Take one pair message on ``conn``: with the pairing secret, keep its certificate."""
+    def pair(self, conn: ssl.SSLSocket, bounds: Bounds) -> None:
+        """Take one pair message on ``conn``: with the pairing secret, keep its certificate and
+        the bounds of the host's DuckDB it carries."""
         body = read_body(conn)
         message = json.loads(body[1:]) if body and body[:1] == _JSON else {}
         with self._lock:
@@ -200,14 +201,61 @@ class Identity:
             ):
                 conn.sendall(frame({"op": "refused", "message": "not this host's pairing code"}))
                 return
+            if not isinstance(message.get("duckdb"), dict):
+                conn.sendall(
+                    frame(
+                        {
+                            "op": "refused",
+                            "message": "the pairing gave no bounds for this host's DuckDB",
+                        }
+                    )
+                )
+                return
             certificate = str(message["certificate"])
             ssl.PEM_cert_to_DER_cert(certificate)  # a certificate, or refused here
             (self.state / TRUSTED).write_text(certificate)
             (self.state / SECRET).unlink()
             self.context.load_verify_locations(self.state / TRUSTED)
             self.context.verify_mode = ssl.CERT_OPTIONAL
+        bounds.apply(message["duckdb"])
         conn.sendall(frame({"op": "paired"}))
         sys.stderr.write("paired with Provisa\n")
+
+
+# -- the DuckDB's bounds --------------------------------------------------------------------------
+
+
+class Bounds:
+    """REQ-2100: the bounds of the host's DuckDB (residual.configure) -- its memory, threads and
+    spill cap -- as Provisa gave them with pairing and with each call since, kept in the state
+    directory, so a front that starts again (a container restarted) answers an engine with them
+    before Provisa calls it. It spills into ``spill``, a volume of its own."""
+
+    FILE = "duckdb.json"
+
+    def __init__(self, state: Path, spill: str) -> None:
+        self._held = state / self.FILE
+        self._spill = spill
+        self._lock = threading.Lock()
+        self._given: dict | None = None
+        if self._held.is_file():
+            self.apply(json.loads(self._held.read_text()))
+
+    def apply(self, given: dict) -> None:
+        import importlib
+
+        residual = importlib.import_module("residual")  # beside this program, in the image
+        with self._lock:
+            if given == self._given:
+                return
+            residual.configure(
+                memory_mb=int(given["memory_mb"]),
+                threads=int(given["threads"]),
+                spill_cap_mb=int(given["spill_cap_mb"]),
+                spill_dir=self._spill,
+            )
+            self._held.write_text(json.dumps(given))
+            self._given = dict(given)
 
 
 # -- the worker, shared ---------------------------------------------------------------------------
@@ -287,10 +335,16 @@ class _Lane:
 
 
 class _Running:
-    """A Provisa call the front serves: cancelled before or while it runs."""
+    """A Provisa call the front serves: cancelled before or while it runs. Its credit (REQ-2100):
+    a call the front answers itself (a residual) sends Provisa its answer's frames as Provisa
+    grants them; any other's credits go on to the worker, those that come before its call does
+    held until it has."""
 
-    def __init__(self) -> None:
+    def __init__(self, residual: bool, window: int) -> None:
         self.cancelled = False
+        self.residual = residual
+        self.credits = threading.Semaphore(window)
+        self.pending = 0
         self.lane: _Lane | None = None
         self.own: int | None = None
 
@@ -308,7 +362,8 @@ class Worker:
     for its whole run on a thread of its own: a call's rows reach its Provisa connection as fast as
     it reads them, and no faster."""
 
-    def __init__(self, argv: list[str]) -> None:
+    def __init__(self, argv: list[str], bounds: Bounds) -> None:
+        self.bounds = bounds
         pairs = [socket.socketpair() for _ in range(CONNECTIONS)]
         theirs = [t.fileno() for _, t in pairs]
         argv = [a.replace("{fd}", f"fd:{','.join(map(str, theirs))}") for a in argv]
@@ -360,9 +415,10 @@ class Worker:
             self._leases.notify()
 
     @staticmethod
-    def _frames(lane: _Lane, own: int) -> Iterator[dict]:
+    def _frames(lane: _Lane, own: int, *, credit: bool = False) -> Iterator[dict]:
         """The call's messages up to its end, the last: a cancel ends them before it, the code's
-        error raises :class:`_Failed`."""
+        error raises :class:`_Failed`. ``credit``: the front is the call's reader, and gives the
+        worker a credit for each rows frame it takes."""
         while True:
             message = lane.waiting.get()
             if isinstance(message, _Cancelled):
@@ -373,13 +429,15 @@ class Worker:
                 continue  # an earlier call on the connection, still sending
             if message["op"] == "error":
                 raise _Failed(message)
+            if credit and message["op"] == "rows":
+                lane.send({"op": "credit", "id": own, "n": 1})
             yield message
             if message["op"] == "end":
                 return
 
     def call(self, connection: Connection, message: dict) -> None:
         """A connection's call, served on a thread of its own."""
-        running = _Running()
+        running = _Running("residual" in message, int(message["window"]))
         with self._lock:
             self._running[(id(connection), message["id"])] = running
         threading.Thread(
@@ -389,15 +447,25 @@ class Worker:
     def _serve(self, connection: Connection, message: dict, running: _Running) -> None:
         call_id = message["id"]
         residual = message.pop("residual", None)
+        # Every call from Provisa carries the operator's bounds as they are now.
+        given = message.pop("duckdb", None)
+        if given is not None:
+            self.bounds.apply(given)
         lane, own = self._lease()
         try:
-            with self._lock:
-                if running.cancelled:
-                    return
-                running.lane, running.own = lane, own
+            if running.cancelled:
+                return
             lane.send({**message, "id": own})
+            with self._lock:
+                running.lane, running.own = lane, own
+                held, running.pending = running.pending, 0
+            if running.cancelled:
+                lane.send({"op": "cancel", "id": own})
+                return
+            if held and residual is None:
+                lane.send({"op": "credit", "id": own, "n": held})
             if residual is not None:
-                self._answer(connection, call_id, lane, own, residual)
+                self._answer(connection, call_id, lane, own, residual, running)
                 return
             for each in self._frames(lane, own):
                 if each["op"] == "rows":
@@ -412,7 +480,13 @@ class Worker:
             self._release(lane)
 
     def _answer(
-        self, connection: Connection, call_id: int, lane: _Lane, own: int, residual: dict
+        self,
+        connection: Connection,
+        call_id: int,
+        lane: _Lane,
+        own: int,
+        residual: dict,
+        running: _Running,
     ) -> None:
         """REQ-2100: the call's statement over its function's rows, streamed: the rows into
         DuckDB as the worker sends them, the answer to Provisa a batch at a time. A statement
@@ -425,7 +499,7 @@ class Worker:
         ended: list[dict] = []
 
         def ipcs() -> Iterator[bytes]:
-            for each in self._frames(lane, own):
+            for each in self._frames(lane, own, credit=True):
                 if each["op"] == "rows":
                     yield each["arrow"]
                 elif each["op"] == "end":
@@ -443,10 +517,15 @@ class Worker:
             )
             sent = False
             for batch in answered:
+                # Each of the answer's frames as Provisa grants it (its credit).
+                running.credits.acquire()
+                if running.cancelled:
+                    return
                 connection.send(rows_frame(call_id, _ipc(batch)))
                 sent = True
             if not sent:
                 # An empty answer still names its columns: one empty batch of them.
+                running.credits.acquire()
                 empty = pa.RecordBatch.from_pylist([], schema=answered.schema)
                 connection.send(rows_frame(call_id, _ipc(empty)))
         except _Failed:
@@ -476,10 +555,11 @@ class Worker:
                     "names": names,
                     "schema": schema,
                     "traceparent": None,
+                    "window": _QUEUED,
                 }
             )
             try:
-                for each in self._frames(lane, own):
+                for each in self._frames(lane, own, credit=True):
                     if each["op"] == "rows":
                         yield each["arrow"]
                     elif each["op"] == "end":
@@ -493,19 +573,39 @@ class Worker:
             self._release(lane)
 
     def forward(self, connection: Connection, message: dict) -> None:
-        """A connection's cancel or ping, for the call it names."""
+        """A connection's cancel, credit or ping, for the call it names."""
         if message["op"] == "ping":
             connection.send(frame({"op": "pong", "id": message["id"]}))
             return
         with self._lock:
             running = self._running.get((id(connection), message["id"]))
-        if running is not None:
-            self._cancel(running)
+        if running is None:
+            return
+        if message["op"] == "credit":
+            self._credit(running, int(message["n"]))
+            return
+        self._cancel(running)
+
+    def _credit(self, running: _Running, n: int) -> None:
+        """Provisa took ``n`` of the call's frames: an answer the front makes may send as many
+        more; any other call's credit goes on to the worker, held until its call has."""
+        if running.residual:
+            for _ in range(n):
+                running.credits.release()
+            return
+        with self._lock:
+            lane, own = running.lane, running.own
+            if lane is None or own is None:
+                running.pending += n  # its call has not reached the worker yet
+                return
+        lane.send({"op": "credit", "id": own, "n": n})
 
     def _cancel(self, running: _Running) -> None:
         with self._lock:
             running.cancelled = True
             lane, own = running.lane, running.own
+        # An answer waiting for Provisa's credit is let go: it stops at once.
+        running.credits.release()
         if lane is not None and own is not None:
             lane.force(_Cancelled(own))
             lane.send({"op": "cancel", "id": own})
@@ -571,7 +671,7 @@ class _Handler(socketserver.BaseRequestHandler):
                 return
             conn = self.front.identity.context.wrap_socket(raw, server_side=True)
             if not self.front.identity.paired:
-                self.front.identity.pair(conn)
+                self.front.identity.pair(conn, self.front.worker.bounds)
                 return
             if not conn.getpeercert():
                 return  # no certificate, or not the paired Provisa's: the TLS check refused it
@@ -589,7 +689,7 @@ class _Handler(socketserver.BaseRequestHandler):
                 op = message.get("op")
                 if op == "call":
                     worker.call(connection, message)
-                elif op in ("cancel", "ping"):
+                elif op in ("cancel", "credit", "ping"):
                     worker.forward(connection, message)
                 elif op == "refused":
                     sys.stderr.write(f"provisa refused this host: {message.get('message')}\n")
@@ -608,9 +708,10 @@ class _Handler(socketserver.BaseRequestHandler):
 
 
 def main(argv: list[str]) -> int:
-    port, state, names_file, *worker_argv = argv
+    port, state, spill, names_file, *worker_argv = argv
     os.dup2(2, 1)  # what is printed goes to the container's log, never to a connection
     Path(state).mkdir(parents=True, exist_ok=True)
+    Path(spill).mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     # The image's own libraries for the front end, apart from the code's (image_build.py); run
     # beside Provisa's source, the interpreter's.
@@ -619,7 +720,7 @@ def main(argv: list[str]) -> int:
         sys.path.insert(1, lib)
     identity = Identity(Path(state))
     names = json.loads(Path(names_file).read_text())
-    worker = Worker(worker_argv)
+    worker = Worker(worker_argv, Bounds(Path(state), spill))
     pairing = identity.code()
     if pairing is not None:
         sys.stderr.write(f"pairing code: {pairing}\n")

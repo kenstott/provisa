@@ -66,6 +66,9 @@ _CPU = {"amd64": "x64", "arm64": "arm64"}
 #: Where everything is in the image.
 ROOT = "/opt/provisa"
 STATE = "/var/lib/provisa"
+#: REQ-2100: where the image's DuckDB spills, a volume of its own the operator sizes to the
+#: spill cap (codesource.duckdb_spill_cap_mb) with the platform's quota.
+SPILL = "/var/lib/provisa-spill"
 #: distroless's unprivileged user and group.
 NONROOT = 65532
 
@@ -114,7 +117,8 @@ def _names_text(names: dict) -> str:
 
 def compose_snippet(image_ref: str, service: str) -> str:
     """The compose service the UI shows after a build (and the docs): the fixed internal port
-    published on a host port the operator must name, the state on a volume."""
+    published on a host port the operator must name, the state on a volume, and the spill on a
+    volume of its own, which bounds the spill only when it is sized to the cap."""
     return (
         "services:\n"
         f"  {service}:\n"
@@ -124,8 +128,14 @@ def compose_snippet(image_ref: str, service: str) -> str:
         f'      - "${{PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}}:{HOST_PORT}"\n'
         "    volumes:\n"
         f"      - {service}-state:{STATE}\n"
+        f"      - {service}-spill:{SPILL}\n"
         "volumes:\n"
         f"  {service}-state: {{}}\n"
+        "  # Size this volume to codesource.duckdb_spill_cap_mb with the platform's quota\n"
+        "  # (Kubernetes ephemeral-storage or an emptyDir sizeLimit, an xfs project quota, or a\n"
+        "  # volume driver's size option). Without a quota the disk the image spills to is not\n"
+        "  # bounded.\n"
+        f"  {service}-spill: {{}}\n"
     )
 
 
@@ -176,7 +186,11 @@ def assemble(
     )
     layers_dir = workdir / "layers"
     state = oci.write_layer(
-        [oci.Entry(STATE, directory=True, mode=0o700, owner=NONROOT)], layers_dir
+        [
+            oci.Entry(STATE, directory=True, mode=0o700, owner=NONROOT),
+            oci.Entry(SPILL, directory=True, mode=0o700, owner=NONROOT),
+        ],
+        layers_dir,
     )
     if plan.language == "python":
         own, worker, env = _python(plan, root, target, arch, workdir, run)
@@ -325,7 +339,8 @@ def _front(
         ],
     ]
     entrypoint = [
-        python, "-I", f"{FRONT}/front.py", str(HOST_PORT), STATE, f"{FRONT}/names.json", *worker,
+        python, "-I", f"{FRONT}/front.py", str(HOST_PORT), STATE, SPILL, f"{FRONT}/names.json",
+        *worker,
     ]  # fmt: skip
     return layers, entrypoint
 
