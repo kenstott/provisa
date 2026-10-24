@@ -40,6 +40,7 @@ from provisa.transpiler.router import Route, decide_route
 
 pytestmark = pytest.mark.unit
 
+
 PUSHDOWN = {
     "region": {"column": "region", "op": "eq"},
     "gte_score": {"column": "score", "op": "gte"},
@@ -355,10 +356,18 @@ async def test_the_plan_of_a_code_sources_own_read_is_its_complete_dataset(prepa
     from provisa.codesource.proxy import CodeProxy
     from provisa.federation.connector_contract import Read
 
-    plan = await CodeProxy().plan(
-        None, Read(table=TABLE, name="scores", statement="SELECT id FROM main.scores")
-    )
+    read = Read(table=TABLE, name="scores", statement="SELECT id FROM main.scores")
+    plan = await CodeProxy().plan(_state(), read)
     assert plan.complete_dataset and plan.incomplete_because is None
+    # A table read from its landed rows -- a declared landing TTL, or the operator's replica --
+    # is no read the code answers whole: the engine reads where it landed.
+    landed = Read(
+        table={**TABLE, "cache_ttl": 300}, name="scores", statement="SELECT id FROM main.scores"
+    )
+    plan = await CodeProxy().plan(_state(), landed)
+    assert not plan.complete_dataset and plan.incomplete_because
+    plan = await CodeProxy().plan(_state(floored={TABLE["id"]}), read)
+    assert not plan.complete_dataset
 
 
 async def test_a_statement_the_engine_runs_after_all_lands_its_tables_then(monkeypatch):
@@ -537,3 +546,22 @@ async def test_a_table_typed_by_a_preview_is_read_into_its_registered_columns(
         landed, "SELECT code FROM currencies WHERE rate < 1 ORDER BY code", "currencies"
     )
     assert answer.column("code").to_pylist() == ["EUR", "GBP"]
+
+
+async def test_a_code_statement_is_complete_only_when_it_is_read_direct():
+    """The router's complete-dataset input for a code source is the materialization step's own
+    test (direct_tables): a statement it lands -- one that also reaches another source's table, as
+    an INSERT ... SELECT's read does, or a table declaring a landing TTL -- is read where it landed
+    by the engine, never handed to the code's driver as SQL over the landed table."""
+    from provisa.pgwire._pipeline import _proxy_plan
+
+    target = {**REGIONS, "id": 11, "source_id": "pg", "table_name": "targets"}
+    landing = {**TABLE, "cache_ttl": 300}
+    sql = "SELECT s.id FROM main.scores AS s"
+    across = await _proxy_plan({"scores-src"}, sql, None, _state((TABLE, target)), (9, 11))
+    assert across == {
+        "complete_dataset": False,
+        "incomplete": "its tables are read where they landed",
+    }
+    landed = await _proxy_plan({"scores-src"}, sql, None, _state((landing,)), (9,))
+    assert landed["complete_dataset"] is False
