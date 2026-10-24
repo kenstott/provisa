@@ -73,12 +73,19 @@ class _Sections(HTMLParser):
             self._clause.append(data)
 
 
-def policy_sections(url: str = "cloud-security-policy.html") -> list[PolicySection]:
-    """The controls of the policy published at ``url`` (the shipped policy when left out), in the
-    document's order.
+@dataclass
+class PolicyInputs:
+    #: The policy document to read; the shipped policy when left out.
+    url: str = "cloud-security-policy.html"
+
+
+def policy_sections(inputs: PolicyInputs) -> list[PolicySection]:
+    """The controls of the policy published at ``inputs.url`` (the shipped policy when left
+    out), in the document's order.
 
     @table
     """
+    url = inputs.url
     document = (_HERE / url).resolve()
     if _HERE not in document.parents:
         raise ValueError(f"{url} is not a document of this package")

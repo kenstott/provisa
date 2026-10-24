@@ -882,6 +882,20 @@
         "label": "Máximo de predicados que um predicado variável abrange",
         "help": "Um padrão SPARQL cujo predicado é uma variável lê cada predicado mapeado que poderia corresponder, um ramo para cada. Uma consulta que precisa de mais ramos é recusada, indicando o limite."
       }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "Memória do DuckDB da fonte de código",
+        "help": "A memória em que o DuckDB de uma fonte de código responde a uma instrução. Acima dela, a instrução é despejada no disco."
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "Limite de despejo do DuckDB da fonte de código",
+        "help": "O máximo que o DuckDB de uma fonte de código despeja no disco. Uma instrução que precise de mais é recusada, indicando esta configuração. Uma imagem construída só o aplica quando o seu volume de despejo tem este tamanho pela quota da plataforma. Uma fonte de código em modo de desenvolvimento despeja no diretório de dados sem limite."
+      },
+      "duckdb_threads": {
+        "label": "Threads do DuckDB da fonte de código",
+        "help": "As threads em que o DuckDB de uma fonte de código responde às suas instruções."
+      }
     }
   }
 }

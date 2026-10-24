@@ -8030,5 +8030,11 @@
   "es/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
   "es/serverErrors.json::serverErrors.cypher.invalid_skip": "SKIP {{value}} is not a whole number of rows: SKIP takes a count of 0 or more, e.g. SKIP 10.",
   "es/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
-  "es/graphFrame.json::graphFrame.deleteFrame": "Delete this result"
+  "es/graphFrame.json::graphFrame.deleteFrame": "Delete this result",
+  "es/settings.json::settings.codesource.duckdb_memory_mb.label": "Code source DuckDB memory",
+  "es/settings.json::settings.codesource.duckdb_memory_mb.help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk.",
+  "es/settings.json::settings.codesource.duckdb_spill_cap_mb.label": "Code source DuckDB spill cap",
+  "es/settings.json::settings.codesource.duckdb_spill_cap_mb.help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound.",
+  "es/settings.json::settings.codesource.duckdb_threads.label": "Code source DuckDB threads",
+  "es/settings.json::settings.codesource.duckdb_threads.help": "The threads a code source's DuckDB answers its statements on."
 }

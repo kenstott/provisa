@@ -8029,5 +8029,11 @@
   "ja/serverErrors.json::serverErrors.cypher.engine_refused": "The engine refused the query: {{error}}",
   "ja/serverErrors.json::serverErrors.cypher.nested_aggregate": "{{outer}} aggregates the aggregate {{inner}}: an aggregate cannot be taken of another. Aggregate in a WITH first.",
   "ja/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
-  "ja/graphFrame.json::graphFrame.deleteFrame": "Delete this result"
+  "ja/graphFrame.json::graphFrame.deleteFrame": "Delete this result",
+  "ja/settings.json::settings.codesource.duckdb_memory_mb.label": "Code source DuckDB memory",
+  "ja/settings.json::settings.codesource.duckdb_memory_mb.help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk.",
+  "ja/settings.json::settings.codesource.duckdb_spill_cap_mb.label": "Code source DuckDB spill cap",
+  "ja/settings.json::settings.codesource.duckdb_spill_cap_mb.help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound.",
+  "ja/settings.json::settings.codesource.duckdb_threads.label": "Code source DuckDB threads",
+  "ja/settings.json::settings.codesource.duckdb_threads.help": "The threads a code source's DuckDB answers its statements on."
 }
