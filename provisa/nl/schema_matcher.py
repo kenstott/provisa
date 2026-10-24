@@ -29,6 +29,8 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
+from provisa.core.held_sizes import held
+
 if TYPE_CHECKING:
     from provisa.api.app import AppState
 
@@ -283,6 +285,7 @@ class _CacheEntry:
 
 
 _CACHE: dict[str, _CacheEntry] = {}
+held(__name__, "_CACHE", _CACHE)
 
 
 async def get_matcher(

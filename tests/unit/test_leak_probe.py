@@ -61,3 +61,35 @@ def test_with_the_flag_it_answers_the_processes_counts_and_what_grew(monkeypatch
     assert first["tracing"] and first["grew"] == []  # nothing to compare the first snapshot with
     assert {"tasks", "loops", "threads"} <= set(second)
     assert all(g["size_diff"] > 0 for g in second["grew"]) and second["traced_bytes"] > 0
+
+
+def test_it_answers_each_process_wide_maps_entries_and_each_pools_connections(monkeypatch):
+    from provisa.core import held_sizes
+    from provisa.core.sync_pool import BlockingPool
+
+    monkeypatch.setenv(leak_probe.ENV, "1")
+    roles: dict[str, int] = {"analyst": 1}
+    monkeypatch.setattr(held_sizes, "_sizes", {"nl.schema_matcher": lambda: len(roles)})
+    pool = BlockingPool(object, lambda conn: None, minsize=2, maxsize=4, wait_s=1, name="pg-a")
+    taken = pool.getconn()
+    answer = TestClient(_app()).get("/debug/leak-probe").json()
+    pool.putconn(taken)
+    pool.closeall()
+    assert answer["maps"] == {"nl.schema_matcher": 1}
+    assert {"name": "pg-a", "open": 2, "checked_out": 1, "maxsize": 4} in answer["pools"]
+
+
+def test_the_process_wide_maps_are_registered_at_their_modules_import():
+    from provisa.core import held_sizes
+    import provisa.core.egress  # noqa: F401
+    import provisa.discovery.catalog_cache  # noqa: F401
+    import provisa.federation.pgwire_replica  # noqa: F401
+    import provisa.nl.schema_matcher  # noqa: F401
+
+    assert {
+        "provisa.core.egress._PENDING",
+        "provisa.discovery.catalog_cache._COLUMN_FILLS",
+        "provisa.federation.pgwire_replica._ENDPOINTS",
+        "provisa.federation.pgwire_replica._ENDPOINT_USERS",
+        "provisa.nl.schema_matcher._CACHE",
+    } <= set(held_sizes.sizes())

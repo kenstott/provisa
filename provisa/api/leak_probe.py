@@ -13,7 +13,8 @@
 Mounted only when ``PROVISA_LEAK_PROBE=1`` -- the leak test's server sets it, and no deployment
 does -- because what it answers is the process's own: its asyncio tasks across every loop, its
 threads, how many entries each org-kept map holds (``org_forget.sizes``, the same set an org's
-deletion clears), and, when the process was started under ``PYTHONTRACEMALLOC``, the memory its
+deletion clears) and each process-wide map (``held_sizes``), each connection pool's open and
+checked-out connections, and, when the process was started under ``PYTHONTRACEMALLOC``, the memory its
 Python allocations hold and the allocation sites that grew since the last call. Resident memory, file descriptors and
 sockets the test reads of the process from outside.
 """
@@ -66,7 +67,9 @@ def mount(app: Any) -> None:
     if not enabled():
         return
     from provisa.core.connection_loop import live_loops
+    from provisa.core import held_sizes
     from provisa.core.org_forget import sizes
+    from provisa.core.sync_pool import pools
 
     from concurrent.futures import ThreadPoolExecutor
 
@@ -92,6 +95,8 @@ def mount(app: Any) -> None:
             "loops": len(loops),
             "threads": threading.active_count(),
             "org_maps": sizes(),
+            "maps": held_sizes.sizes(),
+            "pools": pools(),
             "tracing": tracemalloc.is_tracing(),
             # What Python allocations hold now: beside the process's resident memory, it says
             # whether growth is Python's (and so named in ``grew``) or a native library's.
