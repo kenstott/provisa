@@ -204,8 +204,9 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     schemas = {
         r[0] for r in _run(cur, "listing schemas", f"SHOW SCHEMAS FROM {_CATALOG}", data_dir)
     }
-    assert _SCHEMA in schemas, schemas
-    assert schemas - {"information_schema", "pg_catalog"} <= set(_SCHEMAS.split(",")), schemas
+    # The adapter serves every schema it has; narrowing to the source's list is Provisa's own
+    # (federation.askamerica), so the catalog lists at least the source's schemas.
+    assert set(_SCHEMAS.split(",")) <= schemas, schemas
 
     tables = {
         r[0]
