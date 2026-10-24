@@ -3628,7 +3628,6 @@
   "hi/registerTableForm.json::registerTableForm.cosmosQueryHint": "{\"container\": …, \"query\": \"SELECT … @name\"} -- each @name is an argument, sent beside the query",
   "hi/registerTableForm.json::registerTableForm.cosmosQueryLabel": "Query",
   "hi/registerTableForm.json::registerTableForm.cosmosQueryPlaceholder": "{\"container\": \"products\", \"query\": \"SELECT TOP 10 c.id, c.name, VectorDistance(c.embedding, @query_vector) AS score FROM c ORDER BY VectorDistance(c.embedding, @query_vector)\"}",
-  "hi/registerTableForm.json::registerTableForm.dataProductHint": "(publish to catalog / export to Atlas, Atlan, etc.)",
   "hi/registerTableForm.json::registerTableForm.dataProductLabel": "Data Product",
   "hi/registerTableForm.json::registerTableForm.dataTypePlaceholder": "Assign type...",
   "hi/registerTableForm.json::registerTableForm.descriptionColPlaceholder": "description",

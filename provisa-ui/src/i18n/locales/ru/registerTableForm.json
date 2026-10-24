@@ -23,7 +23,6 @@
     "descriptionLabel": "Описание",
     "descriptionPlaceholder": "Отображается в документации SDL",
     "dataProductLabel": "Дата-продукт",
-    "dataProductHint": "(публикация в каталог / экспорт в Atlas, Atlan и др.)",
     "discoverLabel": "Обнаружить столбцы",
     "discoverHint": "(вывод столбцов из живого источника при регистрации — для бессхемных/NoSQL-источников; ручной выбор столбцов не требуется)",
     "watermarkLabel": "Столбец водяного знака",
