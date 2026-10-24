@@ -67,9 +67,8 @@ function reader(): MetaReader {
           refs: list("M__GlossaryTermRefs"),
           edgesOut: list("M__GlossaryTermEdges"),
           edgesIn: list("M__GlossaryTermEdges"),
-          tables: list("M__GlossaryTermTableRefs"),
+          tables: list("M__RegisteredTables"),
         }),
-        type("M__GlossaryTermTableRefs", { tableId: scalar, tableName: scalar, domainId: scalar }),
         type("M__GlossaryTermDomains", { domainId: scalar }),
         type("M__GlossaryTermRefs", {
           termId: scalar,
@@ -247,7 +246,7 @@ describe("the Ontology View's query", () => {
   it("reads the tables a class term grounds with the ontology, in the domains kept", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"], { domains: ["sales"] })));
     expect(q).toContain(
-      'tables: tables(where: { domainId: { in: ["sales"] } }) { table_id: tableId table_name: tableName domain_id: domainId }',
+      'tables: tables(where: { domainId: { in: ["sales"] } }) { id: id table_name: tableName domain_id: domainId }',
     );
     expect(squash(ontologyQuery(reader(), scope(["domains"])))).not.toContain("tables:");
     // A class term is no orphan: its table is a relationship drawn.

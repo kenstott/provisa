@@ -173,21 +173,6 @@
        }
       },
       {
-       "name": "m__glossaryTermTableRefs",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__GlossaryTermTableRefs"
-         }
-        }
-       }
-      },
-      {
        "name": "m__glossaryTerms",
        "type": {
         "kind": "LIST",
@@ -1126,21 +1111,6 @@
        "type": {
         "kind": "OBJECT",
         "name": "M__DataProducts"
-       }
-      },
-      {
-       "name": "glossaryRefs",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__GlossaryTermRefs"
-         }
-        }
        }
       },
       {
@@ -2113,7 +2083,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "M__GlossaryTermTableRefs"
+          "name": "M__RegisteredTables"
          }
         }
        }
@@ -2494,21 +2464,6 @@
        }
       },
       {
-       "name": "columnTags",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__TagAssignments"
-         }
-        }
-       }
-      },
-      {
        "name": "term",
        "type": {
         "kind": "OBJECT",
@@ -2517,110 +2472,6 @@
       }
      ],
      "name": "M__GlossaryTermRefs"
-    },
-    {
-     "fields": [
-      {
-       "name": "domainId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "id",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "schemaName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "sourceId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tableId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "tableName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "tenantId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "termDomains",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "termId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Int"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "table",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__RegisteredTables"
-       }
-      },
-      {
-       "name": "term",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__GlossaryTerms"
-       }
-      }
-     ],
-     "name": "M__GlossaryTermTableRefs"
     },
     {
      "fields": [
@@ -4234,11 +4085,6 @@
    "domain_id": "meta",
    "graphql_field": "m__glossaryTermRefs",
    "table_name": "glossary_term_refs"
-  },
-  {
-   "domain_id": "meta",
-   "graphql_field": "m__glossaryTermTableRefs",
-   "table_name": "glossary_term_table_refs"
   },
   {
    "domain_id": "meta",

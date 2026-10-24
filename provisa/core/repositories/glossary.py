@@ -52,7 +52,6 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
-    glossary_term_table_refs,
     glossary_terms,
     registered_tables,
     relationships,
@@ -97,8 +96,10 @@ async def term_domains(conn: "Connection") -> dict[int, set[str]]:
     # columns, so their domains derive its own the same way.
     rows += (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id, registered_tables.c.domain_id)
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            select(
+                registered_tables.c.class_term_id.label("term_id"), registered_tables.c.domain_id
+            )
+            .where(registered_tables.c.class_term_id.is_not(None))
             .distinct()
         )
     ).fetchall()
@@ -133,15 +134,20 @@ async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "se
 # ---------------------------------------------------------------------------
 
 
+def _class_term_ids():
+    """The class term of every grounded table, one row per table (REQ-2130)."""
+    return select(registered_tables.c.class_term_id.label("term_id")).where(
+        registered_tables.c.class_term_id.is_not(None)
+    )
+
+
 async def _class_term_of(conn: "Connection", table_id: int) -> int | None:
     row = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id).where(
-                glossary_term_table_refs.c.table_id == table_id
-            )
+            select(registered_tables.c.class_term_id).where(registered_tables.c.id == table_id)
         )
     ).first()
-    return None if row is None else row.term_id
+    return None if row is None else row.class_term_id
 
 
 async def _primary_keys(conn: "Connection", table_id: int) -> set[str]:
@@ -230,10 +236,14 @@ async def draft_class_terms(conn: "Connection") -> set[int]:
     (REQ-2141). A term a configuration declared or a person grounded, or a curated one, is not."""
     rows = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id, glossary_term_table_refs.c.derived)
+            select(registered_tables.c.class_term_id, registered_tables.c.class_term_derived).where(
+                registered_tables.c.class_term_id.is_not(None)
+            )
         )
     ).fetchall()
-    drafts = {r.term_id for r in rows if r.derived} - {r.term_id for r in rows if not r.derived}
+    drafts = {r.class_term_id for r in rows if r.class_term_derived} - {
+        r.class_term_id for r in rows if not r.class_term_derived
+    }
     if not drafts:
         return set()
     graph = await _load_graph(conn)
@@ -266,7 +276,9 @@ async def _derive_class(conn: "Connection", table_id: int, concept: str) -> int 
     else:
         term_id = row.id
     await conn.execute_core(
-        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id, derived=True)
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(class_term_id=term_id, class_term_derived=True)
     )
     return term_id
 
@@ -447,10 +459,7 @@ async def before_ref_removal(conn: "Connection") -> RemovalSnapshot:
     # REQ-2141: a Class holds its tables' keys, but only a draft is derived and goes with
     # them; a declared or curated Class is kept, a Concept again.
     grounded = {
-        r.term_id
-        for r in (
-            await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
-        ).fetchall()
+        r.term_id for r in (await conn.execute_core(_class_term_ids().distinct())).fetchall()
     }
     curated = grounded - await draft_class_terms(conn)
     return RemovalSnapshot(await term_domains(conn), frozenset(held - curated))
@@ -620,10 +629,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         counts[r.term_id] = counts.get(r.term_id, 0) + 1
     # REQ-1387 (GROUNDED TO A TABLE): a term grounding a table is rooted as one holding a column.
     classes = {
-        r.term_id
-        for r in (
-            await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
-        ).fetchall()
+        r.term_id for r in (await conn.execute_core(_class_term_ids().distinct())).fetchall()
     }
     edge_rows = (
         await conn.execute_core(
@@ -775,7 +781,7 @@ async def list_terms(
     for r in ref_rows:
         counts[r.term_id] = counts.get(r.term_id, 0) + 1
     # REQ-2141: the tables a class term grounds, counted beside its columns in one query.
-    table_rows = (await conn.execute_core(select(glossary_term_table_refs.c.term_id))).fetchall()
+    table_rows = (await conn.execute_core(_class_term_ids())).fetchall()
     table_counts: dict[int, int] = {}
     for r in table_rows:
         table_counts[r.term_id] = table_counts.get(r.term_id, 0) + 1
@@ -836,7 +842,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     # REQ-2141: the tables this term grounds as a class.
     term["table_count"] = (
         await conn.execute_core(
-            select(func.count()).where(glossary_term_table_refs.c.term_id == term_id)
+            select(func.count()).where(registered_tables.c.class_term_id == term_id)
         )
     ).scalar_one()
     term["is_abstract"] = not term["ref_count"] and not term["table_count"]  # REQ-2141: derived
@@ -1108,9 +1114,9 @@ async def _move_to_successor(conn: "Connection", term_id: int, successor: int, r
     if role == "class":
         tables = await _term_table_ids(conn, term_id)
         await conn.execute_core(
-            update(glossary_term_table_refs)
-            .where(glossary_term_table_refs.c.term_id == term_id)
-            .values(term_id=successor, derived=False)
+            update(registered_tables)
+            .where(registered_tables.c.class_term_id == term_id)
+            .values(class_term_id=successor, class_term_derived=False)
         )
         # the retiring term is kept, as the record of what it was, not settled away
         await rehome_keys(conn, tables, keep=frozenset({term_id}))
@@ -1501,14 +1507,11 @@ async def export_graph(conn: "Connection") -> dict:
         for r in (
             await conn.execute_core(
                 select(
-                    glossary_term_table_refs.c.term_id,
+                    registered_tables.c.class_term_id.label("term_id"),
                     registered_tables.c.source_id,
                     registered_tables.c.schema_name,
                     registered_tables.c.table_name,
-                ).join(
-                    registered_tables,
-                    glossary_term_table_refs.c.table_id == registered_tables.c.id,
-                )
+                ).where(registered_tables.c.class_term_id.is_not(None))
             )
         ).fetchall()
     ]
@@ -1623,12 +1626,10 @@ async def _term_name(conn: "Connection", term_id: int) -> str:
 async def _term_table_ids(conn: "Connection", term_id: int) -> set[int]:
     rows = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.table_id).where(
-                glossary_term_table_refs.c.term_id == term_id
-            )
+            select(registered_tables.c.id).where(registered_tables.c.class_term_id == term_id)
         )
     ).fetchall()
-    return {r.table_id for r in rows}
+    return {r.id for r in rows}
 
 
 async def _non_key_refs(
@@ -1664,8 +1665,7 @@ async def _term_table_addresses(conn: "Connection", term_id: int) -> list[str]:
     rows = (
         await conn.execute_core(
             select(*_TABLE_ADDRESS[:3])
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
-            .where(glossary_term_table_refs.c.term_id == term_id)
+            .where(registered_tables.c.class_term_id == term_id)
             .order_by(*_TABLE_ADDRESS[:3])
         )
     ).fetchall()
@@ -1698,7 +1698,7 @@ async def role_conflicts(conn: "Connection") -> dict:
     classes = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
-            .where(glossary_terms.c.id.in_(select(glossary_term_table_refs.c.term_id)))
+            .where(glossary_terms.c.id.in_(_class_term_ids()))
             .order_by(glossary_terms.c.name)
         )
     ).fetchall()
@@ -1719,7 +1719,7 @@ async def role_conflicts(conn: "Connection") -> dict:
         await conn.execute_core(
             select(registered_tables.c.id, registered_tables.c.alias, *_TABLE_ADDRESS)
             .where(registered_tables.c.id.in_(keyed))
-            .where(~registered_tables.c.id.in_(select(glossary_term_table_refs.c.table_id)))
+            .where(registered_tables.c.class_term_id.is_(None))
             .order_by(*_TABLE_ADDRESS[:3])
         )
     ).fetchall()
@@ -1814,9 +1814,8 @@ async def term_tables(conn: "Connection", term_id: int) -> list[dict]:
         raise TermNotFound(f"term {term_id} not found")
     rows = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.table_id, *_TABLE_ADDRESS)
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
-            .where(glossary_term_table_refs.c.term_id == term_id)
+            select(registered_tables.c.id.label("table_id"), *_TABLE_ADDRESS)
+            .where(registered_tables.c.class_term_id == term_id)
             .order_by(*_TABLE_ADDRESS[:3])
         )
     ).fetchall()
@@ -1867,10 +1866,8 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     held = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
-            .join(
-                glossary_term_table_refs, glossary_term_table_refs.c.term_id == glossary_terms.c.id
-            )
-            .where(glossary_term_table_refs.c.table_id == table_id)
+            .join(registered_tables, registered_tables.c.class_term_id == glossary_terms.c.id)
+            .where(registered_tables.c.id == table_id)
         )
     ).fetchone()
     if held is not None and (held.id == term_id or held.id not in await draft_class_terms(conn)):
@@ -1878,15 +1875,11 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     if held is not None:
         # The table's draft gives way to the curated class (REQ-2141).
         await identity.refuse_term_change(conn, table_id)
-        await conn.execute_core(
-            update(glossary_term_table_refs)
-            .where(glossary_term_table_refs.c.table_id == table_id)
-            .values(term_id=term_id, derived=False)
-        )
-    else:
-        await conn.execute_core(
-            glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id)
-        )
+    await conn.execute_core(
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(class_term_id=term_id, class_term_derived=False)
+    )
     await _home_key_refs(conn, table_id)
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 
@@ -1898,25 +1891,18 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     same-entity relationship stands on the one it has (identity.TableInIdentity)."""
     address = await _keyed_table(conn, table_id)
     await refuse_class_on_property(conn, term_id, table_id)
-    held = (
-        await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id).where(
-                glossary_term_table_refs.c.table_id == table_id
-            )
-        )
-    ).first()
-    if held is not None and held.term_id != term_id:
+    held = await _class_term_of(conn, table_id)
+    if held is not None and held != term_id:
         await identity.refuse_term_change(conn, table_id)
-    await conn.upsert(
-        glossary_term_table_refs,
-        {"term_id": term_id, "table_id": table_id, "derived": False},
-        index_elements=["table_id"],
-        update_columns=["term_id", "derived"],
+    await conn.execute_core(
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(class_term_id=term_id, class_term_derived=False)
     )
     await _home_key_refs(conn, table_id)
-    if held is not None and held.term_id != term_id:
+    if held is not None and held != term_id:
         # A draft the configuration replaced keeps what else it holds, or goes (REQ-2141).
-        await _settle_terms(conn, {held.term_id}, domains_before=await term_domains(conn))
+        await _settle_terms(conn, {held}, domains_before=await term_domains(conn))
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 
 
@@ -1925,10 +1911,11 @@ async def unground_table(conn: "Connection", term_id: int, table_id: int) -> boo
     same-entity relationship stands on it (identity.TableInIdentity)."""
     await identity.refuse_term_change(conn, table_id)
     result = await conn.execute_core(
-        _delete(glossary_term_table_refs).where(
-            (glossary_term_table_refs.c.term_id == term_id)
-            & (glossary_term_table_refs.c.table_id == table_id)
+        update(registered_tables)
+        .where(
+            (registered_tables.c.class_term_id == term_id) & (registered_tables.c.id == table_id)
         )
+        .values(class_term_id=None, class_term_derived=False)
     )
     ungrounded = (result.rowcount or 0) > 0
     if ungrounded:
@@ -2080,13 +2067,13 @@ async def vocabulary_refs(  # REQ-2135, REQ-2141
         if r.id in live
     }
     table_terms = {
-        r.table_id: names[r.term_id]
+        r.id: names[r.class_term_id]
         for r in (
             await conn.execute_core(
-                select(glossary_term_table_refs.c.table_id, glossary_term_table_refs.c.term_id)
+                select(registered_tables.c.id, registered_tables.c.class_term_id)
             )
         ).fetchall()
-        if r.term_id in names
+        if r.class_term_id in names
     }
     column_terms: dict[tuple[int, str], list[str]] = {}
     for r in (

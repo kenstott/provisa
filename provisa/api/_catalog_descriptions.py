@@ -79,9 +79,6 @@ _META: dict[str, str] = {
     "while it holds refs, the domains declared for it otherwise",
     "glossary_term_refs": "Each binding of a term to a physical column, resolved to that "
     "column's source, schema, table and domain",
-    # REQ-2130
-    "glossary_term_table_refs": "Each table or view a class term grounds, resolved to that "
-    "table's source, schema and domain",
     "glossary_term_edges": "The term graph — how terms relate to one another, with both "
     "endpoint names",
     "glossary_term_experts": "Who owns or authored each term, for routing a definition question",
@@ -541,18 +538,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "schema_name": "Schema of the bound column's table",
         "table_name": "Name of the bound column's table",
         "domain_id": "Domain the bound column is governed under",
-        "tenant_id": _TENANT,
-        "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
-        "for a term with no domains",
-    },
-    "glossary_term_table_refs": {
-        "id": "Grounding identifier",
-        "term_id": "The class term",
-        "table_id": "The table or view whose rows are instances of the term",
-        "source_id": "Source the table belongs to",
-        "schema_name": "Schema of the table",
-        "table_name": "Name of the table",
-        "domain_id": "Domain the table is governed under",
         "tenant_id": _TENANT,
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",

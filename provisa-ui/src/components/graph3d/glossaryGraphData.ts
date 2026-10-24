@@ -197,7 +197,7 @@ function termSelection(s: QueryScope, level: number): Selection {
     if (s.layers.has("ontology"))
       rels.tables = {
         alias: "tables",
-        sel: { fields: ["table_id", "table_name", "domain_id"] },
+        sel: { fields: ["id", "table_name", "domain_id"] },
         where: inDomains(s.domains),
       };
     if (s.layers.has("domains"))
@@ -388,7 +388,7 @@ export interface TermRow {
   edges_out?: (TermEdgeRow & { target_term?: TermRow | { id: number } | null })[] | null;
   edges_in?: (TermEdgeRow & { source_term?: TermRow | { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
-  tables?: { table_id: number; table_name: string; domain_id: string }[] | null;
+  tables?: { id: number; table_name: string; domain_id: string }[] | null;
   refs?:
     | {
         column_key: string;
@@ -544,14 +544,14 @@ export function glossaryGraph(
     // with the ontology.
     for (const g of t.tables ?? []) {
       node({
-        id: `t:${g.table_id}`,
+        id: `t:${g.id}`,
         type: "table",
         label: `${g.domain_id}.${g.table_name}`,
         domains: [g.domain_id],
         stored: true,
         layers: ["ontology"],
       });
-      edge(id, `t:${g.table_id}`, "term_binding", "IS", ["ontology"]);
+      edge(id, `t:${g.id}`, "term_binding", "IS", ["ontology"]);
     }
     for (const r of t.refs ?? []) {
       const tid = `t:${r.table_id}`;

@@ -55,9 +55,9 @@ from provisa.core.models import (
 from provisa.core.schema_org import (
     glossary_term_domains,
     glossary_term_edges,
-    glossary_term_table_refs,
     glossary_terms,
     naming_rules,
+    registered_tables,
 )
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
@@ -260,14 +260,14 @@ async def _class_terms(conn: "Connection") -> dict[int, str]:
     rows = (
         await conn.execute_core(
             select(
-                glossary_term_table_refs.c.table_id,
-                glossary_term_table_refs.c.term_id,
-                glossary_term_table_refs.c.derived,
+                registered_tables.c.id,
+                registered_tables.c.class_term_id,
+                registered_tables.c.class_term_derived,
                 glossary_terms.c.name,
-            ).join(glossary_terms, glossary_terms.c.id == glossary_term_table_refs.c.term_id)
+            ).join(glossary_terms, glossary_terms.c.id == registered_tables.c.class_term_id)
         )
     ).fetchall()
-    return {r.table_id: r.name for r in rows if not (r.derived and r.term_id in derived)}
+    return {r.id: r.name for r in rows if not (r.class_term_derived and r.class_term_id in derived)}
 
 
 async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:

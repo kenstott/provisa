@@ -31,8 +31,6 @@ CREATE TABLE glossary_terms (
     tenant_id TEXT);
 CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
-CREATE TABLE glossary_term_table_refs (
-    id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, tenant_id TEXT);
 CREATE TABLE relationships (
     id TEXT PRIMARY KEY, source_table_id INTEGER, target_table_id INTEGER,
     same_entity BOOLEAN NOT NULL DEFAULT 0, tenant_id TEXT);
@@ -44,7 +42,7 @@ CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0);
+    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT);
 CREATE TABLE table_columns (
     id INTEGER PRIMARY KEY, table_id INTEGER, domain_id TEXT, column_name TEXT, data_type TEXT,
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
@@ -97,7 +95,7 @@ def db() -> sqlite3.Connection:
         )
 
     conn.execute(
-        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0)"
+        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0, NULL)"
     )
     conn.executemany(
         "INSERT INTO table_columns (id, table_id, column_name, alias, masks, domain_id,"
@@ -167,11 +165,11 @@ class TestGlossaryMetaViews:
     ) -> None:
         """REQ-2141/REQ-2130: three tables, one class term; 7 and 8 joined as the same entity,
         9 not yet -- a gap until a same-entity relationship reaches 9 too."""
+        db.execute("UPDATE registered_tables SET class_term_id = 't-party' WHERE id = 7")
         db.executemany(
-            "INSERT INTO glossary_term_table_refs VALUES (?, 't-party', ?, 'org1')",
-            [("g7", 7), ("g8", 8), ("g9", 9)],
+            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', 0, ?)",
+            [(8, "accounts", "t-party"), (9, "contacts", "t-party"), (6, "people", "t-user")],
         )
-        db.execute("INSERT INTO glossary_term_table_refs VALUES ('g1', 't-user', 7, 'org1')")
         db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1')")
         # A relationship not marked same entity joins nothing as one.
         db.execute("INSERT INTO relationships VALUES ('r79', 7, 9, 0, 'org1')")
@@ -246,8 +244,6 @@ class TestTagGraphMetaJoins:
             ("meta:glossary_term_refs:table_columns", "glossary_term_refs", "table_columns"),
             ("meta:table_columns:tag_assignments", "table_columns", "tag_assignments"),
             ("meta:tag_assignments:table_columns", "tag_assignments", "table_columns"),
-            ("meta:glossary_term_refs:tag_assignments", "glossary_term_refs", "tag_assignments"),
-            ("meta:tag_assignments:glossary_term_refs", "tag_assignments", "glossary_term_refs"),
         ],
     )
     def test_the_column_level_edges_are_registered_on_the_shared_key(
@@ -257,3 +253,12 @@ class TestTagGraphMetaJoins:
         assert (rel[2], rel[7]) == (source, target)
         # Both sides join on column_key, never on the surrogate table_columns.id.
         assert (rel[3], rel[4]) == ("column_key", "column_key")
+
+    def test_a_columns_tags_hang_off_the_column_not_its_glossary_ref(self) -> None:
+        """glossary_term_refs is a junction (term -> column): nothing hangs off it, so a column's
+        tags are reached from table_columns alone."""
+        assert not [
+            r[0]
+            for r in META_RELATIONSHIPS
+            if {r[2], r[7]} == {"glossary_term_refs", "tag_assignments"}
+        ]

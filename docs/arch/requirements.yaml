@@ -87070,7 +87070,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (grounded in nothing, the abstract terms). A class term grounded in several tables with no
     declared same-entity identity between them is flagged on the page as a curation gap. The page
     keeps the curation words (term, concrete, abstract, grounds) beside the badge; the words class,
-    property, instance and mapping belong to the docs, the export and SPARQL.
+    property, instance and mapping belong to the docs, the export and SPARQL. (Amended 2026-10-24,
+    CLASS TERM ON THE TABLE; GLOSSARY JUNCTIONS:) A table's class term is
+    registered_tables.class_term_id, and only that: there is no separate grounding table. The meta
+    graph reaches it over CLASS_TERM (table to term) and GROUNDS (term to its tables, the Ontology
+    View's tables), both on that column. registered_tables.class_term_derived carries the existing
+    REQ-2141 draft rule (a grounding sync derived, on an uncurated term, is a draft: not exported,
+    and it goes with its table); it adds no rule. A table a class term grounds blocks deleting the
+    term, as a column ref does. glossary_term_refs and glossary_term_domains are junctions
+    (REQ-1586), as glossary_term_edges is: neither is a node in the graph, and a term reaches its
+    columns over REFERENCED_BY and its domains over IN_DOMAIN in one hop. Both stay queryable in SQL
+    and GraphQL, where the Ontology View reads them; a column's tags are the column's, reached from
+    table_columns, and nothing hangs off a ref.
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
