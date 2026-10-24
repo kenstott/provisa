@@ -22,6 +22,7 @@ every Trino reference inside the Trino engine's own instance and out of the gene
 
 from __future__ import annotations
 
+from provisa.core.read_refusal import ReadRefused
 import asyncio
 import logging
 from contextlib import contextmanager
@@ -562,6 +563,12 @@ class EngineBackend:
         }
 
     def classify_error(self, exc: Exception) -> str | None:
+        return None
+
+    def refusal_of(self, exc: Exception) -> ReadRefused | None:
+        """What the engine cannot answer because of what it is, said by name (REQ-778): a
+        refusal its error stands for, else None and the error is answered by its kind."""
+        del exc
         return None
 
     # -- federation lifecycle (REQ-825) ----------------------------------------

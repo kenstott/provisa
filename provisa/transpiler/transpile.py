@@ -539,6 +539,27 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     return tree.sql(dialect="postgres")
 
 
+def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
+    """``tree`` for a PostgreSQL server, which has no TRY_CAST: each null-on-failure cast (the
+    semantic SQL keeps them, ``semantic_dialect``) is ``CASE WHEN pg_input_is_valid(text, type)
+    THEN CAST(...) END`` -- null where the value does not convert. PostgreSQL 16 or later."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.TryCast):
+            return node
+        valid = exp.Anonymous(
+            this="PG_INPUT_IS_VALID",
+            expressions=[
+                exp.Cast(this=node.this.copy(), to=exp.DataType.build("TEXT")),
+                exp.Literal.string(node.to.sql(dialect="postgres")),
+            ],
+        )
+        cast = exp.Cast(this=node.this.copy(), to=node.to.copy())
+        return exp.Case(ifs=[exp.If(this=valid, true=cast)])
+
+    return tree.transform(_lowered)
+
+
 def transpile(
     pg_sql: str, target_dialect: str, *, pgvector: bool = False
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423
@@ -576,6 +597,10 @@ def transpile(
     pg_sql = _like_escape_written(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
+    if target_dialect == "postgres" and "TRY_CAST" in pg_sql.upper():
+        lowered = postgres_try_casts(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if target_dialect == "exasol":
         result = _exasol_stored_case(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
