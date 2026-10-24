@@ -232,6 +232,8 @@ async def _execute_multi_call(
             )
             all_rows.append(rows_i)
             merged_graph_vars.update(gvars_i)
+        except (ApiError, ReadRefused):
+            raise  # REQ-1350: a refusal by name is answered by the app's handler for it
         except Exception as exc:
             log.exception("Cypher multi-CALL execution failed")
             error = _federation_error(exc)
@@ -658,6 +660,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             _result = await _execute_write_plan(_plan, state)
         except PermissionError as exc:
             return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
+        except (ApiError, ReadRefused):
+            raise  # REQ-1350: a refusal by name is answered by the app's handler for it
         except Exception as exc:  # allow-ble: request boundary — a source or driver error of any type is this write's outcome, answered as an error response
             return cypher_error(500, "cypher.write_failed", f"Write failed: {exc}", error=str(exc))
         affected = _result.rowcount if _result.rowcount is not None else len(_result.rows)

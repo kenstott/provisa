@@ -32,6 +32,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from provisa.cache.middleware import build_cache_headers
+from provisa.api.errors import ApiError
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
@@ -169,8 +170,8 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
         raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         return _error_response(str(exc), "Forbidden")
-    except ReadRefused as exc:
-        return _read_refused(exc)
+    except (ReadRefused, ApiError) as exc:
+        return _refused(exc)
     except Exception as exc:
         log.exception("Cypher governance failed")
         return _error_response(f"Governance failed: {exc}", "DatabaseError")
@@ -178,8 +179,8 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     try:
         result = await _execute_plan(plan)
         rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
-    except ReadRefused as exc:
-        return _read_refused(exc)
+    except (ReadRefused, ApiError) as exc:
+        return _refused(exc)
     except Exception as exc:
         log.exception("Cypher execution failed")
         return _error_response(f"Execution failed: {_federation_error(exc)}", "DatabaseError")
@@ -248,10 +249,15 @@ def _to_query_v2_value(value: Any) -> Any:
     return value
 
 
-def _read_refused(refused: ReadRefused) -> JSONResponse:
-    """A read the deployment cannot answer now (core/read_refusal.py), in this endpoint's error
-    format: 503, as every HTTP surface answers the family, with the refusal's own message — the
-    table and what is wrong with it — and not as an execution failure."""
+def _refused(refused: ReadRefused | ApiError) -> JSONResponse:
+    """A read refused by name, in this endpoint's error format, with the refusal's own message --
+    the table and what is wrong with it -- and not as a governance or execution failure: a read the
+    deployment cannot answer now (core/read_refusal.py) is 503, as every HTTP surface answers the
+    family; a coded refusal of the statement (ApiError, e.g. a row-level table read without a
+    filter its source can apply, REQ-1915) has its own status, as on every other surface
+    (REQ-1350)."""
+    if isinstance(refused, ApiError):
+        return _error_response(str(refused.detail), "ArgumentError", refused.status_code)
     return _error_response(str(refused), "DatabaseError", 503)
 
 
