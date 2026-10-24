@@ -514,17 +514,16 @@ def cosine_similarity_query(shared_data):
 
 @when("compiled for a native-capable source")
 def compile_for_native_source(shared_data):
-    from types import SimpleNamespace as _NS
-
-    from provisa.pgwire._pipeline import _similarity_needs_engine
+    from provisa.transpiler.dialect_capabilities import SIMILARITY, unsupported
     from provisa.transpiler.transpile import transpile
 
     governed = shared_data["governed"]
     shared_data["pgvector_sql"] = transpile(governed, "postgres", pgvector=True)
     shared_data["snowflake_sql"] = transpile(governed, "snowflake")
-    state = _NS(source_dialects={"pg": "postgres", "my": "mysql"})
-    shared_data["mysql_to_engine"] = _similarity_needs_engine(governed, _NS(source_id="my"), state)
-    shared_data["pg_to_engine"] = _similarity_needs_engine(governed, _NS(source_id="pg"), state)
+    # REQ-863 dialect_supports: a source whose dialect lacks the call fails the gate, and the
+    # statement routes to the engine.
+    shared_data["mysql_to_engine"] = unsupported(governed, "mysql") == SIMILARITY
+    shared_data["pg_to_engine"] = unsupported(governed, "postgres") is not None
     shared_data["engine_sql"] = transpile(governed, "duckdb")
 
 
