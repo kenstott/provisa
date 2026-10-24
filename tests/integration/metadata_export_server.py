@@ -116,9 +116,12 @@ def model_config(
     under a domain of its own name (Purview) is given the one that exists there. ``product_name``
     is its name: a catalog read back by name is given the run's own."""
     roles = ["analyst", "data_owner", "admin"]
+    # Every org also holds the sandbox role its schema is seeded with (schema.sql), so a column
+    # read by the model's roles alone is visibility-restricted for it.
+    audience = [*roles, "sandbox"]
     # The org's own admin reads every member as well: the tests read as org_admin, the role the
     # server's default assignment gives.
-    everyone = [*roles, "org_admin"]
+    everyone = [*audience, "org_admin"]
     config = {
         "federation_engine": engine,
         "auth": {
@@ -196,9 +199,9 @@ def model_config(
                     {
                         "name": "ssn",
                         "data_type": "text",
-                        # The masked column's audience is the model's roles: masked for all but
+                        # The masked column's audience is the org's roles: masked for all but
                         # admin, as the catalogs' restricted and exempt roles show it.
-                        "visible_to": roles,
+                        "visible_to": audience,
                         "masks": [
                             {"to": ["admin"], "mask": None},
                             {

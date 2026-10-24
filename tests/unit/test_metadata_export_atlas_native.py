@@ -170,6 +170,8 @@ def test_typedefs_cover_the_types_and_containments():
     assert supers[PROVISA_COLUMN_TYPE] == ["DataSet"]
     rels = {d["name"]: d for d in relationship_type_defs()}
     assert rels["provisa_source_tables"]["endDef1"]["isContainer"] is True
+    # A view has no source; Atlas makes a COMPOSITION's contained end mandatory.
+    assert rels["provisa_source_tables"]["relationshipCategory"] == "AGGREGATION"
     assert rels["provisa_table_columns"]["endDef2"]["type"] == PROVISA_COLUMN_TYPE
     # REQ-1634: a data product does not own its members — AGGREGATION, never COMPOSITION, so
     # Atlas never cascade-deletes a table with its product. Atlas requires exactly one container

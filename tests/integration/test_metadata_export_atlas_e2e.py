@@ -144,7 +144,7 @@ async def test_governance_signals_arrive_as_atlas_classifications(published):
         == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:regex"
     )
     assert masked["attributes"]["exemptRoles"] == ["admin"]
-    assert masked["attributes"]["restrictedRoles"] == ["analyst", "data_owner"]
+    assert masked["attributes"]["restrictedRoles"] == ["analyst", "data_owner", "sandbox"]
 
     margin = await _entity("provisa_column", f"{_ORDERS}.margin@{CLUSTER}")
     assert [c["typeName"] for c in margin["classifications"]] == ["provisa_visibility_restricted"]
