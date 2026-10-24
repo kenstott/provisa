@@ -107,3 +107,24 @@ def test_an_alternation_that_is_not_one_junction_s_rows_is_refused(pattern):
     )
     with pytest.raises(CypherTranslateError, match="one pattern per type"):
         cypher_to_sql(parse_cypher(f"MATCH {pattern} RETURN a.name"), lm, {})
+
+
+def test_an_untyped_hop_over_a_junction_reads_each_of_its_rows_of_any_type(terms):  # noqa: F811
+    # A row of a type no relationship declares is a relationship of an untyped hop all the same:
+    # the hop is every row of the junction, never the declared types' rows only. Its type is its
+    # stored value, as it has no declared name.
+    terms[1].execute(
+        "INSERT INTO provisa_admin.public.glossary_term_edges VALUES (11, 1, 2, 'other', NULL)"
+    )
+    assert _rows(
+        terms, "MATCH (a:GlossaryTerm)-[r]->(b:GlossaryTerm) RETURN a.name, b.name, r.id, type(r)"
+    ) == sorted(
+        [
+            ("customer", "party", 7, "KIND_OF"),
+            ("ledger", "party", 8, "PART_OF"),
+            ("ledger", "customer", 9, "KIND_OF"),
+            ("ledger", "party", 10, "KIND_OF"),
+            ("party", "customer", 11, "other"),
+        ],
+        key=repr,
+    )

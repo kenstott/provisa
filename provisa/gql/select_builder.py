@@ -65,6 +65,42 @@ def _shared_property_names(return_clause: "ReturnClause") -> frozenset[str]:
     return frozenset(name for name, count in names.items() if count > 1)
 
 
+def node_json(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The node ``alias`` reads, as an edge's startNode and endNode are: its identity
+    (``label|key``), labels and properties."""
+    props: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    for prop_name, col_name in nm.properties.items():
+        props.append(exp.Literal.string(prop_name))
+        props.append(
+            exp.Column(
+                this=exp.Identifier(this=col_name, quoted=True), table=exp.Identifier(this=alias)
+            )
+        )
+    key = exp.Cast(
+        this=exp.Column(
+            this=exp.Identifier(this=nm.id_column, quoted=True), table=exp.Identifier(this=alias)
+        ),
+        to=exp.DataType.build("VARCHAR"),
+    )
+    identity = exp.DPipe(
+        this=exp.DPipe(this=exp.Literal.string(nm.label), expression=exp.Literal.string("|")),
+        expression=key,
+    )
+    return exp.Anonymous(
+        this="JSON_OBJECT",
+        expressions=[
+            exp.Literal.string("id"),
+            identity,
+            exp.Literal.string("label"),
+            exp.Literal.string(nm.label),
+            exp.Literal.string("tableLabel"),
+            exp.Literal.string(nm.table_label),
+            exp.Literal.string("properties"),
+            exp.Anonymous(this="JSON_OBJECT", expressions=props),
+        ],
+    )
+
+
 def _type_value(rel_type: "str | exp.Expression") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """An edge's type: its relationship's name, or for a single-hop alternation the type its row
     names (a CASE on the junction's type column)."""
@@ -153,25 +189,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             ),
             expression=identity_second,
         )
-        empty_props = exp.Anonymous(this="JSON_OBJECT", expressions=[])
         # REQ-1586: a junction-backed edge's properties are its junction's columns, and the edge
         # names the table they were read from.
         edge_fields = junction_edge_fields(via)
-
-        def _node_props_expr(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            """Build JSON_OBJECT(...) for all node properties, or empty if none defined."""
-            if not nm.properties:
-                return empty_props
-            exprs = []
-            for prop_name, col_name in nm.properties.items():
-                exprs.append(exp.Literal.string(prop_name))
-                exprs.append(
-                    exp.Column(
-                        this=exp.Identifier(this=col_name, quoted=True),
-                        table=exp.Identifier(this=alias),
-                    )
-                )
-            return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
         # Canonical (src->tgt) display order: when is_reversed, the pattern's src/tgt aliases
         # are swapped relative to the canonical relationship, so start/end/startNode/endNode
@@ -180,48 +200,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         disp_tgt_alias, disp_tgt_nm = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
         disp_src_id_col = tgt_id_col if is_reversed else src_id_col
         disp_tgt_id_col = src_id_col if is_reversed else tgt_id_col
-
-        def _compound_id(alias: str, nm: NodeMapping) -> exp.Expression:
-            return exp.DPipe(
-                this=exp.DPipe(
-                    this=exp.Literal.string(nm.label),
-                    expression=exp.Literal.string("|"),
-                ),
-                expression=exp.Cast(
-                    this=exp.Column(
-                        this=exp.Identifier(this=nm.id_column, quoted=True),
-                        table=exp.Identifier(this=alias),
-                    ),
-                    to=exp.DataType.build("VARCHAR"),
-                ),
-            )
-
-        start_node = exp.Anonymous(
-            this="JSON_OBJECT",
-            expressions=[
-                exp.Literal.string("id"),
-                _compound_id(disp_src_alias, disp_src_nm),
-                exp.Literal.string("label"),
-                exp.Literal.string(disp_src_nm.label),
-                exp.Literal.string("tableLabel"),
-                exp.Literal.string(disp_src_nm.table_label),
-                exp.Literal.string("properties"),
-                _node_props_expr(disp_src_alias, disp_src_nm),
-            ],
-        )
-        end_node = exp.Anonymous(
-            this="JSON_OBJECT",
-            expressions=[
-                exp.Literal.string("id"),
-                _compound_id(disp_tgt_alias, disp_tgt_nm),
-                exp.Literal.string("label"),
-                exp.Literal.string(disp_tgt_nm.label),
-                exp.Literal.string("tableLabel"),
-                exp.Literal.string(disp_tgt_nm.table_label),
-                exp.Literal.string("properties"),
-                _node_props_expr(disp_tgt_alias, disp_tgt_nm),
-            ],
-        )
+        start_node = node_json(disp_src_alias, disp_src_nm)
+        end_node = node_json(disp_tgt_alias, disp_tgt_nm)
         return exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
