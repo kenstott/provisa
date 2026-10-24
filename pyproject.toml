@@ -140,7 +140,6 @@ dependencies = [
     "opentelemetry-instrumentation-psycopg",
     "opentelemetry-instrumentation-redis",
     "opentelemetry-instrumentation-pymongo",
-    "opentelemetry-instrumentation-elasticsearch",
     "opentelemetry-instrumentation-grpc",
     # NOTE: the buenavista pgwire engine is a Provisa fork (vendor/buenavista, v0.5.0.post1 — adds
     # binary codecs for DECIMAL/JSON/array types) NOT published to PyPI. It is bundled INTO this
