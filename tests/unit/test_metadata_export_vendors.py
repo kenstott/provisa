@@ -660,7 +660,7 @@ async def test_datahub_republish_keeps_an_owner_a_person_added(snapshot, monkeyp
             {
                 "owner": "urn:li:corpuser:data-steward",
                 "type": "DATAOWNER",
-                "attribution": {"time": 5, "actor": "urn:li:corpuser:provisa"},
+                "source": {"type": "SERVICE", "url": "provisa"},
             },
             person,
         ],
@@ -687,3 +687,20 @@ async def test_datahub_a_failed_ownership_read_refuses_that_aspect_alone(snapsho
     assert _posted_aspect(posted, "ownership", _urn("wh.public.customers")) is not None
     refused = [e for e in result.errors if e.message.startswith("ownership: not written")]
     assert [e.asset.fqn() for e in refused] == [ORDERS]
+
+
+def test_datahub_owners_carry_only_fields_gms_accepts(snapshot):
+    """GMS 0.14 refuses an Owner field it does not declare (HTTP 422, "unrecognized field"):
+    Provisa's owner says where it came from in OwnershipSource, the record's own field."""
+    from provisa.api.metadata_export.datahub import to_proposals
+
+    owners = [
+        owner
+        for p in to_proposals(snapshot)
+        if p.aspect_name == "ownership"
+        for owner in p.aspect["owners"]
+    ]
+    assert owners
+    for owner in owners:
+        assert set(owner) <= {"owner", "type", "typeUrn", "source"}
+        assert owner["source"] == {"type": "SERVICE", "url": "provisa"}

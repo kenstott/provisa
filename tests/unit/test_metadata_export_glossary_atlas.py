@@ -116,6 +116,15 @@ class _FakeAtlas:
             request = httpx.Request("GET", url)
             if url.endswith("/api/atlas/v2/glossary"):
                 return httpx.Response(200, json=fake.glossaries, request=request)
+            if url.endswith("/terms") and "/api/atlas/v2/glossary/" in url:
+                # A glossary's terms: those whose anchor is that glossary.
+                glossary = url.split("/glossary/")[1].split("/")[0]
+                anchored = [
+                    t
+                    for t in fake.terms.values()
+                    if (t.get("anchor") or {}).get("glossaryGuid") == glossary
+                ]
+                return httpx.Response(200, json=anchored, request=request)
             guid = url.rsplit("/", 1)[-1]
             if "/glossary/term/" in url and guid in fake.terms:
                 return httpx.Response(200, json=fake.terms[guid], request=request)
@@ -507,3 +516,53 @@ async def test_a_bound_term_that_cannot_be_read_is_refused_not_recreated(fake, m
     refused = [e for e in result.errors if "not written" in e.message]
     assert [e.asset.fqn() for e in refused] == [f"provisa://{ORG}/terms/Margin"]
     assert "HTTP 503" in refused[0].message
+
+
+def _existing(fake: _FakeAtlas, name: str, *, provisas: bool) -> None:
+    """A term already in the Provisa glossary from a publish whose bindings were lost."""
+    fake.glossaries.append({"guid": "glossary-live", "qualifiedName": GLOSSARY_QN})
+    fake.terms[f"term-{name}"] = {
+        "guid": f"term-{name}",
+        "name": name,
+        "qualifiedName": f"{name}@{GLOSSARY_QN}",
+        "anchor": {"glossaryGuid": "glossary-live"},
+        "abbreviation": "REV",
+        **({"additionalAttributes": {"provisaRole": "concept"}} if provisas else {}),
+    }
+
+
+async def test_an_unbound_term_provisa_made_is_updated_not_created_again(fake):
+    """A catalog that outlived its bindings already holds Provisa's term: creating it again is a
+    409. It is found in the Provisa glossary by name and updated like a bound one."""
+    _existing(fake, "Revenue", provisas=True)
+    result = await _export().publish(_snapshot([_term(1, "Revenue")]))
+    assert result.ok, result.errors
+    assert fake.term_creates == []
+    ((guid, body),) = fake.term_puts
+    assert guid == "term-Revenue"
+    assert body["abbreviation"] == "REV"
+    assert result.bindings[f"provisa://{ORG}/terms/Revenue"][0] == "term-Revenue"
+
+
+async def test_a_same_named_term_provisa_did_not_make_is_never_modified(fake):
+    _existing(fake, "Revenue", provisas=False)
+    result = await _export().publish(_snapshot([_term(1, "Revenue")]))
+    assert fake.term_creates == [] and fake.term_puts == []
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == [f"provisa://{ORG}/terms/Revenue"]
+
+
+async def test_an_unbound_term_is_refused_when_the_glossary_cannot_be_read(fake, monkeypatch):
+    fake.glossaries.append({"guid": "glossary-live", "qualifiedName": GLOSSARY_QN})
+    get = httpx.AsyncClient.get
+
+    async def _unreadable_terms(self, url, headers=None, params=None):
+        if url.endswith("/glossary/glossary-live/terms"):
+            return httpx.Response(503, request=httpx.Request("GET", url))
+        return await get(self, url, headers=headers, params=params)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _unreadable_terms)
+    result = await _export().publish(_snapshot([_term(1, "Revenue")]))
+    assert fake.term_creates == []
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == [f"provisa://{ORG}/terms/Revenue"]

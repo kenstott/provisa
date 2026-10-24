@@ -1218,9 +1218,16 @@ class AtlasExport(MetadataExport):  # REQ-1069
         glossary_guid: str,
         glossary_qn: str,
         result: PublishResult,
+        live_terms: dict[str, dict[str, Any]] | None,
     ) -> str | None:
         """Create or update one term inside the Provisa glossary; returns its guid, or None when
         it was refused (reported).
+
+        ``live_terms`` is the Provisa glossary's terms by qualifiedName, read when a term has no
+        binding (None: that read failed). A term with no binding whose name is already there is
+        Provisa's when it carries ``ROLE_ATTRIBUTE``, which Provisa sets on every term it makes:
+        it is updated as if bound, so a catalog that outlived its bindings is not handed a
+        duplicate (409). One without the attribute is a person's and is never modified.
 
         The stored binding is preferred over any name lookup, so a term renamed in Provisa
         UPDATES the same catalog term in place instead of duplicating it. An update is
@@ -1235,6 +1242,28 @@ class AtlasExport(MetadataExport):  # REQ-1069
         # an empty longDescription rather than the string "None".
         definition = term.definition or ""
         stored = self._bindings.get(term.semantic_uri)
+        if stored is None:
+            if live_terms is None:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=f"term {term.name!r}: not written: the read of the Provisa "
+                        "glossary's terms, which tells whether it is already there, failed",
+                    )
+                )
+                return None
+            found = live_terms.get(term_qn)
+            if found is not None:
+                if ROLE_ATTRIBUTE not in (found.get("additionalAttributes") or {}):
+                    result.errors.append(
+                        AssetError(
+                            asset=AssetRefStub(term.semantic_uri),
+                            message=f"term {term.name!r}: not written: the Provisa glossary "
+                            "holds a term of that name Provisa did not make",
+                        )
+                    )
+                    return None
+                stored = (found["guid"], term_qn)
         if stored is not None:
             guid = stored[0]
             fetch = await client.get(
@@ -1321,11 +1350,14 @@ class AtlasExport(MetadataExport):  # REQ-1069
             return
         result.published["glossary"] = 1
         glossary_qn = _glossary_qn(snapshot.org_id)
+        live_terms: dict[str, dict[str, Any]] | None = {}
+        if any(self._bindings.get(t.semantic_uri) is None for t in snapshot.glossary_terms):
+            live_terms = await self._live_glossary_terms(client, headers, glossary_guid, result)
         term_guids: dict[int, str] = {}
         for term in snapshot.glossary_terms:
             try:
                 guid = await self._upsert_term(
-                    client, headers, term, glossary_guid, glossary_qn, result
+                    client, headers, term, glossary_guid, glossary_qn, result, live_terms
                 )
             except httpx.HTTPError as exc:
                 result.errors.append(
@@ -1342,6 +1374,30 @@ class AtlasExport(MetadataExport):  # REQ-1069
         await self._publish_term_assignments(
             client, headers, snapshot, term_guids, departed, result
         )
+
+    async def _live_glossary_terms(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        glossary_guid: str,
+        result: PublishResult,
+    ) -> dict[str, dict[str, Any]] | None:
+        """The Provisa glossary's live terms by qualifiedName; None, reported, when they cannot
+        be read."""
+        response = await client.get(
+            self._url(f"{self.glossary_path}/{glossary_guid}/terms"),
+            params={"limit": "-1"},
+            headers=headers,
+        )
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(GLOSSARY_NAME),
+                    message=f"glossary terms: read failed (HTTP {response.status_code})",
+                )
+            )
+            return None
+        return {t["qualifiedName"]: t for t in response.json() if t.get("qualifiedName")}
 
     def _assignment_path(self, term_guid: str) -> str:
         return self._url(f"{self.glossary_path}/terms/{term_guid}/assignedEntities")

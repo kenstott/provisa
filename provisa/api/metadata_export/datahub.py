@@ -302,15 +302,20 @@ def _schema_metadata(
     }
 
 
+# REQ-1389: the source every owner Provisa authors carries, so a read-merge tells it from the
+# owners people add in DataHub. Owner has no attribution field in GMS 0.14; OwnershipSource is the
+# record's own place for where an owner came from.
+PROVISA_OWNER_SOURCE = {"type": "SERVICE", "url": "provisa"}
+
+
 def _ownership(steward_id: str) -> dict[str, Any]:
-    """The owner Provisa authors, attributed to Provisa's actor so a read-merge tells it from the
-    owners people add in DataHub (REQ-1389)."""
+    """The owner Provisa authors, its source Provisa (``PROVISA_OWNER_SOURCE``)."""
     return {
         "owners": [
             {
                 "owner": f"urn:li:corpuser:{steward_id}",
                 "type": "DATAOWNER",
-                "attribution": {"time": 0, "actor": PROVISA_ACTOR},
+                "source": PROVISA_OWNER_SOURCE,
             }
         ],
         "lastModified": {"time": 0, "actor": PROVISA_ACTOR},
@@ -1055,10 +1060,11 @@ class DataHubExport(MetadataExport):  # REQ-1069
     ) -> AspectProposal | None:
         """Read-merge a dataset's live ``ownership`` into Provisa's owner (REQ-1389).
 
-        An owner attributed to Provisa's actor is Provisa's and tracks the snapshot; any other is
-        a person's and stands. An owner Provisa wrote before owners carried an attribution has
-        none, in an aspect Provisa last modified: it is Provisa's too. Nothing is written when the
-        live aspect cannot be read -- written blind it would replace the people's owners.
+        An owner whose source is Provisa's (``PROVISA_OWNER_SOURCE``) is Provisa's and tracks the
+        snapshot; any other is a person's and stands. An owner Provisa wrote before owners carried
+        that source has none, in an aspect Provisa last modified: it is Provisa's too. Nothing is
+        written when the live aspect cannot be read -- written blind it would replace the people's
+        owners.
         """
         read, live = await self._live_aspect(client, headers, proposal, result)
         if not read:
@@ -1073,8 +1079,8 @@ class DataHubExport(MetadataExport):  # REQ-1069
         provisa_last = ((live or {}).get("lastModified") or {}).get("actor") == PROVISA_ACTOR
 
         def _provisas(owner: dict[str, Any]) -> bool:
-            actor = (owner.get("attribution") or {}).get("actor")
-            return actor == PROVISA_ACTOR or (actor is None and provisa_last)
+            source = owner.get("source")
+            return source == PROVISA_OWNER_SOURCE or (source is None and provisa_last)
 
         wanted = {(o["owner"], o.get("type")): o for o in proposal.aspect["owners"]}
         held = {(o["owner"], o.get("type")) for o in live_owners if not _provisas(o)}
@@ -1084,13 +1090,10 @@ class DataHubExport(MetadataExport):  # REQ-1069
             if not _provisas(live_owner):
                 owners.append(live_owner)  # a person's: it stands, where it stands
             elif key in wanted and key not in held:
-                time = (live_owner.get("attribution") or {}).get("time") or now_ms
-                owners.append(
-                    {**wanted.pop(key), "attribution": {"actor": PROVISA_ACTOR, "time": time}}
-                )
+                owners.append(wanted.pop(key))
         for key, owner in wanted.items():
             if key not in held:
-                owners.append({**owner, "attribution": {"actor": PROVISA_ACTOR, "time": now_ms}})
+                owners.append(owner)
         if owners == live_owners:
             return None
         return replace(
