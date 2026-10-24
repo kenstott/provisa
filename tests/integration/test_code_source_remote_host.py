@@ -162,30 +162,23 @@ _SPILL_FILLS = """
 import os, sys
 sys.path.insert(0, sys.argv[1])
 sys.path.insert(1, os.environ["PROVISA_FRONT_LIB"])  # the image's own DuckDB, sqlglot and Arrow
+mode = sys.argv[2]
 import pyarrow as pa
 import residual
 residual.configure(memory_mb=128, threads=1, spill_cap_mb=10240, spill_dir="/var/lib/provisa-spill")
 schema = pa.schema([("s", pa.utf8())])
+n = 3 if mode == "small" else 400
 def batches():
-    for _ in range(400):
+    for _ in range(n):
         yield pa.RecordBatch.from_arrays([pa.array([os.urandom(48).hex() for _ in range(10000)])], schema=schema)
+rows = pa.Table.from_batches(list(batches()), schema) if mode == "table" else pa.RecordBatchReader.from_batches(schema, batches())
 try:
-    for _ in residual.answer("SELECT s FROM t ORDER BY s DESC", "duckdb", "t", pa.RecordBatchReader.from_batches(schema, batches())):
+    for _ in residual.answer("SELECT s FROM t ORDER BY s DESC", "duckdb", "t", rows):
         pass
 except residual.SpillCapped as refused:
     print("REFUSED", refused, flush=True)
-else:
-    print("ANSWERED", flush=True)
-    sys.exit(1)
-import gc, faulthandler
-faulthandler.enable()
-print("DIAG gc", gc.collect(), flush=True)
-print("DIAG close database", flush=True)
-residual._database.close()
-print("DIAG database closed", flush=True)
-residual._database = None
-print("DIAG gc", gc.collect(), flush=True)
-print("DIAG exit", flush=True)
+    sys.exit(0)
+print("ANSWERED", flush=True)
 sys.exit(0)
 """
 
@@ -204,24 +197,29 @@ def test_a_statement_that_fills_the_images_spill_volume_is_refused_naming_the_ca
         ).stdout
     )
     python, front = config["Entrypoint"][0], config["Entrypoint"][2]
-    run = subprocess.run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "--tmpfs",
-            "/var/lib/provisa-spill:size=16m,uid=65532,gid=65532",
-            "--entrypoint",
-            python,
-            image,
-            "-c",
-            _SPILL_FILLS,
-            str(Path(front).parent),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    print("DIAG returncode", run.returncode, "stdout:", run.stdout, "stderr:", run.stderr[-3000:])
+    outcomes = {}
+    for mode in ("gen", "table", "small"):
+        run = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--tmpfs",
+                "/var/lib/provisa-spill:size=16m,uid=65532,gid=65532",
+                "--entrypoint",
+                python,
+                image,
+                "-c",
+                _SPILL_FILLS,
+                str(Path(front).parent),
+                mode,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        outcomes[mode] = (run.returncode, run.stdout.strip()[:120], run.stderr.strip()[-400:])
+    print("DIAG2", json.dumps(outcomes, indent=1))
+    raise AssertionError(f"DIAG2 {outcomes}")
     assert run.returncode == 0, run.stdout + run.stderr
     assert "REFUSED" in run.stdout and "codesource.duckdb_spill_cap_mb" in run.stdout, run.stdout
