@@ -93,6 +93,52 @@ def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
     return tree.sql(dialect="trino") if changed else sql
 
 
+def rewrite_instants_for_trino(
+    sql: str, utc_wall: dict[tuple[str, str, str], set[str]]
+) -> str:  # REQ-2050
+    """Each output column of ``sql`` that is an instant Trino reads as a plain TIMESTAMP written as
+    ``with_timezone(col, 'UTC')``: the UTC wall time a MySQL-family TIMESTAMP or an Elasticsearch
+    date arrives as, carried as the instant it is (trino_connectors.TRINO_INSTANT_AS_TIMESTAMP).
+
+    ``utc_wall`` maps ``(catalog, schema, table)`` to such a table's declared-timestamptz columns
+    (trino_connectors.trino_utc_wall_columns). Only the statement's outputs -- the outermost
+    SELECT's items, each UNION branch's -- that are a bare column of such a table: a predicate, a
+    join or an inner query reads the column as the connector gives it, so its pushdown stands."""
+    if not utc_wall:
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+    selects = [tree] if isinstance(tree, exp.Select) else []
+    if isinstance(tree, exp.Union):
+        selects = [s for s in tree.find_all(exp.Select) if s.find_ancestor(exp.Select) is None]
+    changed = False
+    for select in selects:
+        tables: dict[str, set[str]] = {}
+        sources = [select.args.get("from_")] + list(select.args.get("joins") or [])
+        for source in sources:
+            table = source.this if source is not None else None
+            if not isinstance(table, exp.Table) or table.args.get("catalog") is None:
+                continue
+            key = (table.catalog, table.db.lower(), table.name.lower())
+            if key in utc_wall:
+                tables[table.alias_or_name] = utc_wall[key]
+        if not tables:
+            continue
+        only = next(iter(tables)) if len(sources) == 1 else None
+        for item in list(select.expressions):
+            column = item.this if isinstance(item, exp.Alias) else item
+            if not isinstance(column, exp.Column):
+                continue
+            instants = tables.get(column.table or only or "")
+            if not instants or column.name not in instants:
+                continue
+            zoned = exp.Anonymous(
+                this="with_timezone", expressions=[column.copy(), exp.Literal.string("UTC")]
+            )
+            item.replace(exp.alias_(zoned, item.alias_or_name))
+            changed = True
+    return tree.sql(dialect="trino") if changed else sql
+
+
 def rewrite_prometheus_labels_for_trino(
     sql: str, label_columns: dict[tuple[str, str], set[str]]
 ) -> str:  # REQ-1730
@@ -256,6 +302,37 @@ def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
 #: The targets whose LIKE has no escape character unless one is written (PostgreSQL's is a
 #: backslash): each LIKE is given PostgreSQL's explicitly (_like_escape_written).
 _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
+
+
+# A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
+# which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
+_INSTANT_AS_UTC_WALL_TIME = frozenset({"mysql"})
+
+
+def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each string literal cast to timestamptz that carries an offset written as
+    the same instant in UTC, its offset gone. MariaDB reads ``TIMESTAMP('2024-01-01
+    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050)."""
+    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or "TIMESTAMPTZ" not in pg_sql.upper():
+        return pg_sql
+    from datetime import datetime, timezone
+
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    for cast in tree.find_all(exp.Cast):
+        literal = cast.this
+        if cast.to.this != exp.DataType.Type.TIMESTAMPTZ or not (
+            isinstance(literal, exp.Literal) and literal.is_string
+        ):
+            continue
+        try:
+            instant = datetime.fromisoformat(literal.this)
+        except ValueError:
+            continue  # not a date and time (the source refuses it as it is)
+        if instant.tzinfo is None:
+            continue  # no offset: read in the session's zone, UTC, as written
+        utc = instant.astimezone(timezone.utc).replace(tzinfo=None)
+        literal.replace(exp.Literal.string(utc.isoformat(sep=" ")))
+    return tree.sql(dialect="postgres")
 
 
 def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
@@ -471,6 +548,7 @@ def transpile(
     identify = target_dialect in ("snowflake", "oracle")
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
+    pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "exasol":
         result = _exasol_stored_case(

@@ -450,9 +450,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # duplicate-key race when two concurrent queries register the same anonymous composite type.
         if st in _PG_WIRE_TYPES:
             return f"jdbc:postgresql://{h}:{po}/{self.database}?autosave=conservative"
-        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own.
+        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own. Neither
+        # names a database: Trino's MySQL and MariaDB connectors read each database as a schema and
+        # refuse a URL that names one ("Database (catalog) must not be specified in JDBC URL").
         if st in _MYSQL_WIRE_TYPES:
-            return f"jdbc:mysql://{h}:{po}/{self.database}"
+            return f"jdbc:mysql://{h}:{po}"
+        if st == "mariadb":
+            return f"jdbc:mariadb://{h}:{po}"
         # Druid is queried through its Avatica endpoint on the broker (Trino's druid connector wraps
         # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
         if st == "druid":
@@ -460,7 +464,6 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
-            "mariadb": "jdbc:mariadb",
             "redshift": "jdbc:redshift",
             "exasol": "jdbc:exa",
         }
