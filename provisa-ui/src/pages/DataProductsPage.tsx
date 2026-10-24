@@ -17,9 +17,7 @@ import {
   useDomains,
   useTables,
   useUpdateTable,
-  useRelationships,
   useRoles,
-  useSources,
 } from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
@@ -89,8 +87,6 @@ export function DataProductsPage() {
   const { loading, error } = products;
   const { domains } = useDomains();
   const { tables } = useTables(); // REQ-1634: member-table list + assignment
-  const { sources } = useSources(); // REQ-1443 clause 10: checker type for a scan's rules modal
-  const { relationships } = useRelationships(); // REQ-1634: related-tables panel
   const [functions, setFunctions] = useState<TrackedFunction[]>([]); // REQ-1634: member-command list + assignment
   const { roles } = useRoles();
   const roleOptions = roles.map((r) => r.id);
@@ -297,16 +293,6 @@ export function DataProductsPage() {
         columns: Array.from(columns).sort(),
       }))
       .sort((x, y) => x.table.localeCompare(y.table));
-  };
-
-  // Relationships where both endpoints are member tables of this product — the connections that
-  // exist entirely within the published surface, as opposed to the Related Tables section's.
-  const internalRelationships = (id: string) => {
-    const memberIds = new Set(memberTables(id).map((tb) => tb.id));
-    return relationships.filter(
-      (r) =>
-        memberIds.has(r.sourceTableId) && r.targetTableId != null && memberIds.has(r.targetTableId),
-    );
   };
 
   const openCreate = () => {
@@ -643,8 +629,6 @@ export function DataProductsPage() {
                                 core={core.data}
                                 coreError={core.error}
                                 reader={reader}
-                                sources={sources}
-                                internalRelationships={internalRelationships(p.id)}
                                 canEdit={canEdit}
                                 canSeeLineage={canSeeLineage}
                                 lineageLoading={lineageLoading}

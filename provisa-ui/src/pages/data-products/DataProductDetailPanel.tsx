@@ -31,10 +31,10 @@ import {
   Table as TableIcon,
   Trash2,
 } from "lucide-react";
-import type { DataProduct, Relationship, Source } from "../../types/admin";
+import type { DataProduct } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
-import { cypherRelType, tableSqlRef } from "../../naming";
+import { tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
@@ -46,7 +46,7 @@ import { ClampedDetail } from "./ClampedDetail";
 
 export type { InputPortRow };
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
-import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
+import { coreGraph, type CoreEdge, type CoreTable, type ProductCore } from "./productCore";
 
 interface TableRef {
   domain_id: string;
@@ -98,11 +98,6 @@ interface DataProductDetailPanelProps {
   coreError: string | null;
   /** The acting role's schema and root fields, for the member tables' drill-down queries. */
   reader: MetaReader | null;
-  // REQ-1443 clause 10: the checker type a scan's rules are parsed with is the type of the source
-  // the checker table sits on (soda | great_expectations).
-  sources: Source[];
-  // Relationships where both endpoints are member tables, for their Cypher click-through.
-  internalRelationships: Relationship[];
   // REQ-1634: gates Edit/Delete.
   canEdit: boolean;
   // REQ-1640: lineage and input ports need view_governance; without it they are absent.
@@ -220,8 +215,6 @@ export function DataProductDetailPanel({
   core,
   coreError,
   reader,
-  sources,
-  internalRelationships,
   canEdit,
   canSeeLineage,
   lineageLoading,
@@ -266,9 +259,16 @@ export function DataProductDetailPanel({
 
   // REQ-1634: Cypher click-through only for relationships that resolve to a usable type and
   // aren't opted out — mirrors GraphPage's handleRelClick input contract.
+  // The relationships between the product's member tables, under the names meta stores on each.
+  const memberIds = new Set((core?.tables ?? []).map((tb) => tb.id));
+  const internalRelationships = (core?.tables ?? []).flatMap((tb) =>
+    (tb.source_relationships ?? [])
+      .filter((r) => r.target_table != null && memberIds.has(r.target_table.id))
+      .map((r) => ({ ...r, source: tb })),
+  );
   const cypherRows = internalRelationships
-    .map((r) => ({ r, type: cypherRelType(r) }))
-    .filter((row): row is { r: Relationship; type: string } => !!row.type && !row.r.disableCypher);
+    .filter((r) => r.cypher_type && !r.disable_cypher)
+    .map((r) => ({ r, type: r.cypher_type as string }));
 
   // Masonry panel grid: a CSS multi-column layout packs each card into whichever column has room
   // next, instead of flex-wrap's row-by-row layout (which pads every card in a row up to the row's
@@ -291,6 +291,8 @@ export function DataProductDetailPanel({
   const outputTables = core.tables?.filter((tb) => tb.dq_contract == null);
   const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
   const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
+  // The knowledge graph card is drawn from this read, as every other card is.
+  const graph = coreGraph(core);
   const related = core.edges?.filter((e) => e.kind === "relationship");
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
@@ -527,9 +529,6 @@ export function DataProductDetailPanel({
             ) : (
               <List size="sm" data-testid={`data-product-detail-dq-tables-${p.id}`}>
                 {dqTables.map((tb) => {
-                  // The checker type comes from the table's source; sources load on their own
-                  // query, so the control waits for that answer rather than guessing a type.
-                  const source = sources.find((s) => s.id === tb.source_id);
                   return (
                     <List.Item key={tb.id} ff="monospace">
                       <Group gap={4} wrap="nowrap">
@@ -545,7 +544,6 @@ export function DataProductDetailPanel({
                           <ActionIcon
                             variant="subtle"
                             size="sm"
-                            disabled={source === undefined}
                             aria-label={t("dataProductsTab.detail.dqRulesAria", {
                               table: tb.table_name,
                             })}
@@ -555,15 +553,13 @@ export function DataProductDetailPanel({
                             <ListChecks size={14} />
                           </ActionIcon>
                         </Tip>
-                        {source !== undefined && tb.dq_contract != null && (
-                          <DqRulesModal
-                            opened={rulesFor === tb.id}
-                            onClose={() => setRulesFor(null)}
-                            checker={source.type.toLowerCase()}
-                            contractText={tb.dq_contract}
-                            tableName={tb.table_name}
-                          />
-                        )}
+                        <DqRulesModal
+                          opened={rulesFor === tb.id}
+                          onClose={() => setRulesFor(null)}
+                          rules={tb.dq_rules ?? []}
+                          scans={tb.checks ?? null}
+                          tableName={tb.table_name}
+                        />
                       </Group>
                       {tb.checks && (
                         <Text
@@ -746,13 +742,13 @@ export function DataProductDetailPanel({
                 <List.Item key={r.id} ff="monospace">
                   {/* GQL field name and Cypher relationship type are independent names for the
                       same edge — show both when set. */}
-                  {joinAliasPair([r.graphqlAlias, r.alias ?? r.computedCypherAlias]) ||
-                    `${r.sourceTableName}.${r.sourceColumn}`}
+                  {joinAliasPair([r.graphql_field, r.cypher_type]) ||
+                    `${r.source.table_name}.${r.source_column}`}
                   <Muted>
-                    {r.sourceTableName}.{r.sourceColumn}
+                    {r.source.table_name}.{r.source_column}
                     {" → "}
-                    {r.targetTableName}
-                    {r.targetColumn ? `.${r.targetColumn}` : ""} ({r.cardinality})
+                    {r.target_table?.table_name}
+                    {r.target_column ? `.${r.target_column}` : ""} ({r.cardinality})
                   </Muted>
                 </List.Item>
               ))}
@@ -784,7 +780,7 @@ export function DataProductDetailPanel({
           testId={`data-product-card-knowledgeGraph-${p.id}`}
           label={t("graph3d.panelTitle")}
         >
-          <KnowledgeGraphPanel productId={p.id} productName={product.name} />
+          <KnowledgeGraphPanel productId={p.id} productName={product.name} graph={graph} />
         </DetailCard>
       </div>
       {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws

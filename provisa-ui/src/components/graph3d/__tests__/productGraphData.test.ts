@@ -208,11 +208,11 @@ const ROWS: ProductRow[] = [
         profile_results: [{ id: 9, table_name: "customers_1_profile_columns" }],
         source_relationships: [
           {
-            id: 1,
+            id: "1",
             target_table: { id: 2, domain_id: "sales", table_name: "orders", product_id: "c360" },
           },
           {
-            id: 2,
+            id: "2",
             target_table: { id: 5, domain_id: "finance", table_name: "invoices", product_id: null },
           },
         ],

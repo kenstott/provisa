@@ -115,21 +115,29 @@ beforeEach(() => {
 });
 
 function panel() {
-  render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
+  render(<KnowledgeGraphPanel productId="c360" productName="customer_360" graph={DATA} />);
   // Scrolled into view: the product is read and three.js loads.
   act(() => observed.fire.forEach((f) => f()));
 }
 
 describe("the Knowledge Graph panel", () => {
   it("loads three.js only once it scrolls into view, and draws the product's core", async () => {
-    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
+    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" graph={DATA} />);
     expect(made.scenes).toHaveLength(0);
-    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
     act(() => observed.fire.forEach((f) => f()));
-    expect(reads.calls.at(-1)).toEqual(["c360", true]);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const g = drawn(last().setData.mock.calls[0]);
     expect(nodeIds(g)).toEqual(["f:refresh", "p:c360", "t:customers", "t:orders", "term:customer"]);
+  });
+
+  it("draws the card from the panel's meta read, and reads only once it is expanded", async () => {
+    panel();
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    // The card is the product's core as the panel read it: no read of its own.
+    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
+    // Expanded, the full graph reads its own query (its filters and presets need the whole model).
+    fireEvent.click(screen.getByTestId("kg-panel-expand"));
+    await waitFor(() => expect(reads.calls.at(-1)).toEqual(["c360", true]));
   });
 
   it("is the compact view: its canvas at the panel's fixed height, no explorer in it", async () => {

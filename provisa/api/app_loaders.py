@@ -69,6 +69,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
     "data_products": "data_products_meta",  # REQ-2125
+    "sources": "sources_meta",  # REQ-1443: identity and type only
 }
 
 
@@ -1957,6 +1958,8 @@ _META_TABLES = [
     "glossary_term_experts",  # REQ-1584
     "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
+    "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
+    "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
     "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
 ]
