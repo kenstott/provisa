@@ -626,7 +626,9 @@ class _RelJoinMixin:  # mixin for _Translator
                 rel, bidir, backward, src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit
             )
         else:
-            candidates = self._resolve_untyped_rel_candidates(bidir, backward, src_nm, tgt_nm)
+            candidates = self._one_join_per_junction(
+                self._resolve_untyped_rel_candidates(bidir, backward, src_nm, tgt_nm)
+            )
 
         if not candidates:
             if tgt_var:
@@ -650,9 +652,36 @@ class _RelJoinMixin:  # mixin for _Translator
             from_expr,
             joins,
         )
-        if alternation:
+        if alternation or id(candidates[0][0]) in self._alternation_types:
             self._name_alternation_types(rel, candidates[0][0], tgt_alias)
         return from_expr, joins, False
+
+    def _one_join_per_junction(self, candidates: "list[tuple]") -> "list[tuple]":
+        """An untyped hop's candidates, the types that are rows of one junction (told apart by its
+        type column, between the same ends the same way round) made one join of every row of that
+        junction: an untyped relationship is any row, of a declared type or not."""
+        out: list[tuple] = []
+        at: dict[tuple, int] = {}
+        for rm, bwd in candidates:
+            via = rm.via
+            if via is None or not via.type_column or via.type_value is None:
+                out.append((rm, bwd))
+                continue
+            shape = (rm.source_label, rm.target_label, rm.join_source_column)
+            shape += (rm.join_target_column, via.catalog_name, via.schema_name, via.table_name)
+            shape += (via.source_columns, via.target_columns, via.type_column, bwd)
+            if shape in at:
+                combined = out[at[shape]][0]
+            else:
+                combined = dataclasses.replace(
+                    rm, via=dataclasses.replace(via, type_value=None, type_values=())
+                )
+                at[shape] = len(out)
+                out.append((combined, bwd))
+                # type(r) is the type its row's discriminator names (_name_alternation_types).
+                self._alternation_types[id(combined)] = {}
+            self._alternation_types[id(combined)][via.type_value] = rm.rel_type
+        return out
 
     def _alternation_candidates(
         self,
@@ -715,16 +744,20 @@ class _RelJoinMixin:  # mixin for _Translator
     def _name_alternation_types(
         self, rel: "RelPattern", combined: "RelationshipMapping", tgt_alias: str
     ) -> None:
-        """An alternation's type(r) is the type its row's discriminator names."""
+        """An alternation's type(r) is the type its row's discriminator names. An untyped hop's
+        row of a type no relationship declares (its junction read whole) is named by its stored
+        value: it has no declared name."""
         via = combined.via
         assert via is not None and via.type_column is not None
         column = via_column(via_alias_for(combined, rel.variable or tgt_alias), via.type_column)
+        whole = via.type_value is None and not via.type_values
         named = exp.Case(
             this=column,
             ifs=[
                 exp.If(this=exp.Literal.string(value), true=exp.Literal.string(rel_type))
                 for value, rel_type in self._alternation_types[id(combined)].items()
             ],
+            default=column.copy() if whole else None,
         )
         if rel.variable:
             self._rel_var_type_exprs[rel.variable] = named

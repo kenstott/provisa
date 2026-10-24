@@ -90,6 +90,9 @@ class JunctionMeta:
     type_column: str | None = None
     type_value: str | None = None
     attributes: tuple[tuple[str, str], ...] = ()
+    #: The type column's exposed name: what a row's own type is read as (r.relType) where a hop
+    #: reads every row of the junction, whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — "column", "table" or "fixed".
     label_source: str = ""
     label_fixed: str = ""  # the cypher_alias, carried here so "fixed" can be resolved standalone
