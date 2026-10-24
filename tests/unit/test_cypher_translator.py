@@ -1296,7 +1296,9 @@ def test_an_unregistered_rel_type_is_refused():
 
     lm = _make_label_map_with_alias()
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
-    with pytest.raises(UnregisteredRelationshipType, match=r"type\(s\): UNKNOWN_REL") as refused:
+    with pytest.raises(
+        UnregisteredRelationshipType, match=r"There is no relationship type :UNKNOWN_REL\."
+    ) as refused:
         cypher_to_sql(ast, lm, {})
     assert refused.value.types == ["UNKNOWN_REL"]
     known = sorted(lm.aliases)[0]

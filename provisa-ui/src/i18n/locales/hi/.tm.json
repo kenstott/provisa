@@ -8015,5 +8015,20 @@
   "hi/rowMaterialize.json::rowMaterialize.help": "Keep only the rows statements ask for: each is fetched from the source by its primary key and kept for the Cache TTL, instead of a copy of the whole table. Needs one primary-key column and a source that fetches rows by key.",
   "hi/serverErrors.json::serverErrors.schema.row_materialize_no_key_fetch": "{{table}} cannot be replicated row by row: its remote schema has no field that returns its rows for a list of its primary key.",
   "hi/dataProductsTab.json::dataProductsTab.detail.lineageLaneUpstream": "Upstream, hop {{n}}",
-  "hi/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}"
+  "hi/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}",
+  "hi/serverErrors.json::serverErrors.cypher.access_violations": "This role may not run this query:",
+  "hi/serverErrors.json::serverErrors.cypher.invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
+  "hi/serverErrors.json::serverErrors.cypher.unknown_label": "There is no label :{{label}}. Registered labels: {{suggestions}}.",
+  "hi/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
+  "hi/serverErrors.json::serverErrors.cypher.unknown_relationship_type": "There is no relationship type {{types}}. Registered types: {{suggestions}}.",
+  "hi/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
+  "hi/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
+  "hi/serverErrors.json::serverErrors.cypher.aggregate_in_where": "WHERE cannot use the aggregate {{aggregate}}: WHERE filters rows before they are grouped. Aggregate in a WITH and filter after it.",
+  "hi/serverErrors.json::serverErrors.cypher.nested_aggregate": "{{outer}} aggregates the aggregate {{inner}}: an aggregate cannot be taken of another. Aggregate in a WITH first.",
+  "hi/serverErrors.json::serverErrors.cypher.undefined_variable": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}.",
+  "hi/serverErrors.json::serverErrors.cypher.invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",
+  "hi/serverErrors.json::serverErrors.cypher.invalid_skip": "SKIP {{value}} is not a whole number of rows: SKIP takes a count of 0 or more, e.g. SKIP 10.",
+  "hi/serverErrors.json::serverErrors.cypher.engine_refused": "The engine refused the query: {{error}}",
+  "hi/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
+  "hi/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL."
 }

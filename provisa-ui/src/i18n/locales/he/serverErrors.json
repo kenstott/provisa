@@ -529,7 +529,22 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "לא ניתן היה לבצע ספירה, ולכן הסכום אינו ידוע: {{statement}}: {{reason}}"
+      "count_unknown": "לא ניתן היה לבצע ספירה, ולכן הסכום אינו ידוע: {{statement}}: {{reason}}",
+      "access_violations": "תפקיד זה אינו רשאי להריץ שאילתה זו:",
+      "invalid_regex": "התבנית \"{{pattern}}\" ב-{{expression}} אינה ביטוי רגולרי תקין: {{reason}}. =~ מקבל ביטוי רגולרי, למשל \".*{{word}}.*\", או השתמשו ב-CONTAINS \"{{word}}\".",
+      "unknown_label": "אין תווית :{{label}}. תוויות רשומות: {{suggestions}}.",
+      "no_labels": "אין תווית :{{label}}: תפקיד זה אינו יכול לקרוא אף טבלה.",
+      "unknown_relationship_type": "אין סוג קשר {{types}}. סוגים רשומים: {{suggestions}}.",
+      "no_relationship_types": "אין סוג קשר {{types}}: תפקיד זה אינו יכול לעבור על אף קשר.",
+      "type_mismatch": "ב-{{expression}}, לא ניתן להשוות את {{value}} ל-{{property}}, שסוגו {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE אינו יכול להשתמש בצבירה {{aggregate}}: WHERE מסנן שורות לפני שהן מקובצות. בצעו צבירה ב-WITH וסננו אחריו.",
+      "nested_aggregate": "{{outer}} צובר את הצבירה {{inner}}: אי אפשר לצבור צבירה אחרת. בצעו צבירה ב-WITH תחילה.",
+      "undefined_variable": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} אינו מספר שלם של שורות: LIMIT מקבל מספר של 0 ומעלה, למשל LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} אינו מספר שלם של שורות: SKIP מקבל מספר של 0 ומעלה, למשל SKIP 10.",
+      "engine_refused": "המנוע דחה את השאילתה: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} קורא את {{variable}}, אך המשפט אינו קושר אף משתנה: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL."
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם ליצור קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",

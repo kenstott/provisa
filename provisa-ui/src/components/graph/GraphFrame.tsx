@@ -63,7 +63,7 @@ import {
 } from "./GraphIcons";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
-import { FrameRunning, FrameStatementTabs } from "./FrameParts";
+import { FrameError, FrameRunning, FrameStatementTabs } from "./FrameParts";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -778,16 +778,7 @@ export function GraphFrame({
       <div className="gf-body-content">
         {onStatement && <FrameStatementTabs frame={frame} onStatement={onStatement} />}
         {frame.status === "loading" && <FrameRunning />}
-        {frame.status === "error" && (
-          <div className="gf-error gf-error--copyable">
-            <span className="gf-error-text">{frame.error}</span>
-            <CopySymbolButton
-              text={frame.error ?? ""}
-              className="gf-error-copy-btn"
-              title={t("graphFrame.copyErrorTitle")}
-            />
-          </div>
-        )}
+        {frame.status === "error" && <FrameError frame={frame} />}
         {frame.redirect && (
           <ResultRedirectNotice className="gf-redirect" redirect={frame.redirect} />
         )}

@@ -529,7 +529,22 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}"
+      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}",
+      "access_violations": "このロールはこのクエリを実行できません:",
+      "invalid_regex": "{{expression}} のパターン \"{{pattern}}\" は有効な正規表現ではありません: {{reason}}。=~ には正規表現を指定します (例: \".*{{word}}.*\")。または CONTAINS \"{{word}}\" を使用してください。",
+      "unknown_label": "ラベル :{{label}} はありません。登録済みのラベル: {{suggestions}}。",
+      "no_labels": "ラベル :{{label}} はありません: このロールが読めるテーブルはありません。",
+      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。登録済みのタイプ: {{suggestions}}。",
+      "no_relationship_types": "リレーションシップタイプ {{types}} はありません: このロールがたどれるリレーションシップはありません。",
+      "type_mismatch": "{{expression}} では、{{value}} を型 {{property_type}} の {{property}} と比較できません。{{fix}}",
+      "aggregate_in_where": "WHERE では集約 {{aggregate}} を使えません: WHERE はグループ化の前に行を絞り込みます。WITH で集約してから絞り込んでください。",
+      "nested_aggregate": "{{outer}} は集約 {{inner}} を集約しています: 集約の集約はできません。先に WITH で集約してください。",
+      "undefined_variable": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。",
+      "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
+      "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
+      "engine_refused": "エンジンがクエリを拒否しました: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} は {{variable}} を読みますが、文は変数を一つもバインドしていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",

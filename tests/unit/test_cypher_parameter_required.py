@@ -43,5 +43,7 @@ async def test_a_read_missing_a_required_parameter_is_a_400_naming_it(graph, mon
     response = await cypher_query(body, request, query_id=None, x_provisa_stats=None)
 
     assert response.status_code == 400, response.body
-    error = json.loads(bytes(response.body))["error"]
-    assert "assignments_by_breed" in error and "breed_name" in error
+    body = json.loads(bytes(response.body))
+    assert body["code"] == "cypher.parameter_required"
+    assert body["params"]["table"] == "assignments_by_breed"
+    assert "assignments_by_breed" in body["detail"] and "breed_name" in body["detail"]

@@ -63,6 +63,7 @@ from provisa.gql.translator_helpers import (
     _rewrite_cypher_fn_node,
     _safe_alias,
 )
+from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
     CUT_COLUMN,
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
@@ -111,7 +112,7 @@ def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabe
                     continue  # refused as an alternation on a single hop, by its own message
                 unknown.update(t for t in rel.types if t not in registered)
     if unknown:
-        raise UnregisteredRelationshipType(sorted(unknown))
+        raise UnregisteredRelationshipType(sorted(unknown), registered)
 
 
 def cypher_calls_to_sql_list(  # REQ-571
@@ -1072,6 +1073,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         full_type: list[str] = [label for label in labels if label in self._lm.nodes]
         domain_hits: list[str] = [label for label in labels if label in self._lm.domains]
         table_hits: list[str] = [label for label in labels if label in self._lm.nodes_by_table]
+        known = set(full_type) | set(domain_hits) | set(table_hits)
+        unknown = [label for label in labels if label not in known]
+        if unknown:
+            # REQ-778: a label no table has is the user's mistake -- even beside one that is
+            # known, which would otherwise widen the read to the whole domain.
+            raise unknown_label(unknown[0], self._lm)
 
         # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
         if full_type:
@@ -1116,7 +1123,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if domain_hits:
             return None, domain_hits[0]
 
-        raise CypherTranslateError(f"Unknown label(s): {labels}")
+        raise unknown_label(labels[0], self._lm)
 
     def _referenced_var_props(self, var: str) -> list[str]:
         """The property names referenced as ``var.prop`` in the statement, in order."""
