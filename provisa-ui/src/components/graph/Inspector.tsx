@@ -29,7 +29,6 @@ import { Link } from "react-router-dom";
 import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor } from "./graph-model";
-import { getStableNodeId } from "./stableNodeId";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import type { CanvasHighlight } from "./canvas/canvas-types";
 import { cypherRelType } from "../../naming";
@@ -60,7 +59,6 @@ interface InspectorProps {
   relationships?: Relationship[];
   /** Save the edge's aliases; the server's refusal of them, or null when saved. */
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
-  pkMap: Record<string, string[]>;
   /** Each node label's registered table, which a node links to. */
   labelToTableId: Record<string, number>;
 }
@@ -93,7 +91,6 @@ export function Inspector({
   onResizeStart,
   relationships,
   onSaveEdgeAlias,
-  pkMap,
   labelToTableId,
 }: InspectorProps) {
   const { t } = useTranslation();
@@ -153,23 +150,19 @@ export function Inspector({
   const typeName = colonIdx > 0 ? nodeLabel.slice(colonIdx + 1) : nodeLabel;
   const domainPrefix = colonIdx > 0 ? nodeLabel.slice(0, colonIdx) : null;
 
-  const stableId = selected && isN ? getStableNodeId(selected.data as GNode, pkMap) : null;
-  const pkCols = selected && isN ? (pkMap[(selected.data as GNode).label] ?? []) : [];
-  const idColName = pkCols[0] ?? null;
-
   const propRows: [string, unknown][] = useMemo(() => {
     if (!selected) return [];
     const props = selected.data.properties ?? {};
     if (isN) {
-      const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
-      const pkEntry: Record<string, unknown> =
-        idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
+      // A node shows its own properties only: its key as the server gives it (`_id`) first, then
+      // its columns by name -- never the drawing's internal id, never a value made up for a column
+      // the row did not carry.
+      const keyRow: [string, unknown][] = "_id" in props ? [["_id", props._id]] : [];
       return [
-        ...idRow,
+        ...keyRow,
         ...Object.entries(props)
-          .filter(([k]) => !HIDDEN_PROPS.has(k))
+          .filter(([k]) => k !== "_id" && !HIDDEN_PROPS.has(k))
           .sort(([a], [b]) => a.localeCompare(b)),
-        ...Object.entries(pkEntry),
       ];
     }
     const e = selected.data as GEdge;
@@ -179,7 +172,7 @@ export function Inspector({
       ["end", e.end],
       ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
     ] as [string, unknown][];
-  }, [selected, isN, stableId, idColName]);
+  }, [selected, isN]);
 
   const handleCopyAll = useCallback(() => {
     const obj = Object.fromEntries(propRows);

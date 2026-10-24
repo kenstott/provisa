@@ -89,7 +89,10 @@ def returned():
     return _returned
 
 
-_NODE = '{"id":"GlossaryTerm|1","label":"GlossaryTerm","tableLabel":"GlossaryTerm","name":"ab"}'
+_NODE = (
+    '{"id":"GlossaryTerm|1","label":"GlossaryTerm","tableLabel":"GlossaryTerm",'
+    '"properties":{"name":"ab"}}'
+)
 
 
 @pytest.mark.parametrize(
