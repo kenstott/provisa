@@ -93,9 +93,15 @@ def test_each_arm_carries_its_node_as_one_value():
 def test_the_nodes_answered_are_each_type_s_own(answer):
     rows = answer("MATCH (n) RETURN n")
     assert sorted((r["n"] for r in rows), key=lambda n: n.id) == [
-        Node(id="Pet|1", label="Pet", table_label="", properties={"age": "3", "name": "rex"}),
-        Node(id="Pet|2", label="Pet", table_label="", properties={"age": "5"}),
-        Node(id="Shop|7", label="Shop", table_label="", properties={"city": "oslo"}),
+        # Every column a property under its own name, its key column ``id`` included.
+        Node(
+            id="Pet|1",
+            label="Pet",
+            table_label="",
+            properties={"age": "3", "id": "1", "name": "rex"},
+        ),
+        Node(id="Pet|2", label="Pet", table_label="", properties={"age": "5", "id": "2"}),
+        Node(id="Shop|7", label="Shop", table_label="", properties={"city": "oslo", "id": "7"}),
     ]
 
 

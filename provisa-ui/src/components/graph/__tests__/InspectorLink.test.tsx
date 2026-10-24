@@ -41,7 +41,6 @@ function show(selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GE
       width={320}
       onResizeStart={() => {}}
       relationships={[rel]}
-      pkMap={{}}
       labelToTableId={{ "sales:Order": 41 }}
     />,
   );
