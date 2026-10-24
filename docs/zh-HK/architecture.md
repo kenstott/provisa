@@ -436,7 +436,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `compiler/cursor.py` | Relay 風格的游標式分頁——所有清單查詢上的 `first`/`after`/`last`/`before` 引數及 `pageInfo` 產生 |
 | `compiler/aggregate_gen.py` | 自動產生具 `count`、`sum`、`avg`、`min`、`max` 子欄位及已篩選 `nodes` 存取的 `{table}_aggregate` 查詢型別 |
 | `compiler/enum_detect.py` | 列舉型別自動偵測——PostgreSQL 原生列舉型別（`pg_enum`）以 GraphQL 列舉型別而非字串純量的形式公開 |
-| `compiler/hints.py` | 聯邦效能提示——以 SQL 註解形式內嵌的查詢層級路由指令（`/* @provisa route=federated */`），可覆寫自動路由 |
+| `compiler/hints.py` | 聯邦效能提示——以 SQL 註解形式內嵌的查詢層級路由指令（`-- @provisa route=federated`），可覆寫自動路由 |
 | `compiler/mutation_gen.py` | Mutation 編譯器；欄位預設集——於 insert/update 時套用的伺服器端靜態值或工作階段變數值，不會公開於 mutation 輸入型別中 |
 | `auth/approval_hook.py` | ABAC 核准掛鉤——查詢執行前呼叫的可插拔外部授權；webhook、gRPC 及 unix_socket 傳輸方式；逐資料表/來源/全域範圍；可設定的回退政策 |
 | `subscriptions/` | SSE 訂閱狀態及派送 |
@@ -623,7 +623,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 
