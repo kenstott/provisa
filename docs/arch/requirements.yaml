@@ -87947,6 +87947,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - tests/unit/test_profiler_classifications.py
     - provisa-ui/src/pages/tables/__tests__/ProfileClassificationsModal.test.tsx
     - provisa-ui/src/__tests__/ClassificationKindsTab.test.tsx
+    - tests/integration/test_profiler_classification_e2e.py
 - id: REQ-2148
   status: proposed
   target: "2027-Q1"

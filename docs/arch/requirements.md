@@ -26284,7 +26284,7 @@ The profiler classifies columns from their profiled values, as Purview's classif
 
 **Code:** `provisa/profiler/classify.py`, `provisa/profiler/classifications.py`, `provisa/profiler/classification_kinds.yaml`, `provisa/profiler/run.py`, `provisa/api/admin/profiler_classifications_router.py`, `provisa-ui/src/pages/tables/ProfileClassificationsModal.tsx`, `provisa-ui/src/components/admin/ClassificationKindsTab.tsx`
 
-**Tests:** `tests/unit/test_profiler_classify.py`, `tests/unit/test_profiler_classifications.py`, `provisa-ui/src/pages/tables/__tests__/ProfileClassificationsModal.test.tsx`, `provisa-ui/src/__tests__/ClassificationKindsTab.test.tsx`
+**Tests:** `tests/unit/test_profiler_classify.py`, `tests/unit/test_profiler_classifications.py`, `provisa-ui/src/pages/tables/__tests__/ProfileClassificationsModal.test.tsx`, `provisa-ui/src/__tests__/ClassificationKindsTab.test.tsx`, `tests/integration/test_profiler_classification_e2e.py`
 
 ## 1. Access Governance & Security
 
