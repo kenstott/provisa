@@ -98,6 +98,19 @@ if (!Number.isInteger(E2E_WORKERS) || E2E_WORKERS < 1) {
 // Block layout, offset from the block's own base: 0 http, 1 grpc, 2 flight, 3 bolt, 4 mcp,
 // 5 pgwire — so block 0 reproduces the previous flat 8901/8902/8903/8904/8905/8906 exactly.
 const backendPort = (worker: number) => E2E_API_PORT + worker * 10;
+// Each backend's own ports for the pgwire servers it starts (a files, SharePoint or Splunk source's,
+// REQ-955), named to it as PROVISA_PGWIRE_PORTS: two per server, the endpoint and its Calcite
+// child. Left to scan from 5433, two backends starting a server at the same moment both found 5433
+// free and one of them lost it -- "pgwire server port 5433 still bound 30s after the launcher
+// exited" -- a spec that passes alone failing beside another worker's (file-connector beside
+// file-connector-multi-format). A block per worker, as the pytest harness leases its own.
+const PGWIRE_PORTS_BASE = Number(process.env.PROVISA_E2E_PGWIRE_PORTS_BASE ?? 25400);
+const PGWIRE_PORTS_PER_WORKER = 40;
+const pgwirePorts = (worker: number) =>
+  Array.from(
+    { length: PGWIRE_PORTS_PER_WORKER },
+    (_, i) => PGWIRE_PORTS_BASE + worker * PGWIRE_PORTS_PER_WORKER + i,
+  ).join(",");
 // Trino-backed E2E backend — a second isolated backend instance for sharepoint/splunk
 // tests that require Trino catalog creation (TrinoBackend.register_source creates the
 // catalog; NativeBackend.register_source is a no-op so the schema dropdown never
@@ -530,6 +543,7 @@ export default defineConfig({
             PROVISA_BOLT_PORT: String(b.port + 3),
             PROVISA_MCP_PORT: String(b.port + 4),
             PROVISA_PGWIRE_PORT: String(b.port + 5),
+            PROVISA_PGWIRE_PORTS: pgwirePorts(b.worker),
             PROVISA_DATA_DIR: b.dataDir,
             PROVISA_CONFIG: b.configPath,
             ORG_ID: b.orgId,
