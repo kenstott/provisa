@@ -155,7 +155,11 @@ async def test_what_the_engine_refuses_is_said_as_the_engines(monkeypatch):
 
     monkeypatch.setattr(_pipeline, "_execute_plan", _refuse)
     monkeypatch.setattr(_pipeline, "require_governed_plan", lambda plan: None)
-    state = SimpleNamespace(federation_engine=SimpleNamespace(classify_error=lambda exc: "query"))
+    state = SimpleNamespace(
+        federation_engine=SimpleNamespace(
+            classify_error=lambda exc: "query", refusal_of=lambda exc: None
+        )
+    )
     plan = SimpleNamespace(physical_sql="SELECT 1", exec_sql=None)
     response = await cypher_router._run_plan(plan, state)
     body = json.loads(bytes(response.body))

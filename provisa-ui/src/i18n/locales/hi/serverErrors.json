@@ -551,7 +551,9 @@
       "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} {{variable}} को पढ़ता है, लेकिन कथन कोई वेरिएबल नहीं बाँधता: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है।",
       "undefined_variable_property": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestion}} था? {{owner}} :{{label}} से बँधा है, जिसकी एक प्रॉपर्टी {{variable}} है।",
-      "undefined_variable_properties": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestions}} था? प्रत्येक ऐसे लेबल से बँधा है जिसकी एक प्रॉपर्टी {{variable}} है।"
+      "undefined_variable_properties": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestions}} था? प्रत्येक ऐसे लेबल से बँधा है जिसकी एक प्रॉपर्टी {{variable}} है।",
+      "non_finite_number": "उत्तर में ऐसी संख्या है जिसे JSON व्यक्त नहीं कर सकता: {{column}} का मान {{value}} है।",
+      "try_cast_needs_postgres_16": "जिस मान का रूपांतरण न हो सके, उसके toInteger, toFloat और toBoolean के लिए इस इंजन पर PostgreSQL 16 या उसके बाद का संस्करण चाहिए।"
     },
     "requests": {
       "approver_outside_domains": "संबंध बनाने का आपका अधिकार इस अनुरोध से जुड़े किसी डोमेन तक नहीं पहुँचता ({{domains}})",
