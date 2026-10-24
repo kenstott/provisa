@@ -645,81 +645,40 @@ class TestGroupByNodes:
         errors = validate(schema, doc)
         assert errors == []
 
-    def test_nodes_sql_is_set(self, schema_and_ctx):
-        _, ctx = schema_and_ctx
-        doc = parse("""
-            query {
-                orders_group_by(by: [region]) {
-                    groupKey
-                    aggregate { count }
-                    nodes { id amount }
-                }
+    _NODES = """
+        query {
+            orders_group_by(by: [region]%s) {
+                groupKey
+                aggregate { count }
+                nodes { id amount }
             }
-        """)
-        compiled = compile_query(doc, ctx, variables=None)
-        assert compiled[0].nodes_sql is not None
+        }
+    """
 
-    def test_nodes_sql_has_no_group_by(self, schema_and_ctx):
-        _, ctx = schema_and_ctx
-        doc = parse("""
-            query {
-                orders_group_by(by: [region]) {
-                    groupKey
-                    aggregate { count }
-                    nodes { id amount }
-                }
-            }
-        """)
-        compiled = compile_query(doc, ctx, variables=None)
-        assert "GROUP BY" not in (compiled[0].nodes_sql or "")
+    def _compiled(self, ctx, where: str = ""):
+        return compile_query(parse(self._NODES % where), ctx, variables=None)[0]
 
-    def test_nodes_sql_selects_requested_cols_and_join_key(self, schema_and_ctx):
+    def test_a_group_s_nodes_are_a_column_of_its_one_statement(self, schema_and_ctx):
+        # REQ-196: one statement, each group's rows aggregated in it -- never a second statement
+        # joined back to the groups on their key.
         _, ctx = schema_and_ctx
-        doc = parse("""
-            query {
-                orders_group_by(by: [region]) {
-                    groupKey
-                    aggregate { count }
-                    nodes { id amount }
-                }
-            }
-        """)
-        compiled = compile_query(doc, ctx, variables=None)
-        nodes_sql = compiled[0].nodes_sql or ""
-        assert '"id"' in nodes_sql
-        assert '"amount"' in nodes_sql
-        assert '"region"' in nodes_sql
+        compiled = self._compiled(ctx)
+        assert compiled.has_nodes
+        assert compiled.sql == (
+            'SELECT "region", COUNT(*), COALESCE(json_agg(json_object(KEY \'id\' VALUE "id", '
+            "KEY 'amount' VALUE \"amount\")), CAST('[]' AS JSON)) AS \"nodes\" "
+            'FROM "public"."orders" GROUP BY "region"'
+        )
+        nodes = [c for c in compiled.columns if c.nested_in is None]
+        assert [(c.field_name, c.is_agg, c.cardinality) for c in nodes] == [
+            ("nodes", True, "one-to-many")
+        ]
 
-    def test_nodes_columns_join_key_tagged(self, schema_and_ctx):
+    def test_the_nodes_read_the_group_s_own_where(self, schema_and_ctx):
         _, ctx = schema_and_ctx
-        doc = parse("""
-            query {
-                orders_group_by(by: [region]) {
-                    groupKey
-                    aggregate { count }
-                    nodes { id amount }
-                }
-            }
-        """)
-        compiled = compile_query(doc, ctx, variables=None)
-        nodes_cols = compiled[0].nodes_columns or []
-        join_key_cols = [c for c in nodes_cols if c.nested_in == "__join_key__"]
-        assert any(c.field_name == "region" for c in join_key_cols)
-
-    def test_nodes_sql_includes_where(self, schema_and_ctx):
-        _, ctx = schema_and_ctx
-        doc = parse("""
-            query {
-                orders_group_by(by: [region], where: { status: { eq: "active" } }) {
-                    groupKey
-                    aggregate { count }
-                    nodes { id amount }
-                }
-            }
-        """)
-        compiled = compile_query(doc, ctx, variables=None)
-        assert "WHERE" in (compiled[0].nodes_sql or "")
-        assert compiled[0].nodes_params == ["active"]
+        compiled = self._compiled(ctx, ', where: { status: { eq: "active" } }')
+        assert '"status" = $1 GROUP BY "region"' in compiled.sql
+        assert compiled.params == ["active"]
 
     def test_nodes_absent_when_not_requested(self, schema_and_ctx):
         _, ctx = schema_and_ctx
@@ -731,68 +690,49 @@ class TestGroupByNodes:
                 }
             }
         """)
-        compiled = compile_query(doc, ctx, variables=None)
-        assert compiled[0].nodes_sql is None
+        compiled = compile_query(doc, ctx, variables=None)[0]
+        assert not compiled.has_nodes and "json_agg" not in compiled.sql
 
 
 class TestSerializeGroupBy:
-    """serialize_group_by: per-group node attachment."""
+    """A group's row carries its nodes as a JSON list column."""
+
+    def _columns(self):
+        from provisa.compiler.sql_gen import ColumnRef
+
+        return [
+            ColumnRef(alias=None, column="region", field_name="region", nested_in="groupKey"),
+            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
+            ColumnRef(
+                alias=None,
+                column="nodes",
+                field_name="nodes",
+                nested_in=None,
+                cardinality="one-to-many",
+                is_agg=True,
+            ),
+        ]
 
     def test_nodes_attached_per_group(self):
-        from provisa.compiler.sql_gen import ColumnRef
-        from provisa.executor.serialize import serialize_group_by
+        from provisa.executor.serialize import serialize_rows
 
-        columns = [
-            ColumnRef(alias=None, column="region", field_name="region", nested_in="groupKey"),
-            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
+        rows = [("US", 2, '[{"id": 1}, {"id": 2}]'), ("EU", 1, '[{"id": 3}]')]
+        data = serialize_rows(rows, self._columns(), "orders_group_by")["data"]["orders_group_by"]
+        assert data == [
+            {
+                "groupKey": {"region": "US"},
+                "aggregate": {"count": 2},
+                "nodes": [{"id": 1}, {"id": 2}],
+            },
+            {"groupKey": {"region": "EU"}, "aggregate": {"count": 1}, "nodes": [{"id": 3}]},
         ]
-        rows = [("US", 3), ("EU", 2)]
 
-        nodes_columns = [
-            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
-            ColumnRef(alias=None, column="region", field_name="region", nested_in="__join_key__"),
-        ]
-        nodes_rows = [(1, "US"), (2, "US"), (3, "EU")]
+    def test_a_relationship_s_value_is_parsed_into_a_node(self):
+        from provisa.executor.serialize import serialize_rows
 
-        result = serialize_group_by(rows, columns, nodes_rows, nodes_columns, "orders_group_by")
-        data = result["data"]["orders_group_by"]
-        us_row = next(r for r in data if r["groupKey"]["region"] == "US")
-        eu_row = next(r for r in data if r["groupKey"]["region"] == "EU")
-        assert len(us_row["nodes"]) == 2
-        assert len(eu_row["nodes"]) == 1
-        assert us_row["nodes"][0]["id"] == 1
-
-    def test_nodes_empty_list_when_no_match(self):
-        from provisa.compiler.sql_gen import ColumnRef
-        from provisa.executor.serialize import serialize_group_by
-
-        columns = [
-            ColumnRef(alias=None, column="region", field_name="region", nested_in="groupKey"),
-            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
-        ]
-        rows = [("APAC", 1)]
-        nodes_columns = [
-            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
-            ColumnRef(alias=None, column="region", field_name="region", nested_in="__join_key__"),
-        ]
-        nodes_rows = [(5, "US")]
-
-        result = serialize_group_by(rows, columns, nodes_rows, nodes_columns, "orders_group_by")
-        data = result["data"]["orders_group_by"]
-        assert data[0]["nodes"] == []
-
-    def test_no_nodes_when_nodes_rows_none(self):
-        from provisa.compiler.sql_gen import ColumnRef
-        from provisa.executor.serialize import serialize_group_by
-
-        columns = [
-            ColumnRef(alias=None, column="region", field_name="region", nested_in="groupKey"),
-            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
-        ]
-        rows = [("US", 3)]
-        result = serialize_group_by(rows, columns, None, None, "orders_group_by")
-        data = result["data"]["orders_group_by"]
-        assert "nodes" not in data[0]
+        rows = [("US", 1, '[{"id": 1, "customer": {"name": "Acme"}}]')]
+        data = serialize_rows(rows, self._columns(), "orders_group_by")["data"]["orders_group_by"]
+        assert data[0]["nodes"] == [{"id": 1, "customer": {"name": "Acme"}}]
 
 
 class TestGroupByNodesRelationship:
@@ -811,7 +751,7 @@ class TestGroupByNodesRelationship:
             n for n, f in nodes_type.fields.items() if hasattr(self._unwrap(f.type), "fields")
         )
 
-    def test_relationship_emits_json_subquery_not_bare_column(self, schema_and_ctx_rel):
+    def test_relationship_is_a_correlated_json_subquery_in_each_node(self, schema_and_ctx_rel):
         schema, ctx = schema_and_ctx_rel
         rel = self._rel_field(schema)
         doc = parse(f"""
@@ -824,50 +764,9 @@ class TestGroupByNodesRelationship:
             }}
         """)
         assert not validate(schema, doc)
-        compiled = compile_query(doc, ctx, variables=None)
-        nodes_sql = compiled[0].nodes_sql or ""
-        # relationship must compile to a correlated json subquery, not SELECT "customer"
-        assert "json_object" in nodes_sql
-        assert '"customers"' in nodes_sql
-        assert f'SELECT "{rel}"' not in nodes_sql
-        assert f'AS "{rel}"' in nodes_sql
-        # scalar columns qualified with the root alias once a relationship is present
-        assert '"t0"."id"' in nodes_sql
-        assert '"t0"."region"' in nodes_sql
-
-    def test_relationship_column_tagged_as_output(self, schema_and_ctx_rel):
-        schema, ctx = schema_and_ctx_rel
-        rel = self._rel_field(schema)
-        doc = parse(f"""
-            query {{
-                orders_group_by(by: [region]) {{
-                    groupKey
-                    nodes {{ id {rel} {{ name }} }}
-                }}
-            }}
-        """)
-        compiled = compile_query(doc, ctx, variables=None)
-        cols = compiled[0].nodes_columns or []
-        rel_col = next(c for c in cols if c.field_name == rel)
-        assert rel_col.nested_in is None
-        assert rel_col.is_agg
-
-    def test_relationship_value_parsed_into_nodes(self, schema_and_ctx_rel):
-        import json
-
-        from provisa.compiler.sql_gen import ColumnRef
-        from provisa.executor.serialize import serialize_group_by
-
-        columns = [
-            ColumnRef(alias=None, column="region", field_name="region", nested_in="groupKey"),
-        ]
-        rows = [("US",)]
-        nodes_columns = [
-            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
-            ColumnRef(alias="t1", column="customer", field_name="customer", nested_in=None),
-            ColumnRef(alias=None, column="region", field_name="region", nested_in="__join_key__"),
-        ]
-        nodes_rows = [(1, json.dumps({"name": "Acme"}), "US")]
-        result = serialize_group_by(rows, columns, nodes_rows, nodes_columns, "orders_group_by")
-        node = result["data"]["orders_group_by"][0]["nodes"][0]
-        assert node["customer"] == {"name": "Acme"}
+        sql = compile_query(doc, ctx, variables=None)[0].sql
+        # The table is read under the root alias the relationship's subquery correlates to.
+        assert f"KEY 'id' VALUE \"t0\".\"id\", KEY '{rel}' VALUE (SELECT json_object(" in sql
+        assert 'FROM "public"."customers" "t1" WHERE "t1"."id" = "t0"."customer_id"' in sql
+        assert 'FROM "public"."orders" "t0" GROUP BY "region"' in sql
+        assert "JOIN" not in sql.upper()

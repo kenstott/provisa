@@ -823,37 +823,11 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
             own_rows = [tuple(_compared(v) for v in r) for r in own["rows"]]
             c = compiled[root_field]
             if c.canonical_field.endswith(("Aggregate", "_aggregate")):
-                # One object, the aggregate's (the lowered statement's one row), its nodes in no
-                # order: compared as a multiset.
-                nodes_rows = None
-                if c.nodes_sql is not None:
-                    nodes_physical = lower_to_catalog_physical(
-                        expand_view_refs(make_semantic_sql(c.nodes_sql, ctx), view_sql), ctx
-                    )
-                    nodes_rows = [
-                        tuple(_compared(v) for v in r)
-                        for r in answer_on_duckdb(
-                            pg,
-                            catalogs,
-                            {
-                                "sql": nodes_physical,
-                                "params": list(c.nodes_params),
-                                "catalogs": sorted(
-                                    {
-                                        t.catalog
-                                        for t in sqlglot.parse_one(
-                                            nodes_physical, read="postgres"
-                                        ).find_all(sqlglot.exp.Table)
-                                        if t.catalog
-                                    }
-                                ),
-                            },
-                            plain=False,
-                        )["rows"]
-                    ]
-                one = serialize_aggregate(
-                    own_rows, c.columns, nodes_rows, c.nodes_columns, root_field, c.agg_alias
-                )["data"][root_field]
+                # One object, the aggregate's (its statement's one row, its nodes a column of
+                # it), its nodes in no order: compared as a multiset.
+                one = serialize_aggregate(own_rows, c.columns, root_field, c.agg_alias)["data"][
+                    root_field
+                ]
                 expected = [one]
                 for row in (*expected, *rows):
                     if "nodes" in row:

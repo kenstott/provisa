@@ -35,52 +35,6 @@ class EnforcementMetadata:
 # ---------------------------------------------------------------------------
 
 
-def _merge_nodes_sql(group_by_sql: str, nodes_sql: str, nodes_columns: list) -> str | None:
-    """Join group-by rows against nodes_sql, pre-aggregated per group into json_agg(nodes).
-
-    nodes_sql already resolves relationship fields to correlated JSON subqueries
-    (aliased to their field name); inlining nodes_columns as bare columns on the
-    group-by table breaks for those fields, so nodes must be aggregated from
-    nodes_sql itself rather than reconstructed from column names.
-    """
-    node_cols = [c for c in nodes_columns if c.nested_in is None]
-    join_key_cols = [c for c in nodes_columns if c.nested_in == "__join_key__"]
-    if not node_cols or not join_key_cols:
-        return None
-    # SQL-standard json_object(KEY k VALUE v) — the same spelling sql_selection.py emits — so
-    # sqlglot transpiles it per engine. Postgres json_build_object reaches DuckDB unrewritten.
-    kv = ", ".join(f"KEY '{c.field_name}' VALUE n.\"{c.column}\"" for c in node_cols)
-    key_select = ", ".join(f'n."{c.column}"' for c in join_key_cols)
-    join_cond = " AND ".join(f'g."{c.column}" = nodes_agg."{c.column}"' for c in join_key_cols)
-    nodes_agg_sql = (
-        f"SELECT {key_select}, json_agg(json_object({kv})) AS nodes\n"
-        f"FROM (\n  {nodes_sql}\n) n\n"
-        f"GROUP BY {key_select}"
-    )
-    return (
-        f"SELECT g.*, nodes_agg.nodes\n"
-        f"FROM (\n  {group_by_sql}\n) g\n"
-        f"JOIN (\n  {nodes_agg_sql}\n) nodes_agg ON {join_cond}"
-    )
-
-
-def _merge_nodes_sql_denormalized(
-    group_by_sql: str, nodes_sql: str, nodes_columns: list
-) -> str | None:
-    """Return a JOIN query that denormalizes group-by rows with their matching nodes."""
-    node_cols = [c for c in nodes_columns if c.nested_in is None]
-    join_key_cols = [c for c in nodes_columns if c.nested_in == "__join_key__"]
-    if not node_cols or not join_key_cols:
-        return None
-    node_selects = ", ".join(f'n."{c.column}"' for c in node_cols)
-    join_cond = " AND ".join(f'n."{c.column}" = g."{c.column}"' for c in join_key_cols)
-    return (
-        f"SELECT g.*, {node_selects}\n"
-        f"FROM (\n  {group_by_sql}\n) g\n"
-        f"JOIN (\n  {nodes_sql}\n) n ON {join_cond}"
-    )
-
-
 def _build_enforcement_metadata(  # REQ-040, REQ-041, REQ-263
     compiled, ctx, rls, masking_rules: dict, role_id: str, route_value: str
 ) -> EnforcementMetadata:
@@ -377,12 +331,6 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
         )
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
-        nodes_semantic_sql: str | None = None
-        if compiled.nodes_sql is not None:
-            nodes_semantic_sql = make_semantic_sql(
-                embed_params_comment(compiled.nodes_sql, compiled.nodes_params), ctx
-            )
-
         compiled_cypher, cypher_error = _compile_cypher_for_result(
             ctx,
             state,
@@ -394,28 +342,10 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
             root_index,
         )
 
-        has_nodes = nodes_semantic_sql is not None and bool(compiled.nodes_columns)
-
-        if has_nodes:
-            assert nodes_semantic_sql is not None
-            assert compiled.nodes_columns is not None
-            if not flat_sql:
-                merged_sql = _merge_nodes_sql(
-                    raw_semantic_sql, nodes_semantic_sql, compiled.nodes_columns
-                )
-            else:
-                merged_sql = _merge_nodes_sql_denormalized(
-                    raw_semantic_sql, nodes_semantic_sql, compiled.nodes_columns
-                )
-            if merged_sql:
-                semantic_sql_str = sql_comment_prefix + merged_sql
-            nodes_semantic_sql = None
-
         results.append(
             {
                 "sql": compiled.sql,
                 "semantic_sql": semantic_sql_str,
-                "nodes_semantic_sql": nodes_semantic_sql,
                 "engine_sql": engine_sql,
                 "direct_sql": direct_sql,
                 "route": decision.route.value,
@@ -431,7 +361,8 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
                 "enforcement": enforcement,
                 "optimizations": optimizations,
                 "warnings": warnings,
-                "has_nodes": has_nodes,
+                # An aggregate or group-by's nodes are a column of its one statement.
+                "has_nodes": compiled.has_nodes,
                 "compiled_cypher": compiled_cypher,
                 "cypher_error": cypher_error,
             }

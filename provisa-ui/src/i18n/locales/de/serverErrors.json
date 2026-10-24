@@ -565,6 +565,7 @@
     "statement": {
       "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",
       "rows_cut_unchecked": "Die Antwort hat {{limit}} Zeilen, das für diese Abfrage geltende Zeilenlimit ({{kind}}). Ob mehr Zeilen passen, konnte nicht geprüft werden: {{reason}}",
+      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diese Abfrage erlaubt ({{kind}}); es kann mehr geben.",
       "approximate_index": "Die ähnlichsten Zeilen wurden über einen näherungsweisen Vektorindex gefunden: Eine Zeile, die etwas ähnlicher ist als die zuletzt zurückgegebene, kann fehlen.",
       "path_cut": "Ein Pfad ohne Obergrenze wurde an der Graph-Tiefengrenze von {{limit}} Hops abgeschnitten: Längere Pfade fehlen in der Antwort."
     },
