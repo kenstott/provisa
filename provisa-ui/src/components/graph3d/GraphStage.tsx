@@ -55,12 +55,15 @@ export function GraphStage({
   command,
   exportName,
   testId,
+  bare = false,
 }: {
   s: StageState;
   command: CameraCommand | null;
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
+  /** A glance only (a card): no export or hint (Stage3D). */
+  bare?: boolean;
 }) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: GraphHover; x: number; y: number } | null>(null);
@@ -158,6 +161,7 @@ export function GraphStage({
       exportable={scene}
       exportName={exportName}
       testId={testId}
+      bare={bare}
       legend={<GraphLegend graph={s.graph} />}
     />
   );

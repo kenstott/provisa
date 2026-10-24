@@ -93,6 +93,7 @@ vi.mock("../useProductGraph", () => ({
 }));
 
 import { KnowledgeGraphPanel, ProductMapButton } from "../KnowledgeGraphPanel";
+import { setStored } from "../../../lib/browserStorage";
 
 const last = () => made.scenes[made.scenes.length - 1];
 /** Turns a layer on or off in the expanded graph's Layers menu. */
@@ -151,6 +152,29 @@ describe("the Knowledge Graph panel", () => {
     const full = await screen.findByTestId("graph3d");
     for (const name of ["Knowledge graph", "Ontology", "Product map", "Lineage"])
       expect(within(full).getByRole("radio", { name })).toBeInTheDocument();
+  });
+
+  it("is a glance: it turns and draws no grid, with no controls, hint or export of its own", async () => {
+    // A viewer's saved defaults for the product's graph say the opposite; the card does not read them.
+    setStored("graph3d.product-panel.c360", JSON.stringify({ rotate: false, grid: true }));
+    panel();
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(last().setRotate).toHaveBeenLastCalledWith(true);
+    expect(last().setGrid).toHaveBeenLastCalledWith(false);
+    for (const id of [
+      "kg-panel-rotate",
+      "kg-panel-grid",
+      "kg-panel-reset",
+      "kg-panel-reset-settings",
+      "kg-panel-stage-export",
+    ])
+      expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+    expect(screen.getByTestId("kg-panel").querySelector(".p3d-hint")).toBeNull();
+    // The expand button stays, and the expanded view keeps its controls.
+    fireEvent.click(screen.getByTestId("kg-panel-expand"));
+    const full = await screen.findByTestId("graph3d");
+    expect(within(full).getByText("Rotate")).toBeInTheDocument();
+    expect(full.querySelector(".p3d-hint")).not.toBeNull();
   });
 
   it("lists in its legend only what it draws", async () => {
