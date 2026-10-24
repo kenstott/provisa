@@ -436,7 +436,7 @@ Die Refresh-Schleife läuft alle 30 Sekunden, prüft `get_due_for_refresh()` und
 | `compiler/cursor.py` | Relay-artige Cursor-Paginierung — `first`/`after`/`last`/`before`-Argumente und `pageInfo`-Generierung für alle Listenabfragen |
 | `compiler/aggregate_gen.py` | Automatisch generierte `{table}_aggregate`-Query-Typen mit `count`, `sum`, `avg`, `min`, `max`-Unterfeldern und gefiltertem `nodes`-Zugriff |
 | `compiler/enum_detect.py` | Automatische Enum-Typ-Erkennung — native PostgreSQL-Enum-Typen (`pg_enum`) als GraphQL-Enum-Typen statt String-Skalare offengelegt |
-| `compiler/hints.py` | Federation-Performance-Hinweise — abfrageweite Routing-Direktiven, als SQL-Kommentare eingebettet (`/* @provisa route=federated */`), die automatisches Routing überschreiben |
+| `compiler/hints.py` | Federation-Performance-Hinweise — abfrageweite Routing-Direktiven, als SQL-Kommentare eingebettet (`-- @provisa route=federated`), die automatisches Routing überschreiben |
 | `compiler/mutation_gen.py` | Mutation-Compiler; Column Presets — serverseitig statische oder Session-Variable-Werte, angewendet bei Insert/Update, nicht im Mutation-Input-Typ offengelegt |
 | `auth/approval_hook.py` | ABAC-Genehmigungs-Hook — pluggable externe Autorisierung, vor der Abfrageausführung aufgerufen; Webhook-, gRPC- und unix_socket-Transporte; Scope pro Tabelle/Quelle/global; konfigurierbare Fallback-Richtlinie |
 | `subscriptions/` | SSE-Subscription-Zustand und -Zustellung |
@@ -623,7 +623,7 @@ Eine Rolle benennt über `parent_role_id` höchstens eine übergeordnete Rolle. 
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

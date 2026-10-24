@@ -2111,9 +2111,14 @@ async def route_governed(
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
     # cache=true` / `cache_ttl=N` comment on the statement; without one no read and no write.
-    from provisa.compiler.directives import cache_hint_for
+    from provisa.compiler.directives import cache_hint_for, extract_directives_from_sql_comments
 
     _cache_hint = cache_hint_for("sql", sql)
+    # REQ-030: the statement's own `-- @provisa route=...` comment, read from the text its cache
+    # comment is read from; a caller's route_hint (a view's build asks for the engine) applies
+    # in its place.
+    if route_hint is None:
+        route_hint = extract_directives_from_sql_comments(sql).steward_hint
     # REQ-1910: resolved per EXECUTION, not only when the statement was governed — a prepared
     # statement is governed once and executed many times, across windows opening and closing.
     await resolve_trace_scope(state, role_id, hint=_cache_hint.debug_trace)

@@ -61,7 +61,12 @@ from provisa.compiler.naming import apply_cql_property as _cql_prop
 
 from provisa.executor import stats as _qs_mod
 from provisa.cache.middleware import build_cache_headers
-from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for, request_cache_hint
+from provisa.compiler.directives import (
+    NO_CACHE_HINT,
+    cache_hint_for,
+    extract_directives_from_cypher_comments,
+    request_cache_hint,
+)
 from provisa.api.rest.cypher_exec import (
     _build_label_map,
     _execute_call_body,
@@ -765,6 +770,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             # A drawing is never delivered to a file: the redirect threshold is a rule for rows.
             buffered=not drawn,
             cache_hint=cache_hint,
+            # REQ-030: the statement's own `// @provisa route=...` comment.
+            steward_hint=extract_directives_from_cypher_comments(body.query).steward_hint,
             # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
             serve_cached=True,
             sdl_joins=False,

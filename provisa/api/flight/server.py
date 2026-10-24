@@ -46,7 +46,7 @@ from provisa.api.flight.catalog import (
     catalog_table_to_flight_info,
     command_to_flight_info,
 )
-from provisa.compiler.directives import cache_hint_for
+from provisa.compiler.directives import cache_hint_for, extract_directives_from_cypher_comments
 from provisa.compiler.parser import parse_query
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
@@ -1166,6 +1166,8 @@ class ProvisaFlightServer(
                     state=self._state,
                     # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
                     cache_hint=cache_hint_for("cypher", query_text),
+                    # REQ-030: the statement's own `// @provisa route=...` comment.
+                    steward_hint=extract_directives_from_cypher_comments(query_text).steward_hint,
                     # REQ-1897: an opted-in read is looked up in the response cache before it
                     # is routed; a Route.CACHE plan has no engine SQL and is served below.
                     serve_cached=True,
