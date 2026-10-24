@@ -46,7 +46,7 @@ import { ClampedDetail } from "./ClampedDetail";
 
 export type { InputPortRow };
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
-import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
+import { coreGraph, type CoreEdge, type CoreTable, type ProductCore } from "./productCore";
 
 interface TableRef {
   domain_id: string;
@@ -291,6 +291,8 @@ export function DataProductDetailPanel({
   const outputTables = core.tables?.filter((tb) => tb.dq_contract == null);
   const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
   const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
+  // The knowledge graph card is drawn from this read, as every other card is.
+  const graph = coreGraph(core);
   const related = core.edges?.filter((e) => e.kind === "relationship");
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
 
@@ -784,7 +786,7 @@ export function DataProductDetailPanel({
           testId={`data-product-card-knowledgeGraph-${p.id}`}
           label={t("graph3d.panelTitle")}
         >
-          <KnowledgeGraphPanel productId={p.id} productName={product.name} />
+          <KnowledgeGraphPanel productId={p.id} productName={product.name} graph={graph} />
         </DetailCard>
       </div>
       {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws
