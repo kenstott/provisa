@@ -154,3 +154,66 @@ def test_a_host_running_other_code_is_refused_by_name(started):
     with pytest.raises(WorkerFailed) as refused:
         other.start()
     assert "h1" in str(refused.value) and "h2" in str(refused.value)
+
+
+_ARROW_CODE = """
+import { createRequire } from "node:module";
+const A = createRequire(import.meta.url)(`${process.env.PROVISA_HOST_LIB}/package/Arrow.es2015.min.js`);
+export function table(n) {
+  return A.tableFromArrays({ extra: Array.from({ length: n }, () => "-"), n: BigInt64Array.from({ length: n }, (_, i) => BigInt(i)) });
+}
+export function* yielded(n) {
+  yield { n: -1 };
+  for (let i = 0; i < n; i += 2) {
+    yield A.tableFromArrays({ n: BigInt64Array.from({ length: Math.min(2, n - i) }, (_, k) => BigInt(i + k)) });
+  }
+}
+"""
+
+
+def test_arrow_the_code_returns_or_yields_is_sent_as_it_is(tmp_path):
+    """REQ-2100: an Arrow Table the code returns, or yields between plain rows, goes as it is,
+    its columns the declared ones by name; over each of the front's connections to the host."""
+    import pyarrow as pa
+
+    from provisa.codesource.arrow_rows import schema_text
+    from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
+
+    lib = CodeRuntimeResolver().resolve("apache-arrow").parent.parent
+    (tmp_path / "index.mjs").write_text(_ARROW_CODE)
+    names = tmp_path / "names.json"
+    names.write_text("{}")
+    host = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
+    process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's front end
+        [sys.executable, front.__file__, "0", str(tmp_path / "state"), str(names), *host],
+        env={**os.environ, "PROVISA_CODE_HASH": "h1", "PROVISA_HOST_LIB": str(lib)},
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stderr is not None
+    pairing, port = None, 0
+    until = time.monotonic() + 20
+    while time.monotonic() < until:
+        line = process.stderr.readline()
+        if line.startswith("pairing code: "):
+            pairing = line.removeprefix("pairing code: ").strip()
+        if line.startswith("remote host listening on "):
+            port = int(line.rsplit(" ", 1)[1])
+            break
+    assert pairing is not None and port, "the host did not start"
+    identity = remote.new_identity()
+    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    worker = remote.RemoteWorker(
+        "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
+    )
+    worker.start()
+    schema = schema_text(pa.schema([("n", pa.int64())]))
+    try:
+        returned = [r for b in worker.rows("table", "table", [3], ["n"], schema=schema) for r in b]
+        assert returned == [{"n": 0}, {"n": 1}, {"n": 2}]
+        yielded = [r for b in worker.rows("yielded", "table", [5], ["n"], schema=schema) for r in b]
+        assert [r["n"] for r in yielded] == [-1, 0, 1, 2, 3, 4]
+    finally:
+        worker.stop()
+        process.terminate()
+        process.wait(timeout=10)
