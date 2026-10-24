@@ -1371,8 +1371,16 @@ class AtlasExport(MetadataExport):  # REQ-1069
             try:
                 await self._sync_assignments(client, headers, term_guid, entities, result)
             except httpx.HTTPError as exc:
+                message = str(exc)
+                if isinstance(exc, httpx.HTTPStatusError):
+                    # Atlas's errorCode and message are in the body; the status line alone
+                    # does not say which guid or check it refused.
+                    message = (
+                        f"{exc.request.method} {exc.request.url.path}: HTTP "
+                        f"{exc.response.status_code}: {exc.response.text[:500]}"
+                    )
                 result.errors.append(
-                    AssetError(asset=AssetRefStub(uri), message=f"term assignments: {exc}")
+                    AssetError(asset=AssetRefStub(uri), message=f"term assignments: {message}")
                 )
 
     async def _sync_assignments(
