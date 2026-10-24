@@ -113,6 +113,22 @@ function forField(value, field) {
   return value;
 }
 
+/** REQ-2100: a @table or @stream function's arguments, in the order it `takes` them: its inputs,
+ * an object of the inputs the read gives (one it leaves out is absent, so its default applies),
+ * and its read context. */
+function withContext(takes, args, names, context) {
+  const out = [];
+  if (takes.includes("inputs")) {
+    const inputs = {};
+    names.forEach((name, i) => {
+      if (args[i] !== undefined) inputs[name] = args[i];
+    });
+    out.push(inputs);
+  }
+  if (takes.includes("context")) out.push(context);
+  return out;
+}
+
 function iterable(result) {
   return result != null && (typeof result[Symbol.asyncIterator] === "function" || typeof result[Symbol.iterator] === "function");
 }
@@ -200,15 +216,18 @@ export class Connection {
   /** The call: the function once per argument set -- the one `args`, or a table's several
    * (`calls`, REQ-2099) in order -- every set's rows sent under the call's id. A `keyed` call
    * (REQ-2100) passes a loader and is answered with each key's rows (`serveKeyed`). */
-  async serve({ id, export: name, kind, args, calls, schema: schemaText, keyed, window }) {
+  async serve({ id, export: name, kind, args, names, calls, schema: schemaText, keyed, window, takes, context }) {
     const fn = this.bundle[name];
     if (typeof fn !== "function") throw new Error(`the bundle exports no function ${name}`);
     const state = { cancelled: false, iterator: null, credit: Number(window), wake: null };
     this.running.set(id, state);
     try {
-      const sets = calls ? calls.map((c) => c.args) : [args];
-      for (const set of sets) {
+      const sets = calls ? calls.map((c) => [c.args, c.names, c.context]) : [[args, names, undefined]];
+      for (const [given, named, own] of sets) {
         if (state.cancelled) break;
+        // A call's own context (a loader's batch of keys), else the read's.
+        const read = own ?? context;
+        const set = takes ? withContext(takes, revive(given), named, revive(read)) : revive(given);
         if (keyed) await this.serveKeyed(id, state, fn, set, schemaText);
         else await this.serveOne(id, state, fn, kind, set, schemaText);
       }
@@ -220,7 +239,7 @@ export class Connection {
   /** REQ-2100: a loader call, answered with a hash of the keys it was given to each key's rows;
    * every row is sent with its key as `$key`. */
   async serveKeyed(id, state, fn, args, schemaText) {
-    const result = await fn(...revive(args));
+    const result = await fn(...args);
     if (result === null || typeof result !== "object" || Array.isArray(result)) {
       throw new Error(`a loader call is answered with a hash of each key's rows, not a ${Array.isArray(result) ? "list" : typeof result}`);
     }
@@ -235,7 +254,7 @@ export class Connection {
   }
 
   async serveOne(id, state, fn, kind, args, schemaText) {
-    let result = fn(...revive(args));
+    let result = fn(...args);
     if (kind !== "stream") result = await result;
     if (schemaText === null || schemaText === undefined) {
       // A single value, or a command whose result is not rows: its JSON value message.

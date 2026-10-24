@@ -62,11 +62,18 @@ class Answer:
     body: str
 
 
-def ask(model: str, prompt: str) -> list[Answer]:
+@dataclass
+class AskInputs:
+    model: str
+    prompt: str
+
+
+def ask(inputs: AskInputs) -> list[Answer]:
     """What the LLM service answers for one prompt.
 
     @table
     """
+    model, prompt = inputs.model, inputs.prompt
     request = urllib.request.Request(
         f"{os.environ['PROVISA_SERVICES']}/llm/v1/chat/completions",
         data=json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}]}).encode(),
@@ -80,19 +87,19 @@ def ask(model: str, prompt: str) -> list[Answer]:
         return [Answer(model, refused.code, refused.read().decode())]
 
 
-def ask_capped(model: str, prompt: str) -> list[Answer]:
+def ask_capped(inputs: AskInputs) -> list[Answer]:
     """The same, registered from the capped source.
 
     @table
     """
-    return ask(model, prompt)
+    return ask(inputs)
 ''',
 }
 
 _NODE = {
     "ask/package.json": json.dumps({"name": "ask", "type": "module", "main": "index.js"}),
     "ask/index.js": """
-export async function ask(model, prompt) {
+export async function ask({ model, prompt }) {
   const answered = await fetch(`${process.env.PROVISA_SERVICES}/llm/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -100,22 +107,23 @@ export async function ask(model, prompt) {
   });
   return [{ model, status: answered.status, body: await answered.text() }];
 }
-export async function ask_capped(model, prompt) {
-  return ask(model, prompt);
+export async function ask_capped(inputs) {
+  return ask(inputs);
 }
 """,
     "ask/index.d.ts": """
 export interface Answer { model: string; status: number; body: string; }
+export interface AskInputs { model: string; prompt: string; }
 /**
  * What the LLM service answers for one prompt.
  * @table
  */
-export declare function ask(model: string, prompt: string): Promise<Answer[]>;
+export declare function ask(inputs: AskInputs): Promise<Answer[]>;
 /**
  * The same, registered from the capped source.
  * @table
  */
-export declare function ask_capped(model: string, prompt: string): Promise<Answer[]>;
+export declare function ask_capped(inputs: AskInputs): Promise<Answer[]>;
 """,
 }
 

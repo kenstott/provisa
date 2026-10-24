@@ -538,7 +538,16 @@ class Worker:
                 lane.send({"op": "cancel", "id": own})
         connection.send(frame({**(ended[0] if ended else {"op": "end"}), "id": call_id}))
 
-    def read(self, export: str, args: list, names: list[str], schema: str) -> Iterator[bytes]:
+    def read(
+        self,
+        export: str,
+        args: list,
+        names: list[str],
+        schema: str,
+        *,
+        takes: list[str],
+        context: dict,
+    ) -> Iterator[bytes]:
         """REQ-2100: a table function's rows, each batch an Arrow IPC stream as the worker sends
         it, for a read the front end answers itself (pgfront.py). Closing it before its end stops
         the function."""
@@ -556,6 +565,8 @@ class Worker:
                     "schema": schema,
                     "traceparent": None,
                     "window": _QUEUED,
+                    "takes": takes,
+                    "context": context,
                 }
             )
             try:

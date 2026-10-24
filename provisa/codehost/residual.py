@@ -16,11 +16,10 @@ everything else -- column filters, sorts, limits, projections, aggregates -- is 
 embedded DuckDB, to the rows the function returned, so a statement on any column never fails for
 the code and its author implements none of it. Every column is named as the code declares it.
 
-:func:`pushed` reads the values a statement gives the parameters a predicate is pushed to (the
-function's pushdown mapping, provisa/codesource/pushdown.py): only top-level AND conjuncts of the
-WHERE of the SELECT reading the table, each a comparison of a column with a literal. The pushed
-predicate stays in the statement and is applied again here, so a function that ignores or loosens
-a value cannot return wrong rows.
+:func:`read_context` reads what a statement asks of the table's rows -- its filters, order,
+limit and columns -- as a function's read context is given them. Every part stays in the
+statement and is applied again here, so a function that ignores or loosens one cannot return
+wrong rows.
 
 :func:`answer` runs the statement over the rows. The rows hold the function's output columns, and
 one column per parameter, ``_nf_{name}``, holding the value the read gave it (null when none), so
@@ -200,11 +199,12 @@ def _reading(tree: exp.Expr, table: str) -> list[exp.Table]:
     return [t for t in tree.find_all(exp.Table) if t.name == table]
 
 
-def predicate(node: exp.Expr, names: set[str]) -> tuple[str, str, Any] | None:
-    """``(column, op, value)`` for a conjunct comparing one of the table's columns to a literal."""
+def predicate(node: exp.Expr, names: set[str], *, bare: bool = True) -> tuple[str, str, Any] | None:
+    """``(column, op, value)`` for a conjunct comparing one of the table's columns to a literal: a
+    column qualified by one of ``names``, or (``bare``) by none."""
 
     def column(side: exp.Expr) -> str | None:
-        if isinstance(side, exp.Column) and side.table in names | {""}:
+        if isinstance(side, exp.Column) and (side.table in names or (bare and not side.table)):
             return side.name
         return None
 
@@ -231,31 +231,126 @@ def predicate(node: exp.Expr, names: set[str]) -> tuple[str, str, Any] | None:
     return None
 
 
-def pushed(
-    sql: str, dialect: str, table: str, pushdown: Mapping[str, Mapping[str, str]]
-) -> dict[str, Any]:
-    """The values the statement ``sql`` gives the parameters a predicate on ``table``'s columns is
-    pushed to (``pushdown``: parameter -> ``{column, op}``), by parameter. A parameter two
-    conjuncts fill takes the first: each conjunct must hold, so either value is safe."""
-    if not pushdown:
-        return {}
-    wanted = {(m["column"], m["op"]): p for p, m in pushdown.items()}
+def _wired(value: Any) -> Any:
+    """A literal's value as the code-source wire carries it (provisa/codesource/worker.py)."""
+    if isinstance(value, list):
+        return [_wired(v) for v in value]
+    if isinstance(value, datetime.datetime):
+        return {"$date": value.isoformat()}
+    if isinstance(value, datetime.date):
+        return {"$day": value.isoformat()}
+    if isinstance(value, Decimal):
+        return {"$decimal": str(value)}
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) > 2**53 - 1:
+        return {"$bigint": str(value)}
+    return value
+
+
+def _aggregates(select: exp.Select) -> bool:
+    """Whether ``select`` makes rows of its own from its input's: grouping, an aggregate, a
+    window, DISTINCT or HAVING."""
+    if select.args.get("group") or select.args.get("having") or select.args.get("distinct"):
+        return True
+    return any(node.find(exp.AggFunc, exp.Window) is not None for node in select.expressions)
+
+
+def read_context(sql: str, dialect: str, table: str, columns: list[str]) -> dict[str, Any]:
+    """REQ-2100: what the statement ``sql`` asks of ``table``'s rows (its declared ``columns``),
+    as a code function's read context is given it: every part a hint, the statement applied to the
+    rows the function returns in any case.
+
+    - filters: each top-level AND conjunct of the WHERE of the SELECT reading the table that
+      compares one of its columns with a literal (eq, ne, gt, gte, lt, lte, in, like);
+    - order_by: that SELECT's keys, when each is one of the table's columns;
+    - limit: its LIMIT, the OFFSET folded in -- only when it limits the table's own rows, no more
+      than the filters and the order say (a SELECT of the table alone, with no grouping, aggregate,
+      window or DISTINCT, every conjunct of its WHERE a filter or an input's condition, every key
+      a column). A function that applies the limit after every filter and the order then holds
+      every row the statement keeps;
+    - columns: the ones the statement names (every one for a ``*``).
+
+    A table the statement reads more than once has an empty context but its columns."""
+    declared = list(columns)
+    names_declared = set(declared)
     tree = sqlglot.parse_one(sql, read=dialect)
-    out: dict[str, Any] = {}
-    for read in _reading(tree, table):
-        select = read.parent_select
-        if select is None or select.args.get("joins"):
+    reads = _reading(tree, table)
+    empty: dict[str, Any] = {"filters": [], "order_by": [], "limit": None, "columns": declared}
+    if len(reads) != 1:
+        return empty
+    (read,) = reads
+    select = read.parent_select
+    if select is None:
+        return empty
+    names = {read.alias_or_name, read.name}
+    alone = not select.args.get("joins")
+
+    def own(column: exp.Expr) -> str | None:
+        """The table's column ``column`` names: qualified by the table, or bare in a SELECT that
+        reads it alone."""
+        if not isinstance(column, exp.Column) or column.name not in names_declared:
+            return None
+        if column.table in names or (alone and not column.table):
+            return column.name
+        return None
+
+    filters: list[dict[str, Any]] = []
+    whole = True  # every conjunct is a filter or an input's condition
+    where = select.args.get("where")
+    for conjunct in conjuncts(where.this if where is not None else None):
+        found = predicate(conjunct, names, bare=alone)
+        if found is not None and found[0] in names_declared:
+            filters.append({"column": found[0], "op": found[1], "value": _wired(found[2])})
             continue
-        names = {read.alias_or_name, read.name}
-        for conjunct in conjuncts(select.args["where"].this if select.args.get("where") else None):
-            found = predicate(conjunct, names)
-            if found is None:
-                continue
-            column, op, value = found
-            parameter = wanted.get((column, op))
-            if parameter is not None and parameter not in out:
-                out[parameter] = value
-    return out
+        referenced = list(conjunct.find_all(exp.Column))
+        if referenced and all(c.name.startswith("_nf_") for c in referenced):
+            continue  # an input's condition: it holds of every row the function returns
+        whole = False
+    order_by: list[dict[str, Any]] = []
+    plain_order = True
+    order = select.args.get("order")
+    for ordered in order.expressions if order is not None else []:
+        column = own(ordered.this)
+        if column is None:
+            plain_order = False
+            break
+        order_by.append(
+            {
+                "column": column,
+                "descending": bool(ordered.args.get("desc")),
+                "nulls_first": bool(ordered.args.get("nulls_first")),
+            }
+        )
+    if not plain_order:
+        order_by = []
+    limit = None
+    rows_alone = (
+        alone
+        and whole
+        and plain_order
+        and not _aggregates(select)
+        and not isinstance(select.parent, (exp.Union, exp.Except, exp.Intersect))
+    )
+    limited = select.args.get("limit")
+    if rows_alone and limited is not None:
+        offset = select.args.get("offset")
+        try:
+            count = _value(limited.expression)
+            skip = _value(offset.expression) if offset is not None else 0
+        except _NotLiteral:
+            count = skip = None  # a limit that is no literal: none is given
+        if isinstance(count, int) and isinstance(skip, int):
+            limit = count + skip
+    if any(isinstance(s, exp.Star) for s in select.expressions) or any(
+        isinstance(c, exp.Column) and isinstance(c.this, exp.Star) and c.table in names
+        for c in select.expressions
+    ):
+        read_columns = declared
+    else:
+        named = {name for c in tree.find_all(exp.Column) if (name := own(c)) is not None}
+        if not alone:
+            named |= {c.name for c in tree.find_all(exp.Column) if c.table in names}
+        read_columns = [c for c in declared if c in named]
+    return {"filters": filters, "order_by": order_by, "limit": limit, "columns": read_columns}
 
 
 def nf_given(sql: str, dialect: str, table: str) -> dict[str, Any]:

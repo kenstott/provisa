@@ -7,8 +7,8 @@ If you have written a GraphQL server, you know this pattern. A code resolver is 
 What differs from a resolver you write by hand:
 
 - **Governed.** Visibility, masks and row rules apply to the rows your function returns, as they do for any table.
-- **Batched.** A function that takes a `loader` parameter gets every key of a join in one call, the DataLoader pattern.
-- **Pushed down.** A filter on a column reaches your function as a parameter when you ask for it.
+- **Batched.** A `@loader` function gets every key of a join in one call, the DataLoader pattern.
+- **Told what the read asks.** The read's filters, order, limit and columns reach your function as its read context, for it to use or ignore.
 - **Served everywhere.** The same function answers GraphQL, SQL (over HTTP, pgwire and Arrow Flight), Cypher (over HTTP and Bolt), gRPC, REST, JSON:API and MCP.
 
 
@@ -92,16 +92,29 @@ The row type gives the columns:
 
 ### Parameters {: #parameters }
 
-A function's parameters become its table's parameters. This one scores one account:
+A `@table` or `@stream` function takes up to two parameters, in this order:
+
+- **Its inputs**: one object whose fields are the table's parameters. In Python that's a dataclass, a `TypedDict`, a `NamedTuple` or a Pydantic model; in TypeScript, an interface or a type alias.
+- **Its read context**: a `ReadContext`, what the read asks of the rows (see [The read context](#read-context)).
+
+Either can be left out. Any other signature is refused, naming the function. This one scores one account:
 
 ```python
+from dataclasses import dataclass
+
+
 @dataclass
 class Risk:
     score: float
     reasons: list[str]
 
 
-def churn_risk(account_id: str) -> list[Risk]:
+@dataclass
+class RiskInputs:
+    account_id: str
+
+
+def churn_risk(inputs: RiskInputs) -> list[Risk]:
     """Churn risk of one account.
 
     @table
@@ -109,7 +122,7 @@ def churn_risk(account_id: str) -> list[Risk]:
     return [Risk(score=0.82, reasons=["no logins in 30 days"])]
 ```
 
-In GraphQL a parameter is a field argument:
+Each field of the inputs object is a parameter. In GraphQL a parameter is a field argument:
 
 ```graphql
 {
@@ -128,54 +141,80 @@ FROM accounts.churn_risk
 WHERE _nf_account_id = 'A-1042'
 ```
 
-- A parameter without a default is required. A read that leaves it out is refused before your code runs.
-- A parameter with a default is optional. Leave it out and your default applies.
+- A field without a default is required. A read that leaves it out is refused before your code runs.
+- A field with a default is optional. Leave it out and your default applies.
+- A field's own documentation (a Pydantic `Field(description=...)`, a doc comment on a TypeScript property) becomes its parameter's description.
 - A steward can still make an optional one required.
+- A parameter is an input, never a filter. A field named like a return column, such as `region`, is the `_nf_region` input. A condition on the `region` column reaches your function through its read context.
+
+Commands and `@columns` functions keep their own parameters, each its own argument.
 
 ### What reaches your function {: #what-reaches-your-function }
 
-A call gets the read's arguments and nothing else of the request. Each parameter's value comes from a field argument, an `_nf_` condition, a filter pushed down to it or a join's keys. Your function never sees who is asking: the caller's identity and roles stay with Provisa, which governs the rows your function returns.
+A call gets the read's inputs and its read context, and nothing else of the request. Your function never sees who is asking: the caller's identity and roles stay with Provisa, which governs the rows your function returns.
 
-Pushdown builds on this. A filter in the query becomes a parameter's value, so your function can fetch only the rows asked for.
+### The read context {: #read-context }
 
-### Pushdown {: #pushdown }
+A function that declares a `ReadContext` parameter is told what the read asks of its rows:
 
-A filter on one of the returned columns can reach your function as an argument, so it fetches only the rows asked for. Declare which parameter takes it in any of three ways:
-
-- **By name.** A parameter named exactly as a return column takes an equality on that column. One named `<op>_<column>` takes that operator, as in `gte_score` or `in_region`.
-- **By tag.** A line `@<op>_<column> <parameter>` (or `@<column> <parameter>`) in the docstring or JSDoc, or an inline `/* @<op>_<column> */` before a TypeScript parameter.
-- **By `Annotated`.** In Python, the string `"<op>_<column>"` (or `"<column>"`) on the parameter's type hint.
-
-The operators:
-
-| `op` | Takes |
+| Field | Holds |
 |---|---|
-| `ne`, `gt`, `gte`, `lt`, `lte` | A value of the column's type |
-| `in` | A list of the column's type |
-| `like` | Text, on a text column |
+| `filters` | Each condition the read puts on a return column: `column`, `op` (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `like`) and `value` |
+| `order_by` | The read's sort keys: `column`, `descending`, `nulls_first` |
+| `limit` | The most rows the read keeps, its offset added in; none when every row counts |
+| `columns` | The return columns the read names |
+| `keys` | A `@loader`'s join keys (see [Batched keys](#batched-keys)); none otherwise |
 
-- A range on a column fills both of its parameters: `score BETWEEN 0.5 AND 0.9` gives `gte_score` and `lte_score`.
-- Column names are matched exactly as you declared them in the row type. A name that matches only once Provisa renames the column for a reader is not a match.
-- A declaration your function's types can't take is refused.
-- The filter is still applied to the rows your function returns, so a function that ignores or loosens a value it is given can't return wrong rows.
+```python
+from collections.abc import Iterator
+from dataclasses import dataclass
 
-### Batched keys: the `loader` parameter {: #batched-keys }
+from provisa_services import ReadContext
 
-A join can reach a code table, with the rows of another table supplying its parameters: customers joined to their churn score, say. By default Provisa calls the function once for each distinct set of arguments the joining rows give, and sends all those calls to the worker in one request.
 
-A function that takes a parameter named `loader` is called once per batch instead, the pattern GraphQL's DataLoader made familiar.
+@dataclass
+class OrderInputs:
+    region: str = "EU"
 
-- **What it gets.** `loader` is a hash: a dict (an object in TypeScript) from a stable hash of each key to the key itself. A key is a JSON object holding the joining rows' values for the function's other parameters.
+
+def orders(inputs: OrderInputs, context: ReadContext) -> Iterator[Order]:
+    """Orders of one region.
+
+    @table
+    """
+    query = api.orders(region=inputs.region)
+    for f in context.filters:
+        if f.column == "status" and f.op == "eq":
+            query = query.where(status=f.value)  # fetch only what the read keeps
+    yield from query
+```
+
+In TypeScript, `import type { ReadContext } from "@provisa/services"`.
+
+Everything in the context is a hint. Provisa applies the whole statement to the rows your function returns, so a function can ignore any part of it, or loosen a filter, and still return the right answer. One rule holds for the limit:
+
+- **If you apply the limit, apply every filter and the order first.** Otherwise ignore it. A function that cuts to the limit before a filter would leave Provisa too few rows.
+
+Provisa gives a limit only when the read limits the table's own rows: a read of the table alone, with no grouping, aggregate, window or `DISTINCT`, where every condition is one of the filters and every sort key is a column. A filter is given when it compares a return column with a value, in a condition joined to the others by `AND`. A condition under `OR` or `NOT`, or on an expression, isn't given, and neither is a limit after it.
+
+The context holds for a read that goes straight to your function, and for one an engine sends to a built source's host. A read that lands your table gives an empty context, and your function returns the whole table for its inputs (see [Reading a table](#reading-a-table)).
+
+### Batched keys: `@loader` {: #batched-keys }
+
+A join can reach a code table, with the rows of another table supplying its parameters: customers joined to their churn score, say. By default Provisa calls the function once for each distinct set of inputs the joining rows give, and sends all those calls to the worker in one request.
+
+A function tagged `@loader` is called once per batch instead, the pattern GraphQL's DataLoader made familiar.
+
+- **What it gets.** The batch's keys arrive in its read context, `context.keys`: a hash, a dict (an object in TypeScript) from a stable hash of each key to the key itself. A key is a JSON object holding the joining rows' values for the function's inputs. The inputs object itself is left at its defaults.
 - **De-duplicated.** Each distinct combination of values appears once.
 - **Sparse.** A field with no value is left out of the key, so the function's own default applies, as it does on a single call.
 - **What it returns.** A hash from each key it was given to that key's rows: ordinary rows of the table, none or many. Provisa gives each key's rows to every joining row that shared the key.
 - **Matched by hash.** The function fills a sparse key's missing fields with defaults, so the values it sees differ from the joining row's. Provisa computes the hash, and the function only echoes back the keys it was given.
 - **Typed as usual.** The function still declares its row type alone, a list of rows.
-- **Defaults needed.** Its parameters beside `loader` need defaults, because a loader call passes `loader` alone.
-- **Batch size.** Cap it, as DataLoader's `maxBatchSize` does, with `loader N` in any one of three places: a `@loader 100` line beside `@table`, a `/* @loader 100 */` comment before the `loader` parameter in TypeScript, or an `Annotated` string in Python, `loader: Annotated[dict[str, CustomerKey] | None, "loader 100"] = None`. Provisa then splits the keys into batches of that size and merges the answers by hash. Without a size, one batch holds every key.
-- **Refused.** A size on a function with no `loader` parameter, a size that isn't a positive integer, and two sizes on one function.
+- **Batch size.** Cap it, as DataLoader's `maxBatchSize` does, with `@loader 100` in place of `@loader`. Provisa then splits the keys into batches of that size and merges the answers by hash. Without a size, one batch holds every key.
+- **Refused.** A `@loader` with no `ReadContext` parameter, a size that isn't a positive integer, two sizes on one function, and `@loader` on anything but a `@table`.
 
-Use `loader` when one call over many keys does better than many calls over one:
+Use `@loader` when one call over many keys does better than many calls over one:
 
 - Scoring a model over a whole batch in one vectorized pass.
 - Batching requests to an API or a language model that accepts many inputs at once.
@@ -183,13 +222,15 @@ Use `loader` when one call over many keys does better than many calls over one:
 
 ```python
 from dataclasses import dataclass
-from typing import TypedDict
+
+from provisa_services import ReadContext
 
 
-class CustomerKey(TypedDict, total=False):
-    customer_id: str
-    plan: str
-    region: str
+@dataclass
+class ScoreInputs:
+    customer_id: str | None = None
+    plan: str = "basic"
+    region: str = "US"
 
 
 @dataclass
@@ -198,24 +239,21 @@ class Score:
     score: float
 
 
-def churn_score(
-    customer_id: str | None = None,
-    plan: str = "basic",
-    region: str = "US",
-    loader: dict[str, CustomerKey] | None = None,
-) -> list[Score]:
+def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
+    @loader
     """
-    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    given = {"customer_id": inputs.customer_id, "plan": inputs.plan, "region": inputs.region}
+    keys = context.keys or {"": given}
     rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
     scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
     out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
-    return out if loader else out[""]  # a loader call returns the hash of key to rows
+    return out if context.keys else out[""]  # a loader call returns the hash of key to rows
 ```
 
-Joined to a table of customers, it is called with a `loader` such as `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. The second key carries only `customer_id`, so its plan and region take the defaults. The function returns `{"9f2c...": [...], "41ab...": [...], ...}`.
+Joined to a table of customers, its context holds keys such as `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. The second key carries only `customer_id`, so its plan and region take the defaults. The function returns `{"9f2c...": [...], "41ab...": [...], ...}`.
 
 ### Column transforms: `@columns` {: #column-transforms }
 
@@ -293,7 +331,7 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 - Node code runs on Node.js, Bun or Deno, whichever you pick.
 - Tags go in JSDoc, and types come from TypeScript.
 
-The first resolver in TypeScript:
+The scored account in TypeScript:
 
 ```typescript
 export interface Risk {
@@ -301,10 +339,14 @@ export interface Risk {
   reasons: string[];
 }
 
+export interface RiskInputs {
+  account_id: string;
+}
+
 /** Churn risk of one account.
  * @table
  */
-export async function churnRisk(account_id: string): Promise<Risk[]> {
+export async function churnRisk(inputs: RiskInputs): Promise<Risk[]> {
   return [{ score: 0.82, reasons: ["no logins in 30 days"] }];
 }
 ```
@@ -312,8 +354,10 @@ export async function churnRisk(account_id: string): Promise<Risk[]> {
 The batched `churnScore` in TypeScript:
 
 ```typescript
-export interface CustomerKey {
-  customer_id: string;
+import type { ReadContext } from "@provisa/services";
+
+export interface ScoreInputs {
+  customer_id?: string;
   plan?: string;
   region?: string;
 }
@@ -325,20 +369,19 @@ export interface Score {
 
 /** Churn score of each customer in the batch.
  * @table
+ * @loader
  */
 export async function churnScore(
-  customer_id?: string,
-  plan = "basic",
-  region = "US",
-  loader?: Record<string, CustomerKey>,
+  { customer_id, plan = "basic", region = "US" }: ScoreInputs,
+  context: ReadContext,
 ): Promise<Score[]> {
-  const keys = loader ?? { "": { customer_id, plan, region } };
+  const keys = context.keys ?? { "": { customer_id, plan, region } };
   const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
   const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
   const out = Object.fromEntries(
     rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
   );
-  return loader ? out : out[""]; // a loader call returns the hash of key to rows
+  return context.keys ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 
@@ -356,9 +399,9 @@ A source runs on the Provisa server by default; this is dev mode.
 
 How a read reaches your function depends on what else it reads:
 
-- **A read of one code table alone** goes straight to your function. Nothing is landed. Provisa calls it with the read's arguments and its pushed-down filters, and applies the rest of the statement to the rows it returns.
-- **A read that joins other tables** is the federation engine's. A dev-mode source's table is landed for it: the rows are kept under those arguments for the table's cache TTL.
-- **A built source's table** in such a join is read live from its remote host, which the engine attaches as a Postgres catalog. It is landed instead when its source is replicated or floored, when the table is kept for good, when it declares a landing TTL above 0, or on an engine that can't attach a host.
+- **A read of one code source's tables alone** goes straight to your function. Nothing is landed. Provisa calls it with the read's inputs and its read context, and applies the whole statement to the rows it returns.
+- **A read that joins other tables** is the federation engine's. A dev-mode source's table is landed for it: your function gets the read's inputs and an empty context, and returns the whole table for them, which is kept under those inputs for the table's cache TTL.
+- **A built source's table** in such a join is read live from its remote host, which the engine attaches as a Postgres catalog. The host gives your function the read context of the part of the statement the engine sends it. It is landed instead when its source is replicated or floored, when the table is kept for good, when it declares a landing TTL above 0, or on an engine that can't attach a host.
 
 Either way, visibility, masks and row rules apply to the rows, as they do for any table. You pass arguments the way you pass any table parameter: `_nf_` conditions in SQL, field arguments in GraphQL.
 
@@ -521,7 +564,7 @@ Each of these is refused, before your code runs where it can:
 
 - An unknown tag or a type Provisa can't map, every problem of a function at once.
 - A read that leaves out a required parameter.
-- A pushdown or `loader` declaration the function's types can't take.
+- A `@table` or `@stream` function whose parameters aren't `(inputs, context)`, and a `@loader` declaration it can't take.
 - A package with dependencies and no lockfile.
 - A server directory outside the allowed ones, or on a server of many organizations.
 - A remote host running other code than the source is pinned to.

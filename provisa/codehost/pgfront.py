@@ -22,9 +22,9 @@ base of provisa/pgwire) with a session of the front's own:
   function's row count as last answered, and -1 (unknown) before its first call, so the engine's
   planner has statistics.
 - DATA: a statement that reads a function is split in two. Its parameters' values -- the
-  top-level ``_nf_{name} = value`` conjuncts, and the values its pushed predicates give
-  (residual.pushed) -- are the function's arguments; the function is called in the worker, and
-  the whole statement is applied to its rows by DuckDB (residual.answer).
+  top-level ``_nf_{name} = value`` conjuncts -- are the function's inputs, and what it asks of the
+  rows is its read context (residual.read_context); the function is called in the worker, and the
+  whole statement is applied to its rows by DuckDB (residual.answer).
 
 An identifier is matched by DuckDB as PostgreSQL would: a quoted one exactly, an unquoted one
 case-insensitively; the name tables refused at build any two names that cannot be told apart.
@@ -477,20 +477,26 @@ class FrontSession(Session):
 
     def _read(self, function: str, sql: str) -> pa.RecordBatchReader:
         table = self.catalog.names[function]
-        given = {
-            **residual.pushed(sql, "postgres", function, table["pushdown"]),
-            **residual.nf_given(sql, "postgres", function),
-        }
+        # Its inputs are the statement's own conditions on its parameters' columns; what it asks
+        # of the rows is the function's read context (REQ-2100).
+        given = residual.nf_given(sql, "postgres", function)
         parameters = table["parameters"]
         names = [p["parameter"] for p in parameters]
         args = [_wire(given.get(p["parameter"]), p["type"]) for p in parameters]
+        context = residual.read_context(
+            sql, "postgres", function, [c["name"] for c in table["columns"]]
+        )
         schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(table["schema"]))).schema
         catalog = self.catalog
 
         def counted() -> Iterator[pa.RecordBatch]:
             # The function's rows as they come; its count kept for the planner once all came.
             count = 0
-            for batch in residual.batches(self.worker.read(function, args, names, table["schema"])):
+            for batch in residual.batches(
+                self.worker.read(
+                    function, args, names, table["schema"], takes=table["takes"], context=context
+                )
+            ):
                 count += batch.num_rows
                 yield batch
             catalog.answered(function, count)

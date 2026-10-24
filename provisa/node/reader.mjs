@@ -25,12 +25,16 @@ const [typescriptPath, entry] = process.argv.slice(2);
 const require = createRequire(import.meta.url);
 const ts = require(typescriptPath);
 
+// REQ-2100: "@provisa/services" is Provisa's own declarations (services.d.ts beside this
+// reader), so a ReadContext parameter is read as the one Provisa gives.
+const SERVICES_TYPES = new URL("./services.d.ts", import.meta.url).pathname;
 const program = ts.createProgram([entry], {
   target: ts.ScriptTarget.ESNext,
   lib: ["lib.esnext.d.ts"],
   noEmit: true,
   skipLibCheck: true,
   strict: true,
+  paths: { "@provisa/services": [SERVICES_TYPES] },
 });
 const checker = program.getTypeChecker();
 const source = program.getSourceFile(entry);
@@ -50,6 +54,11 @@ const ITERABLES = {
   AsyncIterableIterator: [true, false],
   AsyncGenerator: [true, true],
 };
+
+function fromServices(type) {
+  const symbol = type.aliasSymbol ?? type.getSymbol();
+  return (symbol?.declarations ?? []).some((d) => d.getSourceFile().fileName === SERVICES_TYPES);
+}
 
 function symbolName(type) {
   const symbol = type.aliasSymbol ?? type.getSymbol();
@@ -122,6 +131,9 @@ function write(type, at) {
   const index = checker.getIndexInfoOfType(type, ts.IndexKind.String);
   if (index && properties.length === 0) return { kind: "record", value: write(index.type, at) };
   const named = name && name !== "__type" && name !== "__object" ? name : null;
+  // REQ-2100: Provisa's own types (the ReadContext, services.d.ts) are named, never read: theirs
+  // are no columns, and their names are no name of the code's.
+  if (named && fromServices(type)) return { kind: "ref", name: named };
   if (named) {
     if (named in types || inProgress.has(named)) return { kind: "ref", name: named };
     inProgress.add(named);
@@ -133,22 +145,10 @@ function write(type, at) {
   return { kind: "object", name: null, fields: properties.map((p) => field(p, at)) };
 }
 
-// REQ-2100: a tag's argument (`@gte_signup since`) and an inline declaration before a parameter
-// (`/* @gte_signup */ since?: Date`).
-// An inline declaration's argument (`/* @loader 100 */`) is kept with it: "loader 100".
-const INLINE = /^\/\*\s*@([A-Za-z_][A-Za-z0-9_]*)(?:\s+(\S+))?\s*\*\/$/;
-
+// REQ-2100: a tag's argument (`@loader 100`).
 function tagText(tag) {
   const comment = typeof tag.comment === "string" ? tag.comment : ts.getTextOfJSDocComment(tag.comment);
   return (comment ?? "").trim();
-}
-
-function inlinePushdown(parameter) {
-  const text = parameter.getSourceFile().getFullText();
-  return (ts.getLeadingCommentRanges(text, parameter.pos) ?? [])
-    .map((r) => INLINE.exec(text.slice(r.pos, r.end)))
-    .filter(Boolean)
-    .map((m) => (m[2] === undefined ? m[1] : `${m[1]} ${m[2]}`));
 }
 
 function exported(symbol) {
@@ -156,7 +156,7 @@ function exported(symbol) {
   const declaration = target.valueDeclaration ?? target.declarations?.[0];
   const jsdoc = declaration ? ts.getJSDocTags(declaration) : [];
   const tags = jsdoc.map((t) => t.tagName.text);
-  // Which of these declare a pushdown is Provisa's (provisa/codesource/manifest.py).
+  // What each tag's argument means is Provisa's (provisa/codesource/manifest.py).
   const tagArguments = jsdoc.map((t) => ({ tag: t.tagName.text, text: tagText(t) }));
   const description = ts.displayPartsToString(target.getDocumentationComment(checker)).trim();
   const out = { name: symbol.getName(), tags, tag_arguments: tagArguments, description, signatures: [] };
@@ -171,7 +171,6 @@ function exported(symbol) {
           optional: checker.isOptionalParameter(d),
           rest: Boolean(d.dotDotDotToken),
           type: write(checker.getTypeOfSymbolAtLocation(p, d), d),
-          pushdown: ts.isParameter(d) ? inlinePushdown(d) : [],
         };
       }),
       returns: write(signature.getReturnType(), declaration),

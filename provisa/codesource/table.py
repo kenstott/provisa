@@ -83,10 +83,8 @@ def check_table(table: Any, manifest: Any = None) -> None:  # a Table model or a
     if export is None or export.kind != "table":
         raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
     declared = {parameter_name(c): c for c in columns if _get(c, "native_filter_type") == QUERY_ARG}
-    from provisa.codesource.manifest import LOADER
-
-    # REQ-2100: a join's keys reach the loader; it is no parameter of the table.
-    wanted = {p.name: p for p in export.parameters if not (export.loader and p.name == LOADER)}
+    # REQ-2100: the function's parameters are its inputs' fields.
+    wanted = {p.name: p for p in export.parameters}
     if set(declared) != set(wanted):
         raise CodeTableRefused(
             name,
@@ -136,31 +134,13 @@ def call_arguments(table: dict, export: Any, given: dict | None) -> tuple[list, 
     return args, [p.name for p in export.parameters]
 
 
-async def pushed_arguments(state: Any, table: dict, name: str, statement: str) -> dict[str, Any]:
-    """The values ``statement`` (PostgreSQL text, reading ``table`` as ``name``) gives the
-    parameters the function declares a predicate is pushed to (REQ-2100): a pre-filter of the rows
-    landed for it. Each pushed predicate stays in the statement, which the engine applies again."""
-    from provisa.codehost import residual
-    from provisa.codesource.source import context_for, prepare
-    from provisa.federation.registry_view import registered_sources
+def landed_context(manifest: Any, export: Any) -> dict:
+    """REQ-2100: the read context of a landed read -- the engine reads the table where it lands --
+    empty but for its columns, every one: such a read asks for the whole table under its inputs."""
+    from provisa.codesource.arrow_rows import WHOLE_ROW, row_schema
 
-    found = [s for s in await registered_sources(state) if s.id == table["source_id"]]
-    if not found:
-        raise ValueError(f"Table {name!r}: its source {table['source_id']!r} is not registered")
-    source = found[0]
-    prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
-    function = export_of(table)
-    export = next(
-        (e for e in prepared.manifest.exports if e.name == function and e.kind == "table"), None
-    )
-    if export is None:
-        raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
-    pushdown = {
-        p.name: {"column": p.pushes.column, "op": p.pushes.op}
-        for p in export.parameters
-        if p.pushes is not None
-    }
-    return residual.pushed(statement, "postgres", name, pushdown)
+    columns = [n for n in row_schema(manifest, export).names if n != WHOLE_ROW]
+    return {"filters": [], "order_by": [], "limit": None, "columns": columns, "keys": None}
 
 
 async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app state
@@ -212,9 +192,12 @@ async def read_each(
                 project(name, row, outputs)
                 for row in _loaded(name, table, export, worker, function, argument_sets, prepared)
             ]
+        context = landed_context(prepared.manifest, export)
         return [
             project(name, row, outputs)
-            for batch in worker.rows_each(function, calls, schema=schema)
+            for batch in worker.rows_each(
+                function, calls, schema=schema, takes=export.takes, context=context
+            )
             for row in batch
         ]
 
@@ -237,7 +220,6 @@ def _loaded(
 
     from provisa.codesource import loader
     from provisa.codesource.arrow_rows import row_schema, schema_text
-    from provisa.codesource.manifest import LOADER
     from provisa.codesource.worker import ABSENT
 
     keys = [
@@ -247,14 +229,22 @@ def _loaded(
     hashes = [loader.key_hash(key) for key in keys]
     unique = dict(zip(hashes, keys, strict=True))
     names = [p.name for p in export.parameters]
-    calls = [
-        ([batch if p == LOADER else ABSENT for p in names], names)
-        for batch in loader.chunks(unique, export.loader_batch)
-    ]
+    batches = loader.chunks(unique, export.loader_batch)
+    # Its inputs left out, each batch's keys in its own read context.
+    calls = [([ABSENT for _ in names], names) for _ in batches]
+    landed = landed_context(prepared.manifest, export)
+    contexts = [{**landed, "keys": batch} for batch in batches]
     rows_schema = row_schema(prepared.manifest, export).append(pa.field(loader.KEY, pa.utf8()))
     answered = [
         row
-        for batch in worker.rows_each(function, calls, schema=schema_text(rows_schema), keyed=True)
+        for batch in worker.rows_each(
+            function,
+            calls,
+            schema=schema_text(rows_schema),
+            keyed=True,
+            takes=export.takes,
+            contexts=contexts,
+        )
         for row in batch
     ]
     return loader.assign(name, keys, hashes, answered, set(unique))
@@ -295,7 +285,15 @@ async def whole_rows(state: Any, source: Any, table: Any) -> list[dict]:  # the 
     def _run() -> list[dict]:
         return [
             project(name, row, outputs)
-            for batch in worker.rows(function, "table", [], [], schema=schema)
+            for batch in worker.rows(
+                function,
+                "table",
+                [],
+                [],
+                schema=schema,
+                takes=export.takes,
+                context=landed_context(prepared.manifest, export),
+            )
             for row in batch
         ]
 

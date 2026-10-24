@@ -101,7 +101,7 @@ def base(tmp_path: Path) -> oci.Registry:
     return registry, digest
 
 
-NAMES = {"rates": {"columns": [], "parameters": [], "pushdown": {}}}
+NAMES = {"rates": {"columns": [], "parameters": [], "takes": []}}
 FRONT = [
     "-I",
     "/opt/provisa/front/front.py",

@@ -24,7 +24,6 @@ import json
 import subprocess
 import sys
 import textwrap
-from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -50,55 +49,74 @@ def _bounded():
     residual.configure(**duckdb_bounds(), spill_dir=str(data_dir() / "code-spill"))
 
 
-PUSHDOWN = {
-    "region": {"column": "region", "op": "eq"},
-    "gte_score": {"column": "score", "op": "gte"},
-    "since": {"column": "signup", "op": "gte"},
-    "regions": {"column": "region", "op": "in"},
-    "like_name": {"column": "name", "op": "like"},
-}
+COLUMNS = ["id", "region", "score", "signup", "name"]
 
 
-def _pushed(where: str) -> dict:
-    return residual.pushed(
-        f"SELECT id FROM s.scores AS t WHERE {where}", "duckdb", "scores", PUSHDOWN
+def _context(where: str, tail: str = "", select: str = "id") -> dict:
+    return residual.read_context(
+        f"SELECT {select} FROM s.scores AS t WHERE {where} {tail}", "duckdb", "scores", COLUMNS
     )
 
 
-# -- what a read pushes ----------------------------------------------------------------------------
+# -- what a read asks of the rows: its read context --------------------------------------------
 
 
-def test_top_level_and_conjuncts_on_columns_fill_their_parameters():
-    assert _pushed(
+def test_top_level_and_conjuncts_on_columns_are_its_filters():
+    assert _context(
         "region = 'EU' AND t.score >= 0.5 AND signup >= DATE '2026-01-01' AND name LIKE 'A%'"
-    ) == {
-        "region": "EU",
-        "gte_score": 0.5,
-        "since": date(2026, 1, 1),
-        "like_name": "A%",
-    }
+    )["filters"] == [
+        {"column": "region", "op": "eq", "value": "EU"},
+        {"column": "score", "op": "gte", "value": 0.5},
+        {"column": "signup", "op": "gte", "value": {"$day": "2026-01-01"}},
+        {"column": "name", "op": "like", "value": "A%"},
+    ]
 
 
 def test_a_comparison_written_literal_first_is_read_the_other_way():
-    assert _pushed("0.5 <= score") == {"gte_score": 0.5}
+    assert _context("0.5 <= score")["filters"] == [{"column": "score", "op": "gte", "value": 0.5}]
 
 
-def test_in_fills_a_list():
-    assert _pushed("region IN ('EU', 'UK')") == {"regions": ["EU", "UK"]}
+def test_in_is_a_list():
+    assert _context("region IN ('EU', 'UK')")["filters"] == [
+        {"column": "region", "op": "in", "value": ["EU", "UK"]}
+    ]
 
 
 @pytest.mark.parametrize(
     "where",
+    ["region = 'EU' OR score >= 0.5", "NOT (region = 'EU')", "upper(region) = 'EU'", "score >= id"],
+)
+def test_nothing_under_or_or_not_or_on_an_expression_is_a_filter_and_no_limit_is_given(where):
+    context = _context(where, "ORDER BY id LIMIT 3")
+    assert context["filters"] == []
+    # A limit after a condition the function is not given could cut rows the statement keeps.
+    assert context["limit"] is None
+
+
+def test_the_limit_is_given_with_the_offset_folded_in_when_it_limits_the_rows_alone():
+    context = _context(
+        "region = 'EU' AND _nf_as_of = '2026'", "ORDER BY score DESC LIMIT 3 OFFSET 2"
+    )
+    assert context["limit"] == 5
+    assert context["order_by"] == [{"column": "score", "descending": True, "nulls_first": False}]
+
+
+@pytest.mark.parametrize(
+    "sql",
     [
-        "region = 'EU' OR score >= 0.5",
-        "NOT (region = 'EU')",
-        "upper(region) = 'EU'",
-        "score >= id",
-        "score > 0.5",  # gt is not what gte_score takes
+        "SELECT region, count(*) FROM s.scores WHERE id > 1 GROUP BY region LIMIT 2",
+        "SELECT DISTINCT region FROM s.scores LIMIT 2",
+        "SELECT t.id FROM s.scores t JOIN s.regions r ON r.region = t.region ORDER BY t.id LIMIT 2",
+        "SELECT id FROM s.scores ORDER BY lower(name) LIMIT 2",
     ],
 )
-def test_nothing_under_or_or_not_or_on_an_expression_is_pushed(where):
-    assert _pushed(where) == {}
+def test_a_limit_on_anything_but_the_tables_own_rows_is_not_given(sql):
+    assert residual.read_context(sql, "duckdb", "scores", COLUMNS)["limit"] is None
+
+
+def test_its_columns_are_the_ones_the_statement_names_every_one_for_a_star():
+    assert _context("region = 'EU'", select="id, score")["columns"] == ["id", "region", "score"]
+    assert _context("region = 'EU'", select="*")["columns"] == COLUMNS
 
 
 # -- the residual ----------------------------------------------------------------------------------
@@ -159,8 +177,15 @@ def test_a_parameters_column_holds_its_value_on_every_row():
 # -- a direct read ---------------------------------------------------------------------------------
 
 CODE = """
+import operator
 from dataclasses import dataclass
 from decimal import Decimal
+
+from provisa_services import ReadContext
+
+ROWS = [(1, "EU", 0.9, "10.50"), (2, "US", 0.4, "3.25"), (3, "EU", 0.6, "7.00")]
+OPS = {"eq": operator.eq, "ne": operator.ne, "gt": operator.gt, "gte": operator.ge,
+       "lt": operator.lt, "lte": operator.le, "in": lambda a, b: a in b}
 
 
 @dataclass
@@ -172,17 +197,30 @@ class Score:
     asked: str
 
 
-def scores(
-    region: str | None = None, gte_score: float | None = None, as_of: str | None = None
-) -> list[Score]:
+@dataclass
+class ScoreInputs:
+    as_of: str | None = None
+    #: ignore: the context is ignored; apply: every filter, the order, then the limit; partial:
+    #: the first filter only, and the limit ignored.
+    mode: str | None = None
+
+
+def scores(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
     \"\"\"@table\"\"\"
-    asked = f"region={region};gte_score={gte_score};as_of={as_of}"
-    # The values pushed are ignored: the residual still filters.
-    return [
-        Score(1, "EU", 0.9, Decimal("10.50"), asked),
-        Score(2, "US", 0.4, Decimal("3.25"), asked),
-        Score(3, "EU", 0.6, Decimal("7.00"), asked),
-    ]
+    filters = ",".join(f"{f.column} {f.op} {f.value}" for f in context.filters)
+    order = ",".join(o.column + (" desc" if o.descending else "") for o in context.order_by)
+    asked = f"as_of={inputs.as_of};filters={filters};order={order};limit={context.limit}"
+    rows = [Score(i, r, s, Decimal(a), asked) for i, r, s, a in ROWS]
+    if inputs.mode in ("apply", "partial"):
+        applied = context.filters if inputs.mode == "apply" else context.filters[:1]
+        for f in applied:
+            rows = [r for r in rows if OPS[f.op](getattr(r, f.column), f.value)]
+    if inputs.mode == "apply":
+        for o in reversed(context.order_by):
+            rows.sort(key=lambda r: getattr(r, o.column), reverse=o.descending)
+        if context.limit is not None:
+            rows = rows[: context.limit]
+    return rows
 
 
 @dataclass
@@ -220,9 +258,8 @@ TABLE = {
         _column("score", "double"),
         _column("amount", "numeric"),
         _column("asked", "text"),
-        _column("_nf_region", "text", kind="query_arg"),
-        _column("_nf_gte_score", "double", kind="query_arg"),
         _column("_nf_as_of", "text", kind="query_arg"),
+        _column("_nf_mode", "text", kind="query_arg"),
     ],
 }
 
@@ -289,7 +326,9 @@ def _engine_answer(landed, sql: str, name: str = "scores") -> pa.Table:
         return con.execute(sql).to_arrow_table()
 
 
-async def test_a_direct_read_calls_the_function_with_its_arguments_and_applies_the_rest(prepared):
+async def test_a_direct_read_gives_the_function_its_inputs_and_context_and_applies_the_rest(
+    prepared,
+):
     from provisa.codesource.direct import read
 
     answer = await read(
@@ -300,18 +339,34 @@ async def test_a_direct_read_calls_the_function_with_its_arguments_and_applies_t
     )
     assert answer.column("id").to_pylist() == [1, 3]
     assert answer.column("amount").to_pylist() == [Decimal("10.50"), Decimal("7.00")]
-    assert set(answer.column("asked").to_pylist()) == {"region=EU;gte_score=0.5;as_of=2026-10"}
+    assert set(answer.column("asked").to_pylist()) == {
+        "as_of=2026-10;filters=region eq EU,score gte 0.5;order=amount desc;limit=None"
+    }
 
 
-async def test_an_argument_the_statement_names_itself_is_the_one_the_function_is_given(prepared):
+@pytest.mark.parametrize("mode", ["ignore", "apply", "partial"])
+@pytest.mark.parametrize(
+    "where",
+    [
+        "region = 'EU' AND score >= 0.5",
+        "score > 0.3",
+        "region = 'EU' OR score < 0.5",  # no filter is given, and so no limit
+    ],
+)
+async def test_whatever_part_of_its_context_a_function_applies_the_read_answers_alike(
+    prepared, mode, where
+):
+    """REQ-2100: a function that ignores its context, applies all of it, or applies one filter
+    and ignores the limit answers each read as a read that pushes nothing does."""
     from provisa.codesource.direct import read
 
-    answer = await read(
-        _state(),
-        "scores-src",
-        "SELECT asked FROM main.scores WHERE _nf_region = 'US' LIMIT 1",
-    )
-    assert answer.column("asked").to_pylist() == ["region=US;gte_score=None;as_of=None"]
+    def answered(how: str) -> list:
+        return f"SELECT id FROM main.scores WHERE ({where}) AND _nf_mode = '{how}' ORDER BY score DESC LIMIT 1"
+
+    unpushed = await read(_state(), "scores-src", answered("ignore"))
+    pushed = await read(_state(), "scores-src", answered(mode))
+    assert pushed.column("id").to_pylist() == unpushed.column("id").to_pylist()
+    assert unpushed.num_rows == 1
 
 
 async def test_a_statement_over_two_of_the_sources_tables_is_joined_in_duckdb(prepared):
@@ -345,7 +400,7 @@ def test_a_statement_is_read_direct_when_it_reads_one_code_sources_tables_each_o
 
     one = "SELECT id FROM main.scores WHERE _nf_region = 'EU'"
     assert [t["table_name"] for t in direct_tables(_state(), {9}, one)] == ["scores"]
-    assert parameters(_state(), {9}, one) == {"_nf_region", "_nf_gte_score", "_nf_as_of"}
+    assert parameters(_state(), {9}, one) == {"_nf_as_of", "_nf_mode"}
     both = "SELECT 1 FROM main.scores JOIN main.regions ON true"
     assert len(direct_tables(_state(), {9, 10}, both)) == 2
     # Read twice: two argument sets one row set cannot hold.
@@ -407,18 +462,14 @@ async def test_a_statement_the_engine_runs_after_all_lands_its_tables_then(monke
     assert params == [1]
 
 
-async def test_a_read_lands_what_its_pushes_pre_filter_and_the_engine_answers_it(prepared):
+async def test_a_landed_read_asks_for_the_whole_table_under_its_inputs(prepared):
     # REQ-2100: a statement the engine runs (across sources, or a gate it failed): the function
-    # is given what the statement lets it pre-filter, its rows are landed, and the engine runs
-    # the whole statement over them.
-    from provisa.codesource.table import pushed_arguments, read
+    # is given its inputs and an empty context, its rows are landed, and the engine runs the
+    # whole statement over them.
+    from provisa.codesource.table import read
 
-    statement = (
-        'SELECT "id", "amount", "asked" FROM "main"."scores" WHERE "region" = \'EU\' '
-        'AND "score" >= 0.5 ORDER BY "amount" DESC'
-    )
-    given = {**await pushed_arguments(None, TABLE, "scores", statement), "as_of": "2026-10"}
-    landed = await read(None, TABLE, given)
+    landed = await read(None, TABLE, {"as_of": "2026-10"})
+    assert {r["asked"] for r in landed.rows} == {"as_of=2026-10;filters=;order=;limit=None"}
     answer = _engine_answer(
         landed,
         "SELECT id, amount, asked FROM scores WHERE region = 'EU' AND score >= 0.5 "
@@ -426,16 +477,6 @@ async def test_a_read_lands_what_its_pushes_pre_filter_and_the_engine_answers_it
     )
     assert answer.column("id").to_pylist() == [1, 3]
     assert answer.column("amount").to_pylist() == [Decimal("10.50"), Decimal("7.00")]
-    assert set(answer.column("asked").to_pylist()) == {"region=EU;gte_score=0.5;as_of=2026-10"}
-
-
-async def test_an_argument_the_read_names_itself_is_the_one_the_function_is_given(prepared):
-    from provisa.codesource.table import pushed_arguments, read
-
-    statement = "SELECT asked FROM main.scores WHERE region = 'EU' LIMIT 1"
-    given = {**await pushed_arguments(None, TABLE, "scores", statement), "region": "US"}
-    landed = await read(None, TABLE, given)
-    assert {r["asked"] for r in landed.rows} == {"region=US;gte_score=None;as_of=None"}
 
 
 async def test_a_direct_read_answers_the_governed_statement_alone(prepared):

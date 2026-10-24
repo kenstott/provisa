@@ -151,6 +151,23 @@ def _call_arguments(args: list, names: list[str]) -> tuple[list, dict]:
     return args[:first], keywords
 
 
+def _inputs_and_context(
+    fn: typing.Callable, takes: list[str], args: list, names: list[str], context: typing.Any
+) -> list:
+    """REQ-2100: a @table or @stream function's arguments: its inputs, an instance of the class
+    its first parameter is annotated with, made of the inputs the read gives (one it leaves out
+    takes the class's default); then its read context, a ReadContext."""
+    out: list = []
+    if "inputs" in takes:
+        first = next(iter(inspect.signature(fn).parameters))
+        kind = typing.get_type_hints(fn)[first]
+        given = {n: v for n, v in zip(names, args, strict=True) if v is not _ABSENT}
+        out.append(kind(**given))
+    if "context" in takes:
+        out.append(sys.modules["provisa_services"].ReadContext._from_wire(context))
+    return out
+
+
 def _arrow() -> typing.Any:  # the pyarrow module
     lib = os.environ.get("PROVISA_HOST_LIB")
     # Set for the local worker only (python/source.py): a remote host's image installs pyarrow
@@ -279,15 +296,20 @@ class Host:
         call_id: int,
         name: str,
         kind: str,
-        calls: list[tuple[list, list[str]]],
+        calls: typing.Sequence[tuple[typing.Any, typing.Any, typing.Any]],
         schema: str | None,
         traceparent: str | None = None,
         keyed: bool = False,
+        takes: list[str] | None = None,
+        context: dict | None = None,
     ) -> None:
         """Run the call: the function once for each of ``calls`` (its arguments and their names),
         in order, every set's rows sent under ``call_id`` and one end after the last (REQ-2099:
         one round trip for every argument set a join feeds the table). ``keyed`` (REQ-2100): a
-        call with a loader, answered with each key's rows, each row sent with its ``$key``."""
+        call with a loader, answered with each key's rows, each row sent with its ``$key``.
+        ``takes`` (REQ-2100): what a @table or @stream function takes -- its ``inputs`` object,
+        made of the arguments, and its read ``context`` -- in order; None for a command's or a
+        @columns function's own arguments."""
         started = time.process_time()
         _bind_call(call_id, traceparent)
         try:
@@ -300,8 +322,16 @@ class Host:
 
                 pa = _arrow()
                 rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
-            for args, names in calls:
-                positional, keywords = _call_arguments(from_wire(args), names)
+            for args, names, own in calls:
+                if takes is None:
+                    positional, keywords = _call_arguments(from_wire(args), names)
+                else:
+                    # A call's own context (a loader's batch of keys), else the read's.
+                    read = own if own is not None else context
+                    positional = _inputs_and_context(
+                        fn, takes, from_wire(args), names, from_wire(read)
+                    )
+                    keywords = {}
                 if keyed:
                     await self._run_keyed(call_id, fn, positional, keywords, rows_schema)
                 else:
@@ -506,9 +536,9 @@ async def serve(
         elif op == "call":
             # One argument set, or a table's several (REQ-2099: ``calls``), served in order.
             calls = (
-                [(c["args"], c["names"]) for c in message["calls"]]
+                [(c["args"], c["names"], c.get("context")) for c in message["calls"]]
                 if "calls" in message
-                else [(message["args"], message["names"])]
+                else [(message["args"], message["names"], None)]
             )
             host.credits[message["id"]] = asyncio.Semaphore(int(message["window"]))
             host.running[message["id"]] = asyncio.create_task(
@@ -520,6 +550,8 @@ async def serve(
                     message["schema"],
                     message.get("traceparent"),
                     bool(message.get("keyed")),
+                    message.get("takes"),
+                    message.get("context"),
                 )
             )
 
