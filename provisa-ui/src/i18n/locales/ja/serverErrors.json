@@ -336,6 +336,7 @@
       "change_signal_no_topic": "ソース「{{source}}」のテーブル「{{table}}」は変更シグナル kafka を使用していますが、live.kafka.topic に topic を指定していないため、何も更新しません。",
       "change_signal_no_receiver": "Provisa は種類 {{type}} のソースから変更シグナル {{signal}} を受信しないため、ソース「{{source}}」のテーブルがそれによって更新されることはありません。ソースを Debezium でキャプチャし、debezium を使用してください。",
       "change_signal_not_honoured": "種類 {{type}} のソースは、まだ変更の有無を確認できないため、変更シグナル {{signal}} が問い合わせられることはありません。ソース「{{source}}」には ttl を使用してください。",
+      "row_materialize_no_key_fetch": "{{table}} は行単位でレプリケートできません: リモートスキーマに、主キーのリストに対して行を返すフィールドがありません。",
       "sentinel_path_not_applicable": "種類 {{type}} のソースにはセンチネルパスを設定できません。データの変更を知らせられるお客様側の生成元がないか、このソースはプローブされません。ソース「{{source}}」からセンチネルパスを削除してください。",
       "source_cache_ttl_required": "ソース「{{source}}」にはキャッシュTTLが必要です。このソースのテーブルはすべてレプリカであり、変更シグナル {{signal}} のもとでその時計に従って更新されます。ソースの「負荷管理と鮮度」で設定してください。",
       "landing_ttl_required": "テーブル「{{table}}」はキャッシュTTLに従って更新されるレプリカですが、テーブルにもそのソース「{{source}}」にも設定がありません。ソースの「負荷管理と鮮度」でキャッシュTTLを設定するか、登録後にテーブル自体に設定してください。",

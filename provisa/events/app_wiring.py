@@ -351,6 +351,7 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
         make_clickhouse_keyed_loader,
         make_druid_keyed_loader,
         make_elasticsearch_keyed_loader,
+        make_graphql_remote_keyed_loader,
         make_hive_s3_keyed_loader,
         make_kafka_keyed_loader,
         make_mongodb_keyed_loader,
@@ -367,6 +368,8 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     keyed_loaders: dict[str, Any] = {}
     # The table's endpoint is looked up in state at each read (see the adapter loaders).
     keyed_loaders["neo4j"] = make_neo4j_keyed_loader(state)
+    # REQ-1865: a remote GraphQL table whose schema returns its rows for a list of its key.
+    keyed_loaders["graphql_remote"] = make_graphql_remote_keyed_loader(state)
     # sparql has no parser/AST to safely resolve a projected property or splice a filter
     # against (confirmed absent, no rdflib dependency either) -- stays on the loud
     # UnsupportedSourceFetch path in SourceRowLoader.load_keys until one exists.
@@ -408,9 +411,14 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     from provisa.events.source_loader import make_direct_keyed_loader
     from provisa.transpiler.router import API_SOURCES, VIRTUAL_SOURCES
 
+    from provisa.core.source_registry import is_live_only
+
     direct_keyed = make_direct_keyed_loader(state, engine)
     for stype in set(getattr(state, "source_types", {}).values()):
         if stype in keyed_loaders or stype in VIRTUAL_SOURCES or stype in API_SOURCES:
+            continue
+        if is_live_only(stype):
+            # REQ-2000: a live-only source's tables have no replica, so no row is fetched by key.
             continue
         if has_driver(stype) and not engine_attaches(bare_engine, stype):
             keyed_loaders[stype] = direct_keyed
