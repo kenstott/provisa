@@ -23,7 +23,9 @@ async function openPetsEditor(page: Page) {
     .filter({ hasText: "pets" })
     .first();
   await petsRow.waitFor({ timeout: 15000 });
-  await petsRow.click();
+  // Click the source cell, not the row's centre: the centre of the row lands on the table
+  // cell's "Edit tags" button, which opens the tag popover instead of expanding the row.
+  await petsRow.locator("td").first().click();
   const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 10000 });
   await editBtn.click();
