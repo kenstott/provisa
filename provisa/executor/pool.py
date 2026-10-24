@@ -74,7 +74,10 @@ class SourcePool:  # REQ-052, REQ-053
                 extra or {}
             )  # warehouse drivers read federation_hints; RDBMS drivers no-op
             connect_port = pgbouncer_port if use_pgbouncer else port
-            if host:
+            from provisa.transpiler.router import CODE_SOURCES
+
+            # REQ-2100: a code source's driver dials nothing; its worker is started on first call.
+            if host and source_type not in CODE_SOURCES:
                 # REQ-2006: checked at the connection itself, whatever the row said when saved --
                 # the name may resolve elsewhere by now.
                 from provisa.security.sandbox_egress import pin_host

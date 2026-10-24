@@ -8033,5 +8033,20 @@
   "es/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
   "es/graphFrame.json::graphFrame.deleteFrame": "Delete this result",
   "es/serverErrors.json::serverErrors.cypher.undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
-  "es/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
+  "es/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}.",
+  "es/dataProductCore.json::dataProductCore.copied": "Copied",
+  "es/dataProductCore.json::dataProductCore.copy": "Copy",
+  "es/dataProductCore.json::dataProductCore.copyQuery": "Copy the {{surface}} query",
+  "es/dataProductCore.json::dataProductCore.metaQueries": "Queries",
+  "es/dataProductCore.json::dataProductCore.metaQueriesHint": "The reads this panel runs on the meta domain, as you. Copy one or open it in its explorer: the answer is the same.",
+  "es/dataProductCore.json::dataProductCore.openQuery": "Open the {{surface}} query in its explorer",
+  "es/dataProductsTab.json::dataProductsTab.detail.inputPortsColInputs": "Input(s)",
+  "es/dataProductsTab.json::dataProductsTab.detail.inputPortsColOutput": "Output",
+  "es/dataProductsTab.json::dataProductsTab.detail.inputPortsColTransform": "Transform",
+  "es/settings.json::settings.codesource.duckdb_memory_mb.label": "Code source DuckDB memory",
+  "es/settings.json::settings.codesource.duckdb_memory_mb.help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk.",
+  "es/settings.json::settings.codesource.duckdb_spill_cap_mb.label": "Code source DuckDB spill cap",
+  "es/settings.json::settings.codesource.duckdb_spill_cap_mb.help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound.",
+  "es/settings.json::settings.codesource.duckdb_threads.label": "Code source DuckDB threads",
+  "es/settings.json::settings.codesource.duckdb_threads.help": "The threads a code source's DuckDB answers its statements on."
 }

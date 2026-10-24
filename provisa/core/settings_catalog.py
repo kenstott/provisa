@@ -308,6 +308,45 @@ DECLARED: list[Setting] = [
         unit="jobs",
     ),
     Setting(
+        key="codesource.duckdb_memory_mb",
+        card="limits",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the memory a code source's DuckDB answers its statements in, past which it
+        # spills to disk; 1024 holds a large answer's working set on a small host.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_MEMORY_MB",
+        default=1024,
+        min=64,
+        unit="MiB",
+    ),
+    Setting(
+        key="codesource.duckdb_spill_cap_mb",
+        card="limits",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the most a code source's DuckDB spills to disk; a statement that needs more
+        # is refused, naming this setting. 10240 bounds a host's disk use well inside its volume.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_SPILL_CAP_MB",
+        default=10240,
+        min=0,
+        unit="MiB",
+    ),
+    Setting(
+        key="codesource.duckdb_threads",
+        card="concurrency",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the threads a code source's DuckDB answers its statements on; 4 leaves the
+        # host's other cores to the code itself.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_THREADS",
+        default=4,
+        min=1,
+        unit="threads",
+    ),
+    Setting(
         key="kaggle.api_token",
         card="security",
         type="str",
