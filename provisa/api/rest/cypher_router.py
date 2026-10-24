@@ -343,6 +343,9 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
         # Engine driver errors are classified through the seam (no engine-specific exception
         # import): connection loss → 503, query error → 400. Then HTTP-transport failures → 503,
         # else an unexpected 500.
+        refused = state.federation_engine.refusal_of(exc)
+        if refused is not None:
+            raise refused from exc  # REQ-778: said by name, by the ReadRefused handler
         kind = state.federation_engine.classify_error(exc)
         if kind == "connection":
             log.warning("Cypher execution: engine connection failed: %s", exc)
@@ -452,7 +455,40 @@ def _serialize_rows(
             500, "cypher.serialization_failed", f"Serialization failed: {exc}", error=str(exc)
         )
 
+    found = _non_finite(serializable_rows)
+    if found is not None:
+        # REQ-778: JSON has no Infinity or NaN (t.id / 0, log(0)): the answer is refused, naming
+        # the column, rather than failing as it is written.
+        column, value = found
+        return cypher_error(
+            400,
+            "cypher.non_finite_number",
+            f"The answer holds a number JSON cannot carry: {column} is {value}",
+            column=column,
+            value=value,
+        )
     return columns, serializable_rows
+
+
+def _non_finite(rows: list) -> tuple[str, str] | None:
+    """The first column holding Infinity or NaN anywhere in its value, and which it is."""
+    import math
+
+    def _in(value: Any) -> str | None:
+        if isinstance(value, float) and not math.isfinite(value):
+            return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
+        if isinstance(value, dict):
+            return next((v for v in map(_in, value.values()) if v is not None), None)
+        if isinstance(value, (list, tuple)):
+            return next((v for v in map(_in, value) if v is not None), None)
+        return None
+
+    for row in rows:
+        for column, value in row.items() if isinstance(row, dict) else enumerate(row):
+            held = _in(value)
+            if held is not None:
+                return str(column), held
+    return None
 
 
 def _build_stats_content(

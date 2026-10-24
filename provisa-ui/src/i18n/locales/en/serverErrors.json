@@ -551,7 +551,9 @@
       "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
       "undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
-      "undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
+      "undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}.",
+      "non_finite_number": "The answer holds a number JSON cannot carry: {{column}} is {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 or later on this engine."
     },
     "requests": {
       "approver_outside_domains": "Your right to create relationships does not reach a domain this request touches ({{domains}})",

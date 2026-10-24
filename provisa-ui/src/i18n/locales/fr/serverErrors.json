@@ -551,7 +551,9 @@
       "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL.",
       "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
-      "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}."
+      "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",
+      "non_finite_number": "La réponse contient un nombre que JSON ne peut pas représenter : {{column}} vaut {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
     },
     "requests": {
       "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",

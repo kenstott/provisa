@@ -551,7 +551,9 @@
       "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL.",
       "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
-      "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}."
+      "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}.",
+      "non_finite_number": "Het antwoord bevat een getal dat JSON niet kan weergeven: {{column}} is {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat en toBoolean van een waarde die mogelijk niet omgezet kan worden, vereisen op deze engine PostgreSQL 16 of later."
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
