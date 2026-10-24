@@ -34,10 +34,11 @@ REPO = Path(__file__).resolve().parents[2]
 
 # The selectors scripts/test-all uses, by name. The base exclusions are folded in because a CLI -m
 # replaces the ini addopts -m.
-_BASE = (
+_BASE_NO_BENCH = (
     "not packaging and not cluster and not isolated and not requires_warehouse "
     "and not requires_vector and not demo_walk"
 )
+_BASE = f"{_BASE_NO_BENCH} and not bench"
 _KAFKA = "requires_kafka or requires_debezium"
 _DATASTORE = "requires_elasticsearch or requires_sparql or requires_mongodb or requires_prometheus"
 _HIVE_S3 = "requires_hive_s3"
@@ -90,6 +91,9 @@ LANES: dict[str, Lane] = {
         "and not requires_warehouse",
     ),
     "cluster": Lane(("tests/e2e/test_helm_minikube.py",), "cluster", clear_addopts=True),
+    # REQ-1911: every benchmark feature end to end over the bench's own four sources (PostgreSQL,
+    # ClickHouse, MongoDB, Neo4j) on a compose project of its own, which no other lane holds.
+    "bench": Lane(_SUITE, f"{_BASE_NO_BENCH} and bench"),
     # Live cloud services: nightly and on demand, with the credentials from repo secrets. A live
     # test runs in CI only in a lane whose job declares its secrets and checks they are present
     # (integration-suite-lanes.yml), so what a lane runs is decided here, by marker, never by a
@@ -144,6 +148,7 @@ SUITE: dict[str, tuple[int, int]] = {
     "isolated": (1, 90),
     "e2e": (1, 120),
     "vector": (1, 90),
+    "bench": (1, 120),
 }
 
 
