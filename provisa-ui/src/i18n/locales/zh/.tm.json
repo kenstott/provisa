@@ -8016,5 +8016,6 @@
   "zh/settings.json::settings.server.public_url.label": "Public address",
   "zh/settings.json::settings.server.public_url.help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused.",
   "zh/dataProductsTab.json::dataProductsTab.detail.field.details": "Details",
-  "zh/graphSidebar.json::graphSidebar.countsFailed": "Counts unavailable: {{error}}"
+  "zh/graphSidebar.json::graphSidebar.countsFailed": "Counts unavailable: {{error}}",
+  "zh/graphSidebar.json::graphSidebar.schemaFailed": "Schema unavailable: {{error}}"
 }

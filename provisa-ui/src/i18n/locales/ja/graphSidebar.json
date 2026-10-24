@@ -31,6 +31,7 @@
     "maxNodes": "最大ノード数",
     "maxNodesHint": "1 つのクエリで描画するノードの最大数",
     "notCounted": "カウントできませんでした: {{list}}",
-    "countsFailed": "件数を取得できません: {{error}}"
+    "countsFailed": "件数を取得できません: {{error}}",
+    "schemaFailed": "スキーマを取得できません: {{error}}"
   }
 }

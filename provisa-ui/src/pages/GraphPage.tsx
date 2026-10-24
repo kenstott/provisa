@@ -123,6 +123,8 @@ export function GraphPage() {
   // The viewer's max-nodes setting: the most distinct nodes a frame draws.
   const [maxNodes, setMaxNodes] = useMaxNodes();
   const [schemaLoading, setSchemaLoading] = useState(true);
+  // Why /data/graph-schema gave no schema (a refused request, or none reached); null when it did.
+  const [schemaError, setSchemaError] = useState<string | null>(null);
   // What /data/graph-counts last said for this role and domain selection; null until it has.
   const [counts, setCounts] = useState<GraphCounts | null>(null);
   // Why /data/graph-counts gave no counts (a refused request, or none reached); null when it did.
@@ -233,7 +235,11 @@ export function GraphPage() {
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     fetch("/data/graph-schema", { headers })
-      .then((r) => r.json())
+      .then(async (r) => {
+        // A refused request's body is its error, never a schema.
+        if (!r.ok) throw new Error(refusalText(await r.text()));
+        return r.json();
+      })
       .then((data) => {
         const nodeLabels: SchemaNodeLabel[] = (data.node_labels ?? []).map(
           (n: {
@@ -298,8 +304,13 @@ export function GraphPage() {
         clusterMapRef.current = newClusterMap;
         setSchemaNodeLabels(uniqueNodeLabels);
         setSchemaRels(rels.sort((a, b) => a.type.localeCompare(b.type)));
+        setSchemaError(null);
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        setSchemaNodeLabels([]);
+        setSchemaRels([]);
+        setSchemaError(e instanceof Error ? e.message : String(e));
+      })
       .finally(() => setSchemaLoading(false));
   }, [roleHeaderValue]);
 
@@ -851,6 +862,7 @@ export function GraphPage() {
         schemaNodeLabels={visibleNodeLabels}
         schemaRels={visibleSchemaRels}
         schemaLoading={schemaLoading}
+        schemaError={schemaError}
         history={history}
         colorOverrides={colorOverrides}
         sizeOverrides={sizeOverrides}

@@ -10,6 +10,7 @@
 
 // #296: a refused /data/graph-counts is no counts. The sidebar shows its error where the counts go,
 // the pills count "?", nothing crashes, and the error is not stored as counts for the next visit.
+// A refused /data/graph-schema is no schema: its error shows where the labels and types go.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -44,16 +45,22 @@ const SCHEMA = {
   relationship_types: [{ type: "BOUGHT", source: "Customers", target: "Customers" }],
 };
 
-function serve(counts: () => Response | Promise<Response>) {
+const ok = (body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+function serve(
+  counts: () => Response | Promise<Response>,
+  schema: () => Response | Promise<Response> = () => ok(SCHEMA),
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       if (String(url).includes("/data/graph-counts")) return counts();
-      const body = String(url).includes("/data/graph-schema") ? SCHEMA : {};
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      if (String(url).includes("/data/graph-schema")) return schema();
+      return ok({});
     }),
   );
 }
@@ -111,5 +118,33 @@ describe("GraphPage — a refused graph-counts request (#296)", () => {
     await waitFor(() => expect(screen.getByTestId("graph-all-nodes")).toHaveTextContent("*(12)"));
     expect(screen.queryByTestId("graph-counts-error")).toBeNull();
     expect(storedCounts()).toHaveLength(1);
+  });
+});
+
+describe("GraphPage — a refused graph-schema request", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("shows the response's error where the labels and types go, not 'no labels found'", async () => {
+    const counts = vi.fn(() => ok({}));
+    serve(counts, () => new Response("schema build failed", { status: 503 }));
+    renderPage();
+    expect(await screen.findByTestId("graph-schema-error")).toHaveTextContent(
+      "Schema unavailable: schema build failed",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+    expect(screen.queryByText("No labels found")).toBeNull();
+    // No schema, nothing to count.
+    expect(counts).not.toHaveBeenCalled();
+  });
+
+  it("shows a request that reached no answer the same way", async () => {
+    serve(
+      () => ok({}),
+      () => Promise.reject(new TypeError("Failed to fetch")),
+    );
+    renderPage();
+    expect(await screen.findByTestId("graph-schema-error")).toHaveTextContent(
+      "Schema unavailable: Failed to fetch",
+    );
   });
 });

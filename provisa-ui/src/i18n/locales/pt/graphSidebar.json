@@ -31,6 +31,7 @@
     "maxNodes": "Máx. de nós",
     "maxNodesHint": "Máximo de nós que uma consulta desenha",
     "notCounted": "Não contado: {{list}}",
-    "countsFailed": "Contagens indisponíveis: {{error}}"
+    "countsFailed": "Contagens indisponíveis: {{error}}",
+    "schemaFailed": "Esquema indisponível: {{error}}"
   }
 }

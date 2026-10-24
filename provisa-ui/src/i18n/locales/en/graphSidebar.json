@@ -31,6 +31,7 @@
     "maxNodes": "Max nodes",
     "maxNodesHint": "The most nodes a query draws",
     "notCounted": "Not counted: {{list}}",
-    "countsFailed": "Counts unavailable: {{error}}"
+    "countsFailed": "Counts unavailable: {{error}}",
+    "schemaFailed": "Schema unavailable: {{error}}"
   }
 }

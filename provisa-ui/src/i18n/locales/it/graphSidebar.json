@@ -31,6 +31,7 @@
     "maxNodes": "Nodi max",
     "maxNodesHint": "Numero massimo di nodi disegnati da una query",
     "notCounted": "Non conteggiato: {{list}}",
-    "countsFailed": "Conteggi non disponibili: {{error}}"
+    "countsFailed": "Conteggi non disponibili: {{error}}",
+    "schemaFailed": "Schema non disponibile: {{error}}"
   }
 }

@@ -31,6 +31,7 @@
     "maxNodes": "Max. knooppunten",
     "maxNodesHint": "Het maximale aantal knooppunten dat een query tekent",
     "notCounted": "Niet geteld: {{list}}",
-    "countsFailed": "Aantallen niet beschikbaar: {{error}}"
+    "countsFailed": "Aantallen niet beschikbaar: {{error}}",
+    "schemaFailed": "Schema niet beschikbaar: {{error}}"
   }
 }

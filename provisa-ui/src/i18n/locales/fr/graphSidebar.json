@@ -31,6 +31,7 @@
     "maxNodes": "Nœuds max.",
     "maxNodesHint": "Nombre maximal de nœuds dessinés par une requête",
     "notCounted": "Non compté : {{list}}",
-    "countsFailed": "Comptages indisponibles : {{error}}"
+    "countsFailed": "Comptages indisponibles : {{error}}",
+    "schemaFailed": "Schéma indisponible : {{error}}"
   }
 }

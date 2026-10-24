@@ -31,6 +31,7 @@
     "maxNodes": "מקסימום צמתים",
     "maxNodesHint": "מספר הצמתים המרבי ששאילתה מציגה",
     "notCounted": "לא נספר: {{list}}",
-    "countsFailed": "הספירות אינן זמינות: {{error}}"
+    "countsFailed": "הספירות אינן זמינות: {{error}}",
+    "schemaFailed": "הסכמה אינה זמינה: {{error}}"
   }
 }

@@ -30,6 +30,8 @@ interface SidebarProps {
   schemaNodeLabels: SchemaNodeLabel[];
   schemaRels: SchemaRel[];
   schemaLoading: boolean;
+  /** Why /data/graph-schema gave no schema; shown where its labels and types go. */
+  schemaError?: string | null;
   history: string[];
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
@@ -89,6 +91,7 @@ export function Sidebar({
   schemaNodeLabels,
   schemaRels,
   schemaLoading,
+  schemaError = null,
   history,
   colorOverrides,
   sizeOverrides,
@@ -433,6 +436,10 @@ export function Sidebar({
               {!nodeLabelsCollapsed &&
                 (schemaLoading ? (
                   <div className="graph-schema-empty">{t("graphSidebar.loading")}</div>
+                ) : schemaError !== null ? (
+                  <div className="graph-schema-empty" role="alert" data-testid="graph-schema-error">
+                    {t("graphSidebar.schemaFailed", { error: schemaError })}
+                  </div>
                 ) : schemaNodeLabels.length === 0 ? (
                   <div className="graph-schema-empty">{t("graphSidebar.noLabelsFound")}</div>
                 ) : (
@@ -626,6 +633,10 @@ export function Sidebar({
               {!relTypesCollapsed &&
                 (schemaLoading ? (
                   <div className="graph-schema-empty">{t("graphSidebar.loading")}</div>
+                ) : schemaError !== null ? (
+                  <div className="graph-schema-empty" role="alert">
+                    {t("graphSidebar.schemaFailed", { error: schemaError })}
+                  </div>
                 ) : schemaRels.length === 0 ? (
                   <div className="graph-schema-empty">{t("graphSidebar.noRelTypesFound")}</div>
                 ) : (

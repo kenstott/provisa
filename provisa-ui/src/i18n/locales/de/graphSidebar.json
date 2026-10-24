@@ -31,6 +31,7 @@
     "maxNodes": "Max. Knoten",
     "maxNodesHint": "Höchstzahl der Knoten, die eine Abfrage zeichnet",
     "notCounted": "Nicht gezählt: {{list}}",
-    "countsFailed": "Zählungen nicht verfügbar: {{error}}"
+    "countsFailed": "Zählungen nicht verfügbar: {{error}}",
+    "schemaFailed": "Schema nicht verfügbar: {{error}}"
   }
 }
