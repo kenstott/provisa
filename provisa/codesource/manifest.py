@@ -41,12 +41,10 @@ Every problem is collected, and the bundle is refused with all of them at once.
 # Requirements: REQ-1984, REQ-1993, REQ-2131
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
 from provisa.codesource.bundle import BundleRefused
-from provisa.codesource.pushdown import Pushdown, parse, type_problem
 
 TABLE, COMMAND, STREAM, COLUMNS = "table", "command", "stream", "columns"
 PROVISA_TAGS = frozenset({TABLE, COMMAND, STREAM, COLUMNS})
@@ -148,8 +146,8 @@ class Parameter:
     nullable: bool
     #: A non-optional parameter is required by the source (REQ-1986's native_filter_required).
     required: bool
-    #: REQ-2100: the predicate on a return column this parameter is given, if any.
-    pushes: Pushdown | None = None
+    #: REQ-2100: an input's own documentation (its field's): its column's description.
+    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -165,16 +163,21 @@ class Export:
     preview: bool = False
     #: A command's result: rows (a collection) or one value.
     many: bool = False
-    #: REQ-2100: a table that takes a ``loader`` parameter, called with a join's keys in batches.
+    #: REQ-2100: a ``@loader`` table, called with a join's keys in batches, in its read context.
     loader: bool = False
-    #: REQ-2100: the largest batch its ``loader`` takes (``loader N``); None, every key in one.
+    #: REQ-2100: the largest batch its loader takes (``@loader N``); None, every key in one.
     loader_batch: int | None = None
+    #: REQ-2100: what a @table or @stream function takes, in order: its ``inputs`` (an object
+    #: whose fields are its parameters), its read ``context``, either left out.
+    takes: tuple[str, ...] = ()
 
 
-#: REQ-2100: the parameter a table's function takes a join's keys in, as a hash of sparse keys.
+#: REQ-2100: the tag a table declares it takes a join's keys with (``@loader``, ``@loader N``).
 LOADER = "loader"
-#: A batch-size declaration: ``loader N``, in a tag line, an inline comment or ``Annotated``.
-_LOADER_SIZE = re.compile(r"^loader\s+(\S+)$")
+#: What a @table or @stream function's two parameters are (Export.takes).
+INPUTS, CONTEXT = "inputs", "context"
+#: The read context's type, as Provisa's services give it (provisa_services, @provisa/services).
+READ_CONTEXT = "ReadContext"
 
 
 @dataclass(frozen=True)
@@ -256,9 +259,7 @@ def manifest_json(manifest: Manifest) -> dict:
                         "shape": _shape_json(p.shape),
                         "nullable": p.nullable,
                         "required": p.required,
-                        "pushes": None
-                        if p.pushes is None
-                        else {"column": p.pushes.column, "op": p.pushes.op},
+                        "description": p.description,
                     }
                     for p in e.parameters
                 ],
@@ -267,6 +268,7 @@ def manifest_json(manifest: Manifest) -> dict:
                 "many": e.many,
                 "loader": e.loader,
                 "loader_batch": e.loader_batch,
+                "takes": list(e.takes),
             }
             for e in manifest.exports
         ],
@@ -285,9 +287,8 @@ def manifest_from_json(raw: dict) -> Manifest:
         for p in e["parameters"]:
             shape = _shape(p["shape"])
             assert shape is not None
-            pushes = p["pushes"] and Pushdown(p["pushes"]["column"], p["pushes"]["op"])
             parameters.append(
-                Parameter(p["name"], shape, p["nullable"], p["required"], pushes or None)
+                Parameter(p["name"], shape, p["nullable"], p["required"], p["description"])
             )
         exports.append(
             Export(
@@ -300,6 +301,7 @@ def manifest_from_json(raw: dict) -> Manifest:
                 e["many"],
                 e["loader"],
                 e["loader_batch"],
+                tuple(e["takes"]),
             )
         )
     types = {
@@ -464,142 +466,79 @@ def ir_of(shape: Shape) -> str:
     return "json"
 
 
-def _declared_pushdown(entry: dict, signature: dict, rules: Rules) -> dict[str, list[str]]:
-    """Each parameter's explicit pushdown declarations (REQ-2100), by parameter: the tag lines
-    naming it, then its inline comment or ``Annotated`` strings, as the reader wrote them."""
-    declared: dict[str, list[str]] = {
-        p["name"]: [d for d in p.get("pushdown", []) if not _LOADER_SIZE.match(d)]
-        for p in signature["parameters"]
-    }
-    for tag, parameter in _pushdown_tags(entry, rules):
-        declared.setdefault(parameter, []).insert(0, tag)
-    return declared
-
-
-_IDENTIFIER = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
-
-
-def _loader_sizes(entry: dict, signature: dict) -> list[str]:
-    """REQ-2100: the batch sizes the export declares, as written: ``@loader N`` tag lines, and
-    ``loader N`` on its parameters (an inline comment or an ``Annotated`` string)."""
-    sizes = [t["text"] for t in entry.get("tag_arguments", []) if t["tag"] == LOADER]
-    for p in signature["parameters"]:
-        for declared in p.get("pushdown", []):
-            match = _LOADER_SIZE.match(declared)
-            if match:
-                sizes.append(match.group(1))
-    return sizes
-
-
 def _loader(
-    mapper: _Mapper, name: str, entry: dict, signature: dict, parameters: list[Parameter]
+    mapper: _Mapper, name: str, entry: dict, takes: tuple[str, ...]
 ) -> tuple[bool, int | None]:
-    """REQ-2100: whether the table takes a ``loader`` and the largest batch it declares; a size it
-    cannot take is a problem by name."""
-    has_loader = any(p.name == LOADER for p in parameters)
-    sizes = _loader_sizes(entry, signature)
-    if not sizes:
-        return has_loader, None
-    if not has_loader:
+    """REQ-2100: whether the table is a ``@loader`` and the largest batch it declares
+    (``@loader N``); a size it cannot take, or a loader with no read context to be given the
+    join's keys in, is a problem by name."""
+    sizes = [t["text"] for t in entry.get("tag_arguments", []) if t["tag"] == LOADER and t["text"]]
+    if LOADER not in entry["tags"] and not sizes:
+        return False, None
+    if CONTEXT not in takes:
         mapper.problems.append(
-            f"{name}: loader {sizes[0]} declares a batch size, and {name} has no loader parameter"
+            f"{name}: a @loader is given the join's keys in its read context, and {name} takes "
+            "no ReadContext"
         )
         return False, None
+    if not sizes:
+        return True, None
     if len(sizes) > 1:
         mapper.problems.append(f"{name}: two batch sizes declared, {sizes[0]} and {sizes[1]}")
         return True, None
     if not sizes[0].isdigit() or int(sizes[0]) < 1:
         mapper.problems.append(
-            f"{name}: loader {sizes[0]}: a batch size is a positive whole number"
+            f"{name}: @loader {sizes[0]}: a batch size is a positive whole number"
         )
         return True, None
     return True, int(sizes[0])
 
 
-def _pushdown_tags(entry: dict, rules: Rules) -> list[tuple[str, str]]:
-    """REQ-2100: the export's pushdown tag lines, ``(tag, parameter)``: a tag that is neither
-    Provisa's nor one of the language's own, whose argument is one identifier."""
-    return [
-        (t["tag"], t["text"])
-        for t in entry.get("tag_arguments", [])
-        if t["tag"] not in PROVISA_TAGS
-        and t["tag"] not in rules.standard_tags
-        and _IDENTIFIER.match(t["text"])
-    ]
+def _is_context(parameter: dict) -> bool:
+    kind = parameter["type"]
+    return kind.get("kind") == "ref" and kind.get("name") == READ_CONTEXT
 
 
-def _resolve_pushdown(
-    mapper: _Mapper,
-    name: str,
-    parameters: list[Parameter],
-    declared: dict[str, list[str]],
-    row: Shape,
-    preview: bool,
-) -> list[Parameter]:
-    """``parameters`` with the predicate each is given (REQ-2100), every problem collected."""
-    problems = mapper.problems
-    known = {p.name for p in parameters}
-    for parameter in sorted(p for p, d in declared.items() if d and p not in known):
-        problems.append(
-            f"{name}: @{declared[parameter][0]} names {parameter}, which is not a parameter"
+def _read_signature(
+    mapper: _Mapper, name: str, kind: str, signature: dict
+) -> tuple[list[Parameter], tuple[str, ...]] | None:
+    """REQ-2100: a @table or @stream function's parameters -- its inputs object's fields -- and
+    what it takes, ``(inputs, context)`` with either left out; any other signature refused by
+    name."""
+    given = signature["parameters"]
+    shape = tuple(CONTEXT if _is_context(p) else INPUTS for p in given)
+    if any(p["rest"] for p in given) or shape not in ((), (INPUTS,), (CONTEXT,), (INPUTS, CONTEXT)):
+        written = ", ".join(p["name"] for p in given)
+        mapper.problems.append(
+            f"{name}: a @{kind} function takes (inputs, context) -- an object whose fields are its "
+            f"inputs, and a ReadContext, either left out -- not ({written})"
         )
-    explicit = {p: d for p, d in declared.items() if d and p in known}
-    if preview:
-        for parameter in explicit:
-            problems.append(
-                f"{name}({parameter}): its rows' columns are found by a preview, so no predicate "
-                "can be pushed to it"
-            )
-        return parameters
-    fields = (
-        mapper.types[row.name].fields
-        if isinstance(row, Named) and row.name in mapper.types
-        else row.fields
-        if isinstance(row, Anonymous)
-        else ()
-    )
-    columns = {f.name: f for f in fields}
-    names = frozenset(columns)
-    out: list[Parameter] = []
-    taken: dict[Pushdown, str] = {}
-    for p in parameters:
-        spellings = explicit.get(p.name, [])
-        if len(spellings) > 1:
-            problems.append(f"{name}({p.name}): declared to take two predicates, {spellings}")
-            out.append(p)
-            continue
-        if spellings:
-            pushes = parse(spellings[0], names)
-            if pushes is None:
-                problems.append(
-                    f"{name}({p.name}): {spellings[0]} names no return column of {name}"
-                )
-                out.append(p)
-                continue
+        return None
+    parameters: list[Parameter] = []
+    if INPUTS in shape:
+        node = given[0]["type"]
+        if node["kind"] == "ref" and node["name"] in mapper.raw_types:
+            fields = mapper.raw_types[node["name"]]["fields"]
+        elif node["kind"] == "object":
+            fields = node["fields"]
         else:
-            pushes = parse(p.name, names)
-            if pushes is None:
-                out.append(p)
-                continue
-        column = columns[pushes.column]
-        element = ir_of(p.shape.element) if isinstance(p.shape, ListOf) else None
-        problem = type_problem(pushes.op, ir_of(column.shape), ir_of(p.shape), element)
-        if problem:
-            # Only a declaration is refused: a name that merely looks like one is a parameter.
-            if spellings:
-                problems.append(f"{name}({p.name}): {problem}")
-            out.append(p)
-            continue
-        if pushes in taken:
-            problems.append(
-                f"{name}: {pushes.op} on {pushes.column} is pushed to both {taken[pushes]} and "
-                f"{p.name}"
+            mapper.problems.append(
+                f"{name}({given[0]['name']}): its inputs are an object whose fields are its "
+                "inputs, a dataclass, a TypedDict or an interface"
             )
-            out.append(p)
-            continue
-        taken[pushes] = p.name
-        out.append(Parameter(p.name, p.shape, p.nullable, p.required, pushes))
-    return out
+            return None
+        for f in fields:
+            field_shape, nullable = mapper.shape(f["type"], f"{name}({f['name']})")
+            parameters.append(
+                Parameter(
+                    f["name"],
+                    field_shape,
+                    nullable,
+                    required=not (f["optional"] or f.get("default", False)),
+                    description=f.get("description", ""),
+                )
+            )
+    return parameters, shape
 
 
 def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
@@ -612,10 +551,13 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     exports: list[Export] = []
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
-        pushdown_tags = {tag for tag, _ in _pushdown_tags(entry, rules)} | {LOADER}
         for tag in tags:
-            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | pushdown_tags:
+            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {LOADER}:
                 problems.append(f"{name}: unknown tag @{tag}")
+        for argued in entry.get("tag_arguments", []):
+            known = PROVISA_TAGS | rules.standard_tags | {LOADER}
+            if argued["text"] and argued["tag"] not in known:
+                problems.append(f"{name}: unknown tag @{argued['tag']}")
         kinds = sorted(PROVISA_TAGS.intersection(tags))
         if not kinds:
             continue  # untagged: ignored
@@ -630,18 +572,28 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             )
             continue
         (signature,) = signatures
-        parameters = []
-        for p in signature["parameters"]:
-            if p["rest"]:
-                problems.append(f"{name}: the rest parameter {p['name']} cannot be a parameter")
-                continue
-            shape, nullable = mapper.shape(p["type"], f"{name}({p['name']})")
-            parameters.append(Parameter(p["name"], shape, nullable, required=not p["optional"]))
         returns = signature["returns"]
-        if kind != TABLE and (LOADER in tags or _loader_sizes(entry, signature)):
+        loading = LOADER in tags or any(
+            t["tag"] == LOADER and t["text"] for t in entry.get("tag_arguments", [])
+        )
+        if kind != TABLE and loading:
             # REQ-2100: a loader batches a table's keys; any other kind declaring one would have
             # it ignored, so it is refused by name.
             problems.append(f"{name}: @loader batches a table's keys, and a @{kind} takes none")
+        if kind in (TABLE, STREAM):
+            read = _read_signature(mapper, name, kind, signature)
+            if read is None:
+                continue
+            parameters, takes = read
+        else:
+            parameters = []
+            takes = ()
+            for p in signature["parameters"]:
+                if p["rest"]:
+                    problems.append(f"{name}: the rest parameter {p['name']} cannot be a parameter")
+                    continue
+                shape, nullable = mapper.shape(p["type"], f"{name}({p['name']})")
+                parameters.append(Parameter(p["name"], shape, nullable, required=not p["optional"]))
         if kind == TABLE:
             result = _unwrap_promise(returns)
             if result["kind"] == "array":
@@ -652,35 +604,21 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 problems.append(f"{name}: @table returns a single value, not a collection of rows")
                 continue
             row, preview = _rows(mapper, name, element)
-            loader, batch = _loader(mapper, name, entry, signature, parameters)
-            keys = [p for p in parameters if p.name != LOADER]
-            keys = _resolve_pushdown(
-                mapper, name, keys, _declared_pushdown(entry, signature, rules), row, preview
-            )
-            # The loader keeps its place among the parameters (the function's own order).
-            resolved: dict[str, Parameter] = {k.name: k for k in keys}
-            ordered: list[Parameter] = [
-                resolved[p.name] if p.name in resolved else p for p in parameters
-            ]
+            loader, batch = _loader(mapper, name, entry, takes)
             exports.append(
                 Export(
                     name,
                     kind,
                     entry["description"],
-                    tuple(ordered),
+                    tuple(parameters),
                     row,
                     preview,
                     loader=loader,
                     loader_batch=batch,
+                    takes=takes,
                 )
             )
         elif kind == COLUMNS:
-            for parameter, spellings in _declared_pushdown(entry, signature, rules).items():
-                if spellings:
-                    problems.append(
-                        f"{name}({parameter}): @{spellings[0]} pushes a predicate, and a "
-                        "@columns function has no rows to filter"
-                    )
             column_transform = _columns_export(mapper, name, entry, parameters, returns)
             if column_transform is not None:
                 exports.append(column_transform)
@@ -693,19 +631,12 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 )
                 continue
             row, preview = _rows(mapper, name, returns["element"])
-            parameters = _resolve_pushdown(
-                mapper, name, parameters, _declared_pushdown(entry, signature, rules), row, preview
-            )
             exports.append(
-                Export(name, kind, entry["description"], tuple(parameters), row, preview)
+                Export(
+                    name, kind, entry["description"], tuple(parameters), row, preview, takes=takes
+                )
             )
         else:
-            for parameter, spellings in _declared_pushdown(entry, signature, rules).items():
-                if spellings:
-                    problems.append(
-                        f"{name}({parameter}): @{spellings[0]} pushes a predicate, and a "
-                        "@command has no columns to filter"
-                    )
             result = _unwrap_promise(returns)
             if result["kind"] == "undefined":
                 shape, many = None, False

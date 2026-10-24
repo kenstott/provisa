@@ -230,8 +230,11 @@ def test_code_that_breaks_the_rules_is_refused_with_every_problem(tmp_path):
     assert refused.value.problems == [
         "typo: unknown tag @tabel",
         "one: @table returns a single value, not a collection of rows",
-        "spread: the rest parameter ids cannot be a parameter",
-        "untyped(region): the type no type hint cannot be mapped",
+        # REQ-2100: a table takes (inputs, context); a rest parameter or an untyped one is neither.
+        "spread: a @table function takes (inputs, context) -- an object whose fields are its "
+        "inputs, and a ReadContext, either left out -- not (ids)",
+        "untyped(region): its inputs are an object whose fields are its inputs, a dataclass, a "
+        "TypedDict or an interface",
         "listing: @stream is a generator or an async generator",
     ]
 
@@ -308,6 +311,17 @@ def _schema(export: str) -> str:
     return schema_text(row_schema(manifest, manifest.export(export)))
 
 
+#: REQ-2100: a read that asks nothing of the rows.
+EMPTY = {"filters": [], "order_by": [], "limit": None, "columns": [], "keys": None}
+
+
+def _read_of(export: str) -> dict:
+    """What a call of a @table or @stream function carries beside its arguments: its schema,
+    what it takes (its inputs object, its read context) and an empty context."""
+    manifest = read_manifest(_read(FIXTURE, "orders"), PYTHON_RULES)
+    return {"schema": _schema(export), "takes": manifest.export(export).takes, "context": EMPTY}
+
+
 @pytest.fixture
 def worker(tmp_path):
     code = tmp_path / "code"
@@ -332,7 +346,11 @@ def test_the_host_says_which_functions_it_has_and_not_what_it_imported(worker):
 
 def test_rows_and_their_values_come_back_in_their_own_types(worker):
     since = datetime(2025, 12, 1, tzinfo=UTC)
-    [[row]] = list(worker.rows("orders", "table", ["acme", since], schema=_schema("orders")))
+    [[row]] = list(
+        worker.rows(
+            "orders", "table", ["acme", since], ["customer_id", "since"], **_read_of("orders")
+        )
+    )
     assert row == {
         "id": 2**60,
         "placed": datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC),
@@ -345,7 +363,9 @@ def test_rows_and_their_values_come_back_in_their_own_types(worker):
 
 
 def test_a_large_table_comes_in_batches(worker):
-    assert [len(b) for b in worker.rows("many", "table", [2500], schema=_schema("many"))] == [
+    assert [
+        len(b) for b in worker.rows("many", "table", [2500], ["count"], **_read_of("many"))
+    ] == [
         1000,
         1000,
         500,
@@ -355,15 +375,14 @@ def test_a_large_table_comes_in_batches(worker):
 def test_a_commands_value_and_the_codes_own_error(worker):
     assert worker.command("cancel_order", [7]) == {"cancelled": 7}
     with pytest.raises(w.CodeFailed, match="LookupError: no such customer"):
-        list(worker.rows("boom", "table", [], schema=_schema("boom")))
+        list(worker.rows("boom", "table", [], **_read_of("boom")))
     assert worker.ping()
 
 
 @pytest.mark.parametrize("export", ["ticks", "placed"])  # a generator, an async generator
 def test_a_stream_its_subscriber_leaves_is_stopped_and_the_worker_serves_on(worker, export):
-    rows = worker.rows(
-        export, "stream", ["eu"] if export == "placed" else [], schema=_schema(export)
-    )
+    given = (["eu"], ["region"]) if export == "placed" else ([], [])
+    rows = worker.rows(export, "stream", *given, **_read_of(export))
     first, second = next(rows), next(rows)
     assert len(first) == len(second) == 1
     rows.close()
@@ -374,7 +393,7 @@ def test_a_deadline_stops_a_call_that_never_answers(worker):
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         with request_deadline.within(0.3):
-            list(worker.rows("forever", "stream", [], schema=_schema("forever")))
+            list(worker.rows("forever", "stream", [], **_read_of("forever")))
     assert time.monotonic() - started < 10
     assert worker.ping()
 
@@ -382,7 +401,7 @@ def test_a_deadline_stops_a_call_that_never_answers(worker):
 def test_a_tables_argument_sets_are_served_in_one_call_in_order(worker):
     """REQ-2099: the host runs the function once per argument set of the one call, in order."""
     calls = [(["ada", w.ABSENT, p], ["name", "greeting", "punctuation"]) for p in ("!", "?")]
-    rows = [r for b in worker.rows_each("greet", calls, schema=_schema("greet")) for r in b]
+    rows = [r for b in worker.rows_each("greet", calls, **_read_of("greet")) for r in b]
     assert rows == [{"text": "hello ada!"}, {"text": "hello ada?"}]
     assert worker.ping()
 
@@ -395,7 +414,7 @@ def test_an_argument_left_out_takes_the_functions_own_default(worker):
         "table",
         ["ada", w.ABSENT, "?"],
         ["name", "greeting", "punctuation"],
-        schema=_schema("greet"),
+        **_read_of("greet"),
     )
     assert list(rows) == [[{"text": "hello ada?"}]]
     rows = worker.rows(
@@ -403,7 +422,7 @@ def test_an_argument_left_out_takes_the_functions_own_default(worker):
         "table",
         ["ada", "hi", w.ABSENT],
         ["name", "greeting", "punctuation"],
-        schema=_schema("greet"),
+        **_read_of("greet"),
     )
     assert list(rows) == [[{"text": "hi ada!"}]]
 

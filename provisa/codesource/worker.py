@@ -37,7 +37,9 @@ the order ``args`` gives them, for a host whose language passes arguments by nam
     Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream"|"columns", args, names,
                       schema,  -- the rows' Arrow schema, base64 IPC; null for a single value
                       traceparent,  -- the request's trace (W3C), or null (REQ-2106)
-                      window}  -- how many rows frames the host may send before a credit
+                      window,  -- how many rows frames the host may send before a credit
+                      takes, context}  -- a @table or @stream function's: what it takes, its
+                                          inputs (made of args) and its read context, in order
                      {op: "credit", id, n}  -- the call's thread took n of its rows frames
                      {op: "call", id, export, kind: "table", calls: [{args, names}, ...], schema,
                       traceparent}  -- REQ-2099: a table called once per argument set, in
@@ -669,6 +671,8 @@ class Worker:
         names: Sequence[str] = (),
         *,
         schema: str,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
     ) -> Iterator[list[dict]]:
         """A table's or a stream's rows, batch by batch, as the host sends them against
         ``schema`` (arrow_rows.schema_text). Closing the iterator before its end cancels the
@@ -678,7 +682,9 @@ class Worker:
         from provisa.codesource.arrow_rows import rows_of
 
         # Closed here, not by the collector: closing rows is what cancels the call in the host.
-        with closing(self.batches(export, kind, args, names, schema=schema)) as batches:
+        with closing(
+            self.batches(export, kind, args, names, schema=schema, takes=takes, context=context)
+        ) as batches:
             for ipc in batches:
                 yield rows_of(ipc)
 
@@ -691,6 +697,8 @@ class Worker:
         *,
         schema: str,
         residual: dict | None = None,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
     ) -> Generator[bytes, None, None]:
         """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent. With a
         ``residual`` (a remote host's front end, provisa/codehost/front.py), the batches are the
@@ -705,7 +713,9 @@ class Worker:
             finished = False
             rows = batches = 0
             try:
-                frame = self._call_frame(call_id, export, kind, args, names, schema)
+                frame = self._call_frame(
+                    call_id, export, kind, args, names, schema, takes=takes, context=context
+                )
                 if residual is not None:
                     frame["residual"] = residual
                 self._send(lane, frame)
@@ -737,6 +747,9 @@ class Worker:
         *,
         schema: str,
         keyed: bool = False,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
+        contexts: Sequence[dict] | None = None,
     ) -> Iterator[list[dict]]:
         """A table's rows for each of ``calls`` (its arguments and their names), in order, from
         one call to the host (REQ-2099): the host calls the function once per argument set
@@ -751,11 +764,17 @@ class Worker:
             finished = False
             rows = batches = 0
             try:
-                frame = self._call_frame(call_id, export, "table", (), (), schema)
+                frame = self._call_frame(
+                    call_id, export, "table", (), (), schema, takes=takes, context=context
+                )
                 del frame["args"], frame["names"]
                 frame["calls"] = [
                     {"args": encode(list(args)), "names": list(names)} for args, names in calls
                 ]
+                if contexts is not None:
+                    # REQ-2100: each call its own read context (a loader's batch of keys).
+                    for call, given in zip(frame["calls"], contexts, strict=True):
+                        call["context"] = encode(given)
                 if keyed:
                     # REQ-2100: a loader call, answered with each key's rows, each with its $key.
                     frame["keyed"] = True
@@ -862,12 +881,19 @@ class Worker:
         args: Sequence[Any],
         names: Sequence[str],
         schema: str | None,
+        *,
+        takes: Sequence[str] | None = None,
+        context: dict | None = None,
     ) -> dict:
         """The call's frame, with the request's trace; the call's scope held for the services
-        requests that name it, until the call closes."""
+        requests that name it, until the call closes. ``takes`` (REQ-2100): what a @table or
+        @stream function takes, its ``inputs`` (made of ``args``) and its read ``context``."""
         if self._services_token is not None:
             with _scopes_lock:
                 _scopes[(self._services_token, call_id)] = carried_scope()
+        extra: dict = {}
+        if takes is not None:
+            extra = {"takes": list(takes), "context": encode(context)}
         return {
             "op": "call",
             "id": call_id,
@@ -878,6 +904,7 @@ class Worker:
             "schema": schema,
             "traceparent": current_traceparent(),
             "window": _QUEUED,
+            **extra,
         }
 
     def ping(self, timeout: float = 5.0) -> bool:
