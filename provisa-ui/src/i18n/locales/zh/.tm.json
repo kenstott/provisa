@@ -8113,5 +8113,20 @@
   "zh/serverErrors.json::serverErrors.profile.classification_kind_unknown": "Unknown classification kind {{kind}}",
   "zh/serverErrors.json::serverErrors.profile.classification_pii_refused": "The column could not be marked PII",
   "zh/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
-  "zh/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads"
+  "zh/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
+  "zh/dataProductCore.json::dataProductCore.copied": "Copied",
+  "zh/dataProductCore.json::dataProductCore.copy": "Copy",
+  "zh/dataProductCore.json::dataProductCore.copyQuery": "Copy the {{surface}} query",
+  "zh/dataProductCore.json::dataProductCore.metaQueries": "Queries",
+  "zh/dataProductCore.json::dataProductCore.metaQueriesHint": "The reads this panel runs on the meta domain, as you. Copy one or open it in its explorer: the answer is the same.",
+  "zh/dataProductCore.json::dataProductCore.openQuery": "Open the {{surface}} query in its explorer",
+  "zh/dataProductsTab.json::dataProductsTab.detail.inputPortsColInputs": "Input(s)",
+  "zh/dataProductsTab.json::dataProductsTab.detail.inputPortsColOutput": "Output",
+  "zh/dataProductsTab.json::dataProductsTab.detail.inputPortsColTransform": "Transform",
+  "zh/settings.json::settings.codesource.duckdb_memory_mb.label": "Code source DuckDB memory",
+  "zh/settings.json::settings.codesource.duckdb_memory_mb.help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk.",
+  "zh/settings.json::settings.codesource.duckdb_spill_cap_mb.label": "Code source DuckDB spill cap",
+  "zh/settings.json::settings.codesource.duckdb_spill_cap_mb.help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound.",
+  "zh/settings.json::settings.codesource.duckdb_threads.label": "Code source DuckDB threads",
+  "zh/settings.json::settings.codesource.duckdb_threads.help": "The threads a code source's DuckDB answers its statements on."
 }

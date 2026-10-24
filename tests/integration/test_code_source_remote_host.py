@@ -28,6 +28,7 @@ import re
 import socket
 import subprocess
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -116,7 +117,7 @@ def remote_host(server, code_source, tmp_path_factory):  # noqa: F811
         assert pairing is not None, subprocess.run(
             ["docker", "logs", name], capture_output=True, text=True
         )
-        yield port, pairing
+        yield port, pairing, build["image_ref"]
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
         subprocess.run(["docker", "rmi", "-f", build["image_ref"]], capture_output=True)
@@ -131,7 +132,7 @@ def test_a_built_source_is_read_from_its_remote_host_and_back_on_the_server_in_d
     code_source,  # noqa: F811
     remote_host,
 ):
-    port, pairing = remote_host
+    port, pairing, _image = remote_host
     on_server = _usd(server)
     connected = _api(
         server,
@@ -154,3 +155,73 @@ def test_a_built_source_is_read_from_its_remote_host_and_back_on_the_server_in_d
     assert again.status_code == 400
     assert _api(server, "POST", "/dev").json() == {"mode": "dev"}
     assert _usd(server) == on_server
+
+
+# REQ-2100: what the image's DuckDB is given to spill to, and the statement that fills it.
+_SPILL_FILLS = """
+import os, sys
+sys.path.insert(0, sys.argv[1])
+sys.path.insert(1, os.environ["PROVISA_FRONT_LIB"])  # the image's own DuckDB, sqlglot and Arrow
+import pyarrow as pa
+import residual
+residual.configure(memory_mb=128, threads=1, spill_cap_mb=10240, spill_dir="/var/lib/provisa-spill")
+schema = pa.schema([("s", pa.utf8())])
+def batches():
+    for _ in range(400):
+        yield pa.RecordBatch.from_arrays([pa.array([os.urandom(48).hex() for _ in range(10000)])], schema=schema)
+try:
+    for _ in residual.answer("SELECT s FROM t ORDER BY s DESC", "duckdb", "t", pa.RecordBatchReader.from_batches(schema, batches())):
+        pass
+except residual.SpillCapped as refused:
+    print("REFUSED", refused, flush=True)
+else:
+    print("ANSWERED", flush=True)
+    sys.exit(1)
+import gc, faulthandler
+faulthandler.enable()
+print("DIAG gc", gc.collect(), flush=True)
+print("DIAG close database", flush=True)
+residual._database.close()
+print("DIAG database closed", flush=True)
+residual._database = None
+print("DIAG gc", gc.collect(), flush=True)
+print("DIAG exit", flush=True)
+sys.exit(0)
+"""
+
+
+def test_a_statement_that_fills_the_images_spill_volume_is_refused_naming_the_cap(remote_host):
+    """REQ-2100: the image spills to a volume of its own the operator sizes to the cap. Run with
+    that volume a 16 MiB tmpfs (docker's own --tmpfs, no privilege), a sort that needs more is
+    refused naming codesource.duckdb_spill_cap_mb, never answered short."""
+    _port, _pairing, image = remote_host
+    config = json.loads(
+        subprocess.run(
+            ["docker", "inspect", "--format", "{{json .Config}}", image],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    )
+    python, front = config["Entrypoint"][0], config["Entrypoint"][2]
+    run = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--tmpfs",
+            "/var/lib/provisa-spill:size=16m,uid=65532,gid=65532",
+            "--entrypoint",
+            python,
+            image,
+            "-c",
+            _SPILL_FILLS,
+            str(Path(front).parent),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    print("DIAG returncode", run.returncode, "stdout:", run.stdout, "stderr:", run.stderr[-3000:])
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "REFUSED" in run.stdout and "codesource.duckdb_spill_cap_mb" in run.stdout, run.stdout

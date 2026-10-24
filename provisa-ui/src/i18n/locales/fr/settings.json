@@ -882,6 +882,20 @@
         "label": "Nombre maximal de prédicats couverts par un prédicat variable",
         "help": "Un motif SPARQL dont le prédicat est une variable lit chaque prédicat mappé qui pourrait correspondre, une branche chacun. Une requête qui demande plus de branches est refusée, en nommant la limite."
       }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "Mémoire DuckDB de la source de code",
+        "help": "La mémoire dans laquelle la DuckDB d'une source de code répond à une instruction. Au-delà, l'instruction déborde sur le disque."
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "Plafond de débordement DuckDB de la source de code",
+        "help": "Le maximum que la DuckDB d'une source de code déborde sur le disque. Une instruction qui en demande plus est refusée, en nommant ce paramètre. Une image construite ne l'applique que si son volume de débordement est dimensionné à ce plafond par le quota de la plateforme. Une source de code en mode développement déborde dans le répertoire de données sans limite."
+      },
+      "duckdb_threads": {
+        "label": "Threads DuckDB de la source de code",
+        "help": "Les threads sur lesquels la DuckDB d'une source de code répond à ses instructions."
+      }
     }
   }
 }
