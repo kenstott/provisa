@@ -46,6 +46,7 @@ import re as _re
 from sqlalchemy import select
 
 from provisa.core import request_deadline
+from provisa.core.parameters import ParameterRequired
 from provisa.core.read_refusal import ReadRefused
 from provisa.executor.result import QueryResult
 from provisa.core.schema_org import node_ids
@@ -679,6 +680,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
+    except ParameterRequired as exc:
+        # REQ-1986: a read leaving a required parameter without a value -- the caller's to give.
+        return JSONResponse(status_code=400, content={"error": str(exc)})
     except Exception as exc:
         log.exception("Cypher governance/routing failed")
         return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
@@ -900,13 +904,19 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             return _uncounted(cypher, result)
         sql_str, _, _ = result
         semantic_sql = make_semantic_sql(sql_str, ctx)
-        plan = await _govern_and_route_compiled(
-            semantic_sql, role_id, exec_params=None, cache_hint=NO_CACHE_HINT, sdl_joins=False
-        )
+        try:
+            plan = await _govern_and_route_compiled(
+                semantic_sql, role_id, exec_params=None, cache_hint=NO_CACHE_HINT, sdl_joins=False
+            )
+        except ParameterRequired as exc:
+            # A parameterized table: a count gives no parameter, so the read is refused -- said,
+            # with that refusal's reason.
+            log.warning("graph-counts: %s not counted: %s", cypher, exc)
+            return {"count": None, "error": str(exc)}
         executed = await _run_plan(plan, state)
         if isinstance(executed, Response):
-            # A label the engine cannot count (its catalog is not attached on this engine, a
-            # parameterized table with no snapshot): said, with the engine's reason.
+            # A label the engine cannot count (its catalog is not attached on this engine): said,
+            # with the engine's reason.
             return _uncounted(cypher, executed)
         rows = _dict_rows(executed)
         return {"count": int(rows[0]["cnt"]) if rows else 0}
