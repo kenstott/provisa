@@ -8030,5 +8030,7 @@
   "zh-HK/serverErrors.json::serverErrors.cypher.nested_aggregate": "{{outer}} aggregates the aggregate {{inner}}: an aggregate cannot be taken of another. Aggregate in a WITH first.",
   "zh-HK/serverErrors.json::serverErrors.cypher.aggregate_in_where": "WHERE cannot use the aggregate {{aggregate}}: WHERE filters rows before they are grouped. Aggregate in a WITH and filter after it.",
   "zh-HK/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
-  "zh-HK/graphFrame.json::graphFrame.deleteFrame": "Delete this result"
+  "zh-HK/graphFrame.json::graphFrame.deleteFrame": "Delete this result",
+  "zh-HK/serverErrors.json::serverErrors.cypher.undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
+  "zh-HK/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
 }

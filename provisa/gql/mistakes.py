@@ -32,7 +32,7 @@ from provisa.gql.expr_ast import (
 from provisa.gql.group_by import AGGREGATES
 from provisa.gql.translator_types import CypherMistake
 
-from provisa.gql.ir import CypherAST, MatchStep, UnwindClause, WithClause
+from provisa.gql.ir import CypherAST, MatchStep, NodePattern, UnwindClause, WithClause
 
 if TYPE_CHECKING:
     from provisa.gql.label_map import CypherLabelMap
@@ -288,9 +288,39 @@ def _clause_of(name: str, ast: CypherAST) -> str:
     return "MATCH"
 
 
-def undefined_variable(ast: CypherAST) -> CypherMistake | None:
+def _property_owners(ast: CypherAST, name: str, label_map: CypherLabelMap) -> list[tuple[str, str]]:
+    """Each (variable, label) the statement binds whose label's table has a property ``name``,
+    in the order the statement binds them."""
+    owners: list[tuple[str, str]] = []
+
+    def visit(node: object) -> None:
+        if isinstance(node, (list, tuple)):
+            for item in node:
+                visit(item)
+            return
+        if not dataclasses.is_dataclass(node) or isinstance(node, type):
+            return
+        if isinstance(node, NodePattern) and node.variable and node.labels:
+            labels = [label_map.canonical_label(lbl) for lbl in node.labels]
+            label = ":".join(labels)
+            for nm in label_map.nodes.values():
+                named = nm.label == label or (len(labels) == 1 and nm.table_label == labels[0])
+                if named and name in nm.properties and (node.variable, label) not in owners:
+                    owners.append((node.variable, label))
+        for f in dataclasses.fields(node):
+            visit(getattr(node, f.name))
+
+    visit(ast)
+    return owners
+
+
+def undefined_variable(
+    ast: CypherAST, label_map: CypherLabelMap | None = None
+) -> CypherMistake | None:
     """The refusal of a statement that reads a variable nothing in it binds -- no MATCH pattern,
-    WITH, UNWIND, CALL or comprehension -- naming it, its clause, and the variables it binds."""
+    WITH, UNWIND, CALL or comprehension -- naming it, its clause, and the variables it binds. With
+    the role's ``label_map``, a name that is a property of a bound variable's label is offered as
+    that variable's property (``COUNT(id)`` meant ``a.id``)."""
     bound: set[str] = set()
     used: list[str] = []
     _names(ast, bound, used)
@@ -309,13 +339,37 @@ def undefined_variable(ast: CypherAST) -> CypherMistake | None:
                 variable=name,
                 clause=clause,
             )
-        return CypherMistake(
-            "cypher.undefined_variable",
+        base = (
             f"{clause} reads {name}, which nothing in the statement binds: a variable is bound by "
-            f"a MATCH pattern, WITH, UNWIND or CALL. Bound here: {named}.",
-            variable=name,
-            clause=clause,
-            bound=named,
+            f"a MATCH pattern, WITH, UNWIND or CALL. Bound here: {named}."
+        )
+        owners = _property_owners(ast, name, label_map) if label_map is not None else []
+        if len(owners) == 1:
+            var, label = owners[0]
+            return CypherMistake(
+                "cypher.undefined_variable_property",
+                f"{base} Did you mean {var}.{name}? {var} is bound to :{label}, which has a "
+                f"property {name}.",
+                variable=name,
+                clause=clause,
+                bound=named,
+                suggestion=f"{var}.{name}",
+                owner=var,
+                label=label,
+            )
+        if owners:
+            suggestions = " or ".join(f"{var}.{name}" for var, _ in owners)
+            return CypherMistake(
+                "cypher.undefined_variable_properties",
+                f"{base} Did you mean {suggestions}? Each is bound to a label with a property "
+                f"{name}.",
+                variable=name,
+                clause=clause,
+                bound=named,
+                suggestions=suggestions,
+            )
+        return CypherMistake(
+            "cypher.undefined_variable", base, variable=name, clause=clause, bound=named
         )
     return None
 

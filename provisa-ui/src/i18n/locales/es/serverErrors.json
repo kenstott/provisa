@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} no es un número entero de filas: SKIP espera una cantidad de 0 o más, p. ej. SKIP 10.",
       "engine_refused": "El motor rechazó la consulta: {{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} lee {{variable}}, pero la sentencia no vincula ninguna variable: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL."
+      "no_variables": "{{clause}} lee {{variable}}, pero la sentencia no vincula ninguna variable: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL.",
+      "undefined_variable_property": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tiene una propiedad {{variable}}.",
+      "undefined_variable_properties": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestions}}? Cada una está vinculada a una etiqueta con una propiedad {{variable}}."
     },
     "requests": {
       "approver_outside_domains": "Su derecho a crear relaciones no alcanza ningún dominio que toque esta solicitud ({{domains}})",

@@ -8029,5 +8029,7 @@
   "fr/serverErrors.json::serverErrors.cypher.unknown_label": "There is no label :{{label}}. Registered labels: {{suggestions}}.",
   "fr/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
   "fr/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
-  "fr/graphFrame.json::graphFrame.deleteFrame": "Delete this result"
+  "fr/graphFrame.json::graphFrame.deleteFrame": "Delete this result",
+  "fr/serverErrors.json::serverErrors.cypher.undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
+  "fr/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
 }

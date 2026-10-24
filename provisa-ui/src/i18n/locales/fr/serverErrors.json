@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} n'est pas un nombre entier de lignes : SKIP attend un nombre supérieur ou égal à 0, par ex. SKIP 10.",
       "engine_refused": "Le moteur a refusé la requête : {{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL."
+      "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL.",
+      "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
+      "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}."
     },
     "requests": {
       "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",

@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} is geen geheel aantal rijen: SKIP verwacht een aantal van 0 of meer, bijv. SKIP 10.",
       "engine_refused": "De engine heeft de query geweigerd: {{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL."
+      "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL.",
+      "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
+      "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}."
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",

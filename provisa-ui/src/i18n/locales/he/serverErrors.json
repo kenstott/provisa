@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} אינו מספר שלם של שורות: SKIP מקבל מספר של 0 ומעלה, למשל SKIP 10.",
       "engine_refused": "המנוע דחה את השאילתה: {{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} קורא את {{variable}}, אך המשפט אינו קושר אף משתנה: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL."
+      "no_variables": "{{clause}} קורא את {{variable}}, אך המשפט אינו קושר אף משתנה: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL.",
+      "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
+      "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}."
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם ליצור קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",

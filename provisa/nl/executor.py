@@ -96,12 +96,14 @@ async def _execute_cypher(
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     ctx = _get_ctx(app_state, role)
-    ast = parse_cypher(query)
     from provisa.security.rights import require_role
 
     label_map = CypherLabelMap.from_schema(
         ctx, domain_access=require_role(app_state.roles, role)["domain_access"]
     )
+    # The role's label map: an unbound name that is a bound variable's property is offered as it
+    # in the refusal the NL retry gives back to the model (REQ-778).
+    ast = parse_cypher(query, label_map)
     param_names = collect_param_names(query)
     bind_params(param_names, {})
     sql_ast, _, graph_vars = cypher_to_sql(ast, label_map, {})
