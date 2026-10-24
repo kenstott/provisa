@@ -170,6 +170,12 @@ class _Purview:
             ]
             return httpx.Response(200, json={"value": found})
         if path == "/dataAssets":
+            # As the live service does, whatever the published schema says (run 40102236534).
+            missing = [k for k in ("name", "type") if k not in body]
+            if missing:
+                errors = {k: [f"Required property '{k}' not found in JSON."] for k in missing}
+                return httpx.Response(400, json={"errors": errors})
+            assert body["type"] == "General"
             asset_id = f"asset-{body['source']['assetId']}"
             self.assets[body["source"]["assetId"]] = asset_id
             return httpx.Response(201, json={"id": asset_id})

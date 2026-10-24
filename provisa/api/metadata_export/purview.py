@@ -142,6 +142,11 @@ def term_edges(
     return parent, related
 
 
+def _asset_name(table: "TableAsset") -> str:
+    """A table's Data Map entity name (atlas.to_native_entities): its business name."""
+    return table.aliases[0] if table.aliases else table.name
+
+
 def product_id(product: "DataProductAsset") -> str:
     """The product's Unified Catalog id: a uuid of its Provisa URI, the same on every publish."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, product.semantic_uri))
@@ -336,7 +341,10 @@ class PurviewExport(AtlasExport):  # REQ-2118
             found.raise_for_status()
             updated = await client.put(url, params=params, json=body, headers=catalog)
             updated.raise_for_status()
-        assets = await self._data_assets(client, catalog, list(guids.values()))
+        by_uri = {m.semantic_uri: m for m in members}
+        assets = await self._data_assets(
+            client, catalog, {guid: by_uri[uri] for uri, guid in guids.items()}
+        )
         related = {
             r["entityId"]
             for r in await self._paged(
@@ -362,9 +370,16 @@ class PurviewExport(AtlasExport):  # REQ-2118
         result.published["data_assets"] = result.published.get("data_assets", 0) + len(assets)
 
     async def _data_assets(
-        self, client: httpx.AsyncClient, headers: dict, guids: list[str]
+        self, client: httpx.AsyncClient, headers: dict, tables: dict[str, "TableAsset"]
     ) -> dict[str, str]:
-        """The Unified Catalog data asset of each Data Map guid, by guid: found, else created."""
+        """The Unified Catalog data asset of each Data Map guid in ``tables`` (guid -> the table it
+        is), by guid: found, else created.
+
+        A create names the asset and its type: the service refuses one without them (400,
+        "Required property 'name'/'type' not found"), though the published request schema lists
+        only ``source``. The name is the Data Map entity's own; the type is General -- not an
+        Azure SQL table or an ADLS path."""
+        guids = sorted(tables)
         if not guids:
             return {}
         params = {"api-version": API_VERSION}
@@ -382,7 +397,11 @@ class PurviewExport(AtlasExport):  # REQ-2118
             created = await client.post(
                 self._catalog("/dataAssets"),
                 params=params,
-                json={"source": {"assetId": guid}},
+                json={
+                    "name": _asset_name(tables[guid]),
+                    "type": "General",
+                    "source": {"assetId": guid},
+                },
                 headers=headers,
             )
             created.raise_for_status()
@@ -481,7 +500,10 @@ class PurviewExport(AtlasExport):  # REQ-2118
             if t.ref.fqn() in grounded
             and (bound := result.bindings.get(t.semantic_uri)) is not None
         }
-        assets = await self._data_assets(client, catalog, sorted(set(guids.values())))
+        by_fqn = {t.ref.fqn(): t for t in snapshot.tables}
+        assets = await self._data_assets(
+            client, catalog, {guid: by_fqn[fqn] for fqn, guid in guids.items()}
+        )
         for term in terms:
             tid = ids[term.term_id]
             if tid not in published:
