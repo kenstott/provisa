@@ -97,7 +97,9 @@ function termKept(s: QueryScope): Where | undefined {
 }
 
 /** A term with a relationship drawn: an edge of a type kept to a term kept (either way, under
- * Ontology), or a column it IS in a domain kept (under Columns). With neither layer on, none. */
+ * Ontology), a domain kept it is in (under Domains: its domains are its refs' and tables', so a
+ * draft named for a column is in its table's domain whatever else is drawn), or a column it IS in
+ * a domain kept (under Columns). With none of these layers on, none. */
 function related(s: QueryScope): Where {
   const kept = termKept(s);
   const typed: Where | undefined =
@@ -111,6 +113,14 @@ function related(s: QueryScope): Where {
             { edges_out: edge("target_term") },
             { edges_in: edge("source_term") },
             { tables: inDomains(s.domains) ?? {} },
+          ]
+        : []),
+      ...(s.layers.has("domains")
+        ? [
+            {
+              domains:
+                inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]) ?? {},
+            },
           ]
         : []),
       ...(s.layers.has("columns") ? [{ refs: inDomains(s.domains) ?? {} }] : []),

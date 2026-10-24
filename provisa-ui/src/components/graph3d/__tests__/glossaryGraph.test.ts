@@ -226,3 +226,26 @@ describe("the Ontology View's presets", () => {
     expect(on(["domains"]).nodes.map((n) => n.id)).not.toContain("t:20");
   });
 });
+
+describe("a draft named for a column, with Domains alone drawn", () => {
+  it("is drawn linked to its table's domain, its refs not read", () => {
+    // Read as the query reads it under Layers: Domains -- no refs, no tables, no term edges; its
+    // domain the server's (term_domains: its refs' tables' domain).
+    const draft = term(7, "shift end", {
+      definition: null,
+      live: false,
+      ref_count: 1,
+      refs: undefined,
+      domains: [{ domain_id: "shelter" }],
+    });
+    const g = visibleGraph(
+      glossaryGraph([draft], []),
+      new Set(["ontology", "domains"]),
+      NO_FILTERS_ONTOLOGY,
+      new Set(),
+      GLOSSARY_SCOPE,
+    );
+    expect(g.nodes.map((n) => n.id).sort()).toEqual(["d:shelter", "term:7"]);
+    expect(g.edges.map((e) => [e.kind, e.a, e.b])).toEqual([["in_domain", "term:7", "d:shelter"]]);
+  });
+});

@@ -230,8 +230,18 @@ describe("the Ontology View's query", () => {
         `{ tables: { } }, { refs: { } }] }] })`,
     );
     // With no layer drawing a relationship every term is an orphan: none is kept.
-    const none = squash(ontologyQuery(reader(), scope(["domains"], { orphans: false })));
+    const none = squash(ontologyQuery(reader(), scope(["data"], { orphans: false })));
     expect(none).toContain("m__glossaryTerms(where: { _or: [] })");
+  });
+
+  it("keeps, with Orphans off and Domains drawn, a term in a domain kept, as it is drawn linked to it", () => {
+    // A draft named for a column is in its table's domain (term_domains), whatever else is drawn.
+    const q = squash(ontologyQuery(reader(), scope(["ontology", "domains"], { orphans: false })));
+    expect(q).toContain("{ domains: { } }");
+    const narrowed = squash(
+      ontologyQuery(reader(), scope(["ontology", "domains"], { orphans: false, domains: ["x"] })),
+    );
+    expect(narrowed).toContain('{ domains: { domainId: { in: ["x","*"] } } }');
   });
 
   it("reads the tables a class term grounds with the ontology, in the domains kept", () => {
