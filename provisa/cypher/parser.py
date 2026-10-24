@@ -263,6 +263,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         while self._peek() is not None:
             kw = self._peek_val()
 
+            if kw in ("OPTIONAL", "MATCH") and current_where is not None:
+                # A WHERE is the clause's before it: the next MATCH starts a step of its own, so
+                # neither WHERE takes the other's place.
+                _flush_match_step()
+
             if kw in ("OPTIONAL",):
                 self._advance()
                 self._consume_keyword("MATCH")

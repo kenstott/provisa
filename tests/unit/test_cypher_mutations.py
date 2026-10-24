@@ -83,7 +83,14 @@ def _person_map() -> CypherLabelMap:
             schema="public",
             table="persons",
             catalog="mycat",
-            props={"name": "name", "age": "age", "email": "email"},
+            # Every column the role sees is a published property, its key and tenant_id with them.
+            props={
+                "id": "id",
+                "name": "name",
+                "age": "age",
+                "email": "email",
+                "tenant_id": "tenant_id",
+            },
         )
     )
 

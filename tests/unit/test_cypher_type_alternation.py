@@ -128,3 +128,37 @@ def test_an_untyped_hop_over_a_junction_reads_each_of_its_rows_of_any_type(terms
         ],
         key=repr,
     )
+
+
+def test_a_match_s_where_holds_beside_an_optional_match_s_own(terms):  # noqa: F811
+    # Each WHERE is its clause's: the MATCH's filters the rows, the OPTIONAL MATCH's the pattern.
+    assert _rows(
+        terms,
+        "MATCH (a:GlossaryTerm) WHERE a.name = 'ledger' "
+        "OPTIONAL MATCH (a)-[r:KIND_OF]->(b:GlossaryTerm) WHERE b.name = 'party' "
+        "RETURN a.name, b.name",
+    ) == [("ledger", "party")]
+    assert _rows(
+        terms,
+        "MATCH (a:GlossaryTerm) WHERE a.name = 'party' "
+        "OPTIONAL MATCH (a)-[r:KIND_OF]->(b:GlossaryTerm) WHERE b.name = 'zz' "
+        "RETURN a.name, b.name",
+    ) == [("party", None)]
+
+
+def test_an_optional_junction_hop_constrained_at_its_far_end_keeps_no_refused_row(terms):  # noqa: F811
+    # ledger KIND_OF customer and party: the customer edge is no match, not a row with no node.
+    assert _rows(
+        terms,
+        "MATCH (a:GlossaryTerm) OPTIONAL MATCH (a)-[r:KIND_OF]->(b:GlossaryTerm) "
+        "WHERE b.name = 'party' RETURN a.name, b.name",
+    ) == sorted([("customer", "party"), ("ledger", "party"), ("party", None)], key=repr)
+
+
+def test_an_optional_relationship_that_matched_none_is_null(terms):  # noqa: F811
+    rows = _rows(
+        terms,
+        "MATCH (a:GlossaryTerm) WHERE a.name = 'party' "
+        "OPTIONAL MATCH (a)-[r:KIND_OF]->(b:GlossaryTerm) RETURN r",
+    )
+    assert rows == [(None,)]

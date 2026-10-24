@@ -89,9 +89,10 @@ def returned():
     return _returned
 
 
+# Its key is its built-in _id, beside the properties its label publishes.
 _NODE = (
     '{"id":"GlossaryTerm|1","label":"GlossaryTerm","tableLabel":"GlossaryTerm",'
-    '"properties":{"name":"ab"}}'
+    '"properties":{"id":1,"name":"ab","_id":1}}'
 )
 
 

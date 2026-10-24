@@ -157,18 +157,10 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
         this=exp.Identifier(this=nm.id_column, quoted=True),
         table=exp.Identifier(this=tbl),
     )
-    raw_id_col = exp.Column(
-        this=exp.Identifier(this=nm.id_column, quoted=True),
-        table=exp.Identifier(this=tbl),
-    )
-    # Compound id matches domain-union __id format: "Label|rawPk"
-    compound_id = exp.DPipe(
-        this=exp.DPipe(
-            this=exp.Literal.string(nm.label),
-            expression=exp.Literal.string("|"),
-        ),
-        expression=exp.Cast(this=raw_id_col, to=exp.DataType.build("VARCHAR")),
-    )
+    from provisa.gql.select_builder import node_identity
+
+    # "Label|key", as a domain union's __id is (a compound key's every column).
+    compound_id = node_identity(tbl, nm)
     kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=compound_id),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
@@ -188,6 +180,12 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
         )
         for prop_key, col_name in nm.properties.items()
     ]
+    from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+
+    # The node's key, a property every label has (``n._id``).
+    props.append(
+        exp.JSONKeyValue(this=exp.Literal.string(NODE_KEY_PROPERTY), expression=node_key(tbl, nm))
+    )
     kv.append(
         exp.JSONKeyValue(
             this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
