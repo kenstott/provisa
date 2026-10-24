@@ -101,7 +101,9 @@ def update_frequency(members: list["TableAsset"]) -> str | None:
 
 
 def term_id(term: "GlossaryTermAsset") -> str:
-    """The term's Unified Catalog id: a uuid of its Provisa URI, the same on every publish."""
+    """The id a term's create proposes: a uuid of its Provisa URI. The service assigns its own
+    and answers with it (run 40107606920), which is the id every later call uses; a term is
+    found again by name in its domain."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, term.semantic_uri))
 
 
@@ -148,7 +150,8 @@ def _asset_name(table: "TableAsset") -> str:
 
 
 def product_id(product: "DataProductAsset") -> str:
-    """The product's Unified Catalog id: a uuid of its Provisa URI, the same on every publish."""
+    """The id a product's create proposes: a uuid of its Provisa URI. As with a term, the
+    service answers with the id it uses, and a product is found again by name in its domain."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, product.semantic_uri))
 
 
@@ -246,7 +249,7 @@ class PurviewExport(AtlasExport):  # REQ-2118
             for product in snapshot.data_products:
                 try:
                     await self._publish_product(
-                        client, catalog, graph, product, tables, domains, result
+                        client, catalog, graph, token_oid(token), product, tables, domains, result
                     )
                 except httpx.HTTPStatusError as exc:
                     result.errors.append(
@@ -305,6 +308,7 @@ class PurviewExport(AtlasExport):  # REQ-2118
         client: httpx.AsyncClient,
         catalog: dict,
         graph: dict,
+        author: str,
         product: "DataProductAsset",
         tables: dict[str, "TableAsset"],
         domains: dict[str, str],
@@ -336,16 +340,34 @@ class PurviewExport(AtlasExport):  # REQ-2118
         owners = await self._owners(client, graph, product, result)
         params = {"api-version": API_VERSION}
         body = product_body(product, domain_id, owners, members)
-        url = self._catalog(f"/dataProducts/{body['id']}")
-        found = await client.get(url, params=params, headers=catalog)
-        if found.status_code == 404:
+        named = [
+            p
+            for p in await self._paged(
+                client, catalog, self._catalog("/dataProducts"), domainId=domain_id
+            )
+            if p["name"] == body["name"]
+        ]
+        if not named:
             created = await client.post(
                 self._catalog("/dataProducts"), params=params, json=body, headers=catalog
             )
             created.raise_for_status()
+            url = self._catalog(f"/dataProducts/{created.json()['id']}")
+        elif any((p.get("systemData") or {}).get("createdBy") != author for p in named):
+            result.errors.append(
+                AssetError(
+                    asset=product.ref,
+                    message="not written: its domain holds a data product of that name "
+                    "Provisa did not make",
+                )
+            )
+            return
         else:
-            found.raise_for_status()
-            updated = await client.put(url, params=params, json=body, headers=catalog)
+            (live,) = named
+            url = self._catalog(f"/dataProducts/{live['id']}")
+            updated = await client.put(
+                url, params=params, json={**body, "id": live["id"]}, headers=catalog
+            )
             updated.raise_for_status()
         by_uri = {m.semantic_uri: m for m in members}
         assets = await self._data_assets(
@@ -443,7 +465,6 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 continue
             placed[term.term_id] = domain_id
         terms = [t for t in snapshot.glossary_terms if t.term_id in placed]
-        by_id = {t.term_id: t for t in terms}
         parent, related = term_edges(terms, snapshot.glossary_edges)
 
         def _depth(tid: int) -> int:
@@ -453,40 +474,67 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 depth += 1
             return depth
 
+        # The service gives a term an id of its own, whatever the create sends, so Provisa's terms
+        # are found by name in their domain -- and adopted only when Provisa's principal made
+        # them. A domain whose terms cannot be listed has none of its terms written.
+        live_terms: dict[tuple[str, str], dict[str, Any]] = {}
+        unlisted: set[str] = set()
+        for domain_id in sorted(set(placed.values())):
+            try:
+                listed = await self._paged(
+                    client, catalog, self._catalog("/terms"), domainId=domain_id
+                )
+            except httpx.HTTPStatusError as exc:
+                unlisted.add(domain_id)
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(f"domain:{domain_id}"),
+                        message=f"its terms were not written: the read of the domain's terms "
+                        f"failed (HTTP {exc.response.status_code})",
+                    )
+                )
+                continue
+            for live in listed:
+                live_terms[(domain_id, live["name"])] = live
+        ids: dict[int, str] = {}  # Provisa term id -> its Unified Catalog id
         published: set[str] = set()
         for term in sorted(terms, key=lambda t: (_depth(t.term_id), t.term_id)):
+            domain_id = placed[term.term_id]
+            if domain_id in unlisted:
+                continue
             body: dict[str, Any] = {
-                "id": term_id(term),
                 "name": term.name,
-                "domain": placed[term.term_id],
+                "domain": domain_id,
                 "description": term.definition or "",
                 "status": "EXPIRED" if term.in_deprecation else "PUBLISHED",
             }
-            if term.term_id in parent:
-                body["parentId"] = term_id(by_id[parent[term.term_id]])
-            url = self._catalog(f"/terms/{body['id']}")
-            found = await client.get(url, params=params, headers=catalog)
-            if found.status_code == 404:
+            if term.term_id in parent and parent[term.term_id] in ids:
+                body["parentId"] = ids[parent[term.term_id]]
+            live = live_terms.get((domain_id, term.name))
+            if live is None:
                 response = await client.post(
-                    self._catalog("/terms"), params=params, json=body, headers=catalog
+                    self._catalog("/terms"),
+                    params=params,
+                    json={"id": term_id(term), **body},
+                    headers=catalog,
                 )
-            elif found.status_code >= 400:
-                # Written blind, the term would lose what a steward keeps on it; refused by
-                # name, and the other terms publish.
+            elif (live.get("systemData") or {}).get("createdBy") != author:
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(term.semantic_uri),
-                        message=f"term {term.name!r}: not written: the live read its steward "
-                        f"fields are kept from failed (HTTP {found.status_code})",
+                        message=f"term {term.name!r}: not written: its domain holds a term of "
+                        "that name Provisa did not make",
                     )
                 )
                 continue
             else:
                 # A steward's contacts, acronyms, resources and attributes stand.
-                live = found.json()
-                live.pop("parentId", None)
+                current = {k: v for k, v in live.items() if k != "parentId"}
                 response = await client.put(
-                    url, params=params, json={**live, **body}, headers=catalog
+                    self._catalog(f"/terms/{live['id']}"),
+                    params=params,
+                    json={**current, **body, "id": live["id"]},
+                    headers=catalog,
                 )
             if response.status_code >= 400:
                 result.errors.append(
@@ -497,9 +545,9 @@ class PurviewExport(AtlasExport):  # REQ-2118
                     )
                 )
                 continue
-            published.add(body["id"])
+            ids[term.term_id] = response.json()["id"]
+            published.add(ids[term.term_id])
             result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
-        ids = {t.term_id: term_id(t) for t in terms}
         # The data assets of the tables a Class term grounds -- the only ones a term is related to.
         grounded = {ref.fqn() for t in terms if t.role == "class" for ref in t.assigned_to()}
         guids = {
@@ -513,13 +561,13 @@ class PurviewExport(AtlasExport):  # REQ-2118
             client, catalog, {guid: by_fqn[fqn] for fqn, guid in guids.items()}
         )
         for term in terms:
-            tid = ids[term.term_id]
-            if tid not in published:
+            if term.term_id not in ids:
                 continue
+            tid = ids[term.term_id]
             wanted_terms = {
                 (ids[other], kind)
                 for other, kind in related.get(term.term_id, set())
-                if ids[other] in published
+                if other in ids
             }
             await self._sync_relationships(client, catalog, author, tid, TERM, wanted_terms, result)
             wanted_assets = {

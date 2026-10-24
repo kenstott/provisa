@@ -31,7 +31,6 @@ import httpx
 import pytest
 
 from provisa.api.metadata_export.purview import API_VERSION, token_oid
-from provisa.api.metadata_export.refs import data_product_uri, term_uri
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     PRODUCT_FIELDS,
@@ -128,39 +127,60 @@ async def _hold_owner_role(client: httpx.AsyncClient, email: str) -> None:
         await conn.close()
 
 
+def _listed(http: httpx.Client, url: str, **params) -> list[dict]:
+    """Every item of a paged Unified Catalog listing."""
+    items: list[dict] = []
+    response = http.get(url, params={"api-version": API_VERSION, **params})
+    while True:
+        response.raise_for_status()
+        page = response.json()
+        items.extend(page.get("value", []))
+        if not page.get("nextLink"):
+            return items
+        response = http.get(page["nextLink"])
+
+
 def _term(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict]]:
-    """The org's Unified Catalog term ``name``, by the id its Provisa URI derives, and its data
-    asset relationships. Read before the run's data assets are removed; the term stays, it is
-    the org's."""
+    """The org's Unified Catalog term ``name`` in DOMAIN -- found by name, as the adapter finds
+    it, since the service gives a term an id of its own -- and its data asset relationships.
+    Read before the run's data assets are removed; the term stays, it is the org's."""
     headers = {"Authorization": f"Bearer {_token(creds, 'https://purview.azure.net/.default')}"}
     params = {"api-version": API_VERSION}
-    term_id = str(uuid.uuid5(uuid.NAMESPACE_URL, term_uri(ORG, name)))
     with httpx.Client(headers=headers, timeout=60) as http:
-        got = http.get(f"{_catalog(creds)}/terms/{term_id}", params=params)
-        if got.status_code == 404:
+        domains = {d["name"]: d["id"] for d in _listed(http, f"{_catalog(creds)}/businessdomains")}
+        found = [
+            t
+            for t in _listed(http, f"{_catalog(creds)}/terms", domainId=domains[DOMAIN])
+            if t["name"] == name
+        ]
+        if not found:
             return None, []
-        got.raise_for_status()
+        (term,) = found
         related = http.get(
-            f"{_catalog(creds)}/terms/{term_id}/relationships",
+            f"{_catalog(creds)}/terms/{term['id']}/relationships",
             params={**params, "entityType": "DATAASSET"},
         )
         related.raise_for_status()
-    return got.json(), related.json().get("value", [])
+    return term, related.json().get("value", [])
 
 
-def _read_back(creds: dict[str, str], product_id: str) -> tuple[dict | None, list[dict], list[str]]:
-    """The Unified Catalog product the publish wrote, read by the id the adapter gives it, so the
-    read needs no permission the publish lacks; its related data assets and their Data Map guids,
-    then all of them deleted."""
+def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict], list[str]]:
+    """The Unified Catalog product the publish wrote, found by name in DOMAIN as the adapter finds
+    it (the service gives a product an id of its own); its related data assets and their Data Map
+    guids, then all of them deleted."""
     headers = {"Authorization": f"Bearer {_token(creds, 'https://purview.azure.net/.default')}"}
     params = {"api-version": API_VERSION}
     base = _catalog(creds)
     with httpx.Client(headers=headers, timeout=60) as http:
-        got_product = http.get(f"{base}/dataProducts/{product_id}", params=params)
-        if got_product.status_code == 404:
+        domains = {d["name"]: d["id"] for d in _listed(http, f"{base}/businessdomains")}
+        named = [
+            p
+            for p in _listed(http, f"{base}/dataProducts", domainId=domains[DOMAIN])
+            if p["name"] == name
+        ]
+        if not named:
             return None, [], []
-        got_product.raise_for_status()
-        product = got_product.json()
+        (product,) = named
         related = http.get(
             f"{base}/dataProducts/{product['id']}/relationships",
             params={**params, "entityType": "DATAASSET"},
@@ -206,9 +226,7 @@ async def published():
             },
         )
     term, term_assets = _term(creds, CLASS_TERM)
-    found, assets, guids = _read_back(
-        creds, str(uuid.uuid5(uuid.NAMESPACE_URL, data_product_uri(ORG, DOMAIN, product)))
-    )
+    found, assets, guids = _read_back(creds, name)
     yield result, found, assets, guids, oid, term, term_assets
 
 
