@@ -882,6 +882,20 @@
         "label": "Máximo de predicados que cubre un predicado variable",
         "help": "Un patrón SPARQL cuyo predicado es una variable lee cada predicado asignado que podría coincidir, una rama por cada uno. Una consulta que necesita más ramas se rechaza y se indica el límite."
       }
+    },
+    "codesource": {
+      "duckdb_memory_mb": {
+        "label": "Memoria de DuckDB de la fuente de código",
+        "help": "La memoria en la que la DuckDB de una fuente de código responde una sentencia. Por encima de ella, la sentencia se vuelca a disco."
+      },
+      "duckdb_spill_cap_mb": {
+        "label": "Límite de volcado de DuckDB de la fuente de código",
+        "help": "Lo máximo que la DuckDB de una fuente de código vuelca a disco. Una sentencia que necesita más se rechaza, nombrando este ajuste. Una imagen compilada lo aplica solo cuando su volumen de volcado tiene este tamaño mediante la cuota de la plataforma. Una fuente de código en modo de desarrollo vuelca en el directorio de datos sin límite."
+      },
+      "duckdb_threads": {
+        "label": "Hilos de DuckDB de la fuente de código",
+        "help": "Los hilos en los que la DuckDB de una fuente de código responde sus sentencias."
+      }
     }
   }
 }

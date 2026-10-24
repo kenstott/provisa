@@ -8028,5 +8028,11 @@
   "fr/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
   "fr/serverErrors.json::serverErrors.cypher.unknown_label": "There is no label :{{label}}. Registered labels: {{suggestions}}.",
   "fr/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
-  "fr/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}"
+  "fr/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
+  "fr/settings.json::settings.codesource.duckdb_memory_mb.label": "Code source DuckDB memory",
+  "fr/settings.json::settings.codesource.duckdb_memory_mb.help": "The memory a code source's DuckDB answers a statement in. Past it, the statement spills to disk.",
+  "fr/settings.json::settings.codesource.duckdb_spill_cap_mb.label": "Code source DuckDB spill cap",
+  "fr/settings.json::settings.codesource.duckdb_spill_cap_mb.help": "The most a code source's DuckDB spills to disk. A statement that needs more is refused, naming this setting. A built image enforces it only when its spill volume is sized to this cap with the platform's quota. A code source in dev mode spills into the data directory with no bound.",
+  "fr/settings.json::settings.codesource.duckdb_threads.label": "Code source DuckDB threads",
+  "fr/settings.json::settings.codesource.duckdb_threads.help": "The threads a code source's DuckDB answers its statements on."
 }

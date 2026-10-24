@@ -87,7 +87,21 @@ def test_a_window_and_a_union_keep_their_own_order():
 
 def test_an_ordinal_key_tests_the_item_it_names():
     written = transpile_to_duckdb('SELECT "d" AS "x", "v" FROM "t" ORDER BY 1 DESC LIMIT 2')
-    assert 'ORDER BY ("x" IS NULL) DESC, 1 DESC' in written
+    assert 'ORDER BY ("d" IS NULL) DESC, 1 DESC' in written
+
+
+@pytest.mark.parametrize("key", ["total", "2"])
+def test_a_key_naming_an_aggregates_alias_answers_as_postgresql_does(attached, key):
+    """DuckDB binds an alias only as a whole key: the null test of ``ORDER BY total DESC``, total a
+    SUM's alias, is the SUM's own expression (a Binder Error before)."""
+    pg, duck = attached
+    sql = (
+        'SELECT ("v" % 2) AS "odd", SUM(CASE WHEN "v" % 2 = 0 THEN NULL ELSE "v" END) AS "total" '
+        f'FROM "p"."public"."t" GROUP BY ("v" % 2) ORDER BY {key} DESC, 1'
+    )
+    with psycopg.connect(pg.dsn("null_order_294")) as conn:
+        expected = conn.execute(cast(LiteralString, sql.replace('"p".', ""))).fetchall()
+    assert duck.execute(transpile_to_duckdb(sql)).fetchall() == expected
 
 
 def test_a_view_reading_its_latest_row_answers_on_duckdb_as_on_postgresql(embedded_postgres):
