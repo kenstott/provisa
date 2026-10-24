@@ -112,12 +112,11 @@
       "lineageLoading": "Lineage laden…",
       "lineageHint": "Kolomlineagegrafiek met de tabellen van dit product als gepubliceerd endpoint, plus elke upstreamtabel waaruit ze zijn afgeleid. Alleen ter informatie — vereist de capability view_governance.",
       "inputPortsEmpty": "Geen upstreaminvoer geregistreerd",
-      "inputPortsHint": "Invoer met één hop → transformatie → uitvoer, afgeleid uit lineage. Vereist de capability view_governance.",
-      "inputPortsColInputs": "Invoer",
-      "inputPortsColTransform": "Transformatie",
-      "inputPortsColOutput": "Uitvoer",
+      "inputPortsHint": "De tabellen die dit product rechtstreeks leest, uit lineage. Klap een tabel uit voor de kolommen die het leest. Vereist de capability view_governance.",
       "outputPortsHint": "Het bevraagbare oppervlak van dit product: de lidtabellen en opdrachten. Voorbeeldquery's voor elk staan onder Toegangspatronen.",
-      "customPropertiesEmpty": "Geen aangepaste eigenschappen"
+      "customPropertiesEmpty": "Geen aangepaste eigenschappen",
+      "lineageLaneUpstream": "Stroomopwaarts, stap {{n}}",
+      "lineageLaneDownstream": "Stroomafwaarts, stap {{n}}"
     },
     "readOnly": "Alleen-lezen",
     "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken.",

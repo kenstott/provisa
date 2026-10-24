@@ -164,6 +164,11 @@ export function relationName(table: { domainId: string; tableName: string }): st
   return `${domainToSqlName(table.domainId)}.${table.tableName}`;
 }
 
+/** A registered table as the catalog names it to a reader: its domain, then its table name. */
+export function catalogTableName(table: { domainId: string; tableName: string }): string {
+  return `${table.domainId}.${table.tableName}`;
+}
+
 /** Mirror of Python source_to_catalog (REQ-471): a source id as the engine catalog name. */
 export function sourceToCatalog(sourceId: string): string {
   return sourceId.replace(/-/g, "_");

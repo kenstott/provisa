@@ -30,9 +30,9 @@ const PRODUCT = {
 } as unknown as DataProduct;
 
 const INPUT_PORTS = Array.from({ length: 12 }, (_, i) => ({
-  inputs: [`native:pet_store.pets.a_rather_long_column_name_${i}`],
-  transform: "cast(varchar) / rename",
-  output: `pet_store.pets.a_rather_long_column_name_${i}`,
+  id: `pet_store.a_rather_long_table_name_${i}`,
+  table: `pet-store.a_rather_long_table_name_${i}`,
+  columns: ["id", "name"],
 }));
 
 function panel() {
@@ -68,7 +68,6 @@ describe("a data product's cards", () => {
       ["customProperties", "Custom Properties"],
       ["inputPorts", "Input Ports"],
       ["knowledgeGraph", "Knowledge graph"],
-      ["queries", "Queries"],
     ]) {
       expect(card(section).querySelector(".provisa-collapsible")).not.toBeNull();
       expect(
@@ -86,22 +85,27 @@ describe("a data product's cards", () => {
     first.unmount();
     panel();
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByTestId("data-product-card-queries-pet_health-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(
+      screen.getByTestId("data-product-card-knowledgeGraph-pet_health-toggle"),
+    ).toHaveAttribute("aria-expanded", "true");
   });
 
   it("keep their content inside them: what cannot wrap scrolls within the card", () => {
     panel();
-    const table = within(card("inputPorts")).getByTestId(
+    const ports = within(card("inputPorts")).getByTestId(
       "data-product-detail-input-ports-pet_health",
     );
-    let body = table.parentElement as HTMLElement;
+    let body = ports.parentElement as HTMLElement;
     while (body && body.style.overflowX !== "auto") body = body.parentElement as HTMLElement;
     expect(body).not.toBeNull();
     expect(card("inputPorts").contains(body)).toBe(true);
     expect(body.style.overflowWrap).toBe("anywhere");
+  });
+
+  it("have no Queries card: the panel's own read is not shown", () => {
+    panel();
+    expect(screen.queryByTestId("data-product-card-queries-pet_health")).toBeNull();
+    expect(screen.queryByText("query DataProductPanel", { exact: false })).toBeNull();
   });
 
   it("keep the Knowledge graph a card among them, and the lineage DAG below them, across the panel", () => {
@@ -109,7 +113,6 @@ describe("a data product's cards", () => {
     const columns = card("details").parentElement as HTMLElement;
     expect(columns.style.columnWidth).toBe("320px");
     expect(columns.contains(card("knowledgeGraph"))).toBe(true);
-    expect(columns.contains(card("queries"))).toBe(true);
     const lineage = screen.getByTestId("data-product-detail-lineage-toggle-pet_health");
     expect(columns.contains(lineage)).toBe(false);
   });

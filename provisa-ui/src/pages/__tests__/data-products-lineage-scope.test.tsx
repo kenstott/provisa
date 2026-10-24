@@ -14,7 +14,7 @@
 // view_governance only.
 
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import type { LineageGraphData, LineageNode } from "../../api/lineage";
 import type { DataProduct } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
@@ -45,9 +45,11 @@ const col = (
 });
 const edge = (source: string, target: string) => ({ source, target, transform: "", ops: [] });
 
-// breeds → pets → dim_pet → fact_pet (two hops downstream), plus the checker's results table.
+// breeds → pets → dim_pet → fact_pet (two hops downstream), plus the checker's results table; pets
+// is read natively from its source (the "native:" node relation is the lineage's internal key).
 const FEDERATION: LineageGraphData = {
   nodes: [
+    col("native:pet_store.pets", "pet_id", "native"),
     col("pet_store.breeds", "name"),
     col("pet_store.pets", "name"),
     col("pet_store.pets", "id"),
@@ -56,6 +58,7 @@ const FEDERATION: LineageGraphData = {
     col("pet_store.pets_quality", "scan_id", "derived"),
   ],
   edges: [
+    edge("native:pet_store.pets.pet_id", "pet_store.pets.id"),
     edge("pet_store.breeds.name", "pet_store.pets.name"),
     edge("pet_store.pets.id", "pet_store.dim_pet.id"),
     edge("pet_store.dim_pet.id", "pet_store.fact_pet.pet_id"),
@@ -63,19 +66,30 @@ const FEDERATION: LineageGraphData = {
   ],
   outputs: [],
 };
-vi.mock("../../api/lineage", () => ({ fetchFederationGraph: () => Promise.resolve(FEDERATION) }));
+vi.mock("../../api/lineage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/lineage")>()),
+  fetchFederationGraph: () => Promise.resolve(FEDERATION),
+}));
 
 // The DAG itself is the Lineage page's, held by its own tests: here, what it is given.
-const drawn: { graph: LineageGraphData; members?: ReadonlySet<string> }[] = [];
+type Lanes = { members: ReadonlySet<string>; title: (lane: number) => string };
+const drawn: {
+  graph: LineageGraphData;
+  members?: ReadonlySet<string>;
+  lanes?: Lanes;
+  relationLabel?: (relation: string) => string;
+}[] = [];
 vi.mock("../../components/lineage/LineageDag", () => ({
   LineageDag: ({
     graph,
     lanes,
+    relationLabel,
   }: {
     graph: LineageGraphData;
-    lanes?: { members: ReadonlySet<string> };
+    lanes?: Lanes;
+    relationLabel?: (relation: string) => string;
   }) => {
-    drawn.push({ graph, members: lanes?.members });
+    drawn.push({ graph, members: lanes?.members, lanes, relationLabel });
     return <div data-testid="lineage-dag" />;
   },
 }));
@@ -126,6 +140,7 @@ const table = (id: number, tableName: string, extra: Record<string, unknown> = {
 const tables = [
   table(1, "pets"),
   table(2, "pets_quality", { dqContract: "name: x", columns: [{ columnName: "scan_id" }] }),
+  table(3, "breeds", { productId: null, columns: [{ columnName: "name" }] }),
 ];
 const none: never[] = [];
 vi.mock("../../hooks/useDataProductMutations", () => ({
@@ -158,7 +173,9 @@ describe("product detail lineage scope (REQ-1666)", () => {
   it("keeps members, ancestry and one hop downstream; drops checker tables; every member column is an output", async () => {
     const { graph: g } = await opened();
     const relations = new Set(g.nodes.map((n) => n.relation));
-    expect(relations).toEqual(new Set(["pet_store.breeds", "pet_store.pets", "pet_store.dim_pet"]));
+    expect(relations).toEqual(
+      new Set(["native:pet_store.pets", "pet_store.breeds", "pet_store.pets", "pet_store.dim_pet"]),
+    );
     // price was never in the federation graph; it is still a column of the published table.
     expect(g.nodes.map((n) => n.id)).toContain("pet_store.pets.price");
     expect(new Set(g.outputs)).toEqual(
@@ -171,6 +188,37 @@ describe("product detail lineage scope (REQ-1666)", () => {
   it("builds its swimlanes around the member tables, the checker's left out", async () => {
     const { members } = await opened();
     expect(members).toEqual(new Set(["pet_store.pets"]));
+  });
+
+  it("heads each lane in words and names each table as the catalog does", async () => {
+    const { lanes, relationLabel } = await opened();
+    expect([-2, -1, 0, 1].map((l) => lanes!.title(l))).toEqual([
+      "Upstream, hop 2",
+      "Input Ports",
+      "Output Ports",
+      "Downstream, hop 1",
+    ]);
+    expect(relationLabel!("pet_store.pets")).toBe("pet-store.pets");
+  });
+});
+
+describe("the product's Input Ports (REQ-1660)", () => {
+  it("are one row per upstream table, named as the catalog does, its columns behind an expand", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
+    const ports = await screen.findByTestId("data-product-detail-input-ports-pet_health");
+    // pets' native read and breeds: two datasets, not one row per column.
+    expect(ports.children).toHaveLength(2);
+    expect(within(ports).getByText("pet-store.pets")).toBeInTheDocument();
+    expect(within(ports).getByText("pet-store.breeds")).toBeInTheDocument();
+    const toggle = screen.getByTestId("input-port-toggle-pet_store.pets");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("input-port-columns-pet_store.pets")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("input-port-columns-pet_store.pets")).toHaveTextContent("pet_id");
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("input-port-columns-pet_store.pets")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/native:/);
   });
 });
 

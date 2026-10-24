@@ -35,7 +35,8 @@ import { DataProductDetailPanel, type InputPortRow } from "./data-products/DataP
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
-import { relationName } from "../naming";
+import { NATIVE_PREFIX } from "../components/lineage/lineage-layout";
+import { catalogTableName, relationName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
@@ -184,6 +185,12 @@ export function DataProductsPage() {
   // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
   // consumer's column is as hoverable as a member's.
   const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
+  // A lineage relation as the catalog names its table (domain.table_name, as Access Patterns shows
+  // it). A relation that is no table this role sees keeps the name the lineage reports it by.
+  const relationLabel = useMemo(() => {
+    const named = new Map(tables.map((tb) => [relationName(tb), catalogTableName(tb)]));
+    return (relation: string) => named.get(relation) ?? relation;
+  }, [tables]);
   const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
 
   // REQ-1640: subgraph of the whole federation lineage graph scoped to this product's member
@@ -263,33 +270,34 @@ export function DataProductsPage() {
         .map((tb) => relationName(tb)),
     );
 
-  // REQ-1660 (ODPS inputPorts): the 1-hop input(s) -> transform -> output edges landing on this
-  // product's member-table columns, grouped by target column. Unlike the Lineage section this does not
-  // walk transitively upstream — inputPorts is the product's direct contract surface, not its
-  // full provenance.
+  // REQ-1660 (ODPS inputPorts): each dataset one lineage hop upstream of this product's member-table
+  // columns, with the columns of it the product reads. Unlike the Lineage section this does not walk
+  // transitively upstream — inputPorts is the product's direct contract surface, not its full
+  // provenance. A native hop's node relation is NATIVE_PREFIX + the registered relation it lands
+  // in (provisa/lineage/native.py): that registered table is the dataset.
   const inputPortsFor = (id: string): InputPortRow[] => {
     if (!lineageGraph) return [];
     const memberRelations = new Set(memberTables(id).map((tb) => relationName(tb)));
     const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
-    const byTarget = new Map<string, { transform: string; inputs: Set<string> }>();
+    const byDataset = new Map<string, Set<string>>();
     for (const edge of lineageGraph.edges) {
       const tgt = nodesById.get(edge.target);
       const src = nodesById.get(edge.source);
-      if (!tgt?.relation || !src || !memberRelations.has(tgt.relation)) continue;
-      const outputLabel = `${tgt.relation}.${tgt.column}`;
-      const inputLabel = src.relation ? `${src.relation}.${src.column}` : src.column;
-      const entry = byTarget.get(outputLabel) ?? {
-        transform: edge.transform,
-        inputs: new Set<string>(),
-      };
-      entry.inputs.add(inputLabel);
-      byTarget.set(outputLabel, entry);
+      if (!tgt?.relation || !src?.relation || !memberRelations.has(tgt.relation)) continue;
+      const dataset = src.relation.startsWith(NATIVE_PREFIX)
+        ? src.relation.slice(NATIVE_PREFIX.length)
+        : src.relation;
+      const columns = byDataset.get(dataset) ?? new Set<string>();
+      columns.add(src.column);
+      byDataset.set(dataset, columns);
     }
-    return Array.from(byTarget.entries()).map(([output, { transform, inputs }]) => ({
-      output,
-      transform,
-      inputs: Array.from(inputs),
-    }));
+    return Array.from(byDataset.entries())
+      .map(([dataset, columns]) => ({
+        id: dataset,
+        table: relationLabel(dataset),
+        columns: Array.from(columns).sort(),
+      }))
+      .sort((x, y) => x.table.localeCompare(y.table));
   };
 
   // Relationships where both endpoints are member tables of this product — the connections that
@@ -645,6 +653,7 @@ export function DataProductsPage() {
                                 lineageGraph={lineageFor(p.id)}
                                 lineageMembers={lineageMembersFor(p.id)}
                                 describeColumn={describeColumn}
+                                relationLabel={relationLabel}
                                 inputPorts={inputPortsFor(p.id)}
                                 onEdit={() => openEdit(p)}
                                 onDelete={() => setDeleteTarget(p.id)}

@@ -21,21 +21,17 @@ import { useNavigate } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
-  CopyButton,
   Group,
   List,
   Loader,
   Modal,
   Stack,
-  Table,
   Text,
 } from "@mantine/core";
 import {
   Braces,
   Cable,
-  Check,
   CircleHelp,
-  Copy,
   FileJson,
   Globe,
   ListChecks,
@@ -54,16 +50,11 @@ import type { DescribeColumn } from "../../components/lineage/column-description
 import type { LineageGraphData } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
+import { InputPort, type InputPortRow } from "./InputPort";
+
+export type { InputPortRow };
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
-
-// ODPS inputPorts: a derived (not stored) 1-hop input(s) -> transform -> output projection over
-// this product's lineage, computed by the parent page's inputPortsFor() from the raw lineage graph.
-export interface InputPortRow {
-  output: string;
-  transform: string;
-  inputs: string[];
-}
 
 interface TableRef {
   domain_id: string;
@@ -134,6 +125,8 @@ interface DataProductDetailPanelProps {
   lineageMembers?: ReadonlySet<string>;
   // A field's registered description for the lineage hover, over every table (not just members).
   describeColumn?: DescribeColumn;
+  // A lineage relation as the catalog names its table.
+  relationLabel?: (relation: string) => string;
   // REQ-1660 (ODPS inputPorts): derived by the parent page from the federation lineage graph.
   inputPorts: InputPortRow[];
   onEdit: () => void;
@@ -222,93 +215,6 @@ function Muted({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The panel's own reads, each copyable and opened in its explorer: the same answer either way. */
-function MetaQueries({ core, testId }: { core: ProductCore; testId: string }) {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const rows: {
-    key: string;
-    label: string;
-    text: string;
-    open: () => void;
-    icon: React.ReactNode;
-  }[] = [
-    {
-      key: "graphql",
-      label: "GraphQL",
-      text: core.queries.graphql,
-      icon: <Braces size={14} />,
-      open: () =>
-        navigate("/query", {
-          state: { query: core.queries.graphql, autoRun: true },
-        }),
-    },
-    {
-      key: "sql",
-      label: "SQL",
-      text: core.queries.sql,
-      icon: <TableIcon size={14} />,
-      open: () => navigate("/sql", { state: { sql: core.queries.sql, autoRun: true } }),
-    },
-    {
-      key: "jsonapi",
-      label: "JSON:API",
-      text: core.queries.jsonapi,
-      icon: <FileJson size={14} />,
-      open: () =>
-        navigate("/jsonapi", { state: { jsonapiUrl: core.queries.jsonapi, autoRun: true } }),
-    },
-  ];
-  return (
-    <Stack gap={6} data-testid={testId}>
-      {rows.map((r) => (
-        <div key={r.key}>
-          <Group gap={4} wrap="nowrap">
-            <Text size="xs" fw={600}>
-              {r.label}
-            </Text>
-            <CopyButton value={r.text}>
-              {({ copied, copy }) => (
-                <Tip text={copied ? t("dataProductCore.copied") : t("dataProductCore.copy")}>
-                  <ActionIcon
-                    variant="subtle"
-                    size="sm"
-                    onClick={copy}
-                    aria-label={t("dataProductCore.copyQuery", { surface: r.label })}
-                    data-testid={`${testId}-copy-${r.key}`}
-                  >
-                    {copied ? <Check size={14} /> : <Copy size={14} />}
-                  </ActionIcon>
-                </Tip>
-              )}
-            </CopyButton>
-            <Tip text={t("dataProductCore.openQuery", { surface: r.label })} named>
-              <ActionIcon
-                variant="subtle"
-                size="sm"
-                onClick={r.open}
-                aria-label={t("dataProductCore.openQuery", { surface: r.label })}
-                data-testid={`${testId}-open-${r.key}`}
-              >
-                {r.icon}
-              </ActionIcon>
-            </Tip>
-          </Group>
-          <Text
-            component="pre"
-            size="xs"
-            ff="monospace"
-            style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}
-            data-testid={`${testId}-${r.key}`}
-          >
-            {r.text}
-          </Text>
-        </div>
-      ))}
-    </Stack>
-  );
-}
-
 function relatedLabel(e: CoreEdge): string {
   if (e.target_product) return e.target_product.name;
   if (e.target_table) return `${e.target_table.domain_id}.${e.target_table.table_name}`;
@@ -331,6 +237,7 @@ export function DataProductDetailPanel({
   lineageGraph,
   lineageMembers,
   describeColumn,
+  relationLabel,
   inputPorts,
   onEdit,
   onDelete,
@@ -347,7 +254,13 @@ export function DataProductDetailPanel({
   // REQ-1667: lane 0 is the product's published surface; the others are named by distance.
   const laneTitle = useCallback(
     (lane: number) =>
-      lane === 0 ? t("dataProductsTab.tablesLabel") : lane > 0 ? `+${lane}` : `${lane}`,
+      lane === 0
+        ? t("dataProductsTab.tablesLabel")
+        : lane === -1
+          ? t("dataProductsTab.detail.field.inputPorts")
+          : lane > 0
+            ? t("dataProductsTab.detail.lineageLaneDownstream", { n: lane })
+            : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane }),
     [t],
   );
   const toggleRelation = (relation: string) =>
@@ -859,41 +772,14 @@ export function DataProductDetailPanel({
             {inputPorts.length === 0 ? (
               <Empty text={t("dataProductsTab.detail.inputPortsEmpty")} />
             ) : (
-              // Identifiers read whole: the table keeps each on one line and scrolls within its card.
-              <Table
-                striped
-                withTableBorder
-                style={{ whiteSpace: "nowrap", overflowWrap: "normal" }}
-                data-testid={`data-product-detail-input-ports-${p.id}`}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColInputs")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColTransform")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColOutput")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {inputPorts.map((row, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td ff="monospace">{row.inputs.join(", ")}</Table.Td>
-                      <Table.Td ff="monospace">{row.transform}</Table.Td>
-                      <Table.Td ff="monospace">{row.output}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+              <Stack gap={2} data-testid={`data-product-detail-input-ports-${p.id}`}>
+                {inputPorts.map((row) => (
+                  <InputPort key={row.id} row={row} />
+                ))}
+              </Stack>
             )}
           </DetailCard>
         )}
-        <DetailCard
-          section="queries"
-          testId={`data-product-card-queries-${p.id}`}
-          label={t("dataProductCore.metaQueries")}
-          hint={t("dataProductCore.metaQueriesHint")}
-        >
-          <MetaQueries core={core} testId={`data-product-detail-meta-queries-${p.id}`} />
-        </DetailCard>
         {/* Compact: the product, its members, commands and bound terms; the full graph opens
             from its expand button. */}
         <DetailCard
@@ -946,7 +832,9 @@ export function DataProductDetailPanel({
                 <div data-testid={`data-product-detail-lineage-${p.id}`}>
                   <LineageDag
                     graph={lineageGraph}
-                    height={320}
+                    height={720}
+                    readable
+                    relationLabel={relationLabel}
                     collapsedRelations={collapsed}
                     onToggleRelation={toggleRelation}
                     lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
@@ -964,6 +852,7 @@ export function DataProductDetailPanel({
                     <LineageDag
                       graph={lineageGraph}
                       height="calc(90vh - 140px)"
+                      relationLabel={relationLabel}
                       collapsedRelations={collapsed}
                       onToggleRelation={toggleRelation}
                       lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
