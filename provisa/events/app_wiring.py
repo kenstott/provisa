@@ -627,19 +627,19 @@ def _views_built_here(registry: Any) -> list[Any]:
 
 def _lineage(mvs: list[Any], state: Any, log: Any) -> dict[str, set[str]]:
     """The views' edges, resolved against the model (``events.nodes.lineage_graph``). A view
-    whose input does not resolve was refused when it was declared, so meeting one here is a
-    defect: the view is marked failed with the reason (the admin's view list and refresh status
-    show it), the error is logged naming the view and the reference, and the wiring raises."""
+    whose input does not resolve -- one left reading a table since deleted, or declared before the
+    check that refuses it existed -- is refused alone: it is marked failed with the reason (the
+    admin's view list and refresh status show it), the error is logged naming the view and the
+    reference, and it is left out of the lineage. Every other view is wired; one view never fails
+    the org's wiring."""
     from provisa.events.nodes import lineage_graph
-    from provisa.mv.view_inputs import InputUnresolved
 
-    try:
-        return lineage_graph(mvs, state)
-    except InputUnresolved as unresolved:
+    def _refuse(mv: Any, unresolved: Exception) -> None:
         reason = f"not wired into the event loop: {unresolved}"
-        state.mv_registry.mark_refresh_failed(unresolved.view, reason)
+        state.mv_registry.mark_refresh_failed(mv.id, reason)
         log.error("event loop: %s", reason)
-        raise
+
+    return lineage_graph(mvs, state, refuse=_refuse)
 
 
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
@@ -666,8 +666,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         mvs = _views_built_here(getattr(state, "mv_registry", None))
 
         # The fan-out set: each view's inputs resolved against the model (REQ-939), never matched
-        # by the spelling its SQL uses. A view whose input does not resolve was refused when it was
-        # declared, so meeting one here is a defect: it raises, naming the view and the reference.
+        # by the spelling its SQL uses. A view whose input does not resolve is refused alone, named
+        # with the reference, and left out (_lineage).
         # A cycle is rejected — the loop must be acyclic.
         from provisa.events.nodes import expected_event_nodes, source_node
 
@@ -675,6 +675,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         graph: dict[str, set[str]] = {}
         try:
             graph = _lineage(mvs, state, log)
+            # A view refused by the lineage step is not wired; the others are.
+            mvs = [mv for mv in mvs if view_node(mv) in graph]
             dependents_of = supervisor.dependents_of(graph)
         except ValueError:
             log.warning("event loop: MV lineage has a cycle — skipping event-loop wiring")

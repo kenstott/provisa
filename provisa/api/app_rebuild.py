@@ -272,6 +272,7 @@ async def _register_user_views_in_state(
                             sql=_semantic_sql,
                             semantic_sql=_semantic_sql,  # REQ-1921/1922
                             region=_vr.get("region"),  # REQ-1921
+                            view_table=_vr["table_name"],  # REQ-1918: the view it builds
                             read_tables=read_table_names(_semantic_sql),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
@@ -332,6 +333,18 @@ async def _register_user_views_in_state(
             state.bitemporal_view_reads.pop(_vr["table_name"], None)
             if not _vr.get("materialize") and state.mv_registry.get(f"view-{_vr['table_name']}"):
                 state.mv_registry.unregister(f"view-{_vr['table_name']}")
+        # REQ-1918: a view's read and its build are parts of it. A view deleted leaves neither,
+        # and one no longer materialized leaves no build -- a build left reading a view that is
+        # gone would fail the org's event wiring on every later change.
+        _views = {_vr["table_name"] for _vr in _view_rows}
+        _built = {_vr["table_name"] for _vr in _view_rows if _vr.get("materialize")}
+        for _mv in state.mv_registry.all():
+            if _mv.view_table is not None and _mv.view_table not in _built:
+                state.mv_registry.unregister(_mv.id)
+        for _name in [n for n in state.view_sql_map if n not in _views]:
+            state.view_sql_map.pop(_name)
+            state.bitemporal_view_reads.pop(_name, None)
+            state.stored_view_reads.discard(_name)
         # REQ-2109: a bitemporal table updated in place keeps its versions in a log Provisa
         # captures, an MV of its own refreshed on that MV's interval.
         from provisa.mv.bitemporal_capture import register_logs

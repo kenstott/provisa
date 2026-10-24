@@ -22,8 +22,8 @@ context exposes), to exactly one of:
 A reference that names nothing, or that two different tables or views answer to, is not resolved:
 a view that reads it is refused when it is declared (save, config load —
 ``readable_inputs.require_readable_inputs``), naming the view and the reference, so it never gets
-as far as being wired. Anything that later meets an unresolved reference (the event graph's
-wiring) has met a defect, and raises.
+as far as being wired. A view that meets one later -- left reading a table since deleted -- is
+refused alone by the event graph's wiring, named with the reference, and the others are wired.
 
 The one resolution for every consumer: the view-input check at declaration, and the event graph's
 edges (``provisa.events.nodes``).

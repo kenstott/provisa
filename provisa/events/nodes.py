@@ -29,6 +29,7 @@ A node name carries no region: a region is a property of where a node runs, not 
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 
@@ -42,21 +43,30 @@ def view_node(mv: Any) -> str:
     return f"{mv.target_schema}.{mv.target_table}"
 
 
-def lineage_graph(mvs: list[Any], state: Any) -> dict[str, set[str]]:
+def lineage_graph(
+    mvs: list[Any], state: Any, refuse: Callable[[Any, Any], None] | None = None
+) -> dict[str, set[str]]:
     """``{view node: the nodes it reads}`` for every view in ``mvs``, resolved against the model.
 
-    A join-pattern view has no SQL; its inputs are the tables it joins, resolved the same way."""
-    from provisa.mv.view_inputs import ModelIndex, resolve_view_inputs
+    A join-pattern view has no SQL; its inputs are the tables it joins, resolved the same way.
+    A view an input of which does not resolve raises :class:`InputUnresolved` -- or, given
+    ``refuse``, is handed to it with the reason and left out, and the others stand."""
+    from provisa.mv.view_inputs import InputUnresolved, ModelIndex, resolve_view_inputs
 
     index = ModelIndex(state)
-    return {
-        view_node(mv): {
-            node
-            for resolved in resolve_view_inputs(mv, state, index)
-            for node in _nodes_of(resolved, mv.id, index, state, frozenset({mv.id}))
-        }
-        for mv in mvs
-    }
+    graph: dict[str, set[str]] = {}
+    for mv in mvs:
+        try:
+            graph[view_node(mv)] = {
+                node
+                for resolved in resolve_view_inputs(mv, state, index)
+                for node in _nodes_of(resolved, mv.id, index, state, frozenset({mv.id}))
+            }
+        except InputUnresolved as unresolved:
+            if refuse is None:
+                raise
+            refuse(mv, unresolved)
+    return graph
 
 
 def expected_event_nodes(mv: Any, state: Any, graph: dict[str, set[str]]) -> list[str]:
