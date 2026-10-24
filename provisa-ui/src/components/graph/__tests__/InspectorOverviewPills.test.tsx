@@ -40,7 +40,6 @@ function show(highlight: CanvasHighlight | null, onHighlight = vi.fn()) {
       width={320}
       onResizeStart={() => {}}
       relationships={[]}
-      pkMap={{}}
       labelToTableId={{}}
     />,
   );
