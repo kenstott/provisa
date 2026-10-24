@@ -157,8 +157,7 @@ def _cypher_answer(con, cypher: str) -> list[dict]:
     cols, rows = _run(con, physical)
     named = [dict(zip(cols, r, strict=True)) for r in rows]
     return [
-        {k: golden._compared(golden._cypher_value(v)) for k, v in r.items()}
-        for r in assemble_rows(named, graph_vars)
+        {k: golden._compared(v) for k, v in r.items()} for r in assemble_rows(named, graph_vars)
     ]
 
 
