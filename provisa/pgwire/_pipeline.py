@@ -748,23 +748,23 @@ async def _await_source_servers(decision: Any, sources: Any, state: Any) -> None
 
     if decision.route != Route.ENGINE:
         return
-    from provisa.federation.pgwire_replica import (
-        PGWIRE_REPLICA_TYPES,
-        STATEMENT_START_WAIT_SECONDS,
-        await_serving,
-    )
+    from provisa.federation.pgwire_replica import STATEMENT_START_WAIT_SECONDS, await_serving
+    from provisa.federation.strategy import read_through_its_server
 
     # REQ-2031: a source every table of which never expires and has landed is read from its
-    # replicas alone; nothing contacts it, so there is no server of it to wait for.
+    # replicas alone; nothing contacts it, so there is no server of it to wait for. A source the
+    # engine reads with a connector of its own (Splunk on Trino) is not read through its server
+    # either, though a discovery call may have started one.
+    engine = state.federation_engine.engine
     kept = state.replica_routes.kept_sources
     served = [
         (sid, state.source_types.get(sid, ""))
         for sid in sorted(sources)
-        if state.source_types.get(sid, "") in PGWIRE_REPLICA_TYPES and sid not in kept
+        if read_through_its_server(engine, state.source_types.get(sid, "")) and sid not in kept
     ]
     if not served:
         return
-    backend = state.federation_engine.engine.backend
+    backend = engine.backend
     # The attach is the engine's own (idempotent; a complete one is not walked again). An engine
     # that attaches nothing reads such a source from its replica, and has no server to wait for.
     attach = getattr(backend, "_attached_runtime", None)
