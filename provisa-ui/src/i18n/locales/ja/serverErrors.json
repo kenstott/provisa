@@ -256,7 +256,12 @@
       "database_unavailable": "データベースが利用できません",
       "query_engine_unavailable": "クエリエンジンが利用できません",
       "role_header_required": "ビューをプロファイルするには X-Provisa-Role ヘッダーが必要です",
-      "table_not_found": "テーブル {{table_id}} が見つかりません"
+      "table_not_found": "テーブル {{table_id}} が見つかりません",
+      "column_not_found": "列 {{column}} は org_admin が読むテーブルの列ではありません",
+      "classification_kind_unknown": "不明な分類の種類 {{kind}}",
+      "classification_status_invalid": "分類の決定は承認または却下のどちらかで、{{status}} ではありません",
+      "classification_decision_not_found": "{{column}} の {{kind}} としての決定はありません",
+      "classification_pii_refused": "列を PII としてマークできませんでした"
     },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",

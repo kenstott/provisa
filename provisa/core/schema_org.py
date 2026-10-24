@@ -1318,6 +1318,25 @@ profiler_constraints = Table(
     UniqueConstraint("table_id", "signature"),
 )
 
+# REQ-2147: a steward's decision on a classification a profile suggested for a column -- accepted
+# (the column linked to the kind's Property term; for a sensitive kind marked pii), or rejected so
+# it is not suggested again for that column and kind.
+profiler_classifications = Table(
+    "profiler_classifications",
+    metadata,
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("physical_column", Text, nullable=False),  # the column's registered name
+    Column("kind", Text, nullable=False),  # a kind of provisa/profiler/classification_kinds.yaml
+    Column("status", Text, nullable=False),  # accepted | rejected
+    Column("evidence", Text, nullable=False),  # the suggestion's evidence when it was decided
+    Column("run_id", Text, nullable=False),  # the run that suggested it
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("table_id", "physical_column", "kind"),
+)
+
 # REQ-1939: how close a generated dataset came to the profiles it was drawn from.
 synthetic_report = Table(
     "synthetic_report",

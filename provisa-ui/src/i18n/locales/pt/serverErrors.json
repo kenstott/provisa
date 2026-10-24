@@ -256,7 +256,12 @@
       "database_unavailable": "Banco de dados indisponível",
       "query_engine_unavailable": "Mecanismo de consulta indisponível",
       "role_header_required": "Cabeçalho X-Provisa-Role necessário para criar o perfil de uma exibição",
-      "table_not_found": "Tabela {{table_id}} não encontrada"
+      "table_not_found": "Tabela {{table_id}} não encontrada",
+      "column_not_found": "A coluna {{column}} não é uma coluna da tabela que org_admin lê",
+      "classification_kind_unknown": "Tipo de classificação desconhecido {{kind}}",
+      "classification_status_invalid": "Uma decisão de classificação é aceita ou rejeitada, não {{status}}",
+      "classification_decision_not_found": "Nenhuma decisão sobre {{column}} como {{kind}}",
+      "classification_pii_refused": "Não foi possível marcar a coluna como PII"
     },
     "replication": {
       "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",

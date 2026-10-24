@@ -256,7 +256,12 @@
       "database_unavailable": "Base de données indisponible",
       "query_engine_unavailable": "Moteur de requête indisponible",
       "role_header_required": "En-tête X-Provisa-Role requis pour profiler une vue",
-      "table_not_found": "Table {{table_id}} introuvable"
+      "table_not_found": "Table {{table_id}} introuvable",
+      "column_not_found": "La colonne {{column}} n'est pas une colonne de la table que lit org_admin",
+      "classification_kind_unknown": "Type de classification inconnu {{kind}}",
+      "classification_status_invalid": "Une décision de classification est acceptée ou rejetée, pas {{status}}",
+      "classification_decision_not_found": "Aucune décision sur {{column}} en tant que {{kind}}",
+      "classification_pii_refused": "La colonne n'a pas pu être marquée PII"
     },
     "replication": {
       "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",

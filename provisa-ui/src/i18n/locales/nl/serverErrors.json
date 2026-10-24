@@ -256,7 +256,12 @@
       "database_unavailable": "Database niet beschikbaar",
       "query_engine_unavailable": "Query-engine niet beschikbaar",
       "role_header_required": "X-Provisa-Role-header vereist om een view te profileren",
-      "table_not_found": "Tabel {{table_id}} niet gevonden"
+      "table_not_found": "Tabel {{table_id}} niet gevonden",
+      "column_not_found": "Kolom {{column}} is geen kolom van de tabel die org_admin leest",
+      "classification_kind_unknown": "Onbekende classificatiesoort {{kind}}",
+      "classification_status_invalid": "Een classificatiebeslissing is aangenomen of afgewezen, niet {{status}}",
+      "classification_decision_not_found": "Geen beslissing over {{column}} als {{kind}}",
+      "classification_pii_refused": "De kolom kon niet als PII worden gemarkeerd"
     },
     "replication": {
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
