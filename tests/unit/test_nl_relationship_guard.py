@@ -71,3 +71,33 @@ async def test_only_a_role_that_may_bypass_runs_non_strict():
     assert effective_strict(False, "modeler", allowed) is False
     assert effective_strict(False, "modeler", guarded) is True
     assert effective_strict(True, "modeler", allowed) is True
+
+
+async def test_a_v002_refusal_names_the_two_tables_it_is_for(monkeypatch):
+    """The refusal is a GovernanceRefused (a PermissionError as before) whose V002 names the pair
+    of registered tables, so the NL retry can be given the path between them."""
+    from provisa.compiler.sql_validator import GovernanceRefused
+
+    with pytest.raises(GovernanceRefused) as raised:
+        await _route(monkeypatch, role=_GUARDED, security_high=False, sql=_UNAPPROVED_JOIN)
+    (v002,) = [v for v in raised.value.violations if v.code == "V002"]
+    assert v002.tables is not None and len(set(v002.tables)) == 2
+
+
+async def test_the_retry_is_given_the_path_the_refused_tables_have(monkeypatch):
+    """The runner reads the refusal's pairs against the role's graph: the registered path, or
+    that there is none -- what the model is given back with the refusal."""
+    from types import SimpleNamespace
+
+    from provisa.compiler.sql_validator import GovernanceRefused, ValidationViolation
+    from provisa.nl import runner
+    from tests.unit.test_nl_relationship_hints import _LM
+
+    monkeypatch.setattr(runner, "role_surface", lambda _state, _role: SimpleNamespace(context=None))
+    monkeypatch.setattr(runner, "_build_cypher_label_map", lambda _ctx, _role, _state: _LM)
+    refused = GovernanceRefused([ValidationViolation("V002", "Invalid JOIN: ...", tables=(1, 3))])
+    assert runner._relationship_hints(refused, "modeler", SimpleNamespace()) == [
+        "sales.orders and sales.regions are related along a registered relationship: "
+        "JOIN sales.customers ON orders.customer_id = customers.id "
+        "JOIN sales.regions ON customers.region_id = regions.id"
+    ]

@@ -1757,9 +1757,10 @@ async def govern_statement(
                 ) from exc
 
         if violations:
-            msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
+            from provisa.compiler.sql_validator import GovernanceRefused
+
             await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
-            raise PermissionError(msgs)
+            raise GovernanceRefused(violations)
 
         state.compiled_query_cache.put(_cq_key, CompiledOutcome())
 
@@ -4855,8 +4856,10 @@ async def _govern_compiled(
     if violations:
         from provisa.audit.pipeline import write_denial
 
+        from provisa.compiler.sql_validator import GovernanceRefused
+
         await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)  # REQ-1386
-        raise PermissionError("; ".join(f"[{v.code}] {v.message}" for v in violations))
+        raise GovernanceRefused(violations)
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
 
