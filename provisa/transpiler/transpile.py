@@ -449,7 +449,8 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
 
 
 def _rewrite_json_agg_for_duckdb(sql: str) -> str:
-    """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x).
+    """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x), and
+    JSON_BUILD_OBJECT / JSONB_BUILD_OBJECT with json_object.
 
     The compiler emits Postgres ``json_agg`` for a one-to-many relationship selection
     (compiler/sql_selection.py:431,438); SQLGlot's DuckDB generator writes that as
@@ -478,6 +479,15 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
             # Recurse: transform is pre-order and skips a replaced node's children, so a
             # nested aggregate (a one-to-many inside a one-to-many) would survive unrewritten.
             return exp.Anonymous(this="json_group_array", expressions=[inner.transform(_transform)])
+        if isinstance(node, exp.Anonymous) and node.name.upper() in (
+            "JSON_BUILD_OBJECT",
+            "JSONB_BUILD_OBJECT",
+        ):
+            # PostgreSQL's constructors (JSONB_ over its binary JSON type) are DuckDB's json_object,
+            # which takes the same flat key, value, ... arguments; DuckDB registers neither name.
+            return exp.Anonymous(
+                this="json_object", expressions=[e.transform(_transform) for e in node.expressions]
+            )
         return node
 
     return tree.transform(_transform).sql(dialect="duckdb")
