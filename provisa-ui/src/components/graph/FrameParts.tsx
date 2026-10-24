@@ -12,9 +12,11 @@
 // statements, one per statement, the one chosen shown.
 
 import { useTranslation } from "react-i18next";
-import { Loader } from "@mantine/core";
-import { StatementTabs } from "../StatementTabs";
+import { ActionIcon, Loader } from "@mantine/core";
+import { Trash2 } from "lucide-react";
 import { CopySymbolButton } from "../CopyButton";
+import { Tip } from "../Tip";
+import { StatementTabs } from "../StatementTabs";
 import { statementName } from "./frameStatements";
 import type { FrameData } from "./graph-model";
 
@@ -80,6 +82,35 @@ export function FrameError({ frame }: { frame: FrameData }) {
         className="gf-error-copy-btn"
         title={t("graphFrame.copyErrorTitle")}
       />
+    </div>
+  );
+}
+
+/** On hover of a frame's query, as the query bar's copy is: copy the statement, and -- outside the
+ *  expanded view -- delete the frame. */
+export function FrameQueryActions({ query, onDelete }: { query: string; onDelete?: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="gf-query-actions" data-testid="graph-frame-query-actions">
+      <CopySymbolButton
+        text={query}
+        className="gf-query-action"
+        title={t("graphFrame.copyQuery")}
+      />
+      {onDelete && (
+        <Tip text={t("graphFrame.deleteFrame")} named>
+          <ActionIcon
+            type="button"
+            variant="transparent"
+            className="gf-query-action"
+            aria-label={t("graphFrame.deleteFrame")}
+            data-testid="graph-frame-delete"
+            onClick={onDelete}
+          >
+            <Trash2 size={13} />
+          </ActionIcon>
+        </Tip>
+      )}
     </div>
   );
 }

@@ -8028,5 +8028,6 @@
   "ja/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
   "ja/serverErrors.json::serverErrors.cypher.engine_refused": "The engine refused the query: {{error}}",
   "ja/serverErrors.json::serverErrors.cypher.nested_aggregate": "{{outer}} aggregates the aggregate {{inner}}: an aggregate cannot be taken of another. Aggregate in a WITH first.",
-  "ja/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table."
+  "ja/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
+  "ja/graphFrame.json::graphFrame.deleteFrame": "Delete this result"
 }

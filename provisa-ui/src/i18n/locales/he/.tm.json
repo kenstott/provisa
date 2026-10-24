@@ -8028,5 +8028,6 @@
   "he/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
   "he/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
   "he/serverErrors.json::serverErrors.cypher.invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",
-  "he/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}"
+  "he/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
+  "he/graphFrame.json::graphFrame.deleteFrame": "Delete this result"
 }
