@@ -267,8 +267,8 @@ export function DataProductDetailPanel({
       .map((r) => ({ ...r, source: tb })),
   );
   const cypherRows = internalRelationships
-    .filter((r) => r.cypher_type && !r.disable_cypher)
-    .map((r) => ({ r, type: r.cypher_type as string }));
+    .filter((r) => !r.disable_cypher)
+    .map((r) => ({ r, type: r.cypher_type }));
 
   // Masonry panel grid: a CSS multi-column layout packs each card into whichever column has room
   // next, instead of flex-wrap's row-by-row layout (which pads every card in a row up to the row's
@@ -742,8 +742,7 @@ export function DataProductDetailPanel({
                 <List.Item key={r.id} ff="monospace">
                   {/* GQL field name and Cypher relationship type are independent names for the
                       same edge — show both when set. */}
-                  {joinAliasPair([r.graphql_field, r.cypher_type]) ||
-                    `${r.source.table_name}.${r.source_column}`}
+                  {joinAliasPair([r.graphql_field, r.cypher_type])}
                   <Muted>
                     {r.source.table_name}.{r.source_column}
                     {" → "}

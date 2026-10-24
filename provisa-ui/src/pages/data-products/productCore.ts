@@ -210,8 +210,10 @@ export interface CoreDqRule {
 export interface CoreRelationship {
   id: string;
   alias: string | null;
+  // NULL for a junction-backed edge, which is no GraphQL field (REQ-1586).
   graphql_field: string | null;
-  cypher_type: string | null;
+  // Every relationship has its served type stored (relationship_names.store_effective_names).
+  cypher_type: string;
   cardinality: string;
   source_column: string;
   target_column: string | null;

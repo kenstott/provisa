@@ -87,7 +87,7 @@ function reader(): MetaReader {
           tableColumns: list("M__TableColumns"),
           sourceRelationships: list("M__Relationships"),
         }),
-        type("M__Relationships", { id: scalar, alias: scalar, targetTableId: scalar }),
+        type("M__Relationships", { id: scalar, cypherType: scalar, targetTableId: scalar }),
         type("M__TableColumns", {
           columnName: scalar,
           columnKey: scalar,
@@ -206,7 +206,7 @@ describe("the Ontology View's query", () => {
     );
     expect(q).toContain('edges_out: edgesOut(where: { relType: { in: ["KIND_OF","PLACED_BY"] } })');
     expect(q).toContain(
-      'sourceRelationships(where: { _or: [{ alias: { in: ["KIND_OF","PLACED_BY"] } }, { _and: [{ alias: { is_null: true } }, { id: { in: ["KIND_OF","PLACED_BY"] } }] }] })',
+      'sourceRelationships(where: { cypherType: { in: ["KIND_OF","PLACED_BY"] } })',
     );
   });
 

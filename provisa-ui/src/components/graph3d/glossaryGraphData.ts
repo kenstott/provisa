@@ -35,8 +35,10 @@ import type {
 /** REQ-1593: a term in every domain, the org's shared vocabulary. */
 export const ENTERPRISE_DOMAIN = "*";
 
-/** A relationship declared from a table: its name is its alias, else its id. */
-const RELATIONSHIP: Selection = { fields: ["id", "alias", "target_table_id"] };
+/** A relationship declared from a table: its name is the Cypher type it is served under
+ * (relationships.cypher_type), as the Relationships page shows it. Its id is configuration, never
+ * a label. */
+const RELATIONSHIP: Selection = { fields: ["id", "cypher_type", "target_table_id"] };
 
 /** The term standings ``hidden`` leaves out, as conditions on glossary_terms_meta's columns. */
 const NOT_STATUS: Record<TermStatus, Where> = {
@@ -55,16 +57,9 @@ const all = (conds: Where[]): Where | undefined =>
 const inDomains = (domains: string[], column = "domain_id"): Where | undefined =>
   domains.length === 0 ? undefined : { [column]: { in: domains } };
 
-/** A relationship named by one of ``types``: by its alias, else (declared without one) its id. */
+/** A relationship served under one of the Cypher ``types``. */
 const named = (types: string[]): Where | undefined =>
-  types.length === 0
-    ? undefined
-    : {
-        _or: [
-          { alias: { in: types } },
-          { _and: [{ alias: { is_null: true } }, { id: { in: types } }] },
-        ],
-      };
+  types.length === 0 ? undefined : { cypher_type: { in: types } };
 
 function relationships(s: QueryScope): Selection["rels"] {
   return s.layers.has("ownerTables") && s.layers.has("columns")
@@ -407,7 +402,8 @@ export interface TermRow {
 
 interface RelationshipRow {
   id: string;
-  alias: string | null;
+  // Every relationship has its served type stored (relationship_names.store_effective_names).
+  cypher_type: string;
   target_table_id: number | null;
 }
 
@@ -508,7 +504,7 @@ export function glossaryGraph(
   const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
     for (const r of rows ?? [])
       if (r.target_table_id !== null)
-        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.alias ?? r.id, [
+        edge(`t:${from}`, `t:${r.target_table_id}`, "relationship", r.cypher_type, [
           "ownerTables",
         ]);
   };
