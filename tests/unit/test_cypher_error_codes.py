@@ -91,6 +91,74 @@ def test_each_target_writes_its_own_null_on_failure_cast(target, written):
     assert written in transpile("SELECT TRY_CAST(t.name AS BIGINT) FROM t", target)
 
 
+_CASTS = (
+    "SELECT TRY_CAST(t.name AS BIGINT), TRY_CAST(t.name AS DOUBLE PRECISION), "
+    "TRY_CAST(t.name AS BOOLEAN), TRY_CAST(t.age AS VARCHAR) FROM t"
+)
+
+
+@pytest.mark.parametrize(
+    "target, written",
+    [
+        # Snowflake's TRY_CAST takes text only: the value is read as text first.
+        (
+            "snowflake",
+            'SELECT TRY_CAST(CAST("t"."name" AS VARCHAR) AS BIGINT), '
+            'TRY_CAST(CAST("t"."name" AS VARCHAR) AS DOUBLE), '
+            'TRY_CAST(CAST("t"."name" AS VARCHAR) AS BOOLEAN), '
+            'TRY_CAST(CAST("t"."age" AS VARCHAR) AS VARCHAR) FROM "t"',
+        ),
+        # MySQL has none, and its CAST of 'ab' is 0: the value is converted where it reads as
+        # one, else null.
+        (
+            "mysql",
+            "SELECT CASE WHEN REGEXP_LIKE(TRIM(t.name), '^[+-]?[0-9]+$') "
+            "THEN CAST(t.name AS SIGNED) END, "
+            "CASE WHEN REGEXP_LIKE(TRIM(t.name), '^[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?$') "
+            "THEN CAST(t.name AS DOUBLE) END, "
+            "CASE LOWER(TRIM(t.name)) WHEN 'true' THEN TRUE WHEN 'false' THEN FALSE END, "
+            "CAST(t.age AS CHAR) FROM t",
+        ),
+        (
+            "clickhouse",
+            "SELECT accurateCastOrNull(t.name, 'Int64'), accurateCastOrNull(t.name, 'Float64'), "
+            "accurateCastOrNull(t.name, 'Bool'), accurateCastOrNull(t.age, 'String') FROM t",
+        ),
+        (
+            "spark",
+            "SELECT TRY_CAST(t.name AS BIGINT), TRY_CAST(t.name AS DOUBLE), "
+            "TRY_CAST(t.name AS BOOLEAN), TRY_CAST(t.age AS STRING) FROM t",
+        ),
+        (
+            "tsql",
+            "SELECT TRY_CAST(t.name AS BIGINT), TRY_CAST(t.name AS FLOAT), "
+            "TRY_CAST(t.name AS BIT), TRY_CAST(t.age AS VARCHAR) FROM t",
+        ),
+    ],
+)
+def test_a_target_without_a_null_on_failure_cast_of_its_own_still_answers_null(target, written):
+    assert transpile(_CASTS, target) == written
+
+
+def test_mysql_s_null_on_failure_casts_answer_null_where_the_value_does_not_convert():
+    # The MySQL form's tests, run by DuckDB's own regexp (the same POSIX classes).
+    con = duckdb.connect()
+    for value, integer, real, boolean in [
+        ("12", 12, 12.0, None),
+        (" -7 ", -7, -7.0, None),
+        ("1.5e3", None, 1500.0, None),
+        ("ab", None, None, None),
+        ("TRUE", None, None, True),
+    ]:
+        assert con.execute(
+            "SELECT CASE WHEN regexp_full_match(TRIM(?), '[+-]?[0-9]+') THEN CAST(TRIM(?) AS BIGINT) END, "
+            "CASE WHEN regexp_full_match(TRIM(?), '[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][+-]?[0-9]+)?') "
+            "THEN CAST(TRIM(?) AS DOUBLE) END, "
+            "CASE LOWER(TRIM(?)) WHEN 'true' THEN TRUE WHEN 'false' THEN FALSE END",
+            [value] * 5,
+        ).fetchone() == (integer, real, boolean)
+
+
 def test_an_answer_holding_a_number_json_cannot_carry_is_400_naming_it():
     from provisa.api.rest.cypher_router import _serialize_rows
 
@@ -245,4 +313,58 @@ def test_a_null_on_failure_cast_on_an_old_postgresql_is_refused_by_name_at_execu
                 "function pg_input_is_valid(text, unknown) does not exist"
             ),
             "pg",
+        )
+
+
+def test_the_pg_engine_runs_its_statement_with_postgresql_s_null_on_failure_cast():
+    from types import SimpleNamespace
+
+    from provisa.federation.pg_backend import PgBackend
+
+    engine = SimpleNamespace(native_store="postgres", name="postgres")
+    physical = PgBackend(engine).transpile_physical("SELECT TRY_CAST(t.name AS BIGINT) FROM t")
+    assert "PG_INPUT_IS_VALID(" in physical and "TRY_CAST" not in physical
+
+
+def _bound(tree, name: str) -> list:
+    """Every value ``name`` is bound to in ``tree`` (a plain or a tuple-unpacking assignment)."""
+    import ast
+
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            names = target.elts if isinstance(target, ast.Tuple) else [target]
+            if any(isinstance(t, ast.Name) and t.id == name for t in names):
+                found.append(node.value)
+    return found
+
+
+def test_every_direct_route_runs_a_statement_transpile_wrote_for_its_source():
+    """The semantic SQL keeps TRY_CAST, which PostgreSQL (and MySQL) do not have: a route that sent
+    it to a source as it is would fail there. The statement a direct route runs (``sql_to_run``)
+    is only ever ``_direct`` -- or that wrapped as its EXPLAIN -- and ``_direct`` is only ever
+    what ``transpile`` wrote for the source's dialect, kept or newly made."""
+    import ast
+    from pathlib import Path
+
+    import provisa.pgwire._pipeline as pipeline
+
+    tree = ast.parse(Path(pipeline.__file__).read_text())
+    runs = _bound(tree, "sql_to_run")
+    assert runs, "the direct routes bind the statement they run as sql_to_run"
+    for value in runs:
+        held = value.id if isinstance(value, ast.Name) else None
+        explained = isinstance(value, ast.Call) and getattr(value.func, "id", "") == "wrap_explain"
+        assert held == "_direct" or explained, ast.unparse(value)
+
+    made = _bound(tree, "_direct")
+    assert made
+    for value in made:
+        if isinstance(value, ast.Constant) or ast.unparse(value).startswith(("None if", "memo")):
+            continue  # not yet made, or the one kept with the governed statement
+        call = value.elts[0] if isinstance(value, ast.Tuple) else value
+        assert isinstance(call, ast.Call) and getattr(call.func, "id", "") == "transpile", (
+            ast.unparse(value)
         )
