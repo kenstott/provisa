@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a01f95e7-f513-4eae-9bfe-f410919ddfb2
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The Ontology View's query (REQ-2135, REQ-863) lowered to the graph IR and printed in each of
 the explorer's three projections, each read back by the Cypher front end and answered on DuckDB
 over seeded glossary tables: GraphQL-shaped, it answers what the GraphQL compiler's own statement
