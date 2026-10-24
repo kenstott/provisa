@@ -23317,7 +23317,20 @@
     app''s ApiError body (REQ-1350): `detail` (the English reason), `code` (stable, e.g. cypher.refused,
     cypher.access_violations, cypher.execution_failed) and `params`, so every client reads the reason the
     same way. An access refusal also lists each violation (`violations`: code and message), which `detail`
-    joins; an execution failure also carries the physical `sql`.'
+    joins; an execution failure also carries the physical `sql`. (Amended 2026-10-24, A MISTAKE IS REFUSED
+    IN THE USER''S TERMS:) A mistake in the user''s statement is refused at translation, before any engine
+    runs it, with status 400, its own code and a message naming the clause or expression, what is wrong,
+    and the fix: a literal =~ pattern that RE2 (DuckDB) or Java (Trino) would reject (cypher.invalid_regex),
+    a label no table this role reads has (cypher.unknown_label, offering registered labels, the nearest
+    first; a label beside a known one is refused, never widened to the domain), a relationship type that
+    is not registered (cypher.unknown_relationship_type, 400 -- a registered type the role may not traverse
+    stays a 403 refusal), a property compared with a literal its registered type never compares to
+    (cypher.type_mismatch), an aggregate in a WHERE or inside another aggregate
+    (cypher.aggregate_in_where, cypher.nested_aggregate), a variable nothing in the statement binds
+    (cypher.undefined_variable), and a LIMIT or SKIP that is not a whole number of 0 or more
+    (cypher.invalid_limit, cypher.invalid_skip -- a fraction is never cut to its whole part). The engine''s
+    own text is said only for what the engine refused, as "The engine refused the query: ..."
+    (cypher.engine_refused). Each code is worded in the UI''s serverErrors catalog in every locale.'
   use_case: Consistent response shape enables client libraries to deserialize typed Cypher query results.
   code:
   - provisa/api/rest/cypher_router.py

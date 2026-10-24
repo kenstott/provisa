@@ -353,7 +353,11 @@ class TestCypherErrorPaths:
             pytest.skip("Engine coerced the type mismatch instead of erroring")
         assert resp.status_code in (400, 500, 503)
         data = resp.json()
-        assert data["code"] == "cypher.execution_failed", data
+        assert data["code"] in (
+            "cypher.type_mismatch",
+            "cypher.engine_refused",
+            "cypher.execution_failed",
+        ), data
         assert "trino" not in data["detail"].lower()
         assert "postgresql" not in data["detail"].lower()
 

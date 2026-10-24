@@ -530,7 +530,21 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "No se pudo hacer un recuento, así que el total es desconocido: {{statement}}: {{reason}}",
-      "access_violations": "Este rol no puede ejecutar esta consulta:"
+      "access_violations": "Este rol no puede ejecutar esta consulta:",
+      "invalid_regex": "El patrón \"{{pattern}}\" en {{expression}} no es una expresión regular válida: {{reason}}. =~ espera una expresión regular, p. ej. \".*{{word}}.*\", o use CONTAINS \"{{word}}\".",
+      "unknown_label": "No existe la etiqueta :{{label}}. Etiquetas registradas: {{suggestions}}.",
+      "no_labels": "No existe la etiqueta :{{label}}: este rol no puede leer ninguna tabla.",
+      "unknown_relationship_type": "No existe el tipo de relación {{types}}. Tipos registrados: {{suggestions}}.",
+      "no_relationship_types": "No existe el tipo de relación {{types}}: este rol no puede recorrer ninguna relación.",
+      "type_mismatch": "En {{expression}}, {{value}} no se puede comparar con {{property}}, que es de tipo {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE no puede usar el agregado {{aggregate}}: WHERE filtra filas antes de agruparlas. Agregue en un WITH y filtre después.",
+      "nested_aggregate": "{{outer}} agrega el agregado {{inner}}: no se puede agregar otro agregado. Agregue primero en un WITH.",
+      "undefined_variable": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} no es un número entero de filas: LIMIT espera una cantidad de 0 o más, p. ej. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} no es un número entero de filas: SKIP espera una cantidad de 0 o más, p. ej. SKIP 10.",
+      "engine_refused": "El motor rechazó la consulta: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} lee {{variable}}, pero la sentencia no vincula ninguna variable: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL."
     },
     "requests": {
       "approver_outside_domains": "Su derecho a crear relaciones no alcanza ningún dominio que toque esta solicitud ({{domains}})",
