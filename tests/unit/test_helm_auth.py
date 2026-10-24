@@ -365,3 +365,18 @@ class TestSaml:
         r = _render(*[s for s in _SAML if not s.startswith(missing + "=")])
         assert r.returncode != 0
         assert missing in r.stderr
+
+
+class TestTheConfigLoads:
+    def test_the_rendered_config_is_one_the_server_loads(self, monkeypatch):
+        """The pod parses the chart's provisa.yaml at boot; one it refuses crash-loops the API
+        (a role and a row rule without their description did, in the cluster lane)."""
+        import re
+
+        from provisa.core.config_loader import parse_config_dict
+
+        rendered = _provisa_yaml(_ok(*_LOCAL))
+        # The values the pod's environment gives the config's ${env:...} references.
+        for name in set(re.findall(r"\$\{env:([A-Z0-9_]+)", yaml.safe_dump(rendered))):
+            monkeypatch.setenv(name, "x")
+        parse_config_dict(rendered)
