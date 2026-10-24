@@ -30,6 +30,7 @@ import {
 } from "../hooks/useAdminQueries";
 import { tableRef } from "../components/relationships/relationship-types";
 import { useAuth } from "../context/AuthContext";
+import { uuid } from "../lib/uuid";
 import "./GraphPage.css";
 import { useLocalStorage, graphState, saveGraphState } from "../components/graph/graph-persistence";
 import type { Favorite } from "../components/graph/graph-persistence";
@@ -441,7 +442,7 @@ export function GraphPage() {
   const runQuery = useCallback(
     async (query: string, view?: FrameView, frameId?: string) => {
       if (!query) return;
-      const id = frameId ?? crypto.randomUUID();
+      const id = frameId ?? uuid();
       if (view) setFrameViews((views) => ({ ...views, [id]: view }));
       const start = Date.now();
       setFrames((f) => {
@@ -482,7 +483,7 @@ export function GraphPage() {
     ranSeqRef.current = forwarded.seq;
     removeStored("provisa.graph.pending_query");
     setHistoryQuery(forwarded.query);
-    const frameId = crypto.randomUUID();
+    const frameId = uuid();
     setHandoffFrameId(frameId);
     runQuery(forwarded.query, forwarded.view, frameId);
   }, [runQuery, authLoading, forwarded]);
