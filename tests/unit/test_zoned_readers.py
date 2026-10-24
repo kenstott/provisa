@@ -177,3 +177,22 @@ def test_an_instant_lands_and_reads_as_utc_with_its_zone_marked():
         [arrow_value("2024-01-02T03:04:05.123456+02:00", "timestamptz")], arrow_type("timestamptz")
     )
     assert column.to_pylist() == [_UTC]
+
+
+def test_an_instant_literal_is_written_as_its_utc_wall_time_for_the_mysql_family():
+    """MariaDB reads TIMESTAMP('2024-01-01 20:04:05-05:00') as 20:04:05, five hours early: the
+    MySQL family is sent the instant in UTC, the zone its UTC session reads it in."""
+    from provisa.transpiler.transpile import transpile
+
+    def where(literal: str, dialect: str) -> str:
+        sql = f"SELECT id FROM t WHERE ts = CAST('{literal}' AS TIMESTAMPTZ)"
+        return transpile(sql, dialect).split("WHERE ", 1)[1]
+
+    assert where("2024-01-01 20:04:05-05:00", "mysql") == "ts = TIMESTAMP('2024-01-02 01:04:05')"
+    assert where("2024-01-02 03:04:05.5+02", "mysql") == (
+        "ts = TIMESTAMP('2024-01-02 01:04:05.500000')"
+    )
+    # No offset: read in the session's zone, UTC, as written.
+    assert where("2024-01-02 01:04:05", "mysql") == "ts = TIMESTAMP('2024-01-02 01:04:05')"
+    # A target that takes the offset keeps it.
+    assert "-05:00" in where("2024-01-01 20:04:05-05:00", "postgres")

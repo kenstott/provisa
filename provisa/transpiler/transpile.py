@@ -258,6 +258,37 @@ def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
 _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
 
 
+# A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
+# which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
+_INSTANT_AS_UTC_WALL_TIME = frozenset({"mysql"})
+
+
+def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each string literal cast to timestamptz that carries an offset written as
+    the same instant in UTC, its offset gone. MariaDB reads ``TIMESTAMP('2024-01-01
+    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050)."""
+    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or "TIMESTAMPTZ" not in pg_sql.upper():
+        return pg_sql
+    from datetime import datetime, timezone
+
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    for cast in tree.find_all(exp.Cast):
+        literal = cast.this
+        if cast.to.this != exp.DataType.Type.TIMESTAMPTZ or not (
+            isinstance(literal, exp.Literal) and literal.is_string
+        ):
+            continue
+        try:
+            instant = datetime.fromisoformat(literal.this)
+        except ValueError:
+            continue  # not a date and time (the source refuses it as it is)
+        if instant.tzinfo is None:
+            continue  # no offset: read in the session's zone, UTC, as written
+        utc = instant.astimezone(timezone.utc).replace(tzinfo=None)
+        literal.replace(exp.Literal.string(utc.isoformat(sep=" ")))
+    return tree.sql(dialect="postgres")
+
+
 def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
     """``pg_sql`` with each LIKE and ILIKE that has no ESCAPE clause given PostgreSQL's: a
     backslash escapes the character after it. On a target whose LIKE has no escape character
@@ -471,6 +502,7 @@ def transpile(
     identify = target_dialect in ("snowflake", "oracle")
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
+    pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "exasol":
         result = _exasol_stored_case(
