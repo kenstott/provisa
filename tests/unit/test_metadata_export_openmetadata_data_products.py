@@ -189,6 +189,8 @@ async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
     assert params == {"entityId": "table-uuid-1", "entityType": "table", "mode": "replace"}
     assert body["apiVersion"] == "v3.1.0"
     assert body["schema"][0]["name"] == "orders"
+    # OpenMetadata reads ODCS 3.0's member array, not the 3.1 Team object.
+    assert body["team"] == [{"name": "alice", "role": "ownerRole"}]
     assert result.published["data_contract"] == 1
     assert puts  # the tables went first
 

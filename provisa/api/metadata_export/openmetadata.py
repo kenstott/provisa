@@ -350,11 +350,25 @@ def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
                     asset=table.ref,
                     path="/api/v1/dataContracts/odcs",
                     kind="data_contract",
-                    body=odcs_contract(snapshot, product, table),
+                    body=_odcs_v3_0_team(odcs_contract(snapshot, product, table)),
                     for_table=_table_fqn(table),
                 )
             )
     return entities
+
+
+def _odcs_v3_0_team(contract: dict[str, Any]) -> dict[str, Any]:
+    """OpenMetadata reads ``team`` only as ODCS 3.0's member array, which ODCS 3.1 keeps as a
+    deprecated form; the 3.1 Team object answers 404. Each of the team's roles is a member."""
+    if "team" not in contract:
+        return contract
+    return {
+        **contract,
+        "team": [
+            {"name": prop["value"], "role": prop["property"]}
+            for prop in contract["team"]["customProperties"]
+        ],
+    }
 
 
 def _data_product_entity(product: DataProductAsset) -> Entity:
