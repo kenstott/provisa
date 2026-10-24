@@ -56,8 +56,12 @@ while true; do
     free -m | awk 'NR == 2 { printf " mem %s/%s MiB (%s avail)", $3, $2, $7 }'
     df -h / | awk 'NR == 2 { printf " disk / %s free", $4 }'
     df -h "${GITHUB_WORKSPACE:-.}" | awk 'NR == 2 { printf " ws %s free", $4 }'
-    # The process holding the most memory, as the full sample shows it (named and redacted).
-    printf ' top:%s\n' "$(top_by rss | head -n 1 | sed -E 's/ +/ /g')"
+    # The process holding the most memory, as the full sample shows it (named and redacted), and
+    # the three containers holding the most: a container's processes show in ps by their own
+    # command, which does not say which source started them.
+    printf ' top:%s' "$(top_by rss | head -n 1 | sed -E 's/ +/ /g')"
+    printf ' containers: %s\n' "$(timeout 10 docker stats --no-stream --format '{{.MemUsage}} {{.Name}}' 2>/dev/null \
+      | sort -h -r | head -n 3 | awk '{ printf "%s%s %s", (NR > 1 ? ", " : ""), $NF, $1 }')"
   } >> "$brief"
   sleep 30
 done

@@ -82,7 +82,9 @@ def suspend_capacity() -> None:
 
 
 _PAUSED_STATES = ("Paused", "Suspended")
-_PAUSE_TIMEOUT_S = 600.0
+# Fabric's own pause of a capacity has run past ten minutes (run 40115205350: still "Pausing"
+# after 600 s, "Paused" soon after); twice that before the lane says it may be billing.
+_PAUSE_TIMEOUT_S = 1200.0
 _PAUSE_POLL_S = 10.0
 
 
