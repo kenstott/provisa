@@ -31,6 +31,7 @@ import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor } from "./graph-model";
 import { getStableNodeId } from "./stableNodeId";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
+import type { CanvasHighlight } from "./canvas/canvas-types";
 import { cypherRelType } from "../../naming";
 import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
@@ -48,6 +49,9 @@ interface InspectorProps {
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
   graphStats?: GraphStats;
   overviewData?: OverviewData;
+  /** The Overview pill picked out in the frame's graph, and how a pill picks one (or clears it). */
+  highlight?: CanvasHighlight | null;
+  onHighlight?: (highlight: CanvasHighlight | null) => void;
   colorOverrides: Record<string, string>;
   onColorChange: (label: string, color: string) => void;
   onClose: () => void;
@@ -80,6 +84,8 @@ export function Inspector({
   selected,
   graphStats,
   overviewData,
+  highlight = null,
+  onHighlight,
   colorOverrides,
   onColorChange,
   onClose,
@@ -127,6 +133,17 @@ export function Inspector({
     setTimeout(() => setCopiedKey(null), 1200);
   }, []);
 
+  // An Overview pill picks out its label's nodes (or its type's edges) in the frame's graph; the
+  // same pill again clears it (GraphCanvas.highlight).
+  const isLit = (kind: CanvasHighlight["kind"], value: string) =>
+    highlight !== null && highlight.kind === kind && highlight.value === value;
+  const pill = (kind: CanvasHighlight["kind"], value: string) => ({
+    component: "button" as const,
+    type: "button" as const,
+    "aria-pressed": isLit(kind, value),
+    "data-testid": `overview-pill-${kind}-${value}`,
+    onClick: () => onHighlight?.(isLit(kind, value) ? null : { kind, value }),
+  });
   const isN = selected !== null && selected.kind === "node";
   const label = selected ? (isN ? selected.data.label : (selected.data as GEdge).type) : "";
   const color = colorOverrides[label] ?? labelColor(label);
@@ -214,8 +231,9 @@ export function Inspector({
                   key={lbl}
                   variant="filled"
                   radius="xl"
-                  className="gf-overview-chip"
+                  className={`gf-overview-chip${isLit("label", lbl) ? " gf-overview-chip--on" : ""}`}
                   style={{ background: colorOverrides[lbl] ?? labelColor(lbl) }}
+                  {...pill("label", lbl)}
                 >
                   {lbl} ({cnt.toLocaleString()})
                 </Badge>
@@ -235,7 +253,8 @@ export function Inspector({
                   key={type}
                   variant="filled"
                   radius="sm"
-                  className="gf-overview-chip gf-overview-chip--rel"
+                  className={`gf-overview-chip gf-overview-chip--rel${isLit("type", type) ? " gf-overview-chip--on" : ""}`}
+                  {...pill("type", type)}
                 >
                   {type} ({cnt.toLocaleString()})
                 </Badge>

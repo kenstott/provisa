@@ -1141,6 +1141,16 @@
   font-family: "SF Mono", "Fira Code", monospace;
 }
 
+/* An Overview pill is a button: it picks out its label or type in the frame's graph. */
+button.gf-overview-chip {
+  cursor: pointer;
+}
+
+.gf-overview-chip--on {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
 .gf-overview-summary {
   font-size: 0.73rem;
   color: var(--text-muted);
