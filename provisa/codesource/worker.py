@@ -936,6 +936,53 @@ class Worker:
             self._close(lane, call_id)
 
 
+# -- pulled on one thread -----------------------------------------------------------------------------
+
+
+_PULLED_DONE = object()
+
+
+def pulled(items: Iterator[Any], depth: int = _QUEUED) -> Iterator[Any]:
+    """``items`` -- a call's batches -- pulled on one thread of their own, in the caller's context,
+    and handed over through a queue of ``depth``: for a reader that takes them on threads of its own
+    (DuckDB's scan of a RecordBatchReader), so the call's stage is entered and left on one thread,
+    in the request it belongs to. Closing this ends the call (its generator is closed)."""
+    import contextvars
+
+    handed: queue.Queue = queue.Queue(maxsize=depth)
+    stop = threading.Event()
+
+    def pull() -> None:
+        try:
+            for item in items:
+                while not stop.is_set():
+                    try:
+                        handed.put(item, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+                if stop.is_set():
+                    break
+        except BaseException as exc:  # noqa: BLE001 -- the call's failure, raised to its reader
+            handed.put(exc)
+            return
+        finally:
+            close = getattr(items, "close", None)
+            if close is not None:
+                close()
+        handed.put(_PULLED_DONE)
+
+    context = contextvars.copy_context()
+    threading.Thread(target=context.run, args=(pull,), name="code-call-pull", daemon=True).start()
+    try:
+        while (item := handed.get()) is not _PULLED_DONE:
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        stop.set()
+
+
 # -- the pool ---------------------------------------------------------------------------------------
 
 
