@@ -229,3 +229,50 @@ def column_types_of(lm: CypherLabelMap, ctx: object) -> dict[tuple[str, str], st
             if column in by_column:
                 out[(label, by_column[column])] = sql_type
     return out
+
+
+def concepts_of(base: str, terms: list[dict]) -> list[dict]:
+    """The live Concept terms of ``terms`` (glossary list rows): a term that grounds no table and
+    no column (REQ-2141) and that every consuming surface may offer (``live``), as IRIs."""
+    return [
+        {"iri": term_iri(base, t["name"]), "name": t["name"], "definition": t["definition"]}
+        for t in terms
+        if t["is_abstract"] and t["live"]
+    ]
+
+
+def vocabulary_document(vocab: Vocabulary, concepts: list[dict]) -> dict:
+    """The vocabulary as GET /data/sparql/vocabulary answers it: its base and prefixes; each class
+    (a table's own, or a Class term) with the labels it types; each predicate (a column's own, or
+    a Property term) with its label, property and datatype; each edge type with its source and
+    target; and the live Concept terms (:func:`concepts_of`)."""
+    term_root = f"{vocab.base}/vocab/term/"
+
+    def kind(iri: str, own: str) -> str:
+        return "term" if iri.startswith(term_root) else own
+
+    return {
+        "base": vocab.base,
+        "prefixes": dict(vocab.prefixes),
+        "classes": [
+            {"iri": iri, "kind": kind(iri, "table"), "labels": list(labels)}
+            for iri, labels in vocab.classes.items()
+        ],
+        "predicates": [
+            {
+                "iri": iri,
+                "kind": kind(iri, "column"),
+                "label": cp.label,
+                "property": cp.prop,
+                "datatype": cp.datatype,
+            }
+            for iri, cps in vocab.columns.items()
+            for cp in cps
+        ],
+        "edges": [
+            {"iri": iri, "type": ep.rel_type, "source": ep.source, "target": ep.target}
+            for iri, eps in vocab.edges.items()
+            for ep in eps
+        ],
+        "concepts": concepts,
+    }
