@@ -87,7 +87,7 @@ _EXPORT_FIELDS = ("enabled", "reconcile_cron")
 _LAST_PUBLISH: dict[str, dict[str, Any]] = {}
 
 
-@on_forget
+@on_forget(size=lambda: len(_LAST_PUBLISH))
 def _forget_last_publish(org_id: str) -> None:
     _LAST_PUBLISH.pop(org_id, None)
 

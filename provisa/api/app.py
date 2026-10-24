@@ -4863,6 +4863,11 @@ def create_app() -> FastAPI:
             return {"status": "warming"}
         return {"status": "ready"}
 
+    # REQ-2149: the leak test's view of this process, mounted only with PROVISA_LEAK_PROBE=1.
+    from provisa.api.leak_probe import mount as _mount_leak_probe
+
+    _mount_leak_probe(app)
+
     @app.api_route("/debug/logs", methods=["GET"])
     async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
         """Return recent logs, optionally filtered by pattern. For debugging only."""

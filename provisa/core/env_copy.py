@@ -69,7 +69,7 @@ _MAX_BIND_PARAMS = 30000
 _scoped_metadata: dict[str, MetaData] = {}
 
 
-@on_forget
+@on_forget(size=lambda: len(_scoped_metadata))
 def _forget_scoped_metadata(org_id: str) -> None:
     for schema in [s for s in _scoped_metadata if schema_of_org(org_id, s)]:
         _scoped_metadata.pop(schema, None)

@@ -50,7 +50,7 @@ MODES = (DEV, BUILT)
 _identities: dict[str, Identity] = {}
 
 
-@on_forget
+@on_forget(size=lambda: len(_identities))
 def _forget_identity(org_id: str) -> None:
     _identities.pop(org_id, None)
 

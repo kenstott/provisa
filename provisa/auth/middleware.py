@@ -205,7 +205,7 @@ def _loaded_user_attributes(user_id: str) -> dict[str, str]:  # REQ-1382
 _recorded_idp: dict[tuple[str | None, str | None, str], dict[str, str]] = {}
 
 
-@on_forget
+@on_forget(size=lambda: len(_recorded_idp))
 def _forget_recorded_idp(org_id: str) -> None:
     """A deleted org's users' records go with it (REQ-2006: a sandbox mints one per visitor)."""
     for key in [k for k in _recorded_idp if k[0] == org_id]:
