@@ -529,7 +529,8 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Non è stato possibile effettuare un conteggio, quindi il totale è sconosciuto: {{statement}}: {{reason}}"
+      "count_unknown": "Non è stato possibile effettuare un conteggio, quindi il totale è sconosciuto: {{statement}}: {{reason}}",
+      "access_violations": "Questo ruolo non può eseguire questa query:"
     },
     "requests": {
       "approver_outside_domains": "Il tuo diritto di creare relazioni non raggiunge alcun dominio toccato da questa richiesta ({{domains}})",

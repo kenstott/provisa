@@ -529,7 +529,8 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Не удалось выполнить подсчёт, поэтому итог неизвестен: {{statement}}: {{reason}}"
+      "count_unknown": "Не удалось выполнить подсчёт, поэтому итог неизвестен: {{statement}}: {{reason}}",
+      "access_violations": "Этой роли запрещено выполнять этот запрос:"
     },
     "requests": {
       "approver_outside_domains": "Ваше право создавать связи не распространяется ни на один домен, которого касается этот запрос ({{domains}})",
