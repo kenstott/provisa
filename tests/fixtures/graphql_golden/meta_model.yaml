@@ -287,30 +287,6 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
-  table: glossary_term_table_refs
-  columns:
-  - name: domain_id
-    data_type: text
-  - name: id
-    data_type: integer
-    is_primary_key: true
-  - name: schema_name
-    data_type: text
-  - name: source_id
-    data_type: text
-  - name: table_id
-    data_type: integer
-  - name: table_name
-    data_type: text
-  - name: tenant_id
-    data_type: uuid
-  - name: term_domains
-    data_type: text
-  - name: term_id
-    data_type: integer
-- source_id: provisa-admin
-  domain_id: meta
-  schema: org_default
   table: glossary_terms
   columns:
   - name: definition
@@ -1085,7 +1061,6 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  alias: TERM
   graphql_alias: term
   disable_cypher: false
   hide_target_meta: false
@@ -1145,7 +1120,6 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  alias: COLUMN
   graphql_alias: column
   disable_cypher: false
   hide_target_meta: false
@@ -1155,29 +1129,12 @@ relationships:
   needs_review: false
   source_table_id: glossary_term_refs
   target_table_id: table_columns
-- id: meta:glossary_term_refs:tag_assignments
-  source_column: column_key
-  target_column: column_key
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: COLUMN_TAGS
-  graphql_alias: columnTags
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_refs
-  target_table_id: tag_assignments
 - id: meta:glossary_term_refs:term
   source_column: term_id
   target_column: id
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  alias: TERM
   graphql_alias: term
   disable_cypher: false
   hide_target_meta: false
@@ -1186,38 +1143,6 @@ relationships:
   version: 1
   needs_review: false
   source_table_id: glossary_term_refs
-  target_table_id: glossary_terms
-- id: meta:glossary_term_table_refs:registered_tables
-  source_column: table_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: TABLE
-  graphql_alias: table
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_table_refs
-  target_table_id: registered_tables
-- id: meta:glossary_term_table_refs:term
-  source_column: term_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: TERM
-  graphql_alias: term
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: glossary_term_table_refs
   target_table_id: glossary_terms
 - id: meta:glossary_terms:antonym_of
   source_column: id
@@ -1239,6 +1164,25 @@ relationships:
   source_table_id: glossary_terms
   target_table_id: glossary_terms
   via_table: glossary_term_edges
+- id: meta:glossary_terms:columns
+  source_column: id
+  target_column: column_key
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: REFERENCED_BY
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: term_id
+  via_target_column: column_key
+  via_label_source: fixed
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: glossary_terms
+  target_table_id: table_columns
+  via_table: glossary_term_refs
 - id: meta:glossary_terms:derived_from
   source_column: id
   target_column: id
@@ -1265,7 +1209,6 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  alias: DOMAINS
   graphql_alias: domains
   disable_cypher: false
   hide_target_meta: false
@@ -1387,7 +1330,6 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  alias: REFERENCED_BY
   graphql_alias: refs
   disable_cypher: false
   hide_target_meta: false
@@ -1459,7 +1401,7 @@ relationships:
   via_table: glossary_term_edges
 - id: meta:glossary_terms:tables
   source_column: id
-  target_column: term_id
+  target_column: class_term_id
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
@@ -1472,7 +1414,7 @@ relationships:
   version: 1
   needs_review: false
   source_table_id: glossary_terms
-  target_table_id: glossary_term_table_refs
+  target_table_id: registered_tables
 - id: meta:glossary_terms:tag_assignments
   source_column: id
   target_column: term_id
@@ -1489,6 +1431,25 @@ relationships:
   needs_review: false
   source_table_id: glossary_terms
   target_table_id: tag_assignments
+- id: meta:glossary_terms:term_domains
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: IN_DOMAIN
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: term_id
+  via_target_column: domain_id
+  via_label_source: fixed
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: glossary_terms
+  target_table_id: domains
+  via_table: glossary_term_domains
 - id: meta:glossary_terms:translation_of
   source_column: id
   target_column: id
@@ -1645,7 +1606,6 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  alias: GLOSSARY_REFS
   graphql_alias: glossaryRefs
   disable_cypher: false
   hide_target_meta: false
@@ -1995,7 +1955,6 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  alias: GLOSSARY_REF
   graphql_alias: glossaryRef
   disable_cypher: false
   hide_target_meta: false
@@ -2066,22 +2025,6 @@ relationships:
   needs_review: false
   source_table_id: tag_assignments
   target_table_id: data_products
-- id: meta:tag_assignments:glossary_term_refs
-  source_column: column_key
-  target_column: column_key
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: GLOSSARY_REFS
-  graphql_alias: glossaryRefs
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: tag_assignments
-  target_table_id: glossary_term_refs
 - id: meta:tag_assignments:registered_tables
   source_column: table_id
   target_column: id

@@ -200,7 +200,7 @@ describe("a search focus with Tables", () => {
     // Account IS customers (10): a class term, grounded in the table.
     const account: TermRow = {
       ...term(4, "Account", []),
-      tables: [{ table_id: 10, domain_id: "sales", table_name: "t10" }],
+      tables: [{ id: 10, domain_id: "sales", table_name: "t10" }],
     };
     const g = visibleGraph(
       glossaryGraph([...TERMS, account], EDGES, PRODUCTS),

@@ -264,6 +264,10 @@ registered_tables = Table(
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
+    # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
+    Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
+    # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
+    Column("class_term_derived", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
     Column(
@@ -689,22 +693,6 @@ glossary_term_refs = Table(
     Column("column_name", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
-)
-
-# REQ-2130: a class term grounds a whole table or view. At most one class term per table; a term
-# may ground many. See schema.sql.
-glossary_term_table_refs = Table(
-    "glossary_term_table_refs",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
-    Column(
-        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
-    ),
-    # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
-    Column("derived", Boolean, nullable=False, server_default=false()),
-    Column("tenant_id", Uuid),
-    UniqueConstraint("table_id"),
 )
 
 # Closed, enum-typed relationship set — free-form edge types are not permitted (REQ-1387).

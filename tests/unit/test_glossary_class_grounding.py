@@ -41,7 +41,6 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
     domains,
-    glossary_term_table_refs,
     glossary_terms,
     registered_tables,
     sources,
@@ -261,29 +260,12 @@ async def test_a_term_its_author_claimed_is_refused_to_another_curator(control_p
 
 
 @pytest.mark.asyncio
-async def test_the_meta_view_resolves_each_grounding_and_a_table_names_its_class_term(
-    control_plane, monkeypatch
-):
+async def test_the_meta_view_names_each_tables_class_term(control_plane, monkeypatch):
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
-            for name in ("glossary_term_domains", "glossary_term_table_refs", "registered_tables"):
+            for name in ("glossary_term_domains", "registered_tables"):
                 await conn.execute(_META_TABLE_VIEWS[name])
-            rows = await conn.fetch(
-                "SELECT term_id, table_id, source_id, schema_name, table_name, domain_id,"
-                " term_domains FROM glossary_term_table_refs_meta WHERE table_name = 'customers'"
-            )
-            assert [tuple(r) for r in rows] == [
-                (
-                    ids["party"],
-                    ids["customers"],
-                    "__derived__",
-                    "s",
-                    "customers",
-                    "sales",
-                    "|sales|",
-                )
-            ]
             classes = dict(
                 tuple(r)
                 for r in await conn.fetch(
@@ -302,14 +284,13 @@ def test_the_meta_schema_reaches_a_terms_tables_and_a_tables_class_term():
 
     edges = {r[0]: r for r in META_RELATIONSHIPS}
     tables = edges["meta:glossary_terms:tables"]
-    assert (tables[2], tables[5], tables[7], tables[9]) == (
+    assert (tables[2], tables[4], tables[5], tables[7], tables[9]) == (
         "glossary_terms",
+        "class_term_id",
         "one-to-many",
-        "glossary_term_table_refs",
+        "registered_tables",
         "tables",
     )
-    assert edges["meta:glossary_term_table_refs:registered_tables"][9] == "table"
-    assert edges["meta:glossary_term_table_refs:term"][9] == "term"
     class_term = edges["meta:registered_tables:class_term"]
     assert (class_term[3], class_term[5], class_term[7], class_term[9]) == (
         "class_term_id",
@@ -336,9 +317,8 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         assert tree[path]["class_term"] == [{"term": term_path}]
         assert term_path in requirements(path, tree[path], tree)
         rows = _decompose(tree, existing, frozenset())
-        assert [
-            r for r in rows["glossary_term_table_refs"] if r["table_id"] == ids["customers"]
-        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "derived": False}]
+        [row] = [r for r in rows["registered_tables"] if r["id"] == ids["customers"]]
+        assert (row["class_term_id"], row["class_term_derived"]) == (ids["party"], False)
 
 
 # --- grounded to a table (REQ-1387): the admission rule and the derived domains ---------------
@@ -490,9 +470,9 @@ async def test_the_check_reports_a_class_holding_non_key_refs_and_changes_nothin
             note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
             assert note is not None
             await conn.execute_core(  # planted past the rules: note made customers' class
-                glossary_term_table_refs.update()
-                .where(glossary_term_table_refs.c.table_id == ids["customers"])
-                .values(term_id=note["id"])
+                registered_tables.update()
+                .where(registered_tables.c.id == ids["customers"])
+                .values(class_term_id=note["id"])
             )
         found = await glossary_router.list_findings(_request())
         [entry] = [
@@ -865,10 +845,7 @@ async def _class_of(conn, table: str) -> "str | None":
     row = (
         await conn.execute_core(
             select(glossary_terms.c.name)
-            .join(
-                glossary_term_table_refs, glossary_term_table_refs.c.term_id == glossary_terms.c.id
-            )
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            .join(registered_tables, registered_tables.c.class_term_id == glossary_terms.c.id)
             .where(
                 (registered_tables.c.table_name == table) & (registered_tables.c.schema_name == "m")
             )

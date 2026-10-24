@@ -219,7 +219,6 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
         key=lambda g: (g["role_id"], g["operation"]),
     )
     term_refs = await _rows(conn, org.glossary_term_refs, schema)
-    table_terms = await _rows(conn, org.glossary_term_table_refs, schema)  # REQ-2130
     meta_links = await _rows(conn, org.table_meta_links, schema)
     assignments = await _rows(conn, org.tag_assignments, schema)
     terms = await _rows(conn, org.glossary_terms, schema)
@@ -266,11 +265,15 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             if r["table_id"] == table_id
         ]
         # REQ-2141: a proposal is marked, so a deploy keeps it a proposal (derived, not declared)
-        own_class = [
-            {"term": term_paths[r["term_id"]], **({"derived": True} if r["derived"] else {})}
-            for r in table_terms
-            if r["table_id"] == table_id
-        ]
+        # REQ-2130: the table's class_term_id, written as the term's path -- the serial means
+        # nothing in another environment.
+        class_term_id = row.pop("class_term_id")
+        derived = row.pop("class_term_derived")
+        own_class = (
+            []
+            if class_term_id is None
+            else [{"term": term_paths[class_term_id], **({"derived": True} if derived else {})}]
+        )
         tree[paths[table_id]] = entity(
             "registered_tables",
             row,
@@ -305,8 +308,8 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 table="table_write_grants",
             ),
             glossary=Child("column_name", "table_id", own_refs, table="glossary_term_refs"),
-            # REQ-2130: at most one, by the table's UNIQUE -- a list only because every child is.
-            class_term=Child("term", "table_id", own_class, table="glossary_term_table_refs"),
+            # REQ-2130: at most one -- a list only because every child is.
+            class_term=Child("term", "table_id", own_class),
             meta_links=Child("target", "source_table_id", own_links, table="table_meta_links"),
             tags=Child(
                 "at",

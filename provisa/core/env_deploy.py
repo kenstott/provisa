@@ -564,13 +564,10 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                         "term_id": resolve_term(ref["term"], path),
                     }
                 )
-            for ref in nested["class_term"]:  # REQ-2130
-                rows["glossary_term_table_refs"].append(
-                    {
-                        "table_id": tid,
-                        "term_id": resolve_term(ref["term"], path),
-                        "derived": bool(ref.get("derived", False)),
-                    }
+            for ref in nested["class_term"]:  # REQ-2130: the table's own class_term_id
+                rows["registered_tables"][-1].update(
+                    class_term_id=resolve_term(ref["term"], path),
+                    class_term_derived=bool(ref.get("derived", False)),
                 )
             for link in nested["meta_links"]:
                 rows["table_meta_links"].append(

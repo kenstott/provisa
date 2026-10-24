@@ -60,7 +60,6 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "roles": "roles_meta",
     "glossary_terms": "glossary_terms_meta",  # REQ-1584
     "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
-    "glossary_term_table_refs": "glossary_term_table_refs_meta",  # REQ-2130
     "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
     "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
     "glossary_term_domains": "glossary_term_domains_meta",  # REQ-1591
@@ -1953,7 +1952,6 @@ _META_TABLES = [
     "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
     "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
-    "glossary_term_table_refs",  # REQ-2130: term -> table groundings, resolved likewise
     "glossary_term_edges",  # REQ-1584
     "glossary_term_experts",  # REQ-1584
     "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
@@ -1986,7 +1984,6 @@ _RLS_TENANT_TABLES = [
     # ROW LEVEL SECURITY errors on a view.
     "glossary_terms",
     "glossary_term_refs",
-    "glossary_term_table_refs",  # REQ-2130
     "glossary_term_edges",
     "glossary_term_experts",
 ]

@@ -107,8 +107,8 @@ def glossary():
         "(7, 2, 1, 'KIND_OF'), (8, 3, 1, 'PART_OF'), (9, 3, 2, 'RELATED_TO'), (10, 1, 4, 'SYNONYM_OF')"
     )
     con.execute(
-        f"INSERT INTO {_T}glossary_term_table_refs (id, term_id, table_id, table_name, domain_id) "
-        "VALUES (1, 1, 100, 'customers', 'sales'), (2, 3, 101, 'ledger', 'finance')"
+        f"INSERT INTO {_T}registered_tables (id, class_term_id, table_name, domain_id) "
+        "VALUES (100, 1, 'customers', 'sales'), (101, 3, 'ledger', 'finance')"
     )
     con.execute(
         f"INSERT INTO {_T}glossary_term_domains (id, term_id, domain_id) "

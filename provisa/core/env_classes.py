@@ -62,7 +62,6 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_terms",
         "judgment_bases",  # REQ-2094: the named bases judgments cite, as the glossary travels
         "glossary_term_refs",
-        "glossary_term_table_refs",  # REQ-2130: a table's class term travels with it
         "glossary_term_edges",
         "glossary_term_experts",
         "glossary_term_domains",
