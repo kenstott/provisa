@@ -932,6 +932,12 @@ async def follow_latest(name: str) -> None:
     async with lock:
         from provisa.api.admin.orgs_router import _admin_pool
 
+        # Being prepared here already: the open waits for that preparation
+        # (demo_sandbox._template_ready). Its ready record is written only when it finishes, so
+        # it read as built from another version, and queueing it again built it twice at once --
+        # one build's rollback dropping the schema the other was creating its tables in.
+        if template_builds.state_of(name) in ("queued", "building"):
+            return
         if (
             await _templated(_admin_pool(), name) == ready
             and template_builds.state_of(name) != "unknown"
