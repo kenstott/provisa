@@ -171,6 +171,9 @@ class TranslatorExprContext:
                 col_name = via_map.attributes.get(name)
                 if col_name is not None:
                     return _via_column(via_alias, col_name)
+                if via_map.type_column is not None and name == via_map.type_attribute:
+                    # The row's own type, as the junction stores it.
+                    return _via_column(via_alias, via_map.type_column)
             info = t._var_table.get(var)
             if info and info[1] is not None:
                 sql_alias = info[1].properties.get(name)
@@ -202,7 +205,10 @@ class TranslatorExprContext:
         ):
             return False
         via_bound = t._rel_var_via.get(var)
-        if via_bound is not None and via_bound[1].attributes.get(name) is not None:
+        if via_bound is not None and (
+            via_bound[1].attributes.get(name) is not None
+            or (via_bound[1].type_column is not None and name == via_bound[1].type_attribute)
+        ):
             return True
         info = t._var_table.get(var)
         return bool(info and info[1] is not None and info[1].properties.get(name))
@@ -426,6 +432,27 @@ class TranslatorExprContext:
             return exp.Subquery(this=counted)
         return _anon("ARRAY", inner_select)  # COLLECT
 
+    def resolve_graph_element(self, name: str) -> exp.Expression | None:
+        t = self._t
+        endpoints = t._rel_var_endpoints.get(name)
+        if endpoints is not None and name in t._rel_var_types:
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
+            return t._build_edge_object(
+                t._rel_var_type_exprs.get(name) or t._rel_var_types[name],
+                src_alias,
+                src_nm,
+                tgt_alias,
+                tgt_nm,
+                is_reversed,
+                t._rel_var_via.get(name),
+            )
+        alias, nm = t._var_table.get(name, (name, None))
+        if nm is not None:
+            from provisa.gql.select_builder import node_json
+
+            return node_json(alias, nm)
+        return None
+
     def resolve_map_projection(self, node: MapProjection) -> exp.Expression:
         # n{.a, x: e, .*} → MAP(ARRAY['a','x',...], ARRAY[n."a", (e), ...]) — dotted selectors use the
         # raw property name; literal entries lower their value expression (matching the text path).
@@ -435,16 +462,18 @@ class TranslatorExprContext:
         nm = info[1] if info else None
         keys: list[exp.Expression] = []
         vals: list[exp.Expression] = []
+        # Each selector read as var.prop is: the property's column, under the variable's alias;
+        # each value encoded to JSON, as a map literal's are, so a map of several types is one.
         for prop in node.properties:
             keys.append(exp.Literal.string(prop))
-            vals.append(_col(prop, node.var))
+            vals.append(_anon("to_json", self.resolve_property(exp.column(node.var), prop)))
         if node.all_props and nm is not None:
             for prop in sorted(nm.properties.keys()):
                 keys.append(exp.Literal.string(prop))
-                vals.append(_col(prop, node.var))
+                vals.append(_anon("to_json", self.resolve_property(exp.column(node.var), prop)))
         for key, value in node.literal_entries:
             keys.append(exp.Literal.string(key))
-            vals.append(ExprLowering(self).lower(value))
+            vals.append(_anon("to_json", ExprLowering(self).lower(value)))
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=vals))
 
     def resolve_pattern_comprehension(self, node: PatternComprehension) -> exp.Expression:

@@ -278,6 +278,15 @@ def _build_junction_meta(  # REQ-1586
         type_column=type_column,
         type_value=rel.get("via_type_value") or None,
         attributes=attributes,
+        # A type column the table does not expose is no property of the relationship.
+        type_attribute=next(
+            (
+                col.get("alias") or apply_gql_name(col["column_name"], convention)
+                for col in via_info.visible_columns
+                if col["column_name"] == type_column
+            ),
+            None,
+        ),
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )

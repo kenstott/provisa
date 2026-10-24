@@ -120,6 +120,9 @@ class JunctionMapping:  # REQ-1586
     type_column: str | None = None
     type_value: str | None = None
     attributes: dict[str, str] = field(default_factory=dict)
+    #: The type column's property name: a row's own type, read where a hop reads every row of the
+    #: junction (an untyped hop), whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — see junction_rel_type.
     label_source: str = ""
     label_fixed: str = ""
@@ -603,6 +606,7 @@ def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # 
         type_column=via.type_column,
         type_value=via.type_value,
         attributes=dict(via.attributes),
+        type_attribute=via.type_attribute,
         label_source=via.label_source,
         label_fixed=via.label_fixed,
     )
@@ -696,6 +700,7 @@ def _junction_from_rel_dict(  # REQ-1586
             for c in all_column_types.get(via_id, [])
             if c.column_name not in keys
         },
+        type_attribute=_apply_cql_property(type_column) if type_column else None,
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )

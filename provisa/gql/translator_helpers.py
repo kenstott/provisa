@@ -249,7 +249,8 @@ def _make_junction_joins(  # REQ-1586
             for node_col, via_col in zip(src_node_cols, src_keys, strict=True)
         ]
     )
-    if via.type_column is not None:
+    # An untyped hop's junction (type_value and type_values both unset) reads every row of it.
+    if via.type_column is not None and (via.type_values or via.type_value is not None):
         discriminator = via_column(via_alias, via.type_column)
         src_cond = exp.And(
             this=src_cond,
@@ -557,11 +558,16 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
 
     # exp.Left / exp.Right — SQLGlot parses left()/right() as these; emit as Anonymous
     # so the engine receives LEFT(str, n) rather than a SUBSTRING expansion.
-    if isinstance(node, exp.Left):
-        return exp.Anonymous(this="left", expressions=[node.this, node.expression])
-
-    if isinstance(node, exp.Right):
-        return exp.Anonymous(this="right", expressions=[node.this, node.expression])
+    # The transform does not descend into the node it is handed back, so its arguments are
+    # rewritten here (toLower(x) ENDS WITH y reads right(toLower(x), ...)).
+    if isinstance(node, (exp.Left, exp.Right)):
+        return exp.Anonymous(
+            this="left" if isinstance(node, exp.Left) else "right",
+            expressions=[
+                node.this.transform(_rewrite_cypher_fn_node),
+                node.expression.transform(_rewrite_cypher_fn_node),
+            ],
+        )
 
     # Handle built-in exp.Substring — adjust 0-indexed Cypher start to 1-indexed SQL
     if isinstance(node, exp.Substring):

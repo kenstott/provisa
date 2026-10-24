@@ -139,6 +139,11 @@ class ExprContext(Protocol):
         """``n{.a, x: e, .*}`` — needs the variable's known properties."""
         ...
 
+    def resolve_graph_element(self, name: str) -> exp.Expression | None:
+        """A bound node or relationship variable as its JSON object (what RETURN n or RETURN r
+        answers), None for any other name."""
+        ...
+
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
         """``EXISTS/COUNT/COLLECT { … }`` — builds the correlated subquery."""
         ...
@@ -313,7 +318,20 @@ class ExprLowering:
     # -- structures -------------------------------------------------------- #
 
     def _lower_ListLiteral(self, node: ListLiteral) -> exp.Expression:
-        return exp.Array(expressions=[self.lower(i) for i in node.items])
+        elements = [
+            self._ctx.resolve_graph_element(i.name) if isinstance(i, Variable) else None
+            for i in node.items
+        ]
+        if all(e is None for e in elements):
+            return exp.Array(expressions=[self.lower(i) for i in node.items])
+        # A list of nodes and relationships ([r, m]) holds each as its JSON object, and anything
+        # beside them as JSON too: one list of one type.
+        return exp.Array(
+            expressions=[
+                e if e is not None else _anon("to_json", self.lower(i))
+                for i, e in zip(node.items, elements, strict=True)
+            ]
+        )
 
     def _lower_MapLiteral(self, node: MapLiteral) -> exp.Expression:
         # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[to_json(v), ...]) — encode each value to a JSON value
