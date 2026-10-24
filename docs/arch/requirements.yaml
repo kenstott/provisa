@@ -74499,6 +74499,7 @@
   tests:
   - tests/unit/perf_bench/test_mix.py
   - tests/unit/perf_bench/test_filters_knob.py
+  - tests/unit/perf_bench/test_soak.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1912
   status: complete
