@@ -69,6 +69,7 @@ def test_pre_optimization_two_sources_route_engine():
         source_dialects={"sales-pg": "postgres", "lookup-pg": "postgres"},
         source_dsns={"sales-pg": "dsnA", "lookup-pg": "dsnB"},  # distinct DBs → federated
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route == Route.ENGINE
 
@@ -85,6 +86,7 @@ def test_source_removed_by_optimization_is_not_routed():
         source_dialects={"sales-pg": "postgres"},
         source_dsns={"sales-pg": "dsnA"},
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route == Route.DIRECT
     assert decision.source_id == "sales-pg"

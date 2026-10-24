@@ -142,9 +142,10 @@ describe("the Ontology View past its budget", () => {
 });
 
 describe("a focus's neighbourhood", () => {
-  it("is two hops in the Ontology View, a part's end in the product graph", async () => {
+  it("is two hops, in the Ontology View and the product graph alike", async () => {
     const { reach } = await import("../graphModel");
-    const { ONTOLOGY_NEIGHBOURHOOD, PRODUCT_NEIGHBOURHOOD } = await import("../neighbourhood");
+    const { NEIGHBOURHOOD } = await import("../neighbourhood");
+    const { GLOSSARY_SCOPE, PRODUCT_SCOPE } = await import("../graphModel");
     // term:1 - term:2 - term:3 - term:4, each a KIND_OF of the next.
     const nodes = [1, 2, 3, 4].map((i) => ({
       id: `term:${i}`,
@@ -159,11 +160,51 @@ describe("a focus's neighbourhood", () => {
       label: "KIND_OF",
     }));
     const byId = new Map(nodes.map((n) => [n.id, n]));
-    expect([...reach("term:1", edges, byId, ONTOLOGY_NEIGHBOURHOOD)].sort()).toEqual([
+    expect([...reach(["term:1"], edges, byId, NEIGHBOURHOOD)].sort()).toEqual([
       "term:1",
       "term:2",
       "term:3",
     ]);
-    expect(reach("term:1", edges, byId, PRODUCT_NEIGHBOURHOOD).size).toBe(4);
+    // One rule: both graphs draw the same neighbourhood.
+    expect(PRODUCT_SCOPE.neighbourhood).toBe(NEIGHBOURHOOD);
+    expect(GLOSSARY_SCOPE.neighbourhood).toBe(NEIGHBOURHOOD);
+  });
+});
+
+describe("a product's neighbourhood", () => {
+  it("is counted from its member tables: members, their columns, the terms bound to those", async () => {
+    const { visibleGraph, NO_FILTERS, PRODUCT_SCOPE } = await import("../graphModel");
+    type K = "member" | "has_column" | "term_binding" | "term_edge" | "in_domain";
+    const node = (id: string, type: string) => ({ id, type, label: id });
+    const edge = (a: string, b: string, kind: K) => ({ id: `${a}-${b}`, a, b, kind });
+    const data = {
+      nodes: [
+        node("p:x", "product"),
+        node("d:sales", "domain"),
+        node("t:1", "table"),
+        node("c:1:a", "column"),
+        node("term:a", "term"),
+        node("term:b", "term"),
+      ],
+      edges: [
+        edge("p:x", "d:sales", "in_domain"),
+        edge("p:x", "t:1", "member"),
+        edge("t:1", "c:1:a", "has_column"),
+        edge("c:1:a", "term:a", "term_binding"),
+        edge("term:a", "term:b", "term_edge"),
+      ],
+    } as never;
+    const layers = new Set(PRODUCT_SCOPE.layerOrder);
+    const drawn = (focus: string[]) =>
+      visibleGraph(data, layers as never, { ...NO_FILTERS, focus }, new Set(), {
+        ...PRODUCT_SCOPE,
+        foldColumns: false,
+      })
+        .nodes.map((n) => n.id)
+        .sort();
+    const ids = drawn(["p:x"]);
+    // Two hops from the members reaches the bound term; its neighbour is a third.
+    expect(ids).toEqual(expect.arrayContaining(["p:x", "t:1", "c:1:a", "term:a"]));
+    expect(ids).not.toContain("term:b");
   });
 });

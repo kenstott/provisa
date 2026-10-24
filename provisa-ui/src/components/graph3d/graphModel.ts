@@ -14,7 +14,7 @@
 // set of layers with a layout. Pure data: the scene only draws what this decides.
 
 import type { TermRole } from "../../api/glossary";
-import { ONTOLOGY_NEIGHBOURHOOD, PRODUCT_NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
+import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
 import { lanesFrom } from "../lineage/lineage-layout";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 
@@ -219,8 +219,8 @@ export const PRODUCT_SCOPE: GraphScope = {
   typedKinds: ["term_edge"],
   betweenDrawn: [],
   implicitLayers: [],
-  menus: false,
-  neighbourhood: PRODUCT_NEIGHBOURHOOD,
+  menus: true,
+  neighbourhood: NEIGHBOURHOOD,
 };
 
 /** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
@@ -253,7 +253,7 @@ export const GLOSSARY_SCOPE: GraphScope = {
   betweenDrawn: ["relationship"],
   implicitLayers: ["ontology"],
   menus: true,
-  neighbourhood: ONTOLOGY_NEIGHBOURHOOD,
+  neighbourhood: NEIGHBOURHOOD,
 };
 
 export interface GraphFilters {
@@ -451,10 +451,14 @@ export function visibleGraph(
   }
   const anchors = filters.focus.filter((f) => drawn.has(f));
   if (anchors.length > 0) {
-    // The union of each focus's neighbourhood.
-    const reached = new Set<string>();
-    for (const a of anchors)
-      for (const id of reach(a, kept, byId, scope.neighbourhood)) reached.add(id);
+    // One neighbourhood, counted from every focus at once. A product's is counted from its member
+    // tables too: members (0), their columns (1), the terms those are bound to (2).
+    const starts = anchors.flatMap((a) =>
+      byId.get(a)?.type === "product"
+        ? [a, ...kept.filter((e) => e.kind === "member" && e.a === a).map((e) => e.b)]
+        : [a],
+    );
+    const reached = reach(starts, kept, byId, scope.neighbourhood);
     for (const id of [...drawn]) if (!reached.has(id)) drawn.delete(id);
     kept = kept.filter((e) => drawn.has(e.a) && drawn.has(e.b));
   }
@@ -469,12 +473,12 @@ const judged = (n: GraphNode) =>
   n.tags !== undefined ||
   n.sensitivities !== undefined;
 
-/** What is reached from ``start`` within ``rule.depth`` hops, passing through no product or domain
- * (``rule.stopAt``). A table is an end too -- drawn where a reached column, term or table touches
- * it, its other columns and relationships not followed -- unless it is the start or entered by a
- * member edge (a member of the start product). */
+/** What is reached from ``starts`` within ``rule.depth`` hops, counted from the nearest start,
+ * passing through no product or domain (``rule.stopAt``). A table is an end too -- drawn where a
+ * reached column, term or table touches it, its other columns and relationships not followed --
+ * unless it is a start or entered by a member edge (a member of a product). */
 export function reach(
-  start: string,
+  starts: readonly string[],
   edges: GraphEdge[],
   byId: Map<string, GraphNode>,
   rule: Neighbourhood,
@@ -484,13 +488,14 @@ export function reach(
     next.set(e.a, [...(next.get(e.a) ?? []), [e.b, e.kind]]);
     next.set(e.b, [...(next.get(e.b) ?? []), [e.a, e.kind]]);
   }
-  const seen = new Set([start]);
+  const begin = new Set(starts);
+  const seen = new Set(starts);
   // Breadth first, so each node is met at its fewest hops.
-  let frontier: [string, EdgeKind | null][] = [[start, null]];
+  let frontier: [string, EdgeKind | null][] = starts.map((s) => [s, null]);
   for (let hop = 0; hop < rule.depth && frontier.length > 0; hop++) {
     const out: [string, EdgeKind | null][] = [];
     for (const [id, via] of frontier) {
-      if (id !== start) {
+      if (!begin.has(id)) {
         const t = byId.get(id)?.type;
         if (t !== undefined && rule.stopAt.includes(t)) continue;
         if (t === "table" && via !== rule.tableEnteredBy) continue;

@@ -249,9 +249,8 @@ def test_a_code_table_is_read_by_provisa_and_landed():
     from provisa.api.data.materialization import is_native_read
 
     types = {"orders-src": "python", "pg": "postgresql"}
-    state = SimpleNamespace(source_types=types, federation_engine=None)
-    assert is_native_read(_orders_table(), types, state)
-    assert not is_native_read({**_orders_table(), "source_id": "pg"}, types, state)
+    assert is_native_read(_orders_table(), types)
+    assert not is_native_read({**_orders_table(), "source_id": "pg"}, types)
 
 
 @pytest.fixture

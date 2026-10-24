@@ -200,6 +200,7 @@ def assert_router_does_not_attempt_virtual(shared_data: dict) -> None:
         source_types={"openapi_orders": "openapi"},
         source_dialects={"openapi_orders": ""},
         operator_floor={},
+        statement="SELECT 1",
     )
     # The router routes openapi to API route — NOT to TRINO live connector.
     assert decision.route != Route.ENGINE, (

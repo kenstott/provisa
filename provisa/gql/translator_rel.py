@@ -178,12 +178,13 @@ class _RelJoinMixin:  # mixin for _Translator
 
     def _infer_src_from_rel(
         self,
-        rel_mapping: "RelationshipMapping",
+        label: str,
         src_var: "str | None",
         current_from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> "tuple[NodeMapping | None, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Infer src_nm from rel_mapping; update from_expr if src was a domain union."""
-        src_nm = self._lm.nodes.get(rel_mapping.source_label)
+        """Infer src_nm as ``label``, the relationship's end it is; update from_expr if src was a
+        domain union."""
+        src_nm = self._lm.nodes.get(label)
         if src_nm and src_var:
             self._var_table[src_var] = (src_var, src_nm)
             if src_var in self._domain_nodes:
@@ -193,11 +194,11 @@ class _RelJoinMixin:  # mixin for _Translator
 
     def _infer_tgt_from_rel(
         self,
-        rel_mapping: "RelationshipMapping",
+        label: str,
         tgt_var: "str | None",
     ) -> "NodeMapping | None":
-        """Infer tgt_nm from rel_mapping; update var_table/domain_nodes."""
-        tgt_nm = self._lm.nodes.get(rel_mapping.target_label)
+        """Infer tgt_nm as ``label``, the relationship's end it is; update var_table/domain_nodes."""
+        tgt_nm = self._lm.nodes.get(label)
         if tgt_nm and tgt_var:
             self._var_table[tgt_var] = (tgt_var, tgt_nm)
             self._domain_nodes.pop(tgt_var, None)
@@ -343,6 +344,7 @@ class _RelJoinMixin:  # mixin for _Translator
         tgt_node: "NodePattern",
         rel_mapping: "RelationshipMapping | None",
         from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        backward: bool,
     ) -> "tuple[NodeMapping | None, NodeMapping | None, bool, bool, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Resolve src_nm, tgt_nm, explicitness flags, and updated from_expr.
 
@@ -363,10 +365,17 @@ class _RelJoinMixin:  # mixin for _Translator
             tgt_nm_explicit = tgt_nm is not None
 
         if (src_nm is None or tgt_nm is None) and rel_mapping:
+            # The pattern's first node is the relationship's source, or its target where the
+            # pattern reads it backward ((m)<-[:T]-(a): m is T's target, #291).
+            first, last = (
+                (rel_mapping.target_label, rel_mapping.source_label)
+                if backward
+                else (rel_mapping.source_label, rel_mapping.target_label)
+            )
             if src_nm is None:
-                src_nm, from_expr = self._infer_src_from_rel(rel_mapping, src_var, from_expr)
+                src_nm, from_expr = self._infer_src_from_rel(first, src_var, from_expr)
             if tgt_nm is None:
-                tgt_nm = self._infer_tgt_from_rel(rel_mapping, tgt_var)
+                tgt_nm = self._infer_tgt_from_rel(last, tgt_var)
 
         return src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr
 
@@ -580,7 +589,7 @@ class _RelJoinMixin:  # mixin for _Translator
 
         rel_mapping = self._resolve_early_rel_mapping(rel)
         src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
-            src_node, tgt_node, rel_mapping, from_expr
+            src_node, tgt_node, rel_mapping, from_expr, backward=rel.direction == "left"
         )
 
         # A node the outer statement holds is the outer row (#160): this statement reads its hop's

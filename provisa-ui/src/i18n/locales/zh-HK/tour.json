@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "回到管理員身份",
         "description": "儀表板是營運人員看到的內容。導覽的其餘部分重新以管理員身分進行，之後的每條語句都會標明其執行所用的角色。"
+      },
+      "groupexposureScenario": {
+        "title": "這個示範講甚麼",
+        "description": "一家布拉格銀行向企業放貸，並按法律實體識別編碼（LEI）記錄每家企業的擁有者。歐盟規定，銀行對單一客戶或同一擁有者控制的企業集團的授信不得超過其一級資本（Tier 1）的 25%。問題是：銀行對哪些集團超出了這一限額？銀行的賬簿記錄了每個借款人的擁有者，卻不記錄誰擁有這個擁有者。銀行、借款人及其貸款是虛構的，擁有它們的集團是真實的。"
+      },
+      "groupexposureJoin": {
+        "title": "按 LEI 連接",
+        "description": "銀行的擁有者表與 Wikidata 的表共用擁有者的 LEI，這些關係把它們連接起來。銀行的數據留在其資料庫中，Wikidata 的數據留在其副本中；連接在查詢中完成。"
+      },
+      "groupexposureAnswer": {
+        "title": "SQL 中的答案",
+        "description": "視圖 group_exposure 透過擁有者的 LEI 和 Wikidata，將每筆授信歸入借款人所屬集團。Veolia 和 Vinci 集團各自超過一級資本的 25%，Veolia 與 EPH 的合資企業在兩個集團中都計入。無論銀行賬簿還是 Wikidata，單獨都看不出這一點。借款人及其貸款是虛構的。"
+      },
+      "groupexposureExample": {
+        "title": "GraphQL 中的答案",
+        "description": "GraphQL 中的同一視圖：銀行放貸最多的集團、其借款人、承諾金額，以及各集團是否超限。"
+      },
+      "groupexposureRecap": {
+        "title": "您看到了甚麼",
+        "description": "一家虛構銀行的貸款賬簿與 Wikidata 的公共關聯數據，按 LEI 在一個受管治的模型中連接。Wikidata 的擁有權鏈把許多小額貸款變成少數幾個大額集團風險承擔，答案透過 SQL、GraphQL 和 REST 提供。"
+      },
+      "groupexposureWikidata": {
+        "title": "誰擁有這些擁有者：來自 Wikidata",
+        "description": "公共知識圖譜 Wikidata 記錄了每家企業的 LEI 及其母公司。此數據源透過 Wikidata 的 SPARQL 查詢服務讀取這些資料。其表在建立示範時只載入一次，因此您使用示範時它從不呼叫 Wikidata。"
+      },
+      "groupexposureFacilities": {
+        "title": "銀行的授信",
+        "description": "銀行批出的每筆定期貸款、循環信貸額度和保函，包括借款人、承諾金額和已提取金額。限額按承諾金額計算。"
+      },
+      "groupexposureGroups": {
+        "title": "每個擁有者所屬的集團",
+        "description": "對銀行記錄的每個擁有者，取其在 Wikidata 上母公司鏈頂端的企業，只用一條 SPARQL 屬性路徑即可找到。即使銀行賬簿不知道，Wikidata 也知道某家捷克控股公司屬於 Veolia 或 E.ON。"
+      },
+      "groupexposureTerms": {
+        "title": "淺白解釋",
+        "description": "詞彙表解釋風險人員使用的詞彙：大額風險承擔、一級資本、法律實體識別編碼和母公司。關連客戶集團是指因一家控制其他各家而構成同一風險的一組企業。"
+      },
+      "groupexposureAlone": {
+        "title": "只看賬簿",
+        "description": "銀行賬簿所見的每個借款人自身的風險承擔。最大的也低於一級資本的 10%，沒有任何借款人接近 25% 的限額。"
+      },
+      "groupexposureRest": {
+        "title": "透過 REST 取得同一答案",
+        "description": "該視圖也是一個 REST 端點，這裏按是否超限分組並在伺服器端匯總，可直接用於風險報告或試算表。"
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "不複製總賬的日終報表",
         "summary": "一間銀行的日終總數，在每次日終時直接由從不複製到數據倉庫的總賬產生，可按當時呈報的樣子和之後更正的樣子讀取，透過 GraphQL、SQL 和智能代理都得到相同的答案。"
+      },
+      "groupexposure": {
+        "title": "透過 Wikidata 計算集團風險承擔",
+        "summary": "銀行對哪些企業集團超出了大額風險承擔限額？銀行的貸款賬簿按每個借款人擁有者的 LEI 透過 SPARQL 連接到 Wikidata 的母公司鏈，把每個借款人歸入其集團。銀行及其借款人是虛構的，集團是真實的。"
       }
     }
   }

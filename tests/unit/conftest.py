@@ -112,6 +112,16 @@ def _no_otel_log_pipeline_outlives_its_test():
 
 
 @pytest.fixture(autouse=True)
+def _no_runner_freezes_the_test_process(monkeypatch: pytest.MonkeyPatch):
+    """A replica runner's first idle pass freezes the heap once per process (REQ-1911). In a test
+    worker that would change process-wide GC state for every later test, so the freeze counts as
+    done here; the test of the freeze itself clears the flag and records the call instead."""
+    from provisa.federation import replica_runner
+
+    monkeypatch.setattr(replica_runner, "_boot_builds_frozen", True)
+
+
+@pytest.fixture(autouse=True)
 def _no_unit_test_dials_a_pgwire_server(monkeypatch: pytest.MonkeyPatch):
     """A replica prepares its server's catalog by connecting to the server's port. A unit test's
     stand-in server listens nowhere, and its port (the default 5433) may be held by a real

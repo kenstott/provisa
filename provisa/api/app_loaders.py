@@ -390,7 +390,7 @@ async def _build_source_pools_and_enums(
     from provisa.api.app import state
     from provisa.api.data.pgwire_write import start_write_server
     from provisa.executor.drivers.registry import has_driver
-    from provisa.transpiler.router import CODE_DIRECT_SOURCES, VIRTUAL_SOURCES
+    from provisa.transpiler.router import VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.core.secrets_store import bound_to_request_org
 
@@ -420,9 +420,7 @@ async def _build_source_pools_and_enums(
             start_write_server(src)
             _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
             if has_driver(src.type.value) and (
-                src.type.value not in VIRTUAL_SOURCES
-                or _is_flat_file
-                or src.type.value in CODE_DIRECT_SOURCES  # REQ-2100
+                src.type.value not in VIRTUAL_SOURCES or _is_flat_file
             ):
                 resolved_pw = resolve_secrets(src.password)
                 resolved_host = (
@@ -434,9 +432,6 @@ async def _build_source_pools_and_enums(
                 state.source_dsns[src.id] = (
                     resolved_database
                     if _is_flat_file
-                    # REQ-2100: a code source is no database another source can share.
-                    else f"code:{src.id}"
-                    if src.type.value in CODE_DIRECT_SOURCES
                     # REQ-863: one database under one login, never two logins' grants as one.
                     else colocation_key(
                         resolved_host,

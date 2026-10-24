@@ -28,19 +28,16 @@ anything. Another secret is refused, and the front stays unpaired.
 HELLO. Each connection is told the worker's hello, with the code's name tables (REQ-2100,
 provisa/codesource/names.py) from the names file baked into the image.
 
-RESIDUAL. A ``call`` that carries a ``residual`` -- a read of one table, DIRECT from Provisa --
-is answered with the statement applied to the function's rows (provisa/codehost/residual.py): its
-``sql`` in its ``dialect`` over the rows as its ``table``, each parameter's ``_nf_`` column holding
-the value of the one-row Arrow table ``arguments``.
+It serves no reads of its own: a read of a code table is a call of its function, its rows landed
+by Provisa, which runs the statement over them (REQ-2100, codesource.proxy).
 
-Its imports beside the standard library are cryptography's, DuckDB's, sqlglot's and Arrow's, in the
-image beside this program; the code's own environment is the code's.
+Its imports beside the standard library are cryptography's, in the image beside this program; the
+code's own environment is the code's.
 """
 
 # Requirements: REQ-2098, REQ-2100
 from __future__ import annotations
 
-import base64
 import datetime
 import hashlib
 import itertools
@@ -66,8 +63,6 @@ CERTIFICATE = "host.crt"
 TRUSTED = "provisa.crt"
 #: The pairing secret, kept until the front is paired.
 SECRET = "pairing.secret"
-#: A PostgreSQL client's request for TLS, before its startup message (pgwire, REQ-2100).
-SSL_REQUEST = _HEAD.pack(8) + struct.pack(">I", 80877103)
 
 
 # -- frames -------------------------------------------------------------------------------------
@@ -224,33 +219,10 @@ class Connection:
                 self.open = False
 
 
-class _Collector:
-    """A call's answer, collected for the front end itself: its batches, then its end."""
-
-    def __init__(self) -> None:
-        self.batches: list[bytes] = []
-        self.error: str | None = None
-        self.done = threading.Event()
-
-    def send(self, data: bytes) -> None:
-        body = data[_HEAD.size :]
-        if body[:1] == _ARROW:
-            self.batches.append(body[1 + _ID.size :])
-            return
-        message = json.loads(body[1:])
-        if message["op"] == "error":
-            self.error = message.get("message", "the call failed")
-            self.done.set()
-        elif message["op"] == "end":
-            self.done.set()
-
-
 class _Call:
-    def __init__(self, connection: Connection, call_id: int, residual: dict | None) -> None:
+    def __init__(self, connection: Connection, call_id: int) -> None:
         self.connection = connection
         self.call_id = call_id
-        self.residual = residual
-        self.batches: list[bytes] = []
 
 
 class Worker:
@@ -278,33 +250,10 @@ class Worker:
 
     def call(self, connection: Connection, message: dict) -> None:
         """A connection's call, sent to the worker under an id of the worker's own."""
-        residual = message.pop("residual", None)
         own = next(self._ids)
         with self._lock:
-            self._calls[own] = _Call(connection, message["id"], residual)
+            self._calls[own] = _Call(connection, message["id"])
         self._send({**message, "id": own})
-
-    def read(self, export: str, args: list, names: list[str], schema: str) -> list[bytes]:
-        """REQ-2100: a table function's rows, each batch an Arrow IPC stream, for a read the front
-        end answers itself (pgfront.py)."""
-        collector = _Collector()
-        self.call(
-            collector,  # pyright: ignore[reportArgumentType]
-            {
-                "op": "call",
-                "id": 1,
-                "export": export,
-                "kind": "table",
-                "args": args,
-                "names": names,
-                "schema": schema,
-                "traceparent": None,
-            },
-        )
-        collector.done.wait()
-        if collector.error is not None:
-            raise RuntimeError(f"{export}: {collector.error}")
-        return collector.batches
 
     def forward(self, connection: Connection, message: dict) -> None:
         """A connection's cancel or ping, for the call it names."""
@@ -344,11 +293,7 @@ class Worker:
                     call = self._calls.get(own)
                 if call is None:
                     continue  # its connection ended: the call was cancelled
-                ipc = body[1 + _ID.size :]
-                if call.residual is not None:
-                    call.batches.append(ipc)
-                else:
-                    call.connection.send(rows_frame(call.call_id, ipc))
+                call.connection.send(rows_frame(call.call_id, body[1 + _ID.size :]))
                 continue
             message = json.loads(body[1:])
             own = message.get("id")
@@ -359,52 +304,7 @@ class Worker:
                         del self._calls[own]
             if call is None:
                 continue
-            if message["op"] == "end" and call.residual is not None:
-                try:
-                    answered = _answer(call.residual, call.batches)
-                except Exception as exc:  # noqa: BLE001 -- the statement's failure, named to Provisa
-                    call.connection.send(
-                        frame({"op": "error", "id": call.call_id, "message": str(exc), "stack": ""})
-                    )
-                    continue
-                call.connection.send(rows_frame(call.call_id, answered))
             call.connection.send(frame({**message, "id": call.call_id}))
-
-
-def _ipc(table: Any) -> bytes:  # a pyarrow Table
-    import pyarrow as pa
-
-    sink = pa.BufferOutputStream()
-    with pa.ipc.new_stream(sink, table.schema) as stream:
-        stream.write_table(table)
-    return sink.getvalue().to_pybytes()
-
-
-def _table(ipc: bytes) -> Any:
-    import pyarrow as pa
-
-    return pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
-
-
-def _answer(residual: dict, batches: list[bytes]) -> bytes:
-    """The rows of a read's statement over its function's ``batches``, as one Arrow IPC stream."""
-    import importlib
-
-    import pyarrow as pa
-
-    statement = importlib.import_module("residual")  # beside this program, in the image
-
-    schema = _table(base64.b64decode(residual["schema"])).schema
-    tables = [_table(b) for b in batches]
-    rows = pa.concat_tables(tables) if tables else schema.empty_table()
-    arguments = _table(base64.b64decode(residual["arguments"]))
-    answered = statement.answer(
-        residual["sql"],
-        residual["dialect"],
-        residual["table"],
-        statement.with_arguments(rows, arguments),
-    )
-    return _ipc(answered)
 
 
 # -- the listener ---------------------------------------------------------------------------------
@@ -430,13 +330,6 @@ class _Handler(socketserver.BaseRequestHandler):
     def handle(self) -> None:
         raw: socket.socket = self.request
         try:
-            first = raw.recv(len(SSL_REQUEST), socket.MSG_PEEK)
-            if first == SSL_REQUEST:
-                raw.recv(len(SSL_REQUEST))
-                raw.sendall(b"S")
-                conn = self.front.identity.context.wrap_socket(raw, server_side=True)
-                self._pgwire(conn)
-                return
             conn = self.front.identity.context.wrap_socket(raw, server_side=True)
             if not self.front.identity.paired:
                 self.front.identity.pair(conn)
@@ -465,14 +358,6 @@ class _Handler(socketserver.BaseRequestHandler):
         finally:
             connection.open = False
             worker.closed(connection)
-
-    def _pgwire(self, conn: ssl.SSLSocket) -> None:
-        if not self.front.identity.paired or not conn.getpeercert():
-            return  # only the paired Provisa, by its certificate, is served
-        import importlib
-
-        # beside this program, in the image (REQ-2100)
-        importlib.import_module("pgfront").serve(conn, self.front.worker, self.front.names)
 
 
 def main(argv: list[str]) -> int:

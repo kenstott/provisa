@@ -604,3 +604,34 @@ async def test_a_build_held_for_the_engine_says_so_once(plane, tmp_path, caplog)
     )
     release.set()
     await a.drain()
+
+
+async def test_the_heap_freezes_once_at_the_first_pass_with_no_build_left(
+    plane, tmp_path, monkeypatch
+):
+    """REQ-1911: boot's builds leave long-lived objects (model rows, compiled plans, imports) a
+    full collection would walk on every request's behalf; the first pass that starts no build
+    while none of the runner's builds still run moves them to the permanent generation, once."""
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+    frozen: list[int] = []
+    monkeypatch.setattr(replica_runner, "_boot_builds_frozen", False)
+    monkeypatch.setattr(replica_runner.gc, "freeze", lambda: frozen.append(1))
+    release = asyncio.Event()
+
+    async def build(key, progress):
+        await asyncio.wait_for(release.wait(), 5)
+        return BuildOutcome(rows_copied=1, method="stream_batches")
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=_Permits(), per_node=2)
+    assert await node.runner.run_pass() == 1
+    assert await node.runner.run_pass() == 0  # nothing to start, but the build still runs
+    assert frozen == []
+    release.set()
+    await node.drain()  # the build's own chained pass still counts it as running
+    assert frozen == []
+    assert await node.runner.run_pass() == 0
+    assert frozen == [1]
+    assert await node.runner.run_pass() == 0
+    assert frozen == [1]  # once per process

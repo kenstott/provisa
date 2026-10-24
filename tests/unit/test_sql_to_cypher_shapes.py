@@ -511,3 +511,48 @@ def test_a_join_with_no_cypher_form_is_not_returned_unbound(meta):
         "ON TRUE"
     )
     assert semantic_sql_to_cypher(sql, lm, ctx) is None
+
+
+# --- a to-many field's own pick of each parent's rows (Open as query, REQ-2136) -----------------
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        '{ customers(where: { name: { eq: "Ann" } }) { id name '
+        "orders(order_by: { amount: desc }, limit: 1) { id amount } } }",
+        "{ customers { id name orders(order_by: { amount: desc }, limit: 1) { id amount } } }",
+        "{ customers { id orders(order_by: { amount: asc }, offset: 1, limit: 1) { id amount } } }",
+        "{ customers { id orders(limit: 1, order_by: { id: asc }) { id } } }",
+    ],
+)
+def test_a_to_many_field_s_order_and_limit_are_each_parent_s(model, con, query):
+    cypher = _same_rows(model, con, query)
+    assert "CALL {" in cypher and "LIMIT 1\n}" in cypher, cypher
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # A condition beside the relationship's own.
+        '{ customers { id orders(where: { status: { eq: "shipped" } }, limit: 1) { id } } }',
+        # Nulls placed otherwise than Cypher places them.
+        "{ customers { id orders(order_by: { amount: asc_nulls_first }, limit: 1) { id } } }",
+        "{ customers { id orders(order_by: { amount: desc_nulls_last }, limit: 1) { id } } }",
+        # distinct_on.
+        "{ customers { id orders(distinct_on: [status], limit: 1) { id } } }",
+    ],
+)
+def test_a_pick_cypher_cannot_state_exactly_has_no_export(model, query):
+    schema, ctx, lm = model
+    (root,) = compile_query(parse(query), ctx)
+    assert (
+        semantic_sql_to_cypher(
+            make_semantic_sql(root.sql, ctx),
+            lm,
+            ctx,
+            override_limit=root.result_limit,
+            params=root.params,
+        )
+        is None
+    )

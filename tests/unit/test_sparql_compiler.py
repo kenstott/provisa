@@ -133,7 +133,8 @@ def _answer(con, query: str) -> list[dict]:
     vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING)
     compiled = compile_sparql(PREFIXES + query, vocab, lm)
     if compiled.empty:
-        return []
+        rows = [compiled.empty_row] if compiled.empty_row is not None else []
+        return [{k: _value(r.get(k)) for k in compiled.variables} for r in rows]
     assert compiled.ast is not None
     sql, _, graph_vars = cypher_to_sql(compiled.ast, lm, {})
     # As the endpoint runs it (sparql_router): a term is its own value through the graph rewrite.
@@ -282,7 +283,12 @@ def test_a_predicate_the_vocabulary_lacks_matches_nothing(con):
 @pytest.mark.parametrize(
     "query, refusal",
     [
-        ("SELECT (COUNT(?s) AS ?n) WHERE { ?s p:name ?x }", "aggregates"),
+        (
+            "SELECT (COUNT(?s) AS ?n) WHERE { ?s term:Legal%20name ?x }",
+            "several classes",
+        ),
+        ("SELECT (SAMPLE(?s) AS ?x) WHERE { ?s p:name ?n }", "COUNT it"),
+        ("CONSTRUCT { ?s ?s ?s } WHERE { ?s p:name ?n } GROUP BY ?s", "CONSTRUCT"),
         ("SELECT ?s WHERE { VALUES ?s { 1 } }", "VALUES"),
         ("DESCRIBE ?s WHERE { ?s p:name ?n }", "DESCRIBE|Describe"),
         ("SELECT ?n WHERE { ?s p:name ?n FILTER(STRLEN(?n) > 2) }", "STRLEN"),
@@ -309,3 +315,60 @@ def test_grounding_and_column_types_come_from_the_model_s_own_references():
     assert grounding.property_terms == {("Person", "name"): ("Legal name",)}
     ctx = SimpleNamespace(aggregate_columns={person_id: [("age", "INTEGER"), ("gone", "TEXT")]})
     assert column_types_of(lm, ctx) == {("Person", "age"): "INTEGER"}
+
+
+# --- aggregates ----------------------------------------------------------------------------
+
+
+def test_count_per_group(con):
+    rows = _answer(con, "SELECT ?c (COUNT(?s) AS ?n) WHERE { ?s rel:WORKS_AT ?c } GROUP BY ?c")
+    acme, beta = (subject_iri(BASE, "hr", "companies", [k]) for k in (1, 2))
+    assert sorted((r["c"], r["n"]) for r in rows) == [(acme, 2), (beta, 1)]
+
+
+def test_having(con):
+    rows = _answer(
+        con,
+        "SELECT ?c WHERE { ?s rel:WORKS_AT ?c } GROUP BY ?c HAVING (COUNT(?s) > 1)",
+    )
+    assert [r["c"] for r in rows] == [subject_iri(BASE, "hr", "companies", [1])]
+
+
+def test_sum_avg_min_max_over_one_group(con):
+    rows = _answer(
+        con,
+        "SELECT (SUM(?a) AS ?t) (AVG(?a) AS ?m) (MIN(?a) AS ?lo) (MAX(?a) AS ?hi) "
+        "WHERE { ?s p:age ?a }",
+    )
+    assert [(r["t"], float(r["m"]), r["lo"], r["hi"]) for r in rows] == [(105, 35.0, 29, 41)]
+
+
+def test_count_distinct_and_count_star(con):
+    rows = _answer(
+        con,
+        "SELECT (COUNT(DISTINCT ?c) AS ?d) (COUNT(*) AS ?n) WHERE { ?s rel:WORKS_AT ?c }",
+    )
+    assert [(r["d"], r["n"]) for r in rows] == [(2, 3)]
+
+
+def test_group_concat_in_the_order_of_its_text(con):
+    rows = _answer(
+        con,
+        'SELECT ?cn (GROUP_CONCAT(?n; separator=", ") AS ?who) '
+        "WHERE { ?s p:name ?n ; rel:WORKS_AT ?c . ?c c:name ?cn } GROUP BY ?cn",
+    )
+    assert sorted((r["cn"], r["who"]) for r in rows) == [("Acme", "Ann, Bo"), ("Beta", "Cy")]
+
+
+def test_group_by_a_value_and_order_by_its_count(con):
+    rows = _answer(
+        con,
+        "SELECT ?cn (COUNT(?s) AS ?n) WHERE { ?s rel:WORKS_AT ?c . ?c c:name ?cn } "
+        "GROUP BY ?cn ORDER BY DESC(?n) LIMIT 1",
+    )
+    assert [(r["cn"], r["n"]) for r in rows] == [("Acme", 2)]
+
+
+def test_an_aggregate_over_no_solution_is_one_row(con):
+    rows = _answer(con, "SELECT (COUNT(*) AS ?n) WHERE { ?s <http://example.org/nope> ?o }")
+    assert rows == [{"n": 0}]

@@ -121,7 +121,6 @@ identifier.sqlite
 /trino/redis/*/
 /trino/kafka/*/
 /trino/kafka-client/*.properties
-/trino/codehost-client/*
 /trino/elasticsearch/
 sharepoint.pfx
 Volumes/

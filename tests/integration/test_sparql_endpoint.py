@@ -222,11 +222,16 @@ def test_curl_post_a_form_as_xml_results(endpoint):
     assert "<boolean>true</boolean>" in out.stdout
 
 
-def test_an_aggregate_is_refused_by_name(endpoint):
-    resp = httpx.get(
-        f"{endpoint}/data/sparql",
-        params={"query": f"SELECT (COUNT(?c) AS ?n) WHERE {{ ?c a <{CUSTOMER}> }}"},
-        headers={"X-Provisa-Role": "org_admin"},
-        timeout=60,
+def test_an_aggregate_per_group(endpoint, placed_by):
+    rows = _select(
+        endpoint,
+        "org_admin",
+        f"SELECT ?c (COUNT(?o) AS ?n) WHERE {{ ?o <{placed_by}> ?c }} GROUP BY ?c "
+        "HAVING (COUNT(?o) > 0) ORDER BY DESC(?n)",
     )
-    assert resp.status_code == 400 and "aggregates" in resp.json()["error"]
+    counts = [int(r["n"]) for r in rows]
+    assert counts and counts == sorted(counts, reverse=True) and all(n > 0 for n in counts)
+    total = _select(
+        endpoint, "org_admin", f"SELECT (COUNT(*) AS ?n) WHERE {{ ?o <{placed_by}> ?c }}"
+    )
+    assert int(total[0]["n"]) == sum(counts)

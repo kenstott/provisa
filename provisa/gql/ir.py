@@ -236,6 +236,12 @@ class ReturnItem:
 class ReturnClause:
     items: list[ReturnItem]
     distinct: bool = False
+    #: The grouping keys, when the statement names them (SPARQL's GROUP BY, REQ-2135); a key need
+    #: not be returned. None groups as Cypher does, by the items that aggregate nothing; an empty
+    #: list is one group of every row.
+    group_by: list[CypherExpr] | None = None
+    #: A condition on each group, over its aggregates (SPARQL's HAVING).
+    having: CypherExpr | None = None
 
 
 @dataclass
