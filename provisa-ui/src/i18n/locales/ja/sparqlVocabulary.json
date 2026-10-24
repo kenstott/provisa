@@ -1,0 +1,17 @@
+{
+  "sparqlVocabulary": {
+    "domains": "ドメイン",
+    "classes": "クラス",
+    "properties": "プロパティ",
+    "relationships": "リレーションシップ",
+    "concepts": "概念",
+    "prefixes": "プレフィックス",
+    "none": "あなたのロールではここに表示するものはありません。",
+    "domainTip": "このドメインのプレフィックスを宣言し、リストをその語彙に絞り込みます（{{namespace}}）。",
+    "domainPicked": "リストには {{namespace}} のみ表示されます。もう一度クリックするとすべてのドメインを表示します。",
+    "classTerm": "クラス用語 {{term}}",
+    "tableClass": "テーブル固有のクラス",
+    "propertyTerm": "プロパティ用語 {{term}}",
+    "columnPredicate": "列 {{column}}"
+  }
+}

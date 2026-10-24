@@ -87585,122 +87585,137 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: sparql-query
   priority: SHOULD
   type: behavioral
-  description: 'SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is
-    a full surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same
-    editor, results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients query; and
-    a "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic SQL statement through
-    the graph mapping Cypher uses (REQ-351): a table is a class and its rows are its subjects, each subject''s
-    IRI built from its primary key, only on output; a column linked to a term is a predicate; a declared
-    relationship is an edge predicate; and the meta-domain tables (terms, term edges, term references, tables,
-    columns, domains) are mapped as SKOS and OWL. The statement is governed whole and routed as any query
-    is; there is no separate triple store and no knowledge-graph views. A property path is lowered as a
-    Cypher variable-length path is (REQ-348): WITH RECURSIVE capped at a depth limit, or unrolled to that
-    depth on an engine without recursion, with cycles handled. A result cut at the limit says it was cut.
-    The depth limit is an operator setting with its field in Deployment settings. A variable predicate (?s
-    ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded. (Amended 2026-10-22,
-    ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two steps. First, a refactor
-    makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary no front end owns, with
-    Cypher''s parser on one side and select_builder, assembler, path_translator and label_map as the back
-    end both languages share; Cypher''s existing tests prove the refactor changes nothing. Second, a SPARQL
-    front end lowers rdflib''s SPARQL algebra to that IR and adds what SPARQL needs that Cypher does not:
-    predicates for term-linked columns, IRIs on output, the bounded variable-predicate union, and CONSTRUCT''s
-    triples. There is no second, SPARQL-only back end. rdflib is a new dependency, taken under the dependency
-    rules. (Amended 2026-10-22, CYPHER+ IR:) [SUPERSEDED by REQ-2135, 2026-10-22 -- the IR is the GQL+ IR,
-    a GQL-inspired IR (GQL+ IR amendment below); the tiers and the symmetry stand, read with GQL+ IR for
-    Cypher+ IR. Kept here for history; do not implement against it.] The canonical graph form is the Cypher+
-    IR. It is a superset IR, not Cypher: Cypher''s pattern IR extended with what SPARQL needs, which is
-    path expressions (sequence, alternative and inverse among them), variable predicates, a triples output
-    for CONSTRUCT, and IRI and datatype values. [END SUPERSEDED BLOCK] It stands to graph languages as semantic
-    SQL stands to every language, and semantic SQL is likewise a superset IR, not SQL: SQL extended with
-    the model (model names, views and metrics resolved, governance attached), lowered per engine at routing
-    and never run as written. Neither is the language it is named after. The tiers are: a graph language,
-    parsed into the Cypher+ IR, which holds the graph meaning (patterns, paths, variable predicates, triples
-    out); the graph mapping lowers that, in one back end, into semantic SQL, which holds the data meaning
-    (views expanded, governed whole, optimized, routed). Every graph language front end parses into the
-    Cypher+ IR: Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing
-    below it is duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within
-    what Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric:
-    Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no language
-    is its IR, the namesake included. So the refactor makes Cypher''s parser a front end like SPARQL''s,
-    and nothing below the IR is specific to Cypher. (Amended 2026-10-22, GQL+ IR:) The graph-side IR is
-    the GQL+ IR. As semantic SQL is a SQL-inspired IR, the GQL+ IR is a GQL-inspired IR: each borrows its
-    namesake''s shape, each is our own representation, and neither claims conformance to the standard. The
-    GQL+ IR borrows GQL''s pattern concepts (quantified path patterns, the path modes WALK, TRAIL, ACYCLIC
-    and SIMPLE, label expressions) and adds only variable predicates, a triples output for CONSTRUCT, and
-    IRI and datatype values. [SUPERSEDED by REQ-2135, 2026-10-22 -- Cypher''s variable-length paths are
-    bounded WALK, not ACYCLIC (PATH MODES below). Kept here for history; do not implement against it.] Cypher
-    maps straight in, its depth-capped cycle-free paths being ACYCLIC with a bound; [END SUPERSEDED BLOCK]
-    SPARQL''s path sequences, alternatives and inverses map onto those same concepts; a GQL or SQL/PGQ front
-    end would be a parser only. The tiers are unchanged, and GraphQL still lowers straight to semantic SQL.
-    Both IR names are internal: no user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:)
-    Built in five phases. 1: the GQL IR starts as today''s Cypher compiler; its Cypher AST and precompile
-    (the parser and the Cypher-specific front end) are split out, and what remains is the GQL IR back end,
-    proven by Cypher''s existing tests. 2: that back end gains the GQL-inspired features SPARQL needs: quantified
+  description: 'SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is a full
+    surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same editor,
+    results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients query; and a
+    "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic SQL statement through
+    the graph mapping Cypher uses (REQ-351): a table is a class and its rows are its subjects, each
+    subject''s IRI built from its primary key, only on output; a column linked to a term is a predicate; a
+    declared relationship is an edge predicate; and the meta-domain tables (terms, term edges, term
+    references, tables, columns, domains) are mapped as SKOS and OWL. The statement is governed whole and
+    routed as any query is; there is no separate triple store and no knowledge-graph views. A property path
+    is lowered as a Cypher variable-length path is (REQ-348): WITH RECURSIVE capped at a depth limit, or
+    unrolled to that depth on an engine without recursion, with cycles handled. A result cut at the limit
+    says it was cut. The depth limit is an operator setting with its field in Deployment settings. A
+    variable predicate (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded.
+    (Amended 2026-10-22, ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two
+    steps. First, a refactor makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary
+    no front end owns, with Cypher''s parser on one side and select_builder, assembler, path_translator and
+    label_map as the back end both languages share; Cypher''s existing tests prove the refactor changes
+    nothing. Second, a SPARQL front end lowers rdflib''s SPARQL algebra to that IR and adds what SPARQL
+    needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded
+    variable-predicate union, and CONSTRUCT''s triples. There is no second, SPARQL-only back end. rdflib is
+    a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:) [SUPERSEDED by
+    REQ-2135, 2026-10-22 -- the IR is the GQL+ IR, a GQL-inspired IR (GQL+ IR amendment below); the tiers
+    and the symmetry stand, read with GQL+ IR for Cypher+ IR. Kept here for history; do not implement
+    against it.] The canonical graph form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher''s
+    pattern IR extended with what SPARQL needs, which is path expressions (sequence, alternative and inverse
+    among them), variable predicates, a triples output for CONSTRUCT, and IRI and datatype values. [END
+    SUPERSEDED BLOCK] It stands to graph languages as semantic SQL stands to every language, and semantic
+    SQL is likewise a superset IR, not SQL: SQL extended with the model (model names, views and metrics
+    resolved, governance attached), lowered per engine at routing and never run as written. Neither is the
+    language it is named after. The tiers are: a graph language, parsed into the Cypher+ IR, which holds the
+    graph meaning (patterns, paths, variable predicates, triples out); the graph mapping lowers that, in one
+    back end, into semantic SQL, which holds the data meaning (views expanded, governed whole, optimized,
+    routed). Every graph language front end parses into the Cypher+ IR: Cypher, SPARQL, and GQL later. A new
+    graph language costs a parser into it, and nothing below it is duplicated. SPARQL is never translated
+    through Cypher text. Where a SPARQL query falls within what Cypher expresses, the SPARQL tab may also
+    show the equivalent Cypher. The structure is symmetric: Cypher is a front end that lowers into the
+    Cypher+ IR, as SQL lowers into semantic SQL, and no language is its IR, the namesake included. So the
+    refactor makes Cypher''s parser a front end like SPARQL''s, and nothing below the IR is specific to
+    Cypher. (Amended 2026-10-22, GQL+ IR:) The graph-side IR is the GQL+ IR. As semantic SQL is a
+    SQL-inspired IR, the GQL+ IR is a GQL-inspired IR: each borrows its namesake''s shape, each is our own
+    representation, and neither claims conformance to the standard. The GQL+ IR borrows GQL''s pattern
+    concepts (quantified path patterns, the path modes WALK, TRAIL, ACYCLIC and SIMPLE, label expressions)
+    and adds only variable predicates, a triples output for CONSTRUCT, and IRI and datatype values.
+    [SUPERSEDED by REQ-2135, 2026-10-22 -- Cypher''s variable-length paths are bounded WALK, not ACYCLIC
+    (PATH MODES below). Kept here for history; do not implement against it.] Cypher maps straight in, its
+    depth-capped cycle-free paths being ACYCLIC with a bound; [END SUPERSEDED BLOCK] SPARQL''s path
+    sequences, alternatives and inverses map onto those same concepts; a GQL or SQL/PGQ front end would be a
+    parser only. The tiers are unchanged, and GraphQL still lowers straight to semantic SQL. Both IR names
+    are internal: no user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:) Built in
+    five phases. 1: the GQL IR starts as today''s Cypher compiler; its Cypher AST and precompile (the parser
+    and the Cypher-specific front end) are split out, and what remains is the GQL IR back end, proven by
+    Cypher''s existing tests. 2: that back end gains the GQL-inspired features SPARQL needs: quantified
     paths, path modes, label expressions, variable predicates, CONSTRUCT triples, IRI and datatype values.
-    3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol endpoint. 5:
-    the UI, the SPARQL tab and the Ontology page''s SPARQL button (REQ-2136); it comes last and can wait.
+    3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol endpoint. 5: the
+    UI, the SPARQL tab and the Ontology page''s SPARQL button (REQ-2136); it comes last and can wait.
     (Amended 2026-10-22, EXPRESSIONS AS TREES:) Phase 2 opens with expressions as trees. Today the Cypher
     AST holds WHERE, RETURN, WITH, UNWIND and ORDER BY expressions as raw text (the expression field of
     WhereClause, ReturnItem, UnwindClause and OrderItem), and the back end reads that text in about twenty
-    places: regex scans, map-literal rewriting, and a late re-parse with Cypher''s expression grammar (expr_parser).
-    The Cypher front end instead parses every expression into the expression tree (expr_ast) when it parses
-    the statement, and the back end walks trees only, proven by the Cypher tests. Only then is the IR fully
-    structural: SPARQL''s FILTER, BIND and ORDER BY convert straight to trees, and nothing below the IR
-    reads Cypher syntax. Phase 1 keeps the text on purpose, so that its move stays purely structural. (Amended
-    2026-10-22, SPARQL VISUALIZER:) Phase 5''s SPARQL visualizer is the Cypher visualizer (GraphSidebar
-    and the graph canvas) with a second vocabulary: one component, not a separate visualizer. It keeps the
-    same shell (history, favorites, settings, export, the canvas and how results are drawn), and its left-hand
-    pills are in SPARQL''s vocabulary: Domains; Classes (terms typing a table, with abstract terms as superclasses);
-    Properties (term-linked columns); Relationships (edge-type predicates: declared relationships and term
-    edges); Concepts (the SKOS vocabulary); and Prefixes. Clicking a pill adds a triple pattern to the current
-    query rather than replacing it. IRIs are shown compacted by prefix, with the full IRI on hover; literals
-    are drawn distinct from resources; and CONSTRUCT results are drawn as a graph. (Amended 2026-10-22,
-    PATH MODES:) Cypher''s variable-length paths map in as WALK with a bound: the depth limit ends the walk,
-    and a path may repeat nodes and edges within it, as the compiled SQL has always done. Phase 2 lowers
-    WALK, and REACH for SPARQL''s property paths: SPARQL''s set semantics, distinct endpoint pairs, which
-    ends on cycles without tracking the path. TRAIL, ACYCLIC and SIMPLE are in the IR and refused by name
-    until a front end needs them. The depth limit is an operator setting, default 10, with its field in
-    Deployment settings, and a result cut at the limit carries a flag saying so. The variable-predicate
-    union is bounded by a second operator setting, the graph union limit, default 64 branches, with its
-    own field; a union past it is refused, naming the limit. A subject''s IRI is {public URL}/id/{domain}/{table}/{primary
-    key}, built only on output. The prefixes are one per domain, plus skos:, owl:, rdf:, rdfs: and xsd:.
-    (Amended 2026-10-22, IRIS:) The public URL is the operator setting server.public_url, with its field
-    in Deployment settings; it is not derived from the hostname, and a query whose answer holds a subject
-    IRI is refused while it is unset, naming the setting. No IRI is built in SQL: the SQL returns a subject
-    as its table''s identity and its key values, typed as the table holds them, and the answer''s writer
-    builds the IRI, each segment percent-encoded (RFC 3986), so a key with ''/'', '';'', a space or any
-    non-ASCII character still makes a valid IRI. A composite key is its values in primary-key order, separated
-    by '';''. An IRI a query names is parsed back, at compile time, to its table and key values, and subjects
-    are joined and filtered on those. Data and vocabulary are kept apart: instances are under /id/, and
-    the vocabulary is under /vocab/. A table''s class is {public URL}/vocab/{domain}/{table}; a column''s
-    predicate, in the manner of the Direct Mapping, is {public URL}/vocab/{domain}/{table}#{column}; a term''s
-    class or property is {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as
-    a key is, since term names are unique and a term''s derived domains change (a renamed term has a new
-    IRI); and an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property
-    term has the term''s IRI as its predicate, and its direct predicate stays usable. A class term types
-    the instances of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23,
-    GRAPHQL IS A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL:
-    a GraphQL read lowers to the IR -- a root field to a node pattern with its where, order, skip and limit;
-    a relationship field to a hop on its declared relationship (its direction, a junction''s relationships
-    of the types its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
-    cardinality, with the level''s own where, order, skip, limit and distinct_on; a relationship condition
-    to EXISTS; an alias to its result name; aggregates and group-by to the IR''s aggregation. The IR''s
-    SQL is the canonical semantic SQL (REQ-863), so equivalent GraphQL, Cypher and SPARQL reads compile
-    to the same semantic SQL by construction. SQL a caller writes enters the pipeline as semantic SQL and
-    does not pass through the IR; gRPC, JSON:API and OpenAPI reads lower to GraphQL and reach the IR through
-    it. The one place a transport wraps compiled SQL rather than lowering through GraphQL is JSON:API''s
-    page[total] count (REQ-1197): the total of the already compiled read, computed by the engine as one
-    scalar row. Open as query''s Cypher is the IR printed as Cypher text. (Amended 2026-10-23, OPTIONAL
-    AND FILTER SCOPE:) A query''s FILTERs hold of its solutions, its OPTIONALs'' bindings among them. A
-    FILTER inside an OPTIONAL is that OPTIONAL''s condition. An OPTIONAL nested in an OPTIONAL extends it;
-    a FILTER naming a variable that only the inner OPTIONAL binds is refused by name. A triple inside an
-    OPTIONAL holds only of a value, as SPARQL defines it, so a null leaves the whole OPTIONAL unbound. An
-    OPTIONAL holding only properties of nodes already matched binds them as they are; one with a condition
-    of its own is refused by name. (Amended 2026-10-23, VOCABULARY ENDPOINT:) GET /data/sparql/vocabulary
-    answers the caller''s role''s vocabulary as IRIs, for a client to offer as a query is written: its base
-    and prefixes; each class, a table''s own or a Class term, with the labels it types; each predicate,
-    a column''s own or a Property term, with its label, property and datatype; each edge type with its source
-    and target; and the live Concept terms.'
+    places: regex scans, map-literal rewriting, and a late re-parse with Cypher''s expression grammar
+    (expr_parser). The Cypher front end instead parses every expression into the expression tree (expr_ast)
+    when it parses the statement, and the back end walks trees only, proven by the Cypher tests. Only then
+    is the IR fully structural: SPARQL''s FILTER, BIND and ORDER BY convert straight to trees, and nothing
+    below the IR reads Cypher syntax. Phase 1 keeps the text on purpose, so that its move stays purely
+    structural. (Amended 2026-10-22, SPARQL VISUALIZER:) Phase 5''s SPARQL visualizer is the Cypher
+    visualizer (GraphSidebar and the graph canvas) with a second vocabulary: one component, not a separate
+    visualizer. It keeps the same shell (history, favorites, settings, export, the canvas and how results
+    are drawn), and its [SUPERSEDED by REQ-2135, 2026-10-23 -- the pills follow the term roles (Class,
+    Property, Concept); see VISUALIZER VOCABULARY below. Kept here for history; do not implement against
+    it.] left-hand pills are in SPARQL''s vocabulary: Domains; Classes (terms typing a table, with abstract
+    terms as superclasses); Properties (term-linked columns); Relationships (edge-type predicates: declared
+    relationships and term edges); Concepts (the SKOS vocabulary); and Prefixes. [END SUPERSEDED BLOCK]
+    Clicking a pill adds a triple pattern to the current query rather than replacing it. IRIs are shown
+    compacted by prefix, with the full IRI on hover; literals are drawn distinct from resources; and
+    CONSTRUCT results are drawn as a graph. (Amended 2026-10-22, PATH MODES:) Cypher''s variable-length
+    paths map in as WALK with a bound: the depth limit ends the walk, and a path may repeat nodes and edges
+    within it, as the compiled SQL has always done. Phase 2 lowers WALK, and REACH for SPARQL''s property
+    paths: SPARQL''s set semantics, distinct endpoint pairs, which ends on cycles without tracking the path.
+    TRAIL, ACYCLIC and SIMPLE are in the IR and refused by name until a front end needs them. The depth
+    limit is an operator setting, default 10, with its field in Deployment settings, and a result cut at the
+    limit carries a flag saying so. The variable-predicate union is bounded by a second operator setting,
+    the graph union limit, default 64 branches, with its own field; a union past it is refused, naming the
+    limit. A subject''s IRI is {public URL}/id/{domain}/{table}/{primary key}, built only on output. The
+    prefixes are one per domain, plus skos:, owl:, rdf:, rdfs: and xsd:. (Amended 2026-10-22, IRIS:) The
+    public URL is the operator setting server.public_url, with its field in Deployment settings; it is not
+    derived from the hostname, and a query whose answer holds a subject IRI is refused while it is unset,
+    naming the setting. No IRI is built in SQL: the SQL returns a subject as its table''s identity and its
+    key values, typed as the table holds them, and the answer''s writer builds the IRI, each segment
+    percent-encoded (RFC 3986), so a key with ''/'', '';'', a space or any non-ASCII character still makes a
+    valid IRI. A composite key is its values in primary-key order, separated by '';''. An IRI a query names
+    is parsed back, at compile time, to its table and key values, and subjects are joined and filtered on
+    those. Data and vocabulary are kept apart: instances are under /id/, and the vocabulary is under
+    /vocab/. A table''s class is {public URL}/vocab/{domain}/{table}; a column''s predicate, in the manner
+    of the Direct Mapping, is {public URL}/vocab/{domain}/{table}#{column}; a term''s class or property is
+    {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as a key is, since term
+    names are unique and a term''s derived domains change (a renamed term has a new IRI); and an edge type
+    is {public URL}/vocab/rel/{relationship type}. A column grounded by a property term has the term''s IRI
+    as its predicate, and its direct predicate stays usable. A class term types the instances of the tables
+    it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23, GRAPHQL IS A FRONT END OF
+    THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL: a GraphQL read lowers to the
+    IR -- a root field to a node pattern with its where, order, skip and limit; a relationship field to a
+    hop on its declared relationship (its direction, a junction''s relationships of the types its condition
+    keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s cardinality, with
+    the level''s own where, order, skip, limit and distinct_on; a relationship condition to EXISTS; an alias
+    to its result name; aggregates and group-by to the IR''s aggregation. The IR''s SQL is the canonical
+    semantic SQL (REQ-863), so equivalent GraphQL, Cypher and SPARQL reads compile to the same semantic SQL
+    by construction. SQL a caller writes enters the pipeline as semantic SQL and does not pass through the
+    IR; gRPC, JSON:API and OpenAPI reads lower to GraphQL and reach the IR through it. The one place a
+    transport wraps compiled SQL rather than lowering through GraphQL is JSON:API''s page[total] count
+    (REQ-1197): the total of the already compiled read, computed by the engine as one scalar row. Open as
+    query''s Cypher is the IR printed as Cypher text. (Amended 2026-10-23, OPTIONAL AND FILTER SCOPE:) A
+    query''s FILTERs hold of its solutions, its OPTIONALs'' bindings among them. A FILTER inside an OPTIONAL
+    is that OPTIONAL''s condition. An OPTIONAL nested in an OPTIONAL extends it; a FILTER naming a variable
+    that only the inner OPTIONAL binds is refused by name. A triple inside an OPTIONAL holds only of a
+    value, as SPARQL defines it, so a null leaves the whole OPTIONAL unbound. An OPTIONAL holding only
+    properties of nodes already matched binds them as they are; one with a condition of its own is refused
+    by name. (Amended 2026-10-23, VOCABULARY ENDPOINT:) GET /data/sparql/vocabulary answers the caller''s
+    role''s vocabulary as IRIs, for a client to offer as a query is written: its base and prefixes; each
+    class, a table''s own or a Class term, with the labels it types; each predicate, a column''s own or a
+    Property term, with its label, property and datatype; each edge type with its source and target; and the
+    live Concept terms. (Amended 2026-10-23, VISUALIZER VOCABULARY:) The visualizer''s pills follow the term
+    roles (REQ-2141), read from GET /data/sparql/vocabulary as the acting role: Domains, each a domain''s
+    prefix, which, picked, also narrows the other lists to that domain''s vocabulary; Classes, the Class
+    terms and the tables'' own classes, each Class term shown with the classes it is a KIND_OF as its
+    superclasses; Properties, the Property terms and the columns'' predicates; Relationships, the declared
+    relationships and term edges as predicates; Concepts, the live Concept terms (the SKOS vocabulary); and
+    Prefixes. A class pill types the query''s subject ?s, a property or relationship pill adds a fresh
+    object to ?s, a concept pill reads what is said of the concept, and a prefix or domain pill declares its
+    PREFIX; each adds to the query in the bar. The SPARQL tab keeps its own frames, history, favorites and
+    settings, apart from Cypher''s. The Ontology page''s Open as query (REQ-2136) offers SPARQL when the
+    query has one root with a SPARQL form, and otherwise says why: the root''s reason, or that each root is
+    its own SPARQL query.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

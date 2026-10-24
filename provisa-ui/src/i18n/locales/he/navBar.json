@@ -76,6 +76,7 @@
     "itemPython": "Python",
     "itemNotebook": "מחברת",
     "itemContainerRegistries": "מאגרי קונטיינרים",
+    "itemSparql": "SPARQL",
     "itemCatalogs": "קטלוגים"
   }
 }

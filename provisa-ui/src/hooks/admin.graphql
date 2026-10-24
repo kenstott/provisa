@@ -770,6 +770,8 @@ mutation CompileQuery($input: CompileQueryInput!) {
     canonicalField
     compiledCypher
     cypherError
+    compiledSparql
+    sparqlError
     optimizations
     warnings
     columnAliases {
