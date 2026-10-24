@@ -307,7 +307,13 @@ def _build_nodes_subquery(
             phys = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             nodes_select_parts.append(_scalar_sql(phys))
             nodes_cols.append(
-                ColumnRef(alias=root_alias, column=phys, field_name=sel_name, nested_in=None)
+                ColumnRef(
+                    alias=root_alias,
+                    column=phys,
+                    # A selected column's alias names its result, as a relationship's does.
+                    field_name=node_sel.alias.value if node_sel.alias else sel_name,
+                    nested_in=None,
+                )
             )
 
     if by_cols and phys_by_cols:

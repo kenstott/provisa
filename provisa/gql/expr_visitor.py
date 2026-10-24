@@ -16,13 +16,15 @@ translator state (how a variable/property resolves to a physical column, how ``$
 graph pattern subquery is built) are delegated to an ``ExprContext`` the translator supplies; every
 context-free construct (operators, literals, CASE, list ops, comprehensions→lambda) is lowered here.
 
-Emission matches the current path so the A/B differential stays clean: ``STARTS WITH → starts_with()``,
-``ENDS WITH → (x LIKE CONCAT('%', y))``, ``CONTAINS → (strpos(x, y) > 0)``, ``=~ → regexp_like()``,
+Each string predicate matches as Cypher says, its value taken literally: ``STARTS WITH →
+starts_with()``, ``ENDS WITH → (right(x, length(y)) = y)``, ``CONTAINS → (strpos(x, y) > 0)``, and
+``=~`` a match of the whole string, ``regexp_like(x, '^(?:y)$')``,
 ``^ → POWER()``, list comprehensions/quantifiers/reduce → the engine's higher-order list functions.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Protocol, cast
 
 import sqlglot.expressions as exp
@@ -55,6 +57,21 @@ from provisa.gql.expr_ast import (
     Variable,
 )
 from provisa.gql.translator_types import CypherTranslateError
+
+#: A regex's leading inline flags, which PostgreSQL takes only at the regex's start.
+_REGEX_FLAGS = re.compile(r"^\(\?[a-zA-Z]+\)")
+
+
+def _whole_match(pattern: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``pattern`` matching the whole string, as Cypher's ``=~`` does, where regexp_like finds
+    the pattern anywhere in it: ``^(?:pattern)$``, any leading inline flags kept first."""
+    if isinstance(pattern, exp.Literal) and pattern.is_string:
+        text = pattern.this
+        flags = _REGEX_FLAGS.match(text)
+        head = flags.group() if flags else ""
+        return exp.Literal.string(f"{head}^(?:{text[len(head) :]})$")
+    return exp.Concat(expressions=[exp.Literal.string("^(?:"), pattern, exp.Literal.string(")$")])
+
 
 _XSD = "http://www.w3.org/2001/XMLSchema#"
 # REQ-2135: a typed literal's datatype as the SQL value it lowers to. A number is written as one;
@@ -253,15 +270,15 @@ class ExprLowering:
         if op == "STARTS WITH":
             return _anon("starts_with", left, right)
         if op == "ENDS WITH":
-            # Typed Concat so the engine dialect renders its own concat (e.g. Trino's null-safe form),
-            # matching the text path which emitted CONCAT(...) and let the serializer expand it.
-            concat = exp.Concat(expressions=[exp.Literal.string("%"), right])
-            return exp.Paren(this=exp.Like(this=left, expression=concat))
+            # The value's own characters, never LIKE wildcards: x LIKE '%' || y read a % or _ in y
+            # as a wildcard.
+            suffix = exp.Right(this=left, expression=exp.Length(this=right.copy()))
+            return exp.Paren(this=exp.EQ(this=suffix, expression=right))
         if op == "CONTAINS":
             strpos = _anon("strpos", left, right)
             return exp.Paren(this=exp.GT(this=strpos, expression=exp.Literal.number(0)))
         if op == "=~":
-            return _anon("regexp_like", left, right)
+            return _anon("regexp_like", left, _whole_match(right))
         raise NotImplementedError(f"binary operator {op!r}")
 
     def _lower_in(
