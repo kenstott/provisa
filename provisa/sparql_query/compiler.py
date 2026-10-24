@@ -195,13 +195,27 @@ def _aggregation(p: CompValue) -> tuple[CompValue, _Aggregation | None]:
     if p.name != "AggregateJoin":
         return top, None
     group = p.p
+    # GROUP BY an expression with no AS: rdflib binds it by an Extend with no variable under the
+    # Group and gives its key as None. Each is named and grouped by; nothing can project it, so
+    # which None names which expression does not matter.
+    unnamed: list[CompValue] = []
+    below = group.p
+    while below.name == "Extend" and below.var is None:
+        unnamed.append(below)
+        below = below.p
+    unnamed.reverse()
     keys = []
     for key in group.expr or []:
+        if key is None:
+            extend = unnamed.pop(0)
+            extend["var"] = RdfVariable(f"__group{len(keys)}__")
+            key = extend.var
         if not isinstance(key, RdfVariable):
             raise SparqlRefused("GROUP BY groups by variables; bind an expression to one first")
         keys.append(str(key))
+    grouped = group.p
     aggregates = {str(a.res): a for a in p.A}
-    return group.p, _Aggregation(keys, aggregates, list(reversed(rebinds)), having)
+    return grouped, _Aggregation(keys, aggregates, list(reversed(rebinds)), having)
 
 
 _AGGREGATE_NAMES = {

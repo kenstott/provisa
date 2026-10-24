@@ -440,3 +440,13 @@ def test_a_regex_pattern_read_at_run_time_is_searched_for_too(con):
     )
     want = _sql(con, "SELECT name FROM pg.public.persons WHERE regexp_matches(name, 'o', 'i')")
     assert sorted((r["n"],) for r in rows) == want and want
+
+
+def test_group_by_an_expression_groups_by_its_value(con):
+    rows = _answer(
+        con, "SELECT (COUNT(?s) AS ?n) WHERE { ?s p:age ?a } GROUP BY (?a > 30) ORDER BY ?n"
+    )
+    want = _sql(
+        con, "SELECT count(*) FROM pg.public.persons WHERE age IS NOT NULL GROUP BY age > 30"
+    )
+    assert [(r["n"],) for r in rows] == want
