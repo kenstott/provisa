@@ -26775,14 +26775,98 @@
   type: structural
   target: 2026-Q3
   description: 'Query planning phases are ordered so that source-set-mutating transforms complete before
-    routing. The pipeline is: query language -> semantic SQL (IR) -> governance (which may ADD sources
-    via RLS subquery predicates) -> a post-governance optimization stage (which may REMOVE sources, e.g.
-    hot-table VALUES-CTE inlining, API-cache rewrites, union-branch pruning) -> route decision + physical
-    lowering -> execute. Routing (extract_sources / decide_route) MUST consume the output of the post-governance
+    routing. The pipeline is: query language -> semantic SQL (IR) -> governance (which may ADD sources via
+    RLS subquery predicates) -> a post-governance optimization stage (which may REMOVE sources, e.g. hot-table
+    VALUES-CTE inlining, API-cache rewrites, union-branch pruning) -> route decision + physical lowering
+    -> execute. Routing (extract_sources / decide_route) MUST consume the output of the post-governance
     optimization stage, never the pre-optimization governed SQL. Consequence: when hot-CTE inlining collapses
     a federated (multi-source) query to a single remaining live source, routing observes one source and
     selects DIRECT execution instead of Trino federation; the VALUES CTEs are then lowered in the chosen
-    route''s dialect (source dialect for direct pushdown, Trino for federated). (Amended 2026-10-23, ONE CANONICAL SHAPE) The stages are CQL | GQL | SQL -> semantic SQL -> governed SQL -> optimized SQL -> plan/route -> native. SEMANTIC SQL: a read compiles to one canonical CTE pipeline, the same for every engine and built from the declared relationships alone. A root CTE reads the root with its where, order, limit and offset. Each to-many level is a CTE that joins its target to its parent''s CTE on the relationship''s keys, applies its where, takes its per-parent order, limit and offset with ROW_NUMBER() OVER (PARTITION BY the parent key ORDER BY ...), the target''s key appended to break ties, and groups by the parent key into JSON_AGG(json_object(...) ORDER BY ...). A level''s parent key is the parent table''s primary key; where it has none, the relationship''s source columns where they are unique; otherwise the parent CTE''s row number, which the parent CTE carries for it. A to-one relationship is a LEFT JOIN on its keys, inside the level''s CTE when nested. The final SELECT reads the root CTE and LEFT JOINs each level''s CTE on the parent key, a missing level being an empty list. A relationship condition in a where is EXISTS, or a semi-join against a CTE where that is the natural form. A junction relationship is read through its two key joins and its type condition. A nested column is named by its response path. distinct_on is DISTINCT ON. Equivalent GraphQL, Cypher and SPARQL reads compile to the same canonical semantic SQL; the Cypher that Open as query exports, run back through the Cypher front end, yields the same semantic SQL as the GraphQL it was exported from. The Cypher translator''s own shapes (a CTE per WITH stage) are aligned to this form as follow-on work. GOVERNED SQL: governance operates on the semantic SQL whole. Every CTE body is governed as every SELECT is, so each level''s RLS and masks apply at its own depth, and a level''s projection is governed as a non-final read: REQ-1961''s final-projection rule applies to the final SELECT alone, which never exposes a level''s parent key or row number. [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- the optimized stage runs before routing and cannot know the engine. Kept here for history; do not implement against it.] OPTIMIZED SQL: materialized-view re-injection, hot VALUES inlining, CTE materialization hints, and a per-parent LATERAL join only where it is a performance choice for the route. [END SUPERSEDED BLOCK] PLAN/ROUTE: engine routing, including a statement sent to the engine for a function or form its source cannot compute (engine-only functions, window functions). NATIVE: the dialect lowering -- the JSON aggregate and object function spellings, the empty list (CAST(''[]'' AS JSON) and its engine forms), DISTINCT ON as ROW_NUMBER() where the dialect has none, and the DuckDB list functions. The compiler''s earlier forms move as follows: the per-parent LEFT JOIN LATERAL for a nested field with arguments and the root guard subquery under it become the semantic CTE levels [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- LATERAL is a native lowering. Kept here for history; do not implement against it.] (LATERAL kept only as an optimized-stage choice) [END SUPERSEDED BLOCK]; the DISTINCT ON versus ROW_NUMBER choice by source type moves to native; the COALESCE to an empty JSON list moves to native; a to-one read as a LIMIT 1 JSON subquery inside a level becomes a LEFT JOIN inside the level; the flat rows view is its own emitter from the same walk; the Trino correlated-subquery decorrelation is no longer needed for GraphQL reads, and stays in native for SQL a caller writes. A corpus of GraphQL reads (end-to-end specs, demo tours, the Ontology view at every scope) checks both that each answer is the same before and after, on DuckDB, PostgreSQL and Trino, and that its GraphQL and its exported Cypher compile to the same semantic SQL. (Amended 2026-10-23, OPTIMIZED IS ENGINE-INDEPENDENT) No stage before routing may assume an engine. The optimized stage runs before routing and holds engine-independent rewrites only: materialized-view re-injection, hot VALUES inlining, predicate and limit pushdown, and pruning the levels and columns a read does not use. CTE materialization hints (such as PostgreSQL''s MATERIALIZED) and a per-parent LATERAL join chosen for performance are native lowerings for the routed engine. An optimization that pays off only on some engines is a native lowering for those engines. (Amended 2026-10-23, PLAN AND ROUTE) Landing a statement''s rows and running it on the federation engine is the default; a statement is read directly on its source only when it passes every gate, in this order, and the first it fails names why it is landed (landed: <gate>: <why>). (1) one_source: it reads one source after optimization, judged on the optimized statement, since materialized-view re-injection and hot inlining change what it reads; sources on the same physical database count as one. (2) dialect_supports: that source''s dialect runs every construct in it, by an explicit capability list kept per dialect, naming each construct of the canonical shape -- common table expressions, joins, GROUP BY, ROW_NUMBER and window functions, a subquery read as a value, EXISTS, JSON aggregation and object construction, JSON path extraction -- each engine-only function (REQ-345) and cosine similarity (REQ-423). (3) access_path: a direct access path exists -- a direct driver, the API caller, or the code function. (4) colocated_login: sources counted as one database are under the same login, the same user and the same digest of the resolved credential and connection extras (a key, a token, an IAM role), never the secret itself; two logins are two grants. (5) not_forced: no condition sends it to the engine -- the operator''s floor holds a source to its replica (REQ-030, REQ-826), it reads faked columns (REQ-1494), a materialized view was re-injected or rows were landed (the engine holds them), it reads an ops view of this region''s own record (REQ-1922), a source this node holds no connection for, or every source it reads was inlined as rows; a virtual source has no direct access path. A live-only part (REQ-2000) is not such a condition: it is read live for the engine when the engine runs the statement, and its own source may answer the statement itself. (6) trusted_to_answer: a source Provisa calls itself, other than a SQL database, answers only a read its connector plans as the complete dataset (REQ-1756): every condition, the ordering, the limit and every needed column handled, with no row rule or mask of the role''s on it. Otherwise its rows are landed, the connector''s arguments a pre-filter only, and the route''s reason names the source and, where it is cheap to name, what made the read incomplete. A SQL database passes: its driver runs the statement, whose constructs dialect_supports judged. A response-cache hit is answered before any route (REQ-865), and a write goes to its source''s own driver where it has one, else through the engine''s connector (REQ-031). A route=direct hint tries the gates and is ignored -- said -- when one fails; route=engine lands the statement without them (REQ-030). No row is filtered, sorted or limited in process: what the engine does not run, the source does. (Amended 2026-10-23, THE IR IS THE ONE LOWERING) GraphQL, Cypher and SPARQL reads lower through one graph IR (REQ-2135), whose SQL is this canonical semantic SQL. While the IR''s Cypher-only constructs (variable-length and recursive paths, WITH pipelines, UNWIND, CALL, path functions) are moved into the canonical emitter, a statement is lowered by the emitter only when every construct in it is one the emitter has, and by the earlier lowering otherwise. That choice is a stated construct-coverage check, tested both ways; an error the emitter raises is raised, never retried the other way. The check and the earlier lowering are removed when the last construct has moved; they are not part of the target state.'
+    route''s dialect (source dialect for direct pushdown, Trino for federated). (Amended 2026-10-23, ONE
+    CANONICAL SHAPE) The stages are CQL | GQL | SQL -> semantic SQL -> governed SQL -> optimized SQL ->
+    plan/route -> native. SEMANTIC SQL: a read compiles to one canonical CTE pipeline, the same for every
+    engine and built from the declared relationships alone. A root CTE reads the root with its where, order,
+    limit and offset. Each to-many level is a CTE that joins its target to its parent''s CTE on the relationship''s
+    keys, applies its where, takes its per-parent order, limit and offset with ROW_NUMBER() OVER (PARTITION
+    BY the parent key ORDER BY ...), the target''s key appended to break ties, and groups by the parent
+    key into JSON_AGG(json_object(...) ORDER BY ...). A level''s parent key is the parent table''s primary
+    key; where it has none, the relationship''s source columns where they are unique; otherwise the parent
+    CTE''s row number, which the parent CTE carries for it. A to-one relationship is a LEFT JOIN on its
+    keys, inside the level''s CTE when nested. The final SELECT reads the root CTE and LEFT JOINs each level''s
+    CTE on the parent key, a missing level being an empty list. A relationship condition in a where is EXISTS,
+    or a semi-join against a CTE where that is the natural form. A junction relationship is read through
+    its two key joins and its type condition. A nested column is named by its response path. distinct_on
+    is DISTINCT ON. Equivalent GraphQL, Cypher and SPARQL reads compile to the same canonical semantic SQL;
+    the Cypher that Open as query exports, run back through the Cypher front end, yields the same semantic
+    SQL as the GraphQL it was exported from. The Cypher translator''s own shapes (a CTE per WITH stage)
+    are aligned to this form as follow-on work. GOVERNED SQL: governance operates on the semantic SQL whole.
+    Every CTE body is governed as every SELECT is, so each level''s RLS and masks apply at its own depth,
+    and a level''s projection is governed as a non-final read: REQ-1961''s final-projection rule applies
+    to the final SELECT alone, which never exposes a level''s parent key or row number. [SUPERSEDED by the
+    2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- the optimized stage runs before routing
+    and cannot know the engine. Kept here for history; do not implement against it.] OPTIMIZED SQL: materialized-view
+    re-injection, hot VALUES inlining, CTE materialization hints, and a per-parent LATERAL join only where
+    it is a performance choice for the route. [END SUPERSEDED BLOCK] PLAN/ROUTE: engine routing, including
+    a statement sent to the engine for a function or form its source cannot compute (engine-only functions,
+    window functions). NATIVE: the dialect lowering -- the JSON aggregate and object function spellings,
+    the empty list (CAST(''[]'' AS JSON) and its engine forms), DISTINCT ON as ROW_NUMBER() where the dialect
+    has none, and the DuckDB list functions. The compiler''s earlier forms move as follows: the per-parent
+    LEFT JOIN LATERAL for a nested field with arguments and the root guard subquery under it become the
+    semantic CTE levels [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below --
+    LATERAL is a native lowering. Kept here for history; do not implement against it.] (LATERAL kept only
+    as an optimized-stage choice) [END SUPERSEDED BLOCK]; the DISTINCT ON versus ROW_NUMBER choice by source
+    type moves to native; the COALESCE to an empty JSON list moves to native; a to-one read as a LIMIT 1
+    JSON subquery inside a level becomes a LEFT JOIN inside the level; the flat rows view is its own emitter
+    from the same walk; the Trino correlated-subquery decorrelation is no longer needed for GraphQL reads,
+    and stays in native for SQL a caller writes. A corpus of GraphQL reads (end-to-end specs, demo tours,
+    the Ontology view at every scope) checks both that each answer is the same before and after, on DuckDB,
+    PostgreSQL and Trino, and that its GraphQL and its exported Cypher compile to the same semantic SQL.
+    (Amended 2026-10-23, OPTIMIZED IS ENGINE-INDEPENDENT) No stage before routing may assume an engine.
+    The optimized stage runs before routing and holds engine-independent rewrites only: materialized-view
+    re-injection, hot VALUES inlining, predicate and limit pushdown, and pruning the levels and columns
+    a read does not use. CTE materialization hints (such as PostgreSQL''s MATERIALIZED) and a per-parent
+    LATERAL join chosen for performance are native lowerings for the routed engine. An optimization that
+    pays off only on some engines is a native lowering for those engines. (Amended 2026-10-23, PLAN AND
+    ROUTE) Landing a statement''s rows and running it on the federation engine is the default; a statement
+    is read directly on its source only when it passes every gate, in this order, and the first it fails
+    names why it is landed (landed: <gate>: <why>). (1) one_source: it reads one source after optimization,
+    judged on the optimized statement, since materialized-view re-injection and hot inlining change what
+    it reads; sources on the same physical database count as one. (2) dialect_supports: that source''s dialect
+    runs every construct in it, by an explicit capability list kept per dialect, naming each construct of
+    the canonical shape -- common table expressions, joins, GROUP BY, ROW_NUMBER and window functions, a
+    subquery read as a value, EXISTS, JSON aggregation and object construction, JSON path extraction --
+    each engine-only function (REQ-345) and cosine similarity (REQ-423). (3) access_path: a direct access
+    path exists -- a direct driver, the API caller, or the code function. (4) colocated_login: sources counted
+    as one database are under the same login, the same user and the same digest of the resolved credential
+    and connection extras (a key, a token, an IAM role), never the secret itself; two logins are two grants.
+    (5) not_forced: no condition sends it to the engine -- the operator''s floor holds a source to its replica
+    (REQ-030, REQ-826), it reads faked columns (REQ-1494), a materialized view was re-injected or rows were
+    landed (the engine holds them), it reads an ops view of this region''s own record (REQ-1922), a source
+    this node holds no connection for, or every source it reads was inlined as rows; a virtual source has
+    no direct access path. A live-only part (REQ-2000) is not such a condition: it is read live for the
+    engine when the engine runs the statement, and its own source may answer the statement itself. (6) trusted_to_answer:
+    a source Provisa calls itself, other than a SQL database, answers only a read its connector plans as
+    the complete dataset (REQ-1756): every condition, the ordering, the limit and every needed column handled,
+    with no row rule or mask of the role''s on it. Otherwise its rows are landed, the connector''s arguments
+    a pre-filter only, and the route''s reason names the source and, where it is cheap to name, what made
+    the read incomplete. A SQL database passes: its driver runs the statement, whose constructs dialect_supports
+    judged. A response-cache hit is answered before any route (REQ-865), and a write goes to its source''s
+    own driver where it has one, else through the engine''s connector (REQ-031). A route=direct hint tries
+    the gates and is ignored -- said -- when one fails; route=engine lands the statement without them (REQ-030).
+    No row is filtered, sorted or limited in process: what the engine does not run, the source does. (Amended
+    2026-10-23, THE IR IS THE ONE LOWERING) GraphQL, Cypher and SPARQL reads lower through one graph IR
+    (REQ-2135), whose SQL is this canonical semantic SQL. While the IR''s Cypher-only constructs (variable-length
+    and recursive paths, WITH pipelines, UNWIND, CALL, path functions) are moved into the canonical emitter,
+    a statement is lowered by the emitter only when every construct in it is one the emitter has, and by
+    the earlier lowering otherwise. That choice is a stated construct-coverage check, tested both ways;
+    an error the emitter raises is raised, never retried the other way. The check and the earlier lowering
+    are removed when the last construct has moved; they are not part of the target state. (Amended 2026-10-23,
+    CODE SOURCES CAN BE COMPLETE:) A code source is the one source Provisa calls itself whose connector
+    answers the statement whole: its plan of a statement over its own tables is the complete dataset, the
+    role''s row rules and masks among what its DuckDB applies to the functions'' rows (REQ-2100), so such
+    a statement passes trusted_to_answer and is read on its own driver; dialect_supports judges it by DuckDB''s
+    capability list, its source''s dialect. An API source''s plan is unchanged: it declares no capability
+    and lands.'
   use_case: 'Direct single-source execution is materially faster than Trino federation. Today the route
     is decided on the governed SQL BEFORE hot-CTE inlining runs (inlining is nested inside the Route.TRINO
     branch), so a query whose second source is fully inlined still executes federated. Correct phase ordering
@@ -85984,26 +86068,65 @@ And reaffirming it records the tag again with today's decider and evidence and r
     BLOCK] The identity''s keys are written as REQ-2073 (ENGINE GROUP) writes an engine''s secrets. A certificate
     is public, the identity''s own and each host''s pinned one: it is written mode 0644, so the engine reads
     it whatever user wrote it, with no ownership given. [END SUPERSEDED BLOCK] (Amended 2026-10-23, CODE
-    TABLES ARE LANDED) A read of a code table is landed and the federation engine runs the whole statement
-    over the landed rows: the function is called with the read''s arguments and the values its pushed predicates
-    give -- a pre-filter only, applied again by the engine -- and its rows are kept under all of them. No
-    read is answered from the function on its own driver (REQ-863: a code source passes access_path, its
-    function the access path, and fails trusted_to_answer). [SUPERSEDED by REQ-2100, 2026-10-23 -- no engine
-    attaches a code host and its front end serves no reads (NO ENGINE ATTACH below). Kept here for history;
-    do not implement against it.] An engine that attaches the built host reads it as before. [END SUPERSEDED
-    BLOCK] Writes are unchanged. A code source''s proxy (provisa/codesource/proxy.py) implements the source
-    contract on its function''s behalf (REQ-1756): it reads the function''s declarations, plans each read
-    before the call -- the function''s arguments and the values its declared predicates give, a pre-filter
-    -- and makes the call, once per argument set for a relationship that feeds its parameters (REQ-2099),
-    its rows checked against the declared columns. It plans no read as the complete dataset (v1), so every
-    code read lands. User code is unchanged. (Amended 2026-10-23, NO ENGINE ATTACH:) No engine attaches
+    TABLES ARE LANDED) [SUPERSEDED by REQ-2100, 2026-10-23 -- a code source answers a statement over its
+    own tables directly, nothing landed (CODE SOURCES ANSWER THEIR OWN STATEMENTS below). Kept here for
+    history; do not implement against it.] A read of a code table is landed and the federation engine runs
+    the whole statement over the landed rows: the function is called with the read''s arguments and the
+    values its pushed predicates give -- a pre-filter only, applied again by the engine -- and its rows
+    are kept under all of them. No read is answered from the function on its own driver (REQ-863: a code
+    source passes access_path, its function the access path, and fails trusted_to_answer). [END SUPERSEDED
+    BLOCK] [SUPERSEDED by REQ-2100, 2026-10-23 -- no engine attaches a code host and its front end serves
+    no reads (NO ENGINE ATTACH below). Kept here for history; do not implement against it.] An engine that
+    attaches the built host reads it as before. [END SUPERSEDED BLOCK] Writes are unchanged. A code source''s
+    proxy (provisa/codesource/proxy.py) implements the source contract on its function''s behalf (REQ-1756):
+    it reads the function''s declarations, plans each read before the call -- the function''s arguments
+    and the values its declared predicates give, a pre-filter -- and makes the call, once per argument set
+    for a relationship that feeds its parameters (REQ-2099), its rows checked against the declared columns.
+    [SUPERSEDED by REQ-2100, 2026-10-23 -- its plan of a statement over its own tables is the complete dataset
+    (CODE SOURCES ANSWER THEIR OWN STATEMENTS below). Kept here for history; do not implement against it.]
+    It plans no read as the complete dataset (v1), so every code read lands. [END SUPERSEDED BLOCK] User
+    code is unchanged. (Amended 2026-10-23, NO ENGINE ATTACH:) [SUPERSEDED by REQ-2100, 2026-10-23 -- engines
+    attach a built image over pgwire again, and its front end answers the statements sent to it (CODE SOURCES
+    ANSWER THEIR OWN STATEMENTS below). Kept here for history; do not implement against it.] No engine attaches
     a code host: a read of a built source''s table is landed as a dev-mode source''s is, its function called
     over the Arrow connection, and the engine runs the statement over the landed rows. Trino, DuckDB and
     the Postgres engines have no code-host connector, and no engine is given the organisation''s identity
     or a host''s certificate. The image''s front end serves Provisa''s Arrow protocol alone on 7443, with
     the pairing, pinned certificate and hello unchanged; it serves no pgwire, and it applies no statement
-    to a function''s rows, so the image carries no DuckDB, sqlglot or Arrow for it. The name tables keep
-    each declared column and parameter with its catalog name and Arrow form.'
+    to a function''s rows, so the image carries no DuckDB, sqlglot or Arrow for it. [END SUPERSEDED BLOCK]
+    The name tables keep each declared column and parameter with its catalog name and Arrow form. (Amended
+    2026-10-23, CODE SOURCES ANSWER THEIR OWN STATEMENTS:) Anything that reaches a code source is single-source:
+    a direct read of its tables, or the per-source part an engine pushes to it. So a code source answers
+    its own statements, its DuckDB the connector''s own capability, not a side channel. DIRECT: a statement
+    over one code source''s tables, and nothing else -- one table or several, each read once, none on its
+    replica or given a landing TTL -- is planned by the source''s proxy as its complete dataset (REQ-1756,
+    REQ-863 trusted_to_answer) and read on the source''s own driver, nothing landed: each table''s function
+    is called with the arguments the statement''s own _nf_{name} = value conditions give it, which stay
+    in the statement until its route is known, and DuckDB applies the whole governed statement to the functions''
+    rows, joining several tables there. A built source''s image answers a statement over one of its tables
+    itself; a dev-mode source''s rows, and a statement joining several tables, are answered in Provisa''s
+    process. A statement the engine runs after all -- it failed another gate -- has its tables landed then,
+    their conditions taken out as a landed read''s are. ATTACHED: a statement across sources is the engine''s;
+    an engine with a code-host connector (Trino, DuckDB, the Postgres engines) attaches a built source''s
+    image over pgwire as a Postgres catalog and pushes its part, which the image''s front end answers the
+    same way, its parameters'' conditions left in the part for it; a dev-mode source''s rows are landed.
+    GOVERNANCE: a code source is only ever sent governed SQL: the driver is reached only from the DIRECT
+    terminal of the one governed pipeline, and an engine pushes a part of the governed statement it runs;
+    the front end serves pgwire only to the paired Provisa''s certificate. DIALECT: the DuckDB answering
+    a code source''s statement answers as PostgreSQL does -- PostgreSQL''s backslash LIKE escape, an ORDER
+    BY''s nulls placed as a key of their own (REQ-066, #294), text in code-point order as the C collation
+    orders it -- through the one DuckDB form every DuckDB answering a statement runs (codehost.duckdb_sql,
+    carried by the image), direct and attached alike. SPEED AND MEMORY: the functions'' rows reach DuckDB
+    as Arrow record batches streamed through a RecordBatchReader, zero-copy, never as row tuples, pandas,
+    VALUES or executemany; a function may yield batches or row chunks, each converted to Arrow as it comes,
+    so its result is never held whole before the scan (a function returning a whole list holds it itself).
+    Results stream out batch by batch, never fetched whole: the Arrow front end sends each batch as it comes,
+    and pgwire encodes DataRows a batch at a time. Each call has a connection of its own to the image, from
+    a small bounded pool, so one call''s back-pressure holds no other. One DuckDB per code image, shared
+    by its concurrent statements, is bounded by its operator settings -- memory_limit, temp_directory spill,
+    max_temp_directory_size and threads, each with its field in the UI -- its blocking operators spill to
+    disk past the memory limit, and a statement past the spill cap is refused by name, naming the setting;
+    insertion order is kept only for a statement with an ORDER BY.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and

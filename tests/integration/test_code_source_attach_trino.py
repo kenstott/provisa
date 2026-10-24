@@ -8,14 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration: a built code host's table read on Trino (REQ-2100, REQ-863).
+"""Integration: a built code host attached by Trino (REQ-2100).
 
 The ``test`` instance: an isolated server on Trino. A Python code source's image is built
-through the API, loaded and run on the stack's compose network, and connected, which switches the
-source to built mode. A read joining its table to a Postgres table calls the host's function with
-the read's parameter, lands its rows, and the engine joins them: Trino holds no catalog of the
-code source, since no engine attaches a code host. A read of the code table alone is landed and
-answered the same way."""
+through the API, loaded and run on the stack's compose network, where both Trino and this host
+reach it, and connected, which switches the source to built mode. Its table declares a landing TTL
+of 0, so a read joining it to a Postgres table is the engine's, Trino attaching the host over
+pgwire with Provisa's identity and verifying the host by its pinned certificate: the join is
+answered, the host's function called once with the read's parameter, and the plan reads the code
+table from the host's catalog, not from a landed copy. A read of the code table alone is answered
+DIRECT from the host."""
 
 # Requirements: REQ-2100
 
@@ -86,7 +88,7 @@ def _config(path) -> None:
                 },
                 "naming": {"domain_prefix": False, "rules": []},
                 "cache": {"enabled": False},
-                "domains": [{"id": "fx", "description": "code host on Trino"}],
+                "domains": [{"id": "fx", "description": "code host attach"}],
                 "roles": [],
                 "sources": [
                     {
@@ -275,7 +277,7 @@ _JOIN = (
 )
 
 
-def test_a_join_calls_the_hosts_function_with_its_argument_and_the_engine_joins_it(server, built):
+def test_trino_attaches_the_host_and_joins_its_function_to_postgres(server, built):
     rows = _rows(_sql(server, _JOIN))
     assert rows, "no eu-west order was joined to its region"
     assert {(r["label"], r["asked"]) for r in rows} == {("EU West", "joined")}
@@ -283,23 +285,20 @@ def test_a_join_calls_the_hosts_function_with_its_argument_and_the_engine_joins_
     assert [r["id"] for r in rows] == [r["id"] for r in eu]
 
 
-def test_trino_holds_no_catalog_of_the_code_source(server, built):
-    import os
-
-    import trino
-
-    # The test stack's own coordinator: its port is the one the session allocated (the stack
-    # publishes it on this host), never a default that could name another instance's.
-    conn = trino.dbapi.connect(host="localhost", port=int(os.environ["TRINO_PORT"]), user="itest")
-    try:
-        cur = conn.cursor()
-        cur.execute("SHOW CATALOGS")
-        catalogs = {row[0] for row in cur.fetchall()}
-    finally:
-        conn.close()
-    assert not {c for c in catalogs if "regions_src" in c.replace("-", "_")}, catalogs
+def test_the_join_reads_the_code_table_from_the_hosts_catalog_not_a_landed_copy(server, built):
+    plan = httpx.post(
+        f"{server.base_url}/data/sql/explain",
+        json={"sql": _JOIN},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    assert plan.status_code == 200, plan.text
+    text = json.dumps(plan.json())
+    assert "regions" in text
+    # An attached read scans the source's own catalog; a landed one, the engine's store.
+    assert "regions_src" in text.replace("-", "_"), text[:2000]
 
 
-def test_a_read_of_the_code_table_alone_is_landed_and_answered(server, built):
+def test_a_read_of_the_code_table_alone_is_answered_from_the_host(server, built):
     rows = _rows(_sql(server, "SELECT label FROM regions WHERE region >= 'eu' ORDER BY label"))
     assert [r["label"] for r in rows] == ["EU West", "US East", "US West"]

@@ -254,8 +254,10 @@ def test_a_native_search_is_read_natively_whatever_the_engine():
     from provisa.api.data.materialization import is_native_read
 
     types = {"es": "elasticsearch"}
-    assert is_native_read({"source_id": "es", "query_template": "{}", "columns": []}, types)
-    assert not is_native_read({"source_id": "es", "query_template": None, "columns": []}, types)
+    assert is_native_read({"source_id": "es", "query_template": "{}", "columns": []}, types, None)
+    assert not is_native_read(
+        {"source_id": "es", "query_template": None, "columns": []}, types, None
+    )
 
 
 def test_a_search_s_pages_keep_each_hit_s_score():

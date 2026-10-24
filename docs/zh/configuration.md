@@ -1732,6 +1732,7 @@ sources:
 | `TRINO_HOST` | `localhost` | Trino 协调器主机 |
 | `TRINO_PORT` | `8080` | Trino 协调器 HTTP 端口 |
 | `PROVISA_ENGINE_FILES_GID` | `1000` | 当 Provisa 既不以 root 也不以 Trino 的用户运行时（例如在 Trino 容器旁运行的原生应用），Trino 读取其机密文件（Kafka 数据源的 SASL 设置、代码主机的客户端密钥）所用的用户组。Provisa 的用户必须属于该组，否则文件会被按名称拒绝。 |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | 同上，用于读取代码主机客户端密钥的 Postgres 引擎服务器 |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | GCP 服务账号密钥 JSON 的路径（BigQuery 引擎/数据源） |
 | `GOOGLE_CLOUD_PROJECT` | — | 默认 GCP 项目（BigQuery；会被 URL 覆盖） |
 | `FABRIC_SQL_SERVER` | — | Fabric Warehouse SQL 端点（`PROVISA_ENGINE_URL` 的替代方式） |

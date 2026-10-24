@@ -536,7 +536,7 @@ class NativeEngineBackend(EngineBackend):
         native = {
             (t["source_id"], t["schema_name"], t["table_name"])
             for t in (getattr(state, "tables", None) or [])
-            if is_native_read(t, _types)
+            if is_native_read(t, _types, state)
         }
 
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
