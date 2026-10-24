@@ -7292,7 +7292,7 @@ A masked column is its mask wherever the statement references it -- the select l
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Column masking output uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL literals) independent of source type. Dialect-specific transpilation via SQLGlot occurs downstream, after masking injection.
+[SUPERSEDED by [REQ-2142](#REQ-2142), 2026-10-23 -- a regex mask is the universal provisa_regex_replace call, not REGEXP_REPLACE. Kept here for history; do not implement against it.] Column masking output uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL literals) independent of source type. [END SUPERSEDED BLOCK] Dialect-specific transpilation via SQLGlot occurs downstream, after masking injection. (Amended 2026-10-24, UNIVERSAL REGEX:) Column masking output is independent of source type: a regex mask is provisa_regex_replace(column, pattern, replacement, the full mask), in the universal regex dialect ([REQ-2142](#REQ-2142)), a truncate mask is DATE_TRUNC, a constant mask a SQL literal; the transpiler lowers provisa_regex_replace into each engine's own REGEXP_REPLACE after masking injection.
 
 **Use case:** Dialect-agnostic masking generation ensures consistent governance behavior across heterogeneous federated sources (PostgreSQL, MySQL, Snowflake, BigQuery).
 
