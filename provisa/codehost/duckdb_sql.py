@@ -56,17 +56,27 @@ def null_order_as_key(tree: exp.Expr) -> exp.Expr:
                 keys.append(ordered)
                 continue
             desc = bool(ordered.args.get("desc"))
-            key = ordered.this
-            if isinstance(key, exp.Literal) and key.is_int:
-                # ORDER BY 2: its null test is of the second item the SELECT returns.
-                item = select.expressions[int(key.name) - 1]
-                key = exp.column(item.alias, quoted=True) if item.alias else item.unalias()
+            key = _returned(ordered.this, select)
             is_null = exp.Paren(this=exp.Is(this=key.copy(), expression=exp.Null()))
             # A boolean key is never null: true (a null) first is its descending order.
             keys.append(exp.Ordered(this=is_null, desc=True, nulls_first=False))
             keys.append(exp.Ordered(this=ordered.this.copy(), desc=desc, nulls_first=False))
         order.set("expressions", keys)
     return tree
+
+
+def _returned(key: exp.Expr, select: exp.Select) -> exp.Expr:
+    """What an ORDER BY key orders by, as a null test can name it: an item the SELECT returns --
+    by its position (``ORDER BY 2``) or its alias (``ORDER BY total``) -- is that item's own
+    expression, since DuckDB binds an alias only as a whole key, never inside one (a SUM's alias
+    in ``(total IS NULL)`` is no column of the grouped rows)."""
+    if isinstance(key, exp.Literal) and key.is_int:
+        return select.expressions[int(key.name) - 1].unalias()
+    if isinstance(key, exp.Column) and not key.table:
+        for item in select.expressions:
+            if isinstance(item, exp.Alias) and item.alias == key.name:
+                return item.unalias()
+    return key
 
 
 def as_duckdb(tree: exp.Expr) -> str:
