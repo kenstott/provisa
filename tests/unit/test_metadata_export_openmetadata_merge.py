@@ -221,29 +221,30 @@ async def test_merge_carries_through_fields_the_exporter_does_not_author(snapsho
 
 
 @pytest.mark.asyncio
-async def test_read_failure_falls_back_to_our_body_and_reports_it(snapshot, monkeypatch):
+async def test_a_failed_live_read_refuses_the_table_and_the_rest_publishes(snapshot, monkeypatch):
+    """REQ-1389: a PUT sent blind would replace the extension a steward keeps custom properties
+    in, so a table whose live read failed is not written; it is reported by name and the
+    publish carries on with the other assets."""
     puts, _ = _mock_transport(monkeypatch, 500)
     result = await OpenMetadataExport(_export_config()).publish(snapshot)
-    assert result.published["table"] == 1
-    body = _table_put(puts)
-    # The publish went through with Provisa's own body — no live state to merge.
-    assert _tag_fqns(body) == [f"{CLASSIFICATION}.rls_restricted"]
-    assert "owners" not in body
-    merge_errors = [e for e in result.errors if "tag merge" in e.message]
-    assert len(merge_errors) == 1
-    assert merge_errors[0].asset.fqn() == "wh.public.orders"
-    assert "HTTP 500" in merge_errors[0].message
+    assert not any(url.endswith("/tables") for url, _ in puts)
+    assert "table" not in result.published
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == ["wh.public.orders"]
+    assert "HTTP 500" in refused[0].message
+    # The rest of the snapshot still went out: the service, database, schema and domain.
+    assert any(url.endswith("/services/databaseServices") for url, _ in puts)
+    assert result.published.get("domain") == 1
 
 
 @pytest.mark.asyncio
-async def test_transport_error_on_read_falls_back_and_reports_it(snapshot, monkeypatch):
+async def test_a_transport_error_on_the_live_read_refuses_the_table(snapshot, monkeypatch):
     puts, _ = _mock_transport(monkeypatch, httpx.ConnectError("refused"))
     result = await OpenMetadataExport(_export_config()).publish(snapshot)
-    assert result.published["table"] == 1
-    assert _tag_fqns(_table_put(puts)) == [f"{CLASSIFICATION}.rls_restricted"]
-    merge_errors = [e for e in result.errors if "tag merge" in e.message]
-    assert len(merge_errors) == 1
-    assert "refused" in merge_errors[0].message
+    assert not any(url.endswith("/tables") for url, _ in puts)
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == ["wh.public.orders"]
+    assert "refused" in refused[0].message
 
 
 @pytest.mark.asyncio
@@ -262,3 +263,21 @@ async def test_tag_merge_gate_off_skips_the_live_read(snapshot, monkeypatch):
     assert result.ok
     assert not any("/tables/name/" in url for url in gets)
     assert _tag_fqns(_table_put(puts)) == [f"{CLASSIFICATION}.rls_restricted"]
+
+
+@pytest.mark.asyncio
+async def test_a_rebound_table_whose_predecessor_cannot_be_read_is_not_written(
+    snapshot, monkeypatch
+):
+    """REQ-1389: the new table carries its predecessor's steward enrichment. Written without
+    it, the binding would move to the new FQN and the next publish would never carry it."""
+    puts, gets = _mock_transport(monkeypatch, 503)
+    exporter = OpenMetadataExport(_export_config())
+    (table,) = snapshot.tables
+    exporter.stored_bindings = {table.semantic_uri: ("old-uuid", "wh.default.legacy.orders")}
+    result = await exporter.publish(snapshot)
+    assert any(url.endswith("/api/v1/tables/old-uuid") for url in gets)
+    assert not any(url.endswith("/tables") for url, _ in puts)
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == ["wh.public.orders"]
+    assert "predecessor" in refused[0].message

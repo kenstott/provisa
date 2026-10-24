@@ -6,6 +6,7 @@
     "notEntitled": "メタデータエクスポートには {{tier}} プランが必要です。カタログターゲットを設定するにはアップグレードしてください。",
     "enabled": "メタデータを外部カタログにパブリッシュする",
     "provider": "ターゲットカタログ",
+    "betaProvider": "{{name}}（ベータ）",
     "endpoint": "エンドポイント URL",
     "authMode": "認証",
     "apiKey": "API キー",

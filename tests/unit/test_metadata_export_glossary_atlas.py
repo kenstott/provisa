@@ -12,8 +12,8 @@
 
 Terms publish into the Provisa-OWNED glossary container only, created idempotently.
 Ownership is the binding (REQ-1389): a stored guid updates a term in place through a rename,
-glossary objects without a Provisa binding are never touched, term-to-entity assignments are
-never written (steward-owned), and nothing is ever deleted. Transport is monkeypatched at
+glossary objects without a Provisa binding are never touched, Provisa writes and withdraws only
+its own term-to-entity assignments (a steward's stand), and nothing is ever deleted. Transport is monkeypatched at
 the httpx.AsyncClient method level, the same approach as the DataHub merge tests in
 ``test_metadata_export_vendors.py``.
 """
@@ -26,7 +26,10 @@ import httpx
 import pytest
 
 from provisa.api.metadata_export.atlas import (
+    ASSIGNMENT_ATTRIBUTES,
+    ASSIGNMENT_SOURCE,
     DEPRECATION_MARKER,
+    SEMANTIC_ASSIGNMENT,
     GLOSSARY_NAME,
     AtlasExport,
     _glossary_qn,
@@ -35,10 +38,14 @@ from provisa.api.metadata_export.atlas import (
 from provisa.api.metadata_export.model import (
     AssetKind,
     AssetRef,
+    ColumnAsset,
     GlossaryTermAsset,
     GlossaryTermEdge,
     MetadataSnapshot,
+    SourceAsset,
+    TableAsset,
 )
+from provisa.api.metadata_export.provider import PublishResult
 from provisa.core.models import MetadataExportTarget
 
 ORG = "acme"
@@ -73,7 +80,10 @@ def _term(term_id: int, name: str, **kwargs) -> GlossaryTermAsset:
         semantic_uri=f"provisa://{ORG}/terms/{name}",
     )
     base.update(kwargs)
-    return GlossaryTermAsset(**base)
+    # REQ-2144: a deprecated term is one a curator deprecated -- its status.
+    if base.pop("deprecated"):
+        base["status"] = "deprecated"
+    return GlossaryTermAsset(deprecated=False, **base)
 
 
 def _snapshot(terms, edges=()) -> MetadataSnapshot:
@@ -90,6 +100,8 @@ class _FakeAtlas:
         self.glossary_creates: list[dict] = []
         self.term_creates: list[dict] = []
         self.term_puts: list[tuple[str, dict]] = []
+        self.assigns: list[tuple[str, list]] = []
+        self.dissociates: list[tuple[str, list]] = []
         self._next: dict[str, int] = {}
 
     def _guid(self, prefix: str) -> str:
@@ -122,7 +134,15 @@ class _FakeAtlas:
                 fake.term_creates.append(json)
                 fake.terms[guid] = {**json, "guid": guid}
                 return httpx.Response(200, json={**json, "guid": guid}, request=request)
+            if url.endswith("/assignedEntities"):
+                fake.assigns.append((url.split("/terms/")[1].split("/")[0], json))
+                return httpx.Response(204, request=request)
             return httpx.Response(404, request=request)
+
+        async def _request(self, method, url, json=None, headers=None):
+            fake.requests.append((method, url))
+            fake.dissociates.append((url.split("/terms/")[1].split("/")[0], json))
+            return httpx.Response(204, request=httpx.Request(method, url))
 
         async def _put(self, url, json=None, headers=None):
             fake.requests.append(("PUT", url))
@@ -142,6 +162,7 @@ class _FakeAtlas:
         monkeypatch.setattr(httpx.AsyncClient, "post", _post)
         monkeypatch.setattr(httpx.AsyncClient, "put", _put)
         monkeypatch.setattr(httpx.AsyncClient, "delete", _delete)
+        monkeypatch.setattr(httpx.AsyncClient, "request", _request)
 
 
 @pytest.fixture
@@ -291,21 +312,128 @@ async def test_edges_map_onto_atlas_native_term_relations(fake):
     ]
 
 
-async def test_term_to_entity_assignments_are_never_written(fake):
-    # REQ-1389: steward term assignments are HUMAN-OWNED. A term with published refs still
-    # publishes as vocabulary only — no assignedEntities in any payload, no assignment route.
-    term = _term(
-        1,
-        "Revenue",
-        is_abstract=False,
-        refs=(AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "amount")),),
+ORDERS = AssetRef(kind=AssetKind.TABLE, parts=("wh", "public", "orders"))
+AMOUNT = AssetRef(kind=AssetKind.COLUMN, parts=("wh", "public", "orders", "amount"))
+ORDERS_URI = f"provisa://{ORG}/sales/tables/orders"
+AMOUNT_URI = f"{ORDERS_URI}#field:amount"
+
+
+def _with_table(terms) -> MetadataSnapshot:
+    return MetadataSnapshot(
+        org_id=ORG,
+        sources=[
+            SourceAsset(
+                ref=AssetRef(kind=AssetKind.SOURCE, parts=("wh",)),
+                id="wh",
+                source_type="postgresql",
+                description="",
+            )
+        ],
+        tables=[
+            TableAsset(
+                ref=ORDERS,
+                name="orders",
+                source_id="wh",
+                domain_id=None,
+                description="",
+                columns=[
+                    ColumnAsset(
+                        ref=AMOUNT,
+                        name="amount",
+                        data_type="numeric",
+                        description="",
+                        semantic_uri=AMOUNT_URI,
+                    )
+                ],
+                semantic_uri=ORDERS_URI,
+            )
+        ],
+        glossary_terms=list(terms),
     )
-    result = await _export().publish(_snapshot([term]))
-    assert result.ok
-    for body in fake.term_creates + [body for _, body in fake.term_puts]:
-        assert "assignedEntities" not in body
-    for _, url in fake.requests:
-        assert "assignedEntities" not in url and "assignedTerm" not in url
+
+
+def _published_entities(monkeypatch) -> None:
+    """The entity bulk already ran: its guids are what the assignments address."""
+
+    async def _entities(self, entities, snapshot):
+        result = PublishResult(provider_name="atlas")
+        result.bindings[ORDERS_URI] = ("orders-guid", "orders")
+        result.bindings[AMOUNT_URI] = ("amount-guid", "amount")
+        return result
+
+    monkeypatch.setattr(AtlasExport, "_publish_entities", _entities)
+
+
+def _provisa_assignment(entity_guid: str, relationship_guid: str) -> dict:
+    return {
+        "guid": entity_guid,
+        "relationshipGuid": relationship_guid,
+        "relationshipAttributes": {
+            "typeName": SEMANTIC_ASSIGNMENT,
+            "attributes": {"source": ASSIGNMENT_SOURCE},
+        },
+    }
+
+
+async def test_a_class_term_is_assigned_to_its_table_and_a_property_to_its_column(
+    fake, monkeypatch
+):
+    """REQ-1389 (amended): Provisa assigns its terms as semantic assignments whose source is
+    Provisa, status ACTIVE -- the Class to the table, the Property to the column."""
+    _published_entities(monkeypatch)
+    order = _term(1, "order", is_abstract=False, role="class", tables=(ORDERS,))
+    amount = _term(2, "amount", is_abstract=False, role="property", refs=(AMOUNT,))
+    result = await _export().publish(_with_table([order, amount, _term(3, "party")]))
+    assert result.ok, result.errors
+    by_term = {fake.terms[guid]["name"]: body for guid, body in fake.assigns}
+    assert {name: [e["guid"] for e in body] for name, body in by_term.items()} == {
+        "order": ["orders-guid"],
+        "amount": ["amount-guid"],
+    }
+    (entry,) = by_term["order"]
+    assert entry["relationshipAttributes"] == {
+        "typeName": SEMANTIC_ASSIGNMENT,
+        "attributes": ASSIGNMENT_ATTRIBUTES,
+    }
+    assert ASSIGNMENT_ATTRIBUTES["status"] == "ACTIVE"
+    assert fake.dissociates == []
+
+
+async def test_human_assignments_stand_and_provisas_stale_ones_are_withdrawn(fake, monkeypatch):
+    """An assignment from any other source is a person's: Provisa neither duplicates nor
+    withdraws it. Its own assignment to an entity the term no longer grounds is withdrawn by
+    relationship guid; a term that left the snapshot loses only Provisa's assignments."""
+    _published_entities(monkeypatch)
+    fake.terms["order-guid"] = {
+        "guid": "order-guid",
+        "name": "order",
+        "assignedEntities": [
+            {"guid": "orders-guid", "relationshipGuid": "rel-human"},  # a steward's
+            _provisa_assignment("old-table-guid", "rel-stale"),
+        ],
+    }
+    fake.terms["margin-guid"] = {
+        "guid": "margin-guid",
+        "name": "margin",
+        "assignedEntities": [
+            {"guid": "orders-guid", "relationshipGuid": "rel-human-2"},
+            _provisa_assignment("amount-guid", "rel-margin"),
+        ],
+    }
+    export = _export()
+    export.stored_bindings = {
+        GLOSSARY_URI: ("glossary-live", GLOSSARY_QN),
+        f"provisa://{ORG}/terms/order": ("order-guid", f"order@{GLOSSARY_QN}"),
+        f"provisa://{ORG}/terms/margin": ("margin-guid", f"margin@{GLOSSARY_QN}"),
+    }
+    order = _term(1, "order", is_abstract=False, role="class", tables=(ORDERS,))
+    result = await export.publish(_with_table([order]))
+    assert result.ok, result.errors
+    assert fake.assigns == []
+    assert sorted(fake.dissociates) == [
+        ("margin-guid", [{"guid": "amount-guid", "relationshipGuid": "rel-margin"}]),
+        ("order-guid", [{"guid": "old-table-guid", "relationshipGuid": "rel-stale"}]),
+    ]
 
 
 async def test_a_term_leaving_the_snapshot_is_never_deleted(fake):
@@ -324,3 +452,58 @@ async def test_a_term_leaving_the_snapshot_is_never_deleted(fake):
     assert result.ok
     assert [method for method, _ in fake.requests if method == "DELETE"] == []
     assert fake.terms["term-live"]["name"] == "Margin"  # untouched, bindings prune separately
+
+
+async def test_every_term_carries_its_role_and_a_stewards_attributes_stand(fake):
+    """REQ-2141: the role rides the term's additionalAttributes under provisaRole, on create
+    and on update; any other entry in the map is a steward's and stands."""
+    fake.terms["term-live"] = {
+        "guid": "term-live",
+        "name": "order",
+        "qualifiedName": f"order@{GLOSSARY_QN}",
+        "additionalAttributes": {"owner_team": "finance"},
+    }
+    export = _export()
+    export.stored_bindings = {
+        GLOSSARY_URI: ("glossary-live", GLOSSARY_QN),
+        f"provisa://{ORG}/terms/order": ("term-live", f"order@{GLOSSARY_QN}"),
+    }
+    order = _term(1, "order", is_abstract=False, role="class")
+    result = await export.publish(_snapshot([order, _term(2, "party")]))
+    assert result.ok, result.errors
+    ((guid, updated),) = fake.term_puts[:1]
+    assert guid == "term-live"
+    assert updated["additionalAttributes"] == {"owner_team": "finance", "provisaRole": "class"}
+    (created,) = fake.term_creates
+    assert created["additionalAttributes"] == {"provisaRole": "concept"}
+
+
+async def test_a_bound_term_that_cannot_be_read_is_refused_not_recreated(fake, monkeypatch):
+    """REQ-1389: unreadable is not gone. A create would duplicate the term and an update sent
+    blind would replace the steward's enrichment, so it is refused by name; the others publish."""
+    fake.terms["term-live"] = {
+        "guid": "term-live",
+        "name": "Revenue",
+        "qualifiedName": f"Revenue@{GLOSSARY_QN}",
+    }
+    get = httpx.AsyncClient.get
+
+    async def _unreadable_margin(self, url, headers=None, params=None):
+        if url.endswith("/glossary/term/term-unreadable"):
+            return httpx.Response(503, request=httpx.Request("GET", url))
+        return await get(self, url, headers=headers, params=params)
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _unreadable_margin)
+    export = _export()
+    export.stored_bindings = {
+        GLOSSARY_URI: ("glossary-live", GLOSSARY_QN),
+        f"provisa://{ORG}/terms/Revenue": ("term-live", f"Revenue@{GLOSSARY_QN}"),
+        f"provisa://{ORG}/terms/Margin": ("term-unreadable", f"Margin@{GLOSSARY_QN}"),
+    }
+    fake.glossaries.append({"guid": "glossary-live", "qualifiedName": GLOSSARY_QN})
+    result = await export.publish(_snapshot([_term(1, "Revenue"), _term(2, "Margin")]))
+    assert fake.term_creates == []
+    assert [guid for guid, _ in fake.term_puts] == ["term-live"]
+    refused = [e for e in result.errors if "not written" in e.message]
+    assert [e.asset.fqn() for e in refused] == [f"provisa://{ORG}/terms/Margin"]
+    assert "HTTP 503" in refused[0].message

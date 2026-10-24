@@ -22,6 +22,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { exportProviderName } from "../lib/exportProviders";
 import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
@@ -883,11 +884,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // landing page -- not on a Done that rolls into another tour.
         const landing = scopeRef.current === "demo" && isLast ? landingRef.current : null;
         const ends = landing !== null;
+        // A provider the copy names is named as a user sees it: "(beta)" while unproven.
+        const copy = { atlan: exportProviderName("atlan", "Atlan", t) };
         const popover: DriverPopover = {
           title: t(`tour.steps.${step.key}.title`),
           description: step.image
-            ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
-            : t(`tour.steps.${step.key}.description`),
+            ? `${t(`tour.steps.${step.key}.description`, copy)}<img class="tour-step-image" src="${step.image}" alt="">`
+            : t(`tour.steps.${step.key}.description`, copy),
           ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
           showButtons: ends
             ? isFirst

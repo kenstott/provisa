@@ -6173,7 +6173,7 @@
   "ja/tableEditForm.json::tableEditForm.csProbe": "probe (freshness query)",
   "ja/tableEditForm.json::tableEditForm.csTtl": "ttl (timer)",
   "ja/tableEditForm.json::tableEditForm.csTtlProbe": "probe + ttl",
-  "ja/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, Atlan and others.",
+  "ja/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, {{atlan}} and others.",
   "ja/tableEditForm.json::tableEditForm.dataProductInherited": "Inherited from the table this contract scans",
   "ja/tableEditForm.json::tableEditForm.dataProductLabel": "Data Product",
   "ja/tableEditForm.json::tableEditForm.dataProductNone": "None",
@@ -7493,7 +7493,7 @@
   "ja/tour.json::tour.steps.stepProductForm.title": "Define a data product",
   "ja/tour.json::tour.steps.stepProfilerChecks.description": "Every run adds rows to its result tables: per-column measures (null share, distinct count, range), per-run measures (row count), children per parent, quantiles and drift. Once you register a result table, a data-quality checker can scan it like any other table. That checker is a <strong>Soda</strong> or <strong>Great Expectations</strong> source, so any measure a profile produces can carry a check that raises an issue. <strong>Drift</strong> is one such measure. Each run is compared with the table's recent runs, and a measure that moves is flagged. From the profiler's runs you can add an accepted constraint, a drift check, or a check against expectations from outside Provisa to the checker's contract.",
   "ja/tour.json::tour.steps.stepProfilerChecks.title": "Checks on profile results",
-  "ja/tour.json::tour.steps.stepPublish.description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, Atlan and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>",
+  "ja/tour.json::tour.steps.stepPublish.description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>",
   "ja/tour.json::tour.steps.stepPublish.title": "Publish to the tools your org uses",
   "ja/tour.json::tour.steps.stepPython.description": "🐍 The Python tab runs Python in your browser, signed in as you:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>The answer comes back as a pandas DataFrame, read through the same governed pipeline, so your role's row rules and masks apply to it too.</p><p>🔌 The same <strong>provisa-client</strong> package installs with pip on any desktop Python, so a script written here runs unchanged in your own environment.</p>",
   "ja/tour.json::tour.steps.stepPython.title": "Python (8 of 9 surfaces)",
@@ -8013,5 +8013,6 @@
   "ja/rowMaterialize.json::rowMaterialize.help": "Keep only the rows statements ask for: each is fetched from the source by its primary key and kept for the Cache TTL, instead of a copy of the whole table. Needs one primary-key column and a source that fetches rows by key.",
   "ja/serverErrors.json::serverErrors.schema.row_materialize_no_key_fetch": "{{table}} cannot be replicated row by row: its remote schema has no field that returns its rows for a list of its primary key.",
   "ja/dataProductsTab.json::dataProductsTab.detail.lineageLaneUpstream": "Upstream, hop {{n}}",
-  "ja/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}"
+  "ja/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}",
+  "ja/metadataExportTab.json::metadataExportTab.betaProvider": "{{name}} (beta)"
 }

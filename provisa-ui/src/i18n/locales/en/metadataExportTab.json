@@ -6,6 +6,7 @@
     "notEntitled": "Metadata export requires the {{tier}} plan. Upgrade to configure catalog targets.",
     "enabled": "Publish metadata to external catalogs",
     "provider": "Target catalog",
+    "betaProvider": "{{name}} (beta)",
     "endpoint": "Endpoint URL",
     "authMode": "Authentication",
     "apiKey": "API key",

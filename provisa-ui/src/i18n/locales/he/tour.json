@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "פרסום לכלים שהארגון שלכם משתמש בהם",
-        "description": "📤 <strong>פרסמו במקום שבו הארגון שלכם כבר מסתכל.</strong> ערכי קטלוג (טבלאות, עמודות, תחומים, מנהלי נתונים, קשרים מאושרים), מוצרי נתונים ולינאז' ברמת העמודה יוצאים החוצה, וכל יעד מקבל את מה שהוא תומך בו: <strong>DataHub,‏ OpenMetadata,‏ Collibra,‏ Atlan ו-Apache Atlas</strong> כקטלוגים, <strong>Snowflake Horizon</strong> ו-<strong>BigQuery Dataplex</strong> כרשימות של מוצרי נתונים, והלינאז' דרך <strong>OpenLineage</strong>.<p>הפרסום הוא החוצה בלבד: Provisa אינו קורא בחזרה מיעד כמקור אמת.</p>"
+        "description": "📤 <strong>פרסמו במקום שבו הארגון שלכם כבר מסתכל.</strong> ערכי קטלוג (טבלאות, עמודות, תחומים, מנהלי נתונים, קשרים מאושרים), מוצרי נתונים ולינאז' ברמת העמודה יוצאים החוצה, וכל יעד מקבל את מה שהוא תומך בו: <strong>DataHub,‏ OpenMetadata,‏ Collibra,‏ {{atlan}} ו-Apache Atlas</strong> כקטלוגים, <strong>Snowflake Horizon</strong> ו-<strong>BigQuery Dataplex</strong> כרשימות של מוצרי נתונים, והלינאז' דרך <strong>OpenLineage</strong>.<p>הפרסום הוא החוצה בלבד: Provisa אינו קורא בחזרה מיעד כמקור אמת.</p>"
       },
       "stepRelsAgents": {
         "title": "קשרים וסוכני AI",
