@@ -25,67 +25,67 @@
     "Construction",
     7,
     "1.76E+8",
-    null
+    6.9
    ],
    [
     "Energy",
     2,
     "4E+7",
-    null
+    4.4
    ],
    [
     "Engineering",
     1,
     "1.1E+7",
-    null
+    1.7
    ],
    [
     "Food and drink",
     2,
     "3.7E+7",
-    null
+    3.8
    ],
    [
     "Insurance",
     2,
     "6.9E+7",
-    null
+    9.4
    ],
    [
     "Manufacturing",
     6,
     "1.34E+8",
-    null
+    6.4
    ],
    [
     "Retail",
     1,
     "4.7E+7",
-    null
+    7.3
    ],
    [
     "Technology",
     3,
     "5.7E+7",
-    null
+    5.3
    ],
    [
     "Telecoms",
     3,
     "1.04E+8",
-    null
+    7.2
    ],
    [
     "Utilities",
     9,
     "2.77E+8",
-    null
+    8.1
    ],
    [
     "Wholesale",
     1,
     "1.9E+7",
-    null
+    3.0
    ]
   ]
  },
