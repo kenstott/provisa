@@ -116,7 +116,7 @@ def _seed() -> None:
         password=os.environ.get("PG_PASSWORD", "provisa"),
         autocommit=True,
     ) as pg:
-        for t in _TABLES:
+        for t in _TABLES.values():
             pg.execute(f"DROP TABLE IF EXISTS public.{t}")
             pg.execute(f"CREATE TABLE public.{t} (id integer PRIMARY KEY, ts timestamptz)")
             pg.execute(f"INSERT INTO public.{t} VALUES (1, '{_WRITTEN}')")
@@ -128,7 +128,7 @@ def _seed() -> None:
     )
     ora.autocommit = True
     with ora.cursor() as cur:
-        for t in _TABLES:
+        for t in _TABLES.values():
             cur.execute(
                 f"BEGIN EXECUTE IMMEDIATE 'DROP TABLE {t}'; "
                 "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;"
@@ -145,7 +145,7 @@ def _seed() -> None:
         "UID=sa;PWD=Provisa_2026!;TrustServerCertificate=yes",
         autocommit=True,
     )
-    for t in _TABLES:
+    for t in _TABLES.values():
         ms.execute(f"DROP TABLE IF EXISTS dbo.{t}")
         ms.execute(f"CREATE TABLE dbo.{t} (id int PRIMARY KEY, ts datetimeoffset)")
         ms.execute(f"INSERT INTO dbo.{t} VALUES (1, '2024-01-02 03:04:05 +02:00')")
@@ -161,7 +161,7 @@ def _seed() -> None:
     )
     with maria.cursor() as cur:
         cur.execute("SET time_zone = '+02:00'")
-        for t in _TABLES:
+        for t in _TABLES.values():
             cur.execute(f"DROP TABLE IF EXISTS {t}")
             cur.execute(f"CREATE TABLE {t} (id int PRIMARY KEY, ts TIMESTAMP NULL)")
             cur.execute(f"INSERT INTO {t} VALUES (1, '2024-01-02 03:04:05')")
