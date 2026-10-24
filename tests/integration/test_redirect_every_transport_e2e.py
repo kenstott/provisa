@@ -406,8 +406,8 @@ def _nl(boot) -> dict:
         time.sleep(1)
     branch = out["branches"]["sql"]
     assert out["state"] == "complete" and branch["error"] is None, out
-    # The branch reports the statement as the runner normalized it (quoted, aliased).
-    assert branch["query"] == 'SELECT id FROM "sales"."orders" AS "orders"', branch
+    # The branch reports the statement strict NL compiled from the GraphQL read (quoted).
+    assert branch["query"] == 'SELECT "id" FROM "sales"."orders"', branch
     return branch["result"]["redirect"]
 
 
