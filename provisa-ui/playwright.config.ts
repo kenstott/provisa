@@ -550,6 +550,10 @@ export default defineConfig({
             GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
             PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
             PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+            // Each backend's DuckDB engines: their own default is most of the host's memory, and on
+            // the 16 GB runner they share it with the demo sources, the browser and the other
+            // backends (run 40115205350's provisioning job ran out with this server at 2.1 GB).
+            PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT: String(2 * 1024 ** 3),
             ...controlPlaneEnvFor(b.dataDir),
           },
           reuseExistingServer: !process.env.CI,

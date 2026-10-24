@@ -199,9 +199,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # REQ-2050: the engine's zone is UTC, so an instant (TIMESTAMPTZ) reads as UTC and a
         # literal with no zone compared to one is UTC -- never the host's zone.
         _cfg["TimeZone"] = "UTC"
-        # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit). DuckDB
-        # spills to disk past it and refuses, by name, what cannot spill.
+        # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit), and the
+        # deployment may cap every engine (engine.duckdb_memory_limit); unset is DuckDB's own.
+        # DuckDB spills to disk past it and refuses, by name, what cannot spill.
         _limit = getattr(store_engine, "memory_limit", None)
+        if _limit is None:
+            from provisa.core import settings_registry
+
+            _limit = settings_registry.value("engine.duckdb_memory_limit")
         if _limit is not None:
             _cfg["memory_limit"] = f"{_limit // (1024 * 1024)}MiB"
         # Spilled data stays in the org's folder (engine.temp_org). A runtime built for no org --

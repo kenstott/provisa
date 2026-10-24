@@ -61,11 +61,17 @@ on:
         required: false
       FABRIC_SQL_SERVER:
         required: false
+      FREE_ASKAMERICA_KEY:
+        required: false
       GOOGLE_APPLICATION_CREDENTIALS_JSON:
         required: false
       GOOGLE_CLOUD_PROJECT:
         required: false
       GSHEETS_TEST_SHEET_ID:
+        required: false
+      KAGGLE_API_TOKEN:
+        required: false
+      OPENROUTER_API_KEY:
         required: false
       SNOWFLAKE_ACCOUNT:
         required: false
@@ -82,6 +88,8 @@ on:
       SP_CLIENT_ID:
         required: false
       SP_SITE_URL:
+        required: false
+      STRIPE_API_KEY:
         required: false
       SP_TENANT_ID:
         required: false
@@ -185,6 +193,14 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      # The live APIs the job's specs call, each skipped by name without its key (run 40115205350
+      # reported 10 NOT EXECUTED with every one of these present in the repo's secrets):
+      # AskAmerica/govdata (askamerica-*, source-to-query-special-cases), Kaggle (kaggle-source),
+      # OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox (source-to-query-stripe).
+      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
   # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
   provisioning:
