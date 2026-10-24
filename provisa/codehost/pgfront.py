@@ -36,6 +36,7 @@ from __future__ import annotations
 import base64
 import datetime
 import importlib
+import itertools
 import json
 import re
 import struct
@@ -106,33 +107,63 @@ def _bvtype(kind: pa.DataType) -> BVType:
 
 
 class ArrowResult(QueryResult):
-    """An Arrow table as a query result."""
+    """Arrow rows as a query result, a batch at a time: each batch's columns read out whole, its
+    rows sent, then the next batch read (REQ-2100)."""
 
-    def __init__(self, table: pa.Table) -> None:
+    def __init__(self, rows: pa.Table | pa.RecordBatchReader) -> None:
         super().__init__()
-        self.table = table
+        self.reader = rows.to_reader() if isinstance(rows, pa.Table) else rows
+        self.schema = self.reader.schema
+        self.count = 0
 
     def has_results(self) -> bool:
         return True
 
     def column_count(self) -> int:
-        return self.table.num_columns
+        return len(self.schema)
 
     def column(self, index: int) -> tuple[str, BVType]:
-        field = self.table.schema.field(index)
+        field = self.schema.field(index)
         return field.name, _bvtype(field.type)
 
     def rows(self) -> Iterator[list]:
-        lists = []
-        for field, column in zip(self.table.schema, self.table.columns, strict=True):
-            values = column.to_pylist()
-            if pa.types.is_list(field.type):
-                values = [None if v is None else [str(x) for x in v] for v in values]
-            lists.append(values)
-        return (list(row) for row in zip(*lists, strict=True))
+        for batch in self.reader:
+            lists = []
+            for field, column in zip(self.schema, batch.columns, strict=True):
+                values = column.to_pylist()
+                if pa.types.is_list(field.type):
+                    values = [None if v is None else [str(x) for x in v] for v in values]
+                lists.append(values)
+            for row in zip(*lists, strict=True):
+                self.count += 1
+                yield list(row)
+
+    def close(self) -> None:
+        """The rows not read: what answers them (the function's call, DuckDB) is stopped -- by
+        letting go of the reader, whose generators end when the last reference to them goes."""
+        self.reader.close()
+        self.reader = pa.RecordBatchReader.from_batches(self.schema, iter(()))
 
     def status(self) -> str:
-        return f"SELECT {self.table.num_rows}"
+        return f"SELECT {self.count}"
+
+
+class RowsResult(ArrowResult):
+    """Rows already read (a cursor's fetch), in an Arrow result's columns."""
+
+    def __init__(self, schema: pa.Schema, rows: list[list]) -> None:
+        QueryResult.__init__(self)
+        self.schema = schema
+        self.count = 0
+        self._rows = rows
+
+    def rows(self) -> Iterator[list]:
+        for row in self._rows:
+            self.count += 1
+            yield row
+
+    def close(self) -> None:
+        return None
 
 
 class StatusResult(QueryResult):
@@ -358,8 +389,8 @@ class FrontSession(Session):
         self.worker = worker
         self.catalog: Catalog
         self._transaction = False
-        #: Each declared cursor's result and how many of its rows were fetched.
-        self._cursors: dict[str, list] = {}
+        #: Each declared cursor's result, and its rows not yet fetched.
+        self._cursors: dict[str, tuple[QueryResult, Iterator[list]]] = {}
 
     def use(self, catalog: Catalog) -> None:
         """The catalog of the schemas the session's connection names."""
@@ -375,7 +406,12 @@ class FrontSession(Session):
         return self._transaction
 
     def describe_sql(self, sql: str, params: list | None = None) -> QueryResult:
-        return self.execute_sql(sql, params)
+        result = self.execute_sql(sql, params)
+        if not isinstance(result, ArrowResult):
+            return result
+        # Its columns only: what would answer its rows is stopped.
+        result.close()
+        return RowsResult(result.schema, [])
 
     def execute_sql(self, sql: str, params=None, result_fmt=None, **_kept) -> QueryResult:
         cursor = self._cursor_statement(sql, params)
@@ -413,35 +449,33 @@ class FrontSession(Session):
         one): its statement answered once, its rows handed out as they are fetched."""
         declared = _DECLARE.match(sql)
         if declared is not None:
-            self._cursors[declared.group("name").lower()] = [
-                self.execute_sql(declared.group("sql"), params),
-                0,
-            ]
+            result = self.execute_sql(declared.group("sql"), params)
+            rows = result.rows() if isinstance(result, ArrowResult) else iter(())
+            self._cursors[declared.group("name").lower()] = (result, rows)
             return StatusResult("DECLARE CURSOR")
         fetched = _FETCH.match(sql)
         if fetched is not None:
             held = self._cursors.get(fetched.group("name").lower())
             if held is None:
                 raise ValueError(f"cursor {fetched.group('name')!r} does not exist")
-            result, at = held
-            table = result.table if isinstance(result, ArrowResult) else pa.table({})
+            result, rows = held
+            schema = result.schema if isinstance(result, ArrowResult) else pa.schema([])
             count = fetched.group("count")
-            # FETCH alone is FETCH NEXT, one row; FETCH ALL, every row left.
-            left = table.num_rows - at
-            taken = 1 if count is None else left if count.upper() == "ALL" else int(count)
-            held[1] = min(at + taken, table.num_rows)
-            return ArrowResult(table.slice(at, held[1] - at))
+            # FETCH alone is FETCH NEXT, one row; FETCH ALL, every row left: read as fetched.
+            taken = 1 if count is None else None if count.upper() == "ALL" else int(count)
+            return RowsResult(schema, list(itertools.islice(rows, taken)))
         closed = _CLOSE.match(sql)
         if closed is not None:
             name = closed.group("name").lower()
-            if name == "all":
-                self._cursors.clear()
-            else:
-                self._cursors.pop(name, None)
+            ending = list(self._cursors) if name == "all" else [name]
+            for each in ending:
+                held = self._cursors.pop(each, None)
+                if held is not None and isinstance(held[0], ArrowResult):
+                    held[0].close()
             return StatusResult("CLOSE CURSOR")
         return None
 
-    def _read(self, function: str, sql: str) -> pa.Table:
+    def _read(self, function: str, sql: str) -> pa.RecordBatchReader:
         table = self.catalog.names[function]
         given = {
             **residual.pushed(sql, "postgres", function, table["pushdown"]),
@@ -450,13 +484,18 @@ class FrontSession(Session):
         parameters = table["parameters"]
         names = [p["parameter"] for p in parameters]
         args = [_wire(given.get(p["parameter"]), p["type"]) for p in parameters]
-        batches = self.worker.read(function, args, names, table["schema"])
-        schema = (
-            pa.ipc.open_stream(pa.py_buffer(base64.b64decode(table["schema"]))).read_all().schema
-        )
-        tables = [pa.ipc.open_stream(pa.py_buffer(b)).read_all() for b in batches]
-        rows = pa.concat_tables(tables) if tables else schema.empty_table()
-        self.catalog.answered(function, rows.num_rows)
+        schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(table["schema"]))).schema
+        catalog = self.catalog
+
+        def counted() -> Iterator[pa.RecordBatch]:
+            # The function's rows as they come; its count kept for the planner once all came.
+            count = 0
+            for batch in residual.batches(self.worker.read(function, args, names, table["schema"])):
+                count += batch.num_rows
+                yield batch
+            catalog.answered(function, count)
+
+        rows = pa.RecordBatchReader.from_batches(schema, counted())
         arguments = pa.Table.from_pylist(
             [{p["parameter"]: _cell(given.get(p["parameter"]), p["type"]) for p in parameters}],
             schema=pa.schema(

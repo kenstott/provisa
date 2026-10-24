@@ -85,6 +85,8 @@ The row type gives the columns:
 - Text, numbers, booleans, dates and timestamps map to their column types. Lists stay lists, and nested objects become named types.
 - In Python a row type is a dataclass, a `TypedDict`, a `NamedTuple`, a Pydantic model or any class with annotated fields. A Pydantic model's rows are sent as `model_dump(by_alias=True)` gives them, so a field with an alias becomes a column named by its alias.
 - In TypeScript a row type is an interface, a type alias or a class.
+- A `@table` function can also return or yield Arrow instead of rows: a pyarrow `Table`, `RecordBatch` or `RecordBatchReader` in Python, or an apache-arrow `Table` or `RecordBatch` in Node. Arrow is sent as it is, its columns matched to the row type's by name, and any column the row type doesn't declare is dropped. Python casts each column to its declared type; in Node each column must already have it.
+- A decimal column holds up to 29 whole digits and 9 decimal places. A value with more is refused by name and never rounded.
 - A field's own documentation becomes its column's description when you register the table: a Pydantic `Field(description=...)`, or a doc comment on a TypeScript property.
 - A loose row type (`Any` or a `dict` in Python, `any`, `unknown` or a `Record` in TypeScript) has no columns to read. Provisa calls the function once with no arguments and suggests columns from the rows that come back. When the function has a required parameter it can't be called that way, so you type the columns yourself when you register the table.
 
