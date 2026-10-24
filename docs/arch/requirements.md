@@ -26297,3 +26297,15 @@ A feature that works but is not yet proven for production, such as a metadata ex
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2149 · CI/CD {#REQ-2149}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one server process serves a mixed request loop over every surface -- GraphQL, SQL, Cypher, SPARQL, pgwire, Arrow Flight, REST and JSON:API reads, a write, a subscription opened and closed, a sign-in and a sign-out -- for N iterations after a warm-up, then N more, and a churn of K demo sandbox orgs, each created, used and reaped. Over the second N, the process's resident memory, open file descriptors, threads, sockets and asyncio tasks grow by no more than a slack stated with the test, near zero; after the churn, every map the process keeps by org, by its schemas or by its users is the size it was before it. A failure names what grew, and for memory the allocation sites that grew most, from tracemalloc snapshot diffs taken over the second N.
+
+**Code:** —
+
+**Tests:** —
