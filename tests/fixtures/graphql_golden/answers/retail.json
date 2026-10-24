@@ -1,0 +1,15 @@
+[
+ {
+  "columns": [
+   "subsidiary",
+   "customer",
+   "country",
+   "joined_on"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:retail/1-group-customers.graphql",
+  "root_field": "r__viewGroupCustomers",
+  "rows": []
+ }
+]

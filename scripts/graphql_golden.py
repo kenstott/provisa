@@ -28,6 +28,7 @@ them for the role org_admin (cypher_golden.model_inputs).
 Usage:
 
     python scripts/graphql_golden.py capture-meta
+    python scripts/graphql_golden.py capture-answers
     python scripts/graphql_golden.py capture OUT
     python scripts/graphql_golden.py counts
 """
@@ -171,11 +172,33 @@ META_SCHEMA = GOLDEN / "meta_schema.json"
 
 
 def meta_schema_doc() -> dict:
-    """The meta model's GraphQL schema as a client reads it: its introspection, and each meta
-    table's root field (what /data/graph-schema's root_fields says), for the UI's query builders."""
-    from graphql import introspection_from_schema
+    """The meta model's GraphQL schema as a client reads it: its types' fields and each field's
+    type (the part of an introspection the UI's RoleSchema reads), and each meta table's root
+    field (what /data/graph-schema's root_fields says), for the UI's query builders."""
+    from graphql import GraphQLList, GraphQLNonNull, get_named_type
 
     schema, ctx = model(META_MODEL)
+
+    def ref(t: Any) -> dict:
+        if isinstance(t, GraphQLNonNull):
+            return {"kind": "NON_NULL", "name": None, "ofType": ref(t.of_type)}
+        if isinstance(t, GraphQLList):
+            return {"kind": "LIST", "name": None, "ofType": ref(t.of_type)}
+        named = get_named_type(t)
+        kind = (
+            "OBJECT" if hasattr(named, "fields") and not hasattr(named, "is_one_of") else "SCALAR"
+        )
+        return {"kind": kind, "name": named.name}
+
+    types = [
+        {
+            "name": name,
+            "fields": [{"name": f, "type": ref(field.type)} for f, field in t.fields.items()],
+        }
+        for name, t in schema.type_map.items()
+        if not name.startswith("__") and hasattr(t, "fields") and not hasattr(t, "is_one_of")
+    ]
+    introspection = {"__schema": {"queryType": {"name": schema.query_type.name}, "types": types}}
     roots = sorted(
         (
             {
@@ -188,7 +211,7 @@ def meta_schema_doc() -> dict:
         ),
         key=lambda r: r["table_name"],
     )
-    return {"introspection": introspection_from_schema(schema), "root_fields": roots}
+    return {"introspection": introspection, "root_fields": roots}
 
 
 def _demo_reads() -> list[CorpusRead]:
@@ -333,12 +356,15 @@ def main(argv: list[str]) -> int:
     if command == "capture":
         print(capture(Path(argv[1])), "entries")
         return 0
-    if command == "capture-meta":
+    if command in ("capture-meta", "capture-answers"):
         import os
         import subprocess
 
         env = {**os.environ, "PROVISA_GRAPHQL_GOLDEN_CAPTURE": "1"}
-        test = "tests/unit/test_graphql_meta_model.py"
+        test = {
+            "capture-meta": "tests/unit/test_graphql_meta_model.py",
+            "capture-answers": "tests/unit/test_graphql_answers.py",
+        }[command]
         return subprocess.call(  # noqa: S603 -- the repository's own test, by its path
             [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", test],
             cwd=REPO,
@@ -348,6 +374,331 @@ def main(argv: list[str]) -> int:
         print(json.dumps(counts()))
         return 0
     raise SystemExit(f"unknown command {command!r}")
+
+
+# --- answers --------------------------------------------------------------------------------------
+#
+# A read whose tables are all a demo's PostgreSQL sources is answered on DuckDB, each source's
+# database attached under its catalog, as the engine reads the physical SQL; a read of one source
+# is answered on that database directly too, as the DIRECT route runs it. The databases are seeded
+# from the demo's own seed SQL, as its docker-compose stack does. The statement run is the read's
+# semantic SQL with its views expanded, made physical (view_expand, sql_rewrite), as the
+# administrator: the baseline of what each read answers, not of governance (its own tests).
+
+ANSWERS = GOLDEN / "answers.jsonl"
+_ENV_REF = re.compile(r"\$\{env:[^}]*\}")
+#: A seed's login: created once per server, whichever demo's seed made it first (roles are the
+#: server's, and the shared test server holds every demo's databases).
+_CREATE_ROLE = re.compile(r"^\s*CREATE\s+ROLE\s+(\w+)(.*);\s*$", re.I)
+#: What a seed grants or sets for its logins: the test server's own login reads every database.
+_ROLE_LINE = re.compile(
+    r"^\s*(ALTER|DROP)\s+ROLE\b|^\s*(GRANT|REVOKE)\b|^\s*ALTER\s+DEFAULT\s+PRIVILEGES\b", re.I
+)
+_CREATE_DB = re.compile(r"^\s*CREATE\s+DATABASE\s+(\w+)", re.I)
+_CONNECT = re.compile(r"^\s*\\c(?:onnect)?\s+(\w+)\s*$")
+_COPY = re.compile(r"^\s*\\copy\s+(.+?)\s+FROM\s+'([^']+)'(.*)$", re.I)
+_INITDB = "/docker-entrypoint-initdb.d"
+
+
+@dataclass(frozen=True)
+class _Service:
+    """A PostgreSQL service of a demo's stack: its database, its seed files in the order the image
+    runs them, and where each path under docker-entrypoint-initdb.d is on this machine."""
+
+    database: str
+    seeds: list[Path]
+    mounts: list[tuple[str, Path]]
+
+    def local(self, path: str) -> Path:
+        target, source = max(
+            ((t, s) for t, s in self.mounts if path == t or path.startswith(t + "/")),
+            key=lambda m: len(m[0]),
+        )
+        return source if path == target else source / path[len(target) + 1 :]
+
+
+def _compose_seeds(demo: Path) -> list[_Service]:
+    """Each PostgreSQL service of the demo's stack, its logins' own seed (reader) left out."""
+    import yaml
+
+    compose = yaml.safe_load((demo / "docker-compose.yml").read_text())
+    out = []
+    for service in (compose.get("services") or {}).values():
+        env = service.get("environment") or {}
+        if not isinstance(env, dict) or "POSTGRES_DB" not in env:
+            continue
+        mounts: list[tuple[str, Path]] = []
+        named: list[tuple[str, Path]] = []
+        for volume in service.get("volumes") or []:
+            if not isinstance(volume, str) or _INITDB not in volume:
+                continue
+            source, target = volume.split(":")[:2]
+            path = (demo / source).resolve()
+            mounts.append((target.rstrip("/"), path))
+            if path.is_dir():
+                if target.rstrip("/") == _INITDB:
+                    named += [(f.name, f) for f in path.glob("*.sql")]
+            else:
+                named.append((Path(target).name, path))
+        seeds = [f for name, f in sorted(named) if f.suffix == ".sql" and "reader" not in f.name]
+        out.append(_Service(str(env["POSTGRES_DB"]), seeds, mounts))
+    return out
+
+
+def _pg_sources(config: Path) -> dict[str, str]:
+    """The demo's PostgreSQL sources: each one's database, its namespace suffix left out."""
+    import yaml
+
+    raw = yaml.safe_load(config.read_text())
+    return {
+        s["id"]: _ENV_REF.sub("", str(s["database"]))
+        for s in raw.get("sources") or []
+        if s.get("type") == "postgresql"
+    }
+
+
+def seed_demo(pg: Any, demo: Path, prefix: str) -> dict[str, str]:
+    """Seed ``demo``'s databases on ``pg`` (a tests.embedded_pg.LocalPostgres) as its stack does,
+    each named ``<prefix>_<database>``: the seed's own database name to the one it was created as.
+    Each seed file runs in one session per database it connects to, as psql runs it."""
+    import psycopg
+
+    created: dict[str, str] = {}
+
+    def admin(statement: str) -> None:
+        with psycopg.connect(pg.dsn(), autocommit=True) as conn:
+            conn.execute(statement)
+
+    def database(name: str) -> str:
+        if name not in created:
+            created[name] = f"{prefix}_{name}"
+            admin(f'CREATE DATABASE "{created[name]}"')
+        return created[name]
+
+    for service in _compose_seeds(demo):
+        for seed in service.seeds:
+            sessions: dict[str, Any] = {}
+
+            def session(db: str) -> Any:
+                if db not in sessions:
+                    sessions[db] = psycopg.connect(pg.dsn(db), autocommit=True)
+                return sessions[db]
+
+            current = database(service.database)
+            chunk: list[str] = []
+
+            def flush() -> None:
+                text = "\n".join(chunk)
+                chunk.clear()
+                if text.strip():
+                    session(current).execute(text)
+
+            try:
+                for line in seed.read_text().splitlines():
+                    role = _CREATE_ROLE.match(line)
+                    if role:
+                        flush()
+                        exists = session(current).execute(
+                            "SELECT 1 FROM pg_roles WHERE rolname = %s", [role.group(1)]
+                        )
+                        if exists.fetchone() is None:
+                            admin(line)
+                        continue
+                    if _ROLE_LINE.match(line):
+                        continue
+                    made = _CREATE_DB.match(line)
+                    if made:
+                        database(made.group(1))
+                        continue
+                    connect = _CONNECT.match(line)
+                    if connect:
+                        flush()
+                        current = database(connect.group(1))
+                        continue
+                    copy = _COPY.match(line)
+                    if copy:
+                        flush()
+                        data = service.local(copy.group(2)).read_bytes()
+                        with (
+                            session(current)
+                            .cursor()
+                            .copy(f"COPY {copy.group(1)} FROM STDIN{copy.group(3)}") as cp
+                        ):
+                            cp.write(data)
+                        continue
+                    # A server-side COPY reads the container's path: here, the file it mounts.
+                    for target, source in service.mounts:
+                        if f"'{target}" in line:
+                            line = re.sub(
+                                rf"'({re.escape(target)}[^']*)'",
+                                lambda m: f"'{service.local(m.group(1))}'",
+                                line,
+                            )
+                    chunk.append(line)
+                flush()
+            finally:
+                for conn in sessions.values():
+                    conn.close()
+    return created
+
+
+def _plain(value: Any) -> Any:
+    """A cell as JSON holds it: a number, a string, a list, a map, or null."""
+    import datetime
+    import decimal
+    import uuid
+
+    if isinstance(value, datetime.datetime) and value.tzinfo is not None:
+        # An instant, whichever zone the engine shows it in.
+        return value.astimezone(datetime.timezone.utc).isoformat()
+    if isinstance(value, decimal.Decimal):
+        return str(value.normalize()) if value == value.to_integral() else str(value)
+    if isinstance(value, (datetime.date, datetime.datetime, datetime.time, uuid.UUID)):
+        return str(value)
+    if isinstance(value, (bytes, memoryview)):
+        return bytes(value).hex()
+    if isinstance(value, str) and value[:1] in "[{":
+        try:
+            return json.loads(value)
+        except ValueError:
+            return value
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    return value
+
+
+def physical_statements(schema: Any, ctx: Any, read: CorpusRead, view_sql: dict) -> list[dict]:
+    """Each root of ``read`` as the statement the engine runs (its views expanded, physical), with
+    its parameters, the catalogs it reads and whether it orders its rows."""
+    import sqlglot
+    from graphql import parse
+
+    from provisa.compiler.parser import coerce_variable_defaults
+    from provisa.compiler.sql_gen import compile_query
+    from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
+    from provisa.compiler.view_expand import expand_view_refs
+
+    document = parse(read.text)
+    out = []
+    for root in compile_query(document, ctx, coerce_variable_defaults(document, read.variables)):
+        semantic = make_semantic_sql(root.sql, ctx)
+        # Lowered the one way every surface lowers a governed statement (REQ-641).
+        physical = lower_to_catalog_physical(expand_view_refs(semantic, view_sql), ctx)
+        tree = sqlglot.parse_one(physical, read="postgres")
+        out.append(
+            {
+                "root_field": root.root_field,
+                "sql": physical,
+                "params": list(root.params),
+                "catalogs": sorted(
+                    {t.catalog for t in tree.find_all(sqlglot.exp.Table) if t.catalog}
+                ),
+                "ordered": tree.args.get("order") is not None,
+            }
+        )
+    return out
+
+
+def _rows(cursor: Any) -> tuple[list[str], list[list]]:
+    columns = [d[0] for d in cursor.description]
+    return columns, [[_plain(v) for v in row] for row in cursor.fetchall()]
+
+
+def answer_on_duckdb(pg: Any, databases: dict[str, str], stmt: dict) -> dict:
+    """``stmt`` run on DuckDB, each catalog it reads attached from its seeded database."""
+    import duckdb
+
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    con = duckdb.connect()
+    for catalog in stmt["catalogs"]:
+        con.execute(
+            f"ATTACH '{pg.dsn(databases[catalog])}' AS \"{catalog}\" (TYPE POSTGRES, READ_ONLY)"
+        )
+    # As the DuckDB engine writes a statement (provisa.transpiler.transpile).
+    columns, rows = _rows(con.execute(transpile_to_duckdb(stmt["sql"]), stmt["params"]))
+    con.close()
+    return {"columns": columns, "rows": rows}
+
+
+def answer_on_postgres(pg: Any, databases: dict[str, str], stmt: dict) -> dict:
+    """``stmt``, of one catalog, run on its database directly (the DIRECT route's statement: the
+    table addressed by its schema)."""
+    import psycopg
+    import sqlglot
+
+    (catalog,) = stmt["catalogs"]
+    tree = sqlglot.parse_one(stmt["sql"], read="postgres")
+    for table in tree.find_all(sqlglot.exp.Table):
+        table.set("catalog", None)
+    order: list[int] = []
+
+    def placeholder(m: re.Match) -> str:
+        order.append(int(m.group(1)) - 1)
+        return "%s"
+
+    text = re.sub(r"\$(\d+)", placeholder, tree.sql(dialect="postgres").replace("%", "%%"))
+    with psycopg.connect(pg.dsn(databases[catalog])) as conn:
+        columns, rows = _rows(conn.execute(text, [stmt["params"][i] for i in order]))
+    return {"columns": columns, "rows": rows}
+
+
+def _view_sql(config: Path) -> dict[str, str]:
+    _schema_input, tables, _rels, _types = _cypher_golden().model_inputs(config, parameters=True)
+    return {t["table_name"]: t["view_sql"] for t in tables if "view_sql" in t}
+
+
+def demo_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
+    """What each corpus read of ``demo`` answers, root by root: on DuckDB when every table it
+    reads is one of the demo's PostgreSQL sources, and on PostgreSQL too when it reads one; a read
+    of any other source says so (it is answered in the integration lane)."""
+    config = demo / "config.yaml"
+    reads = [r for r in corpus() if r.config == config]
+    if not reads:
+        return []
+    created = seed_demo(pg, demo, prefix)
+    catalogs = {
+        source_id.replace("-", "_"): created[db]
+        for source_id, db in _pg_sources(config).items()
+        if db in created
+    }
+    schema, ctx = model(config)
+    view_sql = _view_sql(config)
+    out = []
+    for read in reads:
+        for stmt in physical_statements(schema, ctx, read, view_sql):
+            entry = {
+                "origin": read.origin,
+                "root_field": stmt["root_field"],
+                "ordered": stmt["ordered"],
+            }
+            outside = [c for c in stmt["catalogs"] if c not in catalogs]
+            if outside or not stmt["catalogs"]:
+                out.append({**entry, "answered": False, "reads": stmt["catalogs"]})
+                continue
+            engines = {"duckdb": answer_on_duckdb(pg, catalogs, stmt)}
+            if len(stmt["catalogs"]) == 1:
+                engines["postgres"] = answer_on_postgres(pg, catalogs, stmt)
+            for engine, answer in engines.items():
+                # The rows as a multiset: an ORDER BY with ties orders them as the engine likes,
+                # and the order a read asks for is the semantic SQL golden's to hold.
+                rows = sorted(answer["rows"], key=repr)
+                out.append({**entry, "engine": engine, "columns": answer["columns"], "rows": rows})
+    return out
+
+
+def answered_demos() -> list[Path]:
+    """The demos whose reads the answers baseline runs: each with a PostgreSQL source its own
+    stack seeds."""
+    return sorted(
+        d
+        for d in (REPO / "demo" / "named").iterdir()
+        if (d / "queries").is_dir()
+        and (d / "docker-compose.yml").exists()
+        and _pg_sources(d / "config.yaml")
+    )
 
 
 if __name__ == "__main__":

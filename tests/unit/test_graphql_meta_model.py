@@ -55,4 +55,22 @@ def test_the_meta_schema_a_client_reads_is_the_meta_models():
     doc = golden.meta_schema_doc()
     if os.environ.get("PROVISA_GRAPHQL_GOLDEN_CAPTURE"):
         golden.META_SCHEMA.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
-    assert json.loads(golden.META_SCHEMA.read_text()) == json.loads(json.dumps(doc))
+    held, now = json.loads(golden.META_SCHEMA.read_text()), json.loads(json.dumps(doc))
+    assert held == now, _first_difference(held, now)
+
+
+def _first_difference(a, b, path="") -> str:
+    """Where two JSON values first differ, for the failure's message."""
+    if type(a) is not type(b):
+        return f"{path}: {a!r} != {b!r}"
+    if isinstance(a, dict):
+        for k in sorted(set(a) | set(b)):
+            if a.get(k) != b.get(k):
+                return _first_difference(a.get(k), b.get(k), f"{path}.{k}")
+    if isinstance(a, list):
+        if len(a) != len(b):
+            return f"{path}: {len(a)} items != {len(b)}"
+        for i, (x, y) in enumerate(zip(a, b, strict=True)):
+            if x != y:
+                return _first_difference(x, y, f"{path}[{i}]")
+    return f"{path}: {str(a)[:300]} != {str(b)[:300]}"

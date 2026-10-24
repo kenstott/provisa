@@ -1,0 +1,118 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:vulnerabilities/1-exploited-by-team.graphql",
+  "reads": [
+   "code",
+   "govdata"
+  ],
+  "root_field": "s__viewExploitedInOurCodeGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:vulnerabilities/2-internet-facing-and-exploited.graphql",
+  "reads": [
+   "code",
+   "govdata"
+  ],
+  "root_field": "s__viewExploitedInOurCode"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:vulnerabilities/3-open-alerts-with-their-weaknesses.graphql",
+  "reads": [
+   "code",
+   "govdata"
+  ],
+  "root_field": "s__dependabotAlerts"
+ },
+ {
+  "columns": [
+   "state",
+   "severity",
+   "count_star()"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:vulnerabilities/4-alerts-by-state.graphql",
+  "root_field": "s__dependabotAlertsGroupBy",
+  "rows": [
+   [
+    "dismissed",
+    "high",
+    2
+   ],
+   [
+    "fixed",
+    "critical",
+    2
+   ],
+   [
+    "fixed",
+    "high",
+    3
+   ],
+   [
+    "open",
+    "critical",
+    27
+   ],
+   [
+    "open",
+    "high",
+    9
+   ],
+   [
+    "open",
+    "medium",
+    3
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "state",
+   "severity",
+   "count"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:vulnerabilities/4-alerts-by-state.graphql",
+  "root_field": "s__dependabotAlertsGroupBy",
+  "rows": [
+   [
+    "dismissed",
+    "high",
+    2
+   ],
+   [
+    "fixed",
+    "critical",
+    2
+   ],
+   [
+    "fixed",
+    "high",
+    3
+   ],
+   [
+    "open",
+    "critical",
+    27
+   ],
+   [
+    "open",
+    "high",
+    9
+   ],
+   [
+    "open",
+    "medium",
+    3
+   ]
+  ]
+ }
+]
