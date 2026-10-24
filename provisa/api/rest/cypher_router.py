@@ -48,6 +48,7 @@ from sqlalchemy import select
 
 from provisa.core import request_deadline
 from provisa.core.parameters import ParameterRequired
+from provisa.api.errors import ApiError
 from provisa.core.read_refusal import ReadRefused
 from provisa.executor.result import QueryResult
 from provisa.core.schema_org import node_ids
@@ -307,6 +308,32 @@ def _build_sql_from_ast(
     return sql_str, ordered_params, graph_vars
 
 
+async def _governed_plan(semantic_sql: str, role_id: str, **route: Any) -> Any:
+    """The Cypher read's plan, governed and routed by the one pipeline, or the failure as this
+    transport answers it. A refusal by name -- the app's coded errors (ApiError: a row-level
+    table read without a filter its source can apply, REQ-1915) and a read the deployment cannot
+    answer now (ReadRefused) -- is answered by the app's own handler for it, with its own status
+    and code, as on every other surface (REQ-1350); only what nothing names is a 500 here."""
+    from provisa.pgwire._pipeline import _govern_and_route_compiled
+
+    try:
+        return await _govern_and_route_compiled(semantic_sql, role_id, **route)
+    except (ComplexityLimitExceeded, ApiError, ReadRefused):
+        raise  # REQ-1174 (413), REQ-1350, REQ-1915: answered by the app's handlers
+    except PermissionError as exc:
+        return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
+    except ParameterRequired as exc:
+        # REQ-1986: a read leaving a required parameter without a value -- the caller's to give.
+        return cypher_error(
+            400, "cypher.parameter_required", str(exc), table=exc.table, reason=str(exc)
+        )
+    except Exception as exc:
+        log.exception("Cypher governance/routing failed")
+        return cypher_error(
+            500, "cypher.governance_failed", f"Governance failed: {exc}", error=str(exc)
+        )
+
+
 async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
     """Execute a governed Cypher plan through the one pipeline terminal (``_execute_plan``), under
     this transport's request timeout (REQ-1905). The terminal lands what the plan reads, holds its
@@ -342,7 +369,7 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
     except OSError as exc:
         log.warning("Cypher execution: network error: %s", exc)
         return _exec_error(503, exc, physical_sql)
-    except (PermissionError, ReadRefused):
+    except (PermissionError, ReadRefused, ApiError):
         raise  # a refusal is answered by its own handler, not as an execution failure
     except Exception as exc:
         # Engine driver errors are classified through the seam (no engine-specific exception
@@ -646,7 +673,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
         from provisa.gql.assembler import assemble_rows, to_serializable
         from provisa.compiler.sql_rewrite import make_semantic_sql
-        from provisa.pgwire._pipeline import _govern_and_route_compiled
     except Exception as exc:
         log.exception("Cypher imports failed")
         return cypher_error(500, "cypher.import_failed", f"Import failed: {exc}", error=str(exc))
@@ -761,35 +787,22 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         cache_hint = request_cache_hint(cache_hint_for("cypher", body.query), request.headers)
     except ValueError as exc:
         return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
-    try:
-        plan = await _govern_and_route_compiled(
-            semantic_sql,
-            role_id,
-            exec_params=resolved_params or None,
-            deliver=delivery,
-            # A drawing is never delivered to a file: the redirect threshold is a rule for rows.
-            buffered=not drawn,
-            cache_hint=cache_hint,
-            # REQ-030: the statement's own `// @provisa route=...` comment.
-            steward_hint=extract_directives_from_cypher_comments(body.query).steward_hint,
-            # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
-            serve_cached=True,
-            sdl_joins=False,
-        )
-    except ComplexityLimitExceeded:
-        raise  # REQ-1174: answered as 413 by the app's handler
-    except PermissionError as exc:
-        return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
-    except ParameterRequired as exc:
-        # REQ-1986: a read leaving a required parameter without a value -- the caller's to give.
-        return cypher_error(
-            400, "cypher.parameter_required", str(exc), table=exc.table, reason=str(exc)
-        )
-    except Exception as exc:
-        log.exception("Cypher governance/routing failed")
-        return cypher_error(
-            500, "cypher.governance_failed", f"Governance failed: {exc}", error=str(exc)
-        )
+    plan = await _governed_plan(
+        semantic_sql,
+        role_id,
+        exec_params=resolved_params or None,
+        deliver=delivery,
+        # A drawing is never delivered to a file: the redirect threshold is a rule for rows.
+        buffered=not drawn,
+        cache_hint=cache_hint,
+        # REQ-030: the statement's own `// @provisa route=...` comment.
+        steward_hint=extract_directives_from_cypher_comments(body.query).steward_hint,
+        # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
+        serve_cached=True,
+        sdl_joins=False,
+    )
+    if isinstance(plan, Response):
+        return plan
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
