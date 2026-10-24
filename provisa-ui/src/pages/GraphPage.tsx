@@ -49,6 +49,25 @@ import { useMaxNodes } from "../components/graph/graph-drawing";
 import { frameStatement, showing, type CypherAnswer } from "../components/graph/frameStatements";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+/** A refused request's error: its body's ``detail`` or ``error`` when it is JSON that has one, else
+ *  the body as sent. */
+function refusalText(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body;
+  }
+  if (parsed !== null && typeof parsed === "object") {
+    const said =
+      (parsed as { detail?: unknown; error?: unknown }).detail ??
+      (parsed as { error?: unknown }).error;
+    if (typeof said === "string") return said;
+    if (said !== undefined) return JSON.stringify(said);
+  }
+  return body;
+}
+
 export function GraphPage() {
   const { t } = useTranslation();
   const { role, selectedRoles, loading: authLoading } = useAuth();
@@ -104,8 +123,12 @@ export function GraphPage() {
   // The viewer's max-nodes setting: the most distinct nodes a frame draws.
   const [maxNodes, setMaxNodes] = useMaxNodes();
   const [schemaLoading, setSchemaLoading] = useState(true);
+  // Why /data/graph-schema gave no schema (a refused request, or none reached); null when it did.
+  const [schemaError, setSchemaError] = useState<string | null>(null);
   // What /data/graph-counts last said for this role and domain selection; null until it has.
   const [counts, setCounts] = useState<GraphCounts | null>(null);
+  // Why /data/graph-counts gave no counts (a refused request, or none reached); null when it did.
+  const [countsError, setCountsError] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     "provisa.graph.sidebarWidth",
     240,
@@ -212,7 +235,11 @@ export function GraphPage() {
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     fetch("/data/graph-schema", { headers })
-      .then((r) => r.json())
+      .then(async (r) => {
+        // A refused request's body is its error, never a schema.
+        if (!r.ok) throw new Error(refusalText(await r.text()));
+        return r.json();
+      })
       .then((data) => {
         const nodeLabels: SchemaNodeLabel[] = (data.node_labels ?? []).map(
           (n: {
@@ -277,8 +304,13 @@ export function GraphPage() {
         clusterMapRef.current = newClusterMap;
         setSchemaNodeLabels(uniqueNodeLabels);
         setSchemaRels(rels.sort((a, b) => a.type.localeCompare(b.type)));
+        setSchemaError(null);
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        setSchemaNodeLabels([]);
+        setSchemaRels([]);
+        setSchemaError(e instanceof Error ? e.message : String(e));
+      })
       .finally(() => setSchemaLoading(false));
   }, [roleHeaderValue]);
 
@@ -287,8 +319,8 @@ export function GraphPage() {
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     const domainsKey = [...checkedDomains].sort().join(",");
-    // v2: each entry is a count or why it is none (a v1 entry held bare numbers).
-    const countsKey = `provisa.graph.counts.v2.${role?.id ?? "default"}.${domainsKey}`;
+    // v3: only counts are stored (a v2 entry could hold a refused request's error body).
+    const countsKey = `provisa.graph.counts.v3.${role?.id ?? "default"}.${domainsKey}`;
     try {
       const cached = getStored(countsKey);
       setCounts(cached ? (JSON.parse(cached) as GraphCounts) : null);
@@ -297,16 +329,24 @@ export function GraphPage() {
     }
     const domainsParam = checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
     fetch(`/data/graph-counts${domainsParam}`, { headers })
-      .then((r) => r.json())
-      .then((data: GraphCounts) => {
+      .then(async (r) => {
+        // A refused request's body is its error, never counts: shown, and not stored.
+        if (!r.ok) throw new Error(refusalText(await r.text()));
+        return (await r.json()) as GraphCounts;
+      })
+      .then((data) => {
         setCounts(data);
+        setCountsError(null);
         try {
           setStored(countsKey, JSON.stringify(data));
         } catch {
           /* quota */
         }
       })
-      .catch(() => {});
+      .catch((e: unknown) => {
+        setCounts(null);
+        setCountsError(e instanceof Error ? e.message : String(e));
+      });
     /* eslint-disable-next-line react-hooks/exhaustive-deps -- refetch counts only on the listed schema/role/domain inputs; other referenced setters are stable */
   }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
 
@@ -822,6 +862,7 @@ export function GraphPage() {
         schemaNodeLabels={visibleNodeLabels}
         schemaRels={visibleSchemaRels}
         schemaLoading={schemaLoading}
+        schemaError={schemaError}
         history={history}
         colorOverrides={colorOverrides}
         sizeOverrides={sizeOverrides}
@@ -857,6 +898,7 @@ export function GraphPage() {
         propertyKeys={cypherSchema.propertyKeys}
         onPropertyKeyClick={handlePropertyKeyClick}
         counts={counts}
+        countsError={countsError}
         maxNodes={maxNodes}
         onMaxNodesChange={setMaxNodes}
       />

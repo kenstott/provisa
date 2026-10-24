@@ -8017,5 +8017,7 @@
   "hi/serverErrors.json::serverErrors.statement.path_cut": "A path with no upper bound was cut at the graph depth limit of {{limit}} hops: paths longer than that are missing from the answer.",
   "hi/settings.json::settings.server.public_url.label": "Public address",
   "hi/settings.json::settings.server.public_url.help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused.",
-  "hi/dataProductsTab.json::dataProductsTab.detail.field.details": "Details"
+  "hi/dataProductsTab.json::dataProductsTab.detail.field.details": "Details",
+  "hi/graphSidebar.json::graphSidebar.countsFailed": "Counts unavailable: {{error}}",
+  "hi/graphSidebar.json::graphSidebar.schemaFailed": "Schema unavailable: {{error}}"
 }

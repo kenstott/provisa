@@ -30,6 +30,8 @@
     "tabSettings": "Настройки вида",
     "maxNodes": "Макс. узлов",
     "maxNodesHint": "Максимум узлов, которые рисует запрос",
-    "notCounted": "Не подсчитано: {{list}}"
+    "notCounted": "Не подсчитано: {{list}}",
+    "countsFailed": "Подсчёт недоступен: {{error}}",
+    "schemaFailed": "Схема недоступна: {{error}}"
   }
 }
