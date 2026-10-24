@@ -160,6 +160,9 @@ class _Plan:
     # REQ-1949: the row limit that bounds this read, when a limit and not the statement's own
     # LIMIT is what bounds it (compiler/row_limit.RowLimit). None for every other statement.
     row_limit: Any = None
+    # REQ-005: the limit that bounds each list the read nests (compiler/list_cap), when it
+    # nests any; None otherwise.
+    list_limit: Any = None
     # REQ-1949: what the check of that limit found, for the statement's audit row: "cut" (more
     # rows matched than were returned) or "unchecked" (the check could not be made). None when
     # the answer was whole, or was not checked because it did not fill the limit.
@@ -1860,6 +1863,7 @@ async def _route_bounded(governed: "_Governed", **how: Any) -> _Plan:
     plan.scratch = tuple(scratch)
     if how.get("explain") is None:
         plan.row_limit = governed.gov_ctx.row_limit
+        plan.list_limit = governed.gov_ctx.list_limit
     plan.embedded = governed.memo.get("embed")  # REQ-2002
     plan.columns = governed.memo.get("columns")  # REQ-2131
     return plan
@@ -3228,7 +3232,19 @@ async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
     in the statement's warnings. An answer within the limit is whole and says nothing. A landed
     result (redirect, materialize, export) is counted by the rows its handle says were landed:
     the engine landed them, bounded at the same limit, and is asked for the row after it the
-    same way."""
+    same way.
+
+    REQ-005: a list the answer nests holding exactly its limit's entries may have more, and the
+    answer says so (compiler/list_cap). A landed result's lists are not read here."""
+    if plan.list_limit is not None and result.redirect is None:
+        from provisa.compiler.list_cap import at_ceiling, list_at_ceiling_warning
+        from provisa.core.statement_warnings import tell
+
+        if at_ceiling(result.rows, plan.list_limit.limit):
+            tell(
+                list_at_ceiling_warning(plan.list_limit.limit, plan.list_limit.kind),
+                plan.warnings,
+            )
     if plan.row_limit is None:
         return
     if result.cache_entry is not None:
@@ -4586,6 +4602,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         )
     plan.scratch = tuple(_scratch)
     plan.row_limit = gov_ctx.row_limit  # REQ-1949
+    plan.list_limit = gov_ctx.list_limit  # REQ-005
     return plan
 
 

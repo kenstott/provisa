@@ -560,6 +560,7 @@
     "statement": {
       "rows_cut": "La respuesta se cortó en {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}): coinciden más filas de las devueltas.",
       "rows_cut_unchecked": "La respuesta tiene {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}). No se pudo comprobar si coinciden más filas: {{reason}}",
+      "list_at_ceiling": "Una lista contiene el máximo de {{limit}} entradas que permite el límite de filas para esta lectura ({{kind}}); puede haber más.",
       "approximate_index": "Las filas más similares se encontraron mediante un índice vectorial aproximado: puede faltar una fila algo más similar que la última devuelta.",
       "path_cut": "Una ruta sin límite superior se cortó en el límite de profundidad del grafo de {{limit}} saltos: faltan en la respuesta las rutas más largas."
     },

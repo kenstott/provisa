@@ -560,6 +560,7 @@
     "statement": {
       "rows_cut": "A resposta foi cortada em {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}): há mais linhas correspondentes do que as devolvidas.",
       "rows_cut_unchecked": "A resposta tem {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}). Não foi possível verificar se há mais linhas correspondentes: {{reason}}",
+      "list_at_ceiling": "Uma lista contém o máximo de {{limit}} entradas que o limite de linhas permite para esta leitura ({{kind}}); pode haver mais.",
       "approximate_index": "As linhas mais semelhantes foram encontradas por meio de um índice vetorial aproximado: pode faltar uma linha um pouco mais semelhante do que a última retornada.",
       "path_cut": "Um caminho sem limite superior foi cortado no limite de profundidade do grafo de {{limit}} saltos: caminhos mais longos estão ausentes da resposta."
     },

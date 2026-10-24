@@ -174,12 +174,21 @@
   type: behavioral
   description: Result-size ceilings are defined per role/table in config (`max_rows`); Stage 2 injects
     LIMIT when a query would exceed the role's ceiling for any referenced table. Clients may always narrow
-    further (fewer columns, additional filters).
+    further (fewer columns, additional filters). (Amended 2026-10-24, EVERY NESTED LIST TOO:) The same
+    ceiling bounds every list a read nests -- an aggregate or group-by's nodes and a to-many relationship's
+    rows -- at that many entries, as one AST rewrite of the governed statement (each json_agg beside a
+    grouping or other aggregates aggregates only the rows ROW_NUMBER numbers within the ceiling per group;
+    one that is its select's one value reads at most that many rows). The statement's own LIMIT is
+    unchanged, and counts and other aggregates stay over every row. A list of exactly the ceiling's entries
+    carries the warning statement.list_at_ceiling (it may have more); a list in a shape the rewrite has no
+    form for is refused by name, never left unbounded.
   use_case: Per-role/table row ceilings bound result size without an approved-query registry.
   code:
   - provisa/core/
+  - provisa/compiler/list_cap.py
   tests:
   - tests/unit/test_governance.py
+  - tests/unit/test_list_cap.py
   - tests/integration/test_governance_integration.py
   since: 2026-01
   scenario: 'Given a role with a configured max_rows ceiling for a table
