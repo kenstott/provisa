@@ -256,7 +256,12 @@
       "database_unavailable": "数据库不可用",
       "query_engine_unavailable": "查询引擎不可用",
       "role_header_required": "分析视图需要 X-Provisa-Role 请求头",
-      "table_not_found": "未找到表 {{table_id}}"
+      "table_not_found": "未找到表 {{table_id}}",
+      "column_not_found": "列 {{column}} 不是 org_admin 读取的表中的列",
+      "classification_kind_unknown": "未知的分类类型 {{kind}}",
+      "classification_status_invalid": "分类决定只能是已接受或已拒绝，而不是 {{status}}",
+      "classification_decision_not_found": "没有关于 {{column}} 作为 {{kind}} 的决定",
+      "classification_pii_refused": "无法将该列标记为 PII"
     },
     "replication": {
       "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：[{{content_type}}] {{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",

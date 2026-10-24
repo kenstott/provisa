@@ -1,0 +1,174 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+# REQ-2147: the profiler's classification kinds. Read by provisa/profiler/classify.py; an org admin
+# may disable a kind, and nothing else of an entry is set anywhere but here.
+#
+#   id           the kind, as a plausible type and in a suggestion
+#   label        what the admin list calls it
+#   noun         what the suggestion says the column looks like
+#   passes       what the suggestion says the sampled values did
+#   sensitive    accepting the suggestion also marks the column pii and offers mask_preset
+#   test         a validator of classify.VALIDATORS, or reference:<list> (reference/<list>.txt.gz)
+#   families     the column families whose values are tested (text; numeric: whole numbers only)
+#   threshold    the share of tested values that must pass
+#   term         the glossary Property term an accepted suggestion links the column to
+#   mask_preset  an id of provisa/security/mask_presets.py (sensitive kinds only)
+#
+# Sensitive kinds come first: where several kinds pass, the first is the column's plausible type.
+
+kinds:
+  - id: us_ssn
+    label: US social security number
+    noun: a US social security number
+    passes: pass the SSN rules
+    sensitive: true
+    test: us_ssn
+    families: [text, numeric]
+    threshold: 0.9
+    term: us social security number
+    mask_preset: ssn_last4
+
+  - id: payment_card
+    label: Payment card number
+    noun: a payment card number
+    passes: pass the Luhn check
+    sensitive: true
+    test: payment_card
+    families: [text, numeric]
+    threshold: 0.9
+    term: payment card number
+    mask_preset: card_last4
+
+  - id: iban
+    label: IBAN
+    noun: an IBAN
+    passes: pass the IBAN check digits
+    sensitive: true
+    test: iban
+    families: [text]
+    threshold: 0.9
+    term: iban
+    mask_preset: iban_last4
+
+  - id: uk_national_insurance_number
+    label: UK National Insurance number
+    noun: a UK National Insurance number
+    passes: pass the National Insurance number rules
+    sensitive: true
+    test: uk_national_insurance_number
+    families: [text]
+    threshold: 0.9
+    term: uk national insurance number
+    mask_preset: all_but_last4
+
+  - id: ca_social_insurance_number
+    label: Canadian social insurance number
+    noun: a Canadian social insurance number
+    passes: pass the SIN check digit
+    sensitive: true
+    test: ca_social_insurance_number
+    families: [text, numeric]
+    threshold: 0.9
+    term: canadian social insurance number
+    mask_preset: all_but_last4
+
+  - id: es_dni
+    label: Spanish DNI or NIE
+    noun: a Spanish DNI or NIE
+    passes: pass the DNI check letter
+    sensitive: true
+    test: es_dni
+    families: [text]
+    threshold: 0.9
+    term: spanish national identity number
+    mask_preset: all_but_last4
+
+  - id: nl_bsn
+    label: Dutch citizen service number (BSN)
+    noun: a Dutch citizen service number
+    passes: pass the BSN eleven test
+    sensitive: true
+    test: nl_bsn
+    families: [text, numeric]
+    threshold: 0.9
+    term: dutch citizen service number
+    mask_preset: all_but_last4
+
+  - id: in_aadhaar
+    label: Indian Aadhaar number
+    noun: an Indian Aadhaar number
+    passes: pass the Aadhaar check digit
+    sensitive: true
+    test: in_aadhaar
+    families: [text, numeric]
+    threshold: 0.9
+    term: aadhaar number
+    mask_preset: all_but_last4
+
+  - id: us_passport
+    label: US passport number
+    noun: a US passport number
+    passes: have the US passport number format
+    sensitive: true
+    test: us_passport
+    families: [text]
+    threshold: 0.9
+    term: us passport number
+    mask_preset: all_but_last4
+
+  - id: country
+    label: Country name
+    noun: a country
+    passes: are known countries
+    sensitive: false
+    test: reference:countries
+    families: [text]
+    threshold: 0.9
+    term: country
+
+  - id: country_code
+    label: Country code (ISO 3166)
+    noun: an ISO 3166 country code
+    passes: are known country codes
+    sensitive: false
+    test: reference:country_codes
+    families: [text]
+    threshold: 0.9
+    term: country code
+
+  - id: currency_code
+    label: Currency code (ISO 4217)
+    noun: an ISO 4217 currency code
+    passes: are known currency codes
+    sensitive: false
+    test: reference:currency_codes
+    families: [text]
+    threshold: 0.9
+    term: currency code
+
+  - id: language_code
+    label: Language code (ISO 639)
+    noun: an ISO 639 language code
+    passes: are known language codes
+    sensitive: false
+    test: reference:language_codes
+    families: [text]
+    threshold: 0.9
+    term: language code
+
+  - id: city
+    label: World city
+    noun: a world city
+    passes: are known cities
+    sensitive: false
+    test: reference:cities
+    families: [text]
+    threshold: 0.9
+    term: city
