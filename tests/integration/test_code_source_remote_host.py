@@ -173,10 +173,20 @@ try:
     for _ in residual.answer("SELECT s FROM t ORDER BY s DESC", "duckdb", "t", pa.RecordBatchReader.from_batches(schema, batches())):
         pass
 except residual.SpillCapped as refused:
-    print("REFUSED", refused)
-    sys.exit(0)
-print("ANSWERED")
-sys.exit(1)
+    print("REFUSED", refused, flush=True)
+else:
+    print("ANSWERED", flush=True)
+    sys.exit(1)
+import gc, faulthandler
+faulthandler.enable()
+print("DIAG gc", gc.collect(), flush=True)
+print("DIAG close database", flush=True)
+residual._database.close()
+print("DIAG database closed", flush=True)
+residual._database = None
+print("DIAG gc", gc.collect(), flush=True)
+print("DIAG exit", flush=True)
+sys.exit(0)
 """
 
 
@@ -212,5 +222,6 @@ def test_a_statement_that_fills_the_images_spill_volume_is_refused_naming_the_ca
         text=True,
         timeout=600,
     )
+    print("DIAG returncode", run.returncode, "stdout:", run.stdout, "stderr:", run.stderr[-3000:])
     assert run.returncode == 0, run.stdout + run.stderr
     assert "REFUSED" in run.stdout and "codesource.duckdb_spill_cap_mb" in run.stdout, run.stdout
