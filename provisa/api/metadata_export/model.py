@@ -397,7 +397,13 @@ class GlossaryTermAsset:  # REQ-1387
 
     ``refs`` lists the published columns that mean this concept; a rooted term whose refs
     all point at withheld tables is withheld with them (the data_product filter rule), while
-    an abstract term publishes on the strength of its edges alone.
+    an abstract term publishes on the strength of its edges alone. ``tables`` lists the
+    published tables a Class term grounds (REQ-2141).
+
+    ``role`` is the term's ontology role (REQ-2141): ``class`` when it grounds tables,
+    ``property`` when it owns column refs, ``concept`` when it grounds neither. It decides
+    what the term is assigned to in a catalog: a Class to its tables, a Property to its
+    columns (REQ-1389).
     """
 
     term_id: int
@@ -412,8 +418,27 @@ class GlossaryTermAsset:  # REQ-1387
     status_reason: str | None = None
     retire_on: str | None = None  # ISO date
     refs: tuple[AssetRef, ...] = ()
+    tables: tuple[AssetRef, ...] = ()
+    role: str = "concept"  # class | property | concept
     experts: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/terms/<term name>
+    domains: tuple[str, ...] = ()  # REQ-1591: the term's domains, sorted
+
+    @property
+    def in_deprecation(self) -> bool:
+        """REQ-2144: deprecated in the catalogs -- a curator deprecated it (in service until
+        ``retire_on``). A term whose derivation lost its last column (``deprecated``) is out of
+        service and never exported, so the status is what each catalog's deprecation reflects."""
+        return self.status == "deprecated"
+
+    def assigned_to(self) -> tuple[AssetRef, ...]:
+        """The published assets a catalog assigns this term to (REQ-1389): a Class its tables,
+        a Property its columns, a Concept nothing."""
+        if self.role == "class":
+            return self.tables
+        if self.role == "property":
+            return self.refs
+        return ()
 
 
 @dataclass
@@ -449,6 +474,32 @@ class MetadataSnapshot:  # REQ-1070
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]
+
+    def container_sources(self) -> list[SourceAsset]:
+        """The sources, and the derived layer a view is read from (REQ-2119).
+
+        A view's source is Provisa's own derived sentinel, not a federated source, so it is not
+        among ``sources``. A catalog that seats every table in a source container (Atlas's
+        provisa_source composition, OpenMetadata's service and database) refuses a table with
+        none, so the views are seated in a container for that layer.
+        """
+        from provisa.api.metadata_export.refs import source_uri
+
+        known = {source.id for source in self.sources}
+        derived = sorted({t.ref.parts[0] for t in self.tables if t.is_view} - known)
+        return [
+            *self.sources,
+            *(
+                SourceAsset(
+                    ref=AssetRef(kind=AssetKind.SOURCE, parts=(source_id,)),
+                    id=source_id,
+                    source_type="derived",
+                    description="Views Provisa defines over its governed tables.",
+                    semantic_uri=source_uri(self.org_id, source_id),
+                )
+                for source_id in derived
+            ),
+        ]
 
     def asset_count(self) -> dict[str, int]:
         return {

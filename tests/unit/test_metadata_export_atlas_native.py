@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from provisa.api.metadata_export.atlan import AtlanExport
 from provisa.api.metadata_export.atlas import (
+    CLUSTER,
     PROVISA_COLUMN_TYPE,
     PROVISA_DATA_PRODUCT_TYPE,
     PROVISA_SOURCE_TYPE,
@@ -212,11 +213,13 @@ def test_urn_rebind_leaves_unmoved_entities_alone():
     assert table.guid == placeholder
 
 
-def test_atlan_keeps_builtin_types_and_no_classification_merge():
+def test_atlan_keeps_builtin_types_and_merges_classifications_on_its_own_routes():
     # REQ-1388 caveat: Atlan's layered type system gives custom types reduced UI treatment,
-    # so its adapter maps to built-ins; the per-guid classification sync stays off there
-    # until those routes are verified.
-    assert AtlanExport.classification_merge is False
+    # so its adapter maps to built-ins. REQ-1389: the per-guid classification sync and the live
+    # attribute merge run on Atlan's /api/meta routes; the basic-search index is not read.
+    assert AtlanExport.classification_merge is True
+    assert AtlanExport.entity_guid_path == "/api/meta/entity/guid"
+    assert AtlanExport.live_search is False
     exporter = AtlanExport.__new__(AtlanExport)
     entities = exporter._atlan_entities(_snapshot())
     assert {e.type_name for e in entities} <= {
@@ -258,9 +261,10 @@ def test_every_container_relationship_names_exactly_one_container_end():  # REQ-
             assert containers.count(True) == 1, (rel["name"], containers)
 
 
-def test_a_view_member_has_no_source_container():  # REQ-2119
-    """A view is Provisa's own, read from no source: it maps with no source (native) or database
-    (rdbms) container, and the publish does not fail looking one up."""
+def test_a_view_member_sits_in_the_derived_layers_container():  # REQ-2119
+    """A view is read from no federated source, yet Atlas refuses a provisa_table with no source
+    (its composition end is mandatory, ATLAS-404-00-007): the native mapping seats it in one
+    container for the derived layer, while the rdbms mapping still gives it no database."""
     from provisa.api.metadata_export.atlas import to_entities
 
     view = Table(
@@ -276,10 +280,22 @@ def test_a_view_member_has_no_source_container():  # REQ-2119
     snapshot = build_snapshot(
         _config(tables=[*config.tables, view]), org_id="acme", dialect="postgres", contexts={}
     )
-    for entities, container in (
-        (to_native_entities(snapshot), "source"),
-        (to_entities(snapshot), "db"),
-    ):
-        tables = {e.attributes["name"]: e for e in entities if e.kind == "table"}
-        assert tables["pet_names"].relationships == {}
-        assert container in tables["pets"].relationships
+    native = to_native_entities(snapshot)
+    sources = {e.attributes["name"]: e for e in native if e.kind == "source"}
+    derived = sources["__derived__"]
+    assert derived.attributes["qualifiedName"] == f"__derived__@{CLUSTER}"
+    assert derived.attributes["sourceType"] == "derived"
+    assert derived.attributes["provisaUri"] == "provisa://acme/sources/__derived__"
+    tables = {e.attributes["name"]: e for e in native if e.kind == "table"}
+    assert tables["pet_names"].relationships == {"source": {"guid": derived.guid}}
+    assert tables["pets"].relationships["source"]["guid"] != derived.guid
+
+    rdbms = {e.attributes["name"]: e for e in to_entities(snapshot) if e.kind == "table"}
+    assert rdbms["pet_names"].relationships == {}
+    assert "db" in rdbms["pets"].relationships
+
+
+def test_no_derived_container_without_a_view():  # REQ-2119
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    names = [e.attributes["name"] for e in to_native_entities(snapshot) if e.kind == "source"]
+    assert "__derived__" not in names

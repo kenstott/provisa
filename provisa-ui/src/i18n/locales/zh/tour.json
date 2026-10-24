@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "发布到你的组织所用的工具",
-        "description": "📤 <strong>发布到你的组织本来就在查看的地方。</strong>目录条目(表、列、域、数据管理员、已批准的关系)、数据产品和列级血缘会发送出去,每个目标接收其所支持的内容:<strong>DataHub、OpenMetadata、Collibra、Atlan 和 Apache Atlas</strong> 作为目录,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作为数据产品列表,血缘则通过 <strong>OpenLineage</strong> 发送。<p>发布仅为向外单向:Provisa 绝不会把目标读回来当作事实来源。</p>"
+        "description": "📤 <strong>发布到你的组织本来就在查看的地方。</strong>目录条目(表、列、域、数据管理员、已批准的关系)、数据产品和列级血缘会发送出去,每个目标接收其所支持的内容:<strong>DataHub、OpenMetadata、Collibra、{{atlan}} 和 Apache Atlas</strong> 作为目录,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作为数据产品列表,血缘则通过 <strong>OpenLineage</strong> 发送。<p>发布仅为向外单向:Provisa 绝不会把目标读回来当作事实来源。</p>"
       },
       "stepRelsAgents": {
         "title": "关系与 AI 智能体",

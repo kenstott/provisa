@@ -46711,8 +46711,8 @@
     — GlossaryTermRepository allows rename; KIND_OF as native parent hierarchy, entityStatus deprecation),
     Collibra (Glossary-type domain via the Import API; REPLACE safety re-derived by CONTAINMENT: only
     Provisa-domain assets and Provisa-term relations are ever mentioned). Updates read-merge so steward
-    fields on Provisa''s own terms survive; nothing deletes on snapshot absence; NO adapter writes term-to-asset
-    assignments (Provisa-authored assignment publishing is the one explicit follow-on). OWNERSHIP CONSTRAINT
+    fields on Provisa''s own terms survive; nothing deletes on snapshot absence; [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa now writes its own term-to-asset assignments as each catalog''s automated assignment (REQ-1389, TERM ASSIGNMENT). Kept here for history; do not implement against it.] NO adapter writes term-to-asset
+    assignments (Provisa-authored assignment publishing is the one explicit follow-on). [END SUPERSEDED BLOCK] OWNERSHIP CONSTRAINT
     (settled): the REQ-1389 authorship contract extends to glossary items. A vendor-side glossary item
     is modified or deleted ONLY when Provisa created it, tracked the same way as every published asset:
     the vendor''s own id is captured into catalog_bindings at publish, keyed by the term''s URN (provisa://<org>/terms/<name>),
@@ -46775,7 +46775,21 @@
     history; do not implement against it.] a term reference with no column grounds its term in
     the table itself (REQ-2141), [END SUPERSEDED BLOCK] a term grounded in a table (REQ-2141) is
     grounded, and live_term_ids counts it as grounded. An abstract term wired to
-    nothing physical still names no data and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after, rather than every refless term not flagged abstract. (Amended 2026-10-23, PII ON TERMS:) Term membership drives one policy: the pii tag (REQ-2145). A pii tag on a Property term, defined and in service, is on every column the term holds, those it comes to hold included, computed where tags are read and never copied to the columns. (Amended 2026-10-23, STATUS:) A term has one status, as REQ-2144 states it: draft (not admitted), live (admitted by live_term_ids), deprecated or retired. What this requirement calls a proposal is a draft term. Retiring, a curator act with a reason, moves the term''s columns, or its tables with their keys, to a successor; the term stays as an inert record, no longer bound to its columns.'
+    nothing physical still names no data and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after, rather than every refless term not flagged abstract. (Amended 2026-10-23, PII ON TERMS:) Term membership drives one policy: the pii tag (REQ-2145). A pii tag on a Property term, defined and in service, is on every column the term holds, those it comes to hold included, computed where tags are read and never copied to the columns. (Amended 2026-10-23, STATUS:) A term has one status, as REQ-2144 states it: draft (not admitted), live (admitted by live_term_ids), deprecated or retired. What this requirement calls a proposal is a draft term. Retiring, a curator act with a reason, moves the term''s columns, or its tables with their keys, to a successor; the term stays as an inert record, no longer bound to its columns.
+    (Amended 2026-10-23, CLOUD GLOSSARIES:) The term graph also publishes into the native
+    business glossaries of Purview''s Unified Catalog, Dataplex and DataZone, each into a
+    glossary or governance domain Provisa owns or the term''s own domain. Purview Unified Catalog:
+    each term in the governance domain named after its Provisa domain (the first, alphabetically,
+    that Purview has; a term none of whose domains it has is reported), its id derived from its
+    Provisa URI, deprecated as EXPIRED, KIND_OF as the parent, SYNONYM_OF as a Synonym relationship
+    and every other edge Related; a Class term is related to the data assets of its tables, and
+    the principal that created a relationship decides ownership. Dataplex: a provisa-<org>
+    glossary with a category per role, the role and deprecation as labels, SYNONYM_OF as a synonym
+    entry link and every other edge a related one, and definition entry links from the BigQuery
+    tables and columns a term grounds, owned by their provisa- id prefix. DataZone: a Provisa
+    glossary in the owning project, deprecated as DISABLED, KIND_OF as isA; DataZone records no
+    author for an assignment, so no term is assigned to data there. The snapshot carries each
+    term''s domains for this.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -46822,6 +46836,9 @@
   - provisa/api/metadata_export/datahub.py
   - provisa/api/metadata_export/openmetadata.py
   - provisa/api/metadata_export/collibra.py
+  - provisa/api/metadata_export/purview.py
+  - provisa/api/metadata_export/dataplex.py
+  - provisa/api/metadata_export/datazone.py
   - provisa-ui/src/components/admin/GlossaryTab.tsx
   - provisa/api/_meta_views.py
   - provisa/api/_meta_seed.py
@@ -46838,6 +46855,9 @@
   - tests/unit/test_metadata_export_glossary_datahub.py
   - tests/unit/test_metadata_export_glossary_openmetadata.py
   - tests/unit/test_metadata_export_glossary_collibra.py
+  - tests/unit/test_metadata_export_purview.py
+  - tests/unit/test_metadata_export_dataplex.py
+  - tests/unit/test_metadata_export_datazone.py
   - tests/unit/test_column_dependents.py
   - tests/integration/test_glossary_lifecycle.py
   - tests/steps/steps_business_glossary_ontology.py
@@ -46896,14 +46916,14 @@
     which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish. Every
     attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts, governance
     projections, provisa_* classifications — written on every publish and drift-corrected by the REQ-1072
-    reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, glossary term assignments,
+    reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END SUPERSEDED BLOCK]
     labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment in the catalog survives
     every publish and reconcile). Consequence: the Atlas governance document moves OFF userDescription
     — the exact field the Atlas UI edits for human descriptions, clobbered today on every publish — onto
     a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift correction applies
     to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
     overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
-    classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. This
+    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins and Provisa never writes it. This
     is a single-writer MERGE, not a sync: nothing flows back into Provisa (publication is outbound-only),
     each data element has exactly ONE owning system, and the read step exists only because replace-style
     catalog APIs force carrying the catalog-owned fields through unchanged. The merge is NOT optional:
@@ -46930,7 +46950,18 @@
     by stored UUID BEFORE the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable
     identity, so the successor publishes as a new URN and the OLD bound URN gets the deprecation aspect
     naming the successor and the Provisa URN. The binding lifecycle (load before publish, persist capture
-    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain, the scheduled reconcile and the CLI publish.'
+    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain, the scheduled reconcile and the CLI publish.
+    (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment is Provisa-owned when Provisa makes it.
+    A Class term (REQ-2141) is assigned to the published tables it grounds and a Property term to its
+    published columns; a Concept is assigned to nothing. Each is written as the catalog''s own automated
+    or system assignment, attributed to Provisa -- OpenMetadata labelType Automated, DataHub term associations
+    attributed to Provisa''s actor, Atlas and Atlan semantic assignments whose source is Provisa, Collibra
+    relations created by Provisa''s own user -- and that attribution is the ownership test. Provisa writes
+    and removes only its own assignments, which track the snapshot: one the snapshot no longer carries,
+    including every assignment of a term that left it, is withdrawn. A human assignment stays human-owned:
+    Provisa never removes or overwrites it, and adds none beside it for the same term on the same asset.
+    An assignment is never withdrawn because a request failed, and a live assignment list that cannot
+    be read is not written over.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -46958,6 +46989,9 @@
   - tests/unit/test_metadata_export_glossary_atlas.py
   - tests/unit/test_metadata_export_glossary_atlan.py
   - tests/unit/test_metadata_export_glossary_openmetadata.py
+  - tests/unit/test_metadata_export_glossary_datahub.py
+  - tests/unit/test_metadata_export_glossary_collibra.py
+  - tests/unit/test_metadata_export_glossary.py
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Atlas uses the Provisa-owned provisaGovernance attribute and binding tracking exists, but the Purview path still writes the governance document to userDescription (GOVERNANCE_ATTRIBUTE).'
 - id: REQ-1390
   status: complete
@@ -87555,6 +87589,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     such a relationship stands on a table, the table's class term cannot be withdrawn or replaced;
     the change is refused, naming the relationship. A class grounded in several tables is a curation
     gap until its same-entity relationships join all of them, every table reached from any one. [SUPERSEDED by REQ-2141, 2026-10-23 -- a Class holds the key refs of its tables and of the foreign keys referring to them (TABLE PROPOSALS, KEYS ON THE CLASS below); only non-key refs are exclusive. Kept here for history; do not implement against it.] (Amended 2026-10-23, EXCLUSIVE ROLES:) A term is a Class (grounded in tables) or a Property (owning column refs), never both. [END SUPERSEDED BLOCK] Grounding a table on a term that owns column refs is refused by the API, the Polly tool and config load (glossary.term_is_property, naming the term and its columns); moving a column ref into, or a table save claiming a column for, a term grounded in tables is refused (glossary.term_is_class, naming the term and its tables). Each refusal says why, in every UI locale. This supersedes any reading in which a term grounded in both is a Class. Data from before the rule is reported, not changed: GET /admin/glossary/role-conflicts lists each term holding both, with its tables and columns. (Amended 2026-10-23, ROLE ONLY:) The role -- Class (grounded in tables), Property (owning column refs) or Concept (grounding neither) -- is the only classification of a term. The separate abstract flag is retired: whether a term is abstract is derived, true exactly when it is a Concept, wherever it is read (the meta views, the API, the export, the live and grounded rules), and never stored or written. Declared domains apply to a Concept only. The API, the Polly and MCP tools and config load refuse an abstract setting (glossary.abstract_is_derived), saying it is derived from grounding. (Amended 2026-10-23, TABLE PROPOSALS, KEYS ON THE CLASS:) The model follows the W3C Direct Mapping, dbt entities and Palantir link types: a table is a class, its primary key is the class's identity, and a foreign key is a reference to the parent class. On table sync each keyed table proposes a draft Class term named for its concept (its business name's concept) and is grounded in it; tables of one concept share one term. A curated class grounding (config class_term, the UI, Polly) is never re-pointed by sync, and grounding a table on a curated term replaces its proposal. A primary key has no term of its own: every column of it, a composite key's parts and a natural key included, puts its ref on its table's Class. Every column of a declared foreign key (the many side of a many-to-one or one-to-many relationship, or a junction's key, composite ones included) puts its ref on the target table's Class whatever it is called, role names included (manager_id to employees lands on employee); the role lives on the relationship's name. A primary key that is also a foreign key puts its ref on the parent's Class, and its table still proposes its own Class. A column with no declared relationship is a Property even when its name matches a class; when the phrase it derives is a Class's name, it takes its table's concept as a qualifier. Key refs are placed by derivation alone, on sync and when a relationship or a table's Class changes: grounding a table on a term moves its key refs, and the foreign keys referring to it, onto the term at once, and ungrounding sends them back to the table's proposed class. A ref move into a Class is refused (glossary.term_is_class), and so is a move of a key column, whatever the target (glossary.key_column_derived, naming the column, its table and its class). A Class holds only key refs: grounding a table on a term holding non-key column refs is refused (glossary.term_is_property). A keyed table whose concept is already a Property with non-key refs gets no proposal. GET /admin/glossary/role-conflicts reports both cases: each Class holding non-key refs, and each such table. A proposal is a grounding sync made (stored as such) on a term no one has curated (no definition, edge, expert or retirement); a grounding a configuration declared or a person made is curated, whatever its name. A proposal is derived: the config export does not state it, and it goes with its table on deletion, while a curated class is kept as a Concept. (Amended 2026-10-23, DRAFT, NOT PROPOSED:) The words follow tables' Draft: what this requirement calls a table's proposal or proposed class is a draft Class term, derived on sync, and a term is draft, not proposed, until it is admitted (REQ-2144). A stored grounding marks whether sync derived it (derived), not whether it was proposed.
+    (Amended 2026-10-23, ROLE IN THE CATALOGS:) Metadata export publishes each term's role (class,
+    property or concept) as a property of the term on every glossary target: DataHub
+    customProperties.provisaRole, the OpenMetadata custom property provisaRole on the glossaryTerm
+    type, provisaRole in the Atlas, Purview and Atlan term's additionalAttributes, and the Collibra
+    attribute type Provisa Role. Provisa owns only that key; a steward's other entries stand. In
+    DataHub the org's Provisa node has a child node per role (Classes, Properties, Concepts) holding
+    that role's terms. OpenMetadata's glossary has no node but a term, so each role is a group term
+    of the Provisa glossary holding the role's top-level terms; a term with a KIND_OF parent stays
+    beneath that parent.
   use_case: >-
     A curator grounds the word Customer in the tables that hold customers, and RDF tools, SPARQL and
     the graph see one class with its instances, its properties and the identity between its sources,

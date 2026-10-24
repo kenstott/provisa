@@ -31,7 +31,6 @@ from provisa.api.metadata_export.snowflake_horizon import (
     _object_kind,
     ListingMember,
     PublishedAddresses,
-    _table_exists,
     comment_statements,
     listing_manifest,
     listing_statements,
@@ -876,11 +875,6 @@ def test_object_kind_returns_view_when_object_is_a_view():
 def test_object_kind_returns_none_when_object_does_not_exist():
     rt = _runtime(existing_objects=False)
     assert _object_kind(rt, ("landing", "org_acme_export", "petstore-api__public__pets")) is None
-
-
-def test_table_exists_delegates_to_object_kind():
-    assert _table_exists(_runtime(existing_objects=True, kind="TABLE"), ("landing", "mat", "pets"))
-    assert not _table_exists(_runtime(existing_objects=False), ("landing", "mat", "pets"))
 
 
 def test_publish_applies_descriptions_to_a_view(monkeypatch):
