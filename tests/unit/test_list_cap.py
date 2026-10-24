@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3c4a875b-ec85-4c56-801b-e210b61cdbe2
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A role's row limit bounds every list a read nests (REQ-005, amended 2026-10-24): a group's
 nodes and a to-many relationship's rows hold at most that many entries, the counts stay over every
 row, a list of exactly that many says it may have more (REQ-1350), and an uncapped role reads

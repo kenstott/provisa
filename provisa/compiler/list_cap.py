@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: da4438d5-2281-450e-b596-debb702d8970
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A role's row limit bounds every list a read nests, as it bounds the read's rows (REQ-005).
 
 A list a statement aggregates -- ``json_agg`` / ``JSON_ARRAYAGG``: an aggregate or group-by's
