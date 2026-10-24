@@ -618,6 +618,17 @@ async def _proxy_plan(
     # REQ-2100: a code source answers a statement over any of its tables, joined in DuckDB.
     if len(tables) != 1 and state.source_types.get(sid, "") not in CODE_SOURCES:
         return {"incomplete": "the statement reads more than one of its tables"}
+    if state.source_types.get(sid, "") in CODE_SOURCES:
+        from provisa.codesource.direct import direct_tables
+
+        # Complete exactly when the statement is read DIRECT from its code: the one test the
+        # materialization step leaves its tables unlanded by. Any other is landed there, and the
+        # engine reads where it landed.
+        if not direct_tables(state, table_ids, governed_sql):
+            return {
+                "complete_dataset": False,
+                "incomplete": "its tables are read where they landed",
+            }
     plan = await proxy.plan(
         state,
         Read(
