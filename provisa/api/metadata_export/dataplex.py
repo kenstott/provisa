@@ -430,6 +430,21 @@ class DataplexExport(MetadataExport):  # REQ-2118
             saved = await self._upsert_term(client, glossary, categories[term.role], term, result)
             if saved is not None:
                 entries[term.term_id] = self._term_entry(numbered, saved)
+        # A term's catalog entry appears some time after the term; until it does, Dataplex
+        # answers a lookup of it 403 "(or it may not exist)", not 404.
+        for term in snapshot.glossary_terms:
+            entry = entries.get(term.term_id)
+            if entry is not None and not await self._entry_appears(
+                client, entry, absent=(403, 404)
+            ):
+                del entries[term.term_id]
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=f"term {term.name!r} is not linked: Dataplex had no catalog "
+                        f"entry for it after {self.entry_wait_seconds} s",
+                    )
+                )
         # Provisa's entry links, by the id it gives each: (type, the two references).
         wanted: dict[str, tuple[str, list[dict[str, str]]]] = {}
 
@@ -579,16 +594,18 @@ class DataplexExport(MetadataExport):  # REQ-2118
         result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
         return response.json()["name"]
 
-    async def _entry_appears(self, client: httpx.AsyncClient, entry: str) -> bool:
+    async def _entry_appears(
+        self, client: httpx.AsyncClient, entry: str, absent: tuple[int, ...] = (404,)
+    ) -> bool:
         """Whether the catalog has ``entry``, waited for up to ``entry_wait_seconds``: Dataplex
-        catalogs a BigQuery table some time after it is created, so a view the reconcile just
-        published may not be there yet."""
+        catalogs a BigQuery table, or a glossary term, some time after it is created, so one
+        just published may not be there yet. ``absent``: the statuses that mean not yet."""
         deadline = time.monotonic() + self.entry_wait_seconds
         while True:
             found = await client.get(
                 self._url(f"{self._parent()}:lookupEntry"), params={"entry": entry}
             )
-            if found.status_code != 404:
+            if found.status_code not in absent:
                 found.raise_for_status()
                 return True
             if time.monotonic() >= deadline:

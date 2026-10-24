@@ -19,6 +19,7 @@ product whose owner role has no holder with an address, are reported by name."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -393,7 +394,13 @@ class _GlossaryApi:
         body = json.loads(request.content) if request.content else {}
         self.calls.append((request.method, path))
         if path.endswith(":lookupEntry"):
-            if params["entry"] in self.entries:
+            # A term's catalog entry exists once the term does.
+            terms = {
+                _entry(n.rsplit("/", 1)[-1])
+                for n in self.resources
+                if n.startswith(f"{GLOSSARY}/terms/")
+            }
+            if params["entry"] in self.entries | terms:
                 return httpx.Response(200, json={"name": params["entry"]})
             return httpx.Response(404, json={"error": {"message": "not found"}})
         if path.endswith(":lookupEntryLinks"):
@@ -460,6 +467,48 @@ def _link_kinds(fake) -> set[tuple[str, tuple[tuple[str, str, str], ...]]]:
         )
         for link in fake.links.values()
     }
+
+
+async def test_a_term_is_linked_once_its_catalog_entry_appears(glossary_api, monkeypatch):
+    """Dataplex catalogs a new term's entry after the term, answering 403 "(or it may not exist)"
+    until it does; the links wait for it rather than failing the glossary."""
+    fake = glossary_api
+    handle = fake.handle
+    refused: list[str] = []
+
+    def _late(request: httpx.Request) -> httpx.Response:
+        entry = dict(request.url.params).get("entry", "")
+        if "/glossaries/" in entry and entry not in refused:
+            refused.append(entry)
+            return httpx.Response(403, json={"error": {"message": "may not exist"}})
+        return handle(request)
+
+    fake.handle = _late
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(dataplex.asyncio, "sleep", lambda _s: real_sleep(0))
+    result = await _export().publish(_glossary_snapshot(_glossary()))
+    assert result.ok, result.errors
+    assert refused  # each term entry was refused once before it appeared
+    assert ("definition", ((SALES_ENTRY, "", "SOURCE"), (_entry("sale"), "", "TARGET"))) in (
+        _link_kinds(fake)
+    )
+
+
+async def test_a_term_whose_entry_never_appears_is_reported_not_linked(glossary_api, monkeypatch):
+    fake = glossary_api
+    handle = fake.handle
+
+    def _never(request: httpx.Request) -> httpx.Response:
+        if "/glossaries/" in dict(request.url.params).get("entry", ""):
+            return httpx.Response(403, json={"error": {"message": "may not exist"}})
+        return handle(request)
+
+    fake.handle = _never
+    monkeypatch.setattr(DataplexExport, "entry_wait_seconds", 0)
+    result = await _export().publish(_glossary_snapshot(_glossary()))
+    messages = [e.message for e in result.errors]
+    assert any("'sale' is not linked: Dataplex had no catalog entry" in m for m in messages)
+    assert fake.links == {}
 
 
 async def test_the_glossary_its_role_categories_terms_and_links_are_created(glossary_api):
