@@ -86068,41 +86068,67 @@ And reaffirming it records the tag again with today's decider and evidence and r
     answers as PostgreSQL does -- PostgreSQL''s backslash LIKE escape, an ORDER BY''s nulls placed as
     a key of their own (REQ-066, #294), text in code-point order as the C collation orders it -- through
     the one DuckDB form every DuckDB answering a statement runs (codehost.duckdb_sql, carried by the image),
-    direct and attached alike. SPEED AND MEMORY: the functions'' rows reach DuckDB as Arrow record batches
-    streamed through a RecordBatchReader, zero-copy, never as row tuples, pandas, VALUES or executemany;
-    a function may yield batches or row chunks, each converted to Arrow as it comes, so its result is
-    never held whole before the scan (a function returning a whole list holds it itself). Results stream
-    out batch by batch, never fetched whole: the Arrow front end sends each batch as it comes, and pgwire
-    encodes DataRows a batch at a time. Each call has a connection of its own to the image, from a small
-    bounded pool, so one call''s back-pressure holds no other. One DuckDB per code image, shared by its
-    concurrent statements, is bounded by its operator settings -- memory_limit, temp_directory spill,
-    max_temp_directory_size and threads, each with its field in the UI -- its blocking operators spill
-    to disk past the memory limit, and a statement past the spill cap is refused by name, naming the setting;
-    insertion order is kept only for a statement with an ORDER BY. (Amended 2026-10-24, READ CONTEXT:)
-    A @table or @stream function takes a standard two-parameter signature, (inputs, context), either left
-    out, and any other signature is refused by name at registration: inputs is one typed object (a dataclass,
-    TypedDict, NamedTuple or Pydantic model in Python, an interface or type alias in TypeScript) whose
-    fields are its parameters -- each an _nf_{field} column, its type, required exactly when the field
-    has no default, its documentation the column''s description -- and context is the one standard ReadContext,
-    the same type for every function, supplied by Provisa''s services module (provisa_services in Python;
-    @provisa/services in TypeScript, typed) so authors get completion. A parameter is only an input: one
-    named like a return column is an input like any other, and every predicate on a return column reaches
-    the function only through the read context. The context always carries filters (each top-level AND
-    conjunct of the SELECT reading the table that compares one of its columns with a literal: eq, ne,
-    gt, gte, lt, lte, in, like), order_by (its keys when each is a column), the columns the statement
-    names, and limit (its offset folded in) only when the limit limits the table''s own rows no more than
-    the filters and the order say: a SELECT of the table alone, with no grouping, aggregate, window or
-    DISTINCT, every conjunct of its WHERE a filter or an input''s condition. Every part is a hint, and
-    the statement is applied to the rows the function returns in any case, so no part handed over can
-    produce a wrong answer under the one documented rule for authors: a function that applies the limit
-    applies every filter it is given and the order first; otherwise it ignores the limit. There is no
-    declaration, no flag and no check. Direct reads and attached reads (the image''s front end, from the
-    engine''s per-source statement) carry the context; a landed read carries an empty context, its columns
-    every one, asks for the whole table under its inputs, and the context is no part of the landing key.
-    A loader is declared by an @loader tag (@loader N its batch size) on a @table that takes a ReadContext,
-    which carries the join''s keys (keys, the hash of sparse keys), each batch its own; its inputs are
-    left at their defaults. Commands and @columns functions keep their own arguments. The parameter-as-filter
-    declarations (by name, by tag, by typing.Annotated, inline in TypeScript) are removed, with no back-compat.'
+    direct and attached alike. [SUPERSEDED by REQ-2100, 2026-10-24 -- as built, with three settings, a
+    fixed spill directory on a volume of its own, and credit flow control (SPEED AND MEMORY AS BUILT below).
+    Kept here for history; do not implement against it.] SPEED AND MEMORY: the functions'' rows reach
+    DuckDB as Arrow record batches streamed through a RecordBatchReader, zero-copy, never as row tuples,
+    pandas, VALUES or executemany; a function may yield batches or row chunks, each converted to Arrow
+    as it comes, so its result is never held whole before the scan (a function returning a whole list
+    holds it itself). Results stream out batch by batch, never fetched whole: the Arrow front end sends
+    each batch as it comes, and pgwire encodes DataRows a batch at a time. Each call has a connection
+    of its own to the image, from a small bounded pool, so one call''s back-pressure holds no other. One
+    DuckDB per code image, shared by its concurrent statements, is bounded by its operator settings --
+    memory_limit, temp_directory spill, max_temp_directory_size and threads, each with its field in the
+    UI -- its blocking operators spill to disk past the memory limit, and a statement past the spill cap
+    is refused by name, naming the setting; insertion order is kept only for a statement with an ORDER
+    BY. [END SUPERSEDED BLOCK] (Amended 2026-10-24, READ CONTEXT:) A @table or @stream function takes
+    a standard two-parameter signature, (inputs, context), either left out, and any other signature is
+    refused by name at registration: inputs is one typed object (a dataclass, TypedDict, NamedTuple or
+    Pydantic model in Python, an interface or type alias in TypeScript) whose fields are its parameters
+    -- each an _nf_{field} column, its type, required exactly when the field has no default, its documentation
+    the column''s description -- and context is the one standard ReadContext, the same type for every
+    function, supplied by Provisa''s services module (provisa_services in Python; @provisa/services in
+    TypeScript, typed) so authors get completion. A parameter is only an input: one named like a return
+    column is an input like any other, and every predicate on a return column reaches the function only
+    through the read context. The context always carries filters (each top-level AND conjunct of the SELECT
+    reading the table that compares one of its columns with a literal: eq, ne, gt, gte, lt, lte, in, like),
+    order_by (its keys when each is a column), the columns the statement names, and limit (its offset
+    folded in) only when the limit limits the table''s own rows no more than the filters and the order
+    say: a SELECT of the table alone, with no grouping, aggregate, window or DISTINCT, every conjunct
+    of its WHERE a filter or an input''s condition. Every part is a hint, and the statement is applied
+    to the rows the function returns in any case, so no part handed over can produce a wrong answer under
+    the one documented rule for authors: a function that applies the limit applies every filter it is
+    given and the order first; otherwise it ignores the limit. There is no declaration, no flag and no
+    check. Direct reads and attached reads (the image''s front end, from the engine''s per-source statement)
+    carry the context; a landed read carries an empty context, its columns every one, asks for the whole
+    table under its inputs, and the context is no part of the landing key. A loader is declared by an
+    @loader tag (@loader N its batch size) on a @table that takes a ReadContext, which carries the join''s
+    keys (keys, the hash of sparse keys), each batch its own; its inputs are left at their defaults. Commands
+    and @columns functions keep their own arguments. The parameter-as-filter declarations (by name, by
+    tag, by typing.Annotated, inline in TypeScript) are removed, with no back-compat. (Amended 2026-10-24,
+    SPEED AND MEMORY AS BUILT:) CONNECTIONS: a worker has 8 connections (Provisa to a local host or to
+    an image''s front end, and the front end to its host), and each call leases one for its whole run;
+    a call that finds every one leased waits for one. CREDIT: a call''s host sends at most a window of
+    4 rows frames ahead of the call''s reader, each frame the reader takes giving one credit back; the
+    front end relays Provisa''s credits to the host, and where it is the reader itself (a statement it
+    answers, a pgwire read) grants the host''s as DuckDB takes rows and sends its answer as Provisa grants.
+    A stalled reader therefore leaves its function at most the window, the frame taken and the batch the
+    host holds ahead of it, whatever the sockets buffer, and holds back no other call. STREAMING: the
+    function''s batches go into DuckDB through a RecordBatchReader as they come and the answer comes out
+    a batch at a time (65,536 rows at most); pgwire encodes DataRows a batch at a time and a cursor fetches
+    from the stream; a statement answered before the function''s last row (a limit) stops the function.
+    A numeric''s digits are typed per batch as decimal(38, 9), one type for every numeric column; a value
+    that does not fit is refused by name, never rounded. The Python host pulls a generator a batch of
+    1,000 rows per thread hop; Arrow the code returns or yields (a Table, a RecordBatch or a RecordBatchReader
+    in Python, a Table or a RecordBatch in Node) is sent as it is. BOUNDS: one DuckDB per process, under
+    three live operator settings with their UI fields -- codesource.duckdb_memory_mb (1024), codesource.duckdb_threads
+    (4) and codesource.duckdb_spill_cap_mb (10240) -- given to a built image with its pairing (refused
+    without them) and with every call, and kept in its state directory for a restart; preserve_insertion_order
+    is off, an ORDER BY ordering the rows in any case. The spill directory is fixed: in an image /var/lib/provisa-spill,
+    a volume of its own in the compose snippet that the operator sizes to the cap with the platform''s
+    quota; in dev mode the data directory, unbounded. DuckDB 1.5.5 does not stop a sort''s spill at max_temp_directory_size,
+    so the cap holds where the volume is sized to it, and a statement that fills it is refused naming
+    codesource.duckdb_spill_cap_mb.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and
