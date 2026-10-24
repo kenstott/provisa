@@ -19,6 +19,7 @@ open succeeds. The wake-to-first-open time is printed for both starts."""
 
 from __future__ import annotations
 
+import shutil
 import time
 
 import httpx
@@ -50,6 +51,9 @@ def tier(tmp_path_factory):
         "sbxwarme2e",
         engine="duckdb",
         config=str(config),
+        # Its own control plane: a template another test recorded ready in the shared one has
+        # no folder under this tier's data directory, and its readiness check reads that folder.
+        control_plane="own",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={
             "PROVISA_SANDBOX_TIER": "true",
@@ -58,6 +62,7 @@ def tier(tmp_path_factory):
             "PROVISA_SANDBOX_MAX_CONCURRENT": "10",
         },
     )
+    srv.data_dir = work / "data"
     started = time.monotonic()
     srv.start(timeout=240)
     srv.first_start_s = time.monotonic() - started
@@ -103,3 +108,21 @@ def test_a_restarted_tier_serves_its_unchanged_templates_at_once(tier):
     )
     # Nothing was prepared again: no template waited for its replicas at this start.
     assert "every replica landed" not in tier.dump_stderr_debug()
+
+
+def test_a_node_without_a_ready_templates_folder_prepares_it_again(tier):
+    """A node with a fresh disk under a shared control plane: the plane says the template is
+    ready, and its folder is not on this node. The template is prepared again, with the reason
+    said, and its demo opens; the start does not fail."""
+    deadline = time.monotonic() + 300
+    while set(_states(tier).values()) != {"ready"}:
+        assert time.monotonic() < deadline, _states(tier)
+        time.sleep(1)
+    shutil.rmtree(tier.data_dir / "orgs" / "sbxtplalpha")
+    started = time.monotonic()
+    tier.restart(timeout=240)
+    _first_open_after(tier, started)
+    assert (
+        "sbxtplalpha's folder is not on this node: its store holds nothing here"
+        in tier.dump_stderr_debug()
+    )

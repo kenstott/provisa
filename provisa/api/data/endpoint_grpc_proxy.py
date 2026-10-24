@@ -386,44 +386,12 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                 compiled.columns
             )
 
-            # The nodes selection compiles to a second SQL string keyed by the group-by columns;
-            # run it through the identical govern → route → execute pipeline and join on that key,
-            # exactly as the native servicer does (provisa/grpc/server.py::
-            # _handle_query_group_by_bound).
+            # Each group's nodes are a column of its own row (aggregates._nodes_column), as the
+            # native servicer reads them (provisa/grpc/server.py::_handle_query_group_by_bound).
             from provisa.executor.serialize import _convert_value
+            from provisa.grpc.query_ir import nodes_index
 
-            nodes_by_group_key: dict[tuple, list] = {}
-            if include_nodes and compiled.nodes_sql is not None and compiled.nodes_columns:
-                try:
-                    nodes_plan = await _govern_and_route_compiled(
-                        compiled.nodes_sql,
-                        role_id,
-                        exec_params=compiled.nodes_params or None,
-                        state=state,
-                        cache_hint=cache_hint,
-                        serve_cached=True,  # REQ-1897
-                        sdl_joins=True,
-                    )
-                    nodes_result = await _execute_plan(nodes_plan, state)
-                except ComplexityLimitExceeded:
-                    raise  # REQ-1174: answered as 413 by the app's handler
-                except ReadRefused:
-                    raise  # refused by name; the app answers it (core/read_refusal.py)
-                except PermissionError as exc:
-                    raise HTTPException(status_code=403, detail=str(exc))
-                except Exception as exc:
-                    raise HTTPException(status_code=503, detail=str(exc)) from exc
-                join_key_idx = [
-                    i for i, c in enumerate(compiled.nodes_columns) if c.nested_in == "__join_key__"
-                ]
-                output_cols = [
-                    (i, c) for i, c in enumerate(compiled.nodes_columns) if c.nested_in is None
-                ]
-                for node_row in nodes_result.rows:
-                    join_key = tuple(_convert_value(node_row[i]) for i in join_key_idx)
-                    nodes_by_group_key.setdefault(join_key, []).append(
-                        {c.field_name: _convert_value(node_row[i]) for i, c in output_cols}
-                    )
+            at = nodes_index(compiled.columns)
 
             out_rows = []
             for row in result.rows:
@@ -431,9 +399,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                 agg_row = tuple(row[i] for i in agg_idx)
                 top, nested = split_agg_columns(agg_cols, agg_row)
                 out_row: dict[str, Any] = {"group_key": group_key, "aggregate": {**top, **nested}}
-                if include_nodes:
-                    join_key = tuple(_convert_value(row[i]) for i in group_key_idx)
-                    out_row["nodes"] = nodes_by_group_key.get(join_key, [])
+                if include_nodes and at is not None:
+                    out_row["nodes"] = _convert_value(row[at])
                 out_rows.append(out_row)
             return OrjsonResponse(out_rows)
 

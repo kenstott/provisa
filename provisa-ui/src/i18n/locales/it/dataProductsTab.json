@@ -112,12 +112,11 @@
       "lineageLoading": "Caricamento derivazione…",
       "lineageHint": "Grafo di derivazione delle colonne che mostra le tabelle di questo prodotto come endpoint pubblicato, più ogni tabella a monte usata per derivarle. Solo informativo — richiede la capability view_governance.",
       "inputPortsEmpty": "Nessun input a monte registrato",
-      "inputPortsHint": "Input a un passo → trasformazione → output, derivati dalla derivazione. Richiede la capability view_governance.",
-      "inputPortsColInputs": "Input",
-      "inputPortsColTransform": "Trasformazione",
-      "inputPortsColOutput": "Output",
+      "inputPortsHint": "Le tabelle che questo prodotto legge direttamente, dalla derivazione. Espandi una tabella per le colonne che legge. Richiede la capability view_governance.",
       "outputPortsHint": "La superficie interrogabile di questo prodotto: le sue tabelle membro e i suoi comandi. Le query di esempio per ciascuna sono in Modelli di accesso.",
-      "customPropertiesEmpty": "Nessuna proprietà personalizzata"
+      "customPropertiesEmpty": "Nessuna proprietà personalizzata",
+      "lineageLaneUpstream": "A monte, passo {{n}}",
+      "lineageLaneDownstream": "A valle, passo {{n}}"
     },
     "readOnly": "Sola lettura",
     "readOnlyHint": "Hai solo data_product_read — un org_admin può concedere data_product_rw per modificare.",

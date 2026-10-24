@@ -23,6 +23,14 @@ class SnowflakeBackend(NativeEngineBackend):
     """A self-only MPP warehouse: sources land into Snowflake and governed SQL runs against it, with
     Arrow-native read transport (execute_arrow/execute_stream via NativeEngineBackend → runtime)."""
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: the driver's own (``snowflake_runtime.driver_errors``)."""
+        from provisa.federation.snowflake_runtime import driver_errors
+
+        return driver_errors()
+
     @property
     def dialect(self) -> str:
         return "snowflake"

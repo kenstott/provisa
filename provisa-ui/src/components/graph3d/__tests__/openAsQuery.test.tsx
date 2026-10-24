@@ -17,13 +17,20 @@ import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 const compiles = vi.hoisted(() => ({
-  calls: [] as [string, string][],
+  calls: [] as [string, string, boolean | undefined][],
   answer: null as unknown,
 }));
 vi.mock("../../../hooks/useAdminQueries", () => ({
   useCompileQuery: () => ({
-    compileQuery: async (role: string, query: string) => {
-      compiles.calls.push([role, query]);
+    compileQuery: async (
+      role: string,
+      query: string,
+      _variables?: unknown,
+      _flatSql?: boolean,
+      _flatCypher?: boolean,
+      nodeOnlyCypher?: boolean,
+    ) => {
+      compiles.calls.push([role, query, nodeOnlyCypher]);
       return compiles.answer;
     },
   }),
@@ -71,11 +78,11 @@ describe("a graph view's Open as query", () => {
     expect(landed()).toEqual(["/query", { query: QUERY }]);
   });
 
-  it("opens its compiled semantic SQL in SQL, compiled as the user's role", async () => {
+  it("opens its compiled semantic SQL in SQL, compiled as the user's role, its Cypher as nodes", async () => {
     view(QUERY);
     fireEvent.click(screen.getByTestId("x-open-as-query"));
     await waitFor(() => expect(screen.getByTestId("x-open-as-sql")).not.toBeDisabled());
-    expect(compiles.calls).toEqual([["analyst", QUERY]]);
+    expect(compiles.calls).toEqual([["analyst", QUERY, true]]);
     fireEvent.click(screen.getByTestId("x-open-as-sql"));
     expect(landed()).toEqual(["/sql", { sql: 'SELECT "id" FROM "meta"."glossary_terms"' }]);
   });

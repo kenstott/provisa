@@ -56,6 +56,9 @@ class ProfilerSettings:
     joint_max_distinct: int
     # The most category columns entered, the most frequently held kept.
     category_max_columns: int
+    # REQ-2147: the most rows whose values the classification kinds are tested against, drawn
+    # at random from the run's sample.
+    classification_sample: int
 
 
 # none: every previous run; daily: runs at the same hour of the day; weekly: on the same weekday;
@@ -75,6 +78,7 @@ _SETTINGS = (
     "correlation_max_columns",
     "joint_max_distinct",
     "category_max_columns",
+    "classification_sample",
 )
 
 
@@ -139,6 +143,7 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
         correlation_max_columns=_positive_int(source_id, mapping, "correlation_max_columns"),
         joint_max_distinct=_positive_int(source_id, mapping, "joint_max_distinct"),
         category_max_columns=_positive_int(source_id, mapping, "category_max_columns"),
+        classification_sample=_positive_int(source_id, mapping, "classification_sample"),
     )
 
 
@@ -251,9 +256,7 @@ async def register_org_profilers(scheduler: Any, org_id: str) -> int:
     from provisa.api.app import state
 
     assert state.model_db is not None, "the org's model store is bound with its runtime"
-    from sqlalchemy.schema import CreateTable
-
-    from provisa.profiler.schema import RESULT_KINDS, result_sa_table
+    from provisa.profiler.schema import RESULT_KINDS, ensure_result_table
 
     async with state.model_db.acquire() as conn:
         profilers = await profiler_sources(conn)
@@ -262,8 +265,7 @@ async def register_org_profilers(scheduler: Any, org_id: str) -> int:
             # run, so a result table registered over one compiles and reads as an empty history.
             for member in await members(conn, p["id"]):
                 for kind in RESULT_KINDS:
-                    table = result_sa_table(member["table_name"], member["id"], kind)
-                    await conn.execute_core(CreateTable(table, if_not_exists=True))
+                    await ensure_result_table(conn, member["table_name"], member["id"], kind)
     wanted = {profiler_job_id(p["id"], org_id) for p in profilers}
     suffix = f":org_{org_id}"
     for job in scheduler.get_jobs():

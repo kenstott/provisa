@@ -13,6 +13,7 @@
     "runNow": "Nu profileren",
     "viewRuns": "Profielruns bekijken",
     "runDone": "{{rows}} rijen geprofileerd.",
-    "constraints": "Constraints"
+    "constraints": "Constraints",
+    "classifications": "Classificaties"
   }
 }

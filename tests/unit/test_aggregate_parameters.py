@@ -110,9 +110,9 @@ def test_a_group_by_sends_its_parameters_and_its_rows_read_them_too():
         '{ ordersGroupBy(by: [status], region: "EU") '
         "{ groupKey aggregate { count } nodes { id } } }"
     )
+    # One statement: the groups' rows are read under the same parameters, in it.
     assert 'WHERE "_nf_region" = \'EU\' GROUP BY "status"' in compiled.sql
-    assert compiled.nodes_sql is not None
-    assert compiled.nodes_sql.endswith("WHERE \"_nf_region\" = 'EU'")
+    assert compiled.has_nodes and "json_agg(json_object(KEY 'id' VALUE \"id\"))" in compiled.sql
     assert compiled.api_args == {"region": "EU"}
 
 

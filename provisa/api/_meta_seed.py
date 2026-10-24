@@ -36,6 +36,19 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         None,
         None,
     ),
+    # REQ-1443 clause 10: a table's source, whose type is a checker table's dialect.
+    (
+        "meta:registered_tables:source",
+        _ADMIN,
+        "registered_tables",
+        "source_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "sources",
+        "SOURCE",
+        "source",
+    ),
     (
         "meta:rls_rules:roles",
         _ADMIN,
@@ -96,6 +109,20 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "TARGET_TABLE",
         "targetTable",
     ),
+    # REQ-1586: a junction-backed edge's associative table, by its own name: what a junction's
+    # nominated label ('table') and its field read, joined rather than stored on the edge.
+    (
+        "meta:relationships:via_table",
+        _ADMIN,
+        "relationships",
+        "via_table_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "registered_tables",
+        "VIA_TABLE",
+        "viaTable",
+    ),
     (
         "meta:roles:parent_role",
         _ADMIN,
@@ -134,6 +161,19 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "traces",
         None,
         None,
+    ),
+    # REQ-1443 clause 10: a checker table's rules, parsed from its contract.
+    (
+        "meta:registered_tables:dq_rules",
+        _ADMIN,
+        "registered_tables",
+        "id",
+        "table_id",
+        "one-to-many",
+        _ADMIN,
+        "dq_rules",
+        "DQ_RULES",
+        "dqRules",
     ),
     (
         "meta:registered_tables:relationships_source",

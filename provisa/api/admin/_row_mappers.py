@@ -26,8 +26,6 @@ from provisa.api.admin.types import (
     SourceInput,
     SourceType,
 )
-from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
-from provisa.gql.label_map import _to_rel_type as _to_cypher_rel_type
 
 
 def _parse_mapping_json(mapping_json: str | None) -> dict:
@@ -202,34 +200,15 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
     )
 
 
-def _derive_graphql_alias(  # pyright: ignore[reportUnusedParameter]
-    target_table_name: str, cardinality: str, _alias: str | None, convention: str = "apollo_graphql"
-) -> str | None:
-    return _derive_graphql_alias_fn(target_table_name, cardinality, convention)
-
-
-def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
+def _rel_from_row(row) -> RelationshipType:
     cardinality = row["cardinality"]
     target_table_name = row.get("target_table_name") or ""
     source_column = row.get("source_column") or ""
     alias = row.get("alias")
-    persisted_graphql_alias = row.get("graphql_alias") or None
-    graphql_alias = persisted_graphql_alias or _derive_graphql_alias_fn(
-        target_table_name,
-        cardinality,
-        convention,
-        # REQ-1586: several junction-backed edges share one target table, so only the nomination
-        # tells their field names apart.
-        via_label_source=row.get("via_label_source"),
-        via_type_value=row.get("via_type_value"),
-        via_table_name=row.get("via_table_name"),
-        cypher_alias=alias,
-    )
-    computed_cypher_alias = (
-        None
-        if alias
-        else _to_cypher_rel_type(graphql_alias or target_table_name or "", cardinality)
-    )
+    # REQ-351: the effective names as stored on the row (core.relationship_names): the GraphQL
+    # field and Cypher type every other reader -- the schema build, the meta domain -- reads too.
+    graphql_alias = row.get("graphql_alias") or row["graphql_field"]
+    computed_cypher_alias = None if alias else row["cypher_type"]
     return RelationshipType(
         id=row["id"],
         source_table_id=row["source_table_id"],

@@ -32,8 +32,8 @@ const DEPENDENCE_FIELDS: NumberField[] = [
 // REQ-1934: a Data Profiler source holds a name, a schedule and its run defaults, nothing else. The
 // schedule is a cron expression, the recurrence scheduled triggers use; the run defaults are the cell
 // budget above which a run profiles a sample (empty: every row), the low-cardinality threshold, the
-// drift window, season and thresholds, and the dependence bounds, each defaulted here for a new
-// profiler. All travel in the
+// drift window, season and thresholds, the dependence bounds, and the rows sampled for classification
+// (REQ-2147), each defaulted here for a new profiler. All travel in the
 // source's mapping (provisa/profiler/source.py profiler_settings).
 export function ProfilerFormSection({
   authFields,
@@ -94,6 +94,12 @@ export function ProfilerFormSection({
           {numberInput({
             key: "low_cardinality_max",
             stem: "lowCardinality",
+            whole: true,
+            min: 1,
+          })}
+          {numberInput({
+            key: "classification_sample",
+            stem: "classificationSample",
             whole: true,
             min: 1,
           })}

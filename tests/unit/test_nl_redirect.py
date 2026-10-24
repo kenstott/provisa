@@ -57,8 +57,14 @@ def nl(monkeypatch):
     monkeypatch.setattr(nl_router, "_run_job", _run_job)
     monkeypatch.setattr(nl_router, "_get_llm", _llm)
     monkeypatch.setattr(nl_router, "_job_store", jobs)
+    guarded = {"id": "default", "capabilities": [], "domain_access": ["*"]}
     monkeypatch.setattr(
-        app_mod, "state", SimpleNamespace(rate_limiter=None, config=None), raising=False
+        app_mod,
+        "state",
+        SimpleNamespace(
+            rate_limiter=None, config=None, security_high=False, roles={"default": guarded}
+        ),
+        raising=False,
     )
     monkeypatch.setattr(
         "provisa.executor.redirect.request_redirect_config",

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from provisa.api.role_surface import role_surface
 
-from types import SimpleNamespace
 import contextvars
 import functools
 import importlib.util
@@ -1552,66 +1551,29 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
 
-        # REQ-1405: include_nodes routes compiled.nodes_sql through the identical
-        # govern → route → execute pipeline the primary query just used above — the same one
-        # pipeline every surface shares, just a second SQL string GraphQL's own
-        # groupKey/aggregate/nodes shape requires (JSON:API, REST and HTTP GraphQL take this same
-        # seam with a second plan; gRPC just has to type it instead of dropping it into JSON).
-        nodes_by_group_key: dict[tuple, list] = {}
-        row_msg_cls = getattr(self._pb2, type_name, None)
-        nodes_columns = compiled.nodes_columns
-        if (
-            include_nodes
-            and compiled.nodes_sql is not None
-            and nodes_columns is not None
-            and row_msg_cls is not None
-        ):
-            nodes_plan = await _govern_and_route_compiled(
-                compiled.nodes_sql,
-                role_id,
-                exec_params=compiled.nodes_params or None,
-                state=state,
-                cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
-                sdl_joins=True,
-            )
-            nodes_result = await _execute_plan(nodes_plan, state)
-            # REQ-1350, REQ-1949: the nodes are a second governed statement of this answer; what
-            # it says about itself (a row limit cut the nodes) is the answer's to carry too, and
-            # the trailing metadata was set before it ran.
-            self._say_late_warnings(
-                context,
-                _said,
-                SimpleNamespace(
-                    warnings=[
-                        *plan.warnings,
-                        *(w for w in nodes_plan.warnings if w not in plan.warnings),
-                    ]
-                ),
-            )
-            join_key_idx = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
-            output_cols = [(i, c) for i, c in enumerate(nodes_columns) if c.nested_in is None]
-            for node_row in nodes_result.rows:
-                join_key = tuple(_convert_value(node_row[i]) for i in join_key_idx)
-                node_dict = {c.field_name: _convert_value(node_row[i]) for i, c in output_cols}
-                nodes_by_group_key.setdefault(join_key, []).append(
-                    self._dict_row_to_message(row_msg_cls, node_dict)
-                )
+        # REQ-1405: include_nodes reads each group's nodes off its own row -- the one statement
+        # every surface runs holds them as a column (aggregates._nodes_column) -- typed here
+        # instead of left as JSON.
+        from provisa.grpc.query_ir import nodes_index
 
+        row_msg_cls = getattr(self._pb2, type_name, None)
+        at = nodes_index(compiled.columns) if include_nodes and row_msg_cls is not None else None
         for row in result.rows:
             group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
             agg_row = [row[i] for i in agg_idx]
             top, nested = self._split_agg_columns(agg_cols, agg_row)
             agg_msg = self._build_aggregate_result_message(type_name, top, nested)
-            join_key = tuple(_convert_value(row[i]) for i in group_key_idx)
+            nodes = _convert_value(row[at]) if at is not None else []
+            assert isinstance(nodes, list), "a group's nodes column is a JSON list"
             yield row_cls(
                 group_key=json.dumps(group_key, default=str),
                 aggregate=agg_msg,
-                nodes=nodes_by_group_key.get(join_key, []),
+                nodes=[self._dict_row_to_message(row_msg_cls, node) for node in nodes],
             )
 
     def _dict_row_to_message(self, msg_cls, d: dict):
-        """Build a ``{Type}`` proto message from a serialize_group_by-style nested dict row
-        (REQ-1405) — the same nested-dict shape ``nodes_sql`` produces for every other transport,
+        """Build a ``{Type}`` proto message from a node's nested dict (REQ-1405) — the same
+        nested-dict shape a group's nodes column holds for every other transport,
         just typed instead of left as JSON. Relation columns (``_build_rel_json_expr``) surface as
         a dict (many-to-one) or list-of-dicts (one-to-many) value keyed by the relation field name;
         every other value is a scalar assigned via the shared ``_proto_value`` adapter."""

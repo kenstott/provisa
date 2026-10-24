@@ -20,9 +20,14 @@
   flex-direction: column;
 }
 
+/* GraphiQL makes each .monaco-editor position: absolute and unsets its .overflow-guard clip, so an
+ * editor's layers (its margin runs the full content height) are clipped only by a positioned
+ * ancestor's overflow. Positioning the container makes its overflow: hidden that clip; without it
+ * they reached the document and the page scrolled past GraphiQL's bottom. */
 .query-page .graphiql-container {
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 /* Options bar above GraphiQL */

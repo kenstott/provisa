@@ -1,0 +1,6 @@
+{
+  "rowMaterialize": {
+    "label": "Replicate row by row",
+    "help": "Keep only the rows statements ask for: each is fetched from the source by its primary key and kept for the Cache TTL, instead of a copy of the whole table. Needs one primary-key column and a source that fetches rows by key."
+  }
+}

@@ -129,7 +129,9 @@ def test_no_graph_vars_no_change():
 
 
 def test_no_duplicate_id_key_when_column_named_id():
-    """id_column != 'id' but table has a column named 'id' — must not emit duplicate 'id' JSON key."""
+    """id_column != 'id' but table has a column named 'id': the node's own 'id' key appears once,
+    and the column is a property under its own name, in the node's properties -- never dropped,
+    never shadowed by the node's identity."""
     inquiry_meta = NodeMapping(
         label="PetStore:Inquiries",
         type_name="PetStore_Inquiries",
@@ -158,8 +160,10 @@ def test_no_duplicate_id_key_when_column_named_id():
     # Count occurrences of 'id' as a JSON key — should appear exactly once
     import re
 
-    id_key_count = len(re.findall(r"'id'", result_sql))
-    assert id_key_count == 1, f"Duplicate 'id' JSON key found in: {result_sql}"
+    node_keys, properties = result_sql.split("'properties':", 1)
+    assert len(re.findall(r"'id'", node_keys)) == 1, f"Duplicate 'id' JSON key in: {result_sql}"
+    assert "'id': n.\"id\"" in properties, result_sql
+    assert "'inquiry_id': n.\"inquiry_id\"" in properties, result_sql
 
 
 def test_domain_node_props_in_json():

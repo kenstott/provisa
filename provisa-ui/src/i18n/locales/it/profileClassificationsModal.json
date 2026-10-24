@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "Classificazioni di {{table}}",
+    "suggested": "Suggerite dall'ultima esecuzione",
+    "none": "L'ultima esecuzione non suggerisce alcuna classificazione.",
+    "column": "Colonna",
+    "kindHeader": "Sembra",
+    "evidence": "Evidenza",
+    "sensitive": "Sensibile",
+    "suggestion": "{{table}}.{{column}} sembra {{kind}}: il {{share}} dei valori campionati supera la sua verifica.",
+    "accept": "Accetta",
+    "reject": "Rifiuta",
+    "status_suggested": "Suggerita",
+    "status_accepted": "Accettata",
+    "status_rejected": "Rifiutata",
+    "decided": "Decisioni",
+    "noneDecided": "Nessun suggerimento è stato ancora accettato o rifiutato.",
+    "withdraw": "Ritira",
+    "linked": "Ora la colonna significa {{term}}.",
+    "keyColumn": "La colonna mantiene il suo termine di classe: il significato di una colonna chiave è il suo termine di classe.",
+    "markedPii": "È contrassegnata come PII.",
+    "maskOffered": "Maschera suggerita: {{mask}}. Aggiungila nelle maschere della colonna."
+  }
+}

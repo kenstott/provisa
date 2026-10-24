@@ -131,5 +131,5 @@ def test_an_unregistered_type_inside_a_statement_is_refused_as_in_its_match(cyph
     some other relationship."""
     from provisa.gql.translator_types import UnregisteredRelationshipType
 
-    with pytest.raises(UnregisteredRelationshipType, match=r"type\(s\): NOPE"):
+    with pytest.raises(UnregisteredRelationshipType, match=r"There is no relationship type :NOPE"):
         cypher_to_sql(parse_cypher(cypher), _label_map(), {})

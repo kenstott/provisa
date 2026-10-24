@@ -13,6 +13,7 @@
     "runNow": "Perfilar agora",
     "viewRuns": "Ver execuções de perfil",
     "runDone": "{{rows}} linhas perfiladas.",
-    "constraints": "Restrições"
+    "constraints": "Restrições",
+    "classifications": "Classificações"
   }
 }

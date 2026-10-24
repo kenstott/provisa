@@ -696,3 +696,11 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     def close(self) -> None:
         self._backend.close()
+
+
+def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+    """REQ-778: clickhouse-connect says a statement the server refused as a DatabaseError (its
+    "Code: N." text) and a lost server as an OperationalError, which is read first."""
+    import clickhouse_connect.driver.exceptions as ch
+
+    return (ch.OperationalError, ch.InterfaceError), (ch.DatabaseError,)

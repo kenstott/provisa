@@ -1,0 +1,6 @@
+{
+  "rowMaterialize": {
+    "label": "Rij voor rij repliceren",
+    "help": "Alleen de rijen bewaren waar statements om vragen: elke rij wordt via zijn primaire sleutel uit de bron opgehaald en bewaard voor de Cache TTL, in plaats van een kopie van de hele tabel. Vereist één primaire-sleutelkolom en een bron die rijen per sleutel ophaalt."
+  }
+}

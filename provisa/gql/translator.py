@@ -34,7 +34,7 @@ from typing import Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import CypherExpr, MapLiteral, Property, Variable, walk
+from provisa.gql.expr_ast import Binary, CypherExpr, MapLiteral, Paren, Property, Variable, walk
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
@@ -63,6 +63,7 @@ from provisa.gql.translator_helpers import (
     _rewrite_cypher_fn_node,
     _safe_alias,
 )
+from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
     CUT_COLUMN,
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
@@ -84,6 +85,39 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     """
     translator = _Translator(ast, label_map, params)
     return translator.translate()
+
+
+def _holds_json_maps(e: exp.Expression) -> bool:
+    """Whether ``e`` answers a map literal (``MAP(keys, to_json values)``) or a list of them: an
+    ARRAY[...] of maps, an ARRAY_AGG of one, or an ARRAY(SELECT map) -- COLLECT { }'s rows -- or a
+    CASE whose every result is one or null."""
+    while isinstance(e, (exp.Alias, exp.Paren)):
+        e = e.this
+    # The translator builds MAP, ARRAY_AGG and ARRAY(SELECT ...) as calls by name; a parse of its
+    # SQL makes them their own node types.
+    called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None
+    if isinstance(e, exp.Map) or called == "MAP":
+        return True
+    if isinstance(e, exp.Case):
+        # A map or null by a condition -- an OPTIONAL MATCH's map of what matched nothing.
+        results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
+        found = [r for r in results if r is not None and not isinstance(r, exp.Null)]
+        return bool(found) and all(_holds_json_maps(r) for r in found)
+    if isinstance(e, exp.ArrayAgg):
+        return _holds_json_maps(e.this)
+    if called == "ARRAY_AGG":
+        return len(e.expressions) == 1 and _holds_json_maps(e.expressions[0])
+    if (isinstance(e, exp.Array) or called == "ARRAY") and e.expressions:
+        (first, *rest) = e.expressions
+        if isinstance(first, (exp.Select, exp.Subquery)) and not rest:
+            inner = first.this if isinstance(first, exp.Subquery) else first
+            return (
+                isinstance(inner, exp.Select)
+                and len(inner.expressions) == 1
+                and _holds_json_maps(inner.expressions[0])
+            )
+        return all(_holds_json_maps(x) for x in e.expressions)
+    return False
 
 
 def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabelMap) -> None:
@@ -111,7 +145,7 @@ def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabe
                     continue  # refused as an alternation on a single hop, by its own message
                 unknown.update(t for t in rel.types if t not in registered)
     if unknown:
-        raise UnregisteredRelationshipType(sorted(unknown))
+        raise UnregisteredRelationshipType(sorted(unknown), registered)
 
 
 def cypher_calls_to_sql_list(  # REQ-571
@@ -221,6 +255,22 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
     return node
 
 
+def _steps_where(steps: list) -> WhereClause | None:
+    """Every condition of a segment's MATCH steps, each step's own WHERE, ANDed: a WHERE after a
+    MATCH is that MATCH's, one after an OPTIONAL MATCH is folded into its join
+    (_fold_where_into_optional_joins), and none is dropped for another."""
+    wheres = [step.where.expression for step in steps if step.where is not None]
+    if not wheres:
+        return None
+    if len(wheres) == 1:
+        return WhereClause(wheres[0])
+    # Each step's WHERE one conjunct of the whole, which the fold routes to its own join.
+    joined: CypherExpr = Paren(wheres[0])
+    for w in wheres[1:]:
+        joined = Binary("AND", joined, Paren(w))
+    return WhereClause(joined)
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
     TermsMixin,
@@ -290,6 +340,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._alternation_types: dict[int, dict[str, str]] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
+        self._optional_rel_vars: set[str] = set()
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
         # attributes — in RETURN r, in r.attr expressions, and in a WHERE on r.attr.
@@ -333,11 +384,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where = _steps_where(match_steps)
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
@@ -434,11 +481,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in final_match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where = _steps_where(final_match_steps)
 
         if not all_matches and not final_unwinds and cte_defs:
             last_cte_name = cte_defs[-1][0]
@@ -681,10 +724,6 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 select_exprs.append(cut.copy())
         where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
 
-        # Short-circuit: if any resolved node's WHERE props are all absent from its schema,
-        # the WHERE is always non-true → force FALSE to avoid scanning any tables.
-        if self._where_is_impossible_for_resolved_nodes():
-            where_expr = exp.false()
         order_exprs = self._build_order_by(
             self._ast.order_by,
             self._ast.return_clause.items if self._ast.return_clause is not None else [],
@@ -735,7 +774,21 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         result = self._apply_order_limit(result, order_exprs)
         result = self._reconcile_params_with_placeholders(result)
+        self._mark_json_maps(result)
         return result, self._param_order, self._graph_vars
+
+    def _mark_json_maps(self, result: "exp.Select | exp.Union") -> None:
+        """REQ-345: name each returned column that holds map literals, so the answer decodes their
+        JSON-encoded values. A UNION's columns are its first branch's."""
+        select: exp.Expression = result
+        while isinstance(select, exp.Union):
+            select = select.this
+        if not isinstance(select, exp.Select):
+            return
+        for projection in select.expressions:
+            name = projection.alias_or_name
+            if name and name.lower() not in self._graph_vars and _holds_json_maps(projection):
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
 
     def _reconcile_params_with_placeholders(
         self,
@@ -743,9 +796,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     ) -> "exp.Select | exp.Union":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Drop/renumber ``$N`` params no longer present in the final query.
 
-        The impossible-WHERE short-circuit (``_where_is_impossible_for_resolved_nodes``) replaces
-        the whole WHERE with a literal FALSE, discarding every ``$N`` placeholder that lived inside
-        it while ``self._param_order`` still lists the params those placeholders bound to. Left
+        A rewrite that drops part of the statement (a WHERE folded to a literal) discards every
+        ``$N`` placeholder that lived inside it while ``self._param_order`` still lists the params
+        those placeholders bound to. Left
         alone, the caller's positional ``[parameters.get(name) for name in ordered_params]`` either
         hands the executor more bound values than the query has placeholders for (crash) or, worse,
         shifts every surviving param's value onto the wrong ``$N`` (silent corruption) — so both
@@ -976,6 +1029,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             ):
                 target = maps[target.obj.name][target.name]
             inner = self._parse_expr(target)
+            if isinstance(inner, exp.Null):
+                # A key null for every row (a property the label has not) orders nothing, and an
+                # engine refuses a literal one.
+                continue
             # Cypher orders null as the largest value: last ascending, first descending.
             desc = item.direction == "DESC"
             exprs.append(exp.Ordered(this=inner, desc=desc, nulls_first=desc))
@@ -1072,6 +1129,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         full_type: list[str] = [label for label in labels if label in self._lm.nodes]
         domain_hits: list[str] = [label for label in labels if label in self._lm.domains]
         table_hits: list[str] = [label for label in labels if label in self._lm.nodes_by_table]
+        known = set(full_type) | set(domain_hits) | set(table_hits)
+        unknown = [label for label in labels if label not in known]
+        if unknown:
+            # REQ-778: a label no table has is the user's mistake -- even beside one that is
+            # known, which would otherwise widen the read to the whole domain.
+            raise unknown_label(unknown[0], self._lm)
 
         # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
         if full_type:
@@ -1116,7 +1179,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if domain_hits:
             return None, domain_hits[0]
 
-        raise CypherTranslateError(f"Unknown label(s): {labels}")
+        raise unknown_label(labels[0], self._lm)
 
     def _referenced_var_props(self, var: str) -> list[str]:
         """The property names referenced as ``var.prop`` in the statement, in order."""
@@ -1168,45 +1231,3 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             props = sorted(all_props)
 
         return props
-
-    def _collect_where_only_props(self, var: str) -> list[str]:
-        """Return property names referenced as var.prop in WHERE clauses only (not RETURN/WITH)."""
-        return _properties_of(
-            var,
-            [
-                step.where.expression
-                for step in self._ast.pipeline
-                if isinstance(step, (MatchStep, WithClause)) and step.where
-            ],
-        )
-
-    def _where_is_impossible_for_resolved_nodes(self) -> bool:
-        """Return True if any resolved node variable's WHERE props are ALL missing from its type.
-
-        When a property referenced in WHERE doesn't exist on the resolved node type, every
-        access returns NULL.  If *all* WHERE props for a variable are missing, the WHERE
-        condition on that variable is always non-true (NULL comparisons), so the result is
-        zero rows regardless of query structure — we can skip the engine round-trip.
-
-        This check is skipped for domain-union / passthrough vars because those are already
-        pruned per-branch inside _build_domain_union.
-
-        `nm.properties` is keyed by the CQL property name (GQL-convention-derived, e.g. camelCase
-        `customerId` under apollo_graphql — REQ-194: CQL derives from GQL, physical column names are
-        never client-facing in ANY query language, Cypher included). A WHERE reference written in the
-        raw physical casing (`customer_id`) is a caller bug, not a valid alternate spelling — it is
-        correctly treated as nonexistent here. (2026-09-26: do not "fix" this by also accepting
-        `nm.properties.values()` — that was tried and reverted; it would make the compiler silently
-        tolerate a naming-authority violation instead of surfacing it. The actual bug was
-        demo/named/perf/bench/queries.py's Cypher text using physical names; fix the query text via
-        the naming authority, never the compiler's naming enforcement.)
-        """
-        for var, (_, nm) in self._var_table.items():
-            if nm is None:
-                continue
-            if var in self._domain_nodes or var in self._passthrough_vars:
-                continue
-            where_props = self._collect_where_only_props(var)
-            if where_props and not any(nm.properties.get(p) for p in where_props):
-                return True
-        return False

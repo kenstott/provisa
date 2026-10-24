@@ -256,7 +256,12 @@
       "database_unavailable": "Datenbank nicht verfügbar",
       "query_engine_unavailable": "Abfrage-Engine nicht verfügbar",
       "role_header_required": "Header X-Provisa-Role erforderlich, um eine Sicht zu profilieren",
-      "table_not_found": "Tabelle {{table_id}} nicht gefunden"
+      "table_not_found": "Tabelle {{table_id}} nicht gefunden",
+      "column_not_found": "Spalte {{column}} ist keine Spalte der Tabelle, die der Organisationsadministrator liest",
+      "classification_kind_unknown": "Unbekannte Klassifizierungsart {{kind}}",
+      "classification_status_invalid": "Eine Klassifizierungsentscheidung ist angenommen oder abgelehnt, nicht {{status}}",
+      "classification_decision_not_found": "Keine Entscheidung zu {{column}} als {{kind}}",
+      "classification_pii_refused": "Die Spalte konnte nicht als PII markiert werden"
     },
     "replication": {
       "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: [{{content_type}}] {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "Die Tabelle '{{table}}' der Quelle '{{source}}' verwendet das Änderungssignal kafka, nennt aber in live.kafka.topic kein Topic, daher würde nichts sie aktualisieren.",
       "change_signal_no_receiver": "Provisa empfängt das Änderungssignal {{signal}} nicht von einer Quelle des Typs {{type}}, daher würde eine Tabelle der Quelle '{{source}}' dadurch nie aktualisiert. Erfassen Sie die Quelle mit Debezium und verwenden Sie debezium.",
       "change_signal_not_honoured": "Eine Quelle vom Typ {{type}} kann noch nicht auf Änderungen geprüft werden, daher würde das Änderungssignal {{signal}} nie abgefragt. Verwenden Sie ttl für die Quelle „{{source}}“.",
+      "row_materialize_no_key_fetch": "{{table}} kann nicht zeilenweise repliziert werden: Ihr entferntes Schema hat kein Feld, das ihre Zeilen für eine Liste ihres Primärschlüssels liefert.",
       "sentinel_path_not_applicable": "Eine Quelle vom Typ {{type}} kann keinen Sentinel-Pfad haben: Kein eigener Produzent kann eine Änderung ihrer Daten markieren, oder die Quelle wird nicht geprüft. Entfernen Sie den Sentinel-Pfad aus der Quelle „{{source}}“.",
       "source_cache_ttl_required": "Die Quelle „{{source}}“ benötigt eine Cache-TTL: Jede ihrer Tabellen ist ein Replikat, das unter dem Änderungssignal {{signal}} nach dieser Uhr aktualisiert wird. Legen Sie sie bei der Quelle unter „Laststeuerung und Aktualität“ fest.",
       "landing_ttl_required": "Die Tabelle „{{table}}“ ist ein Replikat, das nach einer Cache-TTL aktualisiert wird, und weder sie noch ihre Quelle „{{source}}“ hat eine. Legen Sie die Cache-TTL bei der Quelle unter „Laststeuerung und Aktualität“ fest oder bei der Tabelle selbst, sobald sie registriert ist.",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Eine Zählung war nicht möglich, daher ist die Summe unbekannt: {{statement}}: {{reason}}"
+      "count_unknown": "Eine Zählung war nicht möglich, daher ist die Summe unbekannt: {{statement}}: {{reason}}",
+      "access_violations": "Diese Rolle darf diese Abfrage nicht ausführen:",
+      "invalid_regex": "Das Muster \"{{pattern}}\" in {{expression}} ist kein gültiger regulärer Ausdruck: {{reason}}. =~ erwartet einen regulären Ausdruck, z. B. \".*{{word}}.*\", oder verwenden Sie CONTAINS \"{{word}}\".",
+      "unknown_label": "Es gibt kein Label :{{label}}. Registrierte Labels: {{suggestions}}.",
+      "no_labels": "Es gibt kein Label :{{label}}: Diese Rolle kann keine Tabelle lesen.",
+      "unknown_relationship_type": "Es gibt keinen Beziehungstyp {{types}}. Registrierte Typen: {{suggestions}}.",
+      "no_relationship_types": "Es gibt keinen Beziehungstyp {{types}}: Diese Rolle kann keine Beziehung durchlaufen.",
+      "type_mismatch": "In {{expression}} kann {{value}} nicht mit {{property}} (Typ {{property_type}}) verglichen werden. {{fix}}",
+      "aggregate_in_where": "WHERE kann das Aggregat {{aggregate}} nicht verwenden: WHERE filtert Zeilen, bevor sie gruppiert werden. Aggregieren Sie in einem WITH und filtern Sie danach.",
+      "nested_aggregate": "{{outer}} aggregiert das Aggregat {{inner}}: Ein Aggregat kann nicht über ein anderes gebildet werden. Aggregieren Sie zuerst in einem WITH.",
+      "undefined_variable": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} ist keine ganze Zeilenzahl: LIMIT erwartet eine Anzahl ab 0, z. B. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} ist keine ganze Zeilenzahl: SKIP erwartet eine Anzahl ab 0, z. B. SKIP 10.",
+      "engine_refused": "Die Engine hat die Abfrage abgelehnt: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} liest {{variable}}, aber die Anweisung bindet keine Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden.",
+      "undefined_variable_property": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestion}}? {{owner}} ist an :{{label}} gebunden, das eine Eigenschaft {{variable}} hat.",
+      "undefined_variable_properties": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestions}}? Jede ist an ein Label mit einer Eigenschaft {{variable}} gebunden.",
+      "non_finite_number": "Die Antwort enthält eine Zahl, die JSON nicht darstellen kann: {{column}} ist {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean eines Werts, der sich womöglich nicht umwandeln lässt, benötigen auf dieser Engine PostgreSQL 16 oder neuer."
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
@@ -542,6 +567,7 @@
     "statement": {
       "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",
       "rows_cut_unchecked": "Die Antwort hat {{limit}} Zeilen, das für diese Abfrage geltende Zeilenlimit ({{kind}}). Ob mehr Zeilen passen, konnte nicht geprüft werden: {{reason}}",
+      "list_at_ceiling": "Eine Liste enthält das Maximum von {{limit}} Einträgen, das das Zeilenlimit für diese Abfrage erlaubt ({{kind}}); es kann mehr geben.",
       "approximate_index": "Die ähnlichsten Zeilen wurden über einen näherungsweisen Vektorindex gefunden: Eine Zeile, die etwas ähnlicher ist als die zuletzt zurückgegebene, kann fehlen.",
       "path_cut": "Ein Pfad ohne Obergrenze wurde an der Graph-Tiefengrenze von {{limit}} Hops abgeschnitten: Längere Pfade fehlen in der Antwort."
     },

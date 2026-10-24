@@ -18,6 +18,7 @@ import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import { edgesOf, type GraphData, type NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
 import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
+import { GLYPH_OUTLINE, glyphClip, glyphPoints } from "./glyph";
 
 export interface StageState {
   graph: GraphData;
@@ -55,12 +56,15 @@ export function GraphStage({
   command,
   exportName,
   testId,
+  bare = false,
 }: {
   s: StageState;
   command: CameraCommand | null;
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
+  /** A glance only (a card): no export or hint (Stage3D). */
+  bare?: boolean;
 }) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: GraphHover; x: number; y: number } | null>(null);
@@ -158,6 +162,7 @@ export function GraphStage({
       exportable={scene}
       exportName={exportName}
       testId={testId}
+      bare={bare}
       legend={<GraphLegend graph={s.graph} />}
     />
   );
@@ -179,20 +184,28 @@ function GraphLegend({ graph }: { graph: GraphData }) {
   const statuses = graph.nodes.some((n) => n.status !== undefined);
   return (
     <>
-      {[...looks.entries()].map(([key, l]) => (
-        <span key={key} data-testid={`legend-${key}`}>
-          <i
-            className={`g3d-shape g3d-shape-${l.shape}`}
-            // A ring's colour is its border; every other shape is filled.
-            style={
-              l.shape === "torus"
-                ? { borderColor: `var(--p3d-${l.colour})` }
-                : { background: `var(--p3d-${l.colour})` }
-            }
-          />
-          {t(l.name)}
-        </span>
-      ))}
+      {[...looks.entries()].map(([key, l]) => {
+        // A solid seen as a polygon is clipped to its outline, which an export paints too.
+        const outline = GLYPH_OUTLINE[l.shape];
+        return (
+          <span key={key} data-testid={`legend-${key}`}>
+            <i
+              className={`g3d-shape g3d-shape-${l.shape}`}
+              data-glyph={outline ? glyphPoints(outline) : undefined}
+              // A ring's colour is its border; every other shape is filled.
+              style={
+                l.shape === "torus"
+                  ? { borderColor: `var(--p3d-${l.colour})` }
+                  : {
+                      background: `var(--p3d-${l.colour})`,
+                      ...(outline ? { clipPath: glyphClip(outline) } : {}),
+                    }
+              }
+            />
+            {t(l.name)}
+          </span>
+        );
+      })}
       {statuses &&
         (["live", "draft", "deprecated", "retired"] as const).map((st) => (
           <span

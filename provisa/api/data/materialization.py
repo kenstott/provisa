@@ -575,11 +575,11 @@ def _refuse_or_drop(exec_sql: str, tn: str, missing: list[str], dropped_tables: 
         drop_union_branches_for_table,
         find_api_table_names,
     )
-    from provisa.core.parameters import missing_reason
+    from provisa.core.parameters import ParameterRequired, missing_reason
 
     reason = missing_reason(missing)
     if tn in find_api_table_names(drop_union_branches_for_table(exec_sql, tn)):
-        raise ValueError(f"Table {tn!r} {reason}")
+        raise ParameterRequired(tn, reason)
     log.warning("[MAT] %s lacks required parameter(s) %s — dropping its union branch", tn, missing)
     dropped_tables[tn] = reason
 

@@ -51,7 +51,8 @@ def test_pg_wire_maps_to_postgres(stype):
 def test_tidb_maps_to_mysql():
     assert SOURCE_TO_DIALECT["tidb"] == "mysql"
     assert trino_connector_name("tidb") == "mysql"
-    assert _src("tidb").jdbc_url() == "jdbc:mysql://h:5432/db"
+    # No database: Trino's MySQL connector reads each as a schema and refuses a URL naming one.
+    assert _src("tidb").jdbc_url() == "jdbc:mysql://h:5432"
 
 
 def test_exasol_and_redshift_jdbc_urls_present():

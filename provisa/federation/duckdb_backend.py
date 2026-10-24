@@ -42,6 +42,22 @@ class DuckDBBackend(NativeEngineBackend):
 
     computes_fakes = True  # REQ-1494: provisa.fakes.duckdb_functions, registered in-process
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: an attached source the engine cannot reach is an IOException
+        (OperationalError); a value it cannot convert, a name it does not know, are its others.
+        duckdb has no InterfaceError of PEP 249's."""
+        return (
+            (duckdb.OperationalError,),
+            (
+                duckdb.DataError,
+                duckdb.ProgrammingError,
+                duckdb.IntegrityError,
+                duckdb.NotSupportedError,
+            ),
+        )
+
     @property
     def landed_signals(self) -> frozenset[str]:
         """REQ-862: the traces this process lands as Parquet (observability.native_traces), read

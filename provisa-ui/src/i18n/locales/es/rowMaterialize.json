@@ -1,0 +1,6 @@
+{
+  "rowMaterialize": {
+    "label": "Replicar fila por fila",
+    "help": "Conservar solo las filas que piden las sentencias: cada una se obtiene del origen por su clave primaria y se conserva durante el Cache TTL, en lugar de una copia de toda la tabla. Requiere una columna de clave primaria y un origen que obtenga filas por clave."
+  }
+}

@@ -436,7 +436,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `compiler/cursor.py` | pagination בסגנון Relay מבוסס cursor — פרמטרים `first`/`after`/`last`/`before` ויצירת `pageInfo` בכל שאילתות הרשימה |
 | `compiler/aggregate_gen.py` | סוגי שאילתת `{table}_aggregate` מיוצרים אוטומטית עם שדות משנה `count`, `sum`, `avg`, `min`, `max` וגישת `nodes` מסוננת |
 | `compiler/enum_detect.py` | זיהוי אוטומטי של סוג enum — סוגי enum טבעיים של PostgreSQL (`pg_enum`) נחשפים כסוגי enum ב-GraphQL במקום כ-string scalars |
-| `compiler/hints.py` | רמזי ביצועים לפדרציה — הנחיות ניתוב ברמת השאילתה, מוטמעות כתגובות SQL (`/* @provisa route=federated */`) שדורסות את הניתוב האוטומטי |
+| `compiler/hints.py` | רמזי ביצועים לפדרציה — הנחיות ניתוב ברמת השאילתה, מוטמעות כתגובות SQL (`-- @provisa route=federated`) שדורסות את הניתוב האוטומטי |
 | `compiler/mutation_gen.py` | מהדר מוטציות; presets עמודה — ערכים סטטיים בצד השרת או ערכי משתנה-session המוחלים בהוספה/עדכון, ואינם נחשפים בסוג הקלט של המוטציה |
 | `auth/approval_hook.py` | hook אישור ABAC — hook הרשאה חיצוני שניתן לחיבור, מופעל לפני ביצוע השאילתה; הובלות webhook, gRPC ו-unix_socket; היקף לכל טבלה/מקור/גלובלי; מדיניות נפילה חזרה (fallback) הניתנת להגדרה |
 | `subscriptions/` | מצב ומסירה של מנויי SSE |
@@ -623,7 +623,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

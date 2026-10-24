@@ -22,6 +22,23 @@ class BigQueryBackend(NativeEngineBackend):
     """A partial-federator warehouse: object/lake sources attach as external tables (SCAN), the rest
     land, and governed SQL runs against BigQuery with Arrow-native reads (Storage Read API)."""
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: BigQuery answers a statement it refuses with 400 (BadRequest) and an
+        unavailable service with 5xx or a transport error."""
+        import google.api_core.exceptions as gapi
+
+        return (
+            (
+                gapi.ServiceUnavailable,
+                gapi.InternalServerError,
+                gapi.GatewayTimeout,
+                ConnectionError,
+            ),
+            (gapi.BadRequest,),
+        )
+
     @property
     def dialect(self) -> str:
         return "bigquery"

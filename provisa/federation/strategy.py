@@ -67,6 +67,19 @@ def engine_attaches(engine: Any, source_type: str) -> bool:
     )  # ATTACH_* or SCAN — read live in place, never landed (REQ-951)
 
 
+def read_through_its_server(engine: Any, source_type: str) -> bool:
+    """Whether a source of ``source_type`` is read through its bundled connector server on
+    ``engine``: a pgwire-replica type the engine lands through that server, or attaches through
+    it (``Connector.served_by_bundle``). Trino reads files and Splunk with connectors of its own."""
+    from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES
+
+    if source_type not in PGWIRE_REPLICA_TYPES:
+        return False
+    if not engine_attaches(engine, source_type):
+        return True
+    return engine.connector_for(source_type).served_by_bundle
+
+
 class Strategy(str, Enum):  # REQ-826
     VIRTUAL = "virtual"
     SCAN = "scan"

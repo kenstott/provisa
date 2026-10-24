@@ -842,8 +842,8 @@ async def test_a_local_call_naming_a_role_beyond_its_pin_is_recorded_and_ends_it
         mcp_server._request_session.reset(token)
     [event] = _role_probe_events
     assert (event.transport, event.requested, event.endpoint) == ("stdio", "admin", "list_schemas")
-    assert "session-1" in mcp_server._ended_sessions
-    mcp_server._ended_sessions.discard("session-1")
+    assert mcp_server._session_ended("session-1")
+    mcp_server._ended_sessions.pop("session-1", None)
 
 
 async def test_a_request_in_an_ended_session_is_told_its_session_is_over():  # REQ-2076
@@ -859,12 +859,45 @@ async def test_a_request_in_an_ended_session_is_told_its_session_is_over():  # R
     async def _send(message):
         sent.append(message)
 
-    mcp_server._ended_sessions.add("over")
+    mcp_server._end_session("over")
     try:
         middleware = mcp_server._wrap_role_auth(
             _app, SimpleNamespace(org_id="root"), require_token=False
         )
         await middleware({"type": "http", "headers": [(b"mcp-session-id", b"over")]}, None, _send)
     finally:
-        mcp_server._ended_sessions.discard("over")
+        mcp_server._ended_sessions.pop("over", None)
     assert reached == [] and sent[0]["status"] == 404
+
+
+def test_an_ended_sessions_tombstone_lasts_as_long_as_the_session_could(monkeypatch):  # REQ-2076
+    """A request in an ended session is answered 404 before the session manager sees it, so the
+    manager reaps the session after its idle timeout; the tombstone needs no longer, and there are
+    never more of them than the manager keeps sessions."""
+    from provisa.api.mcp import server as mcp_server
+
+    clock = [100.0]
+    monkeypatch.setattr(mcp_server.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mcp_server, "_ended_sessions", {})
+    monkeypatch.setattr(mcp_server, "_session_bounds", (30.0, 2))
+    mcp_server._end_session("a")
+    assert mcp_server._session_ended("a")
+    clock[0] += 29.0
+    assert mcp_server._session_ended("a")
+    clock[0] += 1.0
+    assert not mcp_server._session_ended("a") and "a" not in mcp_server._ended_sessions
+    for session in ("b", "c", "d"):
+        mcp_server._end_session(session)
+    assert list(mcp_server._ended_sessions) == ["c", "d"]
+
+
+def test_the_tombstones_are_bounded_by_the_session_managers_own_settings(monkeypatch):
+    from provisa.api.mcp import server as mcp_server
+    from provisa.api.mcp.server import build_mcp_server
+
+    monkeypatch.setattr("provisa.api.app.state", _make_state())
+    mcp = build_mcp_server(_make_state())
+    assert mcp_server._session_bounds == (
+        mcp.settings.session_idle_timeout,
+        mcp.settings.max_sessions,
+    )

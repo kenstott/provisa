@@ -17,12 +17,6 @@
     "upstream": "A monte",
     "downstream": "A valle",
     "via": "tramite {{vias}}",
-    "metaQueries": "Query",
-    "metaQueriesHint": "Le letture che questo pannello esegue sul dominio meta, a tuo nome. Copiane una o aprila nel suo explorer: la risposta è la stessa.",
-    "copy": "Copia",
-    "copied": "Copiato",
-    "copyQuery": "Copia la query {{surface}}",
-    "openQuery": "Apri la query {{surface}} nel suo explorer",
     "unreadable": "Il tuo ruolo non può leggere i prodotti dati nel dominio meta.",
     "detailExpand": "Mostra la voce completa",
     "detailCollapse": "Mostra meno"

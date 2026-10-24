@@ -82,3 +82,23 @@ def test_row_count_fetch_is_bounded_and_does_not_do_a_round_trip_per_table(monke
 def test_no_engine_connection_returns_empty():
     ctx, idx = _ctx_and_idx(3)
     assert catalog_populate._fetch_row_counts(ctx, idx, None) == {}
+
+
+def test_one_orgs_row_counts_are_never_anothers_for_a_role_of_the_same_name(monkeypatch):
+    """A role's id is its org's (org_admin, sandbox): estimates kept by role alone served one
+    org's counts to another's role of the same name."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    def _as(org: str) -> dict:
+        token = set_current_org(org)
+        try:
+            return catalog_populate._row_counts_for("org_admin", None, None, None)
+        finally:
+            reset_current_org(token)
+
+    monkeypatch.setattr(catalog_populate, "_row_count_cache", {})
+    fetched = iter([{1: 10.0}, {1: 99.0}])
+    monkeypatch.setattr(catalog_populate, "_fetch_row_counts", lambda ctx, idx, conn: next(fetched))
+    assert _as("acme") == {1: 10.0}
+    assert _as("globex") == {1: 99.0}
+    assert _as("acme") == {1: 10.0}

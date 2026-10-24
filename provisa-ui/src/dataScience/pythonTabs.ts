@@ -14,6 +14,7 @@
 // IndexedDB. A browser that refuses its storage keeps the scripts for the session only.
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { uuid } from "../lib/uuid";
 import type { FromWorker } from "./protocol";
 
 export type ScriptOutput = Extract<FromWorker, { type: "result" }>;
@@ -34,7 +35,7 @@ const codeKey = (id: string) => `provisa.python.tab.${id}`;
 const outputKey = (id: string) => `provisa.python.tab.${id}.output`;
 
 export function newScriptId(): string {
-  return crypto.randomUUID();
+  return uuid();
 }
 
 /** The scripts kept for this organization, or ``fallback`` when none are (or the storage is

@@ -17,7 +17,10 @@ description: >-
   is the bank over its 25% large-exposure limit to? The bank, its borrowers and its loans are
   fictional; the groups that own them are real.
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a495
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Knowledge Graphs Are Tables!"

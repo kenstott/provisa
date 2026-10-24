@@ -30,6 +30,9 @@ class _FakeCtx:
     def property_is_table_column(self, obj, name):
         return True  # every property here is a plain column of the variable's table
 
+    def property_type(self, obj, name):
+        return None  # no registered types: comparisons are not type-checked here
+
     def resolve_parameter(self, name):
         return exp.Placeholder(this=name)
 

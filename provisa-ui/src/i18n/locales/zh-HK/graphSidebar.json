@@ -30,6 +30,8 @@
     "tabSettings": "檢視設定",
     "maxNodes": "最大節點數",
     "maxNodesHint": "一次查詢最多繪製的節點數",
-    "notCounted": "未計數：{{list}}"
+    "notCounted": "未計數：{{list}}",
+    "countsFailed": "無法取得計數：{{error}}",
+    "schemaFailed": "無法取得架構：{{error}}"
   }
 }

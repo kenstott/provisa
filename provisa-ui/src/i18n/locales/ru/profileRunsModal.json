@@ -39,6 +39,7 @@
     "kind_joint_counts": "Совместные частоты",
     "kind_constraints": "Предложенные ограничения",
     "kind_constraint_checks": "Проверки ограничений",
+    "kind_classifications": "Классификации",
     "kind_terrain": "Рельеф",
     "kind_relationsMap": "Связи",
     "kind_jointCloud": "Совместное облако",

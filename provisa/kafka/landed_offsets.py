@@ -54,8 +54,12 @@ def _consumer(bootstrap: str, group: str | None) -> Any:
 async def _partitions(consumer: Any, topic: str) -> list[Any]:
     from aiokafka import TopicPartition  # type: ignore[import-untyped]
 
-    await consumer.topics()  # the cluster's metadata, which names the topic's partitions
-    return [TopicPartition(topic, p) for p in sorted(consumer.partitions_for_topic(topic) or ())]
+    # The cluster's metadata as fetched now, which names the topic's partitions. Not
+    # consumer.topics() and partitions_for_topic(): the first returns only the names of the
+    # metadata it fetched, and the second reads the client's own, which for a consumer
+    # subscribed to nothing names no topic at all.
+    cluster = await consumer._client.fetch_all_metadata()  # noqa: SLF001
+    return [TopicPartition(topic, p) for p in sorted(cluster.partitions_for_topic(topic) or ())]
 
 
 async def _committed(consumer: Any, partitions: list[Any]) -> dict[Any, int]:

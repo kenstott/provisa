@@ -25,6 +25,7 @@ from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.translator import cypher_to_sql
 from provisa.sparql_query.compiler import SparqlRefused, compile_sparql
+from provisa.transpiler.transpile import transpile_to_duckdb
 from provisa.sparql_query.vocabulary import (
     XSD,
     Grounding,
@@ -139,7 +140,8 @@ def _answer(con, query: str) -> list[dict]:
     sql, _, graph_vars = cypher_to_sql(compiled.ast, lm, {})
     # As the endpoint runs it (sparql_router): a term is its own value through the graph rewrite.
     sql = apply_graph_rewrites(sql, graph_vars, lm)
-    cur = con.execute(sql.sql(dialect="duckdb"))
+    # As the pipeline runs it: the semantic SQL in PostgreSQL's dialect, transpiled to the engine's.
+    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres")))
     names = [d[0] for d in cur.description]
     rows = assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
     if compiled.form == "ASK":
@@ -372,3 +374,79 @@ def test_group_by_a_value_and_order_by_its_count(con):
 def test_an_aggregate_over_no_solution_is_one_row(con):
     rows = _answer(con, "SELECT (COUNT(*) AS ?n) WHERE { ?s <http://example.org/nope> ?o }")
     assert rows == [{"n": 0}]
+
+
+def _sql(con, sql: str) -> list[tuple]:
+    """The equivalent SQL's answer, over the same tables: what each lowering is checked by."""
+    return sorted(con.execute(sql).fetchall())
+
+
+def test_a_negated_set_of_forward_and_inverse_edges_is_either(con):
+    # !(KNOWS|^WORKS_AT) from a person: any edge out of it but KNOWS (its WORKS_AT), or any edge
+    # into it but WORKS_AT (a KNOWS of someone who knows it).
+    rows = _answer(
+        con,
+        f"SELECT ?s ?o WHERE {{ ?s a <{PERSON}> . ?s !(rel:KNOWS|^rel:WORKS_AT) ?o }}",
+    )
+    got = sorted((r["s"], r["o"]) for r in rows)
+    out = _sql(con, "SELECT id, company_id FROM pg.public.persons WHERE company_id IS NOT NULL")
+    back = _sql(
+        con,
+        "SELECT p.id, q.id FROM pg.public.persons p JOIN pg.public.persons q ON q.knows_id = p.id",
+    )
+    want = sorted(
+        [
+            (subject_iri(BASE, "hr", "persons", [s]), subject_iri(BASE, "hr", "companies", [o]))
+            for s, o in out
+        ]
+        + [
+            (subject_iri(BASE, "hr", "persons", [s]), subject_iri(BASE, "hr", "persons", [o]))
+            for s, o in back
+        ]
+    )
+    assert got == want and want
+
+
+def test_a_negated_set_of_inverse_edges_alone_walks_backward(con):
+    # !(^WORKS_AT) into a person: an edge into it that is not WORKS_AT -- someone who knows it.
+    rows = _answer(con, f"SELECT ?s ?o WHERE {{ ?s a <{PERSON}> . ?s !(^rel:WORKS_AT) ?o }}")
+    back = _sql(
+        con,
+        "SELECT p.id, q.id FROM pg.public.persons p JOIN pg.public.persons q ON q.knows_id = p.id",
+    )
+    person = lambda k: subject_iri(BASE, "hr", "persons", [k])  # noqa: E731
+    assert sorted((r["s"], r["o"]) for r in rows) == [(person(s), person(o)) for s, o in back]
+
+
+@pytest.mark.parametrize(
+    "regex, sql",
+    [
+        ('REGEX(?n, "n")', "regexp_matches(name, 'n')"),  # a match anywhere in the text
+        ('REGEX(?n, "^a", "i")', "regexp_matches(name, '^a', 'i')"),
+        ('REGEX(?n, "Y$", "i")', "regexp_matches(name, 'Y$', 'i')"),
+        ('REGEX(?n, "a.n", "q")', "contains(name, 'a.n')"),  # q: the pattern is its text
+        ('REGEX(?n, "^ a n", "ix")', "regexp_matches(name, '^an', 'i')"),  # x: spaces ignored
+    ],
+)
+def test_regex_searches_the_text_under_its_flags(con, regex, sql):
+    rows = _answer(con, f"SELECT ?n WHERE {{ ?s p:name ?n FILTER({regex}) }}")
+    want = _sql(con, f"SELECT name FROM pg.public.persons WHERE {sql}")
+    assert sorted((r["n"],) for r in rows) == want
+
+
+def test_a_regex_pattern_read_at_run_time_is_searched_for_too(con):
+    rows = _answer(
+        con, 'SELECT ?n WHERE { ?s p:name ?n BIND("o" AS ?pat) FILTER(REGEX(?n, ?pat, "i")) }'
+    )
+    want = _sql(con, "SELECT name FROM pg.public.persons WHERE regexp_matches(name, 'o', 'i')")
+    assert sorted((r["n"],) for r in rows) == want and want
+
+
+def test_group_by_an_expression_groups_by_its_value(con):
+    rows = _answer(
+        con, "SELECT (COUNT(?s) AS ?n) WHERE { ?s p:age ?a } GROUP BY (?a > 30) ORDER BY ?n"
+    )
+    want = _sql(
+        con, "SELECT count(*) FROM pg.public.persons WHERE age IS NOT NULL GROUP BY age > 30"
+    )
+    assert [(r["n"],) for r in rows] == want

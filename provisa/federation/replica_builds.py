@@ -1077,6 +1077,11 @@ def wire_replica_runner(scheduler: Any, *, state: Any, platform_url: str) -> Non
     org_id = require_current_org()
     env = active_env()
     runner = make_runner(state, org_id, platform_url)
+    replaced = _runners.get((org_id, env))
+    if replaced is not None:
+        # A re-applied config: the runner it replaces starts nothing more. A build of its still
+        # running would otherwise chain into a pass of a runner shutdown no longer reaches.
+        replaced.stop()
     _runners[(org_id, env)] = runner
 
     async def _pass() -> None:

@@ -26,11 +26,28 @@ export interface CypherAnswer {
     graph_columns?: Record<string, string>;
     provisa_stats?: unknown;
     redirect?: Parameters<typeof toResultRedirect>[0];
-    error?: string;
-    code?: string;
-    message?: string;
-    detail?: string;
-  };
+  } & CypherErrorBody;
+}
+
+/** An error of the graph routes: the app's error body (REQ-778, REQ-1350), with each access
+ *  violation listed when the statement was refused for them. */
+export interface CypherErrorBody {
+  code?: string;
+  params?: Record<string, unknown>;
+  message?: string;
+  detail?: string;
+  violations?: { code: string; message: string }[];
+}
+
+/** What a frame shows of a refused statement: the reason, and each violation under it. */
+export function cypherError(
+  body: CypherErrorBody,
+  status: number,
+): { error: string; violations?: string[] } {
+  const error = serverMessage(body, requestFailed("cypher", status));
+  return body.violations && body.violations.length > 0
+    ? { error, violations: body.violations.map((v) => v.message) }
+    : { error };
 }
 
 type Clusters = Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>;
@@ -46,8 +63,7 @@ export function frameStatement(
       ...empty,
       query: a.statement,
       status: "error",
-      // Cypher says its refusals as `error`; the app's own handlers by code and message.
-      error: a.body.error ?? serverMessage(a.body, requestFailed("cypher", a.status)),
+      ...cypherError(a.body, a.status),
     };
   // A result that returns nodes, relationships or paths is drawn, up to max nodes; one that
   // returns rows only is a table (the server says which, from the translation).
@@ -81,6 +97,7 @@ export function showing(st: FrameStatement): Partial<FrameData> {
     rows: st.rows,
     columns: st.columns,
     error: st.error,
+    violations: st.violations,
     redirect: st.redirect,
     truncated: st.truncated,
     queryStats: st.queryStats,

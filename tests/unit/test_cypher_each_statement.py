@@ -52,7 +52,7 @@ async def test_each_statement_is_run_on_its_own_and_answered_in_order(monkeypatc
         if "Secret" in body.query:
             raise PermissionError("Label Secret is not visible to role analyst")
         if "Broken" in body.query:
-            return JSONResponse(status_code=400, content={"error": "Unknown label Broken"})
+            return cypher_router.cypher_error(400, "cypher.refused", "Unknown label Broken")
         return JSONResponse(content={"columns": ["n"], "rows": [[body.query]]})
 
     monkeypatch.setattr(cypher_router, "cypher_query", one)
@@ -72,5 +72,9 @@ async def test_each_statement_is_run_on_its_own_and_answered_in_order(monkeypatc
     assert results[0]["body"]["rows"] == [["MATCH (a:Pets) RETURN a"]]
     # A refusal is answered by the app's own handler for it; the statements after it still run.
     assert results[1]["body"] == {"error": "Label Secret is not visible to role analyst"}
-    assert results[2]["body"] == {"error": "Unknown label Broken"}
+    assert results[2]["body"] == {
+        "detail": "Unknown label Broken",
+        "code": "cypher.refused",
+        "params": {},
+    }
     assert results[3]["body"]["rows"] == [["MATCH (o:Owners) WHERE o.id = $id RETURN o"]]

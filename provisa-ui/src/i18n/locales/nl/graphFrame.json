@@ -33,6 +33,7 @@
     "showPropertiesPanel": "Eigenschappenpaneel tonen",
     "copyErrorTitle": "Fout kopiëren",
     "expandedDialogLabel": "Uitgevouwen graafweergave",
-    "firstNodesShown": "De eerste {{count}} knooppunten worden getoond; er zijn er meer. Verhoog de limiet in het zijmenu."
+    "firstNodesShown": "De eerste {{count}} knooppunten worden getoond; er zijn er meer. Verhoog de limiet in het zijmenu.",
+    "deleteFrame": "Dit resultaat verwijderen"
   }
 }

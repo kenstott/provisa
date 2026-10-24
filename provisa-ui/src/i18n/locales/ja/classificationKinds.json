@@ -1,0 +1,61 @@
+{
+  "classificationKinds": {
+    "intro": "各プロファイル実行は、すべての列の値のサンプルをこれらの種類に照らして検査します。十分な値が合格すると、その列に提案が付き、データスチュワードが承認または却下します。無効にした種類は検査されません。",
+    "kindHeader": "種類",
+    "testHeader": "検査",
+    "thresholdHeader": "合格が必要な割合",
+    "maskHeader": "提案するマスク",
+    "enabledHeader": "有効",
+    "enabledAria": "{{kind}} を検査する",
+    "sensitive": "機微",
+    "noMask": "なし",
+    "kind": {
+      "us_ssn": "米国社会保障番号",
+      "payment_card": "決済カード番号",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "英国 National Insurance 番号",
+      "ca_social_insurance_number": "カナダ社会保険番号",
+      "es_dni": "スペインの DNI または NIE",
+      "nl_bsn": "オランダ市民サービス番号 (BSN)",
+      "in_aadhaar": "インドの Aadhaar 番号",
+      "us_passport": "米国旅券番号",
+      "country": "国名",
+      "country_code": "国コード (ISO 3166)",
+      "currency_code": "通貨コード (ISO 4217)",
+      "language_code": "言語コード (ISO 639)",
+      "city": "世界の都市"
+    },
+    "test": {
+      "us_ssn": "9 桁の数字 (123-45-6789 形式または区切りなし)。エリアは 000、666、900〜999 ではなく、グループは 00 ではなく、シリアルは 0000 ではない。",
+      "payment_card": "13〜19 桁の数字 (グループ間の空白やハイフン可) で、Luhn チェックに合格するもの。",
+      "iban": "国コード、2 桁のチェックディジット、最大 30 文字の英数字で、チェックディジットが正しいもの (mod 97)。",
+      "uk_national_insurance_number": "許可された組の接頭文字 2 文字、6 桁の数字、末尾の文字 A〜D。",
+      "ca_social_insurance_number": "9 桁の数字 (先頭は 0 でも 8 でもない) で、Luhn チェックに合格するもの。",
+      "es_dni": "8 桁の数字とそのチェック文字。外国人の NIE は X、Y、Z で始まる。",
+      "nl_bsn": "11 テストに合格する 9 桁の数字。",
+      "in_aadhaar": "12 桁の数字 (先頭は 2〜9) で、Verhoeff チェックに合格するもの。",
+      "us_passport": "英字 1 文字と 8 桁の数字。2021 年以降に発行された米国旅券の形式。",
+      "country": "同梱の国一覧にある国名。",
+      "country_code": "2 文字または 3 文字の ISO 3166 国コード。",
+      "currency_code": "3 文字の ISO 4217 通貨コード。",
+      "language_code": "2 文字または 3 文字の ISO 639 言語コード。",
+      "city": "同梱の一覧にある、人口 15,000 人以上の都市の名前。"
+    },
+    "noun": {
+      "us_ssn": "米国社会保障番号",
+      "payment_card": "決済カード番号",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "英国 National Insurance 番号",
+      "ca_social_insurance_number": "カナダ社会保険番号",
+      "es_dni": "スペインの DNI または NIE",
+      "nl_bsn": "オランダ市民サービス番号",
+      "in_aadhaar": "インドの Aadhaar 番号",
+      "us_passport": "米国旅券番号",
+      "country": "国名",
+      "country_code": "ISO 3166 国コード",
+      "currency_code": "ISO 4217 通貨コード",
+      "language_code": "ISO 639 言語コード",
+      "city": "世界の都市"
+    }
+  }
+}

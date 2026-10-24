@@ -436,7 +436,7 @@ La boucle de rafraîchissement s'exécute toutes les 30 secondes, vérifie `get_
 | `compiler/cursor.py` | Pagination par curseur de style Relay — arguments `first`/`after`/`last`/`before` et génération de `pageInfo` sur toutes les requêtes de liste |
 | `compiler/aggregate_gen.py` | Types de requête `{table}_aggregate` auto-générés avec sous-champs `count`, `sum`, `avg`, `min`, `max` et accès `nodes` filtré |
 | `compiler/enum_detect.py` | Auto-détection de type enum — types enum natifs PostgreSQL (`pg_enum`) exposés comme types enum GraphQL plutôt que scalaires chaîne |
-| `compiler/hints.py` | Indices de performance de fédération — directives de routage au niveau requête embarquées comme commentaires SQL (`/* @provisa route=federated */`) qui surchargent le routage automatique |
+| `compiler/hints.py` | Indices de performance de fédération — directives de routage au niveau requête embarquées comme commentaires SQL (`-- @provisa route=federated`) qui surchargent le routage automatique |
 | `compiler/mutation_gen.py` | Compilateur de mutation ; préréglages de colonne — valeurs statiques côté serveur ou de variable de session appliquées à l'insertion/mise à jour, non exposées dans le type d'entrée de mutation |
 | `auth/approval_hook.py` | Hook d'approbation ABAC — autorisation externe enfichable appelée avant l'exécution de requête ; transports webhook, gRPC, et unix_socket ; scope par table/source/global ; politique de repli configurable |
 | `subscriptions/` | État et livraison d'abonnement SSE |
@@ -623,7 +623,7 @@ Un rôle nomme au plus un parent via `parent_role_id`. Lors de la construction �
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

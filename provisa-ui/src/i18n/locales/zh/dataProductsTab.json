@@ -112,12 +112,11 @@
       "lineageLoading": "正在加载血缘…",
       "lineageHint": "列血缘图，以此产品的表作为发布终结点，并包含用于派生它们的所有上游表。仅供参考，需要 view_governance 能力。",
       "inputPortsEmpty": "没有记录上游输入",
-      "inputPortsHint": "由血缘派生的单跳 输入 → 转换 → 输出。需要 view_governance 能力。",
-      "inputPortsColInputs": "输入",
-      "inputPortsColTransform": "转换",
-      "inputPortsColOutput": "输出",
+      "inputPortsHint": "此产品直接读取的表（来自血缘）。展开表可查看其读取的列。需要 view_governance 能力。",
       "outputPortsHint": "此产品可查询的范围：其成员表和命令。每个的示例查询见“访问模式”。",
-      "customPropertiesEmpty": "没有自定义属性"
+      "customPropertiesEmpty": "没有自定义属性",
+      "lineageLaneUpstream": "上游，第 {{n}} 跳",
+      "lineageLaneDownstream": "下游，第 {{n}} 跳"
     },
     "readOnly": "只读",
     "readOnlyHint": "您仅拥有 data_product_read——org_admin 可授予 data_product_rw 以进行编辑。",

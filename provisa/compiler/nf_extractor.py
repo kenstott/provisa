@@ -418,10 +418,12 @@ def apply_dropped_tables(sql: str, dropped: dict[str, str]) -> str:  # REQ-599
     instead of the caller-facing reason recorded here — so it raises loud instead (matches the
     pgwire ``_optimize_and_route`` no-op detection, generalized to every settled-pipeline caller).
     """
+    from provisa.core.parameters import ParameterRequired
+
     for table_name, reason in dropped.items():
         sql = drop_union_branches_for_table(sql, table_name)
         if table_name in find_api_table_names(sql):
-            raise ValueError(f"Table {table_name!r} {reason}")
+            raise ParameterRequired(table_name, reason)
     return sql
 
 

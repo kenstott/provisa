@@ -143,7 +143,7 @@ def _server(pg: _SourceAndEngine, workdir: str, *, request_timeout: str = "600")
 def _read_one(srv) -> None:
     response = httpx.post(
         f"{srv.base_url}/data/graphql",
-        json={"query": "{ wide(limit: 1) { id } }"},
+        json={"query": "{ wide(limit: 1, order_by: {id: asc}) { id } }"},
         headers={"X-Provisa-Role": _ROLE},
         timeout=900,
     )
@@ -269,7 +269,7 @@ def test_a_read_that_cannot_wait_for_the_build_fails_by_name_and_the_build_goes_
             while True:
                 served = httpx.post(
                     f"{srv.base_url}/data/graphql",
-                    json={"query": "{ wide(limit: 1) { id } }"},
+                    json={"query": "{ wide(limit: 1, order_by: {id: asc}) { id } }"},
                     headers={"X-Provisa-Role": _ROLE},
                     timeout=60,
                 )

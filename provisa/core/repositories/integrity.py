@@ -207,6 +207,8 @@ REFERENCES: tuple[Reference, ...] = (
     _part("synthetic_report", "dataset_id", "synthetic_dataset"),
     # REQ-1934: a decision on a table's constraint is part of the table, removed with it.
     _part("profiler_constraints", "table_id", "table"),
+    # REQ-2147: a steward's decision on a table's column classification is part of the table.
+    _part("profiler_classifications", "table_id", "table"),
     # REQ-2091: an adequacy check's result on a table's column is part of the table.
     _part("fake_adequacy_checks", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),

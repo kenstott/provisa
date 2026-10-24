@@ -117,6 +117,12 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
             user="test",
         )
         try:
+            # The operator settings resolve from this config, as boot binds them (REQ-1913): its
+            # server.commands.allow_host_code admits the python command it declares (REQ-2134).
+            # _operator_settings_do_not_cross_modules puts back the prior binding.
+            from provisa.core import settings_registry
+
+            settings_registry.bind_config(raw)
             _populate_source_catalog_names(config)
             async with tenant_db.acquire() as conn:
                 await conn.execute("SET search_path TO org_default")

@@ -24,6 +24,14 @@ class ClickHouseBackend(NativeEngineBackend):
     governed physical SQL runs against it. The runtime is a server (``clickhouse://``) or embedded
     chdb (``chdb://`` / default) per the configured engine URL."""
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: the driver's own (``clickhouse_runtime.driver_errors``)."""
+        from provisa.federation.clickhouse_runtime import driver_errors
+
+        return driver_errors()
+
     def _new_runtime(self) -> Any:
         from provisa.federation.engine import configured_engine_url
 

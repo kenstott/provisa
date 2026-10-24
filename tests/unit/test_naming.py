@@ -238,7 +238,7 @@ class TestJunctionFieldName:
             junction_field_name(cardinality="one-to-many", **kwargs)
 
     def test_admin_derivation_matches_the_compiler(self):
-        from provisa.api.admin.db_queries import derive_graphql_alias
+        from provisa.core.relationship_names import derive_graphql_alias
 
         assert (
             derive_graphql_alias(

@@ -32,7 +32,7 @@ _GOLDEN = {
     "n.age > $min AND n.age < $max": 'n."age_col" > $1 AND n."age_col" < $2',
     "n.name STARTS WITH 'A'": "STARTS_WITH(n.\"name\", 'A')",
     "n.name CONTAINS 'x'": "(POSITION('x' IN n.\"name\") > 0)",
-    "n.prop =~ '.*foo'": "n.\"prop\" ~ '^(?:.*foo)$'",  # the whole string
+    "n.name =~ '.*foo'": "n.\"name\" ~ '^(?:.*foo)$'",  # the whole string
     "n.age IN [1, 2, 3]": 'n."age_col" IN (1, 2, 3)',
     "n.status IS NULL": 'n."_nf_status" IS NULL',
     "n.status IS NOT NULL": 'NOT n."_nf_status" IS NULL',

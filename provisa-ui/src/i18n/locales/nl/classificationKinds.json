@@ -1,0 +1,61 @@
+{
+  "classificationKinds": {
+    "intro": "Elke profielrun toetst een steekproef van de waarden van elke kolom aan deze soorten. Slagen genoeg waarden, dan krijgt de kolom een voorstel dat een data steward aanneemt of afwijst. Een uitgeschakelde soort wordt niet getoetst.",
+    "kindHeader": "Soort",
+    "testHeader": "Toets",
+    "thresholdHeader": "Aandeel dat moet slagen",
+    "maskHeader": "Aangeboden masker",
+    "enabledHeader": "Ingeschakeld",
+    "enabledAria": "Toetsen op {{kind}}",
+    "sensitive": "Gevoelig",
+    "noMask": "Geen",
+    "kind": {
+      "us_ssn": "Amerikaans social security number",
+      "payment_card": "Betaalkaartnummer",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "Brits National Insurance-nummer",
+      "ca_social_insurance_number": "Canadees social insurance number",
+      "es_dni": "Spaans DNI of NIE",
+      "nl_bsn": "Burgerservicenummer (BSN)",
+      "in_aadhaar": "Indiaas Aadhaar-nummer",
+      "us_passport": "Amerikaans paspoortnummer",
+      "country": "Landnaam",
+      "country_code": "Landcode (ISO 3166)",
+      "currency_code": "Valutacode (ISO 4217)",
+      "language_code": "Taalcode (ISO 639)",
+      "city": "Wereldstad"
+    },
+    "test": {
+      "us_ssn": "Negen cijfers, geschreven als 123-45-6789 of aaneen: het area-deel is nooit 000, 666 of 900 tot 999, de groep nooit 00, het volgnummer nooit 0000.",
+      "payment_card": "13 tot 19 cijfers, spaties of streepjes tussen groepen toegestaan, die de Luhn-controle doorstaan.",
+      "iban": "Een landcode, twee controlecijfers en tot 30 letters en cijfers met kloppende controlecijfers (mod 97).",
+      "uk_national_insurance_number": "Twee prefixletters uit de toegestane set, zes cijfers en een slotletter A tot D.",
+      "ca_social_insurance_number": "Negen cijfers, het eerste niet 0 of 8, die de Luhn-controle doorstaan.",
+      "es_dni": "Acht cijfers en hun controleletter; het NIE van een buitenlander begint met X, Y of Z.",
+      "nl_bsn": "Negen cijfers die de elfproef doorstaan.",
+      "in_aadhaar": "Twaalf cijfers, het eerste 2 tot 9, die de Verhoeff-controle doorstaan.",
+      "us_passport": "Een letter en acht cijfers, de opmaak van Amerikaanse paspoorten uitgegeven sinds 2021.",
+      "country": "Een landnaam uit de meegeleverde landenlijst.",
+      "country_code": "Een landcode van twee of drie letters volgens ISO 3166.",
+      "currency_code": "Een valutacode van drie letters volgens ISO 4217.",
+      "language_code": "Een taalcode van twee of drie letters volgens ISO 639.",
+      "city": "De naam van een stad met 15.000 of meer inwoners, uit de meegeleverde lijst."
+    },
+    "noun": {
+      "us_ssn": "een Amerikaans social security number",
+      "payment_card": "een betaalkaartnummer",
+      "iban": "een IBAN",
+      "uk_national_insurance_number": "een Brits National Insurance-nummer",
+      "ca_social_insurance_number": "een Canadees social insurance number",
+      "es_dni": "een Spaans DNI of NIE",
+      "nl_bsn": "een burgerservicenummer",
+      "in_aadhaar": "een Indiaas Aadhaar-nummer",
+      "us_passport": "een Amerikaans paspoortnummer",
+      "country": "een land",
+      "country_code": "een ISO 3166-landcode",
+      "currency_code": "een ISO 4217-valutacode",
+      "language_code": "een ISO 639-taalcode",
+      "city": "een wereldstad"
+    }
+  }
+}

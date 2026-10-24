@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "{{table}} 的分類",
+    "suggested": "最近一次執行的建議",
+    "none": "最近一次執行未有建議任何分類。",
+    "column": "欄位",
+    "kindHeader": "看來像",
+    "evidence": "依據",
+    "sensitive": "敏感",
+    "suggestion": "{{table}}.{{column}} 看來像{{kind}}：{{share}} 的抽樣值通過了它的檢驗。",
+    "accept": "接受",
+    "reject": "拒絕",
+    "status_suggested": "已建議",
+    "status_accepted": "已接受",
+    "status_rejected": "已拒絕",
+    "decided": "決定",
+    "noneDecided": "尚未有已接受或已拒絕的建議。",
+    "withdraw": "撤回",
+    "linked": "該欄位現在表示 {{term}}。",
+    "keyColumn": "該欄位保留其類術語：鍵欄位的含義就是它的類術語。",
+    "markedPii": "已標記為 PII。",
+    "maskOffered": "建議的遮罩：{{mask}}。請在該欄位的遮罩中加入。"
+  }
+}

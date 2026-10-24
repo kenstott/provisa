@@ -17,7 +17,6 @@ the same calls as a local worker to each Provisa connection."""
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
 import textwrap
@@ -48,12 +47,6 @@ _CODE = textwrap.dedent(
 
 
 ORDERS = schema_text(pa.schema([("n", pa.int64())]))
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 @pytest.fixture
@@ -169,7 +162,10 @@ def test_a_host_with_another_certificate_than_the_pin_is_refused(started):
 
 
 def test_a_host_that_is_not_there_is_named():
-    port = _free_port()
+    from tests.port_lease import lease_port
+
+    # A leased port: below the ephemeral range, so no bind(0) of another test is given it.
+    port = lease_port()
     with pytest.raises(WorkerFailed, match=f"remote host 127.0.0.1:{port} could not be reached"):
         _worker(port, "0" * 64, remote.new_identity()).start(timeout=2)
 

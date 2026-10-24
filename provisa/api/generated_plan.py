@@ -248,17 +248,14 @@ class _ShapePlan:
 
     compiled: tuple[CompiledQuery, ...]
     slots: tuple[Slots, ...]
-    nodes_slots: tuple[Slots, ...]
 
     def bound(self, values: list[Value]) -> list[CompiledQuery]:
         out = []
-        for cq, slots, nodes_slots in zip(self.compiled, self.slots, self.nodes_slots):
-            params, nodes_params = list(cq.params), list(cq.nodes_params)
+        for cq, slots in zip(self.compiled, self.slots):
+            params = list(cq.params)
             for j, i in slots:
                 params[j] = values[i]
-            for j, i in nodes_slots:
-                nodes_params[j] = values[i]
-            out.append(dataclasses.replace(cq, params=params, nodes_params=nodes_params))
+            out.append(dataclasses.replace(cq, params=params))
         return out
 
 
@@ -278,8 +275,8 @@ def _shape_plan(
     """The shape's plan, or None when the shape is not proven value-independent."""
     if not values:
         no_slots: tuple[Slots, ...] = ((),) * len(compiled)
-        return _ShapePlan(compiled, no_slots, no_slots)
-    taken = [p for cq in compiled for p in (*cq.params, *cq.nodes_params)]
+        return _ShapePlan(compiled, no_slots)
+    taken = [p for cq in compiled for p in cq.params]
     others = _other_values(values, taken)
     in_text = len(shape) - 1
     text = _text_with(shape, others[:in_text])
@@ -293,28 +290,22 @@ def _shape_plan(
         return None
     seen: set[int] = set()
     all_slots: list[Slots] = []
-    all_nodes_slots: list[Slots] = []
     for cq, other in zip(compiled, twin):
         # Everything but the bound values must be identical: the statement, its columns, its
         # sources, the row limit applied after grouping, an API source's native arguments.
-        if dataclasses.replace(other, params=cq.params, nodes_params=cq.nodes_params) != cq:
+        if dataclasses.replace(other, params=cq.params) != cq:
             return None
         slots = _slots(cq.params, other.params, values, others, seen)
-        nodes_slots = _slots(cq.nodes_params, other.nodes_params, values, others, seen)
-        if slots is None or nodes_slots is None:
+        if slots is None:
             return None
         all_slots.append(slots)
-        all_nodes_slots.append(nodes_slots)
     if len(seen) != len(values):
         return None  # a value that reaches no parameter was consumed at compile time
-    return _ShapePlan(compiled, tuple(all_slots), tuple(all_nodes_slots))
+    return _ShapePlan(compiled, tuple(all_slots))
 
 
 def _copies(compiled: tuple[CompiledQuery, ...]) -> list[CompiledQuery]:
-    return [
-        dataclasses.replace(cq, params=list(cq.params), nodes_params=list(cq.nodes_params))
-        for cq in compiled
-    ]
+    return [dataclasses.replace(cq, params=list(cq.params)) for cq in compiled]
 
 
 def compile_generated_graphql(  # REQ-1877, REQ-1986

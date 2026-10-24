@@ -111,6 +111,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     replicate: null,
     region: str(i.region),
     draft: true,
+    rowMaterialize: false, // REQ-1865: chosen on the Load and timeliness tab
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,

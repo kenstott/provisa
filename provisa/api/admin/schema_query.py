@@ -870,9 +870,6 @@ class Query:  # REQ-021, REQ-042
     async def relationships(
         self, info: StrawberryInfo
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
-        from provisa.api.app import state
-
-        convention = state.global_gql_naming_convention
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -899,7 +896,7 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
             return await _listed_relationships(conn, catalog_scope(info), rows)
 
     @strawberry.field
@@ -907,9 +904,6 @@ class Query:  # REQ-021, REQ-042
         self, info: StrawberryInfo
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
         """All relationships including system-generated meta:% entries (used by ERD)."""
-        from provisa.api.app import state
-
-        convention = state.global_gql_naming_convention
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -932,7 +926,7 @@ class Query:  # REQ-021, REQ-042
                 .where(relationships.c.id.not_like("gql_auto__%"))
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
             rows.extend(await _has_table_synthetic_relationships(conn))
             return await _listed_relationships(conn, catalog_scope(info), rows)
 

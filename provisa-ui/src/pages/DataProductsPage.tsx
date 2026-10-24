@@ -17,9 +17,7 @@ import {
   useDomains,
   useTables,
   useUpdateTable,
-  useRelationships,
   useRoles,
-  useSources,
 } from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
@@ -35,7 +33,9 @@ import { DataProductDetailPanel, type InputPortRow } from "./data-products/DataP
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
-import { relationName } from "../naming";
+import { NATIVE_PREFIX } from "../components/lineage/lineage-layout";
+import { catalogTableName, lineageRelationLabel, relationName } from "../naming";
+import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
 import { ProductMapButton } from "../components/graph3d/KnowledgeGraphPanel";
@@ -87,8 +87,6 @@ export function DataProductsPage() {
   const { loading, error } = products;
   const { domains } = useDomains();
   const { tables } = useTables(); // REQ-1634: member-table list + assignment
-  const { sources } = useSources(); // REQ-1443 clause 10: checker type for a scan's rules modal
-  const { relationships } = useRelationships(); // REQ-1634: related-tables panel
   const [functions, setFunctions] = useState<TrackedFunction[]>([]); // REQ-1634: member-command list + assignment
   const { roles } = useRoles();
   const roleOptions = roles.map((r) => r.id);
@@ -147,6 +145,7 @@ export function DataProductsPage() {
   // REQ-1640: whole-federation provenance graph, fetched once (no domains filter — scoping
   // to the product's own domain would sever legitimate cross-domain ancestor chains).
   const [lineageGraph, setLineageGraph] = useState<LineageGraphData | null>(null);
+  const [lineageLoading, setLineageLoading] = useState(false);
   const [lineageError, setLineageError] = useState("");
 
   useEffect(() => {
@@ -159,12 +158,18 @@ export function DataProductsPage() {
   useEffect(() => {
     if (!canSeeLineage) return;
     let cancelled = false;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       flips the loading flag synchronously before the async fetch starts */
+    setLineageLoading(true);
     fetchFederationGraph()
       .then((g) => {
         if (!cancelled) setLineageGraph(g);
       })
       .catch((e: Error) => {
         if (!cancelled) setLineageError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLineageLoading(false);
       });
     return () => {
       cancelled = true;
@@ -173,45 +178,121 @@ export function DataProductsPage() {
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
+  // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
+  // consumer's column is as hoverable as a member's.
+  const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
+  // A lineage relation as a reader is shown it (naming.lineageRelationLabel).
+  const relationLabel = useMemo(() => {
+    const catalog = new Map(tables.map((tb) => [relationName(tb), catalogTableName(tb)]));
+    return (relation: string) => lineageRelationLabel(relation, catalog);
+  }, [tables]);
   const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
 
-  // REQ-1660 (ODPS inputPorts): the 1-hop input(s) -> transform -> output edges landing on this
-  // product's member-table columns, grouped by target column. Unlike the Lineage section this does not
-  // walk transitively upstream — inputPorts is the product's direct contract surface, not its
-  // full provenance.
+  // REQ-1640: subgraph of the whole federation lineage graph scoped to this product's member
+  // tables — the published endpoint — plus their full upstream ancestry (walked backward,
+  // source -> target = derives-into, transitively) and the tables ONE hop downstream, so the
+  // reader sees what the product is built from and who consumes it directly, without the graph
+  // running on into everything those consumers feed in turn.
+  // Same LineageDag component the Lineage page renders (REQ-1161/1627), not a table-list view.
+  // Informational only — never stored, mirrors the Related Tables computation.
+  //
+  // A data-quality results table is a member by inheritance (REQ-1443 clause 10) but not part of
+  // the product's data flow: its rows are scan outcomes ABOUT a member table, and its lineage
+  // would pull the checker's own plumbing into the graph. Left out here, as in the member picker.
+  const lineageFor = (id: string): LineageGraphData | null => {
+    if (!lineageGraph) return null;
+    const relationOf = (tb: { domainId: string; tableName: string }) => relationName(tb);
+    const members = memberTables(id).filter((tb) => tb.dqContract == null);
+    const checkerRelations = new Set(
+      tables.filter((tb) => tb.dqContract != null).map((tb) => relationOf(tb)),
+    );
+    const memberRelations = new Set(members.map(relationOf));
+    const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
+    const relationEdges = lineageGraph.edges
+      .map((e) => ({
+        from: nodesById.get(e.source)?.relation,
+        to: nodesById.get(e.target)?.relation,
+      }))
+      .filter((e): e is { from: string; to: string } => !!e.from && !!e.to && e.from !== e.to);
+    const keepRelations = new Set(memberRelations);
+    let frontier = memberRelations;
+    while (frontier.size > 0) {
+      const next = new Set<string>();
+      for (const e of relationEdges) {
+        if (frontier.has(e.to) && !keepRelations.has(e.from)) {
+          keepRelations.add(e.from);
+          next.add(e.from);
+        }
+      }
+      frontier = next;
+    }
+    for (const e of relationEdges) {
+      if (memberRelations.has(e.from) && !checkerRelations.has(e.to)) keepRelations.add(e.to);
+    }
+    if (keepRelations.size === 0) return { nodes: [], edges: [], outputs: [] };
+    const nodes = lineageGraph.nodes.filter((n) => n.relation && keepRelations.has(n.relation));
+    const keepIds = new Set(nodes.map((n) => n.id));
+    // The product's tables are what it publishes, so EVERY column of a member table is an output
+    // of this graph — including the ones no registered view derives from, which the federation
+    // graph never mentions. Those are added as source nodes of their table (the graph's own id
+    // shape, relation.column) so the table draws complete, and all of them ring as outputs.
+    for (const tb of members) {
+      const relation = relationOf(tb);
+      for (const c of tb.columns) {
+        const nodeId = `${relation}.${c.columnName}`;
+        if (keepIds.has(nodeId)) continue;
+        keepIds.add(nodeId);
+        nodes.push({
+          id: nodeId,
+          column: c.columnName,
+          relation,
+          kind: "source",
+          materialized: false,
+        });
+      }
+    }
+    const edges = lineageGraph.edges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target));
+    const outputs = nodes.filter((n) => memberRelations.has(n.relation as string)).map((n) => n.id);
+    return { nodes, edges, outputs };
+  };
+
+  // REQ-1667: the relations the detail's swimlanes are built around — the same members
+  // lineageFor() publishes as outputs.
+  const lineageMembersFor = (id: string): ReadonlySet<string> =>
+    new Set(
+      memberTables(id)
+        .filter((tb) => tb.dqContract == null)
+        .map((tb) => relationName(tb)),
+    );
+
+  // REQ-1660 (ODPS inputPorts): each dataset one lineage hop upstream of this product's member-table
+  // columns, with the columns of it the product reads. Unlike the Lineage section this does not walk
+  // transitively upstream — inputPorts is the product's direct contract surface, not its full
+  // provenance. A native hop's node relation is NATIVE_PREFIX + the registered relation it lands
+  // in (provisa/lineage/native.py): that registered table is the dataset.
   const inputPortsFor = (id: string): InputPortRow[] => {
     if (!lineageGraph) return [];
     const memberRelations = new Set(memberTables(id).map((tb) => relationName(tb)));
     const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
-    const byTarget = new Map<string, { transform: string; inputs: Set<string> }>();
+    const byDataset = new Map<string, Set<string>>();
     for (const edge of lineageGraph.edges) {
       const tgt = nodesById.get(edge.target);
       const src = nodesById.get(edge.source);
-      if (!tgt?.relation || !src || !memberRelations.has(tgt.relation)) continue;
-      const outputLabel = `${tgt.relation}.${tgt.column}`;
-      const inputLabel = src.relation ? `${src.relation}.${src.column}` : src.column;
-      const entry = byTarget.get(outputLabel) ?? {
-        transform: edge.transform,
-        inputs: new Set<string>(),
-      };
-      entry.inputs.add(inputLabel);
-      byTarget.set(outputLabel, entry);
+      if (!tgt?.relation || !src?.relation || !memberRelations.has(tgt.relation)) continue;
+      const dataset = src.relation.startsWith(NATIVE_PREFIX)
+        ? src.relation.slice(NATIVE_PREFIX.length)
+        : src.relation;
+      const columns = byDataset.get(dataset) ?? new Set<string>();
+      columns.add(src.column);
+      byDataset.set(dataset, columns);
     }
-    return Array.from(byTarget.entries()).map(([output, { transform, inputs }]) => ({
-      output,
-      transform,
-      inputs: Array.from(inputs),
-    }));
-  };
-
-  // Relationships where both endpoints are member tables of this product — the connections that
-  // exist entirely within the published surface, as opposed to the Related Tables section's.
-  const internalRelationships = (id: string) => {
-    const memberIds = new Set(memberTables(id).map((tb) => tb.id));
-    return relationships.filter(
-      (r) =>
-        memberIds.has(r.sourceTableId) && r.targetTableId != null && memberIds.has(r.targetTableId),
-    );
+    return Array.from(byDataset.entries())
+      .map(([dataset, columns]) => ({
+        id: dataset,
+        table: relationLabel(dataset),
+        columns: Array.from(columns).sort(),
+      }))
+      .sort((x, y) => x.table.localeCompare(y.table));
   };
 
   const openCreate = () => {
@@ -548,10 +629,14 @@ export function DataProductsPage() {
                                 core={core.data}
                                 coreError={core.error}
                                 reader={reader}
-                                sources={sources}
-                                internalRelationships={internalRelationships(p.id)}
                                 canEdit={canEdit}
                                 canSeeLineage={canSeeLineage}
+                                lineageLoading={lineageLoading}
+                                lineageError={lineageError}
+                                lineageGraph={lineageFor(p.id)}
+                                lineageMembers={lineageMembersFor(p.id)}
+                                describeColumn={describeColumn}
+                                relationLabel={relationLabel}
                                 inputPorts={inputPortsFor(p.id)}
                                 onEdit={() => openEdit(p)}
                                 onDelete={() => setDeleteTarget(p.id)}

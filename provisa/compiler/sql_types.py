@@ -90,6 +90,9 @@ class JunctionMeta:
     type_column: str | None = None
     type_value: str | None = None
     attributes: tuple[tuple[str, str], ...] = ()
+    #: The type column's exposed name: what a row's own type is read as (r.relType) where a hop
+    #: reads every row of the junction, whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — "column", "table" or "fixed".
     label_source: str = ""
     label_fixed: str = ""  # the cypher_alias, carried here so "fixed" can be resolved standalone
@@ -252,10 +255,10 @@ class CompiledQuery:
     sort_columns: list[str] = field(default_factory=list)
     page_size: int | None = None
     has_cursor: bool = False
-    # Aggregate + nodes: plain SELECT for nodes field (issue #12)
-    nodes_sql: str | None = None
-    nodes_columns: list[ColumnRef] | None = None
-    nodes_params: list = field(default_factory=list)
+    # An aggregate or group-by root that selects its nodes (issue #12): one statement, whose row
+    # (each group's, under group-by) holds them as a column beside the aggregates
+    # (aggregates._nodes_column).
+    has_nodes: bool = False
     # Alias for the "aggregate" response key (e.g. "derived: aggregate" → "derived")
     agg_alias: str = "aggregate"
     # Native filter args for API-routed sources (path/query params extracted from GQL args)

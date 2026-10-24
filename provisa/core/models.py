@@ -450,9 +450,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # duplicate-key race when two concurrent queries register the same anonymous composite type.
         if st in _PG_WIRE_TYPES:
             return f"jdbc:postgresql://{h}:{po}/{self.database}?autosave=conservative"
-        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own.
+        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own. Neither
+        # names a database: Trino's MySQL and MariaDB connectors read each database as a schema and
+        # refuse a URL that names one ("Database (catalog) must not be specified in JDBC URL").
         if st in _MYSQL_WIRE_TYPES:
-            return f"jdbc:mysql://{h}:{po}/{self.database}"
+            return f"jdbc:mysql://{h}:{po}"
+        if st == "mariadb":
+            return f"jdbc:mariadb://{h}:{po}"
         # Druid is queried through its Avatica endpoint on the broker (Trino's druid connector wraps
         # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
         if st == "druid":
@@ -460,7 +464,6 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
-            "mariadb": "jdbc:mariadb",
             "redshift": "jdbc:redshift",
             "exasol": "jdbc:exa",
         }
@@ -1511,6 +1514,9 @@ class Table(
     # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
     # results columns are the shipped schema and are replaced at parse, not authored.
     dq_contract: str | None = None
+    # REQ-1443 clause 10: the contract's checks, parsed once at registration
+    # (provisa.dq.registration.derive_checker_table) and stored, so the meta domain serves them.
+    dq_rules: list[dict] | None = None
     # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
     # profiler; the profiler's schedule profiles it and its result relations carry its history.
     profiler_source_id: str | None = None
@@ -1848,17 +1854,23 @@ class Table(
 
     @model_validator(mode="after")
     def _validate_row_materialize(self) -> "Table":
+        if (problem := self.row_materialize_problem()) is not None:
+            raise ValueError(problem)
+        return self
+
+    def row_materialize_problem(self) -> str | None:
+        """Why this table may not be row-materialized by its own fields, or None (REQ-1865)."""
         # REQ-1865: row_materialize requires a declared, trusted primary key (constraint 5) — a
         # declared PK is never runtime-verified for uniqueness, same trust level as data_type.
         if not self.row_materialize:
-            return self
+            return None
         if not any(c.is_primary_key for c in self.columns):
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize requires at least one "
                 "is_primary_key column"
             )
         if self.materialize:
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize and materialize (view_sql CTAS) "
                 "are mutually exclusive — a table is either whole-table-materialized or "
                 "row-materialized, never both"
@@ -1868,7 +1880,7 @@ class Table(
         # registration already combines table.cache_ttl or source.cache_ttl:
         # provisa/core/config_loader.py's _validate_row_materialize, and
         # provisa/federation/residency.py's resolve_landing_args callers.
-        return self
+        return None
 
 
 class HotTablesConfig(BaseModel):  # REQ-544

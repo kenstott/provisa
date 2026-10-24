@@ -48,6 +48,7 @@
     "itemMetadataExport": "Export",
     "itemImport": "Import",
     "itemTags": "Tags",
+    "itemClassificationKinds": "Classification",
     "itemDataProducts": "Products",
     "itemReports": "Reports",
     "itemGlossary": "Ontology",

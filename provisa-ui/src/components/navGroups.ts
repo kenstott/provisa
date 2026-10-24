@@ -235,6 +235,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/import", labelKey: "navBar.itemImport", capability: "org_settings" },
       // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
       { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
+      // REQ-2147: which of the profiler's classification kinds the org tests for is the org's own.
+      {
+        to: "/admin/classification-kinds",
+        labelKey: "navBar.itemClassificationKinds",
+        capability: "org_settings",
+      },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
       // REQ-1387: the ontology route is /admin/ontology (glossary_read), and its nav entry is
       // the top-level Ontology link in NavBar.tsx, not an item of this group.

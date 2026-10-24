@@ -114,6 +114,8 @@ class PathExprMixin:  # REQ-2135
     _var_table: dict
     _recursive_ctes: list  # list[(cte_name, exp.Expression)]
     _cut_checks: list
+    #: Set per path expression (_translate_path_expr): its ends' keys are held as text.
+    _textual_path_keys: bool = False
 
     def _translate_path_expr(
         self, clause: MatchClause, nodes: list[NodePattern], rel: RelPattern, joined: set[str]
@@ -138,6 +140,10 @@ class PathExprMixin:  # REQ-2135
         src_node, tgt_node = nodes[0], nodes[1]
         src_nm = self._path_end(src_node)
         tgt_nm = self._path_end(tgt_node)
+        # Where a node the path meets has a compound key, every node is told apart by its key
+        # text (every key column), and the step relation's id columns hold text throughout.
+        reached = [self._lm.nodes[label] for label in self._end_labels(rel.path)]
+        self._textual_path_keys = any(len(nm.key_columns) > 1 for nm in [src_nm, tgt_nm, *reached])
         step = self._step_relation(rel.path, rel.mode)
 
         src_alias = self._end_alias(src_node, src_nm)
@@ -151,7 +157,7 @@ class PathExprMixin:  # REQ-2135
             ),
             expression=exp.EQ(
                 this=_col("from_id", step_alias),
-                expression=_col(src_nm.id_column, src_alias, quoted=True),
+                expression=self._end_key(src_nm, src_alias),
             ),
         )
         ends = exp.And(
@@ -160,7 +166,7 @@ class PathExprMixin:  # REQ-2135
                 expression=exp.Literal.string(tgt_nm.type_name),
             ),
             expression=exp.EQ(
-                this=_col(tgt_nm.id_column, tgt_alias, quoted=True),
+                this=self._end_key(tgt_nm, tgt_alias),
                 expression=_col("to_id", step_alias),
             ),
         )
@@ -177,6 +183,14 @@ class PathExprMixin:  # REQ-2135
             {"table": step_table, "on": starts, "join_type": join_type},
             {"table": _table(tgt_nm, tgt_alias), "on": ends, "join_type": join_type},
         ]
+
+    def _end_key(self, nm: NodeMapping, alias: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The key a step relation holds ``alias``'s node by: its key column, or its key text."""
+        if self._textual_path_keys:
+            from provisa.gql.select_builder import node_key_text
+
+            return node_key_text(alias, nm)
+        return _col(nm.id_column, alias, quoted=True)
 
     def _end_alias(self, node: NodePattern, nm: NodeMapping) -> str:
         if node.variable is None:
@@ -223,8 +237,8 @@ class PathExprMixin:  # REQ-2135
             tgt = self._lm.nodes.get(rel.target_label)
             if src is None or tgt is None:
                 continue
-            a = (exp.Literal.string(src.type_name), _col(src.id_column, "_a", quoted=True))
-            b = (exp.Literal.string(tgt.type_name), _col(tgt.id_column, "_b", quoted=True))
+            a = (exp.Literal.string(src.type_name), self._end_key(src, "_a"))
+            b = (exp.Literal.string(tgt.type_name), self._end_key(tgt, "_b"))
             first, second = (b, a) if inverse else (a, b)
             hop = exp.select(
                 *(exp.alias_(e, alias=n) for e, n in zip((*first, *second), _ENDS, strict=True))
@@ -320,9 +334,9 @@ class PathExprMixin:  # REQ-2135
             selects.append(
                 exp.select(
                     exp.alias_(exp.Literal.string(nm.type_name), alias="from_type"),
-                    exp.alias_(_col(nm.id_column, "_n", quoted=True), alias="from_id"),
+                    exp.alias_(self._end_key(nm, "_n"), alias="from_id"),
                     exp.alias_(exp.Literal.string(nm.type_name), alias="to_type"),
-                    exp.alias_(_col(nm.id_column, "_n", quoted=True), alias="to_id"),
+                    exp.alias_(self._end_key(nm, "_n"), alias="to_id"),
                 ).from_(_table(nm, "_n"))
             )
         return selects

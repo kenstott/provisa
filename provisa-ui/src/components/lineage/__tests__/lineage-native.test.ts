@@ -132,3 +132,24 @@ describe("each element links to where it is defined", () => {
     expect(none.command("score_it")).toBeNull();
   });
 });
+
+describe("a native box without its source's metadata (a user without source registration)", () => {
+  const bare: LineageGraphData = { ...GRAPH, natives: undefined };
+
+  it("is named by the registered table it lands in, never by its internal key", () => {
+    const model = buildLineageModel(bare, undefined);
+    const labels = model.boxes.map((b) => b.label);
+    expect(labels.some((l) => l.includes("native:"))).toBe(false);
+    expect(model.boxes.find((b) => b.relation === "native:sales.customers")?.label).toBe(
+      "sales.customers",
+    );
+  });
+
+  it("takes the catalog's name for its table, as every registered box does", () => {
+    const catalog = (relation: string) => relation.replace("sales.", "Sales.");
+    const model = buildLineageModel(bare, undefined, { relationLabel: catalog });
+    const label = (relation: string) => model.boxes.find((b) => b.relation === relation)?.label;
+    expect(label("native:sales.customers")).toBe("Sales.customers");
+    expect(label("sales.report")).toBe("Sales.report");
+  });
+});

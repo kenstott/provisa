@@ -33,6 +33,7 @@
     "showPropertiesPanel": "显示属性面板",
     "copyErrorTitle": "复制错误",
     "expandedDialogLabel": "展开的图视图",
-    "firstNodesShown": "显示前 {{count}} 个节点；还有更多。请在侧边菜单中提高上限。"
+    "firstNodesShown": "显示前 {{count}} 个节点；还有更多。请在侧边菜单中提高上限。",
+    "deleteFrame": "删除此结果"
   }
 }

@@ -9,7 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation, Trans } from "react-i18next";
 import {
@@ -29,8 +29,9 @@ import {
 } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import { HelpBubble } from "../components/HelpBubble";
+import { Tip } from "../components/Tip";
 import { useAuth } from "../context/AuthContext";
-import { submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
+import { fetchNlMode, submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
 import { getStored, setStored } from "../lib/browserStorage";
 
 const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
@@ -125,6 +126,24 @@ export function NlPage() {
   const [strict, setStrict] = useState(() => getStored(NL_STRICT_KEY) !== "0");
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  // REQ-603: non-strict is a role's that may bypass the relationship guard; any other role uses
+  // strict only, so the switch is held on. The server's answer is kept with the role it was asked
+  // for: until the acting role has one, the switch is held on.
+  const [nlMode, setNlMode] = useState<{ role: string; nonStrict: boolean } | null>(null);
+  const actingRoleId = role?.id ?? null;
+  useEffect(() => {
+    if (actingRoleId === null) return;
+    let live = true;
+    fetchNlMode(actingRoleId).then(
+      (mode) => live && setNlMode({ role: actingRoleId, nonStrict: mode.non_strict }),
+      (e) => live && setGlobalError(e instanceof Error ? e.message : String(e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [actingRoleId]);
+  const strictLocked = !(nlMode?.role === actingRoleId && nlMode.nonStrict);
+  const effectiveStrict = strict || strictLocked;
   const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
     try {
       const saved = getStored(NL_BRANCHES_KEY);
@@ -182,7 +201,7 @@ export function NlPage() {
 
     let jobId: string;
     try {
-      const res = await submitNlQuery(q, roleId, strict);
+      const res = await submitNlQuery(q, roleId, effectiveStrict);
       jobId = res.job_id;
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : String(e));
@@ -236,7 +255,7 @@ export function NlPage() {
       },
     );
     cancelRef.current = stop;
-  }, [question, submitting, role, strict, saveBranches]);
+  }, [question, submitting, role, effectiveStrict, saveBranches]);
 
   const openInExplorer = useCallback(
     (target: Target, _query: string) => {
@@ -290,16 +309,21 @@ export function NlPage() {
           ariaLabel={t("nlPage.strictMode")}
           testId="nl-strict-help"
           target={
-            <Switch
-              label={t("nlPage.strictMode")}
-              checked={strict}
-              onChange={(e) => {
-                const next = e.currentTarget.checked;
-                setStrict(next);
-                setStored(NL_STRICT_KEY, next ? "1" : "0");
-              }}
-              data-testid="nl-strict-toggle"
-            />
+            <Tip text={strictLocked && t("nlPage.strictLocked")}>
+              <span>
+                <Switch
+                  label={t("nlPage.strictMode")}
+                  checked={effectiveStrict}
+                  disabled={strictLocked}
+                  onChange={(e) => {
+                    const next = e.currentTarget.checked;
+                    setStrict(next);
+                    setStored(NL_STRICT_KEY, next ? "1" : "0");
+                  }}
+                  data-testid="nl-strict-toggle"
+                />
+              </span>
+            </Tip>
           }
         />
         <HelpBubble

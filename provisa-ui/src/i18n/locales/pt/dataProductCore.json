@@ -17,12 +17,6 @@
     "upstream": "Upstream",
     "downstream": "Downstream",
     "via": "via {{vias}}",
-    "metaQueries": "Consultas",
-    "metaQueriesHint": "As leituras que este painel executa no domínio meta, como você. Copie uma ou abra-a em seu explorador: a resposta é a mesma.",
-    "copy": "Copiar",
-    "copied": "Copiado",
-    "copyQuery": "Copiar a consulta {{surface}}",
-    "openQuery": "Abrir a consulta {{surface}} em seu explorador",
     "unreadable": "Sua função não pode ler os produtos de dados no domínio meta.",
     "detailExpand": "Mostrar a entrada completa",
     "detailCollapse": "Mostrar menos"

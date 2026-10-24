@@ -950,9 +950,8 @@ def test_req778_response_null_error_on_success(client):
     assert resp.status_code != 404
     if resp.status_code == 200:
         data = resp.json()
-        # error should be null, omitted, or only present on 400+
-        if "error" in data:
-            assert data["error"] is None or data["error"] == ""
+        # a success carries no error body
+        assert "detail" not in data and "code" not in data
 
 
 def test_req778_response_has_error_on_failure(client):
@@ -966,8 +965,10 @@ def test_req778_response_has_error_on_failure(client):
     )
     if resp.status_code != 200:
         data = resp.json()
-        # REQ-1327: anonymous role is org_admin; columns not visible → 403 with "violations" key.
-        assert "error" in data or "columns" in data or "violations" in data
+        # REQ-778: every failure is the app's error body; an access refusal lists its violations.
+        assert data["detail"] and data["code"], data
+        if data["code"] == "cypher.access_violations":
+            assert data["violations"], data
 
 
 def test_req778_no_implicit_row_truncation(client):

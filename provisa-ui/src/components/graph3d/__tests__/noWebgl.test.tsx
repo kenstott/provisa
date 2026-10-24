@@ -54,7 +54,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("the 3D stage without WebGL", () => {
   it("shows that the 3D view could not start, logs it, and is never ready", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
+    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" graph={DATA} />);
     act(() => observed.fire.forEach((f) => f()));
     const alert = await screen.findByTestId("kg-panel-stage-error", {}, { timeout: 10_000 });
     expect(alert).toHaveTextContent("The 3D view could not start");

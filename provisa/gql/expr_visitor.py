@@ -29,6 +29,7 @@ from typing import Protocol, cast
 
 import sqlglot.expressions as exp
 
+from provisa.gql.mistakes import invalid_regex, regex_problem, type_mismatch
 from provisa.gql.expr_ast import (
     Binary,
     Case,
@@ -117,6 +118,10 @@ class ExprContext(Protocol):
         or a scalar extracted from an assembled row."""
         ...
 
+    def property_type(self, obj: exp.Expression, name: str) -> str | None:
+        """The registered data type of ``obj.name`` where it is a registered table's column."""
+        ...
+
     def resolve_parameter(self, name: str) -> exp.Expression:
         """A ``$param`` reference — the positional placeholder it binds to."""
         ...
@@ -137,6 +142,11 @@ class ExprContext(Protocol):
 
     def resolve_map_projection(self, node: MapProjection) -> exp.Expression:
         """``n{.a, x: e, .*}`` — needs the variable's known properties."""
+        ...
+
+    def resolve_graph_element(self, name: str) -> exp.Expression | None:
+        """A bound node or relationship variable as its JSON object (what RETURN n or RETURN r
+        answers), None for any other name."""
         ...
 
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
@@ -233,8 +243,26 @@ class ExprLowering:
             return False
         return not self._ctx.property_is_table_column(self.lower(node.obj), node.name)
 
+    def _refuse_mismatched_comparison(self, node: Binary) -> None:
+        """REQ-778: a property compared with a literal its registered type never equals or orders
+        against is the user's mistake, refused here rather than by the engine."""
+        for prop, lit, prop_first in (
+            (node.left, node.right, True),
+            (node.right, node.left, False),
+        ):
+            if not (isinstance(prop, Property) and isinstance(lit, Literal)):
+                continue
+            data_type = self._ctx.property_type(self.lower(prop.obj), prop.name)
+            if data_type is None:
+                continue
+            mistake = type_mismatch(node.op, prop, data_type, lit, prop_first)
+            if mistake is not None:
+                raise mistake
+
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
+        if op in _BINARY_CMP:
+            self._refuse_mismatched_comparison(node)
         left = self.lower(node.left)
         right = self.lower(node.right)
         if op in _BINARY_ARITH:
@@ -278,6 +306,12 @@ class ExprLowering:
             strpos = _anon("strpos", left, right)
             return exp.Paren(this=exp.GT(this=strpos, expression=exp.Literal.number(0)))
         if op == "=~":
+            pattern = node.right
+            if isinstance(pattern, Literal) and pattern.kind == "string":
+                # REQ-778: a literal pattern no engine takes is the user's to put right, said here.
+                why = regex_problem(str(pattern.value))
+                if why is not None:
+                    raise invalid_regex(node.left, str(pattern.value), why)
             return _anon("regexp_like", left, _whole_match(right))
         raise NotImplementedError(f"binary operator {op!r}")
 
@@ -313,7 +347,20 @@ class ExprLowering:
     # -- structures -------------------------------------------------------- #
 
     def _lower_ListLiteral(self, node: ListLiteral) -> exp.Expression:
-        return exp.Array(expressions=[self.lower(i) for i in node.items])
+        elements = [
+            self._ctx.resolve_graph_element(i.name) if isinstance(i, Variable) else None
+            for i in node.items
+        ]
+        if all(e is None for e in elements):
+            return exp.Array(expressions=[self.lower(i) for i in node.items])
+        # A list of nodes and relationships ([r, m]) holds each as its JSON object, and anything
+        # beside them as JSON too: one list of one type.
+        return exp.Array(
+            expressions=[
+                e if e is not None else _anon("to_json", self.lower(i))
+                for i, e in zip(node.items, elements, strict=True)
+            ]
+        )
 
     def _lower_MapLiteral(self, node: MapLiteral) -> exp.Expression:
         # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[to_json(v), ...]) — encode each value to a JSON value

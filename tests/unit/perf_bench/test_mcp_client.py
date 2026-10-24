@@ -14,7 +14,6 @@ server (FastMCP, as Provisa serves it): one session, then a run_sql tools/call p
 
 from __future__ import annotations
 
-import socket
 import sys
 import threading
 import time
@@ -41,12 +40,6 @@ def _load(path: Path) -> cm.Setup:
     return sc.load_setup(path, environ=ENV, known_transports=list(ol.TRANSPORTS))
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture
 def mcp_server() -> Iterator[tuple[str, list[dict[str, Any]]]]:
     import uvicorn
@@ -67,9 +60,11 @@ def mcp_server() -> Iterator[tuple[str, list[dict[str, Any]]]]:
             "truncated": False,
         }
 
-    port = _free_port()
+    # Port 0, bound by the server itself: a number picked by binding and closing a socket was
+    # free for any other test's bind(0) to be given before the server took it -- and a TLS client
+    # of that other test then reached this plain-HTTP server (WRONG_VERSION_NUMBER).
     server = uvicorn.Server(
-        uvicorn.Config(mcp.streamable_http_app(), host="127.0.0.1", port=port, log_level="error")
+        uvicorn.Config(mcp.streamable_http_app(), host="127.0.0.1", port=0, log_level="error")
     )
     t = threading.Thread(target=server.run, daemon=True)
     t.start()
@@ -77,6 +72,7 @@ def mcp_server() -> Iterator[tuple[str, list[dict[str, Any]]]]:
     while not server.started:
         assert time.monotonic() < deadline, "the MCP server did not start"
         time.sleep(0.05)
+    port = server.servers[0].sockets[0].getsockname()[1]
     try:
         yield f"http://127.0.0.1:{port}/mcp", calls
     finally:

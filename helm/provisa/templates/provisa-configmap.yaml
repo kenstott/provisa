@@ -170,11 +170,13 @@ data:
       # platform_admin and org_admin are seeded by the schema and are not redefined here: the
       # loader refuses a write to either. The data-plane administrator is org_admin.
       - id: analyst
+        description: "Queries the sales analytics domain, each analyst their own region's orders."
         capabilities: [query_development]
         domain_access: [sales-analytics]
 
     rls_rules:
       - table_id: orders
         role_id: analyst
+        description: "An analyst reads only the orders of their own region."
         filter: "region = current_setting('provisa.user_region')"
     {{- include "provisa.auth" . | nindent 4 }}

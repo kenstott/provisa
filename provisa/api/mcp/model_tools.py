@@ -40,6 +40,7 @@ SUMMARY_KINDS: tuple[str, ...] = (
     "plausible_type",
     "constraints",
     "constraint_checks",
+    "classifications",
     "drift",
 )
 

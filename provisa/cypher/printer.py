@@ -33,6 +33,7 @@ from provisa.gql.expr_ast import (
     ListLiteral,
     Literal,
     MapLiteral,
+    MapProjection,
     Property,
     SubqueryExpr,
     Unary,
@@ -41,7 +42,21 @@ from provisa.gql.expr_ast import (
 from provisa.gql.ir import CypherAST, MatchStep, NodePattern, PathPattern, RelPattern
 
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_OPERATORS = {"=", "<>", "<", "<=", ">", ">=", "AND", "OR", "IN"}
+_OPERATORS = {
+    "=",
+    "<>",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "AND",
+    "OR",
+    "IN",
+    "CONTAINS",
+    "STARTS WITH",
+    "ENDS WITH",
+    "=~",
+}
 
 
 class CypherPrintRefused(ValueError):
@@ -102,6 +117,10 @@ def expression(e: CypherExpr) -> str:
         return "[" + ", ".join(expression(i) for i in e.items) + "]"
     if isinstance(e, MapLiteral):
         return "{" + ", ".join(f"{_name(k)}: {expression(v)}" for k, v in e.entries) + "}"
+    if isinstance(e, MapProjection) and not e.all_props:
+        selectors = [f".{_name(p)}" for p in e.properties]
+        selectors += [f"{_name(k)}: {expression(v)}" for k, v in e.literal_entries]
+        return f"{_name(e.var)}{{{', '.join(selectors)}}}"
     if isinstance(e, Binary) and e.op.upper() in _OPERATORS:
         op = e.op.upper()
         p = _precedence(e)
@@ -123,6 +142,9 @@ def expression(e: CypherExpr) -> str:
         return f"{e.name}({'DISTINCT ' if e.distinct else ''}{args})"
     if isinstance(e, SubqueryExpr) and e.kind == "COLLECT":
         return "COLLECT { " + " ".join(statement_lines(e.body)) + " }"
+    if isinstance(e, SubqueryExpr) and e.kind == "EXISTS" and e.body.return_clause is None:
+        # A pattern and its condition: whether any row matches.
+        return "EXISTS { " + " ".join(_pipeline_lines(e.body)) + " }"
     raise CypherPrintRefused(f"{type(e).__name__} has no Cypher text here")
 
 
@@ -153,8 +175,8 @@ def _pattern(p: object) -> str:
     return out
 
 
-def statement_lines(ast: CypherAST) -> list[str]:
-    """``ast`` as Cypher text, a clause a line."""
+def _pipeline_lines(ast: CypherAST) -> list[str]:
+    """``ast``'s MATCH clauses and their WHERE, a clause a line."""
     if ast.union_parts or ast.call_subqueries or ast.construct is not None:
         raise CypherPrintRefused("UNION, CALL or CONSTRUCT")
     lines: list[str] = []
@@ -167,6 +189,12 @@ def statement_lines(ast: CypherAST) -> list[str]:
             lines.append(f"{'OPTIONAL MATCH' if m.optional else 'MATCH'} {_pattern(m.pattern)}")
         if step.where is not None:
             lines.append(f"WHERE {expression(step.where.expression)}")
+    return lines
+
+
+def statement_lines(ast: CypherAST) -> list[str]:
+    """``ast`` as Cypher text, a clause a line."""
+    lines = _pipeline_lines(ast)
     ret = ast.return_clause
     if ret is None or ret.group_by is not None or ret.having is not None:
         raise CypherPrintRefused("a statement with no RETURN, or one grouped by keys")

@@ -31,7 +31,7 @@ from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
-from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+from provisa.executor.serialize import serialize_aggregate, serialize_rows
 
 
 def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> ColumnMetadata:
@@ -275,12 +275,7 @@ class TestAggregateResponseShape:
         # Column order follows compiled.columns; count then sum.amount per the query above.
         fake_row = (5, 250.0)
         shaped = serialize_aggregate(
-            [fake_row],
-            compiled.columns,
-            None,
-            None,
-            compiled.root_field,
-            agg_alias=compiled.agg_alias,
+            [fake_row], compiled.columns, compiled.root_field, agg_alias=compiled.agg_alias
         )
         agg_payload = shaped["data"][compiled.root_field][compiled.agg_alias]
 
@@ -294,7 +289,7 @@ class TestAggregateResponseShape:
 class TestGroupByResponseShape:
     """REQ-1359: group-by rows shape as typed-but-resourceless JSON:API rows."""
 
-    def test_serialize_group_by_matches_jsonapi_row_shape(self):
+    def test_group_by_rows_match_jsonapi_row_shape(self):
         schema, ctx = _build_schema_and_ctx(enable_aggregates=False, enable_group_by=True)
         doc = parse("""
             query {
@@ -308,7 +303,7 @@ class TestGroupByResponseShape:
         assert compiled.is_group_by is True
 
         fake_rows = [("east", 3), ("west", 7)]
-        shaped = serialize_group_by(fake_rows, compiled.columns, None, None, compiled.root_field)
+        shaped = serialize_rows(fake_rows, compiled.columns, compiled.root_field)
         group_rows = shaped["data"][compiled.root_field]
 
         data = [

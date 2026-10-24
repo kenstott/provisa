@@ -1,0 +1,6 @@
+{
+  "rowMaterialize": {
+    "label": "Zeilenweise replizieren",
+    "help": "Nur die Zeilen behalten, nach denen Anweisungen fragen: Jede wird über ihren Primärschlüssel aus der Quelle geholt und für die Cache-TTL behalten, statt einer Kopie der ganzen Tabelle. Erfordert eine Primärschlüsselspalte und eine Quelle, die Zeilen per Schlüssel abruft."
+  }
+}

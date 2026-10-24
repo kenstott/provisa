@@ -408,7 +408,12 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
 
     job_store = make_job_store()
     job_id = new_job_id()
-    await job_store.put(NlJob(job_id=job_id, nl_query=question, role=role, strict=False))
+    from provisa.nl.runner import effective_strict
+
+    # REQ-603: non-strict, as this tool asks, only for a role that may bypass the relationship
+    # guard; any other runs strict.
+    strict = effective_strict(False, role, state)
+    await job_store.put(NlJob(job_id=job_id, nl_query=question, role=role, strict=strict))
 
     cfg = await resolve_org_config(state.model_db)
     api_keys = await read_org_api_keys(state.model_db)
@@ -416,7 +421,7 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     # untyped `llm` param relies on) rather than subclassing it.
     llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
 
-    await run_nl_job(job_id, question, role, state, job_store, llm, strict=False, deliver=None)
+    await run_nl_job(job_id, question, role, state, job_store, llm, strict=strict, deliver=None)
 
     job = await job_store.get(job_id)
     if job is None:

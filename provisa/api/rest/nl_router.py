@@ -12,6 +12,7 @@
 """Natural Language Query endpoints (Phase AV, REQ-354–359).
 
 POST /query/nl         — submit NL query, return { job_id }
+GET  /query/nl/mode    — whether the acting role may run non-strict NL (REQ-603)
 GET  /query/nl/{id}   — poll for result
 GET  /query/nl/{id}/stream — SSE stream, one event per branch result
 """
@@ -96,8 +97,12 @@ async def submit_nl_query(
             content={"error": "invalid_redirect_format", "detail": str(exc)},
         )
 
+    from provisa.nl.runner import effective_strict
+
     job_id = new_job_id()
-    job = NlJob(job_id=job_id, nl_query=body.q, role=role_id, strict=body.strict)
+    # REQ-603: a role that may not bypass the relationship guard runs strict, never refused.
+    strict = effective_strict(body.strict, role_id, state)
+    job = NlJob(job_id=job_id, nl_query=body.q, role=role_id, strict=strict)
     await _job_store.put(job)
 
     llm = await _get_llm(state)
@@ -107,11 +112,25 @@ async def submit_nl_query(
     # from the request thread it runs on the process loop, whose default executor runs its parallel
     # LLM branches on real worker threads.
     spawn_background(
-        _run_job(job_id, body.q, role_id, state, llm, body.strict, delivery),
+        _run_job(job_id, body.q, role_id, state, llm, strict, delivery),
         name=f"nl-job:{job_id}",
     )
 
     return JSONResponse(status_code=202, content={"job_id": job_id})
+
+
+@router.get("/query/nl/mode")
+async def nl_mode(request: Request) -> JSONResponse:  # REQ-603
+    """Whether the acting role(s) may run non-strict NL: only a role that may bypass the
+    relationship guard, by the one bypass rule (``nl_may_bypass``). The NL page holds its Strict
+    switch on for any other. Declared before ``/query/nl/{job_id}``, which would read "mode" as a
+    job id."""
+    from provisa.api.acting_role import acting_role
+    from provisa.api.app import state
+    from provisa.nl.runner import nl_may_bypass
+
+    role_id = acting_role(request, None, None, "default")
+    return JSONResponse(content={"non_strict": nl_may_bypass(role_id, state)})
 
 
 @router.get("/query/nl/{job_id}")

@@ -145,7 +145,6 @@ async def test_the_start_serves_an_unchanged_template_and_queues_only_the_change
     monkeypatch.setattr(demo_templates, "seeding_release", lambda: False)
     monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: False)
     monkeypatch.setattr(demo_templates, "_template_row", _template_row)
-    monkeypatch.setattr(demo_templates, "_mark_templated", lambda _demo: None)
     monkeypatch.setattr("provisa.core.connection_loop.spawn_background", _spawn)
     monkeypatch.setattr("provisa.core.settings_registry.value", lambda _key: 2)
     retired: list[str] = []
@@ -182,11 +181,9 @@ async def test_a_template_another_release_built_is_replaced_not_loaded(platform,
 
     monkeypatch.setattr(demo_templates, "template_builds", queue)
     monkeypatch.setattr(demo_templates, "bundled_demos", lambda: ("alpha",))
-    monkeypatch.setattr(demo_templates, "_templated", lambda _name: demo.directory.name)
     monkeypatch.setattr(demo_templates, "seeding_release", lambda: False)
     monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: False)
     monkeypatch.setattr(demo_templates, "_retire_template", _retire)
-    monkeypatch.setattr(demo_templates, "_mark_templated", lambda _demo: None)
     assert await demo_templates._queue_template(platform, demo) == "building"
     assert retired == ["alpha"]
     assert queue.state_of("alpha") == "queued"
@@ -232,8 +229,6 @@ async def test_a_bundle_ready_after_the_start_has_its_template_queued(platform, 
     monkeypatch.setattr(demo_templates, "seeding_release", lambda: False)
     monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: False)
     monkeypatch.setattr(demo_templates, "_template_row", _template_row)
-    monkeypatch.setattr(demo_templates, "_mark_templated", lambda _demo: None)
-    monkeypatch.setattr(demo_templates, "_templated", lambda _name: None)
     monkeypatch.setattr("provisa.core.connection_loop.spawn_background", _spawn)
     monkeypatch.setattr("provisa.core.settings_registry.value", lambda _key: 2)
 
@@ -252,3 +247,29 @@ async def test_a_bundle_ready_after_the_start_has_its_template_queued(platform, 
     # The start's workers had not begun (the spawn above ran nothing): no second start.
     assert spawned == ["demo-templates"]
     assert await demo_templates.queue_late_templates(platform) == []
+
+
+async def test_a_fresh_disk_in_bundled_mode_keeps_the_shared_template(
+    platform, monkeypatch, tmp_path
+):
+    """A node with a fresh disk under a shared control plane, serving bundles: the plane records
+    the template ready from this version, and nothing on this node says what it was built from.
+    The template the other nodes serve is kept -- prepared again here, never retired."""
+    demo = _demo("alpha")
+    await _built(platform, demo)
+    _on_disk(monkeypatch, {})  # this node holds none of its store
+    queue = TemplateBuilds()
+    retired: list[str] = []
+
+    async def _retire(name: str) -> None:
+        retired.append(name)
+
+    monkeypatch.setattr(demo_templates, "template_builds", queue)
+    monkeypatch.setattr(demo_templates, "bundled_demos", lambda: ("alpha",))
+    monkeypatch.setattr(demo_templates, "bundles_root", lambda: tmp_path)  # a fresh disk
+    monkeypatch.setattr(demo_templates, "seeding_release", lambda: False)
+    monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: False)
+    monkeypatch.setattr(demo_templates, "_retire_template", _retire)
+    assert await demo_templates._queue_template(platform, demo) == "ready"
+    assert retired == []
+    assert queue.state_of("alpha") == "queued"

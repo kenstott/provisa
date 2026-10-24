@@ -527,12 +527,23 @@ def split_agg_columns(columns: list[Any], row: tuple) -> tuple[dict, dict]:
     return top, nested
 
 
+def nodes_index(columns: list[Any]) -> int | None:
+    """Where an aggregate or group-by row holds its nodes, the rows it aggregates (the JSON list
+    at the root: aggregates._nodes_column); None when they were not selected."""
+    return next((i for i, c in enumerate(columns) if c.nested_in is None and c.is_agg), None)
+
+
 def split_group_by_columns(columns: list[Any]) -> tuple[list[Any], list[int], list[Any], list[int]]:
     """Partition compiled group-by columns into (group_key_cols, group_key_idx, agg_cols, agg_idx).
     ColumnRef is an unhashable plain dataclass, so columns are split by index rather than by
     dict-keying on it. Shared by the gRPC servicer and the NL executor's gRPC result preview."""
     group_key_idx = [i for i, c in enumerate(columns) if c.nested_in == "groupKey"]
-    agg_idx = [i for i, c in enumerate(columns) if c.nested_in != "groupKey"]
+    # The group's nodes (the one column at the root) are no aggregate: nodes_index.
+    agg_idx = [
+        i
+        for i, c in enumerate(columns)
+        if c.nested_in != "groupKey" and not (c.nested_in is None and c.is_agg)
+    ]
     return (
         [columns[i] for i in group_key_idx],
         group_key_idx,

@@ -1,0 +1,61 @@
+{
+  "classificationKinds": {
+    "intro": "כל הרצת פרופיל בודקת מדגם מערכי כל עמודה מול הסוגים האלה. כשמספיק ערכים עוברים, העמודה מקבלת הצעה ש-Data Steward מקבל או דוחה. סוג מושבת אינו נבדק.",
+    "kindHeader": "סוג",
+    "testHeader": "בדיקה",
+    "thresholdHeader": "החלק שחייב לעבור",
+    "maskHeader": "מסכה מוצעת",
+    "enabledHeader": "מופעל",
+    "enabledAria": "בדוק {{kind}}",
+    "sensitive": "רגיש",
+    "noMask": "אין",
+    "kind": {
+      "us_ssn": "מספר ביטוח לאומי אמריקאי",
+      "payment_card": "מספר כרטיס תשלום",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "מספר National Insurance בריטי",
+      "ca_social_insurance_number": "מספר ביטוח סוציאלי קנדי",
+      "es_dni": "DNI או NIE ספרדי",
+      "nl_bsn": "מספר שירות לאזרח הולנדי (BSN)",
+      "in_aadhaar": "מספר Aadhaar הודי",
+      "us_passport": "מספר דרכון אמריקאי",
+      "country": "שם מדינה",
+      "country_code": "קוד מדינה (ISO 3166)",
+      "currency_code": "קוד מטבע (ISO 4217)",
+      "language_code": "קוד שפה (ISO 639)",
+      "city": "עיר בעולם"
+    },
+    "test": {
+      "us_ssn": "תשע ספרות, בכתיב 123-45-6789 או ברצף: האזור לעולם אינו 000, 666 או 900 עד 999, הקבוצה לעולם אינה 00, הסידורי לעולם אינו 0000.",
+      "payment_card": "13 עד 19 ספרות, עם רווחים או מקפים בין קבוצות, שעוברות את בדיקת Luhn.",
+      "iban": "קוד מדינה, שתי ספרות ביקורת ועד 30 אותיות וספרות שספרות הביקורת שלהן נכונות (mod 97).",
+      "uk_national_insurance_number": "שתי אותיות קידומת מהקבוצה המותרת, שש ספרות ואות סופית A עד D.",
+      "ca_social_insurance_number": "תשע ספרות, הראשונה אינה 0 או 8, שעוברות את בדיקת Luhn.",
+      "es_dni": "שמונה ספרות ואות הביקורת שלהן; NIE של זר מתחיל ב-X, ‏Y או Z.",
+      "nl_bsn": "תשע ספרות שעוברות את מבחן האחת-עשרה.",
+      "in_aadhaar": "שתים-עשרה ספרות, הראשונה 2 עד 9, שעוברות את בדיקת Verhoeff.",
+      "us_passport": "אות ושמונה ספרות, תבנית הדרכונים האמריקאיים שהונפקו מאז 2021.",
+      "country": "שם מדינה מרשימת המדינות המצורפת.",
+      "country_code": "קוד מדינה ISO 3166 בן שתיים או שלוש אותיות.",
+      "currency_code": "קוד מטבע ISO 4217 בן שלוש אותיות.",
+      "language_code": "קוד שפה ISO 639 בן שתיים או שלוש אותיות.",
+      "city": "שם של עיר עם 15,000 תושבים או יותר, מהרשימה המצורפת."
+    },
+    "noun": {
+      "us_ssn": "מספר ביטוח לאומי אמריקאי",
+      "payment_card": "מספר כרטיס תשלום",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "מספר National Insurance בריטי",
+      "ca_social_insurance_number": "מספר ביטוח סוציאלי קנדי",
+      "es_dni": "DNI או NIE ספרדי",
+      "nl_bsn": "מספר שירות לאזרח הולנדי",
+      "in_aadhaar": "מספר Aadhaar הודי",
+      "us_passport": "מספר דרכון אמריקאי",
+      "country": "מדינה",
+      "country_code": "קוד מדינה ISO 3166",
+      "currency_code": "קוד מטבע ISO 4217",
+      "language_code": "קוד שפה ISO 639",
+      "city": "עיר בעולם"
+    }
+  }
+}

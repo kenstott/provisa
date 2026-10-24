@@ -105,6 +105,28 @@ def _describe(cur: trino.dbapi.Cursor) -> tuple[list[str], list[str]]:
     return [d[0] for d in desc], [str(d[1]) for d in desc]
 
 
+def _instants_in_utc(rows: list, column_types: list[str]) -> list:
+    """``rows`` with each ``timestamp with time zone`` value at UTC (REQ-2050): Trino hands one on at
+    the offset it was stored with (SQL Server's datetimeoffset, Oracle's TIMESTAMP WITH TIME ZONE);
+    an instant is carried as UTC with its zone. The same instant: nothing is lost."""
+    zoned = [
+        i for i, t in enumerate(column_types) if t.startswith("timestamp") and "with time zone" in t
+    ]
+    if not zoned:
+        return rows
+    from datetime import datetime, timezone
+
+    out = []
+    for row in rows:
+        row = list(row)
+        for i in zoned:
+            value = row[i]
+            if isinstance(value, datetime) and value.tzinfo is not None:
+                row[i] = value.astimezone(timezone.utc)
+        out.append(row)
+    return out
+
+
 def _close_quietly(conn: trino.dbapi.Connection | None) -> None:
     """Best-effort close of a connection execute_trino owns (opened from conn_kwargs)."""
     if conn is None:
@@ -218,6 +240,7 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                             cur.execute(exec_sql)
                         rows = cur.fetchall()
                     column_names, column_types = _describe(cur)
+                    rows = _instants_in_utc(rows, column_types)
 
                     span.set_attribute("db.row_count", len(rows))
                     log.info("[EXEC TRINO] rows=%d", len(rows))

@@ -45,6 +45,9 @@ _ROLE = "org_admin"
 _FILED, _CORRECTED = 1_540_000, 1_550_000
 # How long the refresh records may take to land: the span exporter's batch delay, then the read.
 _LANDED_S = 120
+# How long an audit row may take to land: the writer inserts its queue in batches after the
+# request has answered (provisa/audit/writer.py), so the read just before may not be there yet.
+_AUDITED_S = 30
 
 
 class BookStack:
@@ -179,6 +182,12 @@ def answers(server) -> dict[str, list[dict[str, Any]]]:
             travel["as_recorded"] = str(out[taken["step"]][taken["row"]][taken["column"]])
         if "sql" in step:
             out[key] = _sql(server, step["sql"], dict(travel))
+        if key == "reproduceAudit":
+            # The as-recorded read just before is audited once the writer's batch lands.
+            deadline = time.monotonic() + _AUDITED_S
+            while not any(r["as_recorded"] for r in out[key]) and time.monotonic() < deadline:
+                time.sleep(1)
+                out[key] = _sql(server, step["sql"], dict(travel))
     return out
 
 

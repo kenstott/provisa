@@ -436,7 +436,7 @@ Il loop di refresh gira ogni 30 secondi, controlla `get_due_for_refresh()` ed es
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
 | `compiler/enum_detect.py` | Enum type auto-detection — PostgreSQL native enum types (`pg_enum`) exposed as GraphQL enum types rather than string scalars |
-| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=federated */`) that override automatic routing |
+| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`-- @provisa route=federated`) that override automatic routing |
 | `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
 | `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
 | `subscriptions/` | SSE subscription state and delivery |
@@ -623,7 +623,7 @@ Un ruolo nomina al massimo un padre tramite `parent_role_id`. Al build a runtime
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

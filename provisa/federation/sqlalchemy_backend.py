@@ -23,6 +23,16 @@ class SqlAlchemyBackend(NativeEngineBackend):
     """A self-only warehouse: every source lands into the store defined by the SQLAlchemy URL, and
     governed SQL runs against it."""
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: SQLAlchemy wraps each driver's error in its own of the same PEP 249 name."""
+        import sqlalchemy.exc as sa
+
+        from provisa.federation.dbapi_errors import dbapi_errors
+
+        return dbapi_errors(sa)
+
     def _new_runtime(self) -> Any:
         from provisa.federation.engine import configured_engine_url
 

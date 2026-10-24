@@ -13,6 +13,7 @@
     "runNow": "יצירת פרופיל עכשיו",
     "viewRuns": "הצגת הרצות פרופיל",
     "runDone": "נכללו בפרופיל {{rows}} שורות.",
-    "constraints": "אילוצים"
+    "constraints": "אילוצים",
+    "classifications": "סיווגים"
   }
 }

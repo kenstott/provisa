@@ -1,0 +1,61 @@
+{
+  "classificationKinds": {
+    "intro": "Jeder Profilierungslauf prüft eine Stichprobe der Werte jeder Spalte gegen diese Arten. Bestehen genug Werte, erhält die Spalte einen Vorschlag, den ein Data Steward annimmt oder ablehnt. Eine deaktivierte Art wird nicht geprüft.",
+    "kindHeader": "Art",
+    "testHeader": "Prüfung",
+    "thresholdHeader": "Anteil, der bestehen muss",
+    "maskHeader": "Angebotene Maske",
+    "enabledHeader": "Aktiviert",
+    "enabledAria": "Auf {{kind}} prüfen",
+    "sensitive": "Sensibel",
+    "noMask": "Keine",
+    "kind": {
+      "us_ssn": "US-Sozialversicherungsnummer",
+      "payment_card": "Zahlungskartennummer",
+      "iban": "IBAN",
+      "uk_national_insurance_number": "Britische National-Insurance-Nummer",
+      "ca_social_insurance_number": "Kanadische Sozialversicherungsnummer",
+      "es_dni": "Spanische DNI oder NIE",
+      "nl_bsn": "Niederländische Bürgerservicenummer (BSN)",
+      "in_aadhaar": "Indische Aadhaar-Nummer",
+      "us_passport": "US-Reisepassnummer",
+      "country": "Ländername",
+      "country_code": "Ländercode (ISO 3166)",
+      "currency_code": "Währungscode (ISO 4217)",
+      "language_code": "Sprachcode (ISO 639)",
+      "city": "Stadt weltweit"
+    },
+    "test": {
+      "us_ssn": "Neun Ziffern, als 123-45-6789 oder ohne Trennzeichen: die Area ist nie 000, 666 oder 900 bis 999, die Gruppe nie 00, die Seriennummer nie 0000.",
+      "payment_card": "13 bis 19 Ziffern, Leerzeichen oder Bindestriche zwischen Gruppen erlaubt, die die Luhn-Prüfung bestehen.",
+      "iban": "Ein Ländercode, zwei Prüfziffern und bis zu 30 Buchstaben und Ziffern mit korrekten Prüfziffern (mod 97).",
+      "uk_national_insurance_number": "Zwei Präfixbuchstaben aus der zulässigen Menge, sechs Ziffern und ein Schlussbuchstabe A bis D.",
+      "ca_social_insurance_number": "Neun Ziffern, die erste nicht 0 oder 8, die die Luhn-Prüfung bestehen.",
+      "es_dni": "Acht Ziffern und ihr Prüfbuchstabe; die NIE von Ausländern beginnt mit X, Y oder Z.",
+      "nl_bsn": "Neun Ziffern, die den Elferprobe-Test bestehen.",
+      "in_aadhaar": "Zwölf Ziffern, die erste 2 bis 9, die die Verhoeff-Prüfung bestehen.",
+      "us_passport": "Ein Buchstabe und acht Ziffern, das Format seit 2021 ausgestellter US-Reisepässe.",
+      "country": "Ein Ländername aus der mitgelieferten Länderliste.",
+      "country_code": "Ein zwei- oder dreibuchstabiger Ländercode nach ISO 3166.",
+      "currency_code": "Ein dreibuchstabiger Währungscode nach ISO 4217.",
+      "language_code": "Ein zwei- oder dreibuchstabiger Sprachcode nach ISO 639.",
+      "city": "Der Name einer Stadt mit 15.000 oder mehr Einwohnern aus der mitgelieferten Liste."
+    },
+    "noun": {
+      "us_ssn": "eine US-Sozialversicherungsnummer",
+      "payment_card": "eine Zahlungskartennummer",
+      "iban": "eine IBAN",
+      "uk_national_insurance_number": "eine britische National-Insurance-Nummer",
+      "ca_social_insurance_number": "eine kanadische Sozialversicherungsnummer",
+      "es_dni": "eine spanische DNI oder NIE",
+      "nl_bsn": "eine niederländische Bürgerservicenummer",
+      "in_aadhaar": "eine indische Aadhaar-Nummer",
+      "us_passport": "eine US-Reisepassnummer",
+      "country": "ein Land",
+      "country_code": "ein Ländercode nach ISO 3166",
+      "currency_code": "ein Währungscode nach ISO 4217",
+      "language_code": "ein Sprachcode nach ISO 639",
+      "city": "eine Stadt"
+    }
+  }
+}

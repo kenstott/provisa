@@ -92,16 +92,26 @@ class ReplicaAddress:
 
 
 def replica_table_name(source_id: str, schema_name: str, table_name: str) -> str:
-    """The one name of a table's replica, on every engine: source, schema and table joined.
+    """The one name of a table's replica, on every engine: source, schema and table joined, in
+    lower case -- the name every engine reaches, quoted or not (Trino folds every name it is given
+    to lower case, so a store table named with a capital, Oracle's ``SYSTEM``, was out of its reach).
 
-    A joined name longer than PostgreSQL's identifier limit keeps its head and ends in a digest of
-    the whole, so two long names never fold into one table."""
+    A name lower case changed ends in a digest of the name as written, so two tables whose names
+    differ only in case (PostgreSQL's ``"Orders"`` and ``orders``) never fold into one replica. A
+    name longer than PostgreSQL's identifier limit keeps its head and ends in a digest of the
+    whole, so two long names never fold into one table either."""
     joined = f"{source_id}__{schema_name}__{table_name}"
-    if len(joined.encode()) <= _MAX_NAME_BYTES:
-        return joined
-    digest = hashlib.sha256(joined.encode()).hexdigest()[:_DIGEST_CHARS]
-    head = joined.encode()[: _MAX_NAME_BYTES - _DIGEST_CHARS - 2].decode(errors="ignore")
-    return f"{head}__{digest}"
+    name = joined.lower()
+    if name != joined:
+        name = f"{name}__{_digest(joined)}"
+    if len(name.encode()) <= _MAX_NAME_BYTES:
+        return name
+    head = name.encode()[: _MAX_NAME_BYTES - _DIGEST_CHARS - 2].decode(errors="ignore")
+    return f"{head}__{_digest(joined)}"
+
+
+def _digest(joined: str) -> str:
+    return hashlib.sha256(joined.encode()).hexdigest()[:_DIGEST_CHARS]
 
 
 def replica_schema(org_id: str, *, region: str | None = None) -> str:

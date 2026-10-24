@@ -229,8 +229,11 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
       }
       if (newJoins.length > 0) {
         setCanvasJoins((prevJ) => {
-          const existingIds = new Set(prevJ.map((j) => j.id));
-          return [...prevJ, ...newJoins.filter((j) => !existingIds.has(j.id))];
+          // One join per canonical id: a relationship registered in both directions yields the same
+          // id twice, and two joins under one React key leave a stale line when one is removed.
+          const seen = new Set(prevJ.map((j) => j.id));
+          const added = newJoins.filter((j) => !seen.has(j.id) && Boolean(seen.add(j.id)));
+          return [...prevJ, ...added];
         });
       }
       return next;
@@ -535,6 +538,7 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
             return (
               <path
                 key={join.id}
+                data-testid={`canvas-join-line-${join.id}`}
                 d={bezierPath(fp, tp)}
                 fill="none"
                 stroke="var(--primary)"
@@ -629,6 +633,7 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
                 <option value="one-to-many">1:N</option>
               </select>
               <button
+                data-testid={`canvas-join-remove-${join.id}`}
                 onClick={() => setCanvasJoins((prev) => prev.filter((j) => j.id !== join.id))}
                 style={{
                   background: "none",

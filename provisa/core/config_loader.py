@@ -1853,38 +1853,13 @@ def _validate_file_globs(config) -> None:  # REQ-788
 #: filtered by its own parameters (its parameter sets are its row-level reads); govdata is read live
 #: on every request and never replicated; the remaining types have no connector or driver that
 #: reaches them yet (REQ-1874), so nothing can read their rows at all.
-_ROW_LEVEL_REFUSED: dict[str, str] = {
-    **{
-        t: "an API source is filtered by its own parameters, not replicated row by row"
-        for t in ("openapi", "graphql_remote", "grpc_remote")
-    },
-    "govdata": "a govdata source is read live on every request and is never replicated",
-    **{
-        t: "no connector or driver reaches this source type yet"
-        for t in (
-            "airtable",
-            "auth0",
-            "aws_cognito",
-            "dynamodb",
-            "firebase",
-            "logflare",
-            "s3_vectors",
-            "stripe",
-            "calcom",
-            "calendly",
-            "clerk",
-            "cloudflare_d1",
-            "gravatar",
-            "hubspot",
-            "infura",
-            "notion",
-            "orb",
-            "paddle",
-            "shopify",
-            "slack",
-        )
-    },
-}
+def _table_fetches_by_keys(source: Any, table: Any) -> bool:  # REQ-1865
+    """Whether a remote GraphQL ``table`` fetches its rows by its primary key: the fetch its
+    spec, stored on the source when it was registered, names (graphql_remote.by_keys)."""
+    from provisa.graphql_remote.by_keys import fetches_by_keys
+
+    pk_columns = [c.name for c in table.columns if c.is_primary_key]
+    return fetches_by_keys(source.mapping, table.table_name, pk_columns)
 
 
 def _validate_row_materialize(config) -> None:  # REQ-1865
@@ -1900,6 +1875,7 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
     a keyed-fetch translation wired at all (today: neo4j only — sparql has no parser/AST to safely
     resolve a projected property against, confirmed absent). Both are registration-time
     ValueErrors, never a silent fallback to an undefined TTL or an unbounded per-lookup scan."""
+    from provisa.core.source_registry import ROW_FETCH_BY_KEYS_PER_TABLE, row_materialize_refusal
     from provisa.cypher.query_template_filter import (
         ProjectionFilterError,
         resolve_projected_property,
@@ -1912,12 +1888,17 @@ def _validate_row_materialize(config) -> None:  # REQ-1865
         source = sources_by_id.get(table.source_id)
         if source is not None:
             stype = source.type.value if hasattr(source.type, "value") else str(source.type)
-            refused = _ROW_LEVEL_REFUSED.get(stype)
+            # REQ-1865, REQ-1915: the type's own declaration (core.source_registry), and for a
+            # type whose fetch by keys is each table's own, this table's.
+            refused = row_materialize_refusal(
+                table.table_name,
+                stype,
+                table_fetches_by_keys=_table_fetches_by_keys(source, table)
+                if stype in ROW_FETCH_BY_KEYS_PER_TABLE
+                else None,
+            )
             if refused is not None:
-                raise ValueError(  # REQ-1915
-                    f"table {table.table_name!r}: row_materialize=True is refused for source type "
-                    f"{stype!r}: {refused}"
-                )
+                raise ValueError(refused)
         eff_ttl = (
             table.cache_ttl
             if table.cache_ttl is not None

@@ -60,6 +60,7 @@ import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesT
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
+import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
@@ -100,6 +101,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
+  "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
   "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
@@ -567,6 +569,7 @@ export function AdminPage() {
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
+        {activeTab === "Classification" && <ClassificationKindsTab />}
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>

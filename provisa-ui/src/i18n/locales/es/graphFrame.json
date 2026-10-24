@@ -33,6 +33,7 @@
     "showPropertiesPanel": "Mostrar panel de propiedades",
     "copyErrorTitle": "Copiar error",
     "expandedDialogLabel": "Vista de grafo expandida",
-    "firstNodesShown": "Se muestran los primeros {{count}} nodos; hay más. Aumente el límite en el menú lateral."
+    "firstNodesShown": "Se muestran los primeros {{count}} nodos; hay más. Aumente el límite en el menú lateral.",
+    "deleteFrame": "Eliminar este resultado"
   }
 }

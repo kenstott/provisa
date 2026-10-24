@@ -45,6 +45,7 @@ from typing import Any
 import httpx
 
 from provisa.api_source.models import ApiEndpoint
+from provisa.core.org_forget import on_forget
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
@@ -228,9 +229,21 @@ async def fetch_slice(url: str, query: str, headers: dict[str, str]) -> bytes:
     return resp.content
 
 
-_classified: dict[tuple[str, str], Classification] = {}
+#: One classification per source of an org, with what it was made from (its axioms' digest and
+#: its endpoint): one made from anything else replaces it, so an edit of the axioms never leaves
+#: the last one behind.
+_classified: dict[tuple[str, str], tuple[tuple[str, str], Classification]] = {}
 _locks: dict[tuple[str, str], asyncio.Lock] = {}
 _locks_guard = threading.Lock()
+
+
+@on_forget
+def _forget_org(org_id: str) -> None:
+    with _locks_guard:
+        for key in [k for k in _classified if k[0] == org_id]:
+            _classified.pop(key, None)
+        for key in [k for k in _locks if k[0] == org_id]:
+            _locks.pop(key, None)
 
 
 def _lock(key: tuple[str, str]) -> asyncio.Lock:
@@ -257,9 +270,13 @@ async def classification(
     """The source's classification, reasoned again only once ``ttl`` (seconds; -1 never) has
     passed since the last. ``run`` and ``fetch`` are injected so tests need no Java and no
     endpoint."""
-    key = (source_id, hashlib.sha256(axioms.encode()).hexdigest())
+    from provisa.core.request_context import require_current_org
+
+    key = (require_current_org(), source_id)
+    made_from = (hashlib.sha256(axioms.encode()).hexdigest(), url)
     async with _lock(key):
-        found = _classified.get(key)
+        kept = _classified.get(key)
+        found = kept[1] if kept is not None and kept[0] == made_from else None
         if _fresh(found, ttl):
             assert found is not None
             return found
@@ -273,7 +290,7 @@ async def classification(
             await run("classify", str(axioms_file), str(slice_file), str(out_file))
             facts = parse_inferred(out_file.read_text())
         found = Classification(signature, facts)
-        _classified[key] = found
+        _classified[key] = (made_from, found)
         return found
 
 

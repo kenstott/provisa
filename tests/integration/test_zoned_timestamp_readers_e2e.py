@@ -117,6 +117,5 @@ async def test_mysql_family_timestamp():
         "provisa",
         "SELECT ts FROM zoned_ts",
     )
-    # The reader's session is UTC: the instant comes back as UTC (a naive value, which every
-    # timestamptz path reads as UTC).
-    assert [r[0].replace(tzinfo=timezone.utc) for r in rows] == [_INSTANT]
+    # The reader's session is UTC: the instant comes back as UTC, with its zone.
+    assert rows == [(_INSTANT,)]

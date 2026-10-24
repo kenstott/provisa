@@ -13,16 +13,20 @@
 The metric export thread logged a traceback on every tick it could not export. One of those
 was the exporter library's own: after a failed attempt it waits out its backoff and sends
 again with whatever time is left; a late wake-up leaves none, and the HTTP client refuses a
-timeout of zero or less with a ValueError the library does not count as a failed send
-("Attempted to set connect timeout to -0.5677816867828369", a maintainer's server log)."""
+timeout of zero or less with a ValueError ("Attempted to set connect timeout to
+-0.5677816867828369", a maintainer's server log). Since opentelemetry 1.45 the library sends
+that attempt with no time rather than less than none and counts the refusal as a failed
+export, so it comes back as the exporter's failure result."""
 
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 
 import pytest
 import requests
-from opentelemetry.exporter.otlp.proto.http import metric_exporter as lib
+from opentelemetry.exporter.otlp.common import http as lib
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 
 from provisa.api.otel_setup import (
@@ -50,7 +54,7 @@ class _Collector:
         self.up = False
         self.timeouts: list[float] = []
 
-    def post(self, timeout=None, **_request):
+    def request(self, timeout=None, **_request):
         self.timeouts.append(timeout)
         if timeout <= 0:
             raise ValueError(
@@ -65,11 +69,12 @@ class _Collector:
 @pytest.fixture
 def export(monkeypatch):
     """The process's metric export, its collector, and a clock the backoff wait moves."""
-    exporter = lib.OTLPMetricExporter(endpoint=ENDPOINT + "/v1/metrics", timeout=1)
+    exporter = OTLPMetricExporter(endpoint=ENDPOINT + "/v1/metrics", timeout=1)
     collector = _Collector()
-    monkeypatch.setattr(exporter._session, "post", collector.post)
+    client = exporter._client
+    monkeypatch.setattr(client._transport._session, "request", collector.request)
     clock = [1000.0]
-    monkeypatch.setattr(lib, "time", lambda: clock[0])
+    monkeypatch.setattr(lib, "time", SimpleNamespace(time=lambda: clock[0]))
     monkeypatch.setattr(lib.random, "uniform", lambda _low, _high: 1.0)  # a 1 s first backoff
 
     def _late_wake(seconds: float) -> bool:
@@ -77,7 +82,7 @@ def export(monkeypatch):
         clock[0] += seconds + 0.5677816867828369
         return False
 
-    monkeypatch.setattr(exporter._shutdown_in_progress, "wait", _late_wake)
+    monkeypatch.setattr(client._shutdown_event, "wait", _late_wake)
     exports = _MetricExports(exporter, interval_millis=3_600_000)  # the thread never ticks here
     provider = MeterProvider(metric_readers=[exports.reader])
     counter = provider.get_meter("test").create_counter("requests")
@@ -93,16 +98,15 @@ def _ours(caplog) -> list[logging.LogRecord]:
 
 
 def test_the_library_sends_again_with_no_time_left(export):
-    """The condition itself, shown on the installed library: the second attempt is made with a
-    negative timeout, which is what raises out of the export."""
+    """The condition itself, shown on the installed library: the attempt after the backoff is
+    made with no time left, and its refusal comes back as a failed export rather than raising."""
     exports, collector, counter = export
     counter.add(1)
-    with pytest.raises(ValueError, match="connect timeout"):
-        exports.reader.collect()
+    exports.reader.collect()
     # The first attempt has the whole second (the library sends it twice at once on a refused
-    # connection); the attempt after the backoff is sent with less than none.
+    # connection); the attempt after the backoff is sent with none.
     assert collector.timeouts[0] == pytest.approx(1.0)
-    assert collector.timeouts[-1] == pytest.approx(-0.5677816867828369)
+    assert collector.timeouts[-1] == 0.0
 
 
 def test_an_export_that_cannot_be_sent_is_one_line_naming_the_endpoint(export, caplog):
@@ -111,8 +115,9 @@ def test_an_export_that_cannot_be_sent_is_one_line_naming_the_endpoint(export, c
     counter.add(1)
     exports.collect_once()
     (line,) = _ours(caplog)
-    assert line.getMessage().startswith(f"OTel metrics are not reaching {ENDPOINT}: ValueError: ")
-    assert "connect timeout" in line.getMessage()
+    assert line.getMessage() == (
+        f"OTel metrics are not reaching {ENDPOINT}: the exporter reported a failed export"
+    )
     assert line.exc_info is None, "a traceback every tick is what this replaces"
 
 

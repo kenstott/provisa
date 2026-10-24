@@ -288,6 +288,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS unique_constraints JSONB NOT NULL DEFAULT '[]';  -- REQ-1093
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_contract TEXT;  -- REQ-1443
+    -- REQ-1443 clause 10: the contract's checks, parsed at registration, for the meta dq_rules.
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_rules JSONB;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS profiler_source_id TEXT;  -- REQ-1934
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
@@ -408,6 +410,10 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_label_source TEXT;
     -- REQ-2141: the same-entity flag reaches a relationships table that predates it.
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS same_entity BOOLEAN NOT NULL DEFAULT FALSE;
+    -- REQ-351: the effective names a relationship is served under, derived once and stored
+    -- (core.relationship_names), so the meta domain reads what the admin API and Cypher use.
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS cypher_type TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_field TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1272,6 +1278,19 @@ CREATE TABLE IF NOT EXISTS profiler_constraints (
     run_id        TEXT NOT NULL,
     decided_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (table_id, signature)
+);
+
+-- REQ-2147: a steward's decision on a classification a profile suggested for a column.
+CREATE TABLE IF NOT EXISTS profiler_classifications (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    evidence         TEXT NOT NULL,
+    run_id           TEXT NOT NULL,
+    decided_by       TEXT,
+    decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (table_id, physical_column, kind)
 );
 
 CREATE TABLE IF NOT EXISTS synthetic_report (

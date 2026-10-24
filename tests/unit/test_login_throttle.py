@@ -72,6 +72,49 @@ def throttle(clock) -> LoginThrottle:
     return LoginThrottle(max_attempts=3, window_seconds=60, lockout_seconds=300, clock=clock)
 
 
+def test_distinct_bad_credentials_leave_no_trace_once_their_window_has_passed(throttle, clock):
+    """A bearer-only surface keys the counter by a digest of the credential, so each distinct bad
+    token is a subject of its own: kept until that same subject failed again, every one stayed for
+    the process's life -- grown at will by anyone, signed in or not. A failure past its window
+    counts for nothing, so it is not kept; a lockout is kept until it ends."""
+    for n in range(1000):
+        throttle.record_failure(f"token-{n}")
+    assert len(throttle._failures) == 1000  # within the window, every one counts
+    clock.advance(61)
+    throttle.record_failure("token-late")
+    assert list(throttle._failures) == ["token-late"]
+    assert throttle._locked_until == {}
+
+
+def test_a_lockout_stays_until_it_ends_and_then_goes(throttle, clock):
+    for _ in range(3):
+        throttle.record_failure("bob")
+    clock.advance(61)
+    throttle.record_failure("carol")  # bob's failures are past the window; his lockout is not
+    with pytest.raises(LockedOut):
+        throttle.check("bob")
+    for n in range(3):  # two subjects locked out at once, their failures past the window
+        throttle.record_failure("zed")
+    clock.advance(61)
+    throttle.record_failure("yan")  # the sweep passes both lockouts and ends
+    with pytest.raises(LockedOut):
+        throttle.check("zed")
+    clock.advance(300)
+    throttle.record_failure("dave")
+    assert "bob" not in throttle._locked_until and "bob" not in throttle._failures
+    throttle.check("bob")  # not locked
+
+
+def test_a_subject_failing_again_keeps_its_place_by_its_last_failure(throttle, clock):
+    throttle.record_failure("erin")
+    clock.advance(40)
+    throttle.record_failure("frank")
+    throttle.record_failure("erin")  # erin's last failure is now the newest
+    clock.advance(30)  # erin's first failure is past the window, her second is not
+    throttle.record_failure("grace")
+    assert list(throttle._failures) == ["frank", "erin", "grace"]
+
+
 def test_failures_below_the_limit_do_not_lock(throttle):
     for _ in range(2):
         throttle.record_failure("user:alice")

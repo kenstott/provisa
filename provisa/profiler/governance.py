@@ -69,7 +69,8 @@ _SHAPE_FIELDS = frozenset(
     }
 )
 # The kinds keyed by a described column, and so filtered column by column.
-COLUMN_KINDS = VALUE_KINDS | {"columns", "plausible_type"}
+# REQ-2147: a classification row holds no value of its column, only how many passed a test.
+COLUMN_KINDS = VALUE_KINDS | {"columns", "plausible_type", "classifications"}
 # The kinds whose rows list every described column they speak of in ``involved_columns`` (a JSON
 # array), the ``column_name`` of a row among them; a row whose ``value_bearing`` is set holds values
 # of those columns.

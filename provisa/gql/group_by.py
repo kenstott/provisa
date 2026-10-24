@@ -23,7 +23,7 @@ from provisa.gql.expr_ast import CypherExpr, FunctionCall, MapLiteral, Variable,
 # Requirements: REQ-347
 
 
-_AGGREGATES = frozenset(
+AGGREGATES = frozenset(
     {"count", "sum", "avg", "min", "max", "collect", "stdev", "stdevp", "percentilecont",
      "percentiledisc", "group_concat"}
 )  # fmt: skip
@@ -32,7 +32,7 @@ _AGGREGATES = frozenset(
 def _has_aggregate(expr: CypherExpr) -> bool:
     """Whether ``expr`` calls an aggregate anywhere in it."""
     return any(
-        isinstance(node, FunctionCall) and node.name.lower() in _AGGREGATES for node in walk(expr)
+        isinstance(node, FunctionCall) and node.name.lower() in AGGREGATES for node in walk(expr)
     )
 
 

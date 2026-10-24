@@ -139,6 +139,7 @@ function source(type: string, extra: Partial<Source> = {}): Source {
     federationHintsJson: null,
     passwordRef: null,
     changeSignal: "",
+    rowFetchByKeys: false,
     cdc: null,
     ...extra,
   };

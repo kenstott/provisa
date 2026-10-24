@@ -1357,6 +1357,29 @@ async def test_a_source_read_from_its_landed_replicas_alone_is_not_waited_for(mo
     assert asked == [("test-askamerica", "govdata")]
 
 
+async def test_a_source_the_engine_reads_with_a_connector_of_its_own_is_not_waited_for(
+    monkeypatch,
+):
+    # Trino reads Splunk with its own connector: a server a discovery call started for the
+    # source (and that could not reach Splunk) is no part of the statement. An engine that
+    # attaches the source through its server (DuckDB) still waits for it.
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(pr, "await_serving", lambda sid, stype, _t: asked.append((sid, stype)))
+    for served_by_bundle, expected in ((False, []), (True, [("logs", "splunk")])):
+        asked.clear()
+        splunk = SimpleNamespace(reads_in_place=True, served_by_bundle=served_by_bundle)
+        state = _pipeline_state([])
+        state.source_types["logs"] = "splunk"
+        engine = state.federation_engine.engine
+        engine.connectors = {"splunk": splunk}
+        engine.connector_for = lambda _type: splunk
+        await _pipeline._await_source_servers(SimpleNamespace(route=Route.ENGINE), {"logs"}, state)
+        assert asked == expected
+
+
 async def test_the_engine_attaches_again_once_the_statement_has_waited_for_its_servers(
     monkeypatch,
 ):

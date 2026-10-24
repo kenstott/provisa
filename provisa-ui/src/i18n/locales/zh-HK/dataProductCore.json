@@ -17,12 +17,6 @@
     "upstream": "上游",
     "downstream": "下游",
     "via": "經由 {{vias}}",
-    "metaQueries": "查詢",
-    "metaQueriesHint": "此面板以你的身份在 meta 網域上執行的讀取。複製一個或在其瀏覽器中打開：結果相同。",
-    "copy": "複製",
-    "copied": "已複製",
-    "copyQuery": "複製 {{surface}} 查詢",
-    "openQuery": "在瀏覽器中打開 {{surface}} 查詢",
     "unreadable": "你的角色無法讀取 meta 網域中的數據產品。",
     "detailExpand": "顯示完整條目",
     "detailCollapse": "收起"

@@ -17,12 +17,6 @@
     "upstream": "アップストリーム",
     "downstream": "ダウンストリーム",
     "via": "経由: {{vias}}",
-    "metaQueries": "クエリ",
-    "metaQueriesHint": "このパネルがあなたとして meta ドメインに対して実行する読み取りです。コピーするか、エクスプローラーで開いてください。結果は同じです。",
-    "copy": "コピー",
-    "copied": "コピーしました",
-    "copyQuery": "{{surface}} クエリをコピー",
-    "openQuery": "{{surface}} クエリをエクスプローラーで開く",
     "unreadable": "あなたのロールは meta ドメインのデータプロダクトを読み取れません。",
     "detailExpand": "項目全体を表示",
     "detailCollapse": "表示を減らす"

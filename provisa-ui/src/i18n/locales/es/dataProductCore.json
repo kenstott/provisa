@@ -17,12 +17,6 @@
     "upstream": "Aguas arriba",
     "downstream": "Aguas abajo",
     "via": "mediante {{vias}}",
-    "metaQueries": "Consultas",
-    "metaQueriesHint": "Las lecturas que este panel ejecuta en el dominio meta, como usted. Copie una o ábrala en su explorador: la respuesta es la misma.",
-    "copy": "Copiar",
-    "copied": "Copiado",
-    "copyQuery": "Copiar la consulta {{surface}}",
-    "openQuery": "Abrir la consulta {{surface}} en su explorador",
     "unreadable": "Su rol no puede leer los productos de datos en el dominio meta.",
     "detailExpand": "Mostrar la entrada completa",
     "detailCollapse": "Mostrar menos"

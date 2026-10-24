@@ -249,7 +249,8 @@ def _make_junction_joins(  # REQ-1586
             for node_col, via_col in zip(src_node_cols, src_keys, strict=True)
         ]
     )
-    if via.type_column is not None:
+    # An untyped hop's junction (type_value and type_values both unset) reads every row of it.
+    if via.type_column is not None and (via.type_values or via.type_value is not None):
         discriminator = via_column(via_alias, via.type_column)
         src_cond = exp.And(
             this=src_cond,
@@ -277,7 +278,13 @@ def _make_junction_joins(  # REQ-1586
     )
     return [
         {"table": _via_table_expr(via, via_alias), "on": src_cond, "join_type": join_type},
-        {"table": _node_table_expr(tgt_nm, tgt_alias), "on": tgt_cond, "join_type": join_type},
+        {
+            "table": _node_table_expr(tgt_nm, tgt_alias),
+            "on": tgt_cond,
+            "join_type": join_type,
+            # The junction row it is the far end of: one relationship, two joins.
+            "junction_alias": via_alias,
+        },
     ]
 
 
@@ -491,7 +498,35 @@ def _fold_where_into_optional_joins(
     for cond in remaining_conjuncts:
         remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
 
-    return modified, remaining
+    return _one_join_per_junction_row(modified, set(alias_to_conjuncts)), remaining
+
+
+def _one_join_per_junction_row(joins: "list[dict]", constrained: "set[str]") -> "list[dict]":
+    """An optional junction-backed relationship constrained at its far end matches a junction
+    row only where its far node meets the condition: the junction's join holds the far join as an
+    EXISTS. As two plain LEFT JOINs, a junction row whose far node the condition refuses would
+    stay, beside a null node, where the pattern has no match."""
+    out: list[dict] = []
+    for join in joins:
+        via = join.get("junction_alias")
+        alias = _join_alias(join["table"])
+        if (
+            via is not None
+            and alias in constrained
+            and join["join_type"] == "LEFT"
+            and out
+            and _join_alias(out[-1]["table"]) == via
+            and out[-1]["join_type"] == "LEFT"
+        ):
+            far = exp.Exists(
+                this=exp.select(exp.Literal.number(1))
+                .from_(join["table"].copy())
+                .where(join["on"].copy())
+            )
+            junction = out[-1]
+            out[-1] = {**junction, "on": exp.And(this=junction["on"], expression=far)}
+        out.append(join)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -557,11 +592,16 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
 
     # exp.Left / exp.Right — SQLGlot parses left()/right() as these; emit as Anonymous
     # so the engine receives LEFT(str, n) rather than a SUBSTRING expansion.
-    if isinstance(node, exp.Left):
-        return exp.Anonymous(this="left", expressions=[node.this, node.expression])
-
-    if isinstance(node, exp.Right):
-        return exp.Anonymous(this="right", expressions=[node.this, node.expression])
+    # The transform does not descend into the node it is handed back, so its arguments are
+    # rewritten here (toLower(x) ENDS WITH y reads right(toLower(x), ...)).
+    if isinstance(node, (exp.Left, exp.Right)):
+        return exp.Anonymous(
+            this="left" if isinstance(node, exp.Left) else "right",
+            expressions=[
+                node.this.transform(_rewrite_cypher_fn_node),
+                node.expression.transform(_rewrite_cypher_fn_node),
+            ],
+        )
 
     # Handle built-in exp.Substring — adjust 0-indexed Cypher start to 1-indexed SQL
     if isinstance(node, exp.Substring):

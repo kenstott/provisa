@@ -235,3 +235,17 @@ def test_an_aggregate_per_group(endpoint, placed_by):
         endpoint, "org_admin", f"SELECT (COUNT(*) AS ?n) WHERE {{ ?o <{placed_by}> ?c }}"
     )
     assert int(total[0]["n"]) == sum(counts)
+
+
+def test_the_vocabulary_offers_the_roles_classes_predicates_and_edges(endpoint, placed_by):
+    """GET /data/sparql/vocabulary: what a client offers as a query is written (REQ-2135)."""
+    doc = httpx.get(
+        f"{endpoint}/data/sparql/vocabulary", headers={"X-Provisa-Role": "org_admin"}, timeout=60
+    ).json()
+    assert doc["base"] == BASE
+    classes = {c["iri"]: c for c in doc["classes"]}
+    assert classes[CUSTOMER]["kind"] == "table" and classes[ORDER]["kind"] == "table"
+    assert any(e["iri"] == placed_by for e in doc["edges"])
+    assert any(
+        p["iri"].startswith(f"{CUSTOMER}#") and p["kind"] == "column" for p in doc["predicates"]
+    )

@@ -8,19 +8,28 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2128: the Data Product detail panel's Knowledge Graph panel -- the product graph in place,
-// focused on the product, with the Ontology View's controls: presets, menus, Open as query and the
-// expand button that opens the same graph at 95%. three.js loads when the panel scrolls into view.
-// The Data Products page's own entry point opens it on the Product map.
+// REQ-2128: the Data Product detail panel's Knowledge Graph panel — the product, its member tables,
+// its commands and the terms bound to its columns, with no layer controls. three.js loads when the
+// panel scrolls into view; its expand button opens the full graph on the Knowledge graph preset,
+// focused on the product. The Data Products page's own entry point opens it on the Product map.
 
 import { useMemo, useState, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Loader, Modal } from "@mantine/core";
+import { Alert, Button, Group, Loader, Modal } from "@mantine/core";
 import { Network } from "lucide-react";
-import { FitModal } from "../../pages/tables/profile3d/Expandable3D";
+import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3D";
 import { GraphExplorer } from "./GraphExplorer";
 import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
-import { PRODUCT_SCOPE, type GraphData, type GraphScope, type PresetId } from "./graphModel";
+import { GraphStage, type StageState } from "./GraphStage";
+import {
+  PRODUCT_SCOPE,
+  layoutGraph,
+  panelGraph,
+  type GraphData,
+  type GraphScope,
+  type PresetId,
+} from "./graphModel";
+import type { GraphHover } from "./graphScene";
 import { useInView } from "./useInView";
 import { productNode } from "./productGraphData";
 import { useProductGraph } from "./useProductGraph";
@@ -78,6 +87,42 @@ export function GraphModal({
   );
 }
 
+function PanelStage({
+  graph,
+  product,
+  productName,
+}: {
+  graph: GraphData;
+  product: string;
+  productName: string;
+}) {
+  const at = useMemo(() => layoutGraph(graph, "force", []), [graph]);
+  const [picked, setSelected] = useState<string | null>(product);
+  const [hover, setHover] = useState<GraphHover | null>(null);
+  // The card is a glance: it turns and draws no grid, whatever a viewer's saved graph defaults
+  // say; a drag stops the turning, as it does anywhere. Its settings live in its expanded view.
+  const [rotate, setRotate] = useState(true);
+  const grid = false;
+  const s: StageState = {
+    graph,
+    at,
+    frame: 0,
+    frontal: false,
+    selected: picked,
+    setSelected,
+    hover,
+    setHover,
+    rotate,
+    setRotate,
+    grid,
+  };
+  return (
+    <>
+      <GraphStage s={s} command={null} exportName={productName} testId="kg-panel-stage" bare />
+    </>
+  );
+}
+
 /** The product's member tables: lane 0 of the Lineage preset. */
 function membersOf(data: GraphData, product: string): string[] {
   return data.edges.filter((e) => e.kind === "member" && e.a === product).map((e) => e.b);
@@ -100,55 +145,49 @@ const EMPTY: GraphData = { nodes: [], edges: [] };
 export function KnowledgeGraphPanel({
   productId,
   productName,
+  graph: core,
 }: {
   productId: string;
   productName: string;
+  /** The product's graph as the panel read it from the meta domain (productCore.coreGraph): the
+   *  card is drawn from it, with no read of its own. */
+  graph: GraphData;
 }) {
   const { t } = useTranslation();
   const { ref, seen } = useInView<HTMLDivElement>();
   const [open, setOpen] = useState(false);
-  // Read once the panel is first in view, as three.js is loaded.
-  const { data, error, scoped, onScope } = useProductGraph(productId, seen);
+  // The expanded explorer reads its own query (its filters and presets need the whole model),
+  // once it is opened.
+  const { data, error, scoped, onScope } = useProductGraph(productId, open);
   const product = productNode(productId);
-  const zero = useMemo(() => (data ? membersOf(data, product) : []), [data, product]);
-  // In place and expanded, one graph with one set of remembered settings, as the Ontology View is:
-  // the same controls, menus and Open as query, focused on the product.
-  const settingsKey: GraphKey = { kind: "product-graph", subject: productId };
-  const query = data
-    ? { all: data, onScope, text: scoped?.query ?? null, own: product }
-    : undefined;
+  const graph = useMemo(() => panelGraph(core, product), [core, product]);
   return (
     <div className="g3d-panel" ref={ref} data-testid="kg-panel">
-      {seen &&
-        (data ? (
-          <GraphExplorer
-            data={scoped?.data ?? EMPTY}
-            query={query}
-            scope={PRODUCT_SCOPE}
-            preset="knowledge"
-            focus={product}
-            zero={zero}
-            settingsKey={settingsKey}
-            exportName={productName}
-            onExpand={() => setOpen(true)}
-            testId="kg-panel"
-          />
-        ) : (
+      {/* Its card names it; the expand button opens the full graph. */}
+      <Group justify="flex-end" gap="xs">
+        <ExpandButton onClick={() => setOpen(true)} testId="kg-panel-expand" />
+      </Group>
+      <div className="p3d g3d-panel-view">
+        {seen && <PanelStage graph={graph} product={product} productName={productName} />}
+      </div>
+      {open && !data && (
+        <Modal opened onClose={() => setOpen(false)} title={productName} size="sm">
           <Loading error={error} testId="kg-panel" />
-        ))}
+        </Modal>
+      )}
       {data && (
         <GraphModal
           opened={open}
           onClose={() => setOpen(false)}
           title={t("graph3d.expandTitle", { product: productName })}
           data={scoped?.data ?? EMPTY}
-          query={query}
+          query={{ all: data, onScope, text: scoped?.query ?? null, own: product }}
           scope={PRODUCT_SCOPE}
           preset="knowledge"
           exportName={productName}
           focus={product}
-          zero={zero}
-          settingsKey={settingsKey}
+          zero={membersOf(data, product)}
+          settingsKey={{ kind: "product-graph", subject: productId }}
         />
       )}
     </div>

@@ -2498,6 +2498,17 @@ export async function submitNlQuery(
   return res.json();
 }
 
+/** Whether `role` may run non-strict NL: only a role that may bypass the relationship guard, by the
+ * server's one bypass rule (REQ-603). The NL page holds its Strict switch on for any other. */
+export async function fetchNlMode(role: string): Promise<{ non_strict: boolean }> {
+  const res = await fetch(`${API_BASE}/query/nl/mode`, { headers: { "X-Provisa-Role": role } });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(serverMessage(data, data.error || requestFailed("NL mode", res.status)));
+  }
+  return res.json();
+}
+
 export interface NlBranchEvent {
   target: "sql" | "graphql" | "cypher";
   query: string | null;

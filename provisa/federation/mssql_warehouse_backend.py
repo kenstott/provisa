@@ -34,6 +34,14 @@ class _MssqlWarehouseBackend(NativeEngineBackend):
     _database_env = ""
     _engine_name = ""
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: the driver's own (``mssql_warehouse_runtime.driver_errors``)."""
+        from provisa.federation.mssql_warehouse_runtime import driver_errors
+
+        return driver_errors()
+
     @property
     def dialect(self) -> str:
         return "tsql"

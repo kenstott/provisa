@@ -436,7 +436,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `compiler/cursor.py` | Курсорная пагинация в стиле Relay — аргументы `first`/`after`/`last`/`before` и генерация `pageInfo` для всех запросов списков |
 | `compiler/aggregate_gen.py` | Автоматически сгенерированные типы запросов `{table}_aggregate` с подполями `count`, `sum`, `avg`, `min`, `max` и доступом к отфильтрованным `nodes` |
 | `compiler/enum_detect.py` | Автоматическое обнаружение enum-типов — нативные enum-типы PostgreSQL (`pg_enum`), раскрываемые как GraphQL enum-типы, а не строковые скаляры |
-| `compiler/hints.py` | Подсказки производительности федерации — директивы маршрутизации на уровне запроса, встроенные как SQL-комментарии (`/* @provisa route=federated */`), переопределяющие автоматическую маршрутизацию |
+| `compiler/hints.py` | Подсказки производительности федерации — директивы маршрутизации на уровне запроса, встроенные как SQL-комментарии (`-- @provisa route=federated`), переопределяющие автоматическую маршрутизацию |
 | `compiler/mutation_gen.py` | Компилятор мутаций; пресеты колонок — статические значения или значения из переменных сессии на стороне сервера, применяемые при insert/update, не раскрываемые во входном типе мутации |
 | `auth/approval_hook.py` | Хук утверждения ABAC — подключаемая внешняя авторизация, вызываемая перед выполнением запроса; транспорты webhook, gRPC и unix_socket; область действия для таблицы/источника/глобальная; настраиваемая политика отката |
 | `subscriptions/` | Состояние и доставка подписок SSE |
@@ -623,7 +623,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

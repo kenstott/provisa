@@ -436,7 +436,7 @@ O laço de atualização roda a cada 30 segundos, verifica `get_due_for_refresh(
 | `compiler/cursor.py` | Paginação por cursor estilo Relay — argumentos `first`/`after`/`last`/`before` e geração de `pageInfo` em todas as consultas de lista |
 | `compiler/aggregate_gen.py` | Tipos de consulta `{table}_aggregate` auto-gerados com subcampos `count`, `sum`, `avg`, `min`, `max` e acesso a `nodes` filtrado |
 | `compiler/enum_detect.py` | Auto-detecção de tipo enum — tipos enum nativos do PostgreSQL (`pg_enum`) expostos como tipos enum GraphQL em vez de scalars de string |
-| `compiler/hints.py` | Hints de desempenho de federação — diretivas de roteamento em nível de consulta embutidas como comentários SQL (`/* @provisa route=federated */`) que sobrepõem o roteamento automático |
+| `compiler/hints.py` | Hints de desempenho de federação — diretivas de roteamento em nível de consulta embutidas como comentários SQL (`-- @provisa route=federated`) que sobrepõem o roteamento automático |
 | `compiler/mutation_gen.py` | Compilador de mutação; presets de coluna — valores estáticos do lado do servidor ou de variável de sessão aplicados em insert/update, não expostos no tipo de entrada da mutação |
 | `auth/approval_hook.py` | Hook de aprovação ABAC — autorização externa plugável chamada antes da execução da consulta; transportes webhook, gRPC, e unix_socket; escopo por tabela/fonte/global; política de fallback configurável |
 | `subscriptions/` | Estado e entrega de subscription SSE |
@@ -623,7 +623,7 @@ O `compiler/enum_detect.py` examina os tipos enum nativos do PostgreSQL (`pg_enu
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

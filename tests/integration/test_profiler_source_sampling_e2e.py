@@ -294,9 +294,12 @@ def booted():
         pg.stop()
 
 
-def _dependence_reads(run: dict) -> int:
-    """The rows the run's dependence statements read, every attempt of each."""
-    return sum(a["rows"] for a in json.loads(run["dependence_attempts"] or "[]"))
+def _further_reads(run: dict) -> int:
+    """The rows the run's further statements read: every attempt of each dependence statement,
+    and the classification statement's read of the sample (REQ-2147)."""
+    attempts = json.loads(run["dependence_attempts"] or "[]")
+    attempts += json.loads(run["classification_attempts"] or "[]")
+    return sum(a["rows"] for a in attempts)
 
 
 def _profile(booted, table: str) -> tuple[dict, int, int]:
@@ -321,9 +324,9 @@ def test_a_directly_read_table_is_block_sampled_by_its_source(booted):
     ), run
     assert run["target_fraction"] == pytest.approx(_TARGET)
     # The source read the sampled blocks' rows only -- a twentieth of the table, not all of it --
-    # for the profile statement and for each dependence statement, each its own draw of the same
-    # method and size (REQ-1934 maintainer ruling).
-    assert seq == run["profiled_rows"] + _dependence_reads(run), (seq, run)
+    # for the profile statement and for each further statement (dependence, classification), each
+    # its own draw of the same method and size (REQ-1934 maintainer ruling).
+    assert seq == run["profiled_rows"] + _further_reads(run), (seq, run)
     assert idx == 0
     assert seq < _ROWS / 4
     # Pages of ~13 rows each, ~380 of them sampled: the realised share is near the target.
@@ -341,8 +344,8 @@ def test_a_table_federated_through_postgres_fdw_is_sampled_by_key_ranges(booted)
     # No sequential read: every row the source read came through the primary key's index, and
     # only the rows in the ranges (the key extremes come from the index too).
     assert seq == 0, seq
-    # The same ranges for the profile statement and each dependence statement.
-    read = run["profiled_rows"] + _dependence_reads(run)
+    # The same ranges for the profile statement and each further statement.
+    read = run["profiled_rows"] + _further_reads(run)
     assert read <= idx <= read + 2, (idx, run)
     assert idx < _ROWS / 4
     # Keys 1..100000 are dense: the ranges hold the target share of the rows.

@@ -80,8 +80,11 @@
   height: 9px;
   vertical-align: middle;
 }
-.g3d-shape-diamond {
-  transform: rotate(45deg) scale(0.8);
+/* A solid seen as a polygon (an icosahedron a hexagon, a cone a triangle, ...) is clipped to its
+   outline (glyph.ts), slightly larger so its area reads as a square's. */
+.g3d-shape[data-glyph] {
+  width: 11px;
+  height: 11px;
 }
 .g3d-shape-sphere {
   border-radius: 50%;

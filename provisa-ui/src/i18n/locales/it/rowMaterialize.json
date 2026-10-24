@@ -1,0 +1,6 @@
+{
+  "rowMaterialize": {
+    "label": "Replica riga per riga",
+    "help": "Conserva solo le righe richieste dalle istruzioni: ciascuna viene recuperata dall'origine tramite la sua chiave primaria e conservata per il Cache TTL, invece di una copia dell'intera tabella. Richiede una colonna di chiave primaria e un'origine che recuperi le righe per chiave."
+  }
+}

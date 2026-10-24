@@ -436,7 +436,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 | `compiler/cursor.py` | Relay 风格的游标分页——所有列表查询上的 `first`/`after`/`last`/`before` 参数与 `pageInfo` 生成 |
 | `compiler/aggregate_gen.py` | 自动生成 `{table}_aggregate` 查询类型，含 `count`、`sum`、`avg`、`min`、`max` 子字段与经过滤的 `nodes` 访问 |
 | `compiler/enum_detect.py` | 枚举类型自动检测——PostgreSQL 原生枚举类型 (`pg_enum`) 暴露为 GraphQL 枚举类型，而非字符串标量 |
-| `compiler/hints.py` | 联邦性能提示——以 SQL 注释形式嵌入的查询级路由指令（`/* @provisa route=federated */`），可覆盖自动路由 |
+| `compiler/hints.py` | 联邦性能提示——以 SQL 注释形式嵌入的查询级路由指令（`-- @provisa route=federated`），可覆盖自动路由 |
 | `compiler/mutation_gen.py` | 变更编译器；列预设——在插入/更新时应用的服务端静态值或会话变量值，不会暴露在变更输入类型中 |
 | `auth/approval_hook.py` | ABAC 审批钩子——在查询执行前调用的可插拔外部授权；支持 webhook、gRPC 与 unix_socket 传输；按表/数据源/全局作用域；可配置的回退策略 |
 | `subscriptions/` | SSE 订阅状态与投递 |
@@ -623,7 +623,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 

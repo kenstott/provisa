@@ -94,7 +94,7 @@ export interface SourceRunOutcome {
 async function call<T>(
   op: string,
   path: string,
-  method: "GET" | "POST" | "DELETE" = "GET",
+  method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
   headers: Record<string, string> = {},
   body?: unknown,
 ): Promise<T> {
@@ -283,4 +283,91 @@ export const createExpectationCheck = (
     "POST",
     {},
     { expectationsTableId, checkerTableId },
+  );
+
+// -- REQ-2147: classification suggestions and the classification kinds ----------------------------
+
+export interface ClassificationDecision {
+  table_id: number;
+  physical_column: string;
+  kind: string;
+  status: "accepted" | "rejected";
+  evidence: string;
+  run_id: string;
+  decided_by: string | null;
+  decided_at: string;
+}
+
+export interface ClassificationDecisionInput {
+  column: string;
+  kind: string;
+  status: "accepted" | "rejected";
+  evidence: string;
+  runId: string;
+  confirmTagLoss?: string[];
+  carryTags?: boolean;
+}
+
+export interface ClassificationAccepted {
+  status: "accepted" | "rejected";
+  term?: string | null;
+  termNote?: string | null;
+  pii?: boolean;
+  maskPreset?: string | null;
+}
+
+export interface ClassificationKind {
+  id: string;
+  label: string;
+  sensitive: boolean;
+  test: string;
+  families: string[];
+  threshold: number;
+  term: string;
+  maskPreset: string | null;
+  enabled: boolean;
+}
+
+const classificationsPath = (tableId: number) => `/admin/tables/${tableId}/profile-classifications`;
+
+export const fetchClassifications = (tableId: number) =>
+  call<{ decisions: ClassificationDecision[] }>(
+    "fetchClassifications",
+    classificationsPath(tableId),
+  );
+
+export const decideClassification = (tableId: number, input: ClassificationDecisionInput) =>
+  call<ClassificationAccepted>(
+    "decideClassification",
+    classificationsPath(tableId),
+    "POST",
+    {},
+    input,
+  );
+
+export const forgetClassification = (tableId: number, physicalColumn: string, kind: string) =>
+  call<{ ok: boolean }>(
+    "forgetClassification",
+    classificationsPath(tableId),
+    "DELETE",
+    {},
+    {
+      physicalColumn,
+      kind,
+    },
+  );
+
+export const fetchClassificationKinds = () =>
+  call<{ kinds: ClassificationKind[]; canEdit: boolean }>(
+    "fetchClassificationKinds",
+    "/admin/classification-kinds",
+  );
+
+export const setEnabledClassificationKinds = (enabled: string[]) =>
+  call<{ kinds: ClassificationKind[]; canEdit: boolean }>(
+    "setEnabledClassificationKinds",
+    "/admin/classification-kinds",
+    "PUT",
+    {},
+    { enabled },
   );

@@ -22,6 +22,11 @@ const { cy, cytoscape } = vi.hoisted(() => {
     on: vi.fn(),
     forEach: vi.fn(),
     length: 0,
+    // An Overview pill's highlight is applied on mount (canvas/highlight.ts).
+    removeClass: () => collection,
+    addClass: () => collection,
+    filter: () => collection,
+    map: () => [],
   });
   const cy = {
     on: vi.fn(),

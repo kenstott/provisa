@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "{{table}} の分類",
+    "suggested": "最新の実行による提案",
+    "none": "最新の実行は分類を提案していません。",
+    "column": "列",
+    "kindHeader": "推定される種類",
+    "evidence": "根拠",
+    "sensitive": "機微",
+    "suggestion": "{{table}}.{{column}} は{{kind}}のようです: サンプル値の {{share}} が検査に合格しています。",
+    "accept": "承認",
+    "reject": "却下",
+    "status_suggested": "提案中",
+    "status_accepted": "承認済み",
+    "status_rejected": "却下済み",
+    "decided": "決定",
+    "noneDecided": "承認または却下された提案はまだありません。",
+    "withdraw": "取り消す",
+    "linked": "この列は今後 {{term}} を意味します。",
+    "keyColumn": "この列はクラス用語を保持します: キー列の意味はそのクラス用語です。",
+    "markedPii": "PII としてマークされました。",
+    "maskOffered": "提案するマスク: {{mask}}。列のマスクに追加してください。"
+  }
+}

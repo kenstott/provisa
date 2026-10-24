@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "{{table}} के वर्गीकरण",
+    "suggested": "पिछले रन द्वारा सुझाए गए",
+    "none": "पिछला रन कोई वर्गीकरण नहीं सुझाता।",
+    "column": "कॉलम",
+    "kindHeader": "जैसा दिखता है",
+    "evidence": "प्रमाण",
+    "sensitive": "संवेदनशील",
+    "suggestion": "{{table}}.{{column}} {{kind}} जैसा दिखता है: नमूने के {{share}} मान इसकी जाँच पास करते हैं।",
+    "accept": "स्वीकारें",
+    "reject": "अस्वीकारें",
+    "status_suggested": "सुझाया गया",
+    "status_accepted": "स्वीकृत",
+    "status_rejected": "अस्वीकृत",
+    "decided": "निर्णय",
+    "noneDecided": "अभी तक कोई सुझाव स्वीकारा या अस्वीकारा नहीं गया है।",
+    "withdraw": "वापस लें",
+    "linked": "कॉलम का अर्थ अब {{term}} है।",
+    "keyColumn": "कॉलम अपना क्लास पद रखता है: कुंजी कॉलम का अर्थ उसका क्लास पद है।",
+    "markedPii": "इसे PII के रूप में चिह्नित किया गया है।",
+    "maskOffered": "सुझाया गया मास्क: {{mask}}। इसे कॉलम के मास्क में जोड़ें।"
+  }
+}

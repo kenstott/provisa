@@ -13,6 +13,7 @@
     "runNow": "Run Profile Now",
     "viewRuns": "View Profile Runs",
     "runDone": "Profiled {{rows}} rows.",
-    "constraints": "Constraints"
+    "constraints": "Constraints",
+    "classifications": "Classifications"
   }
 }
