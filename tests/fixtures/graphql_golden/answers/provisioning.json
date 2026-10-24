@@ -1,0 +1,40 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:provisioning/1-dataset-by-category.graphql",
+  "reads": [
+   "feeds",
+   "warehouse"
+  ],
+  "root_field": "p__viewOrderMarginsGroupBy"
+ },
+ {
+  "columns": [
+   "consumer",
+   "count_star()",
+   "avg(\"rows\")",
+   "avg(\"seconds\")",
+   "avg(rows_per_sec)"
+  ],
+  "engine": "duckdb",
+  "ordered": false,
+  "origin": "demo:provisioning/2-pulls-by-team.graphql",
+  "root_field": "p__pullsGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "consumer",
+   "count",
+   "avg",
+   "avg",
+   "avg"
+  ],
+  "engine": "postgres",
+  "ordered": false,
+  "origin": "demo:provisioning/2-pulls-by-team.graphql",
+  "root_field": "p__pullsGroupBy",
+  "rows": []
+ }
+]

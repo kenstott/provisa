@@ -20,8 +20,11 @@ from dataclasses import dataclass
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.sql_to_cypher_agg import UntranslatableSubquery
-from provisa.cypher.sql_to_cypher_helpers import _resolve_label, _sql_to_cypher_expr
+from provisa.cypher.sql_to_cypher_helpers import (
+    UntranslatableSubquery,
+    _resolve_label,
+    _sql_to_cypher_expr,
+)
 from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 
 

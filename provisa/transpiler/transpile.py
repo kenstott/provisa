@@ -246,9 +246,67 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _rewrite_list_functions_for_duckdb(
-        _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+    return _null_order_as_key(
+        _rewrite_list_functions_for_duckdb(
+            _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+        )
     )
+
+
+#: The targets whose LIKE has no escape character unless one is written (PostgreSQL's is a
+#: backslash): each LIKE is given PostgreSQL's explicitly (_like_escape_written).
+_LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
+
+
+def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each LIKE and ILIKE that has no ESCAPE clause given PostgreSQL's: a
+    backslash escapes the character after it. On a target whose LIKE has no escape character
+    unless one is written, ``'a%b' LIKE 'a\\%b'`` was false there and true in the dialect the
+    statement is in."""
+    if target_dialect not in _LIKE_ESCAPE_WRITTEN or "LIKE" not in pg_sql.upper():
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+
+    def _escaped(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(node, (exp.Like, exp.ILike)) and not isinstance(node.parent, exp.Escape):
+            return exp.Escape(this=node.copy(), expression=exp.Literal.string("\\"))
+        return node
+
+    return tree.transform(_escaped).sql(dialect="postgres")
+
+
+def _null_order_as_key(sql: str) -> str:
+    """#294: a statement's ORDER BY with its nulls' place written as a sort key of its own --
+    ``x DESC NULLS FIRST`` as ``(x IS NULL) DESC, x DESC`` -- never as NULLS FIRST/LAST. DuckDB's
+    postgres scanner answers an attached table's ORDER BY ... NULLS FIRST LIMIT n with rows missing
+    (1.5.5); the two orderings are the same, so every DuckDB statement is written this way. Only a
+    SELECT's own ORDER BY: a window's or an aggregate's is no scan's (and a RANGE frame orders by
+    one key), and a UNION's orders the union's rows, which no one scan answers (DuckDB takes no
+    expression key there)."""
+    tree = sqlglot.parse_one(sql, read="duckdb")
+    for order in tree.find_all(exp.Order):
+        select = order.parent
+        if not isinstance(select, exp.Select):
+            continue
+        keys: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for ordered in order.expressions:
+            if not isinstance(ordered, exp.Ordered) or ordered.args.get("nulls_first") is None:
+                keys.append(ordered)
+                continue
+            nulls_first = bool(ordered.args["nulls_first"])
+            desc = bool(ordered.args.get("desc"))
+            key = ordered.this
+            if isinstance(key, exp.Literal) and key.is_int:
+                # ORDER BY 2: its null test is of the second item the SELECT returns.
+                item = select.expressions[int(key.name) - 1]
+                key = exp.column(item.alias, quoted=True) if item.alias else item.unalias()
+            is_null = exp.Paren(this=exp.Is(this=key.copy(), expression=exp.Null()))
+            # A boolean key is never null, and DuckDB puts nulls last by default in either
+            # direction: neither key needs a NULLS clause.
+            keys.append(exp.Ordered(this=is_null, desc=nulls_first, nulls_first=False))
+            keys.append(exp.Ordered(this=ordered.this.copy(), desc=desc, nulls_first=False))
+        order.set("expressions", keys)
+    return tree.sql(dialect="duckdb")
 
 
 #: A Cypher read's list functions as the IR names them (gql/expr_visitor, Trino's names) whose
@@ -412,6 +470,7 @@ def transpile(
     # the seam agree on always-quoted.
     identify = target_dialect in ("snowflake", "oracle")
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
+    pg_sql = _like_escape_written(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "exasol":
         result = _exasol_stored_case(
