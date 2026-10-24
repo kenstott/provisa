@@ -212,6 +212,10 @@ class _Plan:
     # REQ-2001 (GitHub issue 253): an INSERT ... SELECT written in two steps (_TwoStepInsert): its
     # governed SELECT read as any read, then its rows written through the target's write route.
     two_step: Any = field(default=None)
+    # REQ-2100: a write to a code table (codesource.writes.CodeWrite), with the plan of the read it
+    # needs (an UPDATE's or a DELETE's keys, an INSERT ... SELECT's rows), carried out by the
+    # table's bound command at the terminal.
+    code_write: Any = field(default=None)
     # REQ-1986: the scratch tables landed for this statement alone -- a TTL-0 table's rows too
     # many to inline -- each (CacheLocation, table name), dropped when it ends.
     scratch: tuple = field(default=())
@@ -1978,6 +1982,55 @@ async def _two_step_plan(
     )
 
 
+async def _code_write_plan(
+    governed: "_Governed",
+    table_id: int,
+    *,
+    tree: Any,
+    params: list | None,
+    audit: Any,
+    state: Any,
+    read: Callable[[str], Coroutine[Any, Any, "_Plan"]],
+) -> "_Plan":
+    """REQ-2100: the plan of a governed write ``tree`` to the code table ``table_id``: its command
+    bound, the read it needs planned by ``read`` -- an ordinary read routed by the usual gates,
+    through the same pipeline as the write."""
+    from provisa.codesource import writes
+    from provisa.transpiler.router import Route
+
+    write = await writes.plan(state, table_id, tree, params)
+    read_plan = None
+    if write.read_sql is not None:
+        read_plan = await read(write.read_sql)
+        read_plan.audit = None  # the statement's one record is the write's
+    return _Plan(
+        route=Route.DIRECT,
+        sql=governed.governed_semantic,
+        source_id=write.table["source_id"],
+        dialect="postgres",
+        exec_params=params,
+        audit=audit,
+        stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+        route_reason="a write to a code table, carried out by its source's bound command",
+        role_id=governed.role_id,
+        table_ids=governed.table_ids,
+        sources=frozenset({write.table["source_id"], *(read_plan.sources if read_plan else ())}),
+        writes_tables=True,
+        written_table_id=table_id,
+        code_write=(write, read_plan),
+    )
+
+
+async def _run_code_write(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2100
+    """Read what the write needs, then call the table's command with it: the affected count."""
+    from provisa.codesource import writes
+
+    write, read = plan.code_write
+    rows = (await _execute_plan_bound(read, state)).materialize().rows if read else None
+    count = await writes.run(state, write, rows)
+    return QueryResult(rows=[], column_names=[], rowcount=count)
+
+
 async def _run_two_step(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2001
     """Read the statement's rows, then write them through the target's write route, a batch of
     rows an INSERT ... VALUES under the statement's own target, columns and ON CONFLICT."""
@@ -2131,6 +2184,33 @@ async def route_governed(
             return await _two_step_plan(
                 governed, _two, params=params, as_of=as_of, audit=_audit, state=state
             )
+    from provisa.codesource.writes import is_code_table
+
+    if _is_mutation and is_code_table(state, _written_table_id):
+        assert _written_table_id is not None
+        import dataclasses
+
+        import sqlglot
+
+        async def _read_governed(read_sql: str) -> _Plan:
+            # The key read: the governed write's own FROM and WHERE, read as any read is.
+            read_governed = dataclasses.replace(
+                governed,
+                governed_semantic=read_sql,
+                parsed=sqlglot.parse_one(read_sql, read="postgres"),
+                memo={},
+            )
+            return await route_governed(read_governed, params=params, as_of=as_of)
+
+        return await _code_write_plan(
+            governed,
+            _written_table_id,
+            tree=sqlglot.parse_one(governed.governed_semantic, read="postgres"),
+            params=params,
+            audit=_audit,
+            state=state,
+            read=_read_governed,
+        )
     # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
@@ -3323,6 +3403,8 @@ def streams_from_terminal(plan: _Plan) -> bool:  # REQ-2002
     read, in :func:`_execute_plan`, which such a plan is run through."""
     if plan.two_step is not None:
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
+    if plan.code_write is not None:
+        return False  # REQ-2100: its command is called by the pipeline terminal
     if plan.scratch:
         return False  # REQ-1986: its scratch tables are dropped when the terminal is done
     if plan.columns is not None:
@@ -3988,6 +4070,8 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         return await keep(plan.kept, state)
     if plan.two_step is not None:
         return await _run_two_step(plan, state)  # REQ-2001
+    if plan.code_write is not None:
+        return await _run_code_write(plan, state)  # REQ-2100
     engine = state.federation_engine
 
     if plan.materialize is not None:
@@ -4999,6 +5083,37 @@ async def _route_compiled(
         _compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
     )
     _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
+    from provisa.codesource.writes import is_code_table
+
+    if _is_write and is_code_table(state, _written_table_id):
+        # REQ-2100: a GraphQL mutation on a code table, carried out by its bound command; its key
+        # read governed and routed as any compiled read is.
+        assert _written_table_id is not None
+        from types import SimpleNamespace
+
+        from provisa.compiler.directives import NO_CACHE_HINT
+
+        async def _read_compiled(read_sql: str) -> _Plan:
+            return await _govern_and_route_compiled(
+                read_sql,
+                role_id,
+                exec_params=exec_params,
+                state=state,
+                cache_hint=NO_CACHE_HINT,
+                sdl_joins=True,
+            )
+
+        return await _code_write_plan(
+            SimpleNamespace(  # type: ignore[arg-type]
+                governed_semantic=governed_sql, role_id=role_id, table_ids=table_ids
+            ),
+            _written_table_id,
+            tree=_compiled_tree,
+            params=exec_params,
+            audit=audit,
+            state=state,
+            read=_read_compiled,
+        )
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached

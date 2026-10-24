@@ -170,6 +170,10 @@ class Export:
     #: REQ-2100: what a @table or @stream function takes, in order: its ``inputs`` (an object
     #: whose fields are its parameters), its read ``context``, either left out.
     takes: tuple[str, ...] = ()
+    #: REQ-2100: a command's ``@insert``/``@update``/``@delete <table>`` tag lines, ``(operation,
+    #: table)``: which of two commands that fit a code table's operation it is
+    #: (provisa/codesource/mutations.py).
+    binds: tuple[tuple[str, str], ...] = ()
 
 
 #: REQ-2100: the tag a table declares it takes a join's keys with (``@loader``, ``@loader N``).
@@ -178,6 +182,8 @@ LOADER = "loader"
 INPUTS, CONTEXT = "inputs", "context"
 #: The read context's type, as Provisa's services give it (provisa_services, @provisa/services).
 READ_CONTEXT = "ReadContext"
+#: REQ-2100: the tags that bind a command to a code table's operation, each naming the table.
+WRITE_TAGS = ("insert", "update", "delete")
 
 
 @dataclass(frozen=True)
@@ -269,6 +275,7 @@ def manifest_json(manifest: Manifest) -> dict:
                 "loader": e.loader,
                 "loader_batch": e.loader_batch,
                 "takes": list(e.takes),
+                "binds": [list(b) for b in e.binds],
             }
             for e in manifest.exports
         ],
@@ -302,6 +309,7 @@ def manifest_from_json(raw: dict) -> Manifest:
                 e["loader"],
                 e["loader_batch"],
                 tuple(e["takes"]),
+                tuple((op, table) for op, table in e["binds"]),
             )
         )
     types = {
@@ -551,11 +559,16 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     exports: list[Export] = []
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
+        binds = tuple(
+            (t["tag"], t["text"])
+            for t in entry.get("tag_arguments", [])
+            if t["tag"] in WRITE_TAGS and t["text"]
+        )
         for tag in tags:
             if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {LOADER}:
                 problems.append(f"{name}: unknown tag @{tag}")
         for argued in entry.get("tag_arguments", []):
-            known = PROVISA_TAGS | rules.standard_tags | {LOADER}
+            known = PROVISA_TAGS | rules.standard_tags | {LOADER, *WRITE_TAGS}
             if argued["text"] and argued["tag"] not in known:
                 problems.append(f"{name}: unknown tag @{argued['tag']}")
         kinds = sorted(PROVISA_TAGS.intersection(tags))
@@ -576,6 +589,10 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
         loading = LOADER in tags or any(
             t["tag"] == LOADER and t["text"] for t in entry.get("tag_arguments", [])
         )
+        if binds and kind != COMMAND:
+            problems.append(
+                f"{name}: @{binds[0][0]} binds a command to a table, and this is a @{kind}"
+            )
         if kind != TABLE and loading:
             # REQ-2100: a loader batches a table's keys; any other kind declaring one would have
             # it ignored, so it is refused by name.
@@ -647,7 +664,15 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 shape, _ = mapper.shape(result, f"{name} (result)")
                 many = False
             exports.append(
-                Export(name, kind, entry["description"], tuple(parameters), shape, many=many)
+                Export(
+                    name,
+                    kind,
+                    entry["description"],
+                    tuple(parameters),
+                    shape,
+                    many=many,
+                    binds=binds,
+                )
             )
     if problems:
         raise ManifestRefused(problems)
