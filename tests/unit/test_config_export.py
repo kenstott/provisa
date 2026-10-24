@@ -191,7 +191,9 @@ async def test_data_products_projected_from_live_state():  # REQ-1634
         "purpose": "Unified customer view",
         "support_contact": "data-team@example.com",
     }
-    cfg = await _run(base={"tables": []}, tables=[], data_products=[row])
+    # A stored row has every column; a draft with no successor writes none of the status fields.
+    stored = {**row, "status": "draft", "successor_id": None}
+    cfg = await _run(base={"tables": []}, tables=[], data_products=[stored])
     assert cfg["data_products"] == [row]
 
 
