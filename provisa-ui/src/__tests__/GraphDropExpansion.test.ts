@@ -163,3 +163,56 @@ describe("a drop keeps the result's own paging", () => {
     );
   });
 });
+
+describe("buildDropExpansion anchors on every variable the query binds", () => {
+  // The maintainer's case: a domain n with two data-product hops; RegisteredTables dropped on it.
+  const meta = (id: number, source: string, target: string, alias: string) =>
+    rel({ id, sourceTableName: source, targetTableName: target, alias });
+  const RELS = [
+    meta(1, "domains", "registered_tables", "IS_REGISTERED_TABLE"),
+    meta(2, "data_products", "registered_tables", "MEMBER_TABLES"),
+    meta(3, "registered_tables", "data_products", "PRODUCT"),
+  ];
+  const DROPPED = "Meta:RegisteredTables";
+  const L2T_META = { [DROPPED]: "RegisteredTables" };
+
+  it("expands from the domain as well as from each data product", () => {
+    const out = buildDropExpansion(
+      "MATCH (n:Meta:Domains)-[r1:HAS_PRODUCT]-(p1:Meta:DataProducts)-[r2:FEEDS]-(p2:Meta:DataProducts) RETURN n, r1, p1, r2, p2",
+      DROPPED,
+      RELS,
+      L2T_META,
+    );
+    const hops = [...out.query.matchAll(/OPTIONAL MATCH \((\w+)\)-\[\w+:(\w+)\]-\((\w+):/g)].map(
+      ([, anchor, type]) => `${anchor}:${type}`,
+    );
+    expect(hops).toEqual([
+      "n:IS_REGISTERED_TABLE",
+      "p1:MEMBER_TABLES",
+      "p2:MEMBER_TABLES",
+      "p1:PRODUCT",
+      "p2:PRODUCT",
+    ]);
+    // Each hop has its own target: none is shared across anchors (that would intersect them).
+    expect(new Set(out.targetVars).size).toBe(hops.length);
+    for (const v of out.targetVars) expect(out.query).toContain(`, ${v}`);
+  });
+
+  it("anchors on both variables a label is bound twice to", () => {
+    const out = buildDropExpansion(
+      "MATCH (a:Meta:Domains) MATCH (b:Meta:Domains) RETURN a, b",
+      DROPPED,
+      RELS,
+      L2T_META,
+    );
+    expect(out.query).toContain("OPTIONAL MATCH (a)-[");
+    expect(out.query).toContain("OPTIONAL MATCH (b)-[");
+    expect(out.targetVars).toHaveLength(2);
+  });
+
+  it("keeps the dropped label alone beside the first variable when no relationship reaches it", () => {
+    const out = buildDropExpansion("MATCH (a:Meta:Domains) RETURN a", DROPPED, [], L2T_META);
+    expect(out.query).toContain(`OPTIONAL MATCH (mRegisteredTa:${DROPPED})`);
+    expect(out.targetVars).toEqual(["mRegisteredTa"]);
+  });
+});
