@@ -143,7 +143,8 @@ def _server(pg: _SourceAndEngine, workdir: str, *, request_timeout: str = "600")
 def _read_one(srv) -> None:
     response = httpx.post(
         f"{srv.base_url}/data/graphql",
-        json={"query": "{ wide(limit: 1) { id } }"},
+        # Ordered: a limit with no order is any row, and the replica holds them in no order.
+        json={"query": "{ wide(order_by: {id: asc}, limit: 1) { id } }"},
         headers={"X-Provisa-Role": _ROLE},
         timeout=900,
     )
