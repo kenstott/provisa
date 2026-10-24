@@ -28,10 +28,12 @@ import sqlglot.expressions as exp
 
 from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 from provisa.cypher.sql_to_cypher_helpers import (
+    UntranslatableSubquery,
     _resolve_label,
     _rel_type_from_on,
     _src_alias_from_on,
     _sql_to_cypher_expr,
+    outside_strings,
     rel_pattern,
 )
 from provisa.cypher.sql_to_cypher_junction import (
@@ -44,7 +46,6 @@ from provisa.cypher.sql_to_cypher_junction import (
     junction_selections,
 )
 from provisa.cypher.sql_to_cypher_agg import (
-    UntranslatableSubquery,
     _process_array_agg_subqueries,
     _process_count_subqueries,
     _process_json_subqueries,
@@ -265,7 +266,11 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         raise refused or UntranslatableSubquery(f"junction {tbl.sql()} beside no row")
 
     def _remap(text: str) -> str:
-        """Replace verbose SQL aliases with short Cypher aliases and sql_col names with cypher prop names."""
+        """Replace verbose SQL aliases with short Cypher aliases and sql_col names with cypher prop
+        names, outside the text's string literals."""
+        return outside_strings(text, _remap_code)
+
+    def _remap_code(text: str) -> str:
         for sql_a in sorted(alias_map, key=len, reverse=True):
             text = re.sub(rf"\b{re.escape(sql_a)}\b", alias_map[sql_a], text)
         prop_lookup: dict[str, dict[str, str]] = {
@@ -447,7 +452,9 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
             return None
         where_sql = _remap(_sql_to_cypher_expr(condition.sql(dialect="postgres")))
         for key, pattern in patterns.items():
-            where_sql = re.sub(rf"\b{key}\b", lambda _m, p=pattern: p, where_sql)
+            where_sql = outside_strings(
+                where_sql, lambda t, k=key, p=pattern: re.sub(rf"\b{k}\b", lambda _m: p, t)
+            )
         cypher_lines.insert(1, f"WHERE {where_sql}")
 
     if fields:
@@ -669,8 +676,8 @@ def _bound_literal(node: exp.Expression, params: list) -> exp.Expression:  # pyr
         return exp.Boolean(this=value)
     if isinstance(value, (int, float)):
         return exp.Literal.number(value)
-    if isinstance(value, str) and "'" not in value and "\\" not in value:
-        # SQL and Cypher escape a quote differently; such a value is not written in.
+    if isinstance(value, str):
+        # Written as Cypher writes a string by _sql_to_cypher_expr, whatever its characters.
         return exp.Literal.string(value)
     raise UntranslatableSubquery(f"parameter value {value!r}")
 
@@ -1196,6 +1203,11 @@ def _build_return(
     def _prop(sql_tbl: str, sql_col: str) -> str:
         return apm.get(sql_tbl, {}).get(sql_col, sql_col)
 
+    def _aliased(text: str) -> str:
+        for sql_a in sorted(am, key=len, reverse=True):
+            text = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], text)
+        return text
+
     items: list[str] = []
     for expr in select_exprs:
         if isinstance(expr, exp.Star):
@@ -1231,13 +1243,11 @@ def _build_return(
                 else:
                     items.append(f"{val} AS {expr.alias}")
             else:
-                raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
-                for sql_a in sorted(am, key=len, reverse=True):
-                    raw = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], raw)
+                raw = outside_strings(
+                    _sql_to_cypher_expr(expr.this.sql(dialect="postgres")), _aliased
+                )
                 items.append(f"{raw} AS {expr.alias}")
         else:
-            raw = _sql_to_cypher_expr(expr.sql(dialect="postgres"))
-            for sql_a in sorted(am, key=len, reverse=True):
-                raw = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], raw)
+            raw = outside_strings(_sql_to_cypher_expr(expr.sql(dialect="postgres")), _aliased)
             items.append(raw)
     return items or ["*"]

@@ -1,0 +1,44 @@
+[
+ {
+  "columns": [
+   "business_date",
+   "branch",
+   "product",
+   "currency",
+   "posting_count",
+   "net_movement",
+   "postings__transactionId",
+   "postings__kind",
+   "postings__amount",
+   "postings__counterparty",
+   "postings__status",
+   "postings__updatedAt"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:banking/1-eod-dashboard.graphql",
+  "root_field": "b__viewEodTotals",
+  "rows": []
+ },
+ {
+  "columns": [
+   "business_date",
+   "branch",
+   "product",
+   "currency",
+   "posting_count",
+   "net_movement",
+   "postings__transactionId",
+   "postings__kind",
+   "postings__amount",
+   "postings__counterparty",
+   "postings__status",
+   "postings__updatedAt"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:banking/1-eod-dashboard.graphql",
+  "root_field": "b__viewEodTotals",
+  "rows": []
+ }
+]
