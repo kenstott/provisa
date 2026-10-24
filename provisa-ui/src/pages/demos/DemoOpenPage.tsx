@@ -14,7 +14,7 @@
 // the moment it is ready. Any other refusal (an unknown demo, every sandbox in use) is shown as the
 // server words it, with a way to try again where it passes with time.
 
-import { Alert, Button, Center, Loader, Stack, Text, Title } from "@mantine/core";
+import { Alert, Button, Center, Stack, Text, Title } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
@@ -24,6 +24,7 @@ import {
   SandboxRefused,
   type OpenedSandbox,
 } from "../../api/demoSandbox";
+import { AssemblingCube } from "../../components/AssemblingCube";
 import { orgOrigin } from "../../lib/authHost";
 import { sandboxDestination } from "../../lib/sandboxSession";
 
@@ -87,6 +88,8 @@ export function DemoOpenPage() {
     };
   }, [name, attempt]);
 
+  const waiting = phase === "starting" ? t("demoOpenPage.starting") : t("demoOpenPage.opening");
+
   const retry = () => {
     setRefusal(null);
     setPhase("opening");
@@ -99,9 +102,9 @@ export function DemoOpenPage() {
         <Title order={2}>{t("demoOpenPage.title")}</Title>
         {refusal === null ? (
           <>
-            <Loader data-testid="demo-open-loading" />
+            <AssemblingCube size={88} label={waiting} testId="demo-open-loading" />
             <Text c="dimmed" ta="center" data-testid={`demo-open-${phase}`}>
-              {phase === "starting" ? t("demoOpenPage.starting") : t("demoOpenPage.opening")}
+              {waiting}
             </Text>
           </>
         ) : (
