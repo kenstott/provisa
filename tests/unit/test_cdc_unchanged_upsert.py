@@ -202,3 +202,29 @@ async def test_a_batch_of_changes_the_table_already_held_tells_no_one():
         {"upsert": 0, "delete": 0, "unchanged": [0]}, [_ev("insert", "new")]
     )
     assert (rippled, told, triggered) == ([], [], [])
+
+
+def test_the_postgresql_engine_lands_into_a_schema_its_store_does_not_hold_yet(control_plane):
+    """A view's governed build lands its rows into the org's _mv_cache schema of the engine's own
+    store, which holds no such schema until something writes there: on a server whose engine has a
+    store of its own (not the control plane's database), 'schema ... does not exist' failed every
+    view build. The land creates the schema with the table, as the replica reconcile does."""
+    import psycopg2
+
+    from provisa.federation.pg_runtime import PgFederationRuntime
+
+    runtime = PgFederationRuntime.__new__(PgFederationRuntime)
+    con = psycopg2.connect(control_plane.pg.dsn(control_plane.name))
+    con.autocommit = True
+    try:
+        cur = con.cursor()
+        cur.execute('DROP SCHEMA IF EXISTS "org_fresh_mv_cache" CASCADE')
+        runtime._ensure_table(cur, "org_fresh_mv_cache", "mv_rollup", _COLUMNS, ["id"])
+        cur.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'org_fresh_mv_cache' AND table_name = 'mv_rollup'"
+        )
+        assert cur.fetchone() == (1,)
+        cur.execute('DROP SCHEMA "org_fresh_mv_cache" CASCADE')
+    finally:
+        con.close()

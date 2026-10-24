@@ -115,3 +115,22 @@ def test_a_view_reading_its_latest_row_answers_on_duckdb_as_on_postgresql(embedd
     }
     assert float(by_sector["postgres"]["Utilities"][3]) == 8.1
     assert by_sector["duckdb"]["Utilities"][3] == 8.1
+
+
+def test_an_output_name_a_source_column_shares_is_ordered_as_the_output():
+    """The reviews demo's 'customers': SUM(t.customers) AS customers, ordered by customers. Inside
+    an expression DuckDB reads a bare name as the source's column, not the output's, so the null
+    key tests the output's own expression -- ungrouped t.customers was a binder error."""
+    sql = (
+        "SELECT o.category, SUM(t.customers) AS customers FROM t JOIN o ON o.id = t.oid "
+        "GROUP BY o.category ORDER BY customers DESC"
+    )
+    written = transpile_to_duckdb(sql)
+    assert written.endswith("ORDER BY (SUM(t.customers) IS NULL) DESC, customers DESC"), written
+    duck = duckdb.connect()
+    duck.execute("CREATE TABLE t (oid int, customers int)")
+    duck.execute("CREATE TABLE o (id int, category text)")
+    duck.execute("INSERT INTO t VALUES (1, 5), (1, 2), (2, NULL), (3, 1)")
+    duck.execute("INSERT INTO o VALUES (1, 'power'), (2, 'cables'), (3, 'cases')")
+    # As PostgreSQL orders it: DESC puts the null total first.
+    assert duck.execute(written).fetchall() == [("cables", None), ("power", 7), ("cases", 1)]
