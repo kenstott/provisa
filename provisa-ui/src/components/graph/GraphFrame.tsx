@@ -853,7 +853,6 @@ export function GraphFrame({
                 onResizeStart={handleResizeStart}
                 relationships={relationships}
                 onSaveEdgeAlias={onSaveEdgeAlias}
-                pkMap={pkMap}
                 labelToTableId={labelToTableId}
               />
             )}
