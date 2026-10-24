@@ -323,6 +323,9 @@ def _lineage_aspects(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     DataHub keeps the two in one aspect: ``upstreams`` is what a lineage graph traverses, and
     ``fineGrainedLineages`` is the column detail. Publishing only the first would discard the
     column-level derivation that is the point of REQ-1070.
+
+    REQ-1389: a Provisa view's lineage, at both levels, is its SQL derivation -- a field Provisa
+    authors, like the view's description -- so the aspect is replaced, not read-merged.
     """
     table_by_fqn = {table.ref.fqn(): table for table in snapshot.tables}
     by_downstream: dict[str, list[Any]] = {}

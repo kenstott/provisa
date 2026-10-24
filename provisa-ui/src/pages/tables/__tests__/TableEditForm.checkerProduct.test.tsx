@@ -48,6 +48,7 @@ import { TableEditForm } from "../TableEditForm";
 import { buildTableUpdateInput } from "../helpers";
 import type { DataProduct, RegisteredTable, Source } from "../../../types/admin";
 import i18n from "../../../i18n";
+import { exportProviderName } from "../../../lib/exportProviders";
 
 const t = i18n.getFixedT("en");
 
@@ -173,7 +174,11 @@ describe("TableEditForm — checker table product membership (REQ-1443 clause 10
     renderForm(makeTable({ sourceId: "wh", dqContract: null, productId: null }), [PLAIN_SOURCE]);
     const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
     expect(control).not.toBeDisabled();
-    expect(screen.getByText(t("tableEditForm.dataProductDesc"))).toBeTruthy();
+    expect(
+      screen.getByText(
+        t("tableEditForm.dataProductDesc", { atlan: exportProviderName("atlan", "Atlan", t) }),
+      ),
+    ).toBeTruthy();
   });
 
   it("never sends a productId for a checker table", () => {

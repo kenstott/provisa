@@ -17,7 +17,7 @@ matches each one's ingestion API.
 | `openlineage` | Marquez, or any OpenLineage consumer | OpenLineage events posted to `/api/v1/lineage` |
 | `openmetadata` | OpenMetadata | Entity upsert by fully-qualified name, then lineage edges by the server-assigned UUID |
 | `atlas` | Apache Atlas, and Microsoft Purview | Atlas RDBMS entities posted to `/api/atlas/v2/entity/bulk` |
-| `atlan` | Atlan | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
+| `atlan` | Atlan (beta) | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
@@ -25,6 +25,15 @@ matches each one's ingestion API.
 | `unity_catalog` | Databricks Unity Catalog: a schema of views per data product, optionally a Delta Share | Engine-native: SQL on the Databricks engine's own warehouse connection |
 | `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
 | `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
+
+### Atlan (beta)
+
+The Atlan adapter has not yet run against a live Atlan tenant. It is built on Atlan's Atlas-shaped
+API as Atlan documents it, and its updates follow Atlas's rules: an update starts from the live
+asset's attributes, only Provisa's `provisa_*` tags are added or removed, and an asset whose live
+read fails is not written. Unit tests cover all of this; no end-to-end run against Atlan does yet.
+Until one does, the Admin tab and every page that names Atlan as a target show it as
+**Atlan (beta)**.
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products

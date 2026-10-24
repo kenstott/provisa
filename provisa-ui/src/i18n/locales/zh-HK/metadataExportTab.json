@@ -6,6 +6,7 @@
     "notEntitled": "中繼數據匯出需要 {{tier}} 方案。請升級以設定目錄目標。",
     "enabled": "將中繼數據發佈至外部目錄",
     "provider": "目標目錄",
+    "betaProvider": "{{name}}（測試版）",
     "endpoint": "端點 URL",
     "authMode": "驗證",
     "apiKey": "API 金鑰",

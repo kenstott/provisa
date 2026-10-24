@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "發布到你的機構所用的工具",
-        "description": "📤 <strong>發布到你的機構本來就在查看的地方。</strong>目錄項目(表、欄位、領域、數據管理員、已批准的關係)、數據產品和欄位層級血緣會發送出去,每個目標接收其所支援的內容:<strong>DataHub、OpenMetadata、Collibra、Atlan 和 Apache Atlas</strong> 作為目錄,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作為數據產品列表,血緣則透過 <strong>OpenLineage</strong> 發送。<p>發布只會向外單向進行:Provisa 絕不會把目標讀回來當作事實來源。</p>"
+        "description": "📤 <strong>發布到你的機構本來就在查看的地方。</strong>目錄項目(表、欄位、領域、數據管理員、已批准的關係)、數據產品和欄位層級血緣會發送出去,每個目標接收其所支援的內容:<strong>DataHub、OpenMetadata、Collibra、{{atlan}} 和 Apache Atlas</strong> 作為目錄,<strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong> 作為數據產品列表,血緣則透過 <strong>OpenLineage</strong> 發送。<p>發布只會向外單向進行:Provisa 絕不會把目標讀回來當作事實來源。</p>"
       },
       "stepRelsAgents": {
         "title": "關係與 AI 智能體",

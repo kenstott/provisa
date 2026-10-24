@@ -145,6 +145,8 @@ class AtlanExport(AtlasExport):  # REQ-1069
     """
 
     provider_name = "atlan"
+    # No live Atlan tenant has run its end-to-end test yet.
+    beta = True
 
     entity_bulk_path = "/api/meta/entity/bulk"
     typedefs_path = "/api/meta/types/typedefs"
