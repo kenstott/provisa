@@ -151,6 +151,29 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: dq_rules
+  columns:
+  - name: check_type
+    data_type: text
+  - name: checker
+    data_type: text
+  - name: column_name
+    data_type: text
+  - name: definition
+    data_type: text
+  - name: domain_id
+    data_type: text
+  - name: id
+    data_type: text
+  - name: position
+    data_type: bigint
+  - name: table_id
+    data_type: integer
+  - name: tenant_id
+    data_type: uuid
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: effective_column_tags
   columns:
   - name: base_tag_id
@@ -386,11 +409,15 @@ tables:
     data_type: text
   - name: cardinality
     data_type: text
+  - name: cypher_type
+    data_type: text
   - name: disable_cypher
     data_type: boolean
   - name: function_arg
     data_type: text
   - name: graphql_alias
+    data_type: text
+  - name: graphql_field
     data_type: text
   - name: hide_target_meta
     data_type: boolean
@@ -544,6 +571,16 @@ tables:
   - name: tags
     data_type: text
   - name: tenant_id
+    data_type: text
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: sources
+  columns:
+  - name: id
+    data_type: text
+    is_primary_key: true
+  - name: type
     data_type: text
 - source_id: provisa-admin
   domain_id: meta
@@ -1586,6 +1623,22 @@ relationships:
   needs_review: false
   source_table_id: registered_tables
   target_table_id: domains
+- id: meta:registered_tables:dq_rules
+  source_column: id
+  target_column: table_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: DQ_RULES
+  graphql_alias: dqRules
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: registered_tables
+  target_table_id: dq_rules
 - id: meta:registered_tables:glossary_term_refs
   source_column: id
   target_column: table_id
@@ -1680,6 +1733,22 @@ relationships:
   needs_review: false
   source_table_id: registered_tables
   target_table_id: rls_rules
+- id: meta:registered_tables:source
+  source_column: source_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  alias: SOURCE
+  graphql_alias: source
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: registered_tables
+  target_table_id: sources
 - id: meta:registered_tables:table_columns
   source_column: id
   target_column: table_id
@@ -1734,6 +1803,22 @@ relationships:
   refresh_interval: 300
   alias: TARGET_TABLE
   graphql_alias: targetTable
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: relationships
+  target_table_id: registered_tables
+- id: meta:relationships:via_table
+  source_column: via_table_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  alias: VIA_TABLE
+  graphql_alias: viaTable
   disable_cypher: false
   hide_target_meta: false
   same_entity: false

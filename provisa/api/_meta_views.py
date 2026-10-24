@@ -521,6 +521,21 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN sources s ON s.id = rt.source_id
         WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
     """,
+    # REQ-1443 clause 10: a checker table's rules, one row per check of its contract in the order
+    # authored -- parsed once at registration (provisa.dq.registration) and stored on the table.
+    "dq_rules": """
+        CREATE OR REPLACE VIEW dq_rules AS
+        SELECT CAST(rt.id AS TEXT) || ':' || CAST(r.position AS TEXT) AS id,
+               rt.id AS table_id, rt.domain_id, s.type AS checker, r.position,
+               r.rule ->> 'column_name' AS column_name,
+               r.rule ->> 'check_type' AS check_type,
+               r.rule ->> 'definition' AS definition,
+               rt.tenant_id
+        FROM registered_tables rt
+        JOIN sources s ON s.id = rt.source_id
+        CROSS JOIN LATERAL jsonb_array_elements(rt.dq_rules) WITH ORDINALITY AS r(rule, position)
+        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft
+    """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
     # REQ-2126: a data product's links to the rest of the model, one row per product, target and
@@ -775,6 +790,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS class_term_id
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
+    """,
+    # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality
+    # table's rules are parsed with. Its connection settings stay out of the catalog.
+    "sources": """
+        CREATE OR REPLACE VIEW sources_meta AS
+        SELECT id, type FROM sources
     """,
     # REQ-2125: one row per data product, its own fields only. Everything one-to-many about a
     # product -- members, commands, tags, terms, profiles -- is reached through meta-domain

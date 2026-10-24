@@ -83,6 +83,21 @@
        }
       },
       {
+       "name": "m__dqRules",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DqRules"
+         }
+        }
+       }
+      },
+      {
        "name": "m__effectiveColumnTags",
        "type": {
         "kind": "LIST",
@@ -273,6 +288,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__SensitiveCoverage"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__sources",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__Sources"
          }
         }
        }
@@ -1719,6 +1749,21 @@
        }
       },
       {
+       "name": "dqRules",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DqRules"
+         }
+        }
+       }
+      },
+      {
        "name": "glossaryRefs",
        "type": {
         "kind": "LIST",
@@ -1798,6 +1843,13 @@
           "name": "M__RlsRules"
          }
         }
+       }
+      },
+      {
+       "name": "source",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__Sources"
        }
       },
       {
@@ -3308,6 +3360,96 @@
     {
      "fields": [
       {
+       "name": "checkType",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "checker",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "columnName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "definition",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "domainId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "position",
+       "type": {
+        "kind": "SCALAR",
+        "name": "BigInt"
+       }
+      },
+      {
+       "name": "tableId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "tenantId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__DqRules"
+    },
+    {
+     "fields": [
+      {
        "name": "alias",
        "type": {
         "kind": "SCALAR",
@@ -3316,6 +3458,13 @@
       },
       {
        "name": "cardinality",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "cypherType",
        "type": {
         "kind": "SCALAR",
         "name": "String"
@@ -3337,6 +3486,13 @@
       },
       {
        "name": "graphqlAlias",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "graphqlField",
        "type": {
         "kind": "SCALAR",
         "name": "String"
@@ -3531,9 +3687,57 @@
         "kind": "OBJECT",
         "name": "M__RegisteredTables"
        }
+      },
+      {
+       "name": "viaTable",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__RegisteredTables"
+       }
       }
      ],
      "name": "M__Relationships"
+    },
+    {
+     "fields": [
+      {
+       "name": "id",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "type",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__Sources"
     },
     {
      "fields": [
@@ -4003,6 +4207,11 @@
   },
   {
    "domain_id": "meta",
+   "graphql_field": "m__dqRules",
+   "table_name": "dq_rules"
+  },
+  {
+   "domain_id": "meta",
    "graphql_field": "m__effectiveColumnTags",
    "table_name": "effective_column_tags"
   },
@@ -4065,6 +4274,11 @@
    "domain_id": "meta",
    "graphql_field": "m__sensitiveCoverage",
    "table_name": "sensitive_coverage"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__sources",
+   "table_name": "sources"
   },
   {
    "domain_id": "meta",

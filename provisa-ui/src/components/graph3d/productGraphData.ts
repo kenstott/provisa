@@ -232,7 +232,7 @@ interface TableRow extends Tagged {
   checked_by?: TableRow[] | null;
   source_relationships?:
     | {
-        id: number;
+        id: string; // the relationships table's TEXT key
         target_table?: {
           id: number;
           domain_id: string;

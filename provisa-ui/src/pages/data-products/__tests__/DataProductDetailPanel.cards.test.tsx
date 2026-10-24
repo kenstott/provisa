@@ -42,8 +42,6 @@ function panel() {
       core={{ product: PRODUCT, queries: { graphql: "query X { x }", sql: "", jsonapi: "" } }}
       coreError={null}
       reader={null}
-      sources={[]}
-      internalRelationships={[]}
       canEdit={false}
       canSeeLineage
       lineageLoading={false}

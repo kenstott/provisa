@@ -145,31 +145,36 @@ const EMPTY: GraphData = { nodes: [], edges: [] };
 export function KnowledgeGraphPanel({
   productId,
   productName,
+  graph: core,
 }: {
   productId: string;
   productName: string;
+  /** The product's graph as the panel read it from the meta domain (productCore.coreGraph): the
+   *  card is drawn from it, with no read of its own. */
+  graph: GraphData;
 }) {
   const { t } = useTranslation();
   const { ref, seen } = useInView<HTMLDivElement>();
   const [open, setOpen] = useState(false);
-  // Read once the panel is first in view, as three.js is loaded.
-  const { data, error, scoped, onScope } = useProductGraph(productId, seen);
+  // The expanded explorer reads its own query (its filters and presets need the whole model),
+  // once it is opened.
+  const { data, error, scoped, onScope } = useProductGraph(productId, open);
   const product = productNode(productId);
-  const graph = useMemo(() => (data ? panelGraph(data, product) : null), [data, product]);
+  const graph = useMemo(() => panelGraph(core, product), [core, product]);
   return (
     <div className="g3d-panel" ref={ref} data-testid="kg-panel">
       {/* Its card names it; the expand button opens the full graph. */}
       <Group justify="flex-end" gap="xs">
-        {data && <ExpandButton onClick={() => setOpen(true)} testId="kg-panel-expand" />}
+        <ExpandButton onClick={() => setOpen(true)} testId="kg-panel-expand" />
       </Group>
       <div className="p3d g3d-panel-view">
-        {seen &&
-          (graph ? (
-            <PanelStage graph={graph} product={product} productName={productName} />
-          ) : (
-            <Loading error={error} testId="kg-panel" />
-          ))}
+        {seen && <PanelStage graph={graph} product={product} productName={productName} />}
       </div>
+      {open && !data && (
+        <Modal opened onClose={() => setOpen(false)} title={productName} size="sm">
+          <Loading error={error} testId="kg-panel" />
+        </Modal>
+      )}
       {data && (
         <GraphModal
           opened={open}

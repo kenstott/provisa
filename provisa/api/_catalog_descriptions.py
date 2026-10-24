@@ -51,6 +51,10 @@ _META: dict[str, str] = {
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
+    # REQ-1443
+    "sources": "Every registered source -- its identifier and its type",
+    "dq_rules": "Each data-quality table's rules -- one row per check its contract declares, "
+    "in the order written",
     # REQ-2125
     "data_products": "Every data product — one row per product with its own fields; its domain, "
     "member tables, commands, tags, glossary terms and profiles are reached by relationship",
@@ -217,6 +221,22 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "supporting_tables": "Tables in no product that a path runs through",
         "vias": "For a lineage edge, the views and commands on its paths",
     },
+    "dq_rules": {
+        "id": "Rule identifier: the table and the check's position in its contract",
+        "table_id": "Data-quality table whose contract declares the check",
+        "domain_id": "Domain of that table",
+        "checker": "Checker dialect the contract is written in: soda or great_expectations",
+        "position": "The check's position in its contract, from 1",
+        "column_name": "Column the check applies to; empty for a dataset-level check",
+        "check_type": "The kind of check",
+        "definition": "The check's arguments, as written in the contract",
+        "tenant_id": _TENANT,
+    },
+    # REQ-1443
+    "sources": {
+        "id": "Source identifier",
+        "type": "The source's type -- the connector it is reached through, or a checker's dialect",
+    },
     # REQ-2125
     "data_products": {
         "id": "Data product identifier",
@@ -284,6 +304,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "function_arg": "Argument passed to the resolving function",
         "alias": "Name the edge is exposed under, when it differs from the target name",
         "graphql_alias": "Name the edge is exposed under in GraphQL, when it differs",
+        "cypher_type": "Cypher relationship type the edge is served under",
+        "graphql_field": "GraphQL field the edge is served under, in the naming convention in force",
         "disable_cypher": "Whether the edge is hidden from Cypher traversal",
         "hide_target_meta": "Whether the target's metadata is withheld from consumers of the edge",
         "same_entity": "Whether the rows the edge joins are the same entity, in two tables one term grounds",

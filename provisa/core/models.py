@@ -1514,6 +1514,9 @@ class Table(
     # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
     # results columns are the shipped schema and are replaced at parse, not authored.
     dq_contract: str | None = None
+    # REQ-1443 clause 10: the contract's checks, parsed once at registration
+    # (provisa.dq.registration.derive_checker_table) and stored, so the meta domain serves them.
+    dq_rules: list[dict] | None = None
     # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
     # profiler; the profiler's schedule profiles it and its result relations carry its history.
     profiler_source_id: str | None = None

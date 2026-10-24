@@ -68,8 +68,6 @@ function panel() {
       }}
       coreError={null}
       reader={null}
-      sources={[]}
-      internalRelationships={[]}
       canEdit={false}
       canSeeLineage={false}
       lineageLoading={false}
