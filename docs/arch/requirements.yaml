@@ -21967,9 +21967,14 @@
   feature: row-security-and-masking-masking
   priority: MUST
   type: behavioral
-  description: Column masking output uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL literals)
-    independent of source type. Dialect-specific transpilation via SQLGlot occurs downstream, after masking
-    injection.
+  description: '[SUPERSEDED by REQ-2142, 2026-10-23 -- a regex mask is the universal provisa_regex_replace
+    call, not REGEXP_REPLACE. Kept here for history; do not implement against it.] Column masking output
+    uses ANSI SQL dialects (REGEXP_REPLACE, DATE_TRUNC, SQL literals) independent of source type. [END SUPERSEDED
+    BLOCK] Dialect-specific transpilation via SQLGlot occurs downstream, after masking injection. (Amended
+    2026-10-24, UNIVERSAL REGEX:) Column masking output is independent of source type: a regex mask is
+    provisa_regex_replace(column, pattern, replacement, the full mask), in the universal regex dialect
+    (REQ-2142), a truncate mask is DATE_TRUNC, a constant mask a SQL literal; the transpiler lowers
+    provisa_regex_replace into each engine''s own REGEXP_REPLACE after masking injection.'
   use_case: Dialect-agnostic masking generation ensures consistent governance behavior across heterogeneous
     federated sources (PostgreSQL, MySQL, Snowflake, BigQuery).
   code:
@@ -21983,7 +21988,7 @@
 
     When build_mask_expression generates the mask
 
-    Then output is ANSI REGEXP_REPLACE/DATE_TRUNC regardless of source dialect
+    Then output is the universal provisa_regex_replace and ANSI DATE_TRUNC regardless of source dialect
 
     '
   integration_test: not_required
