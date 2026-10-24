@@ -63,7 +63,7 @@ import {
 } from "./GraphIcons";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
-import { FrameRunning, FrameStatementTabs } from "./FrameParts";
+import { FrameQueryActions, FrameRunning, FrameStatementTabs } from "./FrameParts";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -427,10 +427,9 @@ export function GraphFrame({
             basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
           />
         )}
-        <CopySymbolButton
-          text={editQuery}
-          className="gf-copy-query-btn"
-          title={t("graphFrame.copyQuery")}
+        <FrameQueryActions
+          query={editQuery}
+          onDelete={isModal ? undefined : () => onClose(frame.id)}
         />
       </div>
       <div className="gf-header-right">
