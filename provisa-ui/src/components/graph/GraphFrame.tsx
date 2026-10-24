@@ -37,7 +37,6 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { createPortal } from "react-dom";
-import { CopySymbolButton } from "../../components/CopyButton";
 import type { CyInstance } from "./cytoscape-types";
 import type { ClusterLevel } from "./graph-clusters";
 import { downloadBlob, compositeGraphDownload, downloadGraphSvg, toCSV } from "./graph-export";
