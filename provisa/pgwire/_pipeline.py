@@ -610,7 +610,10 @@ async def _proxy_plan(
     if proxy is None:
         return {}
     tables = [t for t in getattr(state, "tables", None) or [] if t.get("id") in set(table_ids)]
-    if len(tables) != 1:
+    from provisa.transpiler.router import CODE_SOURCES
+
+    # REQ-2100: a code source answers a statement over any of its tables, joined in DuckDB.
+    if len(tables) != 1 and state.source_types.get(sid, "") not in CODE_SOURCES:
         return {"incomplete": "the statement reads more than one of its tables"}
     plan = await proxy.plan(
         state,
@@ -1274,6 +1277,15 @@ async def vector_registry(state: Any) -> Any:  # REQ-419, REQ-423
     return VectorModelRegistry.from_config(
         [e if isinstance(e, dict) else e.model_dump() for e in entries]
     )
+
+
+def _code_parameters(state: Any, table_ids: Any, sql: str) -> set[str]:  # REQ-2100
+    """The parameters of the code tables whose conditions stay in the statement: those the engine
+    attaches (codesource.attach), which the engine hands to the host, and those of a statement
+    read DIRECT from its code (codesource.direct), whose arguments they are."""
+    from provisa.codesource import attach, direct
+
+    return attach.parameters(state, table_ids) | direct.parameters(state, table_ids, sql)
 
 
 def context_parameters(ctx: Any) -> set[str]:  # REQ-1986
@@ -2186,7 +2198,11 @@ async def route_governed(
     # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys()
+    _parameters = (
+        context_parameters(ctx)
+        - _frozen.keys()
+        - _code_parameters(state, _table_ids, _physical_sql)
+    )
     _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _physical_sql, embedded_params or [], _parameters, _frozen
@@ -2430,6 +2446,12 @@ async def route_governed(
 
     await _await_source_servers(decision, _sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_direct_reads
+
+        # REQ-2100: a code source's own statement the engine runs after all is landed for it.
+        _qualified, exec_params = await land_direct_reads(
+            _qualified, exec_params, state, _table_ids
+        )
         # REQ-135/REQ-1163: optimization — a view governance kept as its reference (its region's
         # copy, an as-of read of a bitemporal view, a materialized view the reader sees whole) is
         # answered here, BEFORE the unknown-catalog check and transpile (mv/view_read.py). Same
@@ -4973,7 +4995,9 @@ async def _route_compiled(
         )
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys()
+    _parameters = (
+        context_parameters(ctx) - _frozen.keys() - _code_parameters(state, _table_ids, _exec_sql)
+    )
     _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _exec_sql, exec_params or [], _parameters, _frozen
@@ -5130,6 +5154,10 @@ async def _route_compiled(
     # instead. A single-source neo4j query now always falls through to Route.ENGINE.
     await _await_source_servers(decision, sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_direct_reads
+
+        # REQ-2100: a code source's own statement the engine runs after all is landed for it.
+        _exec_sql, exec_params = await land_direct_reads(_exec_sql, exec_params, state, _table_ids)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
         _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
         return _Plan(

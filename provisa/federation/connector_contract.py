@@ -23,7 +23,9 @@ sources, SPARQL). A code source's function cannot, so its proxy implements it on
 list, and a source the engine reads through its own connector is the engine's: neither has one.
 
 v1: Qdrant reports a complete dataset for what it answers exactly (a similarity top-k, a
-retrieve by id, a scroll); every other connector declares no capability and lands. The target
+retrieve by id, a scroll); a code source for any statement over its own tables (DuckDB answers it
+over their functions' rows, codesource.proxy); every other connector declares no capability and
+lands. The target
 shape of a capability, for later: the comparators it evaluates exactly, per data type; the
 ordering, by one key or several, in which directions; and the limit, as offset and length."""
 
