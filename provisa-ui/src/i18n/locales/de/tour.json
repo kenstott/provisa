@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "In den Werkzeugen Ihrer Organisation veröffentlichen",
-        "description": "📤 <strong>Veröffentlichen Sie dort, wo Ihre Organisation ohnehin hinschaut.</strong> Katalogeinträge (Tabellen, Spalten, Domänen, Data Stewards, freigegebene Beziehungen), Datenprodukte und spaltengenaue Lineage gehen hinaus, und jedes Ziel erhält, was es unterstützt: <strong>DataHub, OpenMetadata, Collibra, Atlan und Apache Atlas</strong> als Kataloge, <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong> als Listings für Datenprodukte und die Lineage über <strong>OpenLineage</strong>.<p>Die Veröffentlichung geht nur nach außen: Provisa liest ein Ziel nie als Wahrheitsquelle zurück.</p>"
+        "description": "📤 <strong>Veröffentlichen Sie dort, wo Ihre Organisation ohnehin hinschaut.</strong> Katalogeinträge (Tabellen, Spalten, Domänen, Data Stewards, freigegebene Beziehungen), Datenprodukte und spaltengenaue Lineage gehen hinaus, und jedes Ziel erhält, was es unterstützt: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} und Apache Atlas</strong> als Kataloge, <strong>Snowflake Horizon</strong> und <strong>BigQuery Dataplex</strong> als Listings für Datenprodukte und die Lineage über <strong>OpenLineage</strong>.<p>Die Veröffentlichung geht nur nach außen: Provisa liest ein Ziel nie als Wahrheitsquelle zurück.</p>"
       },
       "stepRelsAgents": {
         "title": "Beziehungen und KI-Agenten",

@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Pubblica negli strumenti della tua organizzazione",
-        "description": "📤 <strong>Pubblicalo dove la tua organizzazione già guarda.</strong> Escono le voci di catalogo (tabelle, colonne, domini, steward, relazioni approvate), i prodotti di dati e il lineage a livello di colonna, e ogni destinazione riceve ciò che supporta: <strong>DataHub, OpenMetadata, Collibra, Atlan e Apache Atlas</strong> come cataloghi, <strong>Snowflake Horizon</strong> e <strong>BigQuery Dataplex</strong> come elenchi di prodotti di dati, e il lineage tramite <strong>OpenLineage</strong>.<p>La pubblicazione è solo in uscita: Provisa non rilegge mai una destinazione come fonte di verità.</p>"
+        "description": "📤 <strong>Pubblicalo dove la tua organizzazione già guarda.</strong> Escono le voci di catalogo (tabelle, colonne, domini, steward, relazioni approvate), i prodotti di dati e il lineage a livello di colonna, e ogni destinazione riceve ciò che supporta: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} e Apache Atlas</strong> come cataloghi, <strong>Snowflake Horizon</strong> e <strong>BigQuery Dataplex</strong> come elenchi di prodotti di dati, e il lineage tramite <strong>OpenLineage</strong>.<p>La pubblicazione è solo in uscita: Provisa non rilegge mai una destinazione come fonte di verità.</p>"
       },
       "stepRelsAgents": {
         "title": "Relazioni e agenti IA",

@@ -3622,7 +3622,6 @@
   "ru/registerTableForm.json::registerTableForm.cosmosQueryHint": "{\"container\": …, \"query\": \"SELECT … @name\"} -- each @name is an argument, sent beside the query",
   "ru/registerTableForm.json::registerTableForm.cosmosQueryLabel": "Query",
   "ru/registerTableForm.json::registerTableForm.cosmosQueryPlaceholder": "{\"container\": \"products\", \"query\": \"SELECT TOP 10 c.id, c.name, VectorDistance(c.embedding, @query_vector) AS score FROM c ORDER BY VectorDistance(c.embedding, @query_vector)\"}",
-  "ru/registerTableForm.json::registerTableForm.dataProductHint": "(publish to catalog / export to Atlas, Atlan, etc.)",
   "ru/registerTableForm.json::registerTableForm.dataProductLabel": "Data Product",
   "ru/registerTableForm.json::registerTableForm.dataTypePlaceholder": "Assign type...",
   "ru/registerTableForm.json::registerTableForm.descriptionColPlaceholder": "description",
@@ -6178,7 +6177,7 @@
   "ru/tableEditForm.json::tableEditForm.csProbe": "probe (freshness query)",
   "ru/tableEditForm.json::tableEditForm.csTtl": "ttl (timer)",
   "ru/tableEditForm.json::tableEditForm.csTtlProbe": "probe + ttl",
-  "ru/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, Atlan and others.",
+  "ru/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, {{atlan}} and others.",
   "ru/tableEditForm.json::tableEditForm.dataProductInherited": "Inherited from the table this contract scans",
   "ru/tableEditForm.json::tableEditForm.dataProductLabel": "Data Product",
   "ru/tableEditForm.json::tableEditForm.dataProductNone": "None",
@@ -7498,7 +7497,7 @@
   "ru/tour.json::tour.steps.stepProductForm.title": "Define a data product",
   "ru/tour.json::tour.steps.stepProfilerChecks.description": "Every run adds rows to its result tables: per-column measures (null share, distinct count, range), per-run measures (row count), children per parent, quantiles and drift. Once you register a result table, a data-quality checker can scan it like any other table. That checker is a <strong>Soda</strong> or <strong>Great Expectations</strong> source, so any measure a profile produces can carry a check that raises an issue. <strong>Drift</strong> is one such measure. Each run is compared with the table's recent runs, and a measure that moves is flagged. From the profiler's runs you can add an accepted constraint, a drift check, or a check against expectations from outside Provisa to the checker's contract.",
   "ru/tour.json::tour.steps.stepProfilerChecks.title": "Checks on profile results",
-  "ru/tour.json::tour.steps.stepPublish.description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, Atlan and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>",
+  "ru/tour.json::tour.steps.stepPublish.description": "📤 <strong>Publish it where your org already looks.</strong> Catalog entries (tables, columns, domains, stewards, approved relationships), data products and column-level lineage go out, and each target receives what it supports: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} and Apache Atlas</strong> as catalogs, <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong> as data-product listings, and lineage over <strong>OpenLineage</strong>.<p>Publication is outbound only: Provisa never reads a target back as a source of truth.</p>",
   "ru/tour.json::tour.steps.stepPublish.title": "Publish to the tools your org uses",
   "ru/tour.json::tour.steps.stepPython.description": "🐍 The Python tab runs Python in your browser, signed in as you:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>The answer comes back as a pandas DataFrame, read through the same governed pipeline, so your role's row rules and masks apply to it too.</p><p>🔌 The same <strong>provisa-client</strong> package installs with pip on any desktop Python, so a script written here runs unchanged in your own environment.</p>",
   "ru/tour.json::tour.steps.stepPython.title": "Python (8 of 9 surfaces)",
@@ -8113,5 +8112,6 @@
   "ru/serverErrors.json::serverErrors.profile.classification_kind_unknown": "Unknown classification kind {{kind}}",
   "ru/serverErrors.json::serverErrors.profile.classification_pii_refused": "The column could not be marked PII",
   "ru/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
-  "ru/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads"
+  "ru/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
+  "ru/metadataExportTab.json::metadataExportTab.betaProvider": "{{name}} (beta)"
 }

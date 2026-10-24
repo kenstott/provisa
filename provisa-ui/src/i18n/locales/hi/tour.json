@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "अपने संगठन के टूल्स में प्रकाशित करें",
-        "description": "📤 <strong>इसे वहाँ प्रकाशित करें जहाँ आपका संगठन पहले से देखता है।</strong> कैटलॉग प्रविष्टियाँ (तालिकाएँ, कॉलम, डोमेन, स्टीवर्ड, स्वीकृत संबंध), डेटा उत्पाद और कॉलम-स्तर का लाइनेज बाहर जाते हैं, और हर गंतव्य को वही मिलता है जो वह समर्थित करता है: कैटलॉग के रूप में <strong>DataHub, OpenMetadata, Collibra, Atlan और Apache Atlas</strong>, डेटा-उत्पाद लिस्टिंग के रूप में <strong>Snowflake Horizon</strong> और <strong>BigQuery Dataplex</strong>, और लाइनेज <strong>OpenLineage</strong> के ज़रिए।<p>प्रकाशन केवल बाहर की ओर होता है: Provisa किसी गंतव्य को सत्य के स्रोत के रूप में कभी वापस नहीं पढ़ता।</p>"
+        "description": "📤 <strong>इसे वहाँ प्रकाशित करें जहाँ आपका संगठन पहले से देखता है।</strong> कैटलॉग प्रविष्टियाँ (तालिकाएँ, कॉलम, डोमेन, स्टीवर्ड, स्वीकृत संबंध), डेटा उत्पाद और कॉलम-स्तर का लाइनेज बाहर जाते हैं, और हर गंतव्य को वही मिलता है जो वह समर्थित करता है: कैटलॉग के रूप में <strong>DataHub, OpenMetadata, Collibra, {{atlan}} और Apache Atlas</strong>, डेटा-उत्पाद लिस्टिंग के रूप में <strong>Snowflake Horizon</strong> और <strong>BigQuery Dataplex</strong>, और लाइनेज <strong>OpenLineage</strong> के ज़रिए।<p>प्रकाशन केवल बाहर की ओर होता है: Provisa किसी गंतव्य को सत्य के स्रोत के रूप में कभी वापस नहीं पढ़ता।</p>"
       },
       "stepRelsAgents": {
         "title": "संबंध और AI एजेंट",

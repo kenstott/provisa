@@ -6,6 +6,7 @@
     "notEntitled": "Metadata-export vereist het {{tier}}-abonnement. Upgrade om catalogusdoelen te configureren.",
     "enabled": "Metadata naar externe catalogi publiceren",
     "provider": "Doelcatalogus",
+    "betaProvider": "{{name}} (bèta)",
     "endpoint": "Endpoint-URL",
     "authMode": "Authenticatie",
     "apiKey": "API-sleutel",

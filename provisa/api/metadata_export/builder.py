@@ -611,11 +611,19 @@ def _glossary_assets(
         refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
     # REQ-1387 (GROUNDED TO A TABLE): a class term is rooted by a table it grounds, when that
     # table publishes -- the same narrowing its column refs get.
-    classes = {
-        ref["term_id"]
-        for ref in glossary.get("table_refs", [])
-        if (ref["source_id"], ref["schema_name"], ref["table_name"]) in by_identity
-    }
+    tables_by_term: dict[int, list] = {}
+    for ref in glossary.get("table_refs", []):
+        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
+        if table is not None:
+            tables_by_term.setdefault(ref["term_id"], []).append(table_ref(table))
+    classes = set(tables_by_term)
+    # REQ-2141: the role follows the control plane's grounding, not what this export narrows
+    # to -- a Class whose tables are all withheld is still a Class.
+    grounds_tables = {ref["term_id"] for ref in glossary.get("table_refs", [])}
+    owns_columns = {ref["term_id"] for ref in glossary.get("refs", [])}
+    domains_by_term: dict[int, list[str]] = {}
+    for row in glossary.get("domains", []):
+        domains_by_term.setdefault(row["term_id"], []).append(row["domain_id"])
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
@@ -640,8 +648,17 @@ def _glossary_assets(
                 status_reason=term["status_reason"],
                 retire_on=term["retire_on"].isoformat() if term["retire_on"] else None,
                 refs=tuple(refs),
+                tables=tuple(tables_by_term.get(term["id"], [])),
+                role=(
+                    "class"
+                    if term["id"] in grounds_tables
+                    else "property"
+                    if term["id"] in owns_columns
+                    else "concept"
+                ),
                 experts=tuple(experts_by_term.get(term["id"], [])),
                 semantic_uri=term_uri(org_id, term["name"]),
+                domains=tuple(sorted(domains_by_term.get(term["id"], []))),
             )
         )
     published_ids = {t.term_id for t in terms}

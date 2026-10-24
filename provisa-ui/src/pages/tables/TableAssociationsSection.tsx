@@ -12,6 +12,7 @@ import { Box, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { DataProduct, RegisteredTable, Relationship } from "../../types/admin";
 import { FormField, FormLayout } from "../../components/form/FormLayout";
+import { exportProviderName } from "../../lib/exportProviders";
 import { TableAssociations } from "./TableAssociations";
 
 /** The Associations section of a table's form: its data product and its relationships. */
@@ -50,7 +51,12 @@ export function TableAssociationsSection({
             />
           </FormField>
         ) : (
-          <FormField size="medium" hint={t("tableEditForm.dataProductDesc")}>
+          <FormField
+            size="medium"
+            hint={t("tableEditForm.dataProductDesc", {
+              atlan: exportProviderName("atlan", "Atlan", t),
+            })}
+          >
             <Select
               label={t("tableEditForm.dataProductLabel")}
               placeholder={t("tableEditForm.dataProductNone")}

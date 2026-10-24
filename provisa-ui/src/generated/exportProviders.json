@@ -1,0 +1,18 @@
+{
+  "providers": [
+    "atlan",
+    "atlas",
+    "collibra",
+    "datahub",
+    "dataplex",
+    "datazone",
+    "openlineage",
+    "openmetadata",
+    "purview",
+    "snowflake_horizon",
+    "unity_catalog"
+  ],
+  "beta": [
+    "atlan"
+  ]
+}

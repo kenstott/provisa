@@ -34,14 +34,17 @@ from pathlib import Path
 import httpx
 import pytest
 
+from provisa.api.metadata_export.dataplex import RESOURCE_MANAGER, DataplexExport, resource_id
 from provisa.federation.replica_address import export_schema, replica_schema, replica_table_name
 from tests.integration.metadata_export_server import (
+    CLASS_TERM,
     DOMAIN,
     PRODUCT_FIELDS,
     SCHEMA,
     SOURCE,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -103,6 +106,26 @@ async def _hold_owner_role(client: httpx.AsyncClient, email: str) -> None:
         await conn.close()
 
 
+def _glossary_name(parent: str) -> str:
+    return f"{parent}/glossaries/{resource_id(f'provisa-{ORG}')}"
+
+
+def _remove_glossary(http: httpx.Client, parent: str) -> None:
+    """The org's glossary, emptied and removed: its links, terms and categories first."""
+    glossary = _glossary_name(parent)
+    terms = http.get(f"{API}/{glossary}/terms").json().get("terms", [])
+    numbered = _numbered(http, parent)
+    for term in terms:
+        entry = DataplexExport._term_entry(numbered, term["name"])
+        links = http.get(f"{API}/{parent}:lookupEntryLinks", params={"entry": entry}).json()
+        for link in links.get("entryLinks", []):
+            http.delete(f"{API}/{link['name']}")
+        http.delete(f"{API}/{glossary}/terms/{term['name'].rsplit('/', 1)[-1]}")
+    for category in http.get(f"{API}/{glossary}/categories").json().get("categories", []):
+        http.delete(f"{API}/{category['name']}")
+    http.delete(f"{API}/{glossary}")
+
+
 def _cleanup(project: str, location: str, key: str, product_id: str) -> None:
     """The run's data product, its assets and the org's datasets, removed."""
     from google.cloud import bigquery
@@ -115,6 +138,7 @@ def _cleanup(project: str, location: str, key: str, product_id: str) -> None:
             for asset in listed.json().get("dataAssets", []):
                 http.delete(f"{API}/{asset['name']}")
         http.delete(f"{API}/{name}")
+        _remove_glossary(http, f"projects/{project}/locations/{location}")
     client = bigquery.Client(project=project)
     for dataset in (export_schema(ORG), replica_schema(ORG)):
         client.delete_dataset(f"{project}.{dataset}", delete_contents=True, not_found_ok=True)
@@ -161,15 +185,38 @@ async def published():
             with httpx.Client(headers=headers, timeout=60) as http:
                 found = http.get(f"{API}/{name}")
                 assets = http.get(f"{API}/{name}/dataAssets")
-            yield result, found, assets, project, owner_email
+                glossary = _glossary_name(f"projects/{project}/locations/{region}")
+                term = http.get(f"{API}/{glossary}/terms/{resource_id(CLASS_TERM)}")
+                links = (
+                    http.get(
+                        f"{API}/projects/{project}/locations/{region}:lookupEntryLinks",
+                        params={
+                            "entry": DataplexExport._term_entry(
+                                _numbered(http, f"projects/{project}/locations/{region}"),
+                                term.json()["name"],
+                            ),
+                            "entryMode": "TARGET",
+                        },
+                    )
+                    if term.status_code == 200
+                    else None
+                )
+            yield result, found, assets, project, owner_email, term, links
     finally:
         _cleanup(project, region, key, product_id)
 
 
 async def test_the_publish_reports_the_data_product_and_its_assets(published):
     result = published[0]
-    assert result["ok"], result["errors"]
-    assert result["published"] == {"data_products": 1, "data_assets": 2}
+    assert result["ok"], refused(result)
+    # REQ-1387/1389: the org's two defined terms -- the Class linked to the orders replica's
+    # view, the Property to the two columns it grounds (orders.customer_id, customers.id).
+    assert result["published"] == {
+        "data_products": 1,
+        "data_assets": 2,
+        "glossary_term": 2,
+        "term_assignment": 3,
+    }
 
 
 async def test_the_data_product_carries_its_fields_and_owners(published):
@@ -194,3 +241,34 @@ async def test_each_member_is_an_asset_through_its_export_view(published):
         f"{replica_table_name(SOURCE, SCHEMA, table)}"
         for table in ("orders", "customers")
     }
+
+
+def _numbered(http: httpx.Client, parent: str) -> str:
+    """``parent`` with its project named by number, as a term's catalog entry names it."""
+    _, project, _, location = parent.split("/")
+    found = http.get(f"{RESOURCE_MANAGER}/projects/{project}")
+    found.raise_for_status()
+    return f"{found.json()['name']}/locations/{location}"
+
+
+async def test_the_class_term_is_in_classes_and_defines_its_tables_view(published):
+    """REQ-1387/1389/2141: the Class term sits in the Classes category with its role label, and
+    Provisa's definition link runs from the orders replica's view to it."""
+    term, links, project = published[5], published[6], published[3]
+    assert term.status_code == 200, term.text
+    body = term.json()
+    assert body["parent"].endswith("/categories/class")
+    assert body["labels"]["provisa-role"] == "class"
+    assert links is not None and links.status_code == 200, links and links.text
+    view = (
+        f"bigquery.googleapis.com/projects/{project}/datasets/{export_schema(ORG)}/tables/"
+        f"{replica_table_name(SOURCE, SCHEMA, 'orders')}"
+    )
+    sources = [
+        ref["name"]
+        for link in links.json().get("entryLinks", [])
+        if link["name"].rsplit("/", 1)[-1].startswith("provisa-")
+        for ref in link["entryReferences"]
+        if ref["type"] == "SOURCE"
+    ]
+    assert any(name.endswith(view) for name in sources), sources

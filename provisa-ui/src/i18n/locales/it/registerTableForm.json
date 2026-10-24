@@ -23,7 +23,6 @@
     "descriptionLabel": "Descrizione",
     "descriptionPlaceholder": "Compare nella documentazione SDL",
     "dataProductLabel": "Data product",
-    "dataProductHint": "(pubblica nel catalogo / esporta verso Atlas, Atlan, ecc.)",
     "discoverLabel": "Individua colonne",
     "discoverHint": "(deduce le colonne dall'origine live alla registrazione — per origini schemaless/NoSQL; nessuna selezione manuale delle colonne necessaria)",
     "watermarkLabel": "Colonna watermark",
