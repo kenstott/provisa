@@ -8007,6 +8007,8 @@
   "he/settings.json::settings.server.public_url.label": "Public address",
   "he/settings.json::settings.server.public_url.help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused.",
   "he/dataProductsTab.json::dataProductsTab.detail.field.details": "Details",
-  "he/dataProductsTab.json::dataProductsTab.detail.lineageLaneUpstream": "Upstream, hop {{n}}",
-  "he/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}"
+  "he/graphSidebar.json::graphSidebar.countsFailed": "Counts unavailable: {{error}}",
+  "he/graphSidebar.json::graphSidebar.schemaFailed": "Schema unavailable: {{error}}",
+  "he/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}",
+  "he/dataProductsTab.json::dataProductsTab.detail.lineageLaneUpstream": "Upstream, hop {{n}}"
 }
