@@ -226,29 +226,21 @@ def _graphql_terms_and_edges(rows: list[dict]) -> tuple[set, set]:
 
 def _graph_terms_and_edges(value, terms: set, edges: set) -> None:
     """Every glossary term node and term edge in a nodes-only answer."""
-    if isinstance(value, dict) or hasattr(value, "properties"):
-        label = value.get("label") if isinstance(value, dict) else value.label
-        props = value.get("properties") if isinstance(value, dict) else value.properties
-        if isinstance(value, dict) and value.get("junctionTable") == "glossary_term_edges":
-            assert props is not None
-            edges.add(props["id"])
-            return
-        if label == "Meta:GlossaryTerms":
-            identity = value["id"] if isinstance(value, dict) else value.id
-            terms.add(int(identity.split("|", 1)[1]))
-        if isinstance(value, dict):
-            for v in value.values():
-                _graph_terms_and_edges(v, terms, edges)
+    from provisa.gql.assembler import Edge, Node
+
+    if isinstance(value, Edge):
+        if value.junction_table == "glossary_term_edges":
+            edges.add(value.properties["id"])
         return
-    if isinstance(value, list):
-        for v in value:
-            _graph_terms_and_edges(v, terms, edges)
+    if isinstance(value, Node) and value.label == "Meta:GlossaryTerms":
+        terms.add(int(value.id.split("|", 1)[1]))
 
 
 @pytest.mark.parametrize("key", _ONTOLOGY)
 def test_as_nodes_it_answers_the_same_terms_and_term_edges(glossary, key):
     cypher = _cypher(_READS[key], NODES)
-    assert "RETURN n0," in cypher
+    # Flat patterns the frame draws: no list of each level's rows.
+    assert "RETURN n0," in cypher and "COLLECT" not in cypher and "OPTIONAL MATCH" in cypher
     shaped = _cypher_answer(glossary, _cypher(_READS[key], GRAPHQL))
     terms: set = set()
     edges: set = set()
@@ -341,3 +333,12 @@ def test_an_unfiltered_junction_field_is_refused_where_other_relationships_join_
         assert lower_read(parse(_READS[_ONTOLOGY[2]]), ctx, lm, None)
     finally:
         del lm.relationships["MENTORS::test"]
+
+
+def test_as_nodes_a_level_with_its_own_limit_is_refused_by_name():
+    text = "{ m__glossaryTerms { id edgesOut(limit: 1) { id targetTerm { id } } } }"
+    _g, _cg, _schema, ctx, lm = _model()
+    with pytest.raises(GraphQLLoweringRefused, match="the limit of the relationship edgesOut"):
+        lower_read(parse(text), ctx, lm, None, NODES)
+    # GraphQL-shaped, the level keeps its own limit.
+    assert "LIMIT 1" in _cypher(text, GRAPHQL)

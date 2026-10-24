@@ -515,6 +515,17 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 is_reversed,
                 self._rel_var_via.get(expr_text),  # REQ-1586
             )
+            if expr_text in getattr(self, "_optional_rel_vars", set()):
+                # An OPTIONAL MATCH that matched no relationship binds none: null, not an edge
+                # of null ends.
+                far = exp.Column(
+                    this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+                    table=exp.Identifier(this=tgt_alias),
+                )
+                edge_expr = exp.Case(
+                    ifs=[exp.If(this=exp.Is(this=far, expression=exp.null()), true=exp.null())],
+                    default=edge_expr,
+                )
         else:
             edge_expr = exp.Null()
         return exp.alias_(edge_expr, alias or expr_text)

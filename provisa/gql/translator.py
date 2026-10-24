@@ -34,7 +34,7 @@ from typing import Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import CypherExpr, MapLiteral, Property, Variable, walk
+from provisa.gql.expr_ast import Binary, CypherExpr, MapLiteral, Paren, Property, Variable, walk
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
@@ -222,6 +222,22 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
     return node
 
 
+def _steps_where(steps: list) -> WhereClause | None:
+    """Every condition of a segment's MATCH steps, each step's own WHERE, ANDed: a WHERE after a
+    MATCH is that MATCH's, one after an OPTIONAL MATCH is folded into its join
+    (_fold_where_into_optional_joins), and none is dropped for another."""
+    wheres = [step.where.expression for step in steps if step.where is not None]
+    if not wheres:
+        return None
+    if len(wheres) == 1:
+        return WhereClause(wheres[0])
+    # Each step's WHERE one conjunct of the whole, which the fold routes to its own join.
+    joined: CypherExpr = Paren(wheres[0])
+    for w in wheres[1:]:
+        joined = Binary("AND", joined, Paren(w))
+    return WhereClause(joined)
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
     TermsMixin,
@@ -291,6 +307,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._alternation_types: dict[int, dict[str, str]] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
+        self._optional_rel_vars: set[str] = set()
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
         # attributes — in RETURN r, in r.attr expressions, and in a WHERE on r.attr.
@@ -334,11 +351,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where = _steps_where(match_steps)
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
@@ -435,11 +448,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in final_match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where = _steps_where(final_match_steps)
 
         if not all_matches and not final_unwinds and cte_defs:
             last_cte_name = cte_defs[-1][0]
