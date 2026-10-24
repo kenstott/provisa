@@ -285,7 +285,7 @@ def test_the_snapshot_carries_each_products_owner_addresses():
 # --- The Dataplex business glossary (REQ-1387, REQ-1389, REQ-2141) ----------------------------
 
 GLOSSARY = f"{PARENT}/glossaries/provisa-acme"
-NUMBERED = "projects/123/locations/us"  # what Dataplex names a term with: the project number
+NUMBERED = "projects/123/locations/us"  # a term's catalog entry names the project by number
 
 
 def _entry(term_id: str) -> str:
@@ -384,6 +384,10 @@ class _GlossaryApi:
         self.entries: set[str] = {SALES_ENTRY}
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host == "cloudresourcemanager.googleapis.com":
+            self.calls.append((request.method, request.url.path))
+            assert request.url.path == "/v3/projects/proj-x", request.url.path
+            return httpx.Response(200, json={"name": "projects/123", "projectId": "proj-x"})
         path = request.url.path.removeprefix("/v1/")
         params = dict(request.url.params)
         body = json.loads(request.content) if request.content else {}
@@ -414,11 +418,6 @@ class _GlossaryApi:
         if request.method == "POST":
             (id_param,) = params
             name = f"{path}/{params[id_param]}"
-            if path.endswith("/terms"):
-                # Dataplex names a term by the project number.
-                numbered = name.replace(PARENT, NUMBERED)
-                self.resources[name] = {**body, "name": numbered}
-                return httpx.Response(200, json=self.resources[name])
             self.resources[name] = {**body, "name": name}
             if path.endswith("/glossaries"):
                 return httpx.Response(

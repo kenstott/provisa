@@ -34,7 +34,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from provisa.api.metadata_export.dataplex import resource_id
+from provisa.api.metadata_export.dataplex import RESOURCE_MANAGER, DataplexExport, resource_id
 from provisa.federation.replica_address import export_schema, replica_schema, replica_table_name
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
@@ -114,9 +114,9 @@ def _remove_glossary(http: httpx.Client, parent: str) -> None:
     """The org's glossary, emptied and removed: its links, terms and categories first."""
     glossary = _glossary_name(parent)
     terms = http.get(f"{API}/{glossary}/terms").json().get("terms", [])
+    numbered = _numbered(http, parent)
     for term in terms:
-        prefix = "/".join(term["name"].split("/")[:4])
-        entry = f"{prefix}/entryGroups/@dataplex/entries/{term['name']}"
+        entry = DataplexExport._term_entry(numbered, term["name"])
         links = http.get(f"{API}/{parent}:lookupEntryLinks", params={"entry": entry}).json()
         for link in links.get("entryLinks", []):
             http.delete(f"{API}/{link['name']}")
@@ -191,7 +191,10 @@ async def published():
                     http.get(
                         f"{API}/projects/{project}/locations/{region}:lookupEntryLinks",
                         params={
-                            "entry": _term_entry(term.json()["name"]),
+                            "entry": DataplexExport._term_entry(
+                                _numbered(http, f"projects/{project}/locations/{region}"),
+                                term.json()["name"],
+                            ),
                             "entryMode": "TARGET",
                         },
                     )
@@ -239,9 +242,12 @@ async def test_each_member_is_an_asset_through_its_export_view(published):
     }
 
 
-def _term_entry(term_name: str) -> str:
-    prefix = "/".join(term_name.split("/")[:4])
-    return f"{prefix}/entryGroups/@dataplex/entries/{term_name}"
+def _numbered(http: httpx.Client, parent: str) -> str:
+    """``parent`` with its project named by number, as a term's catalog entry names it."""
+    _, project, _, location = parent.split("/")
+    found = http.get(f"{RESOURCE_MANAGER}/projects/{project}")
+    found.raise_for_status()
+    return f"{found.json()['name']}/locations/{location}"
 
 
 async def test_the_class_term_is_in_classes_and_defines_its_tables_view(published):

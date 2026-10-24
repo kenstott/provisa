@@ -73,6 +73,11 @@ if TYPE_CHECKING:
 
 SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 LINK_TYPES = "projects/dataplex-types/locations/global/entryLinkTypes"
+# A term's catalog entry is named by the project NUMBER, inside and out; Dataplex echoes a
+# term's name with whatever project the request named, and an entry named by the project id is
+# refused as "permission denied (or it may not exist)", to an owner too. Every Dataplex role
+# carries resourcemanager.projects.get, so the number is read with the grants publishing needs.
+RESOURCE_MANAGER = "https://cloudresourcemanager.googleapis.com/v3"
 ROLE_CATEGORIES = {"class": "Classes", "property": "Properties", "concept": "Concepts"}
 BIGQUERY = "//bigquery.googleapis.com"
 _LABEL_DISALLOWED = re.compile(r"[^a-z0-9_-]")
@@ -191,6 +196,18 @@ class DataplexExport(MetadataExport):  # REQ-2118
 
     def _url(self, path: str) -> str:
         return f"{self._config.endpoint.rstrip('/')}/v1/{path}"
+
+    async def _numbered_parent(self, client: httpx.AsyncClient) -> str:
+        """``_parent`` with the project named by its number (RESOURCE_MANAGER)."""
+        found = await client.get(f"{RESOURCE_MANAGER}/projects/{self._config.gcp_project}")
+        found.raise_for_status()
+        return f"{found.json()['name']}/locations/{self._config.gcp_location}"
+
+    @staticmethod
+    def _term_entry(numbered: str, term_name: str) -> str:
+        """The catalog entry of the term ``term_name``, named under ``numbered``."""
+        term = numbered + term_name[len("/".join(term_name.split("/")[:4])) :]
+        return f"{numbered}/entryGroups/@dataplex/entries/{term}"
 
     async def _token(self) -> str:
         """The bearer token: given (``bearer``), or minted from the service account's key."""
@@ -407,11 +424,12 @@ class DataplexExport(MetadataExport):  # REQ-2118
                 {"displayName": ROLE_CATEGORIES[role], "parent": glossary},
             )
             categories[role] = name
+        numbered = await self._numbered_parent(client)
         entries: dict[int, str] = {}  # term id -> its catalog entry
         for term in snapshot.glossary_terms:
-            entry = await self._upsert_term(client, glossary, categories[term.role], term, result)
-            if entry is not None:
-                entries[term.term_id] = entry
+            saved = await self._upsert_term(client, glossary, categories[term.role], term, result)
+            if saved is not None:
+                entries[term.term_id] = self._term_entry(numbered, saved)
         # Provisa's entry links, by the id it gives each: (type, the two references).
         wanted: dict[str, tuple[str, list[dict[str, str]]]] = {}
 
@@ -461,7 +479,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     source["path"] = f"Schema.{ref.parts[-1]}"
                 _link("definition", [source, {"name": entries[term.term_id], "type": "TARGET"}])
         # Every term in the Provisa glossary, so a term that left the snapshot loses its links too.
-        live = await self._provisa_links(client, await self._glossary_entries(client, glossary))
+        live = await self._provisa_links(
+            client, await self._glossary_entries(client, glossary, numbered)
+        )
         present: dict[str, bool] = {}
         for link_id in sorted(set(wanted) - set(live)):
             kind, refs = wanted[link_id]
@@ -515,7 +535,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
         term: "GlossaryTermAsset",
         result: PublishResult,
     ) -> str | None:
-        """Create or update one term; its catalog entry's name, or None when refused (reported)."""
+        """Create or update one term; its name, or None when refused (reported)."""
         name = f"{glossary}/terms/{resource_id(term.name)}"
         labels = {"provisa-role": term.role}
         if term.in_deprecation:
@@ -557,9 +577,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
             )
             return None
         result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
-        saved = response.json()["name"]
-        prefix = "/".join(saved.split("/")[:4])
-        return f"{prefix}/entryGroups/@dataplex/entries/{saved}"
+        return response.json()["name"]
 
     async def _entry_appears(self, client: httpx.AsyncClient, entry: str) -> bool:
         """Whether the catalog has ``entry``, waited for up to ``entry_wait_seconds``: Dataplex
@@ -577,7 +595,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
                 return False
             await asyncio.sleep(2)
 
-    async def _glossary_entries(self, client: httpx.AsyncClient, glossary: str) -> list[str]:
+    async def _glossary_entries(
+        self, client: httpx.AsyncClient, glossary: str, numbered: str
+    ) -> list[str]:
         """The catalog entry of every term in the Provisa glossary."""
         entries: list[str] = []
         params: dict[str, str] = {}
@@ -586,8 +606,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
             response.raise_for_status()
             page = response.json()
             for term in page.get("terms", []):
-                prefix = "/".join(term["name"].split("/")[:4])
-                entries.append(f"{prefix}/entryGroups/@dataplex/entries/{term['name']}")
+                entries.append(self._term_entry(numbered, term["name"]))
             if not page.get("nextPageToken"):
                 return entries
             params["pageToken"] = page["nextPageToken"]

@@ -379,7 +379,7 @@ async def test_a_class_term_is_assigned_to_its_table_and_a_property_to_its_colum
     fake, monkeypatch
 ):
     """REQ-1389 (amended): Provisa assigns its terms as semantic assignments whose source is
-    Provisa, status DISCOVERED -- the Class to the table, the Property to the column."""
+    Provisa, status ACTIVE -- the Class to the table, the Property to the column."""
     _published_entities(monkeypatch)
     order = _term(1, "order", is_abstract=False, role="class", tables=(ORDERS,))
     amount = _term(2, "amount", is_abstract=False, role="property", refs=(AMOUNT,))
@@ -395,7 +395,7 @@ async def test_a_class_term_is_assigned_to_its_table_and_a_property_to_its_colum
         "typeName": SEMANTIC_ASSIGNMENT,
         "attributes": ASSIGNMENT_ATTRIBUTES,
     }
-    assert ASSIGNMENT_ATTRIBUTES["status"] == "DISCOVERED"
+    assert ASSIGNMENT_ATTRIBUTES["status"] == "ACTIVE"
     assert fake.dissociates == []
 
 

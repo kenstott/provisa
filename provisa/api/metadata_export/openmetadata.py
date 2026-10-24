@@ -180,6 +180,10 @@ class Entity:  # REQ-1069
     # REQ-2118: the table a data contract attaches to, by its OpenMetadata FQN. Its import takes
     # the table's server-assigned id, which only the table's own upsert returns.
     for_table: str | None = None
+    # REQ-1634: a data product's member tables, by OpenMetadata FQN. OpenMetadata 2 ignores a
+    # data product body's ``assets``; members are attached through its bulk asset calls, by the
+    # ids the tables' own upserts return.
+    members: tuple[str, ...] = ()
 
 
 def _service_fqn(source_id: str) -> str:
@@ -473,9 +477,9 @@ def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
 def _data_product_entity(product: DataProductAsset) -> Entity:
     """A published DataProductAsset as OpenMetadata's own DataProducts construct (REQ-1634).
 
-    ``assets`` names member tables by fullyQualifiedName; ``publish`` substitutes each one's
-    server-assigned id (harvested from the table upsert), the same resolve-by-id pattern the
-    lineage requests use, since ``CreateDataProduct`` requires an EntityReference id.
+    ``members`` names member tables by fullyQualifiedName; ``publish`` attaches each by the
+    server-assigned id its table upsert returned, the same resolve-by-id pattern the lineage
+    requests use.
     """
     body: dict[str, Any] = {
         "name": product.id,
@@ -483,11 +487,6 @@ def _data_product_entity(product: DataProductAsset) -> Entity:
         # REQ-2118: OpenMetadata's data product has a description and no field for the rest of
         # the ODPS fields, so they follow the purpose in it.
         "description": product.described(),
-        # A member by OpenMetadata's own FQN (service.database.schema.table), the key its table
-        # upsert returns and table_ids holds; Provisa's source.schema.table matches no table.
-        "assets": [
-            {"fullyQualifiedName": _member_fqn(ref), "type": "table"} for ref in product.members
-        ],
     }
     if product.name and product.name != product.id:
         body["displayName"] = product.name
@@ -497,6 +496,9 @@ def _data_product_entity(product: DataProductAsset) -> Entity:
         kind="data_product",
         body=body,
         owned_by=product.owner.id if product.owner is not None else None,
+        # A member by OpenMetadata's own FQN (service.database.schema.table), the key its table
+        # upsert returns and table_ids holds; Provisa's source.schema.table matches no table.
+        members=tuple(_member_fqn(ref) for ref in product.members),
     )
 
 
@@ -1013,14 +1015,36 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
             ref["id"] = entity_id
         return None
 
-    @staticmethod
-    def _resolve_assets(body: dict[str, Any], table_ids: dict[str, str]) -> str | None:
-        """Fill every member's ``id`` in place; return the first FQN that has no id yet."""
-        for ref in body["assets"]:
-            entity_id = table_ids.get(ref["fullyQualifiedName"])
-            if entity_id is None:
-                return ref["fullyQualifiedName"]
-            ref["id"] = entity_id
+    async def _sync_members(
+        self, client: httpx.AsyncClient, name: str, member_ids: set[str]
+    ) -> str | None:
+        """Make the data product ``name``'s assets exactly ``member_ids`` (REQ-1634): the ones it
+        lacks added, the ones it holds beyond them removed, through OpenMetadata's bulk asset
+        calls. The refusal, or None."""
+        listed = await client.get(
+            self._url(f"/api/v1/dataProducts/name/{name}/assets"),
+            params={"limit": "1000"},
+            headers=self._headers(),
+        )
+        if listed.status_code >= 400:
+            return f"its assets: HTTP {listed.status_code}: {listed.text[:300]}"
+        held = {a["id"]: a["type"] for a in listed.json().get("data", [])}
+        for action, refs in (
+            ("add", [{"id": i, "type": "table"} for i in sorted(member_ids - set(held))]),
+            (
+                "remove",
+                [{"id": i, "type": t} for i, t in sorted(held.items()) if i not in member_ids],
+            ),
+        ):
+            if not refs:
+                continue
+            response = await client.put(
+                self._url(f"/api/v1/dataProducts/{name}/assets/{action}"),
+                json={"assets": refs},
+                headers=self._headers(),
+            )
+            if response.status_code >= 400 or response.json().get("status") != "success":
+                return f"assets/{action}: HTTP {response.status_code}: {response.text[:300]}"
         return None
 
     async def _register_relationship_property(self, client: httpx.AsyncClient) -> None:
@@ -1640,7 +1664,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                         )
                         continue
                 if entity.kind == "data_product":
-                    unresolved = self._resolve_assets(entity.body, table_ids)
+                    unresolved = next((f for f in entity.members if f not in table_ids), None)
                     if unresolved is not None:
                         # REQ-1634: same failure shape as lineage — the member table's own
                         # upsert error is already reported, so this is a distinct, narrower
@@ -1712,6 +1736,18 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     )
                 if entity.kind == "user" and response.status_code < 400:
                     user_ids[entity.body["name"]] = response.json()["id"]
+                if entity.kind == "data_product" and response.status_code < 400:
+                    refused = await self._sync_members(
+                        client, entity.body["name"], {table_ids[f] for f in entity.members}
+                    )
+                    if refused is not None:
+                        result.errors.append(
+                            AssetError(
+                                asset=entity.asset,
+                                message=f"data_product {entity.asset.fqn()}: {refused}",
+                            )
+                        )
+                        continue
                 if response.status_code >= 400:
                     result.errors.append(
                         AssetError(

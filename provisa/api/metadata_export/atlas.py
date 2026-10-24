@@ -881,13 +881,16 @@ TERM_RELATION_MAP = {
 # REQ-1389 (amended): a term-to-entity assignment Provisa makes is an AtlasGlossarySemanticAssignment
 # relationship carrying these attributes. ``source`` is the ownership test -- Provisa writes and
 # withdraws only assignments whose source is Provisa; every other assignment is a person's and
-# stands. ``DISCOVERED`` is Atlas's own status for an assignment a system made, not a steward.
+# stands. Atlas's glossary model types the relationship's ``status`` as
+# AtlasGlossaryTermRelationshipStatus (DRAFT, ACTIVE, DEPRECATED, OBSOLETE, OTHER), not the
+# assignment-header enum DISCOVERED belongs to; it refuses DISCOVERED (ATLAS-404-00-00D). A
+# Provisa assignment comes from the governed model, so it is ACTIVE.
 SEMANTIC_ASSIGNMENT = "AtlasGlossarySemanticAssignment"
 ASSIGNMENT_SOURCE = "provisa"
 ASSIGNMENT_ATTRIBUTES = {
     "source": ASSIGNMENT_SOURCE,
     "createdBy": ASSIGNMENT_SOURCE,
-    "status": "DISCOVERED",
+    "status": "ACTIVE",
     "description": "Assigned by Provisa from the term's grounding in the governed model.",
 }
 
