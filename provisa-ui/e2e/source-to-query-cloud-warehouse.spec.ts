@@ -22,11 +22,9 @@
 // spec's fixture, same idea as source-to-query.spec.ts's mysql/trino-as-a-source
 // provisionExtraSources().
 //
-// synapse/redshift are deliberately SKIPPED: .env has no live SYNAPSE_* (the e2e provisions its
-// own ephemeral workspace via tests/integration/synapse_provision.py, az login-scoped — out of
-// scope for a UI form test to stand up) and only REDSHIFT_AWS_* keys (AWS creds for scripts/
-// redshift_e2e.py's ephemeral Redshift Serverless lane, not a standing cluster host/port/db/user/
-// pass) — see each test body for the precise skip reason.
+// synapse/redshift read the warehouses scripts/ci/lanes/with_warehouses.py stands up around the
+// core lane's run with the integration warehouse lane's own provisioning
+// (tests/integration/synapse_provision.py, redshift_cluster.py), torn down when it ends.
 //
 // BUG FOUND ALONG THE WAY (filed, not worked around here): provisa/api/admin/introspect.py's
 // native_schemas()/native_tables()/native_columns() had NO branch for snowflake/databricks/
@@ -68,7 +66,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 const SEED = path.join(ROOT, "provisa-ui", "e2e", "cloud_warehouse_seed.py");
 
-function seed(engine: "snowflake" | "databricks" | "bigquery" | "fabric", action: "up" | "down"): void {
+type Engine = "snowflake" | "databricks" | "bigquery" | "fabric" | "redshift" | "synapse";
+
+function seed(engine: Engine, action: "up" | "down"): void {
   execFileSync(PYTHON, [SEED, engine, action], { stdio: "pipe" });
 }
 
@@ -299,31 +299,84 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
     }
   });
 
-  test("synapse: no live workspace to register against", async () => {
-    // .env deliberately leaves SYNAPSE_SQL_SERVER/SYNAPSE_DATABASE unset (see its comment block):
-    // the Synapse e2e lane provisions its OWN ephemeral workspace + ADLS account per run via
-    // tests/integration/synapse_provision.py (az login-scoped) and tears it down afterward, so
-    // nothing bills between runs. Standing that ephemeral workspace up just to drive three UI
-    // screens is out of scope here — this is an honest skip, not a credentials gap this spec can
-    // route around like the four above.
+  // The ephemeral warehouses scripts/ci/lanes/with_warehouses.py stands up around the core
+  // lane's run: the standing Synapse serverless workspace with this runner's firewall rule
+  // (tests/integration/synapse_provision.py) and a Redshift Serverless workgroup
+  // (tests/integration/redshift_cluster.py), torn down when the run ends.
+  test("synapse: add the source, register a table, query it on the SQL page", async ({ page }) => {
     test.skip(
-      true,
-      "SYNAPSE_SQL_SERVER/SYNAPSE_DATABASE unset — the e2e lane provisions its own ephemeral " +
-        "workspace via tests/integration/synapse_provision.py; standing one up for a UI form test " +
-        "is out of scope",
+      !(process.env.SYNAPSE_SQL_SERVER && process.env.SYNAPSE_DATABASE),
+      "no Synapse workspace in this environment (SYNAPSE_SQL_SERVER/SYNAPSE_DATABASE): " +
+        "scripts/ci/lanes/with_warehouses.py opens one for the run",
     );
+    test.setTimeout(300000);
+    seed("synapse", "up");
+    try {
+      const sourceId = `e2e_synapse_${Date.now()}`;
+      // Azure AD: the ambient credential, the service principal the environment names.
+      await openSourcesForm(page);
+      await page.getByTestId("sources-id-input").fill(sourceId);
+      await page.getByTestId("sources-type-select").selectOption("synapse");
+      await page.getByRole("textbox", { name: /Server/ }).fill(process.env.SYNAPSE_SQL_SERVER!);
+      await page.getByRole("textbox", { name: /^Database/ }).fill(process.env.SYNAPSE_DATABASE!);
+      await page.getByRole("textbox", { name: "Authentication" }).click();
+      await page
+        .getByRole("option", { name: "Ambient Credential (az login / managed identity)", exact: true })
+        .click();
+      await submitSourceAndExpectListed(page, sourceId);
+
+      await openRegisterForm(page, sourceId);
+      await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+      await expectDiscoveredColumns(page, ["id"], 120000);
+      await expectDiscoveredColumns(page, ["name"]);
+      const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+      const rows = await runSqlOnPage(
+        page,
+        `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+      );
+      expect(rows).toEqual(WIDGET_ROWS);
+    } finally {
+      seed("synapse", "down");
+    }
   });
 
-  test("redshift: no live cluster to register against", async () => {
-    // .env has REDSHIFT_AWS_ACCESS_KEY_ID/SECRET/REGION only — AWS creds for scripts/
-    // redshift_e2e.py's EPHEMERAL Redshift Serverless lane (it stands up a serverless workspace,
-    // runs, tears down), not a standing cluster host/port/database/user/password the Sources form
-    // could actually connect to. No such cluster exists to register against.
+  test("redshift: add the source, register a table, query it on the SQL page", async ({ page }) => {
     test.skip(
-      true,
-      "only REDSHIFT_AWS_* keys present (ephemeral Redshift Serverless lane creds, " +
-        "scripts/redshift_e2e.py) — no standing cluster host/port/db/user/pass in .env to register " +
-        "against",
+      !(process.env.REDSHIFT_HOST && process.env.REDSHIFT_PASSWORD),
+      "no Redshift cluster in this environment (REDSHIFT_HOST/...): " +
+        "scripts/ci/lanes/with_warehouses.py provisions one for the run",
     );
+    test.setTimeout(300000);
+    seed("redshift", "up");
+    try {
+      const sourceId = `e2e_redshift_${Date.now()}`;
+      await openSourcesForm(page);
+      await page.getByTestId("sources-id-input").fill(sourceId);
+      await page.getByTestId("sources-type-select").selectOption("redshift");
+      await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill(process.env.REDSHIFT_HOST!);
+      await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(process.env.REDSHIFT_PORT!);
+      await page
+        .getByLabel(/^Database/)
+        .and(page.locator(FORM_FIELD))
+        .fill(process.env.REDSHIFT_DATABASE!);
+      await page.getByLabel(/^Username/).fill(process.env.REDSHIFT_USER!);
+      await page.getByLabel(/^Password/).fill(process.env.REDSHIFT_PASSWORD!);
+      await submitSourceAndExpectListed(page, sourceId);
+
+      await openRegisterForm(page, sourceId);
+      await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+      await expectDiscoveredColumns(page, ["id"], 120000);
+      await expectDiscoveredColumns(page, ["name"]);
+      const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+      const rows = await runSqlOnPage(
+        page,
+        `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+      );
+      expect(rows).toEqual(WIDGET_ROWS);
+    } finally {
+      seed("redshift", "down");
+    }
   });
 });

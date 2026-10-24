@@ -18,6 +18,7 @@ pg_duckdb scan connectors. Extracted from connector.py; leaf module.
 
 from __future__ import annotations
 
+import os
 import re
 
 
@@ -563,10 +564,15 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
             )
         else:
             # The source names no identity of its own: the ambient one, as the DIRECT driver uses
-            # (DefaultAzureCredential there). The extension's chain does not fall through: given
-            # 'env;cli' with no AZURE_* variables set it fails on 'env' (verified live), so the
-            # ambient identity is the Azure CLI's signed-in one.
-            provider = "PROVIDER credential_chain, CHAIN 'cli'"
+            # (DefaultAzureCredential there: a service principal the environment names, then the
+            # Azure CLI's signed-in identity). The extension's chain does not fall through --
+            # given 'env;cli' with no AZURE_* variables set it fails on 'env' (verified live) --
+            # so the one that applies is chosen here.
+            names_one = all(
+                os.environ.get(v)
+                for v in ("AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID")
+            )
+            provider = f"PROVIDER credential_chain, CHAIN '{'env' if names_one else 'cli'}'"
         dsn = f"Server={source.host},{source.port or 1433};Database={source.database}"
         return {
             "attach": (

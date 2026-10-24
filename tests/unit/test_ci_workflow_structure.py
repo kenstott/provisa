@@ -253,6 +253,8 @@ _LIVE_SOURCE_SECRETS = {
     "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
     "SP_TENANT_ID", "SP_CLIENT_ID", "SP_SITE_URL", "SP_CERT_PASSWORD",
     "FREE_ASKAMERICA_KEY", "KAGGLE_API_TOKEN", "OPENROUTER_API_KEY", "STRIPE_API_KEY",
+    "REDSHIFT_AWS_ACCESS_KEY_ID", "REDSHIFT_AWS_SECRET_ACCESS_KEY", "REDSHIFT_AWS_REGION",
+    "SYNAPSE_SQL_SERVER", "SYNAPSE_DATABASE", "SYNAPSE_ADLS_URL",
 }  # fmt: skip
 
 
@@ -307,6 +309,17 @@ def test_no_step_or_lane_script_prints_its_environment():
         assert not found, f"{where}: {found.group(0)!r}"
 
 
+_AZ_LOGIN = (
+    'az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" '
+    '--tenant "$AZURE_TENANT_ID" --output none'
+)
+
+
+def test_the_core_ui_lanes_azure_sign_in_is_the_integration_lanes():
+    lanes = (REPO / ".github/workflows/integration-suite-lanes.yml").read_text()
+    assert f"run: {_AZ_LOGIN}" in lanes
+
+
 def test_the_core_ui_lanes_credential_files_are_private_and_removed():
     def commands(name: str) -> str:
         text = (REPO / "scripts" / "ci" / "lanes" / name).read_text()
@@ -319,7 +332,10 @@ def test_the_core_ui_lanes_credential_files_are_private_and_removed():
     for line in prepare.splitlines():
         if "_JSON" in line or "_BASE64" in line:
             assert line.strip().startswith(("if [ -n", "printf '%s' \"$")), line
-    assert "az login" not in prepare and "az login" not in after
+    # One command takes a secret as an argument: the Azure CLI's service-principal sign-in, which
+    # the Synapse workspace's firewall rule is made through, as in the integration warehouse lane.
+    assert [line.strip() for line in prepare.splitlines() if "az login" in line] == [_AZ_LOGIN]
+    assert "az login" not in after
     assert 'rm -rf "${RUNNER_TEMP:?}/lane-credentials"' in after
     # The Fabric capacity is left paused whatever the lane's outcome -- by reading its state,
     # not by a bare suspend, which is refused in every state but Active (run 38050265191).

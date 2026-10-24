@@ -248,7 +248,41 @@ def test_a_fabric_source_naming_a_service_principal_signs_in_as_it():
     assert d["raw_alias"] == "_src_fab"
 
 
-def test_a_synapse_source_naming_no_identity_signs_in_as_the_ambient_one():
+_AZURE_ENV = ("AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID")
+
+
+def _ambient(monkeypatch, *set_vars: str) -> str:
+    for name in _AZURE_ENV:
+        monkeypatch.delenv(name, raising=False)
+    for name in set_vars:
+        monkeypatch.setenv(name, "x")
+    return DuckDBMssqlConnector("fabric").details(
+        _src("fab", SourceType.fabric, host="ws.fabric.microsoft.com", port=1433, database="db")
+    )["attach"]
+
+
+def test_the_ambient_identity_is_the_environment_s_service_principal_when_it_names_one(
+    monkeypatch,
+):
+    """As the direct driver's DefaultAzureCredential: a service principal named in the
+    environment, then the Azure CLI's signed-in identity. The UI e2e runner signs no CLI in, and
+    its Fabric attach failed ('Azure CLI credentials expired') while the direct driver read."""
+    attach = _ambient(monkeypatch, *_AZURE_ENV)
+    assert "PROVIDER credential_chain, CHAIN 'env'" in attach
+    assert "CHAIN 'cli'" not in attach
+
+
+@pytest.mark.parametrize(
+    "partial", [(), ("AZURE_CLIENT_ID",), ("AZURE_CLIENT_ID", "AZURE_TENANT_ID")]
+)
+def test_without_all_three_the_ambient_identity_is_the_cli_s(monkeypatch, partial):
+    # The extension's chain does not fall through: 'env' with a variable missing fails.
+    assert "PROVIDER credential_chain, CHAIN 'cli'" in _ambient(monkeypatch, *partial)
+
+
+def test_a_synapse_source_naming_no_identity_signs_in_as_the_ambient_one(monkeypatch):
+    for name in _AZURE_ENV:
+        monkeypatch.delenv(name, raising=False)
     d = DuckDBMssqlConnector("synapse").details(
         _src(
             "syn",

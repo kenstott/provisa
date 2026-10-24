@@ -13,10 +13,12 @@ spec.ts (REQ-1747 lane): the Playwright spec drives the Sources/Register Table/S
 whatever this script puts there, then calls it again with "down" to remove it. Mirrors the exact
 connection code the existing python integration suites already use for each warehouse (
 tests/integration/test_snowflake_source_e2e.py, test_databricks_source_e2e.py,
-test_bigquery_federation_engine_e2e.py, test_fabric_federation_engine_e2e.py) so this is not a new,
-unverified way of reaching them.
+test_bigquery_federation_engine_e2e.py, test_fabric_federation_engine_e2e.py,
+test_redshift_source_e2e.py, test_synapse_federation_engine_e2e.py) so this is not a new,
+unverified way of reaching them. Redshift and Synapse are the lanes scripts/ci/lanes/
+with_warehouses.py stands up around the run (REDSHIFT_* and SYNAPSE_* in the environment).
 
-Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric> <up|down>
+Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric|redshift|synapse> <up|down>
 """
 
 from __future__ import annotations
@@ -182,11 +184,72 @@ def _fabric(action: str) -> None:
             suspend_capacity()
 
 
+def _redshift(action: str) -> None:
+    import psycopg2
+
+    # The cluster with_warehouses.py provisioned (tests/integration/redshift_cluster.py exports
+    # REDSHIFT_*), reached as test_redshift_source_e2e.py reaches it.
+    conn = psycopg2.connect(
+        host=os.environ["REDSHIFT_HOST"],
+        port=int(os.environ["REDSHIFT_PORT"]),
+        dbname=os.environ["REDSHIFT_DATABASE"],
+        user=os.environ["REDSHIFT_USER"],
+        password=os.environ["REDSHIFT_PASSWORD"],
+        connect_timeout=30,
+    )
+    conn.autocommit = True
+    cur = conn.cursor()
+    try:
+        if action == "up":
+            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
+            cur.execute(f"DROP TABLE IF EXISTS {_SCHEMA}.{_TABLE}")
+            cur.execute(f"CREATE TABLE {_SCHEMA}.{_TABLE} (id INTEGER, name VARCHAR(50))")
+            cur.execute(
+                f"INSERT INTO {_SCHEMA}.{_TABLE} VALUES (1,'sprocket'),(2,'cog'),(3,'gear')"
+            )
+        else:
+            cur.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _synapse(action: str) -> None:
+    from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
+
+    # The standing serverless workspace (SYNAPSE_SQL_SERVER/SYNAPSE_DATABASE), whose firewall
+    # with_warehouses.py opened for this runner (tests/integration/synapse_provision.py). A
+    # serverless pool holds no tables; the widgets are a view over their own values.
+    rt = MssqlWarehouseRuntime(
+        server=os.environ["SYNAPSE_SQL_SERVER"],
+        database=os.environ["SYNAPSE_DATABASE"],
+        engine_name="synapse",
+    )
+    cur = rt.connection.cursor()
+    try:
+        if action == "up":
+            cur.execute(f"IF SCHEMA_ID('{_SCHEMA}') IS NULL EXEC('CREATE SCHEMA [{_SCHEMA}]')")
+            cur.execute(
+                f"CREATE OR ALTER VIEW [{_SCHEMA}].[{_TABLE}] AS SELECT id, name FROM (VALUES "
+                "(CAST(1 AS BIGINT),'sprocket'),(CAST(2 AS BIGINT),'cog'),(CAST(3 AS BIGINT),'gear')"
+                ") AS w(id, name)"
+            )
+        else:
+            cur.execute(f"DROP VIEW IF EXISTS [{_SCHEMA}].[{_TABLE}]")
+            cur.execute(f"DROP SCHEMA IF EXISTS [{_SCHEMA}]")
+        rt.connection.commit()
+    finally:
+        cur.close()
+        rt.close()
+
+
 _ENGINES = {
     "snowflake": _snowflake,
     "databricks": _databricks,
     "bigquery": _bigquery,
     "fabric": _fabric,
+    "redshift": _redshift,
+    "synapse": _synapse,
 }
 
 

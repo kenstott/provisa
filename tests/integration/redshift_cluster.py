@@ -50,6 +50,7 @@ import ssl
 import string
 import time
 import urllib.request
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -270,12 +271,10 @@ def _delete_namespace(rss: Any, namespace: str) -> None:
         )
 
 
-@pytest.fixture(scope="session")
-def redshift_cluster():
-    """Provision a Serverless workgroup, export ``REDSHIFT_*``, delete both on the way out.
-
-    Session-scoped so the source e2e and the pipeline e2e share one cluster: the billable window
-    is one provision/delete pair for the whole run, not one per test file.
+@contextmanager
+def redshift_lane():
+    """Provision a Serverless workgroup, export ``REDSHIFT_*``, delete both on the way out: the
+    pytest fixture below, and the UI e2e lane's warehouses (scripts/ci/lanes/with_warehouses.py).
 
     A pre-set ``REDSHIFT_HOST`` pins a standing cluster: nothing is created, so nothing is deleted
     either — this must never delete a cluster it did not create. Same rule as ``synapse_lane`` in
@@ -371,3 +370,12 @@ def redshift_cluster():
         print(f"== deleting {workgroup} / {namespace} (finished at exit) ==", flush=True)
         _request_workgroup_delete(rss, workgroup)
         atexit.register(_finish_delete, rss, workgroup, namespace)
+
+
+@pytest.fixture(scope="session")
+def redshift_cluster():
+    """:func:`redshift_lane` for the session: the source e2e and the pipeline e2e share one
+    cluster, so the billable window is one provision/delete pair for the whole run, not one per
+    test file."""
+    with redshift_lane() as lane:
+        yield lane

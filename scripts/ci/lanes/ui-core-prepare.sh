@@ -14,9 +14,10 @@
 # with a service-account key, SharePoint with a client certificate. Each arrives as a secret in
 # the environment and is written here, readable by this user alone, under the runner's temp
 # directory; the lane is told the paths (GOOGLE_APPLICATION_CREDENTIALS, SP_CERT_PATH), which
-# are not secrets. Fabric needs no file and no `az login`: the product's own Azure credential
-# reads AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID from the environment, so no
-# secret is ever an argument of a command.
+# are not secrets. Fabric needs no file: the product's own Azure credential reads
+# AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID from the environment. One command takes a
+# secret as an argument: the Azure CLI's service-principal sign-in, the integration warehouse
+# lane's own, through which with_warehouses.py opens the Synapse workspace's firewall.
 #
 # Never prints a value: no xtrace, no echo of a variable, no environment dump.
 set -euo pipefail
@@ -25,6 +26,11 @@ umask 077
 
 dir="${RUNNER_TEMP:?}/lane-credentials"
 mkdir -p "$dir"
+
+if [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_CLIENT_SECRET:-}" ] && [ -n "${AZURE_TENANT_ID:-}" ]; then
+  az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
+  echo "signed the Azure CLI in as the CI service principal"
+fi
 
 if [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
   printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$dir/gcp-service-account.json"
