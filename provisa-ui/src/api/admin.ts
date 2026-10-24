@@ -1552,6 +1552,10 @@ export interface CompileResult {
   warnings?: string[];
   compiled_cypher?: string | null;
   cypher_error?: string | null;
+  /** REQ-2136: the root's read as a SPARQL SELECT, its PREFIX lines with it; null with
+   * ``sparql_error`` saying why there is none. */
+  compiled_sparql?: string | null;
+  sparql_error?: string | null;
 }
 
 /** One thing an answer says about itself (REQ-1350), as the server sends it. */

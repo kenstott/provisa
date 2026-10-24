@@ -87247,9 +87247,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-22, SPARQL VISUALIZER:) Phase 5''s SPARQL visualizer is the Cypher visualizer (GraphSidebar
     and the graph canvas) with a second vocabulary: one component, not a separate visualizer. It keeps the
     same shell (history, favorites, settings, export, the canvas and how results are drawn), and its left-hand
-    pills are in SPARQL''s vocabulary: Domains; Classes (terms typing a table, with abstract terms as superclasses);
+    [SUPERSEDED by REQ-2135, 2026-10-23 -- the pills follow the term roles (Class, Property, Concept); see VISUALIZER VOCABULARY below. Kept here for history; do not implement against it.] pills are in SPARQL''s vocabulary: Domains; Classes (terms typing a table, with abstract terms as superclasses);
     Properties (term-linked columns); Relationships (edge-type predicates: declared relationships and term
-    edges); Concepts (the SKOS vocabulary); and Prefixes. Clicking a pill adds a triple pattern to the current
+    edges); Concepts (the SKOS vocabulary); and Prefixes. [END SUPERSEDED BLOCK] Clicking a pill adds a triple pattern to the current
     query rather than replacing it. IRIs are shown compacted by prefix, with the full IRI on hover; literals
     are drawn distinct from resources; and CONSTRUCT results are drawn as a graph. (Amended 2026-10-22,
     PATH MODES:) Cypher''s variable-length paths map in as WALK with a bound: the depth limit ends the walk,
@@ -87297,7 +87297,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     answers the caller''s role''s vocabulary as IRIs, for a client to offer as a query is written: its base
     and prefixes; each class, a table''s own or a Class term, with the labels it types; each predicate,
     a column''s own or a Property term, with its label, property and datatype; each edge type with its source
-    and target; and the live Concept terms.'
+    and target; and the live Concept terms. (Amended 2026-10-23, VISUALIZER VOCABULARY:) The visualizer''s pills follow the term roles (REQ-2141), read from GET /data/sparql/vocabulary as the acting role: Domains, each a domain''s prefix, which, picked, also narrows the other lists to that domain''s vocabulary; Classes, the Class terms and the tables'' own classes, each Class term shown with the classes it is a KIND_OF as its superclasses; Properties, the Property terms and the columns'' predicates; Relationships, the declared relationships and term edges as predicates; Concepts, the live Concept terms (the SKOS vocabulary); and Prefixes. A class pill types the query''s subject ?s, a property or relationship pill adds a fresh object to ?s, a concept pill reads what is said of the concept, and a prefix or domain pill declares its PREFIX; each adds to the query in the bar. The SPARQL tab keeps its own frames, history, favorites and settings, apart from Cypher''s. The Ontology page''s Open as query (REQ-2136) offers SPARQL when the query has one root with a SPARQL form, and otherwise says why: the root''s reason, or that each root is its own SPARQL query.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

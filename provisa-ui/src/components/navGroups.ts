@@ -106,6 +106,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { to: "/query", labelKey: "navBar.itemGraphql", capability: "query_development" },
       { to: "/graph", labelKey: "navBar.itemCypher", capability: "query_development" },
+      { to: "/sparql", labelKey: "navBar.itemSparql", capability: "query_development" },
       { to: "/sql", labelKey: "navBar.itemSql", capability: "query_development" },
       { to: "/grpc", labelKey: "navBar.itemGrpc", capability: "query_development" },
       { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
