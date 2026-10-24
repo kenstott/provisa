@@ -18,16 +18,7 @@ import { DetailFields, type DetailField } from "../../components/detail/DetailFi
 import React, { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import {
-  ActionIcon,
-  Alert,
-  Group,
-  List,
-  Loader,
-  Modal,
-  Stack,
-  Text,
-} from "@mantine/core";
+import { ActionIcon, Alert, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
 import {
   Braces,
   Cable,
@@ -51,6 +42,7 @@ import type { LineageGraphData } from "../../api/lineage";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
 import { InputPort, type InputPortRow } from "./InputPort";
+import { ClampedDetail } from "./ClampedDetail";
 
 export type { InputPortRow };
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
@@ -707,29 +699,34 @@ export function DataProductDetailPanel({
               <List size="sm" data-testid={`data-product-detail-related-tables-${p.id}`}>
                 {related.map((e) => (
                   <List.Item key={`${e.target_product_id}:${e.target_table_id}`} ff="monospace">
-                    {relatedLabel(e)}
-                    {e.target_product && <Muted>({t("dataProductCore.aProduct")})</Muted>}
-                    <Text size="xs" c="var(--text-muted)">
-                      {[
-                        e.aliases,
-                        e.direct
-                          ? t("dataProductCore.direct")
-                          : t("dataProductCore.hops", { count: e.hops }),
-                        e.path_count > 1
-                          ? t("dataProductCore.paths", { count: e.path_count })
-                          : null,
-                        e.supporting_tables
-                          ? t("dataProductCore.through", { tables: e.supporting_tables })
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                    {e.target_table?.description && (
+                    {/* The whole entry at most three lines; its ellipsis opens it in place. */}
+                    <ClampedDetail
+                      testId={`data-product-related-${p.id}-${e.target_product_id ?? e.target_table_id}`}
+                    >
+                      {relatedLabel(e)}
+                      {e.target_product && <Muted>({t("dataProductCore.aProduct")})</Muted>}
                       <Text size="xs" c="var(--text-muted)">
-                        {e.target_table.description}
+                        {[
+                          e.aliases,
+                          e.direct
+                            ? t("dataProductCore.direct")
+                            : t("dataProductCore.hops", { count: e.hops }),
+                          e.path_count > 1
+                            ? t("dataProductCore.paths", { count: e.path_count })
+                            : null,
+                          e.supporting_tables
+                            ? t("dataProductCore.through", { tables: e.supporting_tables })
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </Text>
-                    )}
+                      {e.target_table?.description && (
+                        <Text size="xs" c="var(--text-muted)">
+                          {e.target_table.description}
+                        </Text>
+                      )}
+                    </ClampedDetail>
                   </List.Item>
                 ))}
               </List>

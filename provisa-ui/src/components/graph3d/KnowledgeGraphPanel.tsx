@@ -15,14 +15,11 @@
 
 import { useMemo, useState, type ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Chip, Group, Loader, Modal } from "@mantine/core";
+import { Alert, Button, Group, Loader, Modal } from "@mantine/core";
 import { Network } from "lucide-react";
 import { ExpandButton, FitModal } from "../../pages/tables/profile3d/Expandable3D";
-import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { GraphExplorer } from "./GraphExplorer";
-import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
-import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
-import { useGraphSettings, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
+import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
 import { GraphStage, type StageState } from "./GraphStage";
 import {
   PRODUCT_SCOPE,
@@ -93,28 +90,19 @@ export function GraphModal({
 function PanelStage({
   graph,
   product,
-  productId,
   productName,
 }: {
   graph: GraphData;
   product: string;
-  productId: string;
   productName: string;
 }) {
   const at = useMemo(() => layoutGraph(graph, "force", []), [graph]);
   const [picked, setSelected] = useState<string | null>(product);
   const [hover, setHover] = useState<GraphHover | null>(null);
-  // Remembered for this product's panel (graphSettings.ts).
-  const [saved, save, resetSettings] = useGraphSettings(
-    { kind: "product-panel", subject: productId },
-    { rotate: true as boolean, grid: true as boolean },
-  );
-  const rotate = saved.rotate as boolean;
-  const grid = saved.grid as boolean;
-  const setRotate = (on: boolean) => save("rotate", on);
-  const setGrid = (on: boolean) => save("grid", on);
-  const [command, setCommand] = useState<CameraCommand | null>(null);
-  const { t } = useTranslation();
+  // The card is a glance: it turns and draws no grid, whatever a viewer's saved graph defaults
+  // say; a drag stops the turning, as it does anywhere. Its settings live in its expanded view.
+  const [rotate, setRotate] = useState(true);
+  const grid = false;
   const s: StageState = {
     graph,
     at,
@@ -130,24 +118,7 @@ function PanelStage({
   };
   return (
     <>
-      <Group className="p3d-toolbar" gap="xs">
-        <Chip size="xs" checked={rotate} onChange={setRotate} data-testid="kg-panel-rotate">
-          {t("profile3d.rotate")}
-        </Chip>
-        <GridToggle value={grid} onChange={setGrid} testId="kg-panel" />
-        <Button
-          size="xs"
-          variant="default"
-          onClick={() =>
-            setCommand((c) => ({ kind: "reset", target: null, seq: c == null ? 1 : c.seq + 1 }))
-          }
-          data-testid="kg-panel-reset"
-        >
-          {t("profile3d.resetView")}
-        </Button>
-        <ResetSettingsButton onReset={resetSettings} testId="kg-panel" />
-      </Group>
-      <GraphStage s={s} command={command} exportName={productName} testId="kg-panel-stage" />
+      <GraphStage s={s} command={null} exportName={productName} testId="kg-panel-stage" bare />
     </>
   );
 }
@@ -194,12 +165,7 @@ export function KnowledgeGraphPanel({
       <div className="p3d g3d-panel-view">
         {seen &&
           (graph ? (
-            <PanelStage
-              graph={graph}
-              product={product}
-              productId={productId}
-              productName={productName}
-            />
+            <PanelStage graph={graph} product={product} productName={productName} />
           ) : (
             <Loading error={error} testId="kg-panel" />
           ))}
