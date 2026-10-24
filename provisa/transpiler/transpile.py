@@ -246,11 +246,27 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _null_order_as_key(
-        _rewrite_list_functions_for_duckdb(
-            _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+    return _like_escape_written(
+        _null_order_as_key(
+            _rewrite_list_functions_for_duckdb(
+                _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+            )
         )
     )
+
+
+def _like_escape_written(sql: str) -> str:
+    """A LIKE or ILIKE with no ESCAPE clause, given PostgreSQL's: a backslash escapes the
+    character after it. DuckDB's LIKE has no escape character unless one is written, so
+    ``'a%b' LIKE 'a\\%b'`` was false there and true in the dialect the statement is in."""
+    tree = sqlglot.parse_one(sql, read="duckdb")
+
+    def _escaped(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(node, (exp.Like, exp.ILike)) and not isinstance(node.parent, exp.Escape):
+            return exp.Escape(this=node.copy(), expression=exp.Literal.string("\\"))
+        return node
+
+    return tree.transform(_escaped).sql(dialect="duckdb")
 
 
 def _null_order_as_key(sql: str) -> str:

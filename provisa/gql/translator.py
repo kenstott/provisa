@@ -976,10 +976,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             ):
                 target = maps[target.obj.name][target.name]
             inner = self._parse_expr(target)
-            if item.direction == "DESC":
-                exprs.append(exp.Ordered(this=inner, desc=True))
-            else:
-                exprs.append(exp.Ordered(this=inner, desc=False))
+            # Cypher orders null as the largest value: last ascending, first descending.
+            desc = item.direction == "DESC"
+            exprs.append(exp.Ordered(this=inner, desc=desc, nulls_first=desc))
         return exprs
 
     def _carried_map_keys(self, expr: CypherExpr, alias: str) -> list[exp.Expr]:
