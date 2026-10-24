@@ -363,3 +363,37 @@ def test_a_host_running_other_code_than_the_source_registered_is_refused_by_name
     hello = {"op": "hello", "protocol": w.PROTOCOL, "code_hash": "abc", "exports": []}
     assert w.refusal(hello, "abc") is None
     assert w.refusal(hello, "def") == "its host runs code abc, not the def the source registered"
+
+
+def test_a_calls_batches_pulled_for_another_thread_run_in_the_callers_context_on_one_thread():
+    """REQ-2100: DuckDB scans a call's batches on threads of its own; ``pulled`` runs the call on
+    one thread, in the caller's context (the request a stage reports into), and closing it closes
+    the call."""
+    import contextvars
+    import threading
+
+    current = contextvars.ContextVar("current", default="none")
+    current.set("the request")
+    seen: list[tuple[str, int]] = []
+    closed: list[bool] = []
+
+    def batches():
+        try:
+            for i in range(10):
+                seen.append((current.get(), threading.get_ident()))
+                yield i
+        finally:
+            closed.append(True)
+
+    taken = []
+    for item in w.pulled(batches(), depth=2):
+        taken.append(item)
+        if len(taken) == 3:
+            break
+    until = time.monotonic() + 5
+    while not closed and time.monotonic() < until:
+        time.sleep(0.01)
+    assert taken == [0, 1, 2]
+    assert {value for value, _ in seen} == {"the request"}
+    assert len({thread for _, thread in seen}) == 1 and seen[0][1] != threading.get_ident()
+    assert closed == [True]

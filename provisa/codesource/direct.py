@@ -280,14 +280,19 @@ class _Read:
         from provisa.codesource.arrow_rows import schema_text
 
         schema = self._schema(prepared)
-        ipcs = prepared.worker().batches(
-            self.export.name,
-            "table",
-            self.args,
-            self.names,
-            schema=schema_text(schema),
-            takes=self.export.takes,
-            context=self.context,
+        from provisa.codesource.worker import pulled
+
+        # Pulled on one thread of its own: DuckDB scans the rows on its threads (REQ-2100).
+        ipcs = pulled(
+            prepared.worker().batches(
+                self.export.name,
+                "table",
+                self.args,
+                self.names,
+                schema=schema_text(schema),
+                takes=self.export.takes,
+                context=self.context,
+            )
         )
         rows = (
             _registered(self.table, self.name, ipcs)
