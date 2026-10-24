@@ -55,6 +55,15 @@ export interface CanvasProps {
   requestedView?: { layout?: LayoutMode; collapseGroups?: boolean; seq: number };
   hullSvgRef?: React.Ref<SVGSVGElement>;
   isExpanded?: boolean;
+  /** Every node of a label, or every edge of a type, picked out (an Overview pill): those stand
+   *  out and the rest dim. A click on the canvas's background asks for it to be cleared. */
+  highlight?: CanvasHighlight | null;
+  onClearHighlight?: () => void;
+}
+
+export interface CanvasHighlight {
+  kind: "label" | "type";
+  value: string;
 }
 
 export type LayoutMode = "force" | "hierarchy";
