@@ -848,6 +848,8 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
 class OpenMetadataExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to an OpenMetadata server's ingestion API."""
 
+    binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
+
     provider_name = "openmetadata"
 
     # REQ-1389: read-merge the live table before every table PUT. A PUT replaces the fields

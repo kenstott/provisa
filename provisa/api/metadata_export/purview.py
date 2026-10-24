@@ -21,8 +21,7 @@ product's Provisa domain, with its members' Data Map entities as its data assets
   Microsoft Graph. An address Graph does not know is reported.
 - A product whose domain has no governance domain of that name is reported and not sent;
   governance domains are not created.
-- Status: active is PUBLISHED, deprecated and retired are EXPIRED, any other is DRAFT; a product
-  with no status is PUBLISHED when the product is published and DRAFT when not.
+- Status: draft is DRAFT; live and deprecated, still in service, are PUBLISHED; retired is EXPIRED.
 - The update frequency is the shortest freshness among its members.
 - Approvers and access policies are not published yet.
 """
@@ -58,15 +57,18 @@ _FREQUENCIES = (
 )
 
 
+#: REQ-1634 STATUS: Provisa's lifecycle in the Unified Catalog's (see the module docstring).
+_CATALOG_STATUS = {
+    "draft": "DRAFT",
+    "live": "PUBLISHED",
+    "deprecated": "PUBLISHED",
+    "retired": "EXPIRED",
+}
+
+
 def catalog_status(product: "DataProductAsset") -> str:
     """The product's Unified Catalog status (see the module docstring)."""
-    if product.status is None:
-        return "PUBLISHED" if product.publish else "DRAFT"
-    if product.status == "active":
-        return "PUBLISHED"
-    if product.status in ("deprecated", "retired"):
-        return "EXPIRED"
-    return "DRAFT"
+    return _CATALOG_STATUS[product.status]
 
 
 def update_frequency(members: list["TableAsset"]) -> str | None:

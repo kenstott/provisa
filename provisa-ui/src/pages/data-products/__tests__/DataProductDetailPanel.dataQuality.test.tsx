@@ -17,6 +17,7 @@ import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { DataProduct, Source } from "../../../types/admin";
 import type { CoreTable } from "../productCore";
 import i18n from "../../../i18n";
+import { lifecycleProps } from "./lifecycleProps";
 
 const parseContract = vi.fn().mockResolvedValue({
   dataset: "provisa/pet_store/vets",
@@ -99,6 +100,7 @@ function renderPanel(tables: CoreTable[], sources: Source[] = SOURCES) {
       inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }

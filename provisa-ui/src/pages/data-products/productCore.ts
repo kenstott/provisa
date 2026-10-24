@@ -25,6 +25,7 @@ import {
 import { withCheckers } from "../../components/graph3d/productGraphData";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
+import type { LifecycleStatus } from "../../components/lifecycle/StatusBadge";
 
 /** The product row's own fields, as data_products_meta names them. */
 export const PRODUCT_FIELDS = [
@@ -38,10 +39,12 @@ export const PRODUCT_FIELDS = [
   "usage",
   "version",
   "status",
+  "status_reason",
+  "retire_on",
+  "successor_id",
   "sla",
   "support",
   "support_contact",
-  "publish",
   "custom_properties",
 ] as const;
 
@@ -214,9 +217,13 @@ export function asProduct(row: ProductRow): DataProduct {
     limitations: String(row.limitations ?? ""),
     usage: String(row.usage ?? ""),
     version: text(row.version),
-    status: text(row.status),
+    status: String(row.status) as LifecycleStatus,
+    statusReason: text(row.status_reason),
+    retireOn: text(row.retire_on),
+    successorId: text(row.successor_id),
     sla: text(row.sla),
     support: text(row.support),
+    supportContact: text(row.support_contact),
     customProperties:
       typeof custom === "string"
         ? (JSON.parse(custom) as Record<string, unknown>)

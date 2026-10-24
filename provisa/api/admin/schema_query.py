@@ -14,6 +14,7 @@ from __future__ import annotations
 
 
 import asyncio
+import datetime
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, cast
@@ -67,6 +68,8 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
+    DataProductFindingType,
+    DataProductFindingsType,
     DataProductType,
     DomainType,
     GovDataSubjectsType,
@@ -671,9 +674,16 @@ class Query:  # REQ-021, REQ-042
 
         _resolve_admin_context(info)
         require_capability(info, "data_product_read")
+        from provisa.core import product_findings
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await data_product_repo.list_all(cast("Connection", conn))
+            conn = cast("Connection", conn)
+            rows = await data_product_repo.list_all(conn)
+            found = await product_findings.findings(
+                conn, await product_findings.context(datetime.date.today())
+            )
+        names = {r["id"]: r["name"] for r in rows}
         return [
             DataProductType(
                 id=r["id"],
@@ -685,12 +695,46 @@ class Query:  # REQ-021, REQ-042
                 limitations=r["limitations"],
                 usage=r["usage"],
                 version=r["version"],
-                status=r["status"],
                 sla=r["sla"],
                 support=r["support"],
+                support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
+                status=r["status"],
+                status_reason=r["status_reason"],
+                retire_on=r["retire_on"].isoformat() if r["retire_on"] is not None else None,
+                status_by=r["status_by"],
+                status_at=r["status_at"].isoformat() if r["status_at"] is not None else None,
+                successor_id=r["successor_id"],
+                successor_name=names.get(r["successor_id"]) if r["successor_id"] else None,
+                findings=len(found.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def data_product_findings(
+        self, info: StrawberryInfo, product_id: str | None = None
+    ) -> list[DataProductFindingsType]:  # REQ-2146
+        """What a curator should look at in the data products, by product; one product's when
+        ``product_id`` is given."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core import product_findings
+
+        _resolve_admin_context(info)
+        require_capability(info, "data_product_read")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            found = await product_findings.findings(
+                cast("Connection", conn),
+                await product_findings.context(datetime.date.today()),
+            )
+        return [
+            DataProductFindingsType(
+                product_id=pid,
+                findings=[DataProductFindingType(**f) for f in items],
+            )
+            for pid, items in sorted(found.items())
+            if product_id is None or pid == product_id
         ]
 
     @strawberry.field
