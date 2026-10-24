@@ -34,10 +34,18 @@ import pytest
 from provisa.codehost import front
 from provisa.codesource import remote
 from provisa.codesource.arrow_rows import IR_KEY, schema_text
+from provisa.codesource.worker import _QUEUED as WINDOW
 from provisa.codesource.worker import CONNECTIONS
+from provisa.python.host import BATCH
 from provisa.python.source import HOST
 
 pytestmark = pytest.mark.unit
+
+BOUNDS = {
+    "memory_mb": 256,
+    "threads": 2,
+    "spill_cap_mb": 1024,
+}  # the host's DuckDB, given at pairing
 
 _CODE = textwrap.dedent(
     '''
@@ -47,18 +55,22 @@ _CODE = textwrap.dedent(
     import pyarrow as pa
 
     PULLED = Path(__file__).parent / "pulled"
+    CLOSED = Path(__file__).parent / "closed"
 
 
     def many(n: int):
-        """Rows, each thousand pulled counted in a file beside the code.
+        """Rows, each thousand pulled counted in a file beside the code; closed, said so.
 
         @table
         """
-        for i in range(n):
-            if i % 1000 == 0:
-                with PULLED.open("a") as f:
-                    f.write("x")
-            yield {"n": i}
+        try:
+            for i in range(n):
+                if i % 1000 == 0:
+                    with PULLED.open("a") as f:
+                        f.write("x")
+                yield {"n": i}
+        finally:
+            CLOSED.write_text("closed")
 
 
     def arrow_table(n: int):
@@ -111,7 +123,15 @@ def worker(tmp_path):
     names.write_text("{}")
     host = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
-        [sys.executable, front.__file__, "0", str(tmp_path / "state"), str(names), *host],
+        [
+            sys.executable,
+            front.__file__,
+            "0",
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *host,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -128,7 +148,7 @@ def worker(tmp_path):
             break
     assert pairing is not None and port, "the host did not start"
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     started = remote.RemoteWorker(
         "shop-src", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
     )
@@ -175,14 +195,17 @@ def test_a_slow_reader_holds_back_its_own_function_and_no_other_call(worker):
     held = worker.batches("many", "table", [1_000_000], ["n"], schema=N)
     next(held)  # one batch taken, then the reader stops reading
     time.sleep(1.0)
+    # The credit window: the host sends WINDOW frames ahead of the reader, one more for the frame
+    # it took, and holds the batch it has pulled until a credit comes -- whatever the sockets
+    # between them buffer. Each frame is a batch.
+    bound = (WINDOW + 1 + 1) * BATCH
     stalled = _pulled(pulled)
-    # Its connection's queues and buffers fill, and the function is pulled no further.
-    assert stalled < 300_000
+    assert stalled <= bound
     # Another call meanwhile runs to its end on a connection of its own.
     rows = [row for batch in worker.rows("many", "table", [3000], ["n"], schema=N) for row in batch]
     assert [r["n"] for r in rows] == list(range(3000))
     time.sleep(0.5)
-    assert _pulled(pulled) - 3000 <= stalled + 1000
+    assert _pulled(pulled) - 3000 == stalled  # the held call was pulled no further meanwhile
     held.close()  # closing it cancels the call
     assert worker.ping()
 
@@ -191,8 +214,16 @@ def test_the_function_stops_once_the_statement_is_answered(worker):
     worker, pulled = worker
     answered = _answer(worker, "many", [1_000_000], ["n"], N, "SELECT n FROM many LIMIT 5")
     assert answered.num_rows == 5
+    closed = pulled.with_name("closed")
+    until = time.monotonic() + 10
+    while not closed.exists():
+        assert time.monotonic() < until, "the function was never stopped"
+        time.sleep(0.05)
+    # Stopped: closed by the host before its last row, and pulled no further.
+    assert _pulled(pulled) < 1_000_000
+    stopped = _pulled(pulled)
     time.sleep(0.5)
-    assert _pulled(pulled) < 300_000
+    assert _pulled(pulled) == stopped
     assert worker.ping()
 
 

@@ -41,6 +41,15 @@ from provisa.transpiler.router import Route, decide_route
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _bounded():
+    """The process's DuckDB under the operator's bounds, spilling where dev mode spills."""
+    from provisa.codesource.worker import duckdb_bounds
+    from provisa.core.org_files import data_dir
+
+    residual.configure(**duckdb_bounds(), spill_dir=str(data_dir() / "code-spill"))
+
+
 PUSHDOWN = {
     "region": {"column": "region", "op": "eq"},
     "gte_score": {"column": "score", "op": "gte"},

@@ -34,6 +34,12 @@ from provisa.node.worker import HOST
 
 pytestmark = pytest.mark.unit
 
+BOUNDS = {
+    "memory_mb": 256,
+    "threads": 2,
+    "spill_cap_mb": 1024,
+}  # the host's DuckDB, given at pairing
+
 _CODE = """
 export function add(a, b) { return a + b; }
 export async function greet(name) { return { greeting: `hi ${name}` }; }
@@ -55,7 +61,15 @@ def started(tmp_path):
     names.write_text("{}")
     worker = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
     process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's front end
-        [sys.executable, front.__file__, str(port), str(tmp_path / "state"), str(names), *worker],
+        [
+            sys.executable,
+            front.__file__,
+            str(port),
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *worker,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -106,7 +120,7 @@ def test_its_certificate_is_a_self_signed_p256_certificate_its_code_names(starte
 def test_provisa_pairs_dials_and_calls_it(started):
     port, pairing, state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     assert pin == pairing.split(".")[0]
     assert (state / "provisa.crt").read_text() == identity.certificate
     assert not (state / "pairing.secret").exists()
@@ -126,7 +140,9 @@ def test_another_secret_is_refused_and_the_host_stays_unpaired(started):
     port, pairing, state = started
     fingerprint = pairing.split(".")[0]
     with pytest.raises(remote.PairingRefused) as refused:
-        remote.pair("127.0.0.1", port, f"{fingerprint}.not-the-secret", remote.new_identity())
+        remote.pair(
+            "127.0.0.1", port, f"{fingerprint}.not-the-secret", remote.new_identity(), BOUNDS
+        )
     assert "not this host's pairing code" in str(refused.value)
     assert not (state / "provisa.crt").exists()
 
@@ -134,20 +150,22 @@ def test_another_secret_is_refused_and_the_host_stays_unpaired(started):
 def test_once_paired_only_the_paired_provisa_is_served(started):
     port, pairing, _state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     stranger = remote.RemoteWorker(
         "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=remote.new_identity()
     )
     with pytest.raises(WorkerFailed):
         stranger.start(timeout=5)
     with pytest.raises(remote.PairingRefused):
-        remote.pair("127.0.0.1", port, pairing, identity)  # paired: it takes no pair message
+        remote.pair(
+            "127.0.0.1", port, pairing, identity, BOUNDS
+        )  # paired: it takes no pair message
 
 
 def test_a_host_running_other_code_is_refused_by_name(started):
     port, pairing, _state = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     other = remote.RemoteWorker(
         "shop", "h2", address="127.0.0.1", port=port, pin=pin, identity=identity
     )
@@ -185,7 +203,15 @@ def test_arrow_the_code_returns_or_yields_is_sent_as_it_is(tmp_path):
     names.write_text("{}")
     host = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
     process = subprocess.Popen(  # noqa: S603 -- the machine's node and Provisa's front end
-        [sys.executable, front.__file__, "0", str(tmp_path / "state"), str(names), *host],
+        [
+            sys.executable,
+            front.__file__,
+            "0",
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *host,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1", "PROVISA_HOST_LIB": str(lib)},
         stderr=subprocess.PIPE,
         text=True,
@@ -202,7 +228,7 @@ def test_arrow_the_code_returns_or_yields_is_sent_as_it_is(tmp_path):
             break
     assert pairing is not None and port, "the host did not start"
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, pairing, identity)
+    pin = remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     worker = remote.RemoteWorker(
         "shop", "h1", address="127.0.0.1", port=port, pin=pin, identity=identity
     )
