@@ -13,6 +13,7 @@
     "runNow": "अभी प्रोफ़ाइल करें",
     "viewRuns": "प्रोफ़ाइल रन देखें",
     "runDone": "{{rows}} पंक्तियों की प्रोफ़ाइलिंग हुई।",
-    "constraints": "बाधाएँ"
+    "constraints": "बाधाएँ",
+    "classifications": "वर्गीकरण"
   }
 }

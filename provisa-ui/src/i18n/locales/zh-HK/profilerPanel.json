@@ -13,6 +13,7 @@
     "runNow": "立即剖析",
     "viewRuns": "檢視剖析執行",
     "runDone": "已剖析 {{rows}} 列。",
-    "constraints": "約束"
+    "constraints": "約束",
+    "classifications": "分類"
   }
 }

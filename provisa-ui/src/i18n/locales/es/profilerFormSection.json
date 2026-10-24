@@ -29,6 +29,8 @@
     "jointMaxDistinctDescription": "Una columna de texto con no más valores distintos que este entra en las correlaciones y los recuentos conjuntos como categoría.",
     "categoryMaxLabel": "Máximo de columnas de categoría",
     "categoryMaxDescription": "Cuántas columnas de categoría entran en las correlaciones y los recuentos conjuntos; se conservan las que tienen valor en más filas.",
+    "classificationSampleLabel": "Filas muestreadas para la clasificación",
+    "classificationSampleDescription": "Cuántas filas, tomadas al azar de la muestra de la ejecución, se comprueban con los tipos de clasificación. Los valores se comprueban y no se guardan.",
     "groupSchedule": "Programación y muestreo",
     "groupDrift": "Deriva",
     "groupDependence": "Dependencia entre columnas"

@@ -340,6 +340,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.openapi" = ["_known_specs/*.json.gz", "_known_specs/*.additions.json", "_known_specs/*.exclusions.json", "_known_specs/THIRD_PARTY_NOTICES"]
 # REQ-1494: the portable fake definition's versioned word lists and templates, and their notice.
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
+# REQ-2147: the profiler's classification kinds and the reference lists they test, and their notice.
+"provisa.profiler" = ["classification_kinds.yaml", "reference/*.txt.gz", "reference/THIRD_PARTY_NOTICES"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.

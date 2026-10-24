@@ -256,7 +256,12 @@
       "database_unavailable": "Datenbank nicht verfügbar",
       "query_engine_unavailable": "Abfrage-Engine nicht verfügbar",
       "role_header_required": "Header X-Provisa-Role erforderlich, um eine Sicht zu profilieren",
-      "table_not_found": "Tabelle {{table_id}} nicht gefunden"
+      "table_not_found": "Tabelle {{table_id}} nicht gefunden",
+      "column_not_found": "Spalte {{column}} ist keine Spalte der Tabelle, die der Organisationsadministrator liest",
+      "classification_kind_unknown": "Unbekannte Klassifizierungsart {{kind}}",
+      "classification_status_invalid": "Eine Klassifizierungsentscheidung ist angenommen oder abgelehnt, nicht {{status}}",
+      "classification_decision_not_found": "Keine Entscheidung zu {{column}} als {{kind}}",
+      "classification_pii_refused": "Die Spalte konnte nicht als PII markiert werden"
     },
     "replication": {
       "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: [{{content_type}}] {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",

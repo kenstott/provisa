@@ -34,6 +34,7 @@ const STORED = {
   correlation_max_columns: 10,
   joint_max_distinct: 15,
   category_max_columns: 4,
+  classification_sample: 300,
 };
 
 describe("Data Profiler source fields", () => {
@@ -75,6 +76,17 @@ describe("Data Profiler source fields", () => {
     }
     expect(screen.getByTestId("profiler-drift_ks-input")).toHaveValue("0.2");
     expect(screen.getByTestId("profiler-drift_psi-input")).toHaveValue("0.25");
+  });
+
+  it("offers the rows sampled for classification, defaulted for a new profiler", () => {
+    renderInForm(
+      <ProfilerFormSection
+        authFields={{ cron: "0 3 * * *", ...PROFILER_DEFAULTS }}
+        setAuthFields={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("profiler-classification_sample-input")).toHaveValue("500");
+    expect(screen.getByText("Rows sampled for classification")).toBeInTheDocument();
   });
 
   it("keeps stored settings and round-trips the mapping", () => {
