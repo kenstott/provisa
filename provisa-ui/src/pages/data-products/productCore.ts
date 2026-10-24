@@ -54,6 +54,12 @@ type ProductRow = Record<(typeof PRODUCT_FIELDS)[number], unknown>;
 
 const TERM: Selection = { fields: ["id", "name", "definition", "is_abstract", "live"] };
 
+// REQ-1443 clause 10: a checker table's rules, parsed from its contract at registration.
+const DQ_RULES: NonNullable<Selection["rels"]>[string] = {
+  alias: "dqRules",
+  sel: { fields: ["position", "column_name", "check_type", "definition"] },
+};
+
 const PANEL: Selection = {
   fields: ["id"],
   rels: {
@@ -71,6 +77,7 @@ const PANEL: Selection = {
         ],
         rels: {
           checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
+          dq_rules: DQ_RULES,
           checked_by: {
             alias: "checkedBy",
             sel: {
@@ -85,6 +92,7 @@ const PANEL: Selection = {
               ],
               rels: {
                 checks: { alias: "checks", sel: { fields: ["id", "domain_id", "table_name"] } },
+                dq_rules: DQ_RULES,
               },
             },
           },
@@ -103,6 +111,29 @@ const PANEL: Selection = {
           profile_results: {
             alias: "profileResults",
             sel: { fields: ["id", "domain_id", "table_name"] },
+          },
+          // REQ-351: its relationships, under the effective names stored on each (the panel's
+          // Relationships card and its Cypher click-through between member tables).
+          source_relationships: {
+            alias: "sourceRelationships",
+            sel: {
+              fields: [
+                "id",
+                "alias",
+                "graphql_field",
+                "cypher_type",
+                "cardinality",
+                "source_column",
+                "target_column",
+                "disable_cypher",
+              ],
+              rels: {
+                target_table: {
+                  alias: "targetTable",
+                  sel: { fields: ["id", "domain_id", "table_name", "product_id"] },
+                },
+              },
+            },
           },
         },
       },
@@ -155,6 +186,7 @@ export interface CoreTable {
   dq_contract: string | null;
   checks?: { id: number; domain_id: string; table_name: string } | null;
   checked_by?: CoreTable[] | null;
+  dq_rules?: CoreDqRule[] | null;
   table_columns?:
     | {
         column_name: string;
@@ -163,6 +195,33 @@ export interface CoreTable {
       }[]
     | null;
   profile_results?: { id: number; domain_id: string; table_name: string }[] | null;
+  source_relationships?: CoreRelationship[] | null;
+}
+
+/** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */
+export interface CoreDqRule {
+  position: number;
+  column_name: string;
+  check_type: string;
+  definition: string;
+}
+
+/** A relationship of a member table, under its stored effective names (REQ-351). */
+export interface CoreRelationship {
+  id: string;
+  alias: string | null;
+  graphql_field: string | null;
+  cypher_type: string | null;
+  cardinality: string;
+  source_column: string;
+  target_column: string | null;
+  disable_cypher: boolean;
+  target_table?: {
+    id: number;
+    domain_id: string;
+    table_name: string;
+    product_id?: string | null;
+  } | null;
 }
 
 export interface CoreEdge {

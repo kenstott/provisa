@@ -2886,6 +2886,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # REQ-1921: out of service — offered in no schema, refused by name when named.
         draft_tables = await _fetch_tables(_pg, draft=True)
         _assert_domain_table_unique(tables)
+        # REQ-351: every relationship's effective names, in the naming convention now in force:
+        # a build follows each save, configuration load and change of convention.
+        from provisa.core.relationship_names import store_effective_names
+
+        await store_effective_names(_pg)
         relationships = await _fetch_relationships(_pg)
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)

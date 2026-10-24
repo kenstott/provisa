@@ -255,6 +255,7 @@ registered_tables = Table(
     Column("view_sql", Text),
     # REQ-1443: the data-quality contract a checker table's rows are the scan results of.
     Column("dq_contract", Text),
+    Column("dq_rules", JSON),  # REQ-1443 clause 10: the contract's checks, parsed at registration
     # REQ-1934: the Data Profiler source this table is a member of; NULL for none.
     Column("profiler_source_id", Text),
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
@@ -425,6 +426,9 @@ relationships = Table(
     Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("needs_review", Boolean, nullable=False, server_default=false()),
+    # REQ-351: the effective names, derived and stored once (core.relationship_names).
+    Column("cypher_type", Text),
+    Column("graphql_field", Text),
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
