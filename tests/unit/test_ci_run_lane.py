@@ -69,7 +69,9 @@ def test_the_lane_selectors_are_test_alls(lane):
 def test_the_base_exclusions_are_test_alls():
     test_all = (REPO / "scripts" / "test-all").read_text()
     run_lane = _runner()
-    assert f'_BASE="{run_lane._BASE}"' in test_all
+    assert f'_BASE_NO_BENCH="{run_lane._BASE_NO_BENCH}"' in test_all
+    assert '_BASE="$_BASE_NO_BENCH and not bench"' in test_all
+    assert run_lane._BASE == f"{run_lane._BASE_NO_BENCH} and not bench"
     assert f'_KAFKA="{run_lane._KAFKA}"' in test_all
     assert f'_DATASTORE="{run_lane._DATASTORE}"' in test_all
 

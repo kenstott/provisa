@@ -86,7 +86,8 @@ rc=0
 # requires_warehouse: cloud-DW e2es needing external SaaS creds run ONLY in the warehouse lane
 # (by path, with .env creds loaded). Excluding them from every default lane means they are never
 # collected credential-less and so never surface as phantom skips in core.
-_BASE="not packaging and not cluster and not isolated and not requires_warehouse and not requires_vector and not demo_walk and not leak"
+_BASE_NO_BENCH="not packaging and not cluster and not isolated and not requires_warehouse and not requires_vector and not demo_walk and not leak"
+_BASE="$_BASE_NO_BENCH and not bench"
 # On a macOS host the RLIMIT_AS cap tests (linux_mem) cannot discriminate — Darwin ignores the cap —
 # so they @skipif on macOS and would surface as phantom skips in the default lanes. The linux-mem
 # container lane below runs them for real instead, so DESELECT them from every default lane on macOS.
@@ -173,6 +174,9 @@ if [[ "${TEST_ALL_LEAK:-}" == "1" ]]; then
   echo "== lane: leak (one server's growth under a long mixed request loop and an org churn) =="
   COVERAGE_FILE=.coverage.leak pytest tests/integration tests/steps -o addopts="" -m "leak and not requires_warehouse" "${COV_ARGS[@]}" "$@" || rc=1
 fi
+echo "== lane: bench (every benchmark feature over the bench's four sources) =="
+# REQ-1911: its own compose project of the four bench sources (tests/integration/test_bench_features_e2e.py).
+COVERAGE_FILE=.coverage.bench pytest tests/integration tests/steps -m "$_BASE_NO_BENCH and bench" "${COV_ARGS[@]}" "$@" || rc=1
 
 if [[ "${TEST_ALL_DEMO_WALK:-}" == "1" ]]; then
   echo "== lane: demo_walk (every published demo's bundle, built and walked as a visitor) =="
