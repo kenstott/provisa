@@ -353,6 +353,7 @@ async def _optimize_and_route(
     steward_hint: str | None = None,
     extra_selections: dict | None = None,
     read_args: dict | None = None,
+    building: str | None = None,
 ):
     """REQ-863 post-governance optimization stage (may REMOVE sources) + routing on the reduced
     set — shared by both governed-SQL entrypoints so routing observes the optimized source set,
@@ -384,7 +385,7 @@ async def _optimize_and_route(
     # REQ-849, REQ-882: a fresh materialized view that answers the governed statement is read in
     # its place -- the one place a view is put back into a statement, for every surface. After
     # governance: the role's row filters and masks are part of what it answers.
-    _view = _view_answering(exec_sql, ctx, state, is_mutation=is_mutation)
+    _view = _view_answering(exec_sql, ctx, state, is_mutation=is_mutation, building=building)
     if _view is not None:
         exec_sql = _view.sql
     # ``extra_selections``: the fields a GraphQL query reads of a graphql_remote table beyond its
@@ -508,16 +509,21 @@ async def _optimize_and_route(
     return exec_sql, decision, default_source, optimized, sources, tuple(opt_labels)
 
 
-def _view_answering(exec_sql: str, ctx, state, *, is_mutation: bool) -> Any:
+def _view_answering(
+    exec_sql: str, ctx, state, *, is_mutation: bool, building: str | None = None
+) -> Any:
     """The fresh materialized view that answers the governed read ``exec_sql``, rewritten to
-    read it (``mv.view_reinject``), or None. A write is never answered from a view."""
+    read it (``mv.view_reinject``), or None. A write is never answered from a view, nor a view's
+    build (``building``, its id) from that view."""
     if is_mutation:
         return None
     from provisa.mv.load_window import readable_now
     from provisa.mv.view_reinject import reinject
 
     # REQ-2066: a view outside its load management window answers none of a user's reads.
-    return reinject(exec_sql, readable_now(state.mv_registry.get_fresh(), state), ctx)
+    return reinject(
+        exec_sql, readable_now(state.mv_registry.get_fresh(), state), ctx, exclude=building
+    )
 
 
 async def _read_live_parts(
@@ -790,6 +796,7 @@ async def _optimize_and_route_cached(
     steward_hint: str | None = None,
     extra_selections: dict | None = None,
     read_args: dict | None = None,
+    building: str | None = None,
 ):
     """REQ-1877 routing addendum: cache `_optimize_and_route`'s output for the ONE case proven
     safe — see `provisa/compiler/compiled_query_cache.py`'s "ROUTING-DECISION CACHING" section
@@ -814,7 +821,8 @@ async def _optimize_and_route_cached(
     if (
         steward_hint is not None
         or would_materialize_optimize(exec_sql, state, table_ids=table_ids)
-        or _view_answering(exec_sql, ctx, state, is_mutation=is_mutation) is not None
+        or _view_answering(exec_sql, ctx, state, is_mutation=is_mutation, building=building)
+        is not None
     ):
         return await _optimize_and_route(
             exec_sql,
@@ -829,6 +837,7 @@ async def _optimize_and_route_cached(
             steward_hint=steward_hint,
             extra_selections=extra_selections,
             read_args=read_args,
+            building=building,
         )
 
     from provisa.compiler.compiled_query_cache import RoutingOutcome
@@ -864,6 +873,7 @@ async def _optimize_and_route_cached(
         is_mutation=is_mutation,
         extra_selections=extra_selections,
         read_args=read_args,
+        building=building,
     )
     _exec_sql_out, decision, default_source, optimized, sources, opt_labels = result
     # Guaranteed by would_materialize_optimize(exec_sql, state) being False (see module docstring):
@@ -1297,10 +1307,12 @@ async def _govern_and_route(
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
     product_statement: bool = False,
+    building: str | None = None,
 ) -> _Plan:
     """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044).
 
-    ``serve_cached`` / ``wire_formats`` / ``route_hint``: see :func:`route_governed`.
+    ``serve_cached`` / ``wire_formats`` / ``route_hint`` / ``building``: see
+    :func:`route_governed`.
     ``product_statement``: see :func:`govern_statement`."""
     from provisa.api.app import state
 
@@ -1321,6 +1333,7 @@ async def _govern_and_route(
             wire_formats=wire_formats,
             route_hint=route_hint,
             product_statement=product_statement,
+            building=building,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -1348,6 +1361,7 @@ async def _govern_and_route_planned(
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
     product_statement: bool = False,
+    building: str | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     """Govern, then route: the two stages of the one pipeline, run back to back."""
     if explain is not None and opening_write_verb(sql) is not None:
@@ -1391,6 +1405,7 @@ async def _govern_and_route_planned(
         serve_cached=serve_cached,
         wire_formats=wire_formats,
         route_hint=route_hint,
+        building=building,
     )
 
 
@@ -1990,6 +2005,7 @@ async def route_governed(
     serve_cached: bool = False,
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
+    building: str | None = None,
 ) -> _Plan:
     """Stage two of the one pipeline: bind the statement's parameter values, optimize, route and
     build the executable plan. Runs against live state, so it runs once per execution; it accepts
@@ -1998,6 +2014,9 @@ async def route_governed(
     ``route_hint`` (REQ-1203): the caller's route override, ``"engine"`` or ``"direct"`` — the
     operator's floor still binds. A view's build passes ``"engine"``: what it reads lands through
     the engine into the view's storage (REQ-1921/1922, ``mv.governed_build``).
+
+    ``building``: the id of the view the statement is the build of, which answers none of it
+    (``mv.view_reinject``).
 
     ``serve_cached`` (REQ-1897, amended 2026-10-01): the caller's terminal serves a Route.CACHE
     plan (``cached_result`` / ``_execute_plan``). The response cache is then read HERE, before any
@@ -2213,6 +2232,7 @@ async def route_governed(
         nf_args=_nf_args,
         steward_hint=route_hint,
         read_args=_read_args,
+        building=building,
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(_sources))

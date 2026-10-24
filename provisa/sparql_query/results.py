@@ -21,6 +21,7 @@ N-Triples. A CONSTRUCT's triples are a graph, so each is kept once.
 
 from __future__ import annotations
 
+import io
 from typing import Any
 
 from rdflib import Graph, Literal, URIRef, Variable
@@ -101,13 +102,19 @@ def write_select(variables: list[str], rows: list[dict], base: str, fmt: str) ->
         {Variable(v): t for v in variables if (t := rdf_term(row.get(v), base)) is not None}
         for row in rows
     ]
-    return result.serialize(format=fmt)
+    return _serialize(result, fmt)
 
 
 def write_ask(answer: bool, fmt: str) -> bytes:
     result = Result("ASK")
     result.askAnswer = answer
-    return result.serialize(format=fmt)
+    return _serialize(result, fmt)
+
+
+def _serialize(result: Result, fmt: str) -> bytes:
+    buf = io.BytesIO()
+    result.serialize(destination=buf, format=fmt)
+    return buf.getvalue()
 
 
 def write_construct(rows: list[dict], base: str, prefixes: dict[str, str], fmt: str) -> bytes:
