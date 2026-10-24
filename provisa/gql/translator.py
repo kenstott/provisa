@@ -87,6 +87,39 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     return translator.translate()
 
 
+def _holds_json_maps(e: exp.Expression) -> bool:
+    """Whether ``e`` answers a map literal (``MAP(keys, to_json values)``) or a list of them: an
+    ARRAY[...] of maps, an ARRAY_AGG of one, or an ARRAY(SELECT map) -- COLLECT { }'s rows -- or a
+    CASE whose every result is one or null."""
+    while isinstance(e, (exp.Alias, exp.Paren)):
+        e = e.this
+    # The translator builds MAP, ARRAY_AGG and ARRAY(SELECT ...) as calls by name; a parse of its
+    # SQL makes them their own node types.
+    called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None
+    if isinstance(e, exp.Map) or called == "MAP":
+        return True
+    if isinstance(e, exp.Case):
+        # A map or null by a condition -- an OPTIONAL MATCH's map of what matched nothing.
+        results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
+        found = [r for r in results if r is not None and not isinstance(r, exp.Null)]
+        return bool(found) and all(_holds_json_maps(r) for r in found)
+    if isinstance(e, exp.ArrayAgg):
+        return _holds_json_maps(e.this)
+    if called == "ARRAY_AGG":
+        return len(e.expressions) == 1 and _holds_json_maps(e.expressions[0])
+    if (isinstance(e, exp.Array) or called == "ARRAY") and e.expressions:
+        (first, *rest) = e.expressions
+        if isinstance(first, (exp.Select, exp.Subquery)) and not rest:
+            inner = first.this if isinstance(first, exp.Subquery) else first
+            return (
+                isinstance(inner, exp.Select)
+                and len(inner.expressions) == 1
+                and _holds_json_maps(inner.expressions[0])
+            )
+        return all(_holds_json_maps(x) for x in e.expressions)
+    return False
+
+
 def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabelMap) -> None:
     """REQ-603: refuse a statement whose MATCH names a relationship type that is not registered.
 
@@ -736,7 +769,21 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         result = self._apply_order_limit(result, order_exprs)
         result = self._reconcile_params_with_placeholders(result)
+        self._mark_json_maps(result)
         return result, self._param_order, self._graph_vars
+
+    def _mark_json_maps(self, result: "exp.Select | exp.Union") -> None:
+        """REQ-345: name each returned column that holds map literals, so the answer decodes their
+        JSON-encoded values. A UNION's columns are its first branch's."""
+        select: exp.Expression = result
+        while isinstance(select, exp.Union):
+            select = select.this
+        if not isinstance(select, exp.Select):
+            return
+        for projection in select.expressions:
+            name = projection.alias_or_name
+            if name and name.lower() not in self._graph_vars and _holds_json_maps(projection):
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
 
     def _reconcile_params_with_placeholders(
         self,

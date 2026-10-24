@@ -128,9 +128,27 @@ def _assemble_row(row: dict, graph_vars: dict[str, GraphVarKind]) -> dict:
     return result
 
 
+def _json_maps(col: str, value: Any) -> Any:
+    """REQ-345: a map literal's answer, its values decoded from the JSON each was encoded to --
+    whether the engine hands the map back as a map (DuckDB, Trino) or as its JSON text
+    (Snowflake), alone or in a list."""
+    try:
+        if isinstance(value, str):
+            value = json.loads(value)
+        if isinstance(value, list):
+            return [None if v is None else _json_maps(col, v) for v in value]
+        if isinstance(value, dict):
+            return {k: json.loads(v) if isinstance(v, str) else v for k, v in value.items()}
+    except json.JSONDecodeError as exc:
+        raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
+    raise CypherAssemblyError(f"Unexpected map column value type for {col!r}: {type(value)}")
+
+
 def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if value is None:
         return None
+    if kind == GraphVarKind.JSON_MAP:
+        return _json_maps(col, value)
     if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
         # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.

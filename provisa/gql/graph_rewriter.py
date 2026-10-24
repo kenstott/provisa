@@ -98,6 +98,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 GraphVarKind.PATH,
                 GraphVarKind.PASSTHROUGH,
                 GraphVarKind.MAP,
+                GraphVarKind.JSON_MAP,
                 GraphVarKind.TERM,
                 GraphVarKind.CUT,
             ):
