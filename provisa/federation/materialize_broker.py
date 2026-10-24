@@ -96,7 +96,10 @@ class _MemoryStore:
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.generation: StoreCanary = 0
-        self.db = duckdb.connect(_MEMORY_PATH)
+        from provisa.core import engine_memory
+
+        self.db = duckdb.connect(_MEMORY_PATH, config=engine_memory.config())
+        engine_memory.log_limit(self.db, "in-memory store")
         self.db.execute(f"ATTACH '{_MEMORY_PATH}' AS {_MAT_STORE_ALIAS}")
 
 

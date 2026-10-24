@@ -202,13 +202,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # REQ-2006: an org's engine may be capped (a demo sandbox's, sandbox.memory_limit), and the
         # deployment may cap every engine (engine.duckdb_memory_limit); unset is DuckDB's own.
         # DuckDB spills to disk past it and refuses, by name, what cannot spill.
-        _limit = getattr(store_engine, "memory_limit", None)
-        if _limit is None:
-            from provisa.core import settings_registry
+        from provisa.core import engine_memory
 
-            _limit = settings_registry.value("engine.duckdb_memory_limit")
-        if _limit is not None:
-            _cfg["memory_limit"] = f"{_limit // (1024 * 1024)}MiB"
+        _cfg.update(engine_memory.config(getattr(store_engine, "memory_limit", None)))
         # Spilled data stays in the org's folder (engine.temp_org). A runtime built for no org --
         # one introspecting a source's catalog, which reads metadata and spills nothing -- has no
         # folder to name, and keeps DuckDB's own.
@@ -218,6 +214,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
             _cfg["temp_directory"] = str(org_files.org_tmp(_temp_org))
         self._con = duckdb.connect(config=_cfg)
+        engine_memory.log_limit(self._con, "federation engine")
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
         register_fake_functions(self._con)  # REQ-1494: provisa_digest, provisa_fake_method

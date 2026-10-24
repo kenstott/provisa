@@ -214,6 +214,10 @@ export default async function globalSetup() {
   if (process.env.PROVISA_E2E_LANE !== "trino" && needed.sources.length > 0) {
     startDemoSources(needed.sources);
   }
+  // What the run holds up for its whole length: a spec that starts a demo source of its own
+  // leaves these up when it ends (source-to-query.spec.ts). Workers inherit this environment.
+  process.env.PROVISA_E2E_RUN_DEMO_SOURCES =
+    process.env.PROVISA_E2E_LANE !== "trino" ? needed.sources.join(",") : "";
 
   const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
   fs.writeFileSync(SNAPSHOT_PATH, yaml);

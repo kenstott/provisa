@@ -18,7 +18,7 @@ from typing import Any
 
 import duckdb
 
-from provisa.core import request_deadline
+from provisa.core import engine_memory, request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.result import QueryResult
@@ -94,7 +94,7 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
 
     def _open(self) -> None:
         database = self._database
-        root = duckdb.connect(database, read_only=_is_file(database))
+        root = duckdb.connect(database, read_only=_is_file(database), config=engine_memory.config())
         self._root = root
         self._pool = BlockingPool(
             root.cursor,
@@ -141,6 +141,8 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
         self._database = resolve_path(database) if _is_file(database) else database
         self._min_pool, self._max_pool = min_pool, max_pool
         self._open()
+        assert self._root is not None
+        engine_memory.log_limit(self._root, f"source {database}")
         if _is_file(database):
             from provisa.federation import file_locks
 

@@ -55,3 +55,29 @@ def test_unset_leaves_duckdb_s_own(monkeypatch):
 
     own = duckdb.connect().execute("SELECT current_setting('memory_limit')").fetchone()[0]
     assert _limit(_engine()) == own
+
+
+def test_the_in_memory_store_and_a_duckdb_source_are_capped_too(monkeypatch, caplog):
+    """Each DuckDB database is capped on its own: the federation engine's cap leaves the
+    in-memory store and a DuckDB source's database at DuckDB's own unless they take it too."""
+    import asyncio
+
+    from provisa.executor.drivers.duckdb_driver import DuckDBDriver
+    from provisa.federation import materialize_broker
+
+    monkeypatch.setenv("PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT", str(512 * _MIB))
+    with caplog.at_level("INFO", logger="provisa.core.engine_memory"):
+        store = materialize_broker._MemoryStore()
+        driver = DuckDBDriver()
+        asyncio.run(driver.connect("", 0, ":memory:", "", ""))
+    try:
+        setting = "SELECT current_setting('memory_limit')"
+        assert store.db.execute(setting).fetchone()[0] == "512.0 MiB"
+        assert driver._root is not None
+        assert driver._root.execute(setting).fetchone()[0] == "512.0 MiB"
+    finally:
+        store.db.close()
+        driver._let_go()
+    said = [r.getMessage() for r in caplog.records]
+    assert "DuckDB in-memory store: memory_limit 512.0 MiB" in said
+    assert "DuckDB source :memory:: memory_limit 512.0 MiB" in said
