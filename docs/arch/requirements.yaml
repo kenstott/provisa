@@ -88009,3 +88009,28 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And the table form's data product hint names Atlan as "Atlan (beta)"
     When the flag is cleared and the provider list regenerated
     Then Atlan is listed without "(beta)"
+- id: REQ-2149
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: CI/CD
+  feature: test-infrastructure-ci
+  priority: MUST
+  type: behavioral
+  description: 'CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one server
+    process serves a mixed request loop over every surface -- GraphQL, SQL, Cypher, SPARQL, pgwire,
+    Arrow Flight, REST and JSON:API reads, a write, a subscription opened and closed, a sign-in and a
+    sign-out -- for N iterations after a warm-up, then N more, and a churn of K demo sandbox orgs,
+    each created, used and reaped. Over the second N, the process''s resident memory, open file
+    descriptors, threads, sockets and asyncio tasks grow by no more than a slack stated with the
+    test, near zero; after the churn, every map the process keeps by org, by its schemas or by its
+    users is the size it was before it. A failure names what grew, and for memory the allocation
+    sites that grew most, from tracemalloc snapshot diffs taken over the second N.'
+  scenario: 'Given one server on the local platform, warmed up
+    When it serves N iterations of the mixed request loop, then N more
+    Then its RSS, open fds, threads, sockets and asyncio tasks over the second N grow within the stated slack
+    When K demo sandboxes are created, used and reaped
+    Then every org-keyed map is the size it was before them
+    And a failure names the measure that grew and the top allocation sites that grew
+
+    '

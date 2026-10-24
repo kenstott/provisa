@@ -41,12 +41,20 @@ from typing import Any
 
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.remote import Identity, RemoteWorker, host_certificate, new_identity, pair
+from provisa.core.org_forget import on_forget
 
 DEV = "dev"
 BUILT = "built"
 MODES = (DEV, BUILT)
 
 _identities: dict[str, Identity] = {}
+
+
+@on_forget(size=lambda: len(_identities))
+def _forget_identity(org_id: str) -> None:
+    _identities.pop(org_id, None)
+
+
 _identities_lock = threading.Lock()
 
 

@@ -12,6 +12,7 @@
 #   default   integration + unit + bdd  (shared dev stack; --ignore=tests/e2e)
 #   e2e       tests/e2e                  (own isolated stack, ephemeral ports)
 #   cluster   opt-in: TEST_ALL_CLUSTER=1 (helm/minikube against a live cluster)
+#   leak      opt-in: TEST_ALL_LEAK=1 (one server's growth under a long request loop, ~30 min)
 #   packaging opt-in: TEST_ALL_PACKAGING=1 (installer/packaging flow)
 #
 # Usage: scripts/test-all [extra pytest args...]
@@ -85,7 +86,7 @@ rc=0
 # requires_warehouse: cloud-DW e2es needing external SaaS creds run ONLY in the warehouse lane
 # (by path, with .env creds loaded). Excluding them from every default lane means they are never
 # collected credential-less and so never surface as phantom skips in core.
-_BASE="not packaging and not cluster and not isolated and not requires_warehouse and not requires_vector and not demo_walk"
+_BASE="not packaging and not cluster and not isolated and not requires_warehouse and not requires_vector and not demo_walk and not leak"
 # On a macOS host the RLIMIT_AS cap tests (linux_mem) cannot discriminate — Darwin ignores the cap —
 # so they @skipif on macOS and would surface as phantom skips in the default lanes. The linux-mem
 # container lane below runs them for real instead, so DESELECT them from every default lane on macOS.
@@ -166,6 +167,11 @@ COVERAGE_FILE=.coverage.isolated pytest tests --ignore=tests/e2e -o addopts="" -
 if [[ "${TEST_ALL_CLUSTER:-}" == "1" ]]; then
   echo "== lane: cluster (helm/minikube) =="
   COVERAGE_FILE=.coverage.cluster pytest tests/e2e/test_helm_minikube.py -o addopts="" -m cluster "${COV_ARGS[@]}" "$@" || rc=1
+fi
+
+if [[ "${TEST_ALL_LEAK:-}" == "1" ]]; then
+  echo "== lane: leak (one server's growth under a long mixed request loop and an org churn) =="
+  COVERAGE_FILE=.coverage.leak pytest tests/integration tests/steps -o addopts="" -m "leak and not requires_warehouse" "${COV_ARGS[@]}" "$@" || rc=1
 fi
 
 if [[ "${TEST_ALL_DEMO_WALK:-}" == "1" ]]; then
