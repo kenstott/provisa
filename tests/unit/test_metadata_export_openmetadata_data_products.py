@@ -14,11 +14,18 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import httpx
 import pytest
 
 from provisa.api.metadata_export import build_snapshot
-from provisa.api.metadata_export.openmetadata import OpenMetadataExport
+from provisa.api.metadata_export.model import AssetRef
+from provisa.api.metadata_export.openmetadata import (
+    OpenMetadataExport,
+    _for_openmetadata,
+    to_entities,
+)
 from provisa.core.models import (
     Column,
     DataProduct,
@@ -219,3 +226,33 @@ async def test_a_contract_whose_table_failed_is_reported_not_sent(monkeypatch):
 
     assert not any(url.endswith("/dataContracts/odcs") for url in sent)
     assert any("has nothing to attach to" in e.message for e in result.errors)
+
+
+def test_a_view_sits_under_a_service_and_database_of_its_own():
+    """A view's derived-view source is no snapshot source; OpenMetadata resolves the view's schema
+    through a service and database, so they are created for it before the schema."""
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    (orders,) = snapshot.tables
+    view_ref = AssetRef(orders.ref.kind, ("__derived__", "views", "order_totals"))
+    snapshot.tables.append(
+        dataclasses.replace(
+            orders, ref=view_ref, name="order_totals", source_id="__derived__", is_view=True
+        )
+    )
+    kinds = [(e.kind, e.body.get("name"), e.body.get("service")) for e in to_entities(snapshot)]
+    service = kinds.index(("service", "__derived__", None))
+    database = kinds.index(("database", "default", "__derived__"))
+    schema = next(i for i, k in enumerate(kinds) if k[:2] == ("schema", "views"))
+    assert service < database < schema
+
+
+@pytest.mark.parametrize(
+    "seconds, value, unit",
+    [(3600, 1, "hour"), (86400, 1, "day"), (120, 2, "minute"), (90, 2, "minute")],
+)
+def test_a_latency_reaches_openmetadata_in_a_unit_it_takes(seconds, value, unit):
+    """OpenMetadata's latency units are minute, hour and day; a part minute rounds up, still an
+    upper bound on how far a read trails its source."""
+    contract = {"slaProperties": [{"property": "latency", "value": seconds, "unit": "s"}]}
+    (latency,) = _for_openmetadata(contract)["slaProperties"]
+    assert (latency["value"], latency["unit"]) == (value, unit)
