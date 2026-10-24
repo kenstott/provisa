@@ -11,7 +11,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { Plus } from "lucide-react";
 import {
   useDomains,
@@ -25,7 +26,10 @@ import {
   useCreateDataProduct,
   useUpdateDataProduct,
   useDeleteDataProduct,
+  useDataProductFindings,
+  useDataProductStatus,
 } from "../hooks/useDataProductMutations";
+import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
 import { buildTableUpdateInput } from "./tables/helpers";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
@@ -59,6 +63,8 @@ import { matchesQuery } from "../lib/searchItems";
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
 export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
+// REQ-2146: the list narrowed to the products with findings, remembered.
+const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
 
 // REQ-1634: top-level data-products management page (list / create / edit / delete).
 // Follows the MetricsPage detail-then-edit pattern (REQ-1323) — row click expands the
@@ -86,7 +92,7 @@ export function DataProductsPage() {
   const dataProducts = useMemo(() => products.data ?? [], [products.data]);
   const { loading, error } = products;
   const { domains } = useDomains();
-  const { tables } = useTables(); // REQ-1634: member-table list + assignment
+  const { tables, refetch: refetchTables } = useTables(); // REQ-1634: member-table list + assignment
   const { sources } = useSources(); // REQ-1443 clause 10: checker type for a scan's rules modal
   const { relationships } = useRelationships(); // REQ-1634: related-tables panel
   const [functions, setFunctions] = useState<TrackedFunction[]>([]); // REQ-1634: member-command list + assignment
@@ -103,6 +109,25 @@ export function DataProductsPage() {
   // REQ-1640: lineage panel needs its own gate — view_governance is independent of the
   // data_product_read/rw pair, so a data-product editor may still lack lineage visibility.
   const canSeeLineage = useCapability("view_governance");
+  // REQ-2146: each product's findings, and the list narrowed to the products that have any.
+  const productFindings = useDataProductFindings();
+  const statusActions = useDataProductStatus();
+  const [toReviewOnly, setToReviewOnlyState] = useState(() => {
+    try {
+      return getStored(TO_REVIEW_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const setToReviewOnly = (on: boolean) => {
+    setToReviewOnlyState(on);
+    try {
+      if (on) setStored(TO_REVIEW_STORAGE_KEY, "true");
+      else removeStored(TO_REVIEW_STORAGE_KEY);
+    } catch {
+      // localStorage unavailable (private mode, quota) — the filter just won't persist
+    }
+  };
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -237,7 +262,6 @@ export function DataProductsPage() {
       limitations: p.limitations,
       usage: p.usage,
       version: p.version ?? "",
-      status: p.status ?? "",
       sla: p.sla ?? "",
       support: p.support ?? "",
       // The editor works on Record<string, string>; ODPS customProperties values are
@@ -271,7 +295,6 @@ export function DataProductsPage() {
       limitations: form.limitations.trim(),
       usage: form.usage.trim(),
       version: form.version.trim() || null,
-      status: form.status.trim() || null,
       sla: form.sla.trim() || null,
       support: form.support.trim() || null,
       customProperties: form.customProperties,
@@ -336,6 +359,19 @@ export function DataProductsPage() {
     closeForm();
   };
 
+  // REQ-1634 STATUS: a status change. The products and their findings are read again, and the
+  // panel's core and the tables and commands with it: a retirement moves the members.
+  const statusChanged = (message: string) => {
+    notifications.show({ color: "green", message });
+    products.reload();
+    void productFindings.refetch();
+    void refetchTables();
+    fetchActions()
+      .then((actions) => setFunctions(actions.functions))
+      .catch(() => setFunctions([]));
+    setCoreVersion((v) => v + 1);
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     const result = await deleteDataProduct(deleteTarget);
@@ -369,10 +405,12 @@ export function DataProductsPage() {
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredProducts = useMemo(
     () =>
-      dataProducts.filter((p) =>
-        matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search),
+      dataProducts.filter(
+        (p) =>
+          matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search) &&
+          (!toReviewOnly || productFindings.findings.has(p.id)),
       ),
-    [dataProducts, search],
+    [dataProducts, search, toReviewOnly, productFindings.findings],
   );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
@@ -393,8 +431,8 @@ export function DataProductsPage() {
       {
         key: "status",
         label: t("dataProductsTab.colStatus"),
-        sortValue: (p) => p.status ?? "",
-        groupValue: (p) => p.status ?? "",
+        sortValue: (p) => p.status,
+        groupValue: (p) => t(`dataProductsTab.status_${p.status}`),
       },
       { key: "purpose", label: t("dataProductsTab.colPurpose"), sortValue: (p) => p.purpose },
     ],
@@ -413,6 +451,14 @@ export function DataProductsPage() {
           value={search}
           onChange={updateSearch}
           placeholder={t("dataProductsTab.filterPlaceholder")}
+        />
+        <Checkbox
+          size="xs"
+          label={t("dataProductsTab.toReview")}
+          checked={toReviewOnly}
+          onChange={(e) => setToReviewOnly(e.currentTarget.checked)}
+          styles={{ label: { whiteSpace: "nowrap" } }}
+          data-testid="data-products-to-review-only"
         />
         <Group gap="xs">
           <ProductMapButton />
@@ -529,7 +575,10 @@ export function DataProductsPage() {
                           </Group>
                         </Table.Td>
                         <Table.Td>
-                          <Text size="xs">{p.status ?? ""}</Text>
+                          <ProductStatusBadge
+                            status={p.status}
+                            testId={`data-products-status-${p.id}`}
+                          />
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="var(--text-muted)">
@@ -555,6 +604,19 @@ export function DataProductsPage() {
                                 inputPorts={inputPortsFor(p.id)}
                                 onEdit={() => openEdit(p)}
                                 onDelete={() => setDeleteTarget(p.id)}
+                                products={dataProducts}
+                                members={[
+                                  ...memberTables(p.id).map((tb) => tb.tableName),
+                                  ...memberFunctions(p.id).map((fn) => fn.name),
+                                ]}
+                                findings={productFindings.findings.get(p.id) ?? []}
+                                onStatusChanged={statusChanged}
+                                onStatusFailed={setMsg}
+                                statusActions={statusActions}
+                                openProduct={(id) => {
+                                  closeForm();
+                                  setExpanded(id);
+                                }}
                               />
                             )}
                           </ListDetail>

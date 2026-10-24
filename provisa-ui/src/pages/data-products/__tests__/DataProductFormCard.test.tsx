@@ -27,7 +27,6 @@ const INPUT_TESTIDS = [
   "data-product-limitations-input",
   "data-product-usage-input",
   "data-product-version-input",
-  "data-product-status-input",
   "data-product-sla-input",
   "data-product-support-input",
   "data-product-tables-input",
@@ -40,7 +39,6 @@ const PANELS: Record<string, string[]> = {
     "data-product-name-input",
     "data-product-domain-input",
     "data-product-version-input",
-    "data-product-status-input",
   ],
   ownership: [
     "data-product-owner-input",
@@ -95,7 +93,7 @@ describe("DataProductFormCard", () => {
   it.each([
     ["create", EMPTY_FORM, null],
     ["edit", EDITED, "p1"],
-  ])("groups all fourteen inputs into four titled panels on %s", (_mode, initial, editingId) => {
+  ])("groups all thirteen inputs into four titled panels on %s", (_mode, initial, editingId) => {
     render(<Harness initial={initial} editingId={editingId} onSave={vi.fn()} />);
     expect(screen.getByTestId("data-product-form")).toBeInTheDocument();
     for (const id of INPUT_TESTIDS) expect(screen.getByTestId(id)).toBeInTheDocument();

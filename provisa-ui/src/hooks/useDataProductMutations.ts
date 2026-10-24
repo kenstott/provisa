@@ -11,13 +11,20 @@
 // REQ-1634: the data product saves. A new product is created, an open one updated, and a
 // create refuses an id that exists.
 
-import { useMutation } from "@apollo/client/react";
+import { useMemo } from "react";
+import { useMutation, useQuery } from "@apollo/client/react";
 import type { MutationResult } from "../types/admin";
+import type { Finding } from "../components/lifecycle/ToReview";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
   CreateDataProduct,
   UpdateDataProduct,
   DeleteDataProduct,
+  PublishDataProduct,
+  DeprecateDataProduct,
+  RetireDataProduct,
+  RestoreDataProduct,
+  DataProductFindingsQuery,
 } from "./admin.graphql";
 
 // REQ-1660: mirrors the DataProductInput GraphQL input type field-for-field.
@@ -31,7 +38,6 @@ export interface DataProductInput {
   limitations: string;
   usage: string;
   version: string | null;
-  status: string | null;
   sla: string | null;
   support: string | null;
   customProperties: Record<string, unknown>;
@@ -80,4 +86,63 @@ export function useDeleteDataProduct() {
     },
     loading,
   };
+}
+
+/** A product's status actions (REQ-1634 STATUS). Each answers the server's MutationResult; a
+ * refusal names its code (data_product.status.<code>). */
+export function useDataProductStatus() {
+  const options = { refetchQueries: [{ query: DATA_PRODUCTS_QUERY }] };
+  const [publish] = useMutation<{ publishDataProduct: MutationResult }>(
+    PublishDataProduct,
+    options,
+  );
+  const [deprecate] = useMutation<{ deprecateDataProduct: MutationResult }>(
+    DeprecateDataProduct,
+    options,
+  );
+  const [retire] = useMutation<{ retireDataProduct: MutationResult }>(RetireDataProduct, options);
+  const [restore] = useMutation<{ restoreDataProduct: MutationResult }>(
+    RestoreDataProduct,
+    options,
+  );
+  const none = { success: false, message: "" };
+  const actions: DataProductStatus = {
+    publish: async (id: string) =>
+      ((await publish({ variables: { id } })).data?.publishDataProduct ?? none) as MutationResult,
+    deprecate: async (id: string, reason: string, retireOn: string | null) =>
+      ((await deprecate({ variables: { id, reason, retireOn } })).data?.deprecateDataProduct ??
+        none) as MutationResult,
+    retire: async (id: string, reason: string, successor: string | null) =>
+      ((await retire({ variables: { id, reason, successor } })).data?.retireDataProduct ??
+        none) as MutationResult,
+    restore: async (id: string) =>
+      ((await restore({ variables: { id } })).data?.restoreDataProduct ?? none) as MutationResult,
+  };
+  return actions;
+}
+
+export interface DataProductStatus {
+  publish: (id: string) => Promise<MutationResult>;
+  deprecate: (id: string, reason: string, retireOn: string | null) => Promise<MutationResult>;
+  retire: (id: string, reason: string, successor: string | null) => Promise<MutationResult>;
+  restore: (id: string) => Promise<MutationResult>;
+}
+
+/** A data product's To Review finding (REQ-2146): its kind names the chip, its code and params
+ * the message. */
+export type ProductFinding = Finding & { params: Record<string, string> };
+
+const NO_FINDINGS: Map<string, ProductFinding[]> = new Map();
+
+/** Every product's findings, by product id; a product with none is absent. */
+export function useDataProductFindings() {
+  const { data, refetch, error } = useQuery<{
+    dataProductFindings: { productId: string; findings: ProductFinding[] }[];
+  }>(DataProductFindingsQuery, { fetchPolicy: "network-only" });
+  const findings = useMemo(
+    () =>
+      data ? new Map(data.dataProductFindings.map((f) => [f.productId, f.findings])) : NO_FINDINGS,
+    [data],
+  );
+  return { findings, refetch, error };
 }

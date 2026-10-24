@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { DataProduct } from "../../../types/admin";
+import { lifecycleProps } from "./lifecycleProps";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
@@ -49,6 +50,7 @@ function panel() {
       inputPorts={INPUT_PORTS}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }
@@ -154,6 +156,7 @@ describe("a data product's cards", () => {
         inputPorts={[]}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        {...lifecycleProps()}
       />,
     );
     const items = (dir: string) =>

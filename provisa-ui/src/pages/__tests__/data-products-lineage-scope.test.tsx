@@ -18,6 +18,7 @@ import { render, screen, within } from "../../test-utils/render";
 import { DataProductDetailPanel } from "../data-products/DataProductDetailPanel";
 import type { CoreEdge, ProductCore } from "../data-products/productCore";
 import type { DataProduct } from "../../types/admin";
+import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
 
 vi.mock("../../components/graph3d/KnowledgeGraphPanel", () => ({
   KnowledgeGraphPanel: () => null,
@@ -77,6 +78,7 @@ function panel(canSeeLineage: boolean) {
       inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
 }

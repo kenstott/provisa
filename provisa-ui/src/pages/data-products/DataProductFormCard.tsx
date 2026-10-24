@@ -175,19 +175,6 @@ export function DataProductFormCard({
               />
             </FormField>
           </FormLayout>
-          {/* The backend holds status as free text (DataProduct.status: str | None), so it stays a
-              text input; the placeholder lists the usual values. */}
-          <FormLayout>
-            <FormField size="medium">
-              <TextInput
-                label={t("dataProductsTab.statusLabel")}
-                value={form.status}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                placeholder={t("dataProductsTab.statusPlaceholder")}
-                data-testid="data-product-status-input"
-              />
-            </FormField>
-          </FormLayout>
         </Panel>
         <Panel id="ownership" title={t("dataProductsTab.panelOwnership")} errors={0}>
           <FormLayout>

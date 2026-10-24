@@ -15,6 +15,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { DataProduct } from "../../../types/admin";
+import { lifecycleProps } from "./lifecycleProps";
 
 // Who an owner role resolves to is its own fetch, held by its own tests.
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
@@ -28,7 +29,7 @@ const PRODUCT = {
   domainId: "pet-store",
   name: "Pet Health",
   version: "1.2.0",
-  status: "published",
+  status: "live",
   ownerRole: "vet_lead",
   teamRole: null,
   support: "#pet-health",
@@ -52,6 +53,7 @@ function fields(p: DataProduct): [string, string][] {
       inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
   return within(screen.getByTestId(`data-product-read-${p.id}`))
@@ -66,7 +68,7 @@ describe("a data product's read view", () => {
       ["Name", "Pet Health"],
       ["Domain", "pet-store"],
       ["Version", "1.2.0"],
-      ["Status", "published"],
+      ["Status", "Live"],
       ["Owner", "vet_lead"],
       ["Team", "—"],
       ["Support", "#pet-health"],
