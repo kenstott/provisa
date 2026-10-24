@@ -17,12 +17,6 @@
     "upstream": "Upstream",
     "downstream": "Downstream",
     "via": "via {{vias}}",
-    "metaQueries": "Queries",
-    "metaQueriesHint": "The reads this panel runs on the meta domain, as you. Copy one or open it in its explorer: the answer is the same.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "copyQuery": "Copy the {{surface}} query",
-    "openQuery": "Open the {{surface}} query in its explorer",
     "unreadable": "Your role cannot read the data products in the meta domain.",
     "detailExpand": "Show the whole entry",
     "detailCollapse": "Show less"
