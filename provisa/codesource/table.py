@@ -96,6 +96,15 @@ def check_table(table: Any, manifest: Any = None) -> None:  # a Table model or a
                 name,
                 f"parameter {pname} is required by the function exactly when it has no default",
             )
+    # REQ-2100: the commands its writes are routed to, bound by their input types; two that fit
+    # one operation with no tag between them are refused here, at registration.
+    from provisa.codesource.mutations import MutationRefused, bindings
+
+    key = [_get(c, "column_name") or _get(c, "name") for c in columns if _get(c, "is_primary_key")]
+    try:
+        bindings(manifest, function, key)
+    except MutationRefused as refused:
+        raise CodeTableRefused(name, str(refused).split(": ", 1)[1]) from None
 
 
 def _arguments(table: dict, given: dict | None) -> dict[str, tuple[Any, str]]:
