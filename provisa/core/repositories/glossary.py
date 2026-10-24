@@ -2101,3 +2101,23 @@ async def vocabulary_refs(  # REQ-2135, REQ-2141
         if r.term_id in names:
             column_terms.setdefault((r.table_id, r.column_name), []).append(names[r.term_id])
     return table_terms, {k: sorted(v) for k, v in column_terms.items()}
+
+
+async def concept_terms(conn: "Connection") -> list[str]:  # REQ-2135, REQ-2141
+    """The names of the live terms that ground no table and hold no column ref: the Concepts
+    SPARQL's vocabulary lists beside its classes and properties, in name order."""
+    live = await live_ids(conn)
+    rooted = {
+        r.term_id
+        for r in (await conn.execute_core(select(glossary_term_table_refs.c.term_id))).fetchall()
+    } | {
+        r.term_id
+        for r in (await conn.execute_core(select(glossary_term_refs.c.term_id))).fetchall()
+    }
+    return sorted(
+        r.name
+        for r in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+        if r.id in live and r.id not in rooted
+    )

@@ -505,6 +505,34 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
         return None, str(e), None
 
 
+async def _compile_sparql_for_result(  # REQ-2136, REQ-2135
+    compiled_cypher: str | None, cypher_error: str | None, ctx, state, role_id: str
+) -> tuple[str | None, str | None]:
+    """Return (compiled_sparql, sparql_error) for a root field: its Cypher export written as
+    SPARQL over the role's vocabulary, exact or refused by name. A root with no Cypher form has
+    no SPARQL one, for the same reason. The SPARQL is one more view of the compiled read: a reason
+    it has none -- no public address for its IRIs, a construct with no SPARQL form, a vocabulary
+    that cannot be read -- is its sparql_error, never the compile's failure (the SQL and Cypher
+    are answered as before), as a Cypher export's is its cypher_error."""
+    from provisa.api.rest.cypher_exec import _build_label_map
+    from provisa.api.rest.sparql_router import vocabulary_for
+    from provisa.cypher.parser import parse_cypher
+    from provisa.sparql_query.export import SparqlExportRefused, ir_to_sparql
+
+    if compiled_cypher is None:
+        return None, cypher_error
+    from provisa.gql.iri import IriBaseUnset
+
+    try:
+        label_map = _build_label_map(ctx, role_id, state)
+        vocab = await vocabulary_for(state, role_id, ctx, label_map)
+        return ir_to_sparql(parse_cypher(compiled_cypher), vocab, label_map), None
+    except (SparqlExportRefused, IriBaseUnset) as exc:
+        return None, str(exc)
+    except Exception as exc:  # allow-ble: an export's failure is its sparql_error, as _compile_cypher_for_result's is its cypher_error; the compile still answers
+        return None, f"{type(exc).__name__}: {exc}"
+
+
 async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039, REQ-262, REQ-263, REQ-266
     role_id: str,
     query: str,
@@ -600,6 +628,9 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
             node_only_cypher,
             root_index,
         )
+        compiled_sparql, sparql_error = await _compile_sparql_for_result(
+            compiled_cypher, cypher_error, ctx, state, role_id
+        )
 
         has_nodes = nodes_semantic_sql is not None and bool(compiled.nodes_columns)
 
@@ -653,6 +684,8 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
                 "compiled_cypher": compiled_cypher,
                 "nodes_compiled_cypher": nodes_compiled_cypher,
                 "cypher_error": cypher_error,
+                "compiled_sparql": compiled_sparql,
+                "sparql_error": sparql_error,
             }
         )
 

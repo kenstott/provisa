@@ -22,8 +22,9 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
 from provisa.gql.expr_ast import CypherExpr
-from provisa.gql.ir import MatchClause, PathPattern
+from provisa.gql.ir import MatchClause, PathPattern, WhereClause
 from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapping
+from provisa.gql.translator_types import CypherTranslateError
 
 
 def _properties_of(var: str, exprs: "list[CypherExpr]") -> list[str]:
@@ -492,6 +493,68 @@ def _fold_where_into_optional_joins(
         remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
 
     return modified, remaining
+
+
+def step_wheres(steps: list) -> "tuple[WhereClause | None, list[tuple[set[str], WhereClause]]]":
+    """The WHEREs of a segment's match steps, each as Cypher scopes it (REQ-345): a step that
+    matches anything required filters the rows (their conditions together, the first returned), and
+    an OPTIONAL MATCH's own WHERE is that match's condition, never a filter of the rows -- returned
+    with the variables the step introduces, whose join it conditions."""
+    from provisa.gql.expr_ast import Binary
+
+    required: CypherExpr | None = None
+    optional: list[tuple[set[str], WhereClause]] = []
+    seen: set[str] = set()
+    for step in steps:
+        new = _optional_vars(
+            [MatchClause(m.pattern, m.variable, optional=True) for m in step.matches]
+        )
+        if step.matches and all(m.optional for m in step.matches):
+            if step.where is not None:
+                optional.append((new - seen, step.where))
+        elif step.where is not None:
+            e = step.where.expression
+            required = e if required is None else Binary("AND", required, e)
+        seen |= new
+    return (WhereClause(required) if required is not None else None), optional
+
+
+def fold_into_optional_join(
+    where_expr: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    step_vars: "set[str]",
+    joins: "list[dict]",
+) -> "tuple[list[dict], exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]
+    """An OPTIONAL MATCH's own WHERE put in the ON of the last LEFT JOIN its step introduces:
+    every conjunct conditions that match, whatever it names. A ``_nf_`` condition stays in the
+    WHERE, where nf_extractor strips it. Returns (joins, what stays in the WHERE)."""
+    order = {
+        _join_alias(j["table"]): i
+        for i, j in enumerate(joins)
+        if j["join_type"] == "LEFT" and _join_alias(j["table"]) in step_vars
+    }
+    if not order:
+        raise CypherTranslateError(
+            "An OPTIONAL MATCH with a WHERE of its own must introduce a node or a relationship"
+        )
+    target = max(order, key=lambda a: order[a])
+    on_conds: list = []
+    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
+    for cond in _split_and(where_expr):
+        if "_nf_" in cond.sql(dialect="postgres"):
+            remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
+        else:
+            on_conds.append(cond)
+    out: list[dict] = []
+    for join in joins:
+        if _join_alias(join["table"]) == target and on_conds:
+            on = join["on"]
+            for cond in on_conds:
+                trivial = on is None or on.sql() in ("TRUE", "true", "1 = 1")
+                on = cond if trivial else exp.And(this=on, expression=cond)
+            out.append({**join, "on": on})
+        else:
+            out.append(join)
+    return out, remaining
 
 
 # ---------------------------------------------------------------------------

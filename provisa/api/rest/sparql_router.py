@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
@@ -178,3 +179,67 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     else:
         body = write_select(compiled.variables, rows, vocab.base, fmt)
     return Response(content=body, media_type=media)
+
+
+@router.get("/data/sparql/vocabulary")
+async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135, REQ-2141
+    """The role's SPARQL vocabulary as IRIs: its prefixes, the classes (each table's own and the
+    Class terms grounding tables), the predicates (each column's own and the Property terms), the
+    edge types, and the live Concept terms."""
+    from provisa.api.app import state
+    from provisa.api.role_surface import role_surface
+    from provisa.core.repositories import glossary as glossary_repo
+
+    role_id = _resolve_role_id(request, state)
+    surface = role_surface(state, role_id)
+    if surface is None:
+        return _refused(503, "Schema not loaded")
+    label_map = _build_label_map(surface.context, role_id, state)
+    vocab = await vocabulary_for(state, role_id, surface.context, label_map)
+    pool = state.model_db
+    assert pool is not None, "the control plane is opened before any request is served"
+    async with pool.acquire() as conn:
+        concepts = await glossary_repo.concept_terms(conn)
+    return JSONResponse(content=vocabulary_body(vocab, concepts))
+
+
+def vocabulary_body(vocab: Any, concepts: list[str]) -> dict:
+    """``vocab`` as the JSON /data/sparql/vocabulary answers with."""
+    from provisa.sparql_query.vocabulary import term_iri
+
+    term_prefix = vocab.prefixes["term"]
+
+    def term_of(iri: str) -> str | None:
+        return unquote(iri[len(term_prefix) :]) if iri.startswith(term_prefix) else None
+
+    return {
+        "base": vocab.base,
+        "prefixes": vocab.prefixes,
+        "classes": [
+            {
+                "iri": iri,
+                "kind": "class" if term_of(iri) is not None else "table",
+                "labels": labels,
+                "term": term_of(iri),
+            }
+            for iri, labels in vocab.classes.items()
+        ],
+        "predicates": [
+            {
+                "iri": iri,
+                "kind": "property" if term_of(iri) is not None else "column",
+                "label": cp.label,
+                "property": cp.prop,
+                "datatype": cp.datatype,
+                "term": term_of(iri),
+            }
+            for iri, cps in vocab.columns.items()
+            for cp in cps
+        ],
+        "edges": [
+            {"iri": iri, "rel_type": ep.rel_type, "source": ep.source, "target": ep.target}
+            for iri, eps in vocab.edges.items()
+            for ep in eps
+        ],
+        "concepts": [{"iri": term_iri(vocab.base, name), "term": name} for name in concepts],
+    }
