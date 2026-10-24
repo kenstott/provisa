@@ -78,12 +78,13 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
     surface = role_surface(state, role_id)
     if surface is None:
         return GraphRead(f"the schema of role {role_id!r} is not loaded", {})
+    label_map = _build_label_map(surface.context, role_id, state)
     try:
-        ast = parse_cypher(query)
+        # The role's label map: an unbound name that is a bound variable's property is offered.
+        ast = parse_cypher(query, label_map)
     except (CypherParseError, CypherTranslateError) as exc:
         # A parse refusal, or the user's mistake the parse finds (REQ-778, a CypherMistake).
         return GraphRead(str(exc), {})
-    label_map = _build_label_map(surface.context, role_id, state)
     try:
         sql_ast, _params, graph_vars = cypher_to_sql(ast, label_map, {})
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)

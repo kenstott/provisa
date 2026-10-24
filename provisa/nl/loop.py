@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 from provisa.nl.prompt import NlTarget, build_prompt
 
 if TYPE_CHECKING:
+    from provisa.gql.label_map import CypherLabelMap
     from graphql import GraphQLSchema
 
 log = logging.getLogger(__name__)
@@ -125,13 +126,17 @@ async def generation_loop(  # REQ-355, REQ-356
 # ---------------------------------------------------------------------------
 
 
-def make_cypher_compiler() -> Callable[[str], CompileResult]:  # REQ-464
-    """Return a compiler callable that validates Cypher syntax."""
+def make_cypher_compiler(  # REQ-464
+    label_map: "CypherLabelMap | None" = None,
+) -> Callable[[str], CompileResult]:
+    """Return a compiler callable that validates Cypher syntax. With the role's ``label_map``, an
+    unbound name that is a bound variable's property is offered as it in the refusal the model is
+    given back (REQ-778)."""
     from provisa.cypher.parser import CypherParseError, parse_cypher
 
     def _compile(query: str) -> CompileResult:
         try:
-            parse_cypher(query)
+            parse_cypher(query, label_map)
             return CompileResult(valid=True)
         except CypherParseError as exc:
             return CompileResult(valid=False, error=str(exc))
