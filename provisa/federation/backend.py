@@ -982,13 +982,18 @@ class TrinoBackend(EngineBackend):
         return frozenset(OPS_TABLES)
 
     def transpile_physical(self, pg_sql: str) -> str:
+        from provisa.federation.trino_connectors import trino_utc_wall_columns
         from provisa.transpiler.transpile import (
+            rewrite_instants_for_trino,
             rewrite_prometheus_labels_for_trino,
             transpile_to_trino,
         )
 
         sql = transpile_to_trino(pg_sql)
         from provisa.api.app import state
+
+        # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
+        sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
 
         label_columns = getattr(state, "prometheus_label_columns", None)
         if label_columns:

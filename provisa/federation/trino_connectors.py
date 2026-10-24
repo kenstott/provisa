@@ -21,7 +21,7 @@ Trino connector classes follow the ``_TrinoConnector`` base: declare ``trino_con
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -57,6 +57,37 @@ class _TrinoConnector(Connector):
         connectors backed by a metastore that starts out empty (delta_lake/iceberg, REQ-1743)
         override this to register the source's one table into the metastore."""
         return
+
+
+# The source types whose instant (a column declared timestamptz, REQ-2050) Trino types as a plain
+# TIMESTAMP, the UTC wall time with no zone (Trino 481): the MySQL family's TIMESTAMP and an
+# Elasticsearch date. Their declared instants are read as with_timezone(col, 'UTC') in Trino's
+# physical SQL (transpiler.transpile.rewrite_instants_for_trino).
+TRINO_INSTANT_AS_TIMESTAMP = frozenset({"mariadb", "mysql", "tidb", "elasticsearch"})
+
+
+def trino_utc_wall_columns(state: Any) -> dict[tuple[str, str, str], set[str]]:
+    """``(catalog, schema, table)`` -> the columns declared timestamptz of each registered table
+    whose source is one of :data:`TRINO_INSTANT_AS_TIMESTAMP`, as Trino addresses it: the source's
+    catalog, under the org being served."""
+    from provisa.core.ir_types import to_ir
+
+    types = getattr(state, "source_types", None) or {}
+    catalogs = getattr(state, "source_catalogs", None) or {}
+    out: dict[tuple[str, str, str], set[str]] = {}
+    for table in getattr(state, "tables", None) or []:
+        source_id = table.get("source_id")
+        if types.get(source_id) not in TRINO_INSTANT_AS_TIMESTAMP or source_id not in catalogs:
+            continue
+        instants = {
+            c["column_name"]
+            for c in table.get("columns") or []
+            if c.get("data_type") and to_ir(c["data_type"]) == "timestamptz"
+        }
+        if instants:
+            key = (catalogs[source_id], table["schema_name"].lower(), table["table_name"].lower())
+            out[key] = instants
+    return out
 
 
 # The Trino JDBC connectors that take ``statistics.enabled`` (their client module binds

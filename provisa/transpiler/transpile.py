@@ -93,6 +93,52 @@ def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
     return tree.sql(dialect="trino") if changed else sql
 
 
+def rewrite_instants_for_trino(
+    sql: str, utc_wall: dict[tuple[str, str, str], set[str]]
+) -> str:  # REQ-2050
+    """Each output column of ``sql`` that is an instant Trino reads as a plain TIMESTAMP written as
+    ``with_timezone(col, 'UTC')``: the UTC wall time a MySQL-family TIMESTAMP or an Elasticsearch
+    date arrives as, carried as the instant it is (trino_connectors.TRINO_INSTANT_AS_TIMESTAMP).
+
+    ``utc_wall`` maps ``(catalog, schema, table)`` to such a table's declared-timestamptz columns
+    (trino_connectors.trino_utc_wall_columns). Only the statement's outputs -- the outermost
+    SELECT's items, each UNION branch's -- that are a bare column of such a table: a predicate, a
+    join or an inner query reads the column as the connector gives it, so its pushdown stands."""
+    if not utc_wall:
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+    selects = [tree] if isinstance(tree, exp.Select) else []
+    if isinstance(tree, exp.Union):
+        selects = [s for s in tree.find_all(exp.Select) if s.find_ancestor(exp.Select) is None]
+    changed = False
+    for select in selects:
+        tables: dict[str, set[str]] = {}
+        sources = [select.args.get("from_")] + list(select.args.get("joins") or [])
+        for source in sources:
+            table = source.this if source is not None else None
+            if not isinstance(table, exp.Table) or table.args.get("catalog") is None:
+                continue
+            key = (table.catalog, table.db.lower(), table.name.lower())
+            if key in utc_wall:
+                tables[table.alias_or_name] = utc_wall[key]
+        if not tables:
+            continue
+        only = next(iter(tables)) if len(sources) == 1 else None
+        for item in list(select.expressions):
+            column = item.this if isinstance(item, exp.Alias) else item
+            if not isinstance(column, exp.Column):
+                continue
+            instants = tables.get(column.table or only or "")
+            if not instants or column.name not in instants:
+                continue
+            zoned = exp.Anonymous(
+                this="with_timezone", expressions=[column.copy(), exp.Literal.string("UTC")]
+            )
+            item.replace(exp.alias_(zoned, item.alias_or_name))
+            changed = True
+    return tree.sql(dialect="trino") if changed else sql
+
+
 def rewrite_prometheus_labels_for_trino(
     sql: str, label_columns: dict[tuple[str, str], set[str]]
 ) -> str:  # REQ-1730
