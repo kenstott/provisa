@@ -246,27 +246,33 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
-    return _like_escape_written(
-        _null_order_as_key(
-            _rewrite_list_functions_for_duckdb(
-                _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
-            )
+    return _null_order_as_key(
+        _rewrite_list_functions_for_duckdb(
+            _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
         )
     )
 
 
-def _like_escape_written(sql: str) -> str:
-    """A LIKE or ILIKE with no ESCAPE clause, given PostgreSQL's: a backslash escapes the
-    character after it. DuckDB's LIKE has no escape character unless one is written, so
-    ``'a%b' LIKE 'a\\%b'`` was false there and true in the dialect the statement is in."""
-    tree = sqlglot.parse_one(sql, read="duckdb")
+#: The targets whose LIKE has no escape character unless one is written (PostgreSQL's is a
+#: backslash): each LIKE is given PostgreSQL's explicitly (_like_escape_written).
+_LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
+
+
+def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each LIKE and ILIKE that has no ESCAPE clause given PostgreSQL's: a
+    backslash escapes the character after it. On a target whose LIKE has no escape character
+    unless one is written, ``'a%b' LIKE 'a\\%b'`` was false there and true in the dialect the
+    statement is in."""
+    if target_dialect not in _LIKE_ESCAPE_WRITTEN or "LIKE" not in pg_sql.upper():
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
 
     def _escaped(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(node, (exp.Like, exp.ILike)) and not isinstance(node.parent, exp.Escape):
             return exp.Escape(this=node.copy(), expression=exp.Literal.string("\\"))
         return node
 
-    return tree.transform(_escaped).sql(dialect="duckdb")
+    return tree.transform(_escaped).sql(dialect="postgres")
 
 
 def _null_order_as_key(sql: str) -> str:
@@ -464,6 +470,7 @@ def transpile(
     # the seam agree on always-quoted.
     identify = target_dialect in ("snowflake", "oracle")
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
+    pg_sql = _like_escape_written(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "exasol":
         result = _exasol_stored_case(

@@ -79,13 +79,17 @@ class TestStringPredicates:
         assert _sql("n.name STARTS WITH 'A'") == 'STARTS_WITH("n"."name", \'A\')'
 
     def test_ends_with(self):
-        assert _sql("n.name ENDS WITH 'z'") == "(\"n\".\"name\" LIKE CONCAT('%', 'z'))"
+        # The value's own characters: a % or _ in it is no LIKE wildcard.
+        assert _sql("n.name ENDS WITH 'z'") == (
+            '(SUBSTR("n"."name", LENGTH("n"."name") - (LENGTH(\'z\') - 1)) = \'z\')'
+        )
 
     def test_contains(self):
         assert _sql("n.name CONTAINS 'x'") == '(STRPOS("n"."name", \'x\') > 0)'
 
     def test_regex(self):
-        assert _sql("n.name =~ '.*'") == 'REGEXP_LIKE("n"."name", \'.*\')'
+        # Cypher's =~ matches the whole string.
+        assert _sql("n.name =~ '.*'") == 'REGEXP_LIKE("n"."name", \'^(?:.*)$\')'
 
     def test_in_list(self):
         assert _sql("n.x IN [1, 2, 3]") == '"n"."x" IN (1, 2, 3)'

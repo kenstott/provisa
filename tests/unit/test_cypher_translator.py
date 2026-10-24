@@ -380,8 +380,10 @@ def test_ends_with_predicate():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE n.name ENDS WITH 'e' RETURN n.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
-    assert "like" in sql.lower() or "LIKE" in sql
+    sql = sql_ast.sql(dialect="postgres")
+    # The value's own characters, no LIKE wildcards (a % or _ in it is itself).
+    assert "LIKE" not in sql.upper()
+    assert "(RIGHT(n.\"name\", LENGTH('e')) = 'e')" in sql
 
 
 def test_regex_predicate():
@@ -389,7 +391,8 @@ def test_regex_predicate():
     ast = parse_cypher("MATCH (n:Person) WHERE n.name =~ 'Al.*' RETURN n.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "regexp_like" in sql.lower()
+    # Cypher's =~ matches the whole string.
+    assert "regexp_like(n.\"name\", '^(?:al.*)$')" in sql.lower()
 
 
 def test_cypher_calls_to_sql_list():
