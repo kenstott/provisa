@@ -1435,8 +1435,14 @@ def apply_governance(
     if bound is not None:
         from provisa.compiler.list_cap import cap_lists
 
+        def columns_of(table: exp.Table) -> list[str] | None:
+            tid = _table_id_for_node(table, gov_ctx)
+            if tid is None or tid not in gov_ctx.all_columns:
+                return None
+            return [name for name, _type in gov_ctx.all_columns[tid]]
+
         # REQ-005 (amended 2026-10-24): and each list the read nests, at the same ceiling.
-        if cap_lists(tree, bound.limit):
+        if cap_lists(tree, bound.limit, columns_of):
             gov_ctx.list_limit = bound
 
     governed = tree.sql(dialect="postgres")

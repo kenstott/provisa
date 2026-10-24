@@ -175,8 +175,8 @@
   description: Result-size ceilings are defined per role/table in config (`max_rows`); Stage 2 injects
     LIMIT when a query would exceed the role's ceiling for any referenced table. Clients may always narrow
     further (fewer columns, additional filters). (Amended 2026-10-24, EVERY NESTED LIST TOO:) The same
-    ceiling bounds every list a read nests -- an aggregate or group-by's nodes and a to-many relationship's
-    rows -- at that many entries, as one AST rewrite of the governed statement (each json_agg beside a
+    ceiling bounds every list a read nests -- an aggregate or group-by's nodes, a to-many relationship's
+    rows, a Cypher collect() or COLLECT { } -- at that many entries (a distinct list, of distinct values), as one AST rewrite of the governed statement (each json_agg beside a
     grouping or other aggregates aggregates only the rows ROW_NUMBER numbers within the ceiling per group;
     one that is its select's one value reads at most that many rows). The statement's own LIMIT is
     unchanged, and counts and other aggregates stay over every row. A list of exactly the ceiling's entries

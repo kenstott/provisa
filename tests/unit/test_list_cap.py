@@ -58,9 +58,16 @@ def con() -> duckdb.DuckDBPyConnection:
     return c
 
 
-def _governed(sql: str, params: list, ceiling: int | None) -> tuple[str, GovernanceContext]:
+def _governed(
+    sql: str, params: list, ceiling: int | None, tables: dict | None = None
+) -> tuple[str, GovernanceContext]:
+    """``sql`` governed for a role whose row limit is ``ceiling``; ``tables`` the registered
+    tables it reads, ``{name: (id, [column, ...])}``."""
     gov = GovernanceContext()
     gov.limit_ceiling = ceiling
+    for name, (tid, columns) in (tables or {}).items():
+        gov.table_map[name] = tid
+        gov.all_columns[tid] = [(c, "varchar") for c in columns]
     return apply_governance(sql, gov, None, params), gov
 
 
@@ -153,3 +160,82 @@ def test_a_capped_list_s_filter_is_its_aggregate_s_on_each_engine():
     assert "TO_JSON(ARRAY_AGG(JSON_OBJECT('id', \"id\")) FILTER(WHERE t.__list_rn <= 2))" in (
         transpile_to_duckdb(capped)
     )
+
+
+# --- Cypher's lists: collect() and COLLECT { } ----------------------------------------------------
+
+
+@pytest.fixture
+def terms():
+    """customer KIND_OF party; ledger PART_OF party, KIND_OF customer and KIND_OF party."""
+    from tests.unit.test_cypher_translator_correctness import terms as _terms
+
+    return _terms.__wrapped__()
+
+
+def _cypher_rows(terms, cypher: str, ceiling: int | None) -> tuple[list[tuple], GovernanceContext]:
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.translator import cypher_to_sql
+
+    lm, con = terms
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
+    sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="postgres")
+    tables = {
+        "provisa_admin.public.glossary_terms": (1, ["id", "name"]),
+        "provisa_admin.public.glossary_term_edges": (
+            2,
+            ["id", "from_term_id", "to_term_id", "rel_type", "note"],
+        ),
+    }
+    governed, gov = _governed(sql, [], ceiling, tables)
+    return sorted(con.execute(transpile_to_duckdb(governed)).fetchall(), key=repr), gov
+
+
+def _lengths(rows: list[tuple]) -> dict:
+    return {name: len(values) for name, values in rows}
+
+
+def test_a_capped_role_s_collect_holds_at_most_its_ceiling_per_group(terms):
+    # ledger has three edges (PART_OF party, KIND_OF customer, KIND_OF party), customer one;
+    # the ceiling of 2 holds both groups and cuts ledger's list.
+    read = (
+        "MATCH (a:GlossaryTerm)-[:KIND_OF|PART_OF]->(b:GlossaryTerm) RETURN a.name, collect(b.name)"
+    )
+    capped, gov = _cypher_rows(terms, read, 2)
+    assert _lengths(capped) == {"customer": 1, "ledger": 2}
+    assert gov.list_limit == RowLimit(2, "role") and at_ceiling(capped, 2)
+    whole, gov = _cypher_rows(terms, read, None)
+    assert _lengths(whole) == {"customer": 1, "ledger": 3} and gov.list_limit is None
+
+
+def test_a_capped_role_s_distinct_collect_holds_at_most_its_ceiling_of_values(terms):
+    read = (
+        "MATCH (a:GlossaryTerm)-[:KIND_OF|PART_OF]->(b:GlossaryTerm) WHERE a.name = 'ledger' "
+        "RETURN a.name, collect(DISTINCT b.name)"
+    )
+    capped, _ = _cypher_rows(terms, read, 1)
+    assert _lengths(capped) == {"ledger": 1}
+    whole, _ = _cypher_rows(terms, read, None)
+    # ledger reaches party twice (PART_OF, KIND_OF) and customer once: two distinct values.
+    assert _lengths(whole) == {"ledger": 2}
+
+
+def test_a_capped_role_s_collect_subquery_holds_at_most_its_ceiling(terms):
+    read = (
+        "MATCH (a:GlossaryTerm) WHERE a.name = 'ledger' "
+        "RETURN a.name, COLLECT { MATCH (a)-[:KIND_OF]->(b:GlossaryTerm) RETURN b.name }"
+    )
+    capped, gov = _cypher_rows(terms, read, 1)
+    assert _lengths(capped) == {"ledger": 1} and gov.list_limit == RowLimit(1, "role")
+    whole, _ = _cypher_rows(terms, read, None)
+    assert _lengths(whole) == {"ledger": 2}
+
+
+def test_a_capped_role_s_collect_of_nodes_beside_a_node_holds_at_most_its_ceiling(terms):
+    # RETURN a groups by every column of a: each is read from the one numbered source.
+    read = "MATCH (a:GlossaryTerm)-[:KIND_OF|PART_OF]->(b:GlossaryTerm) RETURN a, collect(b)"
+    capped, _ = _cypher_rows(terms, read, 2)
+    whole, _ = _cypher_rows(terms, read, None)
+    assert sorted(len(c) for _a, c in capped) == [1, 2]
+    assert sorted(len(c) for _a, c in whole) == [1, 3]
