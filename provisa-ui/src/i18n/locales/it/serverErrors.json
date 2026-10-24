@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} non è un numero intero di righe: SKIP accetta un conteggio da 0 in su, ad es. SKIP 10.",
       "engine_refused": "Il motore ha rifiutato la query: {{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} legge {{variable}}, ma l'istruzione non vincola alcuna variabile: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL."
+      "no_variables": "{{clause}} legge {{variable}}, ma l'istruzione non vincola alcuna variabile: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL.",
+      "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
+      "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}."
     },
     "requests": {
       "approver_outside_domains": "Il tuo diritto di creare relazioni non raggiunge alcun dominio toccato da questa richiesta ({{domains}})",

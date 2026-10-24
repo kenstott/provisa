@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} ist keine ganze Zeilenzahl: SKIP erwartet eine Anzahl ab 0, z. B. SKIP 10.",
       "engine_refused": "Die Engine hat die Abfrage abgelehnt: {{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} liest {{variable}}, aber die Anweisung bindet keine Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden."
+      "no_variables": "{{clause}} liest {{variable}}, aber die Anweisung bindet keine Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden.",
+      "undefined_variable_property": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestion}}? {{owner}} ist an :{{label}} gebunden, das eine Eigenschaft {{variable}} hat.",
+      "undefined_variable_properties": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestions}}? Jede ist an ein Label mit einer Eigenschaft {{variable}} gebunden."
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",

@@ -8029,5 +8029,7 @@
   "it/serverErrors.json::serverErrors.cypher.invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
   "it/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
   "it/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
-  "it/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}"
+  "it/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
+  "it/serverErrors.json::serverErrors.cypher.undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
+  "it/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
 }

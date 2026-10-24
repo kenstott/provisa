@@ -649,7 +649,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         from provisa.gql.translator_types import CypherMistake
 
         try:
-            ast = parse_cypher(query_text)
+            ast = parse_cypher(query_text, label_map)
         except CypherMistake as exc:
             return mistake_error(exc)
         except CypherParseError as exc:

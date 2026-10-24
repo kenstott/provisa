@@ -8028,5 +8028,7 @@
   "he/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
   "he/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
   "he/serverErrors.json::serverErrors.cypher.invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",
-  "he/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}"
+  "he/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
+  "he/serverErrors.json::serverErrors.cypher.undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
+  "he/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
 }

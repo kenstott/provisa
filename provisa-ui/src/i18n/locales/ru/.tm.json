@@ -8028,5 +8028,7 @@
   "ru/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
   "ru/serverErrors.json::serverErrors.cypher.no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
   "ru/serverErrors.json::serverErrors.cypher.no_labels": "There is no label :{{label}}: this role can read no table.",
-  "ru/serverErrors.json::serverErrors.cypher.invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\"."
+  "ru/serverErrors.json::serverErrors.cypher.invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
+  "ru/serverErrors.json::serverErrors.cypher.undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
+  "ru/serverErrors.json::serverErrors.cypher.undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}."
 }
