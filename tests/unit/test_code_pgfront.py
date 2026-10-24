@@ -37,6 +37,12 @@ from provisa.python.source import HOST, READER
 
 pytestmark = pytest.mark.unit
 
+BOUNDS = {
+    "memory_mb": 256,
+    "threads": 2,
+    "spill_cap_mb": 1024,
+}  # the host's DuckDB, given at pairing
+
 _CODE = textwrap.dedent(
     '''
     from dataclasses import dataclass
@@ -75,7 +81,15 @@ def host(tmp_path):
     port = 0
     worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
-        [sys.executable, front.__file__, str(port), str(tmp_path / "state"), str(names), *worker],
+        [
+            sys.executable,
+            front.__file__,
+            str(port),
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *worker,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -93,7 +107,7 @@ def host(tmp_path):
             break
     assert pairing is not None
     identity = remote.new_identity()
-    remote.pair("127.0.0.1", port, pairing, identity)
+    remote.pair("127.0.0.1", port, pairing, identity, BOUNDS)
     cert, key = tmp_path / "provisa.crt", tmp_path / "provisa.key"
     cert.write_text(identity.certificate)
     key.write_text(identity.key)

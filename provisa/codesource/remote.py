@@ -35,6 +35,7 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from provisa.codesource.worker import (
     CONNECTIONS,
@@ -43,6 +44,7 @@ from provisa.codesource.worker import (
     WorkerFailed,
     _frame,
     _read_frame,
+    duckdb_bounds,
     refusal,
 )
 
@@ -164,16 +166,33 @@ def host_certificate(
     return ssl.DER_cert_to_PEM_cert(der)
 
 
-def pair(address: str, port: int, code: str, identity: Identity, timeout: float = 10.0) -> str:
+def pair(
+    address: str,
+    port: int,
+    code: str,
+    identity: Identity,
+    duckdb: dict[str, int],
+    timeout: float = 10.0,
+) -> str:
     """Pair with the remote host at ``address:port`` using its pairing ``code``: it keeps
-    ``identity``'s certificate as Provisa's. The host's fingerprint, to pin."""
+    ``identity``'s certificate as Provisa's, and ``duckdb``, the bounds of its DuckDB
+    (worker.duckdb_bounds), until a call gives others. The host's fingerprint, to pin."""
     fingerprint, secret = parse_pairing_code(code)
     try:
         conn = _dial(address, port, fingerprint, None, timeout)
     except ConnectionError as exc:
         raise PairingRefused(str(exc)) from exc
     with conn:
-        conn.sendall(_frame({"op": "pair", "secret": secret, "certificate": identity.certificate}))
+        conn.sendall(
+            _frame(
+                {
+                    "op": "pair",
+                    "secret": secret,
+                    "certificate": identity.certificate,
+                    "duckdb": duckdb,
+                }
+            )
+        )
         answer = _read_frame(conn)
     if answer is None or answer.get("op") != "paired":
         said = (answer or {}).get("message", "it closed the connection")
@@ -247,6 +266,11 @@ class RemoteWorker(Worker):
             raise WorkerFailed(self.source_id, f"remote host {self.where}: {refused}")
         conn.settimeout(None)
         return hello
+
+    def _call_frame(self, *args: Any, **kwargs: Any) -> dict:
+        """REQ-2100: every call to a host carries the operator's DuckDB bounds, which its front
+        end applies (and keeps) before the call."""
+        return {**super()._call_frame(*args, **kwargs), "duckdb": duckdb_bounds()}
 
     def _other_exports(self, hello: dict) -> str | None:
         if self._pinned_exports is None:

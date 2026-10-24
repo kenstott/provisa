@@ -107,6 +107,7 @@ FRONT = [
     "/opt/provisa/front/front.py",
     "7443",
     "/var/lib/provisa",
+    "/var/lib/provisa-spill",
     "/opt/provisa/front/names.json",
 ]
 
@@ -348,4 +349,7 @@ def test_the_compose_service_requires_its_host_port_and_keeps_its_state():
         '"${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"' in snippet
     )
     assert "provisa-code-rates-state:/var/lib/provisa" in snippet
+    # REQ-2100: the spill on a volume of its own, sized to the cap by the platform's quota.
+    assert "provisa-code-rates-spill:/var/lib/provisa-spill" in snippet
+    assert "codesource.duckdb_spill_cap_mb" in snippet
     assert "image: ghcr.io/acme/provisa-code-rates:abc" in snippet

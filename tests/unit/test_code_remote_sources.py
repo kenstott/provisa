@@ -162,6 +162,7 @@ def host(tmp_path):
             front.__file__,
             str(port),
             str(tmp_path / "state"),
+            str(tmp_path / "spill"),
             str(names),
             *[sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"],
         ],

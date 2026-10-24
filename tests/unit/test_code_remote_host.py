@@ -33,6 +33,12 @@ from provisa.python.source import HOST
 
 pytestmark = pytest.mark.unit
 
+BOUNDS = {
+    "memory_mb": 256,
+    "threads": 2,
+    "spill_cap_mb": 1024,
+}  # the host's DuckDB, given at pairing
+
 FRONT = front.__file__
 _CODE = textwrap.dedent(
     '''
@@ -60,7 +66,15 @@ def started(tmp_path):
     names.write_text("{}")
     worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
-        [sys.executable, FRONT, str(port), str(tmp_path / "state"), str(names), *worker],
+        [
+            sys.executable,
+            FRONT,
+            str(port),
+            str(tmp_path / "state"),
+            str(tmp_path / "spill"),
+            str(names),
+            *worker,
+        ],
         env={**os.environ, "PROVISA_CODE_HASH": "h1"},
         stderr=subprocess.PIPE,
         text=True,
@@ -97,7 +111,7 @@ def _worker(port: int, pin: str, identity: remote.Identity, **kw) -> remote.Remo
 def test_a_paired_host_serves_the_codes_tables_to_each_provisa_connection(started):
     port, code = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, code, identity)
+    pin = remote.pair("127.0.0.1", port, code, identity, BOUNDS)
     first = _worker(port, pin, identity, exports=["orders"])
     second = _worker(port, pin, identity, exports=["orders"])
     first.start()
@@ -121,16 +135,16 @@ def test_a_pairing_code_is_used_once_and_another_secret_is_refused(started):
     port, code = started
     fingerprint, _secret = remote.parse_pairing_code(code)
     with pytest.raises(remote.PairingRefused, match="not this host's pairing code"):
-        remote.pair("127.0.0.1", port, f"{fingerprint}.wrong", remote.new_identity())
-    remote.pair("127.0.0.1", port, code, remote.new_identity())
+        remote.pair("127.0.0.1", port, f"{fingerprint}.wrong", remote.new_identity(), BOUNDS)
+    remote.pair("127.0.0.1", port, code, remote.new_identity(), BOUNDS)
     # Paired: the host now takes only its Provisa's certificate.
     with pytest.raises(remote.PairingRefused):
-        remote.pair("127.0.0.1", port, code, remote.new_identity())
+        remote.pair("127.0.0.1", port, code, remote.new_identity(), BOUNDS)
 
 
 def test_a_provisa_the_host_is_not_paired_to_is_refused(started):
     port, code = started
-    pin = remote.pair("127.0.0.1", port, code, remote.new_identity())
+    pin = remote.pair("127.0.0.1", port, code, remote.new_identity(), BOUNDS)
     stranger = _worker(port, pin, remote.new_identity())
     with pytest.raises(WorkerFailed):
         stranger.start(timeout=5)
@@ -139,7 +153,7 @@ def test_a_provisa_the_host_is_not_paired_to_is_refused(started):
 def test_a_host_running_other_code_or_offering_other_exports_is_refused_by_name(started):
     port, code = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, code, identity)
+    pin = remote.pair("127.0.0.1", port, code, identity, BOUNDS)
     with pytest.raises(WorkerFailed) as other_code:
         _worker(port, pin, identity, content_hash="h2").start()
     assert str(other_code.value) == (
@@ -156,7 +170,7 @@ def test_a_host_running_other_code_or_offering_other_exports_is_refused_by_name(
 def test_a_host_with_another_certificate_than_the_pin_is_refused(started):
     port, code = started
     identity = remote.new_identity()
-    remote.pair("127.0.0.1", port, code, identity)
+    remote.pair("127.0.0.1", port, code, identity, BOUNDS)
     with pytest.raises(WorkerFailed, match="presented certificate .*, not the paired 0+"):
         _worker(port, "0" * 64, identity).start()
 
@@ -188,7 +202,7 @@ def _ipc_text(table: pa.Table) -> str:
 def test_a_read_carrying_its_statement_is_answered_with_it_applied_on_the_host(started):
     port, code = started
     identity = remote.new_identity()
-    pin = remote.pair("127.0.0.1", port, code, identity)
+    pin = remote.pair("127.0.0.1", port, code, identity, BOUNDS)
     worker = _worker(port, pin, identity)
     worker.start()
     try:
