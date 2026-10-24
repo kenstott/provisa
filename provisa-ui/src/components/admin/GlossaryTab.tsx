@@ -466,17 +466,21 @@ export function GlossaryTab() {
     }
   };
 
-  const relTypeOptions = GLOSSARY_REL_TYPES.map((rt) => ({
-    value: rt,
-    label: t(`glossaryTab.rel_${rt}`),
-  }));
+  // Kept from render to render: the term graph (REQ-2149) is drawn again only when its words change.
+  const relTypeOptions = useMemo(
+    () => GLOSSARY_REL_TYPES.map((rt) => ({ value: rt, label: t(`glossaryTab.rel_${rt}`) })),
+    [t],
+  );
   const kindOptions = GLOSSARY_EXPERT_KINDS.map((k) => ({
     value: k,
     label: t(`glossaryTab.kind_${k}`),
   }));
   // REQ-1590: a reader sees the same sentence a curator does, without the picker that changes it.
-  const relLabel = (options: { value: string; label: string }[], relType: string) =>
-    options.find((o) => o.value === relType)?.label ?? relType;
+  const relLabel = useCallback(
+    (options: { value: string; label: string }[], relType: string) =>
+      options.find((o) => o.value === relType)?.label ?? relType,
+    [],
+  );
   const otherTermOptions = terms
     .filter((term) => term.id !== detail?.id)
     .map((term) => ({ value: String(term.id), label: term.name }));

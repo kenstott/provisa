@@ -88056,3 +88056,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And a failure names the measure that grew and the top allocation sites that grew
 
     '
+- id: REQ-2150
+  status: proposed
+  target: "2027-Q1"
+  group: 10. UI & Admin Surfaces
+  category: Glossary Admin
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: ui
+  description: >-
+    A glossary term's read view shows the term's neighbourhood as a small graph laid out left to right
+    in layers: the terms whose relationships point to this term, the term itself, the terms this term's
+    relationships point to, then what the term refers to (the columns it is applied to, and for a Class
+    term the tables). Each arrow is labelled with its relationship type, and the graph reaches one hop
+    each way. Nodes are named by their catalog names only. It reads the same metadata query the view
+    already reads, with no request of its own. It is compact by default, and an expand control shows
+    it at full size.
