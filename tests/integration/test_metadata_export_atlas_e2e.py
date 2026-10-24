@@ -145,7 +145,7 @@ async def test_governance_signals_arrive_as_atlas_classifications(published):
     masked = next(c for c in ssn["classifications"] if c["typeName"] == "provisa_masked")
     assert (
         masked["attributes"]["ruleId"]
-        == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:regex"
+        == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:1:regex"
     )
     assert masked["attributes"]["exemptRoles"] == ["admin"]
     assert masked["attributes"]["restrictedRoles"] == sorted(set(SERVER_ROLES) - {"admin"})
@@ -196,7 +196,12 @@ async def test_republishing_lands_the_same_catalog_state(published):
     client, first = published
     (again,) = (await client.post("/admin/metadata-export/publish")).json()["targets"]
     assert again["ok"], refused(again)
-    assert again["published"] == first["published"]
+    # Entities are upserted and counted on every publish; a term assignment is counted when it
+    # is added, so the second publish, finding all three in place, adds none.
+    assert first["published"]["term_assignment"] == 3
+    assert again["published"] == {
+        k: v for k, v in first["published"].items() if k != "term_assignment"
+    }
     orders = await _entity("provisa_table", ORDERS)
     assert [c["typeName"] for c in orders["classifications"]] == ["provisa_rls_restricted"]
 
@@ -226,15 +231,16 @@ async def test_no_rule_body_is_stored_in_the_external_catalog(published):
 
 async def test_provisa_assigns_its_terms_as_semantic_assignments_it_sourced(published):
     """REQ-1389 (amended): the Class term is assigned to the table it grounds and the Property
-    term to its column, each an AtlasGlossarySemanticAssignment whose source is Provisa."""
+    term to its columns, each an AtlasGlossarySemanticAssignment whose source is Provisa."""
     orders = await _entity("provisa_table", ORDERS)
     customer_id = await _entity("provisa_column", f"{_ORDERS}.customer_id@{CLUSTER}")
-    for term, entity in ((CLASS_TERM, orders), (GLOSSARY_TERM, customer_id)):
+    customers_id = await _entity("provisa_column", f"{SOURCE}.{SCHEMA}.customers.id@{CLUSTER}")
+    for term, entities in ((CLASS_TERM, [orders]), (GLOSSARY_TERM, [customer_id, customers_id])):
         found = await _entity("AtlasGlossaryTerm", f"{term}@{_glossary_qn(ORG)}")
         assigned = found["relationshipAttributes"]["assignedEntities"]
-        assert [
+        assert sorted(
             (a["guid"], a["relationshipAttributes"]["attributes"]["source"]) for a in assigned
-        ] == [(entity["guid"], ASSIGNMENT_SOURCE)]
+        ) == sorted((entity["guid"], ASSIGNMENT_SOURCE) for entity in entities)
 
 
 async def test_each_term_carries_its_role(published):

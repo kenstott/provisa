@@ -73,7 +73,8 @@ MEMBER_TTL = 3600
 GLOSSARY_TERM = "customer"
 GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
 # REQ-2141/REQ-1389: a Class term grounded in the orders table. Beside it, GLOSSARY_TERM is the
-# Property the orders.customer_id column derives, so each catalog receives one assignment of each.
+# Property orders.customer_id derives; customers has no Class, so its key customers.id grounds
+# that Property too. Each catalog receives three assignments: orders, and the two columns.
 CLASS_TERM = "order"
 CLASS_DEFINITION = "A customer's request to buy, placed once."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.

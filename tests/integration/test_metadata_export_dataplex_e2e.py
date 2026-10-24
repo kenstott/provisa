@@ -209,12 +209,13 @@ async def published():
 async def test_the_publish_reports_the_data_product_and_its_assets(published):
     result = published[0]
     assert result["ok"], refused(result)
-    # REQ-1387/1389: the org's two defined terms, each linked to the orders replica's view.
+    # REQ-1387/1389: the org's two defined terms -- the Class linked to the orders replica's
+    # view, the Property to the two columns it grounds (orders.customer_id, customers.id).
     assert result["published"] == {
         "data_products": 1,
         "data_assets": 2,
         "glossary_term": 2,
-        "term_assignment": 2,
+        "term_assignment": 3,
     }
 
 
