@@ -18,9 +18,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from provisa.cypher.expr_parser import parse_expression
+
+if TYPE_CHECKING:
+    from provisa.gql.label_map import CypherLabelMap
+
 from provisa.gql.mistakes import aggregate_misuse, undefined_variable
 from provisa.gql.translator_types import CypherMistake
 from provisa.gql.ir import (
@@ -909,14 +913,16 @@ def refuse_multiple_statements(query: str) -> None:
         raise CypherParseError(f"Expected exactly one statement per query but got: {statements}")
 
 
-def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
+def parse_cypher(  # REQ-345, REQ-346, REQ-571
+    query: str, label_map: CypherLabelMap | None = None
+) -> CypherAST:
     """Parse a read-only Cypher statement into a CypherAST (``_parse_statement``), refusing a
     variable nothing in it binds or an aggregate where none is taken (REQ-778): the user's mistake, said before any translation. A
     statement inside it (EXISTS { }, COUNT { }, COLLECT { }) reads its outer variables, so it is
     checked as part of the whole, never on its own."""
     ast = _parse_statement(query)
-    for check in (undefined_variable, aggregate_misuse):
-        mistake = check(ast)
+    # With the role's label map, an unbound name that is a bound variable's property is offered.
+    for mistake in (undefined_variable(ast, label_map), aggregate_misuse(ast)):
         if mistake is not None:
             raise CypherParseMistake(mistake.code, str(mistake), **mistake.params)
     return ast

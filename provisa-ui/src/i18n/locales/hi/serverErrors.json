@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} पंक्तियों की पूर्ण संख्या नहीं है: SKIP 0 या उससे अधिक की गिनती लेता है, जैसे SKIP 10।",
       "engine_refused": "इंजन ने क्वेरी अस्वीकार कर दी: {{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} {{variable}} को पढ़ता है, लेकिन कथन कोई वेरिएबल नहीं बाँधता: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है।"
+      "no_variables": "{{clause}} {{variable}} को पढ़ता है, लेकिन कथन कोई वेरिएबल नहीं बाँधता: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है।",
+      "undefined_variable_property": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestion}} था? {{owner}} :{{label}} से बँधा है, जिसकी एक प्रॉपर्टी {{variable}} है।",
+      "undefined_variable_properties": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestions}} था? प्रत्येक ऐसे लेबल से बँधा है जिसकी एक प्रॉपर्टी {{variable}} है।"
     },
     "requests": {
       "approver_outside_domains": "संबंध बनाने का आपका अधिकार इस अनुरोध से जुड़े किसी डोमेन तक नहीं पहुँचता ({{domains}})",

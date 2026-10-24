@@ -163,3 +163,60 @@ async def test_what_the_engine_refuses_is_said_as_the_engines(monkeypatch):
     assert body["code"] == "cypher.engine_refused"
     assert body["detail"] == "The engine refused the query: Binder Error: no such function"
     assert body["sql"] == "SELECT 1"
+
+
+def _pets_label_map():
+    from provisa.gql.label_map import CypherLabelMap, NodeMapping
+
+    def node(label: str, table_id: int, props: list[str]) -> NodeMapping:
+        return NodeMapping(
+            label=label,
+            type_name=label,
+            domain_label=None,
+            table_label=label,
+            table_id=table_id,
+            source_id="pets",
+            id_column="id",
+            pk_columns=["id"],
+            catalog_name="pets",
+            schema_name="pets",
+            table_name=label.lower(),
+            properties={p: p for p in props},
+        )
+
+    nodes = {
+        "Pets": node("Pets", 1, ["id", "name", "breedName"]),
+        "Owners": node("Owners", 2, ["id", "name"]),
+    }
+    return CypherLabelMap(
+        nodes=nodes,
+        relationships={},
+        domains={},
+        nodes_by_table={"Pets": ["Pets"], "Owners": ["Owners"]},
+    )
+
+
+def test_an_unbound_name_that_is_a_bound_variables_property_is_offered_as_it():
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.translator_types import CypherMistake
+
+    with pytest.raises(CypherMistake) as refused:
+        parse_cypher("MATCH (a:Pets) RETURN a.breedName, COUNT(id) AS pet_count", _pets_label_map())
+    assert refused.value.code == "cypher.undefined_variable_property"
+    assert str(refused.value) == (
+        "RETURN reads id, which nothing in the statement binds: a variable is bound by a MATCH "
+        "pattern, WITH, UNWIND or CALL. Bound here: a. Did you mean a.id? a is bound to :Pets, "
+        "which has a property id."
+    )
+
+
+def test_each_bound_variable_with_the_property_is_offered():
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.translator_types import CypherMistake
+
+    with pytest.raises(CypherMistake) as refused:
+        parse_cypher("MATCH (a:Pets) MATCH (o:Owners) RETURN name", _pets_label_map())
+    assert refused.value.code == "cypher.undefined_variable_properties"
+    assert str(refused.value).endswith(
+        "Did you mean a.name or o.name? Each is bound to a label with a property name."
+    )

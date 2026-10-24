@@ -1681,12 +1681,11 @@ async def _execute_cypher(
         except CypherWriteParseError:
             pass
 
+        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
         try:
-            ast = parse_cypher(cypher)
+            ast = parse_cypher(cypher, label_map)
         except CypherParseError as exc:
             raise ValueError(str(exc)) from exc
-
-        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
 
         param_names = collect_param_names(cypher)
         try:

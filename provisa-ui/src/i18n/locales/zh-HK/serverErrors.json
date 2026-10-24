@@ -544,7 +544,9 @@
       "invalid_skip": "SKIP {{value}} 不是整數行數：SKIP 需要 0 或以上的計數，例如 SKIP 10。",
       "engine_refused": "引擎拒絕了查詢：{{error}}",
       "parameter_required": "{{reason}}",
-      "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。"
+      "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。",
+      "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
+      "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。"
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",
