@@ -86128,7 +86128,27 @@ And reaffirming it records the tag again with today's decider and evidence and r
     a volume of its own in the compose snippet that the operator sizes to the cap with the platform''s
     quota; in dev mode the data directory, unbounded. DuckDB 1.5.5 does not stop a sort''s spill at max_temp_directory_size,
     so the cap holds where the volume is sized to it, and a statement that fills it is refused naming
-    codesource.duckdb_spill_cap_mb.'
+    codesource.duckdb_spill_cap_mb. (Amended 2026-10-24, CODE TABLE MUTATIONS:) SQL and GraphQL mutations
+    on a code table are routed to its source''s commands. BINDING: a @command is bound to a table operation
+    by its input type, read from the manifest: insert takes rows, a list of the table''s row type; update
+    takes keys (the table''s primary-key values: objects of its key columns, each of the column''s type,
+    or the values themselves for a one-column key) and changes (an object whose fields are some of the
+    row type''s, each optional); delete takes keys. A tag line @insert/@update/@delete <table> (the table''s
+    @table function) is allowed only to resolve which of two that fit it is, and binds nothing that does
+    not fit. At most one command a table and operation: two candidates with no tag, and a tag on a command
+    that does not fit, are refused by name at registration. PIPELINE: the mutation is governed as any
+    mutation is (its columns'' write grants, the role''s row rules added to an UPDATE''s or a DELETE''s
+    WHERE). An INSERT''s typed rows (each value a literal or a bound parameter; an INSERT ... SELECT''s
+    rows read first) are passed to the insert command in batches. An UPDATE or a DELETE with any WHERE,
+    joins and subqueries included, first reads the keys it touches: an ordinary governed SELECT of the
+    table''s key columns (and an UPDATE''s SET values, computed per row) over the statement''s own FROM
+    and WHERE, through the one pipeline and routed by its usual gates -- direct when single-source, the
+    engine (attached or landed) when the WHERE joins other sources; then the command is called with the
+    keys, an update once for each distinct set of changes. The affected count is the number of rows written
+    or keys given. A GraphQL mutation on the table goes through the same pipeline. REFUSED by name: an
+    UPDATE or a DELETE on a table with no primary key, and a write with no bound command for its operation.
+    There is no transaction across the key read and the call (BEGIN and COMMIT are no-ops by design),
+    and the author docs say so.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and

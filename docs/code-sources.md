@@ -295,6 +295,54 @@ The function can call Provisa's services, the LLM service among them, so one mod
 
 A view that applies a column transform is landed, whether or not you declare it a materialized view: Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
 
+### Writing to a table: commands {: #writes }
+
+SQL and GraphQL writes to a code table go to its source's commands. A `@command` is bound to a table's operation by its input type:
+
+| Operation | The command takes |
+|---|---|
+| `INSERT` | `rows`: a list of the table's row type |
+| `UPDATE` | `keys` and `changes`: a list of the table's primary-key values, then an object with some of the row type's fields, each optional |
+| `DELETE` | `keys` |
+
+A key value is an object of the table's key columns, or the value itself when the key is one column. The table needs a primary key for an update or a delete.
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass
+class OrderChanges:
+    status: str | None = None
+    total: float | None = None
+
+
+def add_orders(rows: list[Order]) -> int:
+    """@command"""
+    return api.create(rows)
+
+
+def set_orders(keys: list[int], changes: OrderChanges) -> int:
+    """@command"""
+    return api.update(keys, changes)
+
+
+def remove_orders(keys: list[int]) -> int:
+    """@command"""
+    return api.delete(keys)
+```
+
+Writing works the way it does for any table:
+
+- A write is governed as any write is: the role's write grant names the columns it may set, and its row rules are added to an update's or a delete's `WHERE`.
+- An `INSERT`'s rows reach the insert command in batches.
+- An `UPDATE` or a `DELETE` first reads the rows it touches: an ordinary read of the table's key columns over the statement's own `FROM` and `WHERE`, joins included, routed as any read is. The command is then called with those keys. An update whose `SET` is computed per row (`SET total = total * 2`) is called once for each distinct set of changes.
+- The affected count is the number of rows written or keys given.
+- A GraphQL mutation on the table goes the same way.
+- The read and the call are not one transaction: a row can change between the two.
+
+When two commands fit one operation, tag the one it is with `@insert <table>`, `@update <table>` or `@delete <table>`, where `<table>` is the table's `@table` function. Two that fit with no tag are refused when you register the table, and so is a tag on a command that doesn't fit. A write to a table with no command bound for it is refused, naming the operation.
+
 ### Where the code comes from {: #where-the-code-comes-from }
 
 - **A package.** An npm package for Node or a PyPI package for Python, at an exact version.
@@ -565,6 +613,7 @@ Each of these is refused, before your code runs where it can:
 - An unknown tag or a type Provisa can't map, every problem of a function at once.
 - A read that leaves out a required parameter.
 - A `@table` or `@stream` function whose parameters aren't `(inputs, context)`, and a `@loader` declaration it can't take.
+- A write to a code table with no command bound for it, an update or a delete of one with no primary key, and two commands that fit one operation with no tag between them.
 - A package with dependencies and no lockfile.
 - A server directory outside the allowed ones, or on a server of many organizations.
 - A remote host running other code than the source is pinned to.
