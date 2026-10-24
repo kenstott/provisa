@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BATCH = 1000;
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-export const PROTOCOL = 3;
+export const PROTOCOL = 4;
 const IR_KEY = "provisa.ir";
 const WHOLE_ROW = "$row";
 // REQ-2100: the field a loader call's row carries its key in.
@@ -125,7 +125,8 @@ export function frame(body) {
 }
 
 /** One connection's serving: its calls, the frames it reads and the ones it writes (`write`
- * takes a whole frame). `onRefused` is told when Provisa refuses this host. */
+ * takes a whole frame, and returns a promise when the frame waits for its reader: the call's
+ * next rows wait for it). `onRefused` is told when Provisa refuses this host. */
 export class Connection {
   constructor(loaded, write, onRefused) {
     this.bundle = loaded.bundle;
@@ -138,7 +139,7 @@ export class Connection {
   }
 
   send(message) {
-    this.write(frame(Buffer.concat([Buffer.from("J"), Buffer.from(encode(message), "utf8")])));
+    return this.write(frame(Buffer.concat([Buffer.from("J"), Buffer.from(encode(message), "utf8")])));
   }
 
   hello() {
@@ -158,11 +159,30 @@ export class Connection {
       schema,
       A.makeData({ type: new A.Struct(fields), length: values.length, nullCount: 0, children }),
     );
-    const ipc = A.tableToIPC(new A.Table(batch), "stream");
+    return this.sendTable(id, new A.Table(batch));
+  }
+
+  sendTable(id, table) {
+    const ipc = arrow().tableToIPC(table, "stream");
     const head = Buffer.alloc(9);
     head.write("A", 0);
     head.writeBigUInt64BE(BigInt(id), 1);
-    this.write(frame(Buffer.concat([head, Buffer.from(ipc)])));
+    return this.write(frame(Buffer.concat([head, Buffer.from(ipc)])));
+  }
+
+  /** Arrow the code made (a Table or a RecordBatch), sent as it is: its columns the schema's, by
+   * name, each of the schema's type. */
+  sendArrow(id, value, schema) {
+    const A = arrow();
+    const table = value instanceof A.RecordBatch ? new A.Table(value) : value;
+    for (const field of schema.fields) {
+      const found = table.schema.fields.find((f) => f.name === field.name);
+      if (!found) throw new Error(`the Arrow rows have no column ${field.name}`);
+      if (String(found.type) !== String(field.type)) {
+        throw new Error(`the Arrow rows' column ${field.name} is ${found.type}, not the declared ${field.type}`);
+      }
+    }
+    return this.sendTable(id, table.select(schema.fields.map((f) => f.name)));
   }
 
   /** The call: the function once per argument set -- the one `args`, or a table's several
@@ -197,7 +217,7 @@ export class Connection {
       if (!Array.isArray(rows)) throw new Error(`key ${key}: its rows are an array, not a ${typeof rows}`);
       const tagged = rows.map((row) => ({ ...row, [KEY]: key }));
       for (let i = 0; i < tagged.length && !state.cancelled; i += BATCH) {
-        this.sendRows(id, tagged.slice(i, i + BATCH), schema);
+        await this.sendRows(id, tagged.slice(i, i + BATCH), schema);
       }
     }
   }
@@ -210,11 +230,16 @@ export class Connection {
       this.send({ op: "value", id, value: result ?? null });
       return;
     }
-    const schema = arrow().tableFromIPC(Buffer.from(schemaText, "base64")).schema;
+    const A = arrow();
+    const schema = A.tableFromIPC(Buffer.from(schemaText, "base64")).schema;
+    if (result instanceof A.Table || result instanceof A.RecordBatch) {
+      await this.sendArrow(id, result, schema);
+      return;
+    }
     if (!iterable(result)) throw new Error(`a ${typeof result} is not a collection of rows`);
     if (Array.isArray(result)) {
       for (let i = 0; i < result.length && !state.cancelled; i += BATCH) {
-        this.sendRows(id, result.slice(i, i + BATCH), schema);
+        await this.sendRows(id, result.slice(i, i + BATCH), schema);
       }
       return;
     }
@@ -224,17 +249,21 @@ export class Connection {
     for (;;) {
       const step = await iterator.next();
       if (step.done || state.cancelled) break;
-      if (kind === "stream") {
-        this.sendRows(id, [step.value], schema); // a stream's row goes as it comes
+      if (step.value instanceof A.Table || step.value instanceof A.RecordBatch) {
+        if (batch.length) await this.sendRows(id, batch, schema);
+        batch = [];
+        await this.sendArrow(id, step.value, schema);
+      } else if (kind === "stream") {
+        await this.sendRows(id, [step.value], schema); // a stream's row goes as it comes
       } else {
         batch.push(step.value);
         if (batch.length >= BATCH) {
-          this.sendRows(id, batch, schema);
+          await this.sendRows(id, batch, schema);
           batch = [];
         }
       }
     }
-    if (batch.length && !state.cancelled) this.sendRows(id, batch, schema);
+    if (batch.length && !state.cancelled) await this.sendRows(id, batch, schema);
   }
 
   dispatch(message) {

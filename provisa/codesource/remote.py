@@ -11,8 +11,10 @@
 """A code source that runs on a remote host (REQ-2098): Provisa's side of the connection.
 
 The host is a container serving the source's code on one port over mutual TLS, through the front
-end every built image runs (provisa/codehost/front.py). Provisa dials it -- each Provisa process its own connection, held
-in its worker pool as a local worker is -- and checks its hello as it checks a local host's.
+end every built image runs (provisa/codehost/front.py). Provisa dials it -- each Provisa process
+its own connections, :data:`~provisa.codesource.worker.CONNECTIONS` of them, each serving one
+call at a time, held in its worker pool as a local worker is -- and checks the hello on each as
+it checks a local host's.
 
 Trust both ways is set up once, by pairing: the operator gives the source the code the container
 printed on its first start, ``<fingerprint>.<secret>``. Provisa connects, checks that the host's
@@ -30,12 +32,12 @@ import secrets
 import socket
 import ssl
 import tempfile
-import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from provisa.codesource.worker import (
+    CONNECTIONS,
     START_TIMEOUT_S,
     Worker,
     WorkerFailed,
@@ -209,17 +211,32 @@ class RemoteWorker(Worker):
         return f"{self.address}:{self.port}"
 
     def start(self, timeout: float = START_TIMEOUT_S) -> None:
+        conns: list[ssl.SSLSocket] = []
+        hello: dict = {}
         try:
-            conn = _dial(self.address, self.port, self._pin, self._identity, timeout)
-        except ConnectionError as exc:
-            raise WorkerFailed(self.source_id, str(exc)) from None
+            for _ in range(CONNECTIONS):
+                try:
+                    conn = _dial(self.address, self.port, self._pin, self._identity, timeout)
+                except ConnectionError as exc:
+                    raise WorkerFailed(self.source_id, str(exc)) from None
+                conns.append(conn)
+                hello = self._hello_of(conn, timeout)
+        except WorkerFailed:
+            for conn in conns:
+                conn.close()
+            raise
+        self._attach(list(conns), hello, f"code-remote-{self.source_id}")
+        #: REQ-2100: the code's name tables, as the image carries them (provisa/codesource/names.py).
+        self.names = dict(hello.get("names") or {})
+
+    def _hello_of(self, conn: ssl.SSLSocket, timeout: float) -> dict:
+        """The host's hello on ``conn``, checked: refused by name when it is not this source's."""
         conn.settimeout(timeout)
         try:
             hello = _read_frame(conn)
         except (TimeoutError, OSError):
             hello = None
         if hello is None or hello.get("op") != "hello":
-            conn.close()
             raise WorkerFailed(self.source_id, f"remote host {self.where} did not say it was ready")
         refused = refusal(hello, self.content_hash) or self._other_exports(hello)
         if refused is not None:
@@ -227,16 +244,9 @@ class RemoteWorker(Worker):
                 conn.sendall(_frame({"op": "refused", "message": refused}))
             except OSError:
                 pass  # the host has gone already: the refusal is still raised by name below
-            conn.close()
             raise WorkerFailed(self.source_id, f"remote host {self.where}: {refused}")
         conn.settimeout(None)
-        self._conn = conn
-        self.exports = list(hello.get("exports") or [])
-        #: REQ-2100: the code's name tables, as the image carries them (provisa/codesource/names.py).
-        self.names = dict(hello.get("names") or {})
-        threading.Thread(
-            target=self._read, name=f"code-remote-{self.source_id}", daemon=True
-        ).start()
+        return hello
 
     def _other_exports(self, hello: dict) -> str | None:
         if self._pinned_exports is None:
@@ -250,16 +260,12 @@ class RemoteWorker(Worker):
         )
 
     def alive(self) -> bool:
-        return self._ended is None and self._conn is not None
+        return self._ended is None and bool(self._lanes)
 
     def stop(self) -> None:
         self._end("the worker was stopped")
-        if self._conn is not None:
-            try:
-                self._conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass  # already closed by the host: nothing left to shut
-            self._conn.close()
+        for lane in self._lanes:
+            lane.shut()
 
     def _said(self) -> str:
         return f" (remote host {self.where})"

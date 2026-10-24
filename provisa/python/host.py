@@ -11,14 +11,18 @@
 """The host a Python source's worker runs (REQ-1993): the protocol of every code source
 (provisa/codesource/worker.py), in Python.
 
-    <python> host.py <socket path | fd:N> <code directory> <entry module>
+    <python> host.py <socket path | fd:N[,M...]> <code directory> <entry module>
 
-It imports the entry module (which imports nothing of Provisa's), connects to the socket (or
-takes the one it inherited, already connected), says which functions it has, and serves calls
-until the socket closes, when it exits. A coroutine function is awaited; a generator or an async
-generator is iterated; any other function runs on a thread, so a slow one holds no other call.
-A table's rows go in batches of 1000, a stream's each as it is yielded. A row is a dict, a
-dataclass, a NamedTuple, a Pydantic model or an object with annotated fields.
+It imports the entry module (which imports nothing of Provisa's), connects to the socket
+``PROVISA_HOST_CONNECTIONS`` times (or takes the connections it inherited, already connected),
+says on each which functions it has, and serves every connection's calls until one closes, when
+it exits: each of Provisa's concurrent calls has a connection of its own, so one call's slow
+reader holds back no other. A coroutine function is awaited; a generator or an async generator
+is iterated; any other function runs on a thread, so a slow one holds no other call. A table's
+rows go in batches of 1000 -- a generator's pulled a batch per thread hop -- a stream's each as
+it is yielded. A row is a dict, a dataclass, a NamedTuple, a Pydantic model or an object with
+annotated fields; a function may also return or yield Arrow (a Table, a RecordBatch or a
+RecordBatchReader), sent as it is, cast to the call's schema.
 
 Rows go as Arrow IPC batches against the schema the call gives (REQ-2098,
 provisa/codesource/arrow_rows.py): a field Arrow has no exact form for (a ``numeric``, a ``json``
@@ -37,6 +41,7 @@ import decimal
 import enum
 import importlib
 import inspect
+import itertools
 import json
 import os
 import socket
@@ -49,7 +54,7 @@ from pathlib import Path
 
 BATCH = 1000
 #: The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-PROTOCOL = 3
+PROTOCOL = 4
 _EXACT = 2**53 - 1
 _HEAD = struct.Struct(">I")
 _ID = struct.Struct(">Q")
@@ -57,9 +62,10 @@ _IR_KEY = b"provisa.ir"
 _WHOLE_ROW = "$row"
 #: REQ-2100: the field a loader call's row carries its key in.
 _KEY = "$key"
-_DONE = object()
 #: An argument the read does not give: left out of the call, so the function's default applies.
 _ABSENT = object()
+#: How many connections the host makes to a socket path (provisa/codesource/worker.py).
+CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
 
 
 def _is_model(value: typing.Any) -> bool:
@@ -238,13 +244,30 @@ class Host:
                 if not isinstance(plain, dict):
                     raise TypeError(f"a {type(row).__name__} is not a row")
                 values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
-        batch = pa.RecordBatch.from_pylist(values, schema=schema)
+        await self.send_batch(call_id, pa.RecordBatch.from_pylist(values, schema=schema))
+
+    async def send_batch(self, call_id: int, batch: typing.Any) -> None:  # a pyarrow RecordBatch
+        """One Arrow IPC frame of ``batch``, already in the call's schema."""
+        pa = _arrow()
         sink = pa.BufferOutputStream()
-        with pa.ipc.new_stream(sink, schema) as stream:
+        with pa.ipc.new_stream(sink, batch.schema) as stream:
             stream.write_batch(batch)
         body = b"A" + _ID.pack(call_id) + sink.getvalue().to_pybytes()
         self.writer.write(_HEAD.pack(len(body)) + body)
         await self.writer.drain()
+
+    async def send_arrow(self, call_id: int, value: typing.Any, schema: typing.Any) -> None:
+        """Arrow the code made (a Table, a RecordBatch or a RecordBatchReader), each of its
+        batches sent as it is, its columns the schema's, by name, cast to the schema's types."""
+        pa = _arrow()
+        batches = value if isinstance(value, pa.RecordBatchReader) else [value]
+        for part in batches:
+            table = pa.Table.from_batches([part]) if isinstance(part, pa.RecordBatch) else part
+            missing = [n for n in schema.names if n not in table.column_names]
+            if missing:
+                raise TypeError(f"the Arrow rows have no column {missing[0]}")
+            for batch in table.select(schema.names).cast(schema).to_batches():
+                await self.send_batch(call_id, batch)
 
     async def serve(
         self,
@@ -313,6 +336,8 @@ class Host:
         if schema is None:
             # A single value, or a command whose result is not rows: its JSON value message.
             await self.send({"op": "value", "id": call_id, "value": to_wire(result)})
+        elif _is_arrow(result):
+            await self.send_arrow(call_id, result, schema)
         elif hasattr(result, "__aiter__"):
             await self._rows(call_id, kind, self._async_rows(result), schema)
         elif isinstance(result, (list, tuple)) and not hasattr(result, "_asdict"):
@@ -321,7 +346,9 @@ class Host:
         elif inspect.isgenerator(result) or (
             hasattr(result, "__iter__") and not isinstance(result, dict)
         ):
-            await self._rows(call_id, kind, self._sync_rows(iter(result)), schema)
+            # A table's rows pulled a batch per thread hop; a stream's each as it comes.
+            chunk = 1 if kind == "stream" else BATCH
+            await self._rows(call_id, kind, self._sync_rows(iter(result), chunk), schema)
         else:
             raise TypeError(f"a {type(result).__name__} is not a collection of rows")
 
@@ -352,49 +379,76 @@ class Host:
     async def _async_rows(rows: typing.AsyncIterator) -> typing.AsyncIterator:
         try:
             async for row in rows:
-                yield row
+                yield [row]
         finally:
             close = getattr(rows, "aclose", None)
             if close is not None:
                 await close()
 
     @staticmethod
-    async def _sync_rows(rows: typing.Iterator) -> typing.AsyncIterator:
-        # Each step on a thread: a generator that blocks between rows holds no other call.
+    async def _sync_rows(rows: typing.Iterator, chunk: int) -> typing.AsyncIterator:
+        # Up to ``chunk`` steps per thread hop: a generator that blocks between rows holds no
+        # other call, and a fast one pays one hop per batch, not per row.
+        def pull() -> list:
+            return list(itertools.islice(rows, chunk))
+
         try:
-            while (row := await asyncio.to_thread(next, rows, _DONE)) is not _DONE:
-                yield row
+            while taken := await asyncio.to_thread(pull):
+                yield taken
         finally:
             close = getattr(rows, "close", None)
             if close is not None:
                 close()
 
     async def _rows(
-        self, call_id: int, kind: str, rows: typing.AsyncIterator, schema: typing.Any
+        self, call_id: int, kind: str, chunks: typing.AsyncIterator, schema: typing.Any
     ) -> None:
         batch: list = []
-        async for row in rows:
-            if kind == "stream":
-                await self.send_rows(call_id, [row], schema)  # a stream's row goes as it comes
-                continue
-            batch.append(row)
-            if len(batch) >= BATCH:
-                await self.send_rows(call_id, batch, schema)
-                batch = []
+        async for chunk in chunks:
+            for row in chunk:
+                if _is_arrow(row):
+                    if batch:
+                        await self.send_rows(call_id, batch, schema)
+                        batch = []
+                    await self.send_arrow(call_id, row, schema)
+                elif kind == "stream":
+                    await self.send_rows(call_id, [row], schema)  # a stream's row goes as it comes
+                else:
+                    batch.append(row)
+                    if len(batch) >= BATCH:
+                        await self.send_rows(call_id, batch, schema)
+                        batch = []
         if batch:
             await self.send_rows(call_id, batch, schema)
+
+
+def _is_arrow(value: typing.Any) -> bool:
+    """Whether ``value`` is Arrow the code made: a Table, a RecordBatch or a RecordBatchReader."""
+    pa = sys.modules.get("pyarrow")
+    return pa is not None and isinstance(value, (pa.Table, pa.RecordBatch, pa.RecordBatchReader))
 
 
 async def run(address: str, code: str, entry: str) -> None:
     module = load(code, entry)
     if address.startswith("fd:"):
-        # The Linux sandbox refuses the host any new socket but TCP: Provisa hands it this one.
-        sock = socket.socket(fileno=int(address[3:]))
+        # The Linux sandbox refuses the host any new socket but TCP: Provisa hands it these.
+        socks = [socket.socket(fileno=int(fd)) for fd in address[3:].split(",")]
     else:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.connect(address)
-    reader, writer = await asyncio.open_connection(sock=sock)
-    await serve(module, reader, writer)
+        socks = []
+        for _ in range(int(os.environ[CONNECTIONS_ENV])):
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.connect(address)
+            socks.append(sock)
+    served = []
+    for sock in socks:
+        reader, writer = await asyncio.open_connection(sock=sock)
+        served.append(asyncio.create_task(serve(module, reader, writer)))
+    # One connection closing is Provisa stopping the worker: the others' calls end with it.
+    done, pending = await asyncio.wait(served, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    for task in done:
+        task.result()  # a refusal is raised by name
 
 
 def load(code: str, entry: str) -> typing.Any:  # the code's entry module
