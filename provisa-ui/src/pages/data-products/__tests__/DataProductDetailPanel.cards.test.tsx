@@ -46,6 +46,9 @@ function panel() {
       internalRelationships={[]}
       canEdit={false}
       canSeeLineage
+      lineageLoading={false}
+      lineageError=""
+      lineageGraph={null}
       inputPorts={INPUT_PORTS}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
@@ -101,69 +104,13 @@ describe("a data product's cards", () => {
     expect(body.style.overflowWrap).toBe("anywhere");
   });
 
-  it("put the Knowledge graph below the columns, across the panel", () => {
+  it("keep the Knowledge graph a card among them, and the lineage DAG below them, across the panel", () => {
     panel();
     const columns = card("details").parentElement as HTMLElement;
     expect(columns.style.columnWidth).toBe("320px");
-    expect(columns.contains(card("knowledgeGraph"))).toBe(false);
+    expect(columns.contains(card("knowledgeGraph"))).toBe(true);
     expect(columns.contains(card("queries"))).toBe(true);
-  });
-
-  it("name a source read in the lineage by the table it reads", () => {
-    const edge = (over: Record<string, unknown>) => ({
-      kind: "lineage",
-      direction: "upstream",
-      target_product_id: null,
-      target_table_id: null,
-      target_relation: null,
-      direct: true,
-      hops: 1,
-      path_count: 1,
-      aliases: null,
-      vias: null,
-      target_product: null,
-      target_table: null,
-      ...over,
-    });
-    render(
-      <DataProductDetailPanel
-        p={PRODUCT}
-        core={
-          {
-            product: PRODUCT,
-            queries: { graphql: "", sql: "", jsonapi: "" },
-            edges: [
-              edge({
-                target_table_id: 1,
-                target_table: { domain_id: "pet-store", table_name: "pets" },
-              }),
-              edge({
-                target_table_id: 2,
-                target_table: { domain_id: "pet-store", table_name: "vets" },
-              }),
-              edge({ direction: "downstream", target_relation: "pet_store.dim_pet" }),
-            ],
-          } as never
-        }
-        coreError={null}
-        reader={null}
-        sources={[]}
-        internalRelationships={[]}
-        canEdit={false}
-        canSeeLineage
-        inputPorts={[]}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-      />,
-    );
-    const items = (dir: string) =>
-      within(screen.getByTestId(`data-product-detail-lineage-${dir}-pet_health`))
-        .getAllByRole("listitem")
-        .map((li) => li.textContent);
-    expect(items("upstream")).toEqual([
-      expect.stringContaining("pet-store.pets"),
-      expect.stringContaining("pet-store.vets"),
-    ]);
-    expect(items("downstream")).toEqual([expect.stringContaining("pet_store.dim_pet")]);
+    const lineage = screen.getByTestId("data-product-detail-lineage-toggle-pet_health");
+    expect(columns.contains(lineage)).toBe(false);
   });
 });
