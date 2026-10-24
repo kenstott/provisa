@@ -488,6 +488,7 @@ def _object_kind(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str
     cur = runtime.connection.cursor()
     try:
         cur.execute(f'SHOW OBJECTS LIKE {_literal(table)} IN SCHEMA "{database}"."{schema}"')
+        assert cur.description is not None, "SHOW OBJECTS returned no result description"
         cols = [d[0] for d in cur.description]
         row = cur.fetchone()
         return str(dict(zip(cols, row))["kind"]).upper() if row is not None else None
