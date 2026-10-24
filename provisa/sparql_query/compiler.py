@@ -37,6 +37,7 @@ the keys. What the front end does not lower is refused by name.
 from __future__ import annotations
 
 import itertools
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -697,10 +698,8 @@ class _Lowering:
                 return Literal(True, "boolean")
             return IsNull(self.expr(e.arg, bindings, labels), negated=True)
         if name == "Builtin_REGEX":
-            if e.flags is not None:
-                raise SparqlRefused("REGEX flags are not supported")
-            text, pattern = args("text", "pattern")
-            return Binary("=~", text, pattern)
+            (text,) = args("text")
+            return Binary("=~", text, self._regex_search(e.pattern, e.flags, bindings, labels))
         if name == "Builtin_CONTAINS":
             return Binary("CONTAINS", *args("arg1", "arg2"))
         if name == "Builtin_STRSTARTS":
@@ -733,6 +732,39 @@ class _Lowering:
                     is_node = True
             return Literal(is_node == wants_node, "boolean")
         raise SparqlRefused(f"The SPARQL function {name.removeprefix('Builtin_')} is not supported")
+
+    def _regex_search(self, pattern: Any, flags: Any, bindings, labels) -> CypherExpr:
+        """REGEX's pattern as a match of the whole text, which ``=~`` is: found anywhere in it,
+        under its flags (XPath's: i, s and m inline; q the pattern taken as its text; x its
+        whitespace dropped)."""
+        if flags is not None and not (
+            isinstance(flags, RdfLiteral) and isinstance(flags.value, str)
+        ):
+            raise SparqlRefused("REGEX flags are given as a string literal")
+        given = str(flags) if flags is not None else ""
+        unknown = set(given) - set("ismqx")
+        if unknown:
+            raise SparqlRefused(
+                f"REGEX flags {''.join(sorted(unknown))} are not XPath's i, s, m, q, x"
+            )
+        inline = "".join(f for f in "ism" if f in given)
+        literal = isinstance(pattern, RdfLiteral) and isinstance(pattern.value, str)
+        if ("q" in given or "x" in given) and not literal:
+            raise SparqlRefused("REGEX flags q and x take a pattern written as a literal")
+        if literal:
+            text = str(pattern)
+            if "q" in given:
+                text = re.escape(text)
+            elif "x" in given:
+                text = re.sub(r"(\\.)|\s", lambda m: m.group(1) or "", text)
+            body: CypherExpr = Literal(text, "string")
+        else:
+            body = self.expr(pattern, bindings, labels)
+        opened = f"(?s:.*)(?{inline}:" if inline else "(?s:.*)(?:"
+        parts: list[CypherExpr] = [Literal(opened, "string"), body, Literal(")(?s:.*)", "string")]
+        if all(isinstance(x, Literal) for x in parts):
+            return Literal("".join(str(x.value) for x in parts if isinstance(x, Literal)), "string")
+        return FunctionCall("concat", parts)
 
     # -- the statement --------------------------------------------------------------------
 

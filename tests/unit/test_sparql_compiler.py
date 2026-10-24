@@ -25,6 +25,7 @@ from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.translator import cypher_to_sql
 from provisa.sparql_query.compiler import SparqlRefused, compile_sparql
+from provisa.transpiler.transpile import transpile_to_duckdb
 from provisa.sparql_query.vocabulary import (
     XSD,
     Grounding,
@@ -139,7 +140,8 @@ def _answer(con, query: str) -> list[dict]:
     sql, _, graph_vars = cypher_to_sql(compiled.ast, lm, {})
     # As the endpoint runs it (sparql_router): a term is its own value through the graph rewrite.
     sql = apply_graph_rewrites(sql, graph_vars, lm)
-    cur = con.execute(sql.sql(dialect="duckdb"))
+    # As the pipeline runs it: the semantic SQL in PostgreSQL's dialect, transpiled to the engine's.
+    cur = con.execute(transpile_to_duckdb(sql.sql(dialect="postgres")))
     names = [d[0] for d in cur.description]
     rows = assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
     if compiled.form == "ASK":
@@ -414,3 +416,27 @@ def test_a_negated_set_of_inverse_edges_alone_walks_backward(con):
     )
     person = lambda k: subject_iri(BASE, "hr", "persons", [k])  # noqa: E731
     assert sorted((r["s"], r["o"]) for r in rows) == [(person(s), person(o)) for s, o in back]
+
+
+@pytest.mark.parametrize(
+    "regex, sql",
+    [
+        ('REGEX(?n, "n")', "regexp_matches(name, 'n')"),  # a match anywhere in the text
+        ('REGEX(?n, "^a", "i")', "regexp_matches(name, '^a', 'i')"),
+        ('REGEX(?n, "Y$", "i")', "regexp_matches(name, 'Y$', 'i')"),
+        ('REGEX(?n, "a.n", "q")', "contains(name, 'a.n')"),  # q: the pattern is its text
+        ('REGEX(?n, "^ a n", "ix")', "regexp_matches(name, '^an', 'i')"),  # x: spaces ignored
+    ],
+)
+def test_regex_searches_the_text_under_its_flags(con, regex, sql):
+    rows = _answer(con, f"SELECT ?n WHERE {{ ?s p:name ?n FILTER({regex}) }}")
+    want = _sql(con, f"SELECT name FROM pg.public.persons WHERE {sql}")
+    assert sorted((r["n"],) for r in rows) == want
+
+
+def test_a_regex_pattern_read_at_run_time_is_searched_for_too(con):
+    rows = _answer(
+        con, 'SELECT ?n WHERE { ?s p:name ?n BIND("o" AS ?pat) FILTER(REGEX(?n, ?pat, "i")) }'
+    )
+    want = _sql(con, "SELECT name FROM pg.public.persons WHERE regexp_matches(name, 'o', 'i')")
+    assert sorted((r["n"],) for r in rows) == want and want
