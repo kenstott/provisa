@@ -74,7 +74,7 @@ _mem_fresh_lock = threading.Lock()
 _shapes: dict[tuple[str, str, str], str] = {}
 
 
-@on_forget
+@on_forget(size=lambda: len(_shapes) + len(_mem_fresh))
 def _forget_fills(org_id: str) -> None:
     """A deleted org's cache store schemas: their freshness and the shapes they were made as."""
     for key in [k for k in _shapes if schema_of_org(org_id, k[1])]:

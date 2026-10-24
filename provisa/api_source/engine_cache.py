@@ -60,7 +60,7 @@ _TABLE_EXISTS_SAFETY_MARGIN = 30  # expire this many seconds before the engine T
 _SCHEMA_EXISTS_CACHE: set[tuple[str, str]] = set()
 
 
-@on_forget
+@on_forget(size=lambda: len(_SCHEMA_EXISTS_CACHE) + len(_TABLE_EXISTS_CACHE))
 def _forget_existence(org_id: str) -> None:
     """A deleted org's schemas are dropped: known to exist no longer (REQ-2006)."""
     for key in [k for k in _SCHEMA_EXISTS_CACHE if schema_of_org(org_id, k[1])]:

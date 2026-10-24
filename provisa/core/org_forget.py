@@ -20,14 +20,40 @@ register at their own import -- one never imported holds nothing to forget.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import overload
 
 _hooks: list[Callable[[str], None]] = []
+# How many entries each registered module holds, by its hook's name: what a leak test reads before
+# and after orgs come and go (REQ-2149), the same set the hooks clear.
+_sizes: dict[str, Callable[[], int]] = {}
+
+Hook = Callable[[str], None]
 
 
-def on_forget(hook: Callable[[str], None]) -> Callable[[str], None]:
-    """Register ``hook(org_id)``, which drops what its module holds for ``org_id``."""
-    _hooks.append(hook)
-    return hook
+@overload
+def on_forget(hook: Hook, *, size: Callable[[], int] | None = None) -> Hook: ...
+@overload
+def on_forget(
+    hook: None = None, *, size: Callable[[], int] | None = None
+) -> Callable[[Hook], Hook]: ...
+def on_forget(
+    hook: Hook | None = None, *, size: Callable[[], int] | None = None
+) -> Hook | Callable[[Hook], Hook]:
+    """Register ``hook(org_id)``, which drops what its module holds for ``org_id``; ``size``, how
+    many entries the module holds for every org together."""
+
+    def register(fn: Hook) -> Hook:
+        _hooks.append(fn)
+        if size is not None:
+            _sizes[f"{fn.__module__}.{fn.__name__}"] = size
+        return fn
+
+    return register(hook) if hook is not None else register
+
+
+def sizes() -> dict[str, int]:
+    """Each registered module's entry count, by its hook's name."""
+    return {name: size() for name, size in _sizes.items()}
 
 
 def forget_org(org_id: str) -> None:

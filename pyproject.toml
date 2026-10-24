@@ -357,7 +357,7 @@ testpaths = ["tests", "tests/steps"]
 # cluster are likewise their own lanes (manual/live-minikube). scripts/test-all
 # runs every lane and combines coverage. These are documented process-isolation
 # lanes, not silent skips.
-addopts = "-m 'not packaging and not cluster and not isolated and not demo_walk' --ignore=tests/e2e"
+addopts = "-m 'not packaging and not cluster and not isolated and not demo_walk and not leak' --ignore=tests/e2e"
 python_files = ["test_*.py", "*_test.py", "steps_*.py"]
 asyncio_mode = "auto"
 log_level = "DEBUG"
@@ -420,6 +420,7 @@ markers = [
     "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",
     "cluster: helm/minikube deployment test; own run lane (pytest -m cluster) against a live minikube, deselected by default",
     "demo_walk: walks a published demo's bundle as a sandbox visitor, one demo per run; its own lane (scripts/ci/run_lane.py demo_walk), run by demo-bundles.yml on the bundle it built, deselected by default",
+    "leak: one server under a long mixed request loop and an org churn, its growth measured (REQ-2149); its own lane (scripts/ci/run_lane.py leak), on demand and before a release, deselected by default",
     "isolated: needs its own pytest process (shared module-singleton state or a non-restartable JVM); own lane in scripts/test-all, deselected by default",
     "group_sources: tests/integration split — federated source connectors (auto-assigned, see tests/integration/conftest.py)",
     "group_engines: tests/integration split — federation/native query engines (auto-assigned, see tests/integration/conftest.py)",

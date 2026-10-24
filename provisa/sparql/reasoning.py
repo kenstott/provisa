@@ -237,7 +237,7 @@ _locks: dict[tuple[str, str], asyncio.Lock] = {}
 _locks_guard = threading.Lock()
 
 
-@on_forget
+@on_forget(size=lambda: len(_classified) + len(_locks))
 def _forget_org(org_id: str) -> None:
     with _locks_guard:
         for key in [k for k in _classified if k[0] == org_id]:

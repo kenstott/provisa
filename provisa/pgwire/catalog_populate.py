@@ -883,7 +883,7 @@ def _populate_pg_tables_and_am(db, idx: CatalogIndex) -> None:
 _row_count_cache: dict[tuple[str, str], tuple[float, dict[int, float]]] = {}
 
 
-@on_forget
+@on_forget(size=lambda: len(_row_count_cache))
 def _forget_row_counts(org_id: str) -> None:
     for key in [k for k in _row_count_cache if k[0] == org_id]:
         _row_count_cache.pop(key, None)
