@@ -289,3 +289,31 @@ def test_a_variable_length_path_tells_rows_sharing_a_key_column_apart():
     assert _rows(chain, walk.format("ab")) == [("cd",)]
     # (1, 'a|b') has no NEXT: the walk from (1, 'ab') is not its.
     assert _rows(chain, walk.format("a|b")) == []
+
+
+def test_a_path_expression_tells_rows_sharing_a_key_column_apart():
+    import dataclasses
+
+    from provisa.gql.ir import EdgeStep, MatchStep, PathMode, RepeatPath
+
+    lm, con = _compound_chain()
+
+    def reached(name: str) -> list[tuple]:
+        ast = parse_cypher(
+            f"MATCH (a:GlossaryTerm)-[:NEXT]->(b:GlossaryTerm) WHERE a.name = '{name}' "
+            "RETURN b.name AS b"
+        )
+        step = ast.pipeline[0]
+        assert isinstance(step, MatchStep)
+        pattern = step.matches[0].pattern
+        pattern.rels[0] = dataclasses.replace(  # pyright: ignore[reportAttributeAccessIssue]
+            pattern.rels[0],  # pyright: ignore[reportAttributeAccessIssue]
+            types=[],
+            path=RepeatPath(EdgeStep("NEXT"), 1, 2),
+            mode=PathMode.WALK,
+        )
+        sql = cypher_to_sql(ast, lm, {})[0].sql(dialect="duckdb")
+        return con.execute(sql).fetchall()
+
+    assert reached("ab") == [("cd",)]
+    assert reached("a|b") == []
