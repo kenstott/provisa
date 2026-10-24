@@ -8028,5 +8028,6 @@
   "fr/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
   "fr/serverErrors.json::serverErrors.cypher.unknown_label": "There is no label :{{label}}. Registered labels: {{suggestions}}.",
   "fr/serverErrors.json::serverErrors.cypher.no_relationship_types": "There is no relationship type {{types}}: this role can traverse no relationship.",
-  "fr/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}"
+  "fr/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
+  "fr/graphFrame.json::graphFrame.deleteFrame": "Delete this result"
 }
