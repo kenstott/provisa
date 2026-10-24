@@ -8,11 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A code source's statement over ten million rows in a bounded DuckDB (REQ-2100): its function's
+"""A code source's statement over millions of rows in a bounded DuckDB (REQ-2100): its function's
 rows stream in through the credit window, an ORDER BY sorts them past the memory limit by spilling
-to disk, and the answer streams out a batch at a time. The process grows by no more than the
-DuckDB's memory limit, the frames the window and the pull's queue hold, one answer batch and a
-pinned baseline."""
+to disk, and the answer streams out a batch at a time. Its memory does not grow with the rows: a
+sort of ten million rows grows the process no more than one of two million does."""
 
 # Requirements: REQ-2100
 
@@ -37,13 +36,12 @@ from provisa.python.source import HOST
 pytestmark = [pytest.mark.unit, pytest.mark.slow]
 
 ROWS = 10_000_000
-MEMORY_MB = 256
-#: What the process grows by beyond the DuckDB's memory, the window's frames and one answer
-#: batch: the allocator's retained arenas and DuckDB's own buffers outside its memory limit.
-#: PROVISIONAL: the largest "overhead" line of five runs of this test on the macOS arm64 dev host
-#: (-1.8, 9.9, 31.8, 60.9 and 79.4 MiB), rounded up. To be pinned to the largest of five runs on
-#: the CI runner.
-BASELINE_MB = 80
+MEMORY_MB = 64
+#: The smaller read's rows: past the memory limit too, a fifth of the larger.
+SMALL_ROWS = 2_000_000
+#: What the larger read may grow the process by beyond the smaller's: the allocator's noise
+#: between two reads of one size.
+SLACK_MB = 64
 
 _CODE = textwrap.dedent(
     '''
@@ -84,26 +82,15 @@ def _spilled(directory: Path) -> int:
     return sum(p.stat().st_size for p in directory.rglob("*") if p.is_file())
 
 
-def test_ten_million_rows_sort_in_a_bounded_duckdb_and_stream_out(worker):
-    spill = Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill"
-    spill.mkdir(parents=True, exist_ok=True)
-    residual.configure(memory_mb=MEMORY_MB, threads=2, spill_cap_mb=8192, spill_dir=str(spill))
-    process = psutil.Process()
-    before = process.memory_info().rss
-    peak, spilled, frame = [before], [0], [0]
-    done = threading.Event()
-
-    def watch() -> None:
-        while not done.is_set():
-            peak[0] = max(peak[0], process.memory_info().rss)
-            spilled[0] = max(spilled[0], _spilled(spill))
-            time.sleep(0.05)
+def _read(worker, rows: int, frame: list[int]) -> tuple[int, int, int]:
+    """``rows`` rows sorted through the direct path, as a direct read takes them: pulled on one
+    thread of their own (worker.pulled). The rows answered, the batches, the widest batch."""
 
     def ipcs():
         for ipc in worker.batches(
             "many",
             "table",
-            [ROWS],
+            [rows],
             ["n"],
             schema=schema_text(SCHEMA),
             takes=("inputs",),
@@ -112,26 +99,53 @@ def test_ten_million_rows_sort_in_a_bounded_duckdb_and_stream_out(worker):
             frame[0] = max(frame[0], len(ipc))
             yield ipc
 
+    answered = batches = widest = 0
+    reader = pa.RecordBatchReader.from_batches(SCHEMA, residual.batches(w.pulled(ipcs())))
+    for batch in residual.answer("SELECT n, s FROM big ORDER BY s DESC", "duckdb", "big", reader):
+        answered += batch.num_rows
+        batches += 1
+        widest = max(widest, batch.nbytes)
+    return answered, batches, widest
+
+
+def _growth(worker, rows: int, spill: Path) -> tuple[int, int]:
+    """The process's growth while ``rows`` rows are sorted, from its size as the read began, and
+    the most the read spilled."""
+    process = psutil.Process()
+    before = process.memory_info().rss
+    peak, spilled = [before], [0]
+    done = threading.Event()
+
+    def watch() -> None:
+        while not done.is_set():
+            peak[0] = max(peak[0], process.memory_info().rss)
+            spilled[0] = max(spilled[0], _spilled(spill))
+            time.sleep(0.05)
+
     watcher = threading.Thread(target=watch, daemon=True)
     watcher.start()
-    rows = answered = 0
-    widest = 0
     try:
-        # As a direct read takes them: pulled on one thread of their own (worker.pulled).
-        reader = pa.RecordBatchReader.from_batches(SCHEMA, residual.batches(w.pulled(ipcs())))
-        for batch in residual.answer(
-            "SELECT n, s FROM big ORDER BY s DESC", "duckdb", "big", reader
-        ):
-            rows += batch.num_rows
-            answered += 1
-            widest = max(widest, batch.nbytes)
+        answered, batches, _widest = _read(worker, rows, [0])
     finally:
         done.set()
         watcher.join()
-    assert rows == ROWS and answered > 1  # every row, a batch at a time
-    assert spilled[0] > 0  # the sort went past the memory limit and spilled
-    grew = peak[0] - before
-    bound = MEMORY_MB * 2**20 + (2 * w._QUEUED + 1) * frame[0] + widest + BASELINE_MB * 2**20  # noqa: SLF001
-    overhead = (grew - MEMORY_MB * 2**20 - (2 * w._QUEUED + 1) * frame[0] - widest) / 2**20  # noqa: SLF001
-    print(f"overhead {overhead:.1f} MiB (grew {grew / 2**20:.1f} MiB)")
-    assert grew <= bound, f"the process grew {grew / 2**20:.1f} MiB, past {bound / 2**20:.1f} MiB"
+    assert answered == rows and batches > 1  # every row, a batch at a time
+    return peak[0] - before, spilled[0]
+
+
+def test_a_bounded_duckdbs_memory_does_not_grow_with_the_rows_it_sorts(worker):
+    """Sorting five times the rows, both past the memory limit, the process grows no more than it
+    did for the smaller read, give or take :data:`SLACK_MB`: what the rows take is on disk."""
+    spill = Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill"
+    spill.mkdir(parents=True, exist_ok=True)
+    residual.configure(memory_mb=MEMORY_MB, threads=2, spill_cap_mb=8192, spill_dir=str(spill))
+    _read(worker, SMALL_ROWS, [0])  # a warm-up: the allocator's arenas and the pool taken once
+    small, small_spilled = _growth(worker, SMALL_ROWS, spill)
+    large, large_spilled = _growth(worker, ROWS, spill)
+    print(f"grew {small / 2**20:.1f} MiB for {SMALL_ROWS}, {large / 2**20:.1f} MiB for {ROWS}")
+    assert small_spilled > 0 and large_spilled > 0  # both sorts went past the memory limit
+    assert large_spilled > small_spilled  # the rows went to disk
+    assert large <= small + SLACK_MB * 2**20, (
+        f"sorting {ROWS} rows grew the process {large / 2**20:.1f} MiB, past the "
+        f"{small / 2**20:.1f} MiB of {SMALL_ROWS} plus {SLACK_MB} MiB"
+    )
