@@ -86630,9 +86630,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   type: behavioral
   description: >-
     Data products are part of the built-in meta domain. A data_products_meta view over the data_products
-    table has one row per product and a fixed set of columns: id, domain_id, name, owner_role, team_role,
-    purpose, limitations, usage, version, status, sla, support, support_contact, publish and
-    custom_properties. It flattens nothing and holds no arrays or counts; everything one-to-many is reached
+    table has one row per product and a fixed set of columns: [SUPERSEDED by REQ-1634, 2026-10-23 -- a
+    product's status replaces the publish flag. Kept here for history; do not implement against it.] id,
+    domain_id, name, owner_role, team_role, purpose, limitations, usage, version, status, sla, support,
+    support_contact, publish and custom_properties. [END SUPERSEDED BLOCK] It flattens nothing and holds no arrays or counts; everything one-to-many is reached
     through meta-domain relationships, so GraphQL, Cypher and SQL clients assemble a product the same way.
     Each section of the Data Product detail panel can be reached from a data_products_meta row by
     relationships alone. The domain is reached through domain_id to domains. Member tables are reached
@@ -86645,6 +86646,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     through data_product_edges. Each of these views keeps its own column tiers (CORE and GOVERNANCE,
     view_governance), so a caller sees through a relationship only what the target view shows that
     caller directly.
+    (Amended 2026-10-23, STATUS COLUMNS:) The columns are id, domain_id, name, owner_role, team_role,
+    purpose, limitations, usage, version, status, status_reason, retire_on, successor_id, sla, support,
+    support_contact and custom_properties: the status is the product's lifecycle (REQ-1634), and there
+    is no publish column.
   use_case: >-
     An analyst, a BI tool or an MCP agent finds a data product and everything that makes it up (its
     domain, members, commands, tags, terms, data-quality evidence and profiles) by querying the meta

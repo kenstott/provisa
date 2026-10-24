@@ -41,7 +41,6 @@ export const PRODUCT_FIELDS = [
   "sla",
   "support",
   "support_contact",
-  "publish",
   "custom_properties",
 ] as const;
 
