@@ -92,3 +92,16 @@ async def test_nl_executor(graph):  # noqa: F811
 
     with pytest.raises(CypherMistake, match="Did you mean o.id"):
         await _execute_cypher(_QUERY, "analyst", graph.state, None)
+
+
+async def test_the_nl_jobs_cypher_validator(graph):  # noqa: F811
+    """The validator the NL job refines its Cypher against is built with the role's label map, so
+    the retry is offered the bound variable's property as every other surface offers it."""
+    from provisa.nl.runner import _nl_cypher_compiler, role_surface
+
+    compile_cypher = _nl_cypher_compiler(
+        role_surface(graph.state, "analyst"), "analyst", graph.state
+    )
+    result = compile_cypher(_QUERY)
+    assert not result.valid
+    assert result.error is not None and "Did you mean o.id" in result.error
