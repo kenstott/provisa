@@ -529,7 +529,8 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}"
+      "count_unknown": "有一項計數無法完成，因此總數未知：{{statement}}：{{reason}}",
+      "access_violations": "此角色無權執行此查詢："
     },
     "requests": {
       "approver_outside_domains": "你建立關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",

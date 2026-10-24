@@ -15,14 +15,17 @@ from __future__ import annotations
 
 import logging
 
-from fastapi.responses import JSONResponse
 
-from provisa.api.rest.cypher_router import _total, _uncounted
+from provisa.api.rest.cypher_router import _total, _uncounted, cypher_error
 
 
 def test_an_uncounted_label_says_why_and_is_logged(caplog):
-    refused = JSONResponse(
-        status_code=400, content={"error": "Catalog petstore is not attached", "sql": "SELECT"}
+    refused = cypher_error(
+        400,
+        "cypher.execution_failed",
+        "Catalog petstore is not attached",
+        sql="SELECT",
+        error="Catalog petstore is not attached",
     )
     with caplog.at_level(logging.WARNING, logger="provisa.api.rest.cypher_router"):
         entry = _uncounted("MATCH (n:PetStore:INVENTORY) RETURN count(n) AS cnt", refused)

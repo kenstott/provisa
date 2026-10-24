@@ -23307,9 +23307,17 @@
   feature: cypher-and-graph-analytics-endpoint
   priority: MUST
   type: behavioral
-  description: Cypher /query/cypher endpoint returns a typed response with `columns` (array of column
-    names), `rows` (array of result objects), `error` (null or error detail), and `type` (always "cypher").
-    No row truncation or implicit result limiting occurs beyond query-specified LIMIT.
+  description: '[SUPERSEDED by REQ-778, 2026-10-24 -- an error is answered in the app''s ApiError body, not
+    an `error` field. Kept here for history; do not implement against it.] Cypher /query/cypher endpoint
+    returns a typed response with `columns` (array of column names), `rows` (array of result objects),
+    `error` (null or error detail), and `type` (always "cypher"). [END SUPERSEDED BLOCK] No row truncation
+    or implicit result limiting occurs beyond query-specified LIMIT. (Amended 2026-10-24, ERRORS IN THE
+    APP''S ERROR BODY:) A successful answer is `columns`, `rows` and `type` ("cypher"). Every error of the
+    graph routes (/data/cypher and its graph-schema, graph-counts and export routes) is answered in the
+    app''s ApiError body (REQ-1350): `detail` (the English reason), `code` (stable, e.g. cypher.refused,
+    cypher.access_violations, cypher.execution_failed) and `params`, so every client reads the reason the
+    same way. An access refusal also lists each violation (`violations`: code and message), which `detail`
+    joins; an execution failure also carries the physical `sql`.'
   use_case: Consistent response shape enables client libraries to deserialize typed Cypher query results.
   code:
   - provisa/api/rest/cypher_router.py
