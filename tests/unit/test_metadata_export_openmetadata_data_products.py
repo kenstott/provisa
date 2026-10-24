@@ -79,11 +79,16 @@ def _export_config() -> MetadataExportTarget:
 
 
 def _mock_transport(monkeypatch):
-    """Every PUT succeeds; tables/users echo a server-assigned id for later requests to resolve."""
+    """Every PUT succeeds; tables/users echo a server-assigned id for later requests to resolve; a
+    data product holds no assets until they are added."""
     puts: list[tuple[str, dict]] = []
 
     async def _put(self, url, json=None, headers=None, params=None):
         puts.append((url, json))
+        if "/assets/" in url:
+            return httpx.Response(
+                200, json={"status": "success"}, request=httpx.Request("PUT", url)
+            )
         body = dict(json)
         if url.endswith("/tables"):
             body["id"] = "table-uuid-1"
@@ -93,6 +98,8 @@ def _mock_transport(monkeypatch):
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))
 
     async def _get(self, url, params=None, headers=None):
+        if url.endswith("/dataProducts/name/customer_360/assets"):
+            return httpx.Response(200, json={"data": []}, request=httpx.Request("GET", url))
         return httpx.Response(404, text="not found", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
@@ -115,8 +122,10 @@ async def test_data_product_publishes_with_resolved_member_and_owner(monkeypatch
     body = _data_product_put(puts)
     assert body["name"] == "customer_360"
     assert body["domains"] == ["sales"]
-    assert body["assets"] == [
-        {"fullyQualifiedName": TABLE_FQN, "type": "table", "id": "table-uuid-1"}
+    # OpenMetadata 2 ignores a body's assets; the member is added by the id its upsert returned.
+    assert "assets" not in body
+    assert [b for u, b in puts if u.endswith("/dataProducts/customer_360/assets/add")] == [
+        {"assets": [{"id": "table-uuid-1", "type": "table"}]}
     ]
     assert body["owners"] == [{"id": "user-uuid-alice", "type": "user"}]
     assert result.published["data_product"] == 1
@@ -256,3 +265,25 @@ def test_a_latency_reaches_openmetadata_in_a_unit_it_takes(seconds, value, unit)
     contract = {"slaProperties": [{"property": "latency", "value": seconds, "unit": "s"}]}
     (latency,) = _for_openmetadata(contract)["slaProperties"]
     assert (latency["value"], latency["unit"]) == (value, unit)
+
+
+@pytest.mark.asyncio
+async def test_a_held_asset_that_is_not_a_member_is_removed(monkeypatch):
+    # REQ-1634: the product's assets are exactly its members.
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    puts = _mock_transport(monkeypatch)
+
+    async def _get(self, url, params=None, headers=None):
+        held = [
+            {"id": "table-uuid-1", "type": "table"},
+            {"id": "table-uuid-gone", "type": "table"},
+        ]
+        return httpx.Response(200, json={"data": held}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+
+    result = await OpenMetadataExport(_export_config()).publish(snapshot)
+
+    assert result.ok, result.errors
+    calls = [(u.rsplit("/", 1)[-1], b) for u, b in puts if "/assets/" in u]
+    assert calls == [("remove", {"assets": [{"id": "table-uuid-gone", "type": "table"}]})]
