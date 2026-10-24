@@ -25,6 +25,10 @@ services:
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pg_data:/var/lib/postgresql/data
+      # REQ-2100: each org's remote-host identity, for a built code host this server attaches as
+      # the Postgres engine (postgres_fdw); an app on the host writes it to the host side
+      # (PROVISA_PG_ENGINE_FILES, provisa/codesource/engine_identity.py).
+      - ${PROVISA_PG_ENGINE_FILES_HOST:-./.provisa/pg-engine-files}:/etc/provisa/codehost-client:ro
     healthcheck:
       # Healthy once it serves THIS deployment's password: a volume initialised under another one
       # keeps that one, so it is set again, over the local socket, whenever signing in with the
@@ -132,6 +136,8 @@ services:
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
       # REQ-1992: each Kafka catalog's client properties, named by its org-qualified catalog.
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka-client:/etc/trino/kafka-client:ro
+      # REQ-2100: each org's remote-host identity, for a built code host this engine attaches.
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/codehost-client:/etc/trino/codehost-client:ro
       # Redis table-description files (REQ-251): write_table_definitions writes them here on the
       # host; the connector reads them at redis.table-description-dir (provisa/redis/source.py
       # TABLE_DESCRIPTION_DIR). Without the mount the catalog loads and every table has no columns.
@@ -187,6 +193,8 @@ services:
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
       # REQ-1992: each Kafka catalog's client properties, named by its org-qualified catalog.
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka-client:/etc/trino/kafka-client:ro
+      # REQ-2100: each org's remote-host identity, for a built code host this engine attaches.
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/codehost-client:/etc/trino/codehost-client:ro
       # Redis table-description files (REQ-251): write_table_definitions writes them here on the
       # host; the connector reads them at redis.table-description-dir (provisa/redis/source.py
       # TABLE_DESCRIPTION_DIR). Without the mount the catalog loads and every table has no columns.
