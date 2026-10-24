@@ -87901,3 +87901,25 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Given an org admin has disabled the world-city kind
     When a profile run completes
     Then no column gets a world-city suggestion
+- id: REQ-2148
+  status: proposed
+  target: "2027-Q1"
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A feature that works but is not yet proven for production, such as a metadata export target not
+    yet verified against a live tenant of that product, is shown as "<Name> (beta)" wherever a user
+    picks or sees it, and its documentation states why it is beta. The label comes from one flag on
+    the feature (for an export target, a beta attribute on its provider, returned by the admin API and
+    written into a generated list for pages that cannot call that API), so clearing it is a one-line
+    change followed by regenerating the list. The Atlan export is the first beta feature.
+  scenario: |
+    Given the Atlan export provider is flagged beta
+    When an admin opens the metadata export target picker
+    Then Atlan is listed as "atlan (beta)"
+    And the table form's data product hint names Atlan as "Atlan (beta)"
+    When the flag is cleared and the provider list regenerated
+    Then Atlan is listed without "(beta)"

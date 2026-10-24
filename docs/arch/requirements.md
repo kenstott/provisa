@@ -26285,3 +26285,15 @@ The profiler classifies columns from their profiled values, as Purview's classif
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2148 · Data Catalog Integration {#REQ-2148}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A feature that works but is not yet proven for production, such as a metadata export target not yet verified against a live tenant of that product, is shown as "<Name> (beta)" wherever a user picks or sees it, and its documentation states why it is beta. The label comes from one flag on the feature (for an export target, a beta attribute on its provider, returned by the admin API and written into a generated list for pages that cannot call that API), so clearing it is a one-line change followed by regenerating the list. The Atlan export is the first beta feature.
+
+**Code:** —
+
+**Tests:** —
