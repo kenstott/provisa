@@ -59,6 +59,14 @@ class _TrinoConnector(Connector):
         return
 
 
+# The Trino JDBC connectors that take ``statistics.enabled`` (their client module binds
+# JdbcStatisticsConfig, Trino 481). Any other refuses a catalog that sets it ("Configuration
+# property 'statistics.enabled' was not used"): Oracle, SingleStore and ClickHouse among them.
+_STATISTICS_CONNECTORS = frozenset(
+    {"postgresql", "mysql", "mariadb", "sqlserver", "redshift", "exasol"}
+)
+
+
 class _TrinoJdbcConnector(_TrinoConnector):
     """Any JDBC-reachable relational/warehouse/lake source: a connection-url + credentials, built from
     the source's ``jdbc_url``. One class parametrized by ``source_type`` + ``trino_connector``."""
@@ -70,12 +78,14 @@ class _TrinoJdbcConnector(_TrinoConnector):
         jdbc_url = source.jdbc_url(host=host, port=source.port)
         if not jdbc_url:
             return {}
-        return {
+        props = {
             "connection-url": jdbc_url,
             "connection-user": resolve_secrets(source.username or ""),
             "connection-password": resolve_secrets(source.password or ""),
-            "statistics.enabled": "false",
         }
+        if self.trino_connector in _STATISTICS_CONNECTORS:
+            props["statistics.enabled"] = "false"
+        return props
 
 
 class TrinoPostgresConnector(_TrinoJdbcConnector):

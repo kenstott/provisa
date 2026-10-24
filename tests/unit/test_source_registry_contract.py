@@ -152,3 +152,40 @@ def test_every_sql_dialect_type_is_catalog_reachable():
         if st not in TRINO_CONNECTORS and not has_native_driver(st) and st not in API_WRITTEN
     ]
     assert not orphans, f"SQL types with a dialect but no connector/driver: {orphans}"
+
+
+def test_an_oracle_catalog_sets_no_statistics_property():
+    """Trino 481's Oracle connector binds no JdbcStatisticsConfig: a catalog setting
+    statistics.enabled is refused ("Configuration property 'statistics.enabled' was not used")."""
+    from provisa.federation.trino_connectors import TRINO_CONNECTORS
+
+    src = Source(
+        id="ora",
+        type=SourceType.oracle,
+        host="oracle",
+        port=1521,
+        database="FREEPDB1",
+        username="system",
+        password="provisa",
+    )
+    assert TRINO_CONNECTORS["oracle"].details(src) == {
+        "connection-url": "jdbc:oracle:thin:@oracle:1521/FREEPDB1",
+        "connection-user": "system",
+        "connection-password": "provisa",
+    }
+
+
+@pytest.mark.parametrize("source_type", ["mariadb", "sqlserver", "tidb", "exasol", "redshift"])
+def test_a_connector_with_table_statistics_has_them_off(source_type):
+    from provisa.federation.trino_connectors import TRINO_CONNECTORS
+
+    src = Source(
+        id="s",
+        type=SourceType(source_type),
+        host="h",
+        port=1,
+        database="d",
+        username="u",
+        password="p",
+    )
+    assert TRINO_CONNECTORS[source_type].details(src)["statistics.enabled"] == "false"
