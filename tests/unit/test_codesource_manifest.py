@@ -110,6 +110,16 @@ LINE = {
 TYPES = {"Order": ORDER, "Line": LINE}
 
 
+def inputs(*fields: tuple[str, bool, dict]) -> dict:
+    """REQ-2100: a @table or @stream function's inputs object, its fields ``(name, optional,
+    type)``."""
+    return {
+        "kind": "object",
+        "name": None,
+        "fields": [{"name": n, "optional": o, "description": "", "type": t} for n, o, t in fields],
+    }
+
+
 def raw(*exports, types=TYPES, diagnostics=()) -> dict:
     return {"exports": list(exports), "types": dict(types), "diagnostics": list(diagnostics)}
 
@@ -126,7 +136,7 @@ def test_a_table_is_its_functions_parameters_and_its_row_types_fields():
             fn(
                 "orders",
                 ["table"],
-                [("customerId", False, S), ("since", True, opt(DATE))],
+                [("inputs", False, inputs(("customerId", False, S), ("since", True, opt(DATE))))],
                 promise(arr(ref("Order"))),
                 "Orders of one customer.",
             )
@@ -186,7 +196,14 @@ def test_a_row_that_is_not_an_object_is_refused():
 
 def test_a_stream_is_an_async_generator_with_the_tables_rules():
     (live,) = read_manifest(
-        raw(fn("live", ["stream"], [("region", False, S)], it(ref("Order"), async_=True)))
+        raw(
+            fn(
+                "live",
+                ["stream"],
+                [("inputs", False, inputs(("region", False, S)))],
+                it(ref("Order"), async_=True),
+            )
+        )
     ).exports
     assert (live.kind, live.returns, live.parameters[0].required) == (
         "stream",
@@ -255,7 +272,13 @@ def test_every_problem_is_reported_at_once_each_by_name():
         fn(
             "bad_param",
             ["table"],
-            [("cb", False, {"kind": "unsupported", "text": "() => void"})],
+            [
+                (
+                    "inputs",
+                    False,
+                    inputs(("cb", False, {"kind": "unsupported", "text": "() => void"})),
+                )
+            ],
             arr(ref("Order")),
         ),
         fn(

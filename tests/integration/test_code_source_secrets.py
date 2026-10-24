@@ -57,11 +57,17 @@ class Read:
     body: str
 
 
-def secret_read(name: str) -> list[Read]:
+@dataclass
+class ReadInputs:
+    name: str
+
+
+def secret_read(inputs: ReadInputs) -> list[Read]:
     """What the services answer for one secret.
 
     @table
     """
+    name = inputs.name
     url = f"{os.environ['PROVISA_SERVICES']}/secrets/{name}"
     try:
         with urllib.request.urlopen(url, timeout=30) as answered:
@@ -74,18 +80,19 @@ def secret_read(name: str) -> list[Read]:
 _NODE = {
     "reads/package.json": json.dumps({"name": "reads", "type": "module", "main": "index.js"}),
     "reads/index.js": """
-export async function secret_read(name) {
+export async function secret_read({ name }) {
   const answered = await fetch(`${process.env.PROVISA_SERVICES}/secrets/${name}`);
   return [{ name, status: answered.status, body: await answered.text() }];
 }
 """,
     "reads/index.d.ts": """
 export interface Read { name: string; status: number; body: string; }
+export interface ReadInputs { name: string; }
 /**
  * What the services answer for one secret.
  * @table
  */
-export declare function secret_read(name: string): Promise<Read[]>;
+export declare function secret_read(inputs: ReadInputs): Promise<Read[]>;
 """,
 }
 

@@ -95,14 +95,18 @@ async def test_bringing_a_shard_up_creates_its_secret_and_keeps_one_that_exists(
         for c in calls
         if c.method == "POST" and c.url.path.endswith("/secrets")
     ]
-    # The Kafka client properties' Secret.
-    assert [b["metadata"]["name"] for b in created] == ["trino-shared-1-kafka-client"]
+    # The Kafka client properties' Secret, and REQ-2100's remote-host identities'.
+    assert [b["metadata"]["name"] for b in created] == [
+        "trino-shared-1-kafka-client",
+        "trino-shared-1-codehost-client",
+    ]
     assert all("data" not in b for b in created)
     # Never applied: an apply of an empty Secret would drop the keys already written.
     assert not [
         c
         for c in calls
-        if c.method == "PATCH" and c.url.path.endswith("/trino-shared-1-kafka-client")
+        if c.method == "PATCH"
+        and c.url.path.endswith(("/trino-shared-1-kafka-client", "/trino-shared-1-codehost-client"))
     ]
 
 
