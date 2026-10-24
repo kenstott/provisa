@@ -30,6 +30,7 @@
     "tabSettings": "Weergave-instellingen",
     "maxNodes": "Max. knooppunten",
     "maxNodesHint": "Het maximale aantal knooppunten dat een query tekent",
-    "notCounted": "Niet geteld: {{list}}"
+    "notCounted": "Niet geteld: {{list}}",
+    "countsFailed": "Aantallen niet beschikbaar: {{error}}"
   }
 }

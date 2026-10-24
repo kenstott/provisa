@@ -30,6 +30,7 @@
     "tabSettings": "表示設定",
     "maxNodes": "最大ノード数",
     "maxNodesHint": "1 つのクエリで描画するノードの最大数",
-    "notCounted": "カウントできませんでした: {{list}}"
+    "notCounted": "カウントできませんでした: {{list}}",
+    "countsFailed": "件数を取得できません: {{error}}"
   }
 }

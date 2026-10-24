@@ -30,6 +30,7 @@
     "tabSettings": "הגדרות תצוגה",
     "maxNodes": "מקסימום צמתים",
     "maxNodesHint": "מספר הצמתים המרבי ששאילתה מציגה",
-    "notCounted": "לא נספר: {{list}}"
+    "notCounted": "לא נספר: {{list}}",
+    "countsFailed": "הספירות אינן זמינות: {{error}}"
   }
 }

@@ -30,6 +30,7 @@
     "tabSettings": "视图设置",
     "maxNodes": "最大节点数",
     "maxNodesHint": "一次查询最多绘制的节点数",
-    "notCounted": "未计数：{{list}}"
+    "notCounted": "未计数：{{list}}",
+    "countsFailed": "无法获取计数：{{error}}"
   }
 }

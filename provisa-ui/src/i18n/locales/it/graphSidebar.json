@@ -30,6 +30,7 @@
     "tabSettings": "Impostazioni di visualizzazione",
     "maxNodes": "Nodi max",
     "maxNodesHint": "Numero massimo di nodi disegnati da una query",
-    "notCounted": "Non conteggiato: {{list}}"
+    "notCounted": "Non conteggiato: {{list}}",
+    "countsFailed": "Conteggi non disponibili: {{error}}"
   }
 }

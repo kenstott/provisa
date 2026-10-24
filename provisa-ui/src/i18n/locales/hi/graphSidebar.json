@@ -30,6 +30,7 @@
     "tabSettings": "दृश्य सेटिंग्स",
     "maxNodes": "अधिकतम नोड",
     "maxNodesHint": "एक क्वेरी द्वारा बनाए जाने वाले अधिकतम नोड",
-    "notCounted": "गिना नहीं गया: {{list}}"
+    "notCounted": "गिना नहीं गया: {{list}}",
+    "countsFailed": "गिनती उपलब्ध नहीं: {{error}}"
   }
 }

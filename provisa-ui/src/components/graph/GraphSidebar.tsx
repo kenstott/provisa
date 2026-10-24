@@ -61,6 +61,8 @@ interface SidebarProps {
   onPropertyKeyClick?: (key: string) => void;
   /** What /data/graph-counts said; null until it has. */
   counts?: GraphCounts | null;
+  /** Why /data/graph-counts gave no counts; shown where the counts go. */
+  countsError?: string | null;
   maxNodes: number;
   onMaxNodesChange: (n: number) => void;
 }
@@ -117,6 +119,7 @@ export function Sidebar({
   propertyKeys = [],
   onPropertyKeyClick,
   counts = null,
+  countsError = null,
   maxNodes,
   onMaxNodesChange,
 }: SidebarProps) {
@@ -434,6 +437,15 @@ export function Sidebar({
                   <div className="graph-schema-empty">{t("graphSidebar.noLabelsFound")}</div>
                 ) : (
                   <div className="graph-label-list">
+                    {countsError !== null && (
+                      <div
+                        className="graph-schema-empty"
+                        role="alert"
+                        data-testid="graph-counts-error"
+                      >
+                        {t("graphSidebar.countsFailed", { error: countsError })}
+                      </div>
+                    )}
                     <div className="graph-label-item">
                       <Tip
                         text={uncounted(counts?.label_counts) ?? t("graphSidebar.matchAllNodes")}
@@ -445,7 +457,12 @@ export function Sidebar({
                           data-testid="graph-all-nodes"
                         >
                           *(
-                          {counts === null ? schemaNodeLabels.length : total(counts.node_count)})
+                          {countsError !== null
+                            ? "?"
+                            : counts === null
+                              ? schemaNodeLabels.length
+                              : total(counts.node_count)}
+                          )
                         </button>
                       </Tip>
                     </div>
@@ -631,7 +648,12 @@ export function Sidebar({
                               data-testid="graph-all-rels"
                             >
                               *(
-                              {counts === null ? uniqueRels.length : total(counts.rel_count)})
+                              {countsError !== null
+                                ? "?"
+                                : counts === null
+                                  ? uniqueRels.length
+                                  : total(counts.rel_count)}
+                              )
                             </button>
                           </Tip>
                         </div>,
