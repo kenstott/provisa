@@ -685,17 +685,18 @@ def test_flights_cypher_read_settles_the_cut_itself_before_its_audit_row():
     assert source.index(audit) < source.index("self._cypher_stream(raw_rows, graph_vars, plan.w")
 
 
-def test_grpc_carries_what_the_nodes_statement_of_a_group_by_says():
-    """A group-by with its nodes is two governed statements; the trailing metadata is set after
-    the first, so what the second says is added when it has run."""
+def test_grpc_carries_what_the_one_statement_of_a_group_by_says():
+    """A group-by with its nodes is one governed statement (aggregates._nodes_column): what it
+    says -- its row limit, a list at its ceiling (REQ-005) -- is in its plan's warnings, which the
+    trailing metadata carries, and no second statement runs beside it."""
     import inspect
 
     from provisa.grpc.server import ProvisaServicer
 
     source = inspect.getsource(ProvisaServicer._handle_query_group_by_bound)
-    ran = source.index("nodes_result = await _execute_plan(nodes_plan, state)")
-    assert "_said = self._emit_trailing_metadata(" in source[:ran]
-    assert "self._say_late_warnings(" in source[ran:] and "nodes_plan.warnings" in source[ran:]
+    assert source.count("_govern_and_route_compiled(") == 1
+    assert "nodes_plan" not in source
+    assert "_said = self._emit_trailing_metadata(context, plan.warnings" in source
 
 
 def test_what_is_landed_is_the_governed_statement_bounded_at_the_role_limit():

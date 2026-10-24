@@ -259,32 +259,26 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
     json_type = exp.DataType(this=exp.DataType.Type.JSON)
 
+    def _list(inner: exp.Expression, where: exp.Expression | None) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # Recurse: transform is pre-order and skips a replaced node's children, so a nested
+        # json_arrayagg would survive unrewritten.
+        collected: exp.Expression = exp.ArrayAgg(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            this=exp.Anonymous(this="JSON_PARSE", expressions=[inner.transform(_transform)])
+        )
+        if where is not None:
+            # REQ-005's list cap: the filter is the aggregate's, inside the conversion.
+            collected = exp.Filter(this=collected, expression=where.transform(_transform))
+        return exp.Anonymous(
+            this="json_format", expressions=[exp.Cast(this=collected, to=json_type.copy())]
+        )
+
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        inner = None
-        if (
-            isinstance(node, exp.Anonymous)
-            and node.name.upper() in ("JSON_ARRAYAGG", "JSON_AGG", "JSONB_AGG")
-            and node.expressions
-        ):
-            inner = node.expressions[0]
-        elif isinstance(node, exp.JSONArrayAgg):
-            inner = node.this
+        listed = _list_arg(node.this) if isinstance(node, exp.Filter) else None
+        if listed is not None:
+            return _list(listed, node.expression)
+        inner = _list_arg(node)
         if inner is not None:
-            return exp.Anonymous(
-                this="json_format",
-                expressions=[
-                    exp.Cast(
-                        this=exp.ArrayAgg(
-                            # Recurse: transform is pre-order and skips a replaced node's
-                            # children, so a nested json_arrayagg would survive unrewritten.
-                            this=exp.Anonymous(
-                                this="JSON_PARSE", expressions=[inner.transform(_transform)]
-                            )
-                        ),
-                        to=json_type.copy(),
-                    )
-                ],
-            )
+            return _list(inner, None)
         return node
 
     return tree.transform(_transform).sql(dialect="trino")
@@ -448,6 +442,19 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
     return tree.transform(_transform).sql(dialect="duckdb")
 
 
+def _list_arg(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]
+    """The value a JSON list aggregate collects, or None for any other node."""
+    if (
+        isinstance(node, exp.Anonymous)
+        and node.name.upper() in ("JSON_ARRAYAGG", "JSON_AGG", "JSONB_AGG")
+        and node.expressions
+    ):
+        return node.expressions[0]
+    if isinstance(node, exp.JSONArrayAgg):
+        return node.this
+    return None
+
+
 def _rewrite_json_agg_for_duckdb(sql: str) -> str:
     """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x), and
     JSON_BUILD_OBJECT / JSONB_BUILD_OBJECT with json_object.
@@ -466,6 +473,15 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
     tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        listed = _list_arg(node.this) if isinstance(node, exp.Filter) else None
+        if listed is not None:
+            # json_group_array is a macro, which takes no FILTER: a filtered list is the
+            # aggregate it expands to, to_json(list(x)), filtered (REQ-005's list cap).
+            filtered = exp.Filter(
+                this=exp.Anonymous(this="list", expressions=[listed.transform(_transform)]),
+                expression=node.expression.transform(_transform),
+            )
+            return exp.Anonymous(this="to_json", expressions=[filtered])
         inner = None
         if (
             isinstance(node, exp.Anonymous)

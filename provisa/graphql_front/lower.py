@@ -798,6 +798,10 @@ class _Lowering:
                 raise GraphQLLoweringRefused(f"an alias or arguments on {f.name.value}")
             if f.name.value == "groupKey":
                 continue
+            if f.name.value == "nodes":
+                # Each group's rows, collected beside its key: one statement, as its SQL is.
+                items.append(self.nodes(table, nm, var, f))
+                continue
             if f.name.value != "aggregate":
                 raise GraphQLLoweringRefused(f"the group-by field {f.name.value}")
             entries = self.aggregates(table, nm, var, f, function_aliases=False)

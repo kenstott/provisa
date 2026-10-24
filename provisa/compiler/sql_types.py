@@ -255,10 +255,10 @@ class CompiledQuery:
     sort_columns: list[str] = field(default_factory=list)
     page_size: int | None = None
     has_cursor: bool = False
-    # Aggregate + nodes: plain SELECT for nodes field (issue #12)
-    nodes_sql: str | None = None
-    nodes_columns: list[ColumnRef] | None = None
-    nodes_params: list = field(default_factory=list)
+    # An aggregate or group-by root that selects its nodes (issue #12): one statement, whose row
+    # (each group's, under group-by) holds them as a column beside the aggregates
+    # (aggregates._nodes_column).
+    has_nodes: bool = False
     # Alias for the "aggregate" response key (e.g. "derived: aggregate" → "derived")
     agg_alias: str = "aggregate"
     # Native filter args for API-routed sources (path/query params extracted from GQL args)

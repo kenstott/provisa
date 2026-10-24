@@ -565,6 +565,7 @@
     "statement": {
       "rows_cut": "Het antwoord is afgekapt op {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}): er komen meer rijen overeen dan er zijn teruggegeven.",
       "rows_cut_unchecked": "Het antwoord heeft {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}). Of er meer rijen overeenkomen, kon niet worden gecontroleerd: {{reason}}",
+      "list_at_ceiling": "Een lijst bevat het maximum van {{limit}} items dat de rijlimiet voor deze leesactie toestaat ({{kind}}); er kunnen er meer zijn.",
       "approximate_index": "De meest gelijkende rijen zijn gevonden via een benaderende vectorindex: een rij die iets meer lijkt dan de laatst teruggegeven rij kan ontbreken.",
       "path_cut": "Een pad zonder bovengrens is afgekapt op de dieptegrens van de graaf van {{limit}} hops: langere paden ontbreken in het antwoord."
     },
