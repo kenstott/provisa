@@ -49,6 +49,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres"},
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.DIRECT
         assert result.source_id == "sales-pg"
@@ -62,6 +63,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql", "crm-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres", "crm-pg": "postgres"},
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.ENGINE
         assert result.source_id is None
@@ -76,6 +78,7 @@ class TestDecideRoute:
             source_dialects={"sales-pg": "postgres"},
             steward_hint="federated",
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.ENGINE
 
@@ -89,6 +92,7 @@ class TestDecideRoute:
             source_dialects={"sales-pg": "postgres"},
             steward_hint="direct",
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.DIRECT
 
@@ -102,6 +106,7 @@ class TestDecideRoute:
             source_dialects={"sales-pg": "postgres"},
             is_mutation=True,
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.DIRECT
         assert "mutation" in result.reason
@@ -115,11 +120,12 @@ class TestDecideRoute:
             source_types={"events-kafka": "kafka"},
             source_dialects={"events-kafka": ""},
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.ENGINE
 
-    async def test_api_source_routes_api(self):
-        # REQ-027: openapi sources route through API caller pipeline
+    async def test_an_api_source_read_is_landed_for_the_engine(self):
+        # REQ-863: an API connector does not answer directly; its rows are landed
         from provisa.transpiler.router import Route, decide_route
 
         result = decide_route(
@@ -127,8 +133,10 @@ class TestDecideRoute:
             source_types={"ext-api": "openapi"},
             source_dialects={"ext-api": ""},
             operator_floor={},
+            statement="SELECT 1",
         )
-        assert result.route == Route.API
+        assert result.route == Route.ENGINE
+        assert result.reason.startswith("landed: trusted_to_answer:")
 
     async def test_cross_source_type_coercion_routes_trino(self):
         # REQ-552: cross-source JOINs across differing native types route Trino
@@ -139,6 +147,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql", "analytics-mysql": "mysql"},
             source_dialects={"sales-pg": "postgres", "analytics-mysql": "mysql"},
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.ENGINE
 
@@ -153,6 +162,7 @@ class TestDecideRoute:
             source_dialects={"src-a": "postgres", "src-b": "postgres"},
             source_dsns={"src-a": dsn, "src-b": dsn},
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.DIRECT
 
@@ -327,6 +337,7 @@ class TestTypeCoercedRouting:
             source_dialects={"mysql-src": "mysql"},
             has_json_extract=True,
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.ENGINE
 
@@ -340,6 +351,7 @@ class TestTypeCoercedRouting:
             source_dialects={"pg-src": "postgres"},
             has_json_extract=True,
             operator_floor={},
+            statement="SELECT 1",
         )
         assert result.route == Route.DIRECT
 

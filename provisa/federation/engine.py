@@ -349,9 +349,6 @@ class FederationEngine:  # REQ-840
         (:meth:`connector_for`). A source that asks for a reach this engine does not have for its
         type, or names a reach that does not exist, is refused by name."""
         source_type = source.type.value
-        if self.asks_in_place(source) and source_type in self.code_host_types:
-            # REQ-2100: a built code source, its host attached as a Postgres catalog.
-            return self.scan_connectors[source_type]
         hints = getattr(source, "federation_hints", None) or {}
         reach = hints.get("reach")
         if reach is None or reach == "replica":
@@ -371,23 +368,11 @@ class FederationEngine:  # REQ-840
             )
         return connector
 
-    @property
-    def code_host_types(self) -> frozenset[str]:
-        """REQ-2100: the code source types whose built hosts this engine attaches."""
-        from provisa.codesource.source import CODE_SOURCE_TYPES
-
-        return frozenset(t for t in self.scan_connectors if t in CODE_SOURCE_TYPES)
-
     @staticmethod
     def asks_in_place(source: Any) -> bool:
         """Whether ``source`` asks to be read in place: ``reach: "scan"`` in its federation hints
-        (REQ-1867), or a code source in built mode, its image on a remote host (REQ-2100)."""
-        from provisa.codesource.source import CODE_SOURCE_TYPES
-
-        if (getattr(source, "federation_hints", None) or {}).get("reach") == "scan":
-            return True
-        mapping = getattr(source, "mapping", None) or {}
-        return source.type.value in CODE_SOURCE_TYPES and mapping.get("mode") == "built"
+        (REQ-1867)."""
+        return (getattr(source, "federation_hints", None) or {}).get("reach") == "scan"
 
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)
@@ -644,16 +629,12 @@ def build_duckdb_engine(
         DuckDBSplunkConnector,
         DuckDBSqliteConnector,
     )
-    from provisa.federation.codehost_connectors import DuckDBCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
 
     return FederationEngine(
         name,
         [
             DuckDBPostgresConnector(),
-            # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-            DuckDBCodeHostConnector("node"),
-            DuckDBCodeHostConnector("python"),
             DuckDBSqliteConnector(),
             DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
             DuckDBCsvConnector(),
@@ -809,7 +790,6 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         SqliteFdwConnector,
         TdsFdwConnector,
     )
-    from provisa.federation.codehost_connectors import PgCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
     from provisa.federation.pg_backend import PgBackend
 
@@ -817,10 +797,6 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         name,
         [
             PostgresFdwConnector(),  # postgresql
-            # REQ-2100: a built code host, through postgres_fdw (probe: a directory shared for its
-            # identity).
-            PgCodeHostConnector("node"),
-            PgCodeHostConnector("python"),
             PgFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)

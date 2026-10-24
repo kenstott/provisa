@@ -38,8 +38,14 @@ vi.mock("../useProductGraph", () => ({
   useProductGraph: (_product: string | null, enabled: boolean) => ({
     data: enabled ? DATA : null,
     error: null,
+    scoped: enabled ? { data: DATA, query: "query DataProductGraph { x }" } : null,
+    onScope: () => {},
   }),
 }));
+
+// The panel is the product graph in place, Open as query among its controls: it compiles as the
+// acting roles.
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 
 import { KnowledgeGraphPanel } from "../KnowledgeGraphPanel";
 

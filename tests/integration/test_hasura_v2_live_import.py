@@ -37,6 +37,10 @@ SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "hasura_v2_t1_metada
 SEED = Path(__file__).resolve().parents[1] / "fixtures" / "hasura_v2_t1_seed.sql"
 DB = "hasura_t1"
 COUNTRIES_URL = "https://countries.trevorblades.com/graphql"
+# The address this module's client serves the app at. The sample's action handler is
+# ``{{ACTION_BASE_URL}}/foo``, imported as ``${env:ACTION_BASE_URL}/foo``, and the import report
+# names the variable for the operator to set before applying; no test here calls the action.
+APP_BASE_URL = "http://test"
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
@@ -66,6 +70,7 @@ async def seeded_pg(docker_postgres):
 async def client(seeded_pg):
     os.environ.setdefault("PG_PASSWORD", "provisa")
     os.environ["RS_ENV"] = COUNTRIES_URL
+    os.environ["ACTION_BASE_URL"] = APP_BASE_URL
     # The materialization store (PROVISA_MATERIALIZE_URL) is the test stack's Postgres, set by
     # tests/conftest.py after the isolated stack's port is allocated.
     from provisa.api.app import create_app
@@ -73,7 +78,7 @@ async def client(seeded_pg):
     app = create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", timeout=120) as c:
+        async with AsyncClient(transport=transport, base_url=APP_BASE_URL, timeout=120) as c:
             yield c
 
 

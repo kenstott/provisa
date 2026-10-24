@@ -138,18 +138,18 @@ describe("the product graph's query", () => {
     expect(q).not.toContain("where");
   });
 
-  it("is one query: the bound terms' edges either way and each column's sensitivity in it", () => {
+  it("is one query: the bound terms, without their edges, and each column's sensitivity in it", () => {
     const q = squash(productsQuery(reader({ tags: true }), "c360"));
     expect(q.startsWith("query DataProductGraph {")).toBe(true);
     expect(q.match(/m__/g)).toHaveLength(1);
-    expect(q).toContain(
-      "edges_out: edgesOut { id: id from_term_id: fromTermId to_term_id: toTermId rel_type: relType target_term: targetTerm { id: id name: name } }",
-    );
-    expect(q).toContain("edges_in: edgesIn {");
+    // A product's neighbourhood ends at the terms its columns are bound to.
+    expect(q).toContain("term: term { id: id name: name }");
+    expect(q).not.toContain("edgesOut");
+    expect(q).not.toContain("edgesIn");
     expect(q).toContain("sensitivity: sensitivity { tags: tags }");
   });
 
-  it("keeps the chosen domains, tags, sensitivities and edge types in its where", () => {
+  it("keeps the chosen domains, tags and sensitivities in its where", () => {
     const q = squash(
       productsQuery(reader({ tags: true }), null, {
         domains: ["sales"],
@@ -173,7 +173,8 @@ describe("the product graph's query", () => {
     // Only the tags kept are drawn.
     expect(q).toContain('tags: tags(where: { tagId: { in: ["gold"] } }) { tag_id: tagId }');
     expect(q).toContain('commands: commands(where: { domainId: { in: ["sales"] } })');
-    expect(q).toContain('edgesOut(where: { relType: { in: ["KIND_OF"] } })');
+    // No term edge is read, so an edge type narrows nothing in it.
+    expect(q).not.toContain("relType");
   });
 
   it("is not built when the role cannot read the products view", () => {
@@ -338,22 +339,6 @@ describe("a product's own graph (REQ-2136)", () => {
           table_columns: (t.table_columns ?? []).map((c) => ({
             ...c,
             sensitivity: [{ tags: "pii" }],
-            glossary_ref: (c.glossary_ref ?? []).map((r) => ({
-              ...r,
-              term: r.term && {
-                ...r.term,
-                edges_out: [
-                  {
-                    id: 1,
-                    from_term_id: 7,
-                    to_term_id: 8,
-                    rel_type: "KIND_OF",
-                    target_term: { id: 8, name: "Party" },
-                  },
-                ],
-                edges_in: [],
-              },
-            })),
           })),
         })),
         // A linked product is a bare node, in a domain of its own.
@@ -379,7 +364,8 @@ describe("a product's own graph (REQ-2136)", () => {
         .nodes.map((n) => n.id)
         .sort();
     expect(ids(["p:c360"])).toEqual(ids([]));
-    expect(ids([])).toEqual(expect.arrayContaining(["p:billing", "term:8", "c:1:email"]));
+    // The read stops at the bound terms: the graph holds no term beyond them.
+    expect(ids([])).toEqual(expect.arrayContaining(["p:billing", "term:7", "c:1:email"]));
   });
 });
 

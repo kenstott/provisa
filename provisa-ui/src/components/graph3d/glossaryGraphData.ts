@@ -15,7 +15,7 @@
 // the terms those columns are -- turned into the graph's nodes and edges.
 
 import { termRole } from "../../api/glossary";
-import { ONTOLOGY_NEIGHBOURHOOD } from "./neighbourhood";
+import { NEIGHBOURHOOD } from "./neighbourhood";
 import {
   operation,
   rootField,
@@ -97,7 +97,9 @@ function termKept(s: QueryScope): Where | undefined {
 }
 
 /** A term with a relationship drawn: an edge of a type kept to a term kept (either way, under
- * Ontology), or a column it IS in a domain kept (under Columns). With neither layer on, none. */
+ * Ontology), a domain kept it is in (under Domains: its domains are its refs' and tables', so a
+ * draft named for a column is in its table's domain whatever else is drawn), or a column it IS in
+ * a domain kept (under Columns). With none of these layers on, none. */
 function related(s: QueryScope): Where {
   const kept = termKept(s);
   const typed: Where | undefined =
@@ -111,6 +113,14 @@ function related(s: QueryScope): Where {
             { edges_out: edge("target_term") },
             { edges_in: edge("source_term") },
             { tables: inDomains(s.domains) ?? {} },
+          ]
+        : []),
+      ...(s.layers.has("domains")
+        ? [
+            {
+              domains:
+                inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]) ?? {},
+            },
           ]
         : []),
       ...(s.layers.has("columns") ? [{ refs: inDomains(s.domains) ?? {} }] : []),
@@ -146,7 +156,7 @@ const TERM_FIELDS = [
  * last level is read with its edges' ends alone, so an edge between two of them is drawn and
  * nothing past them is. With no search every term is read at level 0, its edges' ends by id. */
 function termSelection(s: QueryScope, level: number): Selection {
-  const depth = s.search.length > 0 ? ONTOLOGY_NEIGHBOURHOOD.depth : 0;
+  const depth = s.search.length > 0 ? NEIGHBOURHOOD.depth : 0;
   const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};

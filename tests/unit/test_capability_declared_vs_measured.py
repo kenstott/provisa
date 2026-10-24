@@ -92,6 +92,7 @@ def test_router_scan_decision_for_file_native_engine_actually_runs(tmp_path):
         source_dialects={},
         engine=engine,
         operator_floor={},
+        statement="SELECT 1",
     )
     assert decision.route is Route.ENGINE
     assert "scanned in place" in decision.reason  # decision driven by the declared trait
@@ -126,6 +127,7 @@ def test_self_only_engine_declares_no_file_native_and_gets_no_scan_plan():
         source_dialects={},
         engine=engine,
         operator_floor={},
+        statement="SELECT 1",
     )
     # Not scanned in place — the non-file_native engine must LAND the file, matching the
     # declaration that it cannot scan in place.

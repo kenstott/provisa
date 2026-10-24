@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:agriculture/1-driest-seasons.graphql",
+  "root_field": "a__viewLossesAndWeather"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:agriculture/2-losses-by-year.graphql",
+  "root_field": "a__viewLossesAndWeatherGroupBy"
+ }
+]

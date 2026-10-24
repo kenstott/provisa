@@ -92,6 +92,7 @@
     "openApiQueryAria": "Exécuter l'exemple de requête REST pour {{table}}",
     "detail": {
       "field": {
+        "details": "Détails",
         "customProperties": "Propriétés personnalisées",
         "relatedTables": "Tables associées",
         "relationships": "Relations",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "Entrée(s)",
       "inputPortsColTransform": "Transformation",
       "inputPortsColOutput": "Sortie",
-      "outputPortsHint": "La surface interrogeable de ce produit : ses tables/colonnes membres et ses commandes, avec des exemples de requêtes ci-dessous sous Exemples de requêtes et commandes.",
+      "outputPortsHint": "La surface interrogeable de ce produit : ses tables membres et ses commandes. Des exemples de requêtes pour chacune se trouvent sous Modèles d'accès.",
       "customPropertiesEmpty": "Aucune propriété personnalisée"
     },
     "readOnly": "Lecture seule",

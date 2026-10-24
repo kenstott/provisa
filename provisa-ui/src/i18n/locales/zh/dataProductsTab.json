@@ -92,6 +92,7 @@
     "openApiQueryAria": "运行 {{table}} 的 REST 示例请求",
     "detail": {
       "field": {
+        "details": "详情",
         "customProperties": "自定义属性",
         "relatedTables": "相关表",
         "relationships": "关系",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "输入",
       "inputPortsColTransform": "转换",
       "inputPortsColOutput": "输出",
-      "outputPortsHint": "此产品的可查询界面：其成员表/列和命令，示例查询见下方的“示例查询与命令”。",
+      "outputPortsHint": "此产品可查询的范围：其成员表和命令。每个的示例查询见“访问模式”。",
       "customPropertiesEmpty": "没有自定义属性"
     },
     "readOnly": "只读",

@@ -19,7 +19,6 @@ here for real; the other dialects' forms are checked as SQL.
 
 from __future__ import annotations
 
-import types
 from typing import LiteralString, cast
 
 import duckdb
@@ -246,12 +245,11 @@ def test_plain_postgres_ranks_a_governed_search_by_similarity(embedded_postgres)
     [("postgres", False), ("snowflake", False), ("mysql", True), ("bigquery", True)],
 )
 def test_a_search_runs_on_a_source_only_where_its_sql_computes_it(dialect, to_engine):
-    from provisa.pgwire._pipeline import _similarity_needs_engine
+    # REQ-863: cosine_similarity is a construct of the dialect capability list.
+    from provisa.transpiler.dialect_capabilities import unsupported
 
-    state = types.SimpleNamespace(source_dialects={"src": dialect})
-    decision = types.SimpleNamespace(source_id="src")
-    assert _similarity_needs_engine(_GOVERNED, decision, state) is to_engine
-    assert _similarity_needs_engine("SELECT 1", decision, state) is False
+    assert (unsupported(_GOVERNED, dialect) == "cosine_similarity") is to_engine
+    assert unsupported("SELECT 1", dialect) is None
 
 
 def test_lowering_leaves_a_statement_without_a_search_alone():

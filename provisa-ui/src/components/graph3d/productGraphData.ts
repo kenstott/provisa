@@ -70,10 +70,7 @@ const sensitiveTo = (xs: string[]): Where => ({
 const sensitiveColumn = (f: ProductFilters): Where | undefined =>
   f.sensitivities.length === 0 ? undefined : { sensitivity: sensitiveTo(f.sensitivities) };
 
-const TERM_EDGE_FIELDS = ["id", "from_term_id", "to_term_id", "rel_type"];
-
 function columnSel(f: ProductFilters): Selection {
-  const typed = f.edgeTypes.length === 0 ? undefined : { rel_type: { in: f.edgeTypes } };
   return {
     fields: ["column_name", "column_key"],
     rels: {
@@ -85,31 +82,9 @@ function columnSel(f: ProductFilters): Selection {
             term: {
               alias: "term",
               sel: {
+                // The bound term alone: a product's neighbourhood ends at the terms its columns
+                // are bound to (neighbourhood.ts), so their edges to other terms are not read.
                 fields: ["id", "name"],
-                // The term's edges either way, with the term at the other end (REQ-2136: one
-                // query, where the graph read them by bound term in two more).
-                rels: {
-                  edges_out: {
-                    alias: "edgesOut",
-                    sel: {
-                      fields: TERM_EDGE_FIELDS,
-                      rels: {
-                        target_term: { alias: "targetTerm", sel: { fields: ["id", "name"] } },
-                      },
-                    },
-                    where: typed,
-                  },
-                  edges_in: {
-                    alias: "edgesIn",
-                    sel: {
-                      fields: TERM_EDGE_FIELDS,
-                      rels: {
-                        source_term: { alias: "sourceTerm", sel: { fields: ["id", "name"] } },
-                      },
-                    },
-                    where: typed,
-                  },
-                },
               },
             },
           },
@@ -233,25 +208,11 @@ interface ColumnRow extends Tagged {
         term?: {
           id: number;
           name: string;
-          edges_out?: (TermEdgeEnd & { target_term?: TermName | null })[] | null;
-          edges_in?: (TermEdgeEnd & { source_term?: TermName | null })[] | null;
         } | null;
       }[]
     | null;
   // Its row in sensitive_coverage when it is sensitive; undefined when the role cannot read it.
   sensitivity?: { tags: string }[] | null;
-}
-
-interface TermName {
-  id: number;
-  name: string;
-}
-
-interface TermEdgeEnd {
-  id: number;
-  from_term_id: number;
-  to_term_id: number;
-  rel_type: string;
 }
 
 interface TableRow extends Tagged {
@@ -337,8 +298,9 @@ export function productGraphQuery(
 }
 
 /**
- * The graph of the product graph's one query: its term edges and its columns' sensitivity read off
- * the columns, null when the role cannot read them (as toGraphData takes them).
+ * The graph of the product graph's one query: its columns' sensitivity read off the columns, null
+ * when the role cannot read it (as toGraphData takes it). The bound terms are read without their
+ * edges to other terms, so the graph holds none.
  */
 export function productGraph(products: ProductRow[]): GraphData {
   const columns = products.flatMap((p) =>
@@ -348,20 +310,6 @@ export function productGraph(products: ProductRow[]): GraphData {
   );
   const readable = (pick: (c: ColumnRow) => unknown) =>
     columns.length === 0 || columns.every(({ c }) => pick(c) !== undefined);
-  const terms = columns.flatMap(({ c }) => (c.glossary_ref ?? []).flatMap((r) => r.term ?? []));
-  const termEdges: TermEdgeRow[] | null =
-    terms.length > 0 && terms.every((t) => t.edges_out !== undefined && t.edges_in !== undefined)
-      ? terms.flatMap((t) => [
-          ...(t.edges_out ?? []).flatMap((e) =>
-            e.target_term ? [{ ...e, from_term: t.name, to_term: e.target_term.name }] : [],
-          ),
-          ...(t.edges_in ?? []).flatMap((e) =>
-            e.source_term ? [{ ...e, from_term: e.source_term.name, to_term: t.name }] : [],
-          ),
-        ])
-      : terms.length === 0
-        ? []
-        : null;
   const sensitive: SensitiveRow[] | null = readable((c) => c.sensitivity)
     ? columns.flatMap(({ table, c }) =>
         (c.sensitivity ?? []).map((x) => ({
@@ -371,7 +319,8 @@ export function productGraph(products: ProductRow[]): GraphData {
         })),
       )
     : null;
-  return toGraphData(products, termEdges, sensitive);
+  // No term edges: the read stops at the bound terms.
+  return toGraphData(products, [], sensitive);
 }
 
 export const productNode = (id: string) => `p:${id}`;

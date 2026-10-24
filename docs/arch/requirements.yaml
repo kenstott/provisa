@@ -11118,13 +11118,13 @@
     refresh policy, [END SUPERSEDED BLOCK] source federation hints, the large-result redirect threshold,
     the sink cluster, the registered watermark). The end user trades performance against recency per request,
     above that floor. A request can move only toward less recent data or less load (for example opting
-    into the response cache); it can never go below the floor, and a request hint that would is rejected
+    into the response cache); it can never go below the floor, [SUPERSEDED by the 2026-10-23 ROUTE HINTS ARE APPLIED ONLY WHERE VALID amendment below -- a direct hint that cannot apply is ignored with a note, not refused. Kept here for history; do not implement against it.] and a request hint that would is rejected
     with an error naming the operator setting (core.operator_floor.OperatorFloorError: HTTP 403 code query.operator_floor,
-    SQLSTATE 42501 on pgwire, PERMISSION_DENIED on Flight/gRPC), never silently applied or ignored. Routing
+    SQLSTATE 42501 on pgwire, PERMISSION_DENIED on Flight/gRPC), never silently applied or ignored. [END SUPERSEDED BLOCK] Routing
     enforces it in the one decision: decide_route takes a required operator_floor map ({source_id: setting},
     registry_view.operator_floor over core.operator_floor.floor_setting); a floored source never routes
-    DIRECT, API or colocated-direct (it routes to the engine, which serves the landed copy), and route=direct
-    on one raises OperatorFloorViolation. route=federated on a floored source is allowed. Writes still
+    DIRECT, API or colocated-direct (it routes to the engine, which serves the landed copy), [SUPERSEDED by the 2026-10-23 ROUTE HINTS ARE APPLIED ONLY WHERE VALID amendment below -- a direct hint that cannot apply is ignored with a note, not refused. Kept here for history; do not implement against it.] and route=direct
+    on one raises OperatorFloorViolation. [END SUPERSEDED BLOCK] route=federated on a floored source is allowed. Writes still
     route direct (REQ-031). A route=direct hint also never makes a VIRTUAL/API source direct, even when
     a driver is registered for its type (neo4j, issue #119). The engine terminal honors the same floor:
     the native engines never attach a floored source live (native_backend._attach_registered), the landing
@@ -11132,7 +11132,7 @@
     rows are landed from the source''s direct pool (source_loader.make_floored_direct_loader), the one
     sanctioned pull, on the operator''s refresh policy. Changing a source''s floor setting bumps the schema
     generation so no cached routing decision outlives it. (Amended 2026-09-30, prefer_materialized unconditional:)
-    The floor includes every prefer_materialized source, refresh policy or not (REQ-826).'
+    The floor includes every prefer_materialized source, refresh policy or not (REQ-826). (Amended 2026-10-23, ROUTE HINTS ARE APPLIED ONLY WHERE VALID) A route=direct hint applies only when the direct route is valid for the statement: it reads one source after optimization (REQ-863), that source''s dialect supports every construct in it, a direct driver exists, and no condition sends it to the engine (the operator''s floor, faked columns, a re-injected materialized view, landed or live-only parts, no connection on this node). Otherwise the hint is ignored: the normal rule decides, and the route''s reason says route hint ignored and why. Neither the floor nor faked columns refuse a direct hint any longer; such a read goes to the engine with that note. route=engine (federated) is always valid. The floor itself is unchanged: a floored source is never read live.'
   use_case: Per-table steward routing overrides handle edge cases where the default routing heuristic
     is suboptimal.
   code:
@@ -26736,7 +26736,7 @@
     optimization stage, never the pre-optimization governed SQL. Consequence: when hot-CTE inlining collapses
     a federated (multi-source) query to a single remaining live source, routing observes one source and
     selects DIRECT execution instead of Trino federation; the VALUES CTEs are then lowered in the chosen
-    route''s dialect (source dialect for direct pushdown, Trino for federated). (Amended 2026-10-23, ONE CANONICAL SHAPE) The stages are CQL | GQL | SQL -> semantic SQL -> governed SQL -> optimized SQL -> plan/route -> native. SEMANTIC SQL: a read compiles to one canonical CTE pipeline, the same for every engine and built from the declared relationships alone. A root CTE reads the root with its where, order, limit and offset. Each to-many level is a CTE that joins its target to its parent''s CTE on the relationship''s keys, applies its where, takes its per-parent order, limit and offset with ROW_NUMBER() OVER (PARTITION BY the parent key ORDER BY ...), the target''s key appended to break ties, and groups by the parent key into JSON_AGG(json_object(...) ORDER BY ...). A level''s parent key is the parent table''s primary key; where it has none, the relationship''s source columns where they are unique; otherwise the parent CTE''s row number, which the parent CTE carries for it. A to-one relationship is a LEFT JOIN on its keys, inside the level''s CTE when nested. The final SELECT reads the root CTE and LEFT JOINs each level''s CTE on the parent key, a missing level being an empty list. A relationship condition in a where is EXISTS, or a semi-join against a CTE where that is the natural form. A junction relationship is read through its two key joins and its type condition. A nested column is named by its response path. distinct_on is DISTINCT ON. Equivalent GraphQL, Cypher and SPARQL reads compile to the same canonical semantic SQL; the Cypher that Open as query exports, run back through the Cypher front end, yields the same semantic SQL as the GraphQL it was exported from. The Cypher translator''s own shapes (a CTE per WITH stage) are aligned to this form as follow-on work. GOVERNED SQL: governance operates on the semantic SQL whole. Every CTE body is governed as every SELECT is, so each level''s RLS and masks apply at its own depth, and a level''s projection is governed as a non-final read: REQ-1961''s final-projection rule applies to the final SELECT alone, which never exposes a level''s parent key or row number. [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- the optimized stage runs before routing and cannot know the engine. Kept here for history; do not implement against it.] OPTIMIZED SQL: materialized-view re-injection, hot VALUES inlining, CTE materialization hints, and a per-parent LATERAL join only where it is a performance choice for the route. [END SUPERSEDED BLOCK] PLAN/ROUTE: engine routing, including a statement sent to the engine for a function or form its source cannot compute (engine-only functions, window functions). NATIVE: the dialect lowering -- the JSON aggregate and object function spellings, the empty list (CAST(''[]'' AS JSON) and its engine forms), DISTINCT ON as ROW_NUMBER() where the dialect has none, and the DuckDB list functions. The compiler''s earlier forms move as follows: the per-parent LEFT JOIN LATERAL for a nested field with arguments and the root guard subquery under it become the semantic CTE levels [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- LATERAL is a native lowering. Kept here for history; do not implement against it.] (LATERAL kept only as an optimized-stage choice) [END SUPERSEDED BLOCK]; the DISTINCT ON versus ROW_NUMBER choice by source type moves to native; the COALESCE to an empty JSON list moves to native; a to-one read as a LIMIT 1 JSON subquery inside a level becomes a LEFT JOIN inside the level; the flat rows view is its own emitter from the same walk; the Trino correlated-subquery decorrelation is no longer needed for GraphQL reads, and stays in native for SQL a caller writes. A corpus of GraphQL reads (end-to-end specs, demo tours, the Ontology view at every scope) checks both that each answer is the same before and after, on DuckDB, PostgreSQL and Trino, and that its GraphQL and its exported Cypher compile to the same semantic SQL. (Amended 2026-10-23, OPTIMIZED IS ENGINE-INDEPENDENT) No stage before routing may assume an engine. The optimized stage runs before routing and holds engine-independent rewrites only: materialized-view re-injection, hot VALUES inlining, predicate and limit pushdown, and pruning the levels and columns a read does not use. CTE materialization hints (such as PostgreSQL''s MATERIALIZED) and a per-parent LATERAL join chosen for performance are native lowerings for the routed engine. An optimization that pays off only on some engines is a native lowering for those engines.'
+    route''s dialect (source dialect for direct pushdown, Trino for federated). (Amended 2026-10-23, ONE CANONICAL SHAPE) The stages are CQL | GQL | SQL -> semantic SQL -> governed SQL -> optimized SQL -> plan/route -> native. SEMANTIC SQL: a read compiles to one canonical CTE pipeline, the same for every engine and built from the declared relationships alone. A root CTE reads the root with its where, order, limit and offset. Each to-many level is a CTE that joins its target to its parent''s CTE on the relationship''s keys, applies its where, takes its per-parent order, limit and offset with ROW_NUMBER() OVER (PARTITION BY the parent key ORDER BY ...), the target''s key appended to break ties, and groups by the parent key into JSON_AGG(json_object(...) ORDER BY ...). A level''s parent key is the parent table''s primary key; where it has none, the relationship''s source columns where they are unique; otherwise the parent CTE''s row number, which the parent CTE carries for it. A to-one relationship is a LEFT JOIN on its keys, inside the level''s CTE when nested. The final SELECT reads the root CTE and LEFT JOINs each level''s CTE on the parent key, a missing level being an empty list. A relationship condition in a where is EXISTS, or a semi-join against a CTE where that is the natural form. A junction relationship is read through its two key joins and its type condition. A nested column is named by its response path. distinct_on is DISTINCT ON. Equivalent GraphQL, Cypher and SPARQL reads compile to the same canonical semantic SQL; the Cypher that Open as query exports, run back through the Cypher front end, yields the same semantic SQL as the GraphQL it was exported from. The Cypher translator''s own shapes (a CTE per WITH stage) are aligned to this form as follow-on work. GOVERNED SQL: governance operates on the semantic SQL whole. Every CTE body is governed as every SELECT is, so each level''s RLS and masks apply at its own depth, and a level''s projection is governed as a non-final read: REQ-1961''s final-projection rule applies to the final SELECT alone, which never exposes a level''s parent key or row number. [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- the optimized stage runs before routing and cannot know the engine. Kept here for history; do not implement against it.] OPTIMIZED SQL: materialized-view re-injection, hot VALUES inlining, CTE materialization hints, and a per-parent LATERAL join only where it is a performance choice for the route. [END SUPERSEDED BLOCK] PLAN/ROUTE: engine routing, including a statement sent to the engine for a function or form its source cannot compute (engine-only functions, window functions). NATIVE: the dialect lowering -- the JSON aggregate and object function spellings, the empty list (CAST(''[]'' AS JSON) and its engine forms), DISTINCT ON as ROW_NUMBER() where the dialect has none, and the DuckDB list functions. The compiler''s earlier forms move as follows: the per-parent LEFT JOIN LATERAL for a nested field with arguments and the root guard subquery under it become the semantic CTE levels [SUPERSEDED by the 2026-10-23 OPTIMIZED IS ENGINE-INDEPENDENT correction below -- LATERAL is a native lowering. Kept here for history; do not implement against it.] (LATERAL kept only as an optimized-stage choice) [END SUPERSEDED BLOCK]; the DISTINCT ON versus ROW_NUMBER choice by source type moves to native; the COALESCE to an empty JSON list moves to native; a to-one read as a LIMIT 1 JSON subquery inside a level becomes a LEFT JOIN inside the level; the flat rows view is its own emitter from the same walk; the Trino correlated-subquery decorrelation is no longer needed for GraphQL reads, and stays in native for SQL a caller writes. A corpus of GraphQL reads (end-to-end specs, demo tours, the Ontology view at every scope) checks both that each answer is the same before and after, on DuckDB, PostgreSQL and Trino, and that its GraphQL and its exported Cypher compile to the same semantic SQL. (Amended 2026-10-23, OPTIMIZED IS ENGINE-INDEPENDENT) No stage before routing may assume an engine. The optimized stage runs before routing and holds engine-independent rewrites only: materialized-view re-injection, hot VALUES inlining, predicate and limit pushdown, and pruning the levels and columns a read does not use. CTE materialization hints (such as PostgreSQL''s MATERIALIZED) and a per-parent LATERAL join chosen for performance are native lowerings for the routed engine. An optimization that pays off only on some engines is a native lowering for those engines. (Amended 2026-10-23, PLAN AND ROUTE) Landing a statement''s rows and running it on the federation engine is the default; a statement is read directly on its source only when it passes every gate, in this order, and the first it fails names why it is landed (landed: <gate>: <why>). (1) one_source: it reads one source after optimization, judged on the optimized statement, since materialized-view re-injection and hot inlining change what it reads; sources on the same physical database count as one. (2) dialect_supports: that source''s dialect runs every construct in it, by an explicit capability list kept per dialect, naming each construct of the canonical shape -- common table expressions, joins, GROUP BY, ROW_NUMBER and window functions, a subquery read as a value, EXISTS, JSON aggregation and object construction, JSON path extraction -- each engine-only function (REQ-345) and cosine similarity (REQ-423). (3) access_path: a direct access path exists -- a direct driver, the API caller, or the code function. (4) colocated_login: sources counted as one database are under the same login, the same user and the same digest of the resolved credential and connection extras (a key, a token, an IAM role), never the secret itself; two logins are two grants. (5) not_forced: no condition sends it to the engine -- the operator''s floor holds a source to its replica (REQ-030, REQ-826), it reads faked columns (REQ-1494), a materialized view was re-injected or rows were landed (the engine holds them), it reads an ops view of this region''s own record (REQ-1922), a source this node holds no connection for, or every source it reads was inlined as rows; a virtual source has no direct access path. A live-only part (REQ-2000) is not such a condition: it is read live for the engine when the engine runs the statement, and its own source may answer the statement itself. (6) trusted_to_answer: a source Provisa calls itself, other than a SQL database, answers only a read its connector plans as the complete dataset (REQ-1756): every condition, the ordering, the limit and every needed column handled, with no row rule or mask of the role''s on it. Otherwise its rows are landed, the connector''s arguments a pre-filter only, and the route''s reason names the source and, where it is cheap to name, what made the read incomplete. A SQL database passes: its driver runs the statement, whose constructs dialect_supports judged. A response-cache hit is answered before any route (REQ-865), and a write goes to its source''s own driver where it has one, else through the engine''s connector (REQ-031). A route=direct hint tries the gates and is ignored -- said -- when one fails; route=engine lands the statement without them (REQ-030). No row is filtered, sorted or limited in process: what the engine does not run, the source does. (Amended 2026-10-23, THE IR IS THE ONE LOWERING) GraphQL, Cypher and SPARQL reads lower through one graph IR (REQ-2135), whose SQL is this canonical semantic SQL. While the IR''s Cypher-only constructs (variable-length and recursive paths, WITH pipelines, UNWIND, CALL, path functions) are moved into the canonical emitter, a statement is lowered by the emitter only when every construct in it is one the emitter has, and by the earlier lowering otherwise. That choice is a stated construct-coverage check, tested both ways; an error the emitter raises is raised, never retried the other way. The check and the earlier lowering are removed when the last construct has moved; they are not part of the target state.'
   use_case: 'Direct single-source execution is materially faster than Trino federation. Today the route
     is decided on the governed SQL BEFORE hot-CTE inlining runs (inlining is nested inside the Route.TRINO
     branch), so a query whose second source is fully inlined still executes federated. Correct phase ordering
@@ -64784,22 +64784,42 @@
   feature: engineering-standards-principles
   priority: SHOULD
   type: structural
-  description: 'Exactly two contracts govern how a source type is reached, never three or four. ENGINE
-    CONTRACT: every op a federation engine performs on a source type — reachability, capability, catalog
-    registration — goes through that engine''s own Connector(ABC) implementation (REQ-842), one instance
-    per (engine, source_type). An op that does not apply to a given engine is a no-op on that engine''s
-    Connector, never a separate code path outside the contract. DATASOURCE CONTRACT: every op Provisa
-    performs to read a source directly (no engine reaches it live) — connect, list tables, list columns,
-    list primary/foreign keys, execute a query — goes through that source type''s own implementation of
-    ONE interface (connect, fetch_tables, fetch_columns, fetch_primary_keys, fetch_foreign_keys, execute_query),
-    implemented once per source type and reused by every engine''s Connector for that mechanism. REQUIRED
-    FIX: (1) name the datasource contract as its own interface. (2) Every source type currently dispatched
-    by hardcoded special-casing instead of through a registry must be re-registered and dispatched generically
-    under the correct contract. (3) Every source type reimplementing datasource-contract logic another
-    source type already implements generically must migrate onto the shared implementation instead of
-    duplicating it. (4) Any engine-specific catalog-generation logic living outside that engine''s own
-    Connector implementation must fold into it. (5) The registry docstring must accurately describe both
-    contracts once (1)-(4) make that description true.'
+  description: 'Exactly two contracts govern how a source type is reached, never three or four. ENGINE CONTRACT:
+    every op a federation engine performs on a source type — reachability, capability, catalog registration
+    — goes through that engine''s own Connector(ABC) implementation (REQ-842), one instance per (engine,
+    source_type). An op that does not apply to a given engine is a no-op on that engine''s Connector, never
+    a separate code path outside the contract. DATASOURCE CONTRACT: every op Provisa performs to read a
+    source directly (no engine reaches it live) — connect, list tables, list columns, list primary/foreign
+    keys, execute a query — goes through that source type''s own implementation of ONE interface (connect,
+    fetch_tables, fetch_columns, fetch_primary_keys, fetch_foreign_keys, execute_query), implemented once
+    per source type and reused by every engine''s Connector for that mechanism. REQUIRED FIX: (1) name the
+    datasource contract as its own interface. (2) Every source type currently dispatched by hardcoded special-casing
+    instead of through a registry must be re-registered and dispatched generically under the correct contract.
+    (3) Every source type reimplementing datasource-contract logic another source type already implements
+    generically must migrate onto the shared implementation instead of duplicating it. (4) Any engine-specific
+    catalog-generation logic living outside that engine''s own Connector implementation must fold into it.
+    (5) The registry docstring must accurately describe both contracts once (1)-(4) make that description
+    true. (Amended 2026-10-23, THE SOURCE CONTRACT) Every connector Provisa calls itself, other than a SQL
+    database''s, provides the source contract (provisa/federation/connector_contract.py): its capabilities;
+    plan(read), made before any call -- the arguments the call is given and whether its rows are the read''s
+    complete dataset (every condition, the ordering, the limit and every needed column handled, with no
+    row rule or mask of the role''s on it); and call(plan), returning the rows. Routing''s trusted_to_answer
+    gate reads the plan and nothing else of the connector (REQ-863). Provisa''s own connectors implement
+    the contract in their own code: Qdrant, the API caller''s sources (REST/OpenAPI, GraphQL remote, gRPC
+    remote) and SPARQL. A code source''s function cannot, so a proxy implements it on its behalf (REQ-2100).
+    A SQL database is read through its driver and a source the engine reads through its own connector is
+    the engine''s: neither provides it. v1: Qdrant plans a complete dataset for what its API states exactly
+    (REQ-2000); every other connector declares no capability, plans no read complete and lands, applying
+    what it pushes today as the pre-filter. The target shape of a capability, for later, is generic and
+    fully supported only: the comparators it evaluates exactly, per data type; the ordering, by one key
+    or several, in which directions; and the limit, as offset and length. (Amended 2026-10-23, CONTRACT
+    CALLS:) A connector''s remote call is its contract''s call, and every path that calls the remote calls
+    through it: a statement''s landing, the API fills, the hot tier, and replication with its keyed fetch.
+    An API endpoint''s call (REST/OpenAPI, GraphQL API, gRPC, SPARQL, Neo4j) is the one endpoint call, made
+    with its source''s address, credential and headers. A remote GraphQL field''s call is its query, with
+    the plan''s arguments as its variables. A remote gRPC method''s call is the method, with the plan''s
+    arguments as its request. A replica build''s paged whole-collection read of a remote is not yet a contract
+    call.'
   use_case: Two contracts cleanly separates "how does an engine reach this source" from "how does Provisa itself read this source"; each gets exactly one implementation surface per source type. Consolidating
     onto two contracts is what makes "add a new source type" or "add a new engine" a bounded, reviewable
     change instead of a search for every place a source type's name is hardcoded.
@@ -81602,7 +81622,7 @@
   feature: vector-search-queries
   priority: SHOULD
   type: behavioral
-  description: 'A statement whose tables all belong to one Qdrant source routes DIRECT to Qdrant, as any single-source statement routes to its source: the governed statement is lowered to Qdrant''s API. Payload predicates become a Qdrant filter; a key predicate becomes retrieve; a plain scan with a limit becomes scroll; ORDER BY cosine_similarity(<named vector>, <query>) DESC LIMIT k (and the GraphQL similar argument, which compiles to it) becomes query_points against that vector with the filter applied before the top-k. Single-source INSERT, UPDATE and DELETE on a Qdrant collection table become upsert and delete of points. A statement holding anything the lowering cannot express exactly (another source, an aggregate, a predicate with no Qdrant filter form, a row rule that cannot be expressed as a filter) does not route DIRECT and is answered by the engine over the replica, so governance is never bypassed. A vector column written with text is embedded with the column''s declared registry model; a vector given as a vector is used as given, its dimensions checked. (Amended 2026-10-12, RULINGS:) The lead''s rulings, quoted: "(a) query_points as is, with grpc-fix''s statement.approximate_index warning (the same rule as replica top-k). (b) A plain INSERT refuses an existing id by name (retrieve first; note the non-atomicity in the REQ). Also accept INSERT … ON CONFLICT (id) DO UPDATE SET … as an upsert. (c) Yes. Register Table and the table editor let a vector column name its model (filtered by dimensions), and the form carries embedding_model for it." A top-k read in Qdrant uses its own index and so is approximate, as a replica''s top-k is: the answer carries the same approximate-index warning. Similarity runs DIRECT only on a collection whose distance is cosine, the one where Qdrant''s score is the cosine similarity; any other distance is answered by the engine. A plain INSERT of an id the collection holds is refused naming the id: the ids are read before the points are written, and a point written by another client between the read and the write is overwritten (the check is not atomic). INSERT … ON CONFLICT (id) DO UPDATE SET each column = EXCLUDED.column is an upsert of every row given; any other conflict clause is refused by name. A write whose condition, with the role''s row rules, has no Qdrant filter form is refused naming it, since the engine does not write to Qdrant. A write returns no rows. A vector column of a collection table names its registered model at registration and in the table editor, from the models whose dimensions are the vector''s size; that declaration is what both similarity search and a written text use. (Amended 2026-10-12, LIVE-ONLY SOURCE TYPE:) The maintainer ruled that replicas cannot answer what Qdrant answers (''replicas just can''t work''), that ''live-only would be a datasource type property, not an option'', and that ''its reserved for scenarios where the engine cannot replicate the live db query feature.'' Live-only is therefore a property of a source type, fixed by the type: no per-source setting, no form field, no operator choice. A type has it only when its defining query capability cannot be reproduced by the engine over a replica (Qdrant: its own vector index and query API); it is not a general way to avoid replication. Qdrant has it. A live-only source''s table has no replica and no keyed (row_materialize) fetch. A statement on one Qdrant source runs DIRECT as above (writes, and reads lowered to scroll, retrieve or query_points with the filter applied before the top-k, the top-k reported approximate). When a statement is answered by the engine (it joins another source, or computes over a Qdrant column, as a mask does), each Qdrant collection''s part of it must be expressible in Qdrant (a filter, a key set or a top-k), and is fetched live for that statement and handed to the engine as rows, as a search table''s rows are; a part that is not expressible is refused naming the table and why, and is never replicated. Row rules on a Qdrant table must translate into its Qdrant filter, else the statement is refused. Search tables keep their per-statement read. (Amended 2026-10-12, COSINE SIMILARITY ON QDRANT:) The maintainer ruled: ''if cosine_similarity is used on qdrant it will lower to qdrant native - and it will always be direct-only''. ORDER BY cosine_similarity(<vector>, <query>) DESC LIMIT k over a Qdrant collection is lowered to one query_points, the filter applied before the top-k, the top-k reported approximate, and only for a vector whose distance is Cosine; it is so lowered both when the statement runs on the source and when it is the collection''s part of an engine-answered statement, and is never answered over a replica. A live-only collection''s part of an engine-answered statement that has no filter, no key set and no top-k is refused, since it would read the whole collection; a non-null replicate on a live-only source''s table is refused at register and update.'
+  description: 'A statement whose tables all belong to one Qdrant source routes DIRECT to Qdrant, as any single-source statement routes to its source: the governed statement is lowered to Qdrant''s API. Payload predicates become a Qdrant filter; a key predicate becomes retrieve; a plain scan with a limit becomes scroll; ORDER BY cosine_similarity(<named vector>, <query>) DESC LIMIT k (and the GraphQL similar argument, which compiles to it) becomes query_points against that vector with the filter applied before the top-k. Single-source INSERT, UPDATE and DELETE on a Qdrant collection table become upsert and delete of points. A statement holding anything the lowering cannot express exactly (another source, an aggregate, a predicate with no Qdrant filter form, a row rule that cannot be expressed as a filter) does not route DIRECT and is answered by the engine over the replica, so governance is never bypassed. A vector column written with text is embedded with the column''s declared registry model; a vector given as a vector is used as given, its dimensions checked. (Amended 2026-10-12, RULINGS:) The lead''s rulings, quoted: "(a) query_points as is, with grpc-fix''s statement.approximate_index warning (the same rule as replica top-k). (b) A plain INSERT refuses an existing id by name (retrieve first; note the non-atomicity in the REQ). Also accept INSERT … ON CONFLICT (id) DO UPDATE SET … as an upsert. (c) Yes. Register Table and the table editor let a vector column name its model (filtered by dimensions), and the form carries embedding_model for it." A top-k read in Qdrant uses its own index and so is approximate, as a replica''s top-k is: the answer carries the same approximate-index warning. Similarity runs DIRECT only on a collection whose distance is cosine, the one where Qdrant''s score is the cosine similarity; any other distance is answered by the engine. A plain INSERT of an id the collection holds is refused naming the id: the ids are read before the points are written, and a point written by another client between the read and the write is overwritten (the check is not atomic). INSERT … ON CONFLICT (id) DO UPDATE SET each column = EXCLUDED.column is an upsert of every row given; any other conflict clause is refused by name. A write whose condition, with the role''s row rules, has no Qdrant filter form is refused naming it, since the engine does not write to Qdrant. A write returns no rows. A vector column of a collection table names its registered model at registration and in the table editor, from the models whose dimensions are the vector''s size; that declaration is what both similarity search and a written text use. (Amended 2026-10-12, LIVE-ONLY SOURCE TYPE:) The maintainer ruled that replicas cannot answer what Qdrant answers (''replicas just can''t work''), that ''live-only would be a datasource type property, not an option'', and that ''its reserved for scenarios where the engine cannot replicate the live db query feature.'' Live-only is therefore a property of a source type, fixed by the type: no per-source setting, no form field, no operator choice. A type has it only when its defining query capability cannot be reproduced by the engine over a replica (Qdrant: its own vector index and query API); it is not a general way to avoid replication. Qdrant has it. A live-only source''s table has no replica and no keyed (row_materialize) fetch. A statement on one Qdrant source runs DIRECT as above (writes, and reads lowered to scroll, retrieve or query_points with the filter applied before the top-k, the top-k reported approximate). When a statement is answered by the engine (it joins another source, or computes over a Qdrant column, as a mask does), each Qdrant collection''s part of it must be expressible in Qdrant (a filter, a key set or a top-k), and is fetched live for that statement and handed to the engine as rows, as a search table''s rows are; a part that is not expressible is refused naming the table and why, and is never replicated. Row rules on a Qdrant table must translate into its Qdrant filter, else the statement is refused. Search tables keep their per-statement read. (Amended 2026-10-12, COSINE SIMILARITY ON QDRANT:) The maintainer ruled: ''if cosine_similarity is used on qdrant it will lower to qdrant native - and it will always be direct-only''. ORDER BY cosine_similarity(<vector>, <query>) DESC LIMIT k over a Qdrant collection is lowered to one query_points, the filter applied before the top-k, the top-k reported approximate, and only for a vector whose distance is Cosine; it is so lowered both when the statement runs on the source and when it is the collection''s part of an engine-answered statement, and is never answered over a replica. A live-only collection''s part of an engine-answered statement that has no filter, no key set and no top-k is refused, since it would read the whole collection; a non-null replicate on a live-only source''s table is refused at register and update. (Amended 2026-10-23, QDRANT''S COMPLETE DATASETS) Qdrant''s connector implements the source contract (REQ-1756): it plans a read as the complete dataset where its API states the statement exactly -- a retrieve by id, a scroll (with no condition, the first rows up to the limit), a collection''s similarity top-k (query_points, its filter applied before the top k) -- and answers it. Any other read, a search table among them (read under its arguments, REQ-1983), is incomplete: it lands and the engine runs the statement, the collection''s part read live for it. Writes are unchanged.'
   scenario: 'Given a Qdrant collection table kb.docs whose named vector body_vec is a cosine vector declared with a registered model
 
     When a role runs SELECT id, title FROM kb.docs WHERE lang = ''en'' ORDER BY cosine_similarity(body_vec, ''refund policy'') DESC LIMIT 5
@@ -84818,9 +84838,7 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_kafka_on_engine_shard.py
   - tests/unit/test_redis_on_engine_shard.py
   - tests/integration/test_trino_memory_catalog_store.py
-  - tests/unit/test_code_attach.py
   - tests/unit/test_trino_catalog_files.py
-  - tests/integration/test_code_source_attach_trino.py
   docs:
   - sources.md
   - security.md
@@ -85743,123 +85761,158 @@ And reaffirming it records the tag again with today's decider and evidence and r
   priority: SHOULD
   type: behavioral
   description: 'A Node or Python code source''s tables are reached two more ways beside landing (REQ-1984,
-    REQ-1993, REQ-2098). ROUTING, by the existing DIRECT/ENGINE decision with no new router: a single-source
-    read of a code table (only that table, its filters and its parameters) goes DIRECT to the code''s
-    host over its Arrow connection, with no engine and no pgwire. A cross-source read goes to the federation
-    engine: a code table that is floored, replicated, kept for good or that declares a landing TTL above
-    0 of its own is landed and read from its landed copy as today (the response cache, a request''s own
-    opt-in, plays no part); otherwise the engine attaches the built host over pgwire as a Postgres catalog
-    -- Trino through its postgresql connector with case-insensitive name matching switched on, DuckDB
-    through its postgres scanner, the Postgres engines through postgres_fdw -- each tagged @table and
-    @stream a table, its parameters arriving as WHERE equalities on its _nf_ columns. A dev-mode source
-    (its code in the server''s worker) is never attached: its cross-source reads stay landed. ONE FRONT
-    END: every built image, Node or Python, runs one Python front end that serves Provisa''s Arrow protocol
-    and pgwire (buenavista, the base of provisa/pgwire) on the image''s one port, 7443: a client''s SSLRequest
-    is answered S and then TLS, and Provisa''s own protocol opens with its TLS ClientHello, so REQ-2098''s
-    single port and compose snippet are unchanged. It calls the code''s worker (Node or Python) beside
-    it over the worker socket; the Node remote host program is retired. It accepts only the Provisa it
-    is paired with, by REQ-2098''s pairing and pinned certificate, so an engine attaching it presents
-    Provisa''s client certificate, and verifies the host as Provisa''s own dials do: by the host certificate
-    pinned when it was paired (recorded at connect and again at re-pin), as its root, with sslmode=verify-ca;
-    it is never a public database. [SUPERSEDED by REQ-2100, 2026-10-21 -- a host''s certificate is public
+    REQ-1993, REQ-2098). [SUPERSEDED by the 2026-10-23 CODE TABLES ARE LANDED amendment below -- a read
+    of a code table is landed and run by the engine; no read is answered from the function. Kept here for
+    history; do not implement against it.] ROUTING, by the existing DIRECT/ENGINE decision with no new router:
+    a single-source read of a code table (only that table, its filters and its parameters) goes DIRECT to
+    the code''s host over its Arrow connection, with no engine and no pgwire. [END SUPERSEDED BLOCK] [SUPERSEDED
+    by REQ-2100, 2026-10-23 -- no engine attaches a code host and its front end serves no reads (NO ENGINE
+    ATTACH below). Kept here for history; do not implement against it.] A cross-source read goes to the
+    federation engine: a code table that is floored, replicated, kept for good or that declares a landing
+    TTL above 0 of its own is landed and read from its landed copy as today (the response cache, a request''s
+    own opt-in, plays no part); otherwise the engine attaches the built host over pgwire as a Postgres catalog
+    -- Trino through its postgresql connector with case-insensitive name matching switched on, DuckDB through
+    its postgres scanner, the Postgres engines through postgres_fdw -- each tagged @table and @stream a
+    table, its parameters arriving as WHERE equalities on its _nf_ columns. A dev-mode source (its code
+    in the server''s worker) is never attached: its cross-source reads stay landed. [END SUPERSEDED BLOCK]
+    ONE FRONT END: every built image, Node or Python, runs one Python front end that [SUPERSEDED by REQ-2100,
+    2026-10-23 -- no engine attaches a code host and its front end serves no reads (NO ENGINE ATTACH below).
+    Kept here for history; do not implement against it.] serves Provisa''s Arrow protocol and pgwire (buenavista,
+    the base of provisa/pgwire) on the image''s one port, 7443: a client''s SSLRequest is answered S and
+    then TLS, and Provisa''s own protocol opens with its TLS ClientHello, so REQ-2098''s single port and
+    compose snippet are unchanged. [END SUPERSEDED BLOCK] It calls the code''s worker (Node or Python) beside
+    it over the worker socket; the Node remote host program is retired. It accepts only the Provisa it is
+    paired with, by REQ-2098''s pairing and pinned certificate, [SUPERSEDED by REQ-2100, 2026-10-23 -- no
+    engine attaches a code host and its front end serves no reads (NO ENGINE ATTACH below). Kept here for
+    history; do not implement against it.] so an engine attaching it presents Provisa''s client certificate,
+    and verifies the host as Provisa''s own dials do: by the host certificate pinned when it was paired
+    (recorded at connect and again at re-pin), as its root, with sslmode=verify-ca; it is never a public
+    database. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2100, 2026-10-21 -- a host''s certificate is public
     and written for any reader (ROOTS PUBLIC below). Kept here for history; do not implement against it.]
-    Each engine reads the organisation''s identity and the hosts'' certificates
-    from files written where its process reads them, readable by it alone: Trino from codehost-client/
-    of the engine tree it mounts (a GKE shard from a Secret of its own mounted there), a Postgres engine
-    from a directory it shares with Provisa (none shared, as with a managed Postgres, and the table is
-    landed on it), DuckDB from a private directory of Provisa''s process. [END SUPERSEDED BLOCK] A connection names the schemas
-    the source''s tables are registered under (provisa.schemas), and the host serves each function in
-    them. It reports each function''s row count as last answered as pg_class.reltuples, and -1 (unknown)
-    before its first call, so the engine''s planner has statistics. RESIDUAL: every read''s parameters
-    go to the function as its arguments, and everything else the read asks -- column filters, sorts, limits,
-    projections, aggregates -- is applied to the function''s output by an embedded DuckDB over its Arrow
-    batches before the answer is sent, so a query on any column never fails for the code and its author
-    implements none of it. On the direct path Provisa sends the arguments and the residual; on a pgwire
-    attach the front end splits the engine''s SQL into the two. In dev mode the residual runs in Provisa''s
-    own DuckDB over the worker''s batches, by the same module the image carries. Landed reads are unchanged:
-    the engine applies it. PUSHDOWN, declared three ways with one vocabulary and resolved at discovery
-    to one mapping from a parameter to a return column and an operator: by NAME (a parameter named exactly
-    as a return column takes an equality on it; one named {op}_{column}, op one of ne, gt, gte, lt, lte,
-    in, like, takes that operator, and is an ordinary parameter when {column} is not a return column);
-    by TAG (a docstring or JSDoc line @{op}_{column} parameter, or inline in TypeScript /* @{op}_{column}
-    */ before the parameter); and in Python by typing.Annotated (since: Annotated[date | None, "gte_signup"]
-    = None), with no Provisa import and no decorators. in takes a list of the column''s type, like takes
-    text on a text column, the others the column''s type. Only top-level AND conjuncts of a read are pushed
-    (score >= 0.5 AND score < 0.9 fills gte_score and lt_score); nothing under OR or NOT and nothing on
-    an expression. A parameter a read does not fill keeps the function''s default. Every pushed predicate
-    is still applied to the output afterwards, so a function that ignores or loosens a value cannot return
-    wrong rows. Discovery refuses by name a declaration whose types do not fit its column and operator
-    (a type that does not fit, a column the function does not return, a function with no declared columns),
-    a tag naming a missing parameter, and two mappings for one predicate or one parameter. Explicit _nf_
-    parameters are unchanged; a pushed value is part of a landed read''s argument set and is kept per
-    value. NAMES: everywhere the host meets the code -- the pushdown mapping, the predicates and values
-    passed in, the residual and the Arrow batches it builds -- a column is named as the code declares
-    it, never by Provisa''s normalized catalog name; normalization (naming conventions, domain prefixes,
-    aliases) happens only on Provisa''s side, as a read is translated into the host''s request and as
-    its answer comes back. The translation is generated statically, by Provisa''s own live name mapper
-    (provisa/compiler/naming.py) and no second implementation, at Build image and at dev-mode discovery:
-    per exported function, each declared column and parameter name with its catalog name, its pgwire forms
-    (the exact quoted name and its case-folded form) and its Arrow form (the declared name), the pushdown
+    Each engine reads the organisation''s identity and the hosts'' certificates from files written where
+    its process reads them, readable by it alone: Trino from codehost-client/ of the engine tree it mounts
+    (a GKE shard from a Secret of its own mounted there), a Postgres engine from a directory it shares with
+    Provisa (none shared, as with a managed Postgres, and the table is landed on it), DuckDB from a private
+    directory of Provisa''s process. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2100, 2026-10-23 -- no engine
+    attaches a code host and its front end serves no reads (NO ENGINE ATTACH below). Kept here for history;
+    do not implement against it.] A connection names the schemas the source''s tables are registered under
+    (provisa.schemas), and the host serves each function in them. It reports each function''s row count
+    as last answered as pg_class.reltuples, and -1 (unknown) before its first call, so the engine''s planner
+    has statistics. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2100, 2026-10-23 -- no engine attaches a code
+    host and its front end serves no reads (NO ENGINE ATTACH below). Kept here for history; do not implement
+    against it.] RESIDUAL: every read''s parameters go to the function as its arguments, and everything
+    else the read asks -- column filters, sorts, limits, projections, aggregates -- is applied to the function''s
+    output by an embedded DuckDB over its Arrow batches before the answer is sent, so a query on any column
+    never fails for the code and its author implements none of it. On the direct path Provisa sends the
+    arguments and the residual; on a pgwire attach the front end splits the engine''s SQL into the two.
+    In dev mode the residual runs in Provisa''s own DuckDB over the worker''s batches, by the same module
+    the image carries. [END SUPERSEDED BLOCK] Landed reads are unchanged: the engine applies it. PUSHDOWN,
+    declared three ways with one vocabulary and resolved at discovery to one mapping from a parameter to
+    a return column and an operator: by NAME (a parameter named exactly as a return column takes an equality
+    on it; one named {op}_{column}, op one of ne, gt, gte, lt, lte, in, like, takes that operator, and is
+    an ordinary parameter when {column} is not a return column); by TAG (a docstring or JSDoc line @{op}_{column}
+    parameter, or inline in TypeScript /* @{op}_{column} */ before the parameter); and in Python by typing.Annotated
+    (since: Annotated[date | None, "gte_signup"] = None), with no Provisa import and no decorators. in takes
+    a list of the column''s type, like takes text on a text column, the others the column''s type. Only
+    top-level AND conjuncts of a read are pushed (score >= 0.5 AND score < 0.9 fills gte_score and lt_score);
+    nothing under OR or NOT and nothing on an expression. A parameter a read does not fill keeps the function''s
+    default. Every pushed predicate is still applied to the output afterwards, so a function that ignores
+    or loosens a value cannot return wrong rows. Discovery refuses by name a declaration whose types do
+    not fit its column and operator (a type that does not fit, a column the function does not return, a
+    function with no declared columns), a tag naming a missing parameter, and two mappings for one predicate
+    or one parameter. Explicit _nf_ parameters are unchanged; a pushed value is part of a landed read''s
+    argument set and is kept per value. NAMES: everywhere the host meets the code -- the pushdown mapping,
+    the predicates and values passed in, the residual and the Arrow batches it builds -- a column is named
+    as the code declares it, never by Provisa''s normalized catalog name; normalization (naming conventions,
+    domain prefixes, aliases) happens only on Provisa''s side, as a read is translated into the host''s
+    request and as its answer comes back. The translation is generated statically, by Provisa''s own live
+    name mapper (provisa/compiler/naming.py) and no second implementation, at Build image and at dev-mode
+    discovery: per exported function, each declared column and parameter name with its catalog name, [SUPERSEDED
+    by REQ-2100, 2026-10-23 -- no engine attaches a code host and its front end serves no reads (NO ENGINE
+    ATTACH below). Kept here for history; do not implement against it.] its pgwire forms (the exact quoted
+    name and its case-folded form) [END SUPERSEDED BLOCK] and its Arrow form (the declared name), the pushdown
     mapping resolved into the same tables. Two names one wire form cannot tell apart (two columns differing
     only by case, a folded form equal to another name) are refused at build by name, so an ambiguous image
     never ships. The tables are baked into the image, covered by its code hash and reported in its hello
     and its OCI labels; at runtime the host only looks names up, and Provisa uses the identical tables,
-    including for the case-insensitive matching it configures when it attaches the host to an engine.
-    (Amended 2026-10-20, LOADER:) [SUPERSEDED by REQ-2100, 2026-10-20 -- loader is a hash keyed by each
-    key''s own hash (LOADER HASH below), not a list. Kept here for history; do not implement against it.]
-    A function opts into batched join keys with a parameter named loader: a list of JSON objects, each
-    one key, holding the parent''s values for the function''s other parameters (for example [{"customer_id":
-    "637", "plan": "basic", "region": "EU"}, ...]). [END SUPERSEDED BLOCK] A function opts into batched
-    join keys with a parameter named loader, holding the joining rows'' values for the function''s other
-    parameters, one key each. When a join reaches the code table, Provisa de-duplicates the key objects
-    and calls the function once with the whole list (the DataLoader pattern), instead of once per key.
-    The list is sparse: each key object carries only the parameters that have a value for that key, and
-    an absent or null value leaves its field out rather than sending null, so the function''s own defaults
-    apply as they do on a single call. [SUPERSEDED by REQ-2100, 2026-10-20 -- rows are matched back by
-    their _key id, not their key columns, since a defaulted field cannot match the joining row''s empty
-    value. Kept here for history; do not implement against it.] The function returns ordinary rows carrying
-    their key columns, and Provisa joins them back on those columns, never by position: a key may give
-    zero rows or many. [END SUPERSEDED BLOCK] A function without loader keeps one call per distinct argument
-    set, the sets sent to its worker in one request. in_{column} keeps only its pushdown meaning. [SUPERSEDED
-    by REQ-2100, 2026-10-20 -- loader is a hash keyed by each key object''s own hash, not a list carrying
-    _key ids. Kept here for history; do not implement against it.] (Amended 2026-10-20, LOADER KEYS:)
-    Each key object carries a _key id beside its fields (for example {"_key": 3, "customer_id": "637"}),
-    and each row the function returns carries the _key of the key it answers. Provisa fans each returned
-    row out to every joining row that produced that key before de-duplication; a key may give zero rows
-    or many. Rows are matched by _key alone, never by their key columns: with sparse keys a default fills
-    a field the joining row left empty (plan becomes "basic"), which matching on columns would miss. A
-    returned row that carries no _key, or one the batch did not send, is refused by name. [END SUPERSEDED
-    BLOCK] (Amended 2026-10-20, LOADER HASH:) loader is a hash, not a list: an object keyed by each key''s
-    own hash, its value the sparse key object (for example {"9f2c...": {"customer_id": "637"}, "1ab4...":
-    {"customer_id": "173", "plan": "pro"}}). A key''s hash is a stable hash of its sparse object, its
-    fields sorted, so the same values always give the same key, and de-duplication is the hash itself.
+    [SUPERSEDED by REQ-2100, 2026-10-23 -- no engine attaches a code host and its front end serves no reads
+    (NO ENGINE ATTACH below). Kept here for history; do not implement against it.] including for the case-insensitive
+    matching it configures when it attaches the host to an engine. [END SUPERSEDED BLOCK] (Amended 2026-10-20,
+    LOADER:) [SUPERSEDED by REQ-2100, 2026-10-20 -- loader is a hash keyed by each key''s own hash (LOADER
+    HASH below), not a list. Kept here for history; do not implement against it.] A function opts into batched
+    join keys with a parameter named loader: a list of JSON objects, each one key, holding the parent''s
+    values for the function''s other parameters (for example [{"customer_id": "637", "plan": "basic", "region":
+    "EU"}, ...]). [END SUPERSEDED BLOCK] A function opts into batched join keys with a parameter named loader,
+    holding the joining rows'' values for the function''s other parameters, one key each. When a join reaches
+    the code table, Provisa de-duplicates the key objects and calls the function once with the whole list
+    (the DataLoader pattern), instead of once per key. The list is sparse: each key object carries only
+    the parameters that have a value for that key, and an absent or null value leaves its field out rather
+    than sending null, so the function''s own defaults apply as they do on a single call. [SUPERSEDED by
+    REQ-2100, 2026-10-20 -- rows are matched back by their _key id, not their key columns, since a defaulted
+    field cannot match the joining row''s empty value. Kept here for history; do not implement against it.]
+    The function returns ordinary rows carrying their key columns, and Provisa joins them back on those
+    columns, never by position: a key may give zero rows or many. [END SUPERSEDED BLOCK] A function without
+    loader keeps one call per distinct argument set, the sets sent to its worker in one request. in_{column}
+    keeps only its pushdown meaning. [SUPERSEDED by REQ-2100, 2026-10-20 -- loader is a hash keyed by each
+    key object''s own hash, not a list carrying _key ids. Kept here for history; do not implement against
+    it.] (Amended 2026-10-20, LOADER KEYS:) Each key object carries a _key id beside its fields (for example
+    {"_key": 3, "customer_id": "637"}), and each row the function returns carries the _key of the key it
+    answers. Provisa fans each returned row out to every joining row that produced that key before de-duplication;
+    a key may give zero rows or many. Rows are matched by _key alone, never by their key columns: with sparse
+    keys a default fills a field the joining row left empty (plan becomes "basic"), which matching on columns
+    would miss. A returned row that carries no _key, or one the batch did not send, is refused by name.
+    [END SUPERSEDED BLOCK] (Amended 2026-10-20, LOADER HASH:) loader is a hash, not a list: an object keyed
+    by each key''s own hash, its value the sparse key object (for example {"9f2c...": {"customer_id": "637"},
+    "1ab4...": {"customer_id": "173", "plan": "pro"}}). A key''s hash is a stable hash of its sparse object,
+    its fields sorted, so the same values always give the same key, and de-duplication is the hash itself.
     The function returns the same shape: a hash from each key it was given to that key''s rows, zero or
     many. Provisa fans each key''s rows out to every joining row that produced that key. A returned key
     the batch did not send is refused by name. (Amended 2026-10-20, LOADER CALL:) A loader function declares
     only its row type, as any table does; a loader call answers with the hash, and each key''s rows are
     checked against that type. In a loader call every other parameter is left absent, so the key parameters
-    declared beside loader have defaults; a required one fails at the call, by name. A key''s hash is
-    the SHA-256 hex of its sparse object''s canonical JSON: keys sorted, compact separators, each value
-    as the code-source wire carries it. (Amended 2026-10-20, LOADER BATCH SIZE:) The developer may declare
-    a loader function''s largest batch (DataLoader''s maxBatchSize), knowing their data and limits (an
-    API''s id cap, a model''s context, memory), with the declaration forms pushdown uses, the text loader
-    N in each: a docstring or JSDoc tag line @loader 100, an inline TypeScript comment /* @loader 100
-    */ before the loader parameter, or a typing.Annotated string on it, Annotated[list[Key] | None, "loader
-    100"]. With none declared, one batch holds every key. With a size, Provisa splits the keys into chunks
-    of that size, calls the function once per chunk, and merges the answers by hash. Discovery refuses
-    by name a size declared on a function with no loader parameter, a size that is not a positive integer,
-    and two sizes declared for one function, as it refuses any other declaration the function cannot take.
-    (Amended 2026-10-21, ROOTS PUBLIC:) Each engine reads the organisation''s identity and the hosts''
-    certificates from files written where its process reads them: Trino from codehost-client/ of the
-    engine tree it mounts (a GKE shard from a Secret of its own mounted there), a Postgres engine from
-    a directory it shares with Provisa (none shared, as with a managed Postgres, and the table is landed
-    on it), DuckDB from a private directory of Provisa''s process. [SUPERSEDED by REQ-2073, 2026-10-21
-    -- the directory and keys are the engine''s user''s or its group''s (REQ-2073 ENGINE GROUP). Kept here for
-    history; do not implement against it.] The directory is 0755. The identity''s
-    keys are mode 0600, readable by the engine''s process alone. [END SUPERSEDED BLOCK] The identity''s keys
-    are written as REQ-2073 (ENGINE GROUP) writes an engine''s secrets. A certificate is public, the identity''s
-    own and each host''s pinned one: it is written mode 0644, so the engine reads it whatever user wrote
-    it, with no ownership given.'
+    declared beside loader have defaults; a required one fails at the call, by name. A key''s hash is the
+    SHA-256 hex of its sparse object''s canonical JSON: keys sorted, compact separators, each value as the
+    code-source wire carries it. (Amended 2026-10-20, LOADER BATCH SIZE:) The developer may declare a loader
+    function''s largest batch (DataLoader''s maxBatchSize), knowing their data and limits (an API''s id
+    cap, a model''s context, memory), with the declaration forms pushdown uses, the text loader N in each:
+    a docstring or JSDoc tag line @loader 100, an inline TypeScript comment /* @loader 100 */ before the
+    loader parameter, or a typing.Annotated string on it, Annotated[list[Key] | None, "loader 100"]. With
+    none declared, one batch holds every key. With a size, Provisa splits the keys into chunks of that size,
+    calls the function once per chunk, and merges the answers by hash. Discovery refuses by name a size
+    declared on a function with no loader parameter, a size that is not a positive integer, and two sizes
+    declared for one function, as it refuses any other declaration the function cannot take. [SUPERSEDED
+    by REQ-2100, 2026-10-23 -- no engine attaches a code host and its front end serves no reads (NO ENGINE
+    ATTACH below). Kept here for history; do not implement against it.] (Amended 2026-10-21, ROOTS PUBLIC:)
+    Each engine reads the organisation''s identity and the hosts'' certificates from files written where
+    its process reads them: Trino from codehost-client/ of the engine tree it mounts (a GKE shard from a
+    Secret of its own mounted there), a Postgres engine from a directory it shares with Provisa (none shared,
+    as with a managed Postgres, and the table is landed on it), DuckDB from a private directory of Provisa''s
+    process. [SUPERSEDED by REQ-2073, 2026-10-21 -- the directory and keys are the engine''s user''s or
+    its group''s (REQ-2073 ENGINE GROUP). Kept here for history; do not implement against it.] The directory
+    is 0755. The identity''s keys are mode 0600, readable by the engine''s process alone. [END SUPERSEDED
+    BLOCK] The identity''s keys are written as REQ-2073 (ENGINE GROUP) writes an engine''s secrets. A certificate
+    is public, the identity''s own and each host''s pinned one: it is written mode 0644, so the engine reads
+    it whatever user wrote it, with no ownership given. [END SUPERSEDED BLOCK] (Amended 2026-10-23, CODE
+    TABLES ARE LANDED) A read of a code table is landed and the federation engine runs the whole statement
+    over the landed rows: the function is called with the read''s arguments and the values its pushed predicates
+    give -- a pre-filter only, applied again by the engine -- and its rows are kept under all of them. No
+    read is answered from the function on its own driver (REQ-863: a code source passes access_path, its
+    function the access path, and fails trusted_to_answer). [SUPERSEDED by REQ-2100, 2026-10-23 -- no engine
+    attaches a code host and its front end serves no reads (NO ENGINE ATTACH below). Kept here for history;
+    do not implement against it.] An engine that attaches the built host reads it as before. [END SUPERSEDED
+    BLOCK] Writes are unchanged. A code source''s proxy (provisa/codesource/proxy.py) implements the source
+    contract on its function''s behalf (REQ-1756): it reads the function''s declarations, plans each read
+    before the call -- the function''s arguments and the values its declared predicates give, a pre-filter
+    -- and makes the call, once per argument set for a relationship that feeds its parameters (REQ-2099),
+    its rows checked against the declared columns. It plans no read as the complete dataset (v1), so every
+    code read lands. User code is unchanged. (Amended 2026-10-23, NO ENGINE ATTACH:) No engine attaches
+    a code host: a read of a built source''s table is landed as a dev-mode source''s is, its function called
+    over the Arrow connection, and the engine runs the statement over the landed rows. Trino, DuckDB and
+    the Postgres engines have no code-host connector, and no engine is given the organisation''s identity
+    or a host''s certificate. The image''s front end serves Provisa''s Arrow protocol alone on 7443, with
+    the pairing, pinned certificate and hello unchanged; it serves no pgwire, and it applies no statement
+    to a function''s rows, so the image carries no DuckDB, sqlglot or Arrow for it. The name tables keep
+    each declared column and parameter with its catalog name and Arrow form.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and
@@ -85930,9 +85983,7 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - tests/unit/test_code_remote_host.py
   - tests/unit/test_code_remote_host_node.py
   - tests/unit/test_code_image_build.py
-  - tests/unit/test_code_pgfront.py
-  - tests/unit/test_code_attach.py
-  - tests/integration/test_code_source_attach_trino.py
+  - tests/integration/test_code_source_built_host_trino.py
   - tests/unit/test_code_loader.py
   - tests/unit/test_node_host_argument_sets.py
   docs:
@@ -87163,109 +87214,122 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: sparql-query
   priority: SHOULD
   type: behavioral
-  description: >-
-    SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is a full
-    surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same
-    editor, results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients
-    query; and a "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic
-    SQL statement through the graph mapping Cypher uses (REQ-351): a table is a class and its rows
-    are its subjects, each subject's IRI built from its primary key, only on output; a column linked
-    to a term is a predicate; a declared relationship is an edge predicate; and the meta-domain
-    tables (terms, term edges, term references, tables, columns, domains) are mapped as SKOS and OWL.
-    The statement is governed whole and routed as any query is; there is no separate triple store
-    and no knowledge-graph views. A property path is lowered as a Cypher variable-length path is
-    (REQ-348): WITH RECURSIVE capped at a depth limit, or unrolled to that depth on an engine
-    without recursion, with cycles handled. A result cut at the limit says it was cut. The depth
-    limit is an operator setting with its field in Deployment settings. A variable predicate
-    (?s ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded. (Amended
-    2026-10-22, ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two steps.
-    First, a refactor makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary
-    no front end owns, with Cypher's parser on one side and select_builder, assembler, path_translator
-    and label_map as the back end both languages share; Cypher's existing tests prove the refactor
-    changes nothing. Second, a SPARQL front end lowers rdflib's SPARQL algebra to that IR and adds what
-    SPARQL needs that Cypher does not: predicates for term-linked columns, IRIs on output, the bounded
-    variable-predicate union, and CONSTRUCT's triples. There is no second, SPARQL-only back end. rdflib
-    is a new dependency, taken under the dependency rules. (Amended 2026-10-22, CYPHER+ IR:)
-    [SUPERSEDED by REQ-2135, 2026-10-22 -- the IR is the GQL+ IR, a GQL-inspired IR (GQL+ IR amendment
-    below); the tiers and the symmetry stand, read with GQL+ IR for Cypher+ IR. Kept here for history;
-    do not implement against it.] The canonical graph
-    form is the Cypher+ IR. It is a superset IR, not Cypher: Cypher's pattern IR extended with what
-    SPARQL needs, which is path expressions (sequence, alternative and inverse among them), variable
-    predicates, a triples output for CONSTRUCT, and IRI and datatype values. [END SUPERSEDED BLOCK] It stands
-    to graph languages as semantic SQL stands to every language, and semantic SQL is likewise a
-    superset IR, not SQL: SQL extended with the model (model names, views and metrics resolved,
-    governance attached), lowered per engine at routing and never run as written. Neither is the
-    language it is named after. The tiers are: a graph language, parsed into the Cypher+ IR, which
-    holds the graph meaning (patterns, paths, variable predicates, triples out); the graph mapping
-    lowers that, in one back end, into semantic SQL, which holds the data meaning (views expanded,
-    governed whole, optimized, routed). Every graph language front end parses into the Cypher+ IR:
-    Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing below it is
-    duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within what
-    Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric:
-    Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no
-    language is its IR, the namesake included. So the refactor makes Cypher's parser a front end like
-    SPARQL's, and nothing below the IR is specific to Cypher. (Amended 2026-10-22, GQL+ IR:) The
-    graph-side IR is the GQL+ IR. As semantic SQL is a SQL-inspired IR, the GQL+ IR is a GQL-inspired
-    IR: each borrows its namesake's shape, each is our own representation, and neither claims
-    conformance to the standard. The GQL+ IR borrows GQL's pattern concepts (quantified path patterns,
-    the path modes WALK, TRAIL, ACYCLIC and SIMPLE, label expressions) and adds only variable predicates,
-    a triples output for CONSTRUCT, and IRI and datatype values. [SUPERSEDED by REQ-2135, 2026-10-22
-    -- Cypher's variable-length paths are bounded WALK, not ACYCLIC (PATH MODES below). Kept here
-    for history; do not implement against it.] Cypher maps straight in, its
-    depth-capped cycle-free paths being ACYCLIC with a bound; [END SUPERSEDED BLOCK] SPARQL's path sequences, alternatives and
-    inverses map onto those same concepts; a GQL or SQL/PGQ front end would be a parser only. The tiers
-    are unchanged, and GraphQL still lowers straight to semantic SQL. Both IR names are internal: no
-    user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:) Built in five phases.
-    1: the GQL IR starts as today's Cypher compiler; its Cypher AST and precompile (the parser and the
-    Cypher-specific front end) are split out, and what remains is the GQL IR back end, proven by
-    Cypher's existing tests. 2: that back end gains the GQL-inspired features SPARQL needs: quantified
-    paths, path modes, label expressions, variable predicates, CONSTRUCT triples, IRI and datatype
-    values. 3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol
-    endpoint. 5: the UI, the SPARQL tab and the Ontology page's SPARQL button (REQ-2136); it comes last
-    and can wait. (Amended 2026-10-22, EXPRESSIONS AS TREES:) Phase 2 opens with expressions as trees.
-    Today the Cypher AST holds WHERE, RETURN, WITH, UNWIND and ORDER BY expressions as raw text (the
-    expression field of WhereClause, ReturnItem, UnwindClause and OrderItem), and the back end reads
-    that text in about twenty places: regex scans, map-literal rewriting, and a late re-parse with
-    Cypher's expression grammar (expr_parser). The Cypher front end instead parses every expression
-    into the expression tree (expr_ast) when it parses the statement, and the back end walks trees
-    only, proven by the Cypher tests. Only then is the IR fully structural: SPARQL's FILTER, BIND and
-    ORDER BY convert straight to trees, and nothing below the IR reads Cypher syntax. Phase 1 keeps the
-    text on purpose, so that its move stays purely structural. (Amended 2026-10-22, SPARQL
-    VISUALIZER:) Phase 5's SPARQL visualizer is the Cypher visualizer (GraphSidebar and the graph
-    canvas) with a second vocabulary: one component, not a separate visualizer. It keeps the same
-    shell (history, favorites, settings, export, the canvas and how results are drawn), and its
-    left-hand pills are in SPARQL's vocabulary: Domains; Classes (terms typing a table, with abstract
-    terms as superclasses); Properties (term-linked columns); Relationships (edge-type predicates:
-    declared relationships and term edges); Concepts (the SKOS vocabulary); and Prefixes. Clicking a
-    pill adds a triple pattern to the current query rather than replacing it. IRIs are shown compacted
-    by prefix, with the full IRI on hover; literals are drawn distinct from resources; and CONSTRUCT
-    results are drawn as a graph.
-    (Amended 2026-10-22, PATH MODES:) Cypher's variable-length paths map in as WALK with a bound:
-    the depth limit ends the walk, and a path may repeat nodes and edges within it, as the compiled
-    SQL has always done. Phase 2 lowers WALK, and REACH for SPARQL's property paths: SPARQL's
-    set semantics, distinct endpoint pairs, which ends on cycles without tracking the path. TRAIL,
-    ACYCLIC and SIMPLE are in the IR and refused by name until a front end needs them. The depth
-    limit is an operator setting, default 10, with its field in Deployment settings, and a result cut
-    at the limit carries a flag saying so. The variable-predicate union is bounded by a second
-    operator setting, the graph union limit, default 64 branches, with its own field; a union past it
-    is refused, naming the limit. A subject's IRI is {public URL}/id/{domain}/{table}/{primary key},
-    built only on output. The prefixes are one per domain, plus skos:, owl:, rdf:, rdfs: and xsd:.
-    (Amended 2026-10-22, IRIS:) The public URL is the operator setting server.public_url, with its
-    field in Deployment settings; it is not derived from the hostname, and a query whose answer
-    holds a subject IRI is refused while it is unset, naming the setting. No IRI is built in SQL: the
-    SQL returns a subject as its table's identity and its key values, typed as the table holds them,
-    and the answer's writer builds the IRI, each segment percent-encoded (RFC 3986), so a key with
-    '/', ';', a space or any non-ASCII character still makes a valid IRI. A composite key is its
-    values in primary-key order, separated by ';'. An IRI a query names is parsed back, at compile
-    time, to its table and key values, and subjects are joined and filtered on those. Data and
-    vocabulary are kept apart: instances are under /id/, and the vocabulary is under /vocab/. A
-    table's class is {public URL}/vocab/{domain}/{table}; a column's predicate, in the manner of the
-    Direct Mapping, is {public URL}/vocab/{domain}/{table}#{column}; a term's class or property is
-    {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as a key is, since
-    term names are unique and a term's derived domains change (a renamed term has a new IRI); and
-    an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property term
-    has the term's IRI as its predicate, and its direct predicate stays usable. A class term types
-    the instances of the tables it grounds in addition to their table class (REQ-2141).
+  description: 'SPARQL is a graph query language served over the semantic model, a peer of Cypher. It is
+    a full surface: a SPARQL tab beside SQL, GraphQL and Cypher wherever queries are written, with the same
+    editor, results and show-SQL; a SPARQL 1.1 Protocol HTTP endpoint that standard RDF clients query; and
+    a "listening" line at startup. SELECT, ASK and CONSTRUCT are lowered to one semantic SQL statement through
+    the graph mapping Cypher uses (REQ-351): a table is a class and its rows are its subjects, each subject''s
+    IRI built from its primary key, only on output; a column linked to a term is a predicate; a declared
+    relationship is an edge predicate; and the meta-domain tables (terms, term edges, term references, tables,
+    columns, domains) are mapped as SKOS and OWL. The statement is governed whole and routed as any query
+    is; there is no separate triple store and no knowledge-graph views. A property path is lowered as a
+    Cypher variable-length path is (REQ-348): WITH RECURSIVE capped at a depth limit, or unrolled to that
+    depth on an engine without recursion, with cycles handled. A result cut at the limit says it was cut.
+    The depth limit is an operator setting with its field in Deployment settings. A variable predicate (?s
+    ?p ?o) is a union, made at compile time, over the mapped predicates, and bounded. (Amended 2026-10-22,
+    ONE BACK END:) The SPARQL transpiler starts from the Cypher transpiler, in two steps. First, a refactor
+    makes the pattern IR in provisa/cypher (graph_types, graph_rewriter) a boundary no front end owns, with
+    Cypher''s parser on one side and select_builder, assembler, path_translator and label_map as the back
+    end both languages share; Cypher''s existing tests prove the refactor changes nothing. Second, a SPARQL
+    front end lowers rdflib''s SPARQL algebra to that IR and adds what SPARQL needs that Cypher does not:
+    predicates for term-linked columns, IRIs on output, the bounded variable-predicate union, and CONSTRUCT''s
+    triples. There is no second, SPARQL-only back end. rdflib is a new dependency, taken under the dependency
+    rules. (Amended 2026-10-22, CYPHER+ IR:) [SUPERSEDED by REQ-2135, 2026-10-22 -- the IR is the GQL+ IR,
+    a GQL-inspired IR (GQL+ IR amendment below); the tiers and the symmetry stand, read with GQL+ IR for
+    Cypher+ IR. Kept here for history; do not implement against it.] The canonical graph form is the Cypher+
+    IR. It is a superset IR, not Cypher: Cypher''s pattern IR extended with what SPARQL needs, which is
+    path expressions (sequence, alternative and inverse among them), variable predicates, a triples output
+    for CONSTRUCT, and IRI and datatype values. [END SUPERSEDED BLOCK] It stands to graph languages as semantic
+    SQL stands to every language, and semantic SQL is likewise a superset IR, not SQL: SQL extended with
+    the model (model names, views and metrics resolved, governance attached), lowered per engine at routing
+    and never run as written. Neither is the language it is named after. The tiers are: a graph language,
+    parsed into the Cypher+ IR, which holds the graph meaning (patterns, paths, variable predicates, triples
+    out); the graph mapping lowers that, in one back end, into semantic SQL, which holds the data meaning
+    (views expanded, governed whole, optimized, routed). Every graph language front end parses into the
+    Cypher+ IR: Cypher, SPARQL, and GQL later. A new graph language costs a parser into it, and nothing
+    below it is duplicated. SPARQL is never translated through Cypher text. Where a SPARQL query falls within
+    what Cypher expresses, the SPARQL tab may also show the equivalent Cypher. The structure is symmetric:
+    Cypher is a front end that lowers into the Cypher+ IR, as SQL lowers into semantic SQL, and no language
+    is its IR, the namesake included. So the refactor makes Cypher''s parser a front end like SPARQL''s,
+    and nothing below the IR is specific to Cypher. (Amended 2026-10-22, GQL+ IR:) The graph-side IR is
+    the GQL+ IR. As semantic SQL is a SQL-inspired IR, the GQL+ IR is a GQL-inspired IR: each borrows its
+    namesake''s shape, each is our own representation, and neither claims conformance to the standard. The
+    GQL+ IR borrows GQL''s pattern concepts (quantified path patterns, the path modes WALK, TRAIL, ACYCLIC
+    and SIMPLE, label expressions) and adds only variable predicates, a triples output for CONSTRUCT, and
+    IRI and datatype values. [SUPERSEDED by REQ-2135, 2026-10-22 -- Cypher''s variable-length paths are
+    bounded WALK, not ACYCLIC (PATH MODES below). Kept here for history; do not implement against it.] Cypher
+    maps straight in, its depth-capped cycle-free paths being ACYCLIC with a bound; [END SUPERSEDED BLOCK]
+    SPARQL''s path sequences, alternatives and inverses map onto those same concepts; a GQL or SQL/PGQ front
+    end would be a parser only. The tiers are unchanged, and GraphQL still lowers straight to semantic SQL.
+    Both IR names are internal: no user-facing doc, the site or the UI uses them. (Amended 2026-10-22, PHASING:)
+    Built in five phases. 1: the GQL IR starts as today''s Cypher compiler; its Cypher AST and precompile
+    (the parser and the Cypher-specific front end) are split out, and what remains is the GQL IR back end,
+    proven by Cypher''s existing tests. 2: that back end gains the GQL-inspired features SPARQL needs: quantified
+    paths, path modes, label expressions, variable predicates, CONSTRUCT triples, IRI and datatype values.
+    3: a SPARQL precompiler phase, rdflib algebra to the GQL IR. 4: the SPARQL 1.1 Protocol endpoint. 5:
+    the UI, the SPARQL tab and the Ontology page''s SPARQL button (REQ-2136); it comes last and can wait.
+    (Amended 2026-10-22, EXPRESSIONS AS TREES:) Phase 2 opens with expressions as trees. Today the Cypher
+    AST holds WHERE, RETURN, WITH, UNWIND and ORDER BY expressions as raw text (the expression field of
+    WhereClause, ReturnItem, UnwindClause and OrderItem), and the back end reads that text in about twenty
+    places: regex scans, map-literal rewriting, and a late re-parse with Cypher''s expression grammar (expr_parser).
+    The Cypher front end instead parses every expression into the expression tree (expr_ast) when it parses
+    the statement, and the back end walks trees only, proven by the Cypher tests. Only then is the IR fully
+    structural: SPARQL''s FILTER, BIND and ORDER BY convert straight to trees, and nothing below the IR
+    reads Cypher syntax. Phase 1 keeps the text on purpose, so that its move stays purely structural. (Amended
+    2026-10-22, SPARQL VISUALIZER:) Phase 5''s SPARQL visualizer is the Cypher visualizer (GraphSidebar
+    and the graph canvas) with a second vocabulary: one component, not a separate visualizer. It keeps the
+    same shell (history, favorites, settings, export, the canvas and how results are drawn), and its left-hand
+    pills are in SPARQL''s vocabulary: Domains; Classes (terms typing a table, with abstract terms as superclasses);
+    Properties (term-linked columns); Relationships (edge-type predicates: declared relationships and term
+    edges); Concepts (the SKOS vocabulary); and Prefixes. Clicking a pill adds a triple pattern to the current
+    query rather than replacing it. IRIs are shown compacted by prefix, with the full IRI on hover; literals
+    are drawn distinct from resources; and CONSTRUCT results are drawn as a graph. (Amended 2026-10-22,
+    PATH MODES:) Cypher''s variable-length paths map in as WALK with a bound: the depth limit ends the walk,
+    and a path may repeat nodes and edges within it, as the compiled SQL has always done. Phase 2 lowers
+    WALK, and REACH for SPARQL''s property paths: SPARQL''s set semantics, distinct endpoint pairs, which
+    ends on cycles without tracking the path. TRAIL, ACYCLIC and SIMPLE are in the IR and refused by name
+    until a front end needs them. The depth limit is an operator setting, default 10, with its field in
+    Deployment settings, and a result cut at the limit carries a flag saying so. The variable-predicate
+    union is bounded by a second operator setting, the graph union limit, default 64 branches, with its
+    own field; a union past it is refused, naming the limit. A subject''s IRI is {public URL}/id/{domain}/{table}/{primary
+    key}, built only on output. The prefixes are one per domain, plus skos:, owl:, rdf:, rdfs: and xsd:.
+    (Amended 2026-10-22, IRIS:) The public URL is the operator setting server.public_url, with its field
+    in Deployment settings; it is not derived from the hostname, and a query whose answer holds a subject
+    IRI is refused while it is unset, naming the setting. No IRI is built in SQL: the SQL returns a subject
+    as its table''s identity and its key values, typed as the table holds them, and the answer''s writer
+    builds the IRI, each segment percent-encoded (RFC 3986), so a key with ''/'', '';'', a space or any
+    non-ASCII character still makes a valid IRI. A composite key is its values in primary-key order, separated
+    by '';''. An IRI a query names is parsed back, at compile time, to its table and key values, and subjects
+    are joined and filtered on those. Data and vocabulary are kept apart: instances are under /id/, and
+    the vocabulary is under /vocab/. A table''s class is {public URL}/vocab/{domain}/{table}; a column''s
+    predicate, in the manner of the Direct Mapping, is {public URL}/vocab/{domain}/{table}#{column}; a term''s
+    class or property is {public URL}/vocab/term/{term name}, with no domain, the name percent-encoded as
+    a key is, since term names are unique and a term''s derived domains change (a renamed term has a new
+    IRI); and an edge type is {public URL}/vocab/rel/{relationship type}. A column grounded by a property
+    term has the term''s IRI as its predicate, and its direct predicate stays usable. A class term types
+    the instances of the tables it grounds in addition to their table class (REQ-2141). (Amended 2026-10-23,
+    GRAPHQL IS A FRONT END OF THE IR) GraphQL is a front end of the graph IR, beside Cypher and SPARQL:
+    a GraphQL read lowers to the IR -- a root field to a node pattern with its where, order, skip and limit;
+    a relationship field to a hop on its declared relationship (its direction, a junction''s relationships
+    of the types its condition keeps) and a subquery of that level''s rows, to-one or to-many by the relationship''s
+    cardinality, with the level''s own where, order, skip, limit and distinct_on; a relationship condition
+    to EXISTS; an alias to its result name; aggregates and group-by to the IR''s aggregation. The IR''s
+    SQL is the canonical semantic SQL (REQ-863), so equivalent GraphQL, Cypher and SPARQL reads compile
+    to the same semantic SQL by construction. SQL a caller writes enters the pipeline as semantic SQL and
+    does not pass through the IR; gRPC, JSON:API and OpenAPI reads lower to GraphQL and reach the IR through
+    it. The one place a transport wraps compiled SQL rather than lowering through GraphQL is JSON:API''s
+    page[total] count (REQ-1197): the total of the already compiled read, computed by the engine as one
+    scalar row. Open as query''s Cypher is the IR printed as Cypher text. (Amended 2026-10-23, OPTIONAL
+    AND FILTER SCOPE:) A query''s FILTERs hold of its solutions, its OPTIONALs'' bindings among them. A
+    FILTER inside an OPTIONAL is that OPTIONAL''s condition. An OPTIONAL nested in an OPTIONAL extends it;
+    a FILTER naming a variable that only the inner OPTIONAL binds is refused by name. A triple inside an
+    OPTIONAL holds only of a value, as SPARQL defines it, so a null leaves the whole OPTIONAL unbound. An
+    OPTIONAL holding only properties of nodes already matched binds them as they are; one with a condition
+    of its own is refused by name. (Amended 2026-10-23, VOCABULARY ENDPOINT:) GET /data/sparql/vocabulary
+    answers the caller''s role''s vocabulary as IRIs, for a client to offer as a query is written: its base
+    and prefixes; each class, a table''s own or a Class term, with the labels it types; each predicate,
+    a column''s own or a Property term, with its label, property and datatype; each edge type with its source
+    and target; and the live Concept terms.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

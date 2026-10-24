@@ -136,6 +136,33 @@ def call_arguments(table: dict, export: Any, given: dict | None) -> tuple[list, 
     return args, [p.name for p in export.parameters]
 
 
+async def pushed_arguments(state: Any, table: dict, name: str, statement: str) -> dict[str, Any]:
+    """The values ``statement`` (PostgreSQL text, reading ``table`` as ``name``) gives the
+    parameters the function declares a predicate is pushed to (REQ-2100): a pre-filter of the rows
+    landed for it. Each pushed predicate stays in the statement, which the engine applies again."""
+    from provisa.codehost import residual
+    from provisa.codesource.source import context_for, prepare
+    from provisa.federation.registry_view import registered_sources
+
+    found = [s for s in await registered_sources(state) if s.id == table["source_id"]]
+    if not found:
+        raise ValueError(f"Table {name!r}: its source {table['source_id']!r} is not registered")
+    source = found[0]
+    prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
+    function = export_of(table)
+    export = next(
+        (e for e in prepared.manifest.exports if e.name == function and e.kind == "table"), None
+    )
+    if export is None:
+        raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
+    pushdown = {
+        p.name: {"column": p.pushes.column, "op": p.pushes.op}
+        for p in export.parameters
+        if p.pushes is not None
+    }
+    return residual.pushed(statement, "postgres", name, pushdown)
+
+
 async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app state
     """Call ``table``'s function with the arguments ``given`` and return its checked rows."""
     return await read_each(state, table, [given])

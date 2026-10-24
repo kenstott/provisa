@@ -210,7 +210,7 @@ class TestBuildRefreshSQL:
             "AND team = current_setting('provisa.team')"
         )
 
-        async def _govern_and_route(sql, _role, *, session_vars, route_hint):
+        async def _govern_and_route(sql, _role, *, session_vars, route_hint, building):
             resolved = _pipeline._resolve_session_settings(sql, session_vars, "postgres")
             return SimpleNamespace(
                 route=Route.ENGINE, physical_sql=resolved, exec_params=None, columns=None

@@ -33,6 +33,7 @@ import {
   Braces,
   Cable,
   Check,
+  CircleHelp,
   Copy,
   FileJson,
   Globe,
@@ -49,6 +50,7 @@ import { cypherRelType, tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
+import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
 
 // ODPS inputPorts: a derived (not stored) 1-hop input(s) -> transform -> output projection over
@@ -124,20 +126,68 @@ interface DataProductDetailPanelProps {
   onDelete: () => void;
 }
 
-function SectionTitle({ label, hint }: { label: string; hint?: string }) {
-  return (
-    <Group gap={4} align="baseline">
-      <Text c="dimmed" fw={500} size="sm">
-        {label}
-      </Text>
+// A card in the masonry: kept whole within its column.
+const CARD_IN_COLUMN: React.CSSProperties = {
+  breakInside: "avoid",
+  minWidth: 0,
+  marginBottom: "var(--mantine-spacing-sm)",
+};
+// A card's content stays inside the card: long words wrap, and what cannot wrap (a table's
+// columns) scrolls within it.
+const CARD_BODY: React.CSSProperties = { minWidth: 0, overflowX: "auto", overflowWrap: "anywhere" };
+
+/** One card of the panel: the application's collapsible (one look, its open or closed state
+ * remembered per section), headed by its label and, behind (?), what it holds. ``wide`` spans the
+ * panel's width, outside the columns. */
+function DetailCard({
+  section,
+  label,
+  hint,
+  testId,
+  tourId,
+  wide = false,
+  children,
+}: {
+  section: string;
+  label: string;
+  hint?: string;
+  testId: string;
+  tourId?: string;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
+  const heading = (
+    <Group gap="xs" wrap="nowrap" component="span">
+      <span>{label}</span>
       {hint && (
         <Tip text={hint}>
-          <Text size="xs" c="var(--text-muted)" style={{ cursor: "help" }}>
-            ⓘ
-          </Text>
+          <ActionIcon
+            component="span"
+            variant="subtle"
+            color="gray"
+            size="xs"
+            role="button"
+            tabIndex={0}
+            aria-label={hint}
+            data-testid={`${testId}-hint`}
+            // The icon sits in the heading; using it must not also open or close the card.
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <CircleHelp size={14} aria-hidden />
+          </ActionIcon>
         </Tip>
       )}
     </Group>
+  );
+  return (
+    <div style={wide ? undefined : CARD_IN_COLUMN} data-tour={tourId} data-testid={testId}>
+      <Collapsibles id={`data-product.${section}`}>
+        <CollapsibleItem value={section} title={heading} controlTestId={`${testId}-toggle`}>
+          <div style={CARD_BODY}>{children}</div>
+        </CollapsibleItem>
+      </Collapsibles>
+    </div>
   );
 }
 
@@ -277,18 +327,9 @@ export function DataProductDetailPanel({
     .map((r) => ({ r, type: cypherRelType(r) }))
     .filter((row): row is { r: Relationship; type: string } => !!row.type && !row.r.disableCypher);
 
-  // Masonry panel grid: a CSS multi-column layout packs each section into whichever column has
-  // room next, instead of flex-wrap's row-by-row layout (which pads every panel in a row up to
-  // the row's tallest neighbor, leaving the shorter panels full of unused whitespace).
-  const panelStyle: React.CSSProperties = {
-    breakInside: "avoid",
-    minWidth: 0,
-    marginBottom: "var(--mantine-spacing-sm)",
-    border: "1px solid var(--mantine-color-default-border)",
-    borderRadius: "var(--mantine-radius-sm)",
-    padding: "var(--mantine-spacing-sm)",
-  };
-
+  // Masonry panel grid: a CSS multi-column layout packs each card into whichever column has room
+  // next, instead of flex-wrap's row-by-row layout (which pads every card in a row up to the row's
+  // tallest neighbor, leaving the shorter cards full of unused whitespace).
   if (coreError) {
     return (
       <Alert color="red" data-testid={`data-product-detail-error-${p.id}`}>
@@ -445,11 +486,18 @@ export function DataProductDetailPanel({
   return (
     <Stack gap="sm" data-testid={`data-product-detail-${p.id}`}>
       <div style={{ columnWidth: "320px", columnGap: "var(--mantine-spacing-sm)" }}>
-        <div style={panelStyle}>
+        <DetailCard
+          section="details"
+          testId={`data-product-card-details-${p.id}`}
+          label={t("dataProductsTab.detail.field.details")}
+        >
           <DetailFields testId={`data-product-read-${p.id}`} fields={fields} />
-        </div>
-        <div style={panelStyle}>
-          <SectionTitle label={t("dataProductsTab.detail.field.customProperties")} />
+        </DetailCard>
+        <DetailCard
+          section="customProperties"
+          testId={`data-product-card-customProperties-${p.id}`}
+          label={t("dataProductsTab.detail.field.customProperties")}
+        >
           {customPropertyEntries.length === 0 ? (
             <Empty text={t("dataProductsTab.detail.customPropertiesEmpty")} />
           ) : (
@@ -462,10 +510,13 @@ export function DataProductDetailPanel({
               ))}
             </List>
           )}
-        </div>
+        </DetailCard>
         {core.tags !== undefined && (
-          <div style={panelStyle}>
-            <SectionTitle label={t("dataProductCore.tags")} />
+          <DetailCard
+            section="tags"
+            testId={`data-product-card-tags-${p.id}`}
+            label={t("dataProductCore.tags")}
+          >
             {core.tags.length === 0 ? (
               <Empty text={t("dataProductCore.tagsEmpty")} />
             ) : (
@@ -477,16 +528,17 @@ export function DataProductDetailPanel({
                 ))}
               </List>
             )}
-          </div>
+          </DetailCard>
         )}
         {(outputTables !== undefined || core.commands !== undefined) && (
-          <div style={panelStyle}>
+          <DetailCard
+            section="outputPorts"
+            testId={`data-product-card-outputPorts-${p.id}`}
+            label={t("dataProductsTab.tablesLabel")}
+            hint={t("dataProductsTab.detail.outputPortsHint")}
+          >
             {outputTables !== undefined && (
               <>
-                <SectionTitle
-                  label={t("dataProductsTab.tablesLabel")}
-                  hint={t("dataProductsTab.detail.outputPortsHint")}
-                />
                 {outputTables.length === 0 ? (
                   <Empty text={t("dataProductsTab.tablesEmpty")} />
                 ) : (
@@ -525,14 +577,16 @@ export function DataProductDetailPanel({
                 )}
               </div>
             )}
-          </div>
+          </DetailCard>
         )}
         {dqTables !== undefined && (
-          <div style={panelStyle} data-tour="data-product-dq">
-            <SectionTitle
-              label={t("dataProductsTab.detail.field.dataQuality")}
-              hint={t("dataProductsTab.detail.dataQualityHint")}
-            />
+          <DetailCard
+            section="dataQuality"
+            testId={`data-product-card-dataQuality-${p.id}`}
+            label={t("dataProductsTab.detail.field.dataQuality")}
+            hint={t("dataProductsTab.detail.dataQualityHint")}
+            tourId="data-product-dq"
+          >
             {dqTables.length === 0 ? (
               <Empty text={t("dataProductsTab.detail.dataQualityEmpty")} />
             ) : (
@@ -598,14 +652,15 @@ export function DataProductDetailPanel({
                 })}
               </List>
             )}
-          </div>
+          </DetailCard>
         )}
         {profiled !== undefined && outputTables?.some((tb) => tb.profile_results !== undefined) && (
-          <div style={panelStyle}>
-            <SectionTitle
-              label={t("dataProductCore.profiles")}
-              hint={t("dataProductCore.profilesHint")}
-            />
+          <DetailCard
+            section="profiles"
+            testId={`data-product-card-profiles-${p.id}`}
+            label={t("dataProductCore.profiles")}
+            hint={t("dataProductCore.profilesHint")}
+          >
             {profiled.length === 0 ? (
               <Empty text={t("dataProductCore.profilesEmpty")} />
             ) : (
@@ -629,11 +684,14 @@ export function DataProductDetailPanel({
                 ))}
               </List>
             )}
-          </div>
+          </DetailCard>
         )}
         {core.terms !== undefined && (
-          <div style={panelStyle}>
-            <SectionTitle label={t("dataProductsTab.relatedTermsLabel")} />
+          <DetailCard
+            section="relatedTerms"
+            testId={`data-product-card-relatedTerms-${p.id}`}
+            label={t("dataProductsTab.relatedTermsLabel")}
+          >
             {core.terms.length === 0 ? (
               <Empty text={t("dataProductsTab.relatedTermsEmpty")} />
             ) : (
@@ -649,11 +707,14 @@ export function DataProductDetailPanel({
                 ))}
               </List>
             )}
-          </div>
+          </DetailCard>
         )}
         {outputTables !== undefined && (
-          <div style={panelStyle}>
-            <SectionTitle label={t("dataProductsTab.graphqlQueriesLabel")} />
+          <DetailCard
+            section="consumerQueries"
+            testId={`data-product-card-consumerQueries-${p.id}`}
+            label={t("dataProductsTab.graphqlQueriesLabel")}
+          >
             {outputTables.length === 0 && cypherRows.length === 0 ? (
               <Empty text={t("dataProductsTab.graphqlQueriesEmpty")} />
             ) : (
@@ -688,14 +749,15 @@ export function DataProductDetailPanel({
                 ))}
               </List>
             )}
-          </div>
+          </DetailCard>
         )}
         {related !== undefined && (
-          <div style={panelStyle}>
-            <SectionTitle
-              label={t("dataProductsTab.detail.field.relatedTables")}
-              hint={t("dataProductsTab.detail.relatedTablesHint")}
-            />
+          <DetailCard
+            section="relatedTables"
+            testId={`data-product-card-relatedTables-${p.id}`}
+            label={t("dataProductsTab.detail.field.relatedTables")}
+            hint={t("dataProductsTab.detail.relatedTablesHint")}
+          >
             {related.length === 0 ? (
               <Empty text={t("dataProductsTab.detail.relatedTablesEmpty")} />
             ) : (
@@ -729,10 +791,13 @@ export function DataProductDetailPanel({
                 ))}
               </List>
             )}
-          </div>
+          </DetailCard>
         )}
-        <div style={panelStyle}>
-          <SectionTitle label={t("dataProductsTab.detail.field.relationships")} />
+        <DetailCard
+          section="relationships"
+          testId={`data-product-card-relationships-${p.id}`}
+          label={t("dataProductsTab.detail.field.relationships")}
+        >
           {internalRelationships.length === 0 ? (
             <Empty text={t("dataProductsTab.detail.relationshipsEmpty")} />
           ) : (
@@ -753,19 +818,22 @@ export function DataProductDetailPanel({
               ))}
             </List>
           )}
-        </div>
+        </DetailCard>
         {canSeeLineage && (
-          <div style={panelStyle}>
-            <SectionTitle
-              label={t("dataProductsTab.detail.field.inputPorts")}
-              hint={t("dataProductsTab.detail.inputPortsHint")}
-            />
+          <DetailCard
+            section="inputPorts"
+            testId={`data-product-card-inputPorts-${p.id}`}
+            label={t("dataProductsTab.detail.field.inputPorts")}
+            hint={t("dataProductsTab.detail.inputPortsHint")}
+          >
             {inputPorts.length === 0 ? (
               <Empty text={t("dataProductsTab.detail.inputPortsEmpty")} />
             ) : (
+              // Identifiers read whole: the table keeps each on one line and scrolls within its card.
               <Table
                 striped
                 withTableBorder
+                style={{ whiteSpace: "nowrap", overflowWrap: "normal" }}
                 data-testid={`data-product-detail-input-ports-${p.id}`}
               >
                 <Table.Thead>
@@ -786,15 +854,16 @@ export function DataProductDetailPanel({
                 </Table.Tbody>
               </Table>
             )}
-          </div>
+          </DetailCard>
         )}
         {/* REQ-1640: data_product_edges answers lineage rows only to view_governance. */}
         {canSeeLineage && upstream !== undefined && downstream !== undefined && (
-          <div style={panelStyle}>
-            <SectionTitle
-              label={t("dataProductsTab.detail.field.lineage")}
-              hint={t("dataProductsTab.detail.lineageHint")}
-            />
+          <DetailCard
+            section="lineage"
+            testId={`data-product-card-lineage-${p.id}`}
+            label={t("dataProductsTab.detail.field.lineage")}
+            hint={t("dataProductsTab.detail.lineageHint")}
+          >
             {upstream.length + downstream.length === 0 ? (
               <Empty text={t("dataProductsTab.detail.lineageEmpty")} />
             ) : (
@@ -813,8 +882,13 @@ export function DataProductDetailPanel({
                         </Text>
                         <List size="sm" data-testid={`data-product-detail-lineage-${dir}-${p.id}`}>
                           {rows.map((e) => (
-                            <List.Item key={String(e.target_relation)} ff="monospace">
-                              {e.target_relation}
+                            // A lineage edge reaches a relation, or a registered table (a source
+                            // read): each row names the one it reaches.
+                            <List.Item
+                              key={e.target_relation ?? `t:${e.target_table_id}`}
+                              ff="monospace"
+                            >
+                              {e.target_relation ?? relatedLabel(e)}
                               <Muted>
                                 {[
                                   dir === "upstream"
@@ -833,19 +907,27 @@ export function DataProductDetailPanel({
                 )}
               </Stack>
             )}
-          </div>
+          </DetailCard>
         )}
-        <div style={panelStyle}>
-          <KnowledgeGraphPanel productId={p.id} productName={product.name} />
-        </div>
-        <div style={panelStyle}>
-          <SectionTitle
-            label={t("dataProductCore.metaQueries")}
-            hint={t("dataProductCore.metaQueriesHint")}
-          />
+
+        <DetailCard
+          section="queries"
+          testId={`data-product-card-queries-${p.id}`}
+          label={t("dataProductCore.metaQueries")}
+          hint={t("dataProductCore.metaQueriesHint")}
+        >
           <MetaQueries core={core} testId={`data-product-detail-meta-queries-${p.id}`} />
-        </div>
+        </DetailCard>
       </div>
+      {/* The graph needs the panel's width: below the cards, as the Ontology View fills its page. */}
+      <DetailCard
+        section="knowledgeGraph"
+        testId={`data-product-card-knowledgeGraph-${p.id}`}
+        label={t("graph3d.panelTitle")}
+        wide
+      >
+        <KnowledgeGraphPanel productId={p.id} productName={product.name} />
+      </DetailCard>
       {canEdit && (
         <Group gap="xs" mt={4}>
           <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>

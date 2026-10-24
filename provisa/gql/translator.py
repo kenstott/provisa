@@ -34,7 +34,7 @@ from typing import Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import CypherExpr, MapLiteral, Variable, walk
+from provisa.gql.expr_ast import CypherExpr, MapLiteral, Property, Variable, walk
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
@@ -376,7 +376,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             stage_query = stage_query.group_by(*with_group_exprs)
         # The WITH's ORDER BY, SKIP and LIMIT pick the rows it carries on, before its WHERE.
         if with_clause.order_by:
-            stage_query = stage_query.order_by(*self._build_order_by(with_clause.order_by))
+            stage_query = stage_query.order_by(
+                *self._build_order_by(with_clause.order_by, with_clause.items)
+            )
         if with_clause.limit is not None:
             stage_query = stage_query.limit(with_clause.limit)
         if with_clause.skip is not None:
@@ -683,7 +685,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # the WHERE is always non-true → force FALSE to avoid scanning any tables.
         if self._where_is_impossible_for_resolved_nodes():
             where_expr = exp.false()
-        order_exprs = self._build_order_by(self._ast.order_by)
+        order_exprs = self._build_order_by(
+            self._ast.order_by,
+            self._ast.return_clause.items if self._ast.return_clause is not None else [],
+        )
 
         if self._ast.construct is not None:
             if self._extra_path_branches:
@@ -951,14 +956,29 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         """An expression tree as a SQLGlot expression (REQ-913)."""
         return self._lower_expr(expr)
 
-    def _build_order_by(self, order_by: list[OrderItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _build_order_by(
+        self, order_by: list[OrderItem], returned: list[ReturnItem]
+    ) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """``order_by`` as SQL. ``alias.key`` of a map literal the clause names ``alias`` orders by
+        that key's own value: the map's SQL column holds it JSON-encoded."""
+        maps = {
+            r.alias: dict(r.expression.entries)
+            for r in returned
+            if r.alias and isinstance(r.expression, MapLiteral)
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
-            inner = self._parse_expr(item.expression)
-            if item.direction == "DESC":
-                exprs.append(exp.Ordered(this=inner, desc=True))
-            else:
-                exprs.append(exp.Ordered(this=inner, desc=False))
+            target = item.expression
+            if (
+                isinstance(target, Property)
+                and isinstance(target.obj, Variable)
+                and target.name in maps.get(target.obj.name, {})
+            ):
+                target = maps[target.obj.name][target.name]
+            inner = self._parse_expr(target)
+            # Cypher orders null as the largest value: last ascending, first descending.
+            desc = item.direction == "DESC"
+            exprs.append(exp.Ordered(this=inner, desc=desc, nulls_first=desc))
         return exprs
 
     def _carried_map_keys(self, expr: CypherExpr, alias: str) -> list[exp.Expr]:

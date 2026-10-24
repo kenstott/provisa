@@ -92,6 +92,7 @@
     "openApiQueryAria": "Voorbeeld-REST-verzoek voor {{table}} uitvoeren",
     "detail": {
       "field": {
+        "details": "Details",
         "customProperties": "Aangepaste eigenschappen",
         "relatedTables": "Gerelateerde tabellen",
         "relationships": "Relaties",
@@ -115,7 +116,7 @@
       "inputPortsColInputs": "Invoer",
       "inputPortsColTransform": "Transformatie",
       "inputPortsColOutput": "Uitvoer",
-      "outputPortsHint": "Het bevraagbare oppervlak van dit product: de bijbehorende tabellen/kolommen en commando's, met voorbeeldqueries hieronder onder Voorbeeldqueries en commando's.",
+      "outputPortsHint": "Het bevraagbare oppervlak van dit product: de lidtabellen en opdrachten. Voorbeeldquery's voor elk staan onder Toegangspatronen.",
       "customPropertiesEmpty": "Geen aangepaste eigenschappen"
     },
     "readOnly": "Alleen-lezen",

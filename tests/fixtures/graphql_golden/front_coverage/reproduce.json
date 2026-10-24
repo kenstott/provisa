@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:reproduce/1-exposure-now.graphql",
+  "root_field": "r__viewExposure"
+ }
+]
