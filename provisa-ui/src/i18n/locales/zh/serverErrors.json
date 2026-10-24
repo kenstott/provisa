@@ -336,6 +336,7 @@
       "change_signal_no_topic": "数据源 '{{source}}' 的表 '{{table}}' 使用 kafka 变更信号，但未在 live.kafka.topic 中指定 topic，因此不会有任何东西刷新它。",
       "change_signal_no_receiver": "Provisa 不会从 {{type}} 类型的数据源接收变更信号 {{signal}}，因此数据源 '{{source}}' 的表永远不会因此刷新。请使用 Debezium 捕获该数据源，并使用 debezium。",
       "change_signal_not_honoured": "类型为 {{type}} 的数据源尚不能检查是否有变更，因此变更信号 {{signal}} 永远不会被询问。请为数据源“{{source}}”使用 ttl。",
+      "row_materialize_no_key_fetch": "{{table}} 无法按行复制：其远程架构中没有可按主键列表返回其行的字段。",
       "sentinel_path_not_applicable": "类型为 {{type}} 的数据源不能有哨兵路径：没有您自己的生产方可以标记其数据的变更，或者该数据源不被探测。请从数据源“{{source}}”中移除哨兵路径。",
       "source_cache_ttl_required": "数据源“{{source}}”需要缓存 TTL：它的每个表都是副本，在 {{signal}} 变更信号下按该时钟刷新。请在数据源的“负载管理与时效性”中设置。",
       "landing_ttl_required": "表“{{table}}”是按缓存 TTL 刷新的副本，但它和它的数据源“{{source}}”都没有设置。请在数据源的“负载管理与时效性”中设置缓存 TTL，或在表注册后在表本身上设置。",

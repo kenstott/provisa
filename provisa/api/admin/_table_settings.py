@@ -259,7 +259,13 @@ async def with_carried_settings(
             ) from refused
     if carried(inp.cache_ttl):
         updates["cache_ttl"] = cache_ttl_checked(model, inp.cache_ttl)
+    if carried(inp.row_materialize):
+        if inp.row_materialize is None:
+            raise TableSaveRefused(_null_refused("rowMaterialize"))
+        updates["row_materialize"] = inp.row_materialize
     staged = model.model_copy(update=updates)
+    if "row_materialize" in updates and (problem := staged.row_materialize_problem()) is not None:
+        raise TableSaveRefused(MutationResult(success=False, message=problem))
     if (refusal := await landing_time_refusal(conn, staged)) is not None:
         raise TableSaveRefused(refusal)
     if "write_grants" in updates:

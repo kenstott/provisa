@@ -85,6 +85,16 @@ class SourceCdcConfigType:  # REQ-824
 class SourceType:  # REQ-012
     id: str
     type: str
+
+    @strawberry.field
+    def row_fetch_by_keys(self) -> bool:  # REQ-1865
+        """Whether this source's type fetches rows by primary key, so a table of it may be
+        replicated row by row (core.source_registry). For a type whose fetch is each table's
+        own (a remote GraphQL source), whether a table may have one: its save says."""
+        from provisa.core.source_registry import supports_row_fetch_by_keys
+
+        return supports_row_fetch_by_keys(self.type)
+
     # The fields that locate or authenticate to the source are null for a caller without
     # source_registration (see _row_mappers._source_from_row).
     host: str | None
@@ -386,6 +396,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
     draft: bool  # REQ-1921: out of service until its domain's owners release it
+    row_materialize: bool  # REQ-1865: replicated row by row, fetched by key as statements ask
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override
@@ -1199,6 +1210,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     # REQ-1907: the table's own landing Cache TTL; null: none of its own (the source's applies).
     # Left out, a registration has none and an update keeps the stored one.
     cache_ttl: int | None = strawberry.UNSET
+    # REQ-1865: replicated row by row, fetched by primary key as statements name the rows. Left
+    # out, a registration is not and an update keeps what the table has.
+    row_materialize: bool | None = strawberry.UNSET
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
