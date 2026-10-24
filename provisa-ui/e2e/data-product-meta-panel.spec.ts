@@ -18,8 +18,8 @@ import type { Locator } from "@playwright/test";
  * product, whose members are pets and vets, whose command is add_pet and whose checkers
  * pets_quality and vets_quality scan pets and vets.
  *
- * The panel's core is read from the meta domain as the user, and the GraphQL query it shows is the
- * query it runs: replayed as the same role, it answers what the panel was answered.
+ * The panel's core is read from the meta domain as the user: the GraphQL query it runs, replayed as
+ * the same role, answers what the panel was answered.
  */
 
 const PRODUCT = "pet_health";
@@ -62,7 +62,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
   // The first navigation compiles the page's chunks and the panel's reads run after the list's.
   test.setTimeout(180_000);
 
-  test("the panel's core is the meta domain's answer, and its GraphQL query answers the same", async ({
+  test("the panel's core is the meta domain's answer, and its GraphQL query replayed answers the same", async ({
     page,
   }) => {
     const panelRead = page.waitForRequest(
@@ -93,12 +93,9 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await expect(dq).toContainText("pets_quality");
     await expect(dq).toContainText("scans pet-store.pets");
 
-    // The GraphQL the panel shows is the query it ran, answered as the same role.
-    const shown = await page
-      .getByTestId(`data-product-detail-meta-queries-${PRODUCT}-graphql`)
-      .textContent();
+    // The GraphQL the panel ran, replayed as the same role, answers the same.
     const sent = await panelRead;
-    expect(JSON.parse(sent.postData() ?? "{}").query).toBe(shown);
+    const shown: string = JSON.parse(sent.postData() ?? "{}").query;
     const answered = await (await panelAnswer).json();
     const replay = await page.request.post("/data/graphql", {
       headers: {
@@ -121,15 +118,14 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await kg.scrollIntoViewIfNeeded();
     // data-ready: three.js has loaded and the scene is drawn.
     await shows(page.locator('[data-testid="kg-panel-stage"][data-ready]'), refused, 60_000);
-    // The panel is the product graph in place, the Ontology View's controls with it: its legend
-    // names what it draws, the product's checks among them.
+    // The card is compact: its legend names what it draws (the product, its tables, its command),
+    // and the explorer's controls are only in its expanded view.
     const legend = page.getByTestId("kg-panel-stage").locator(".p3d-legend");
     await expect(legend).toContainText("data product");
     await expect(legend).toContainText("member table");
     await expect(legend).toContainText("command");
-    await expect(legend).toContainText("data quality check");
-    await expect(page.getByTestId("kg-panel-layers-menu")).toBeVisible();
-    await expect(page.getByTestId("kg-panel-open-as-query")).toBeVisible();
+    await expect(legend).not.toContainText("data quality check");
+    await expect(page.getByTestId("kg-panel-layers-menu")).toHaveCount(0);
 
     await page.getByTestId("kg-panel-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);

@@ -112,12 +112,11 @@
       "lineageLoading": "लिनिएज लोड हो रहा है…",
       "lineageHint": "कॉलम लिनिएज ग्राफ़ जो इस प्रोडक्ट की टेबल को प्रकाशित एंडपॉइंट के रूप में दिखाता है, साथ ही उन्हें व्युत्पन्न करने में उपयोग हुई हर अपस्ट्रीम टेबल। केवल जानकारी के लिए — view_governance क्षमता आवश्यक है।",
       "inputPortsEmpty": "कोई अपस्ट्रीम इनपुट दर्ज नहीं",
-      "inputPortsHint": "लिनिएज से व्युत्पन्न एक-हॉप इनपुट → ट्रांसफ़ॉर्म → आउटपुट। view_governance क्षमता आवश्यक है।",
-      "inputPortsColInputs": "इनपुट",
-      "inputPortsColTransform": "ट्रांसफ़ॉर्म",
-      "inputPortsColOutput": "आउटपुट",
+      "inputPortsHint": "वे तालिकाएँ जिन्हें यह उत्पाद सीधे पढ़ता है, लिनिएज से। पढ़े गए कॉलम देखने के लिए तालिका खोलें। view_governance क्षमता आवश्यक है।",
       "outputPortsHint": "इस प्रोडक्ट की क्वेरी योग्य सतह: इसकी सदस्य तालिकाएँ और कमांड। हर एक के उदाहरण क्वेरी एक्सेस पैटर्न में हैं।",
-      "customPropertiesEmpty": "कोई कस्टम प्रॉपर्टी नहीं"
+      "customPropertiesEmpty": "कोई कस्टम प्रॉपर्टी नहीं",
+      "lineageLaneUpstream": "अपस्ट्रीम, चरण {{n}}",
+      "lineageLaneDownstream": "डाउनस्ट्रीम, चरण {{n}}"
     },
     "readOnly": "केवल-पठन",
     "readOnlyHint": "आपके पास केवल data_product_read है — संपादित करने के लिए org_admin data_product_rw दे सकता है।",
