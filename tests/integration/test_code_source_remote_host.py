@@ -198,12 +198,15 @@ def test_a_statement_that_fills_the_images_spill_volume_is_refused_naming_the_ca
     )
     python, front = config["Entrypoint"][0], config["Entrypoint"][2]
     outcomes = {}
-    for mode in ("gen", "table", "small"):
+    for diag in ("none", "unregister", "closegen", "both"):
+        mode = "gen"
         run = subprocess.run(
             [
                 "docker",
                 "run",
                 "--rm",
+                "-e",
+                f"DIAG_MODE={diag}",
                 "--tmpfs",
                 "/var/lib/provisa-spill:size=16m,uid=65532,gid=65532",
                 "--entrypoint",
@@ -218,7 +221,7 @@ def test_a_statement_that_fills_the_images_spill_volume_is_refused_naming_the_ca
             text=True,
             timeout=600,
         )
-        outcomes[mode] = (run.returncode, run.stdout.strip()[:120], run.stderr.strip()[-400:])
+        outcomes[diag] = (run.returncode, run.stdout.strip()[:120], run.stderr.strip()[-400:])
     print("DIAG2", json.dumps(outcomes, indent=1))
     raise AssertionError(f"DIAG2 {outcomes}")
     assert run.returncode == 0, run.stdout + run.stderr

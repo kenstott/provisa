@@ -436,6 +436,9 @@ def _reader(rows: pa.RecordBatchReader | pa.Table) -> pa.RecordBatchReader:
     return rows.to_reader() if isinstance(rows, pa.Table) else rows
 
 
+_DIAG_GENS: list = []
+
+
 def _kept(rows: pa.RecordBatchReader, failed: list[BaseException]) -> pa.RecordBatchReader:
     """``rows``, what fails as they are read kept in ``failed``: DuckDB, reading them, reports it
     inside an error of its own, and the answer raises it as it was."""
@@ -447,7 +450,28 @@ def _kept(rows: pa.RecordBatchReader, failed: list[BaseException]) -> pa.RecordB
             failed.append(exc)
             raise
 
-    return pa.RecordBatchReader.from_batches(rows.schema, each())
+    gen = each()
+    _DIAG_GENS.append(gen)
+    return pa.RecordBatchReader.from_batches(rows.schema, gen)
+
+
+def _diag_release(con, relations) -> None:
+    import os as _os
+
+    mode = _os.environ.get("DIAG_MODE", "none")
+    print("DIAG release", mode, flush=True)
+    if mode in ("unregister", "both"):
+        for relation in relations:
+            try:
+                con.unregister(relation)
+            except Exception as exc:  # noqa: BLE001
+                print("DIAG unregister failed", exc, flush=True)
+    if mode in ("closegen", "both"):
+        for gen in _DIAG_GENS:
+            try:
+                gen.close()
+            except Exception as exc:  # noqa: BLE001
+                print("DIAG close gen failed", exc, flush=True)
 
 
 def answer(
@@ -486,6 +510,7 @@ def answer_reads(
             con.register(relation, held)
         answered = con.execute(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
     except duckdb.Error as exc:
+        _diag_release(con, relations)
         con.close()
         if failed:
             raise failed[0] from None
@@ -501,6 +526,7 @@ def answer_reads(
         try:
             yield from answered
         except duckdb.Error as exc:
+            _diag_release(con, relations)
             if failed:
                 raise failed[0] from None
             named = _named(exc)
