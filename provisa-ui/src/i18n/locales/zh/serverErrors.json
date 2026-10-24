@@ -459,7 +459,8 @@
       "relationship_same_entity_direct": "关系 '{{relationship}}' 不能标记为同一实体：它通过联结表或函数连接，而不是一行对一行",
       "relationship_same_entity_cardinality": "关系 '{{relationship}}' 不能标记为同一实体：它是 {{cardinality}}，而同一实体是一行对一行",
       "relationship_same_entity_not_grounded": "关系 '{{relationship}}' 不能标记为同一实体：{{source}} 和 {{target}} 未关联到同一术语",
-      "relationship_same_entity_not_keys": "关系 '{{relationship}}' 不能标记为同一实体：{{columns}} 不是 {{table}} 的主键或唯一键"
+      "relationship_same_entity_not_keys": "关系 '{{relationship}}' 不能标记为同一实体：{{columns}} 不是 {{table}} 的主键或唯一键",
+      "kaggle_token_missing": "Kaggle 数据集 {{owner}}/{{ref}}：数据源中没有 Kaggle API 令牌。请在数据源表单中添加，令牌在那里输入。"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",

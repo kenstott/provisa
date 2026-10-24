@@ -2028,7 +2028,7 @@
   "nl/kaggleFormSection.json::kaggleFormSection.noDatasetsFound": "No datasets found",
   "nl/kaggleFormSection.json::kaggleFormSection.registerButton": "Add Dataset",
   "nl/kaggleFormSection.json::kaggleFormSection.selectedDataset": "Selected: {{ref}}",
-  "nl/kaggleFormSection.json::kaggleFormSection.tokenDescription": "Validated live against the Kaggle API before the dataset picker unlocks",
+  "nl/kaggleFormSection.json::kaggleFormSection.tokenDescription": "Checked live with Kaggle. Kept as the source's credential and used again at each refresh.",
   "nl/kaggleFormSection.json::kaggleFormSection.tokenInvalid": "Invalid Kaggle API token",
   "nl/kaggleFormSection.json::kaggleFormSection.tokenLabel": "Kaggle API Token",
   "nl/kaggleFormSection.json::kaggleFormSection.tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
@@ -5330,12 +5330,11 @@
   "nl/sourceDetailPanel.json::sourceDetailPanel.deleteTitleShort": "Delete",
   "nl/sourceDetailPanel.json::sourceDetailPanel.editTitle": "Edit",
   "nl/sourceDetailPanel.json::sourceDetailPanel.field.effectiveTtl": "Effective TTL",
-  "nl/sourceDetailPanel.json::sourceDetailPanel.kaggleTokenLabel": "Kaggle API token",
   "nl/sourceDetailPanel.json::sourceDetailPanel.navigateTitle": "View registered tables",
   "nl/sourceDetailPanel.json::sourceDetailPanel.profilerFailed": "{{table}}: {{error}}",
   "nl/sourceDetailPanel.json::sourceDetailPanel.profilerNoMembers": "No table has joined this profiler.",
   "nl/sourceDetailPanel.json::sourceDetailPanel.profilerRan": "{{table}}: profiled",
-  "nl/sourceDetailPanel.json::sourceDetailPanel.refreshKaggleHint": "Re-download {{owner}}/{{ref}} from Kaggle, overwriting the staged file(s) in place. Your Kaggle token is not stored — enter it again for this refresh.",
+  "nl/sourceDetailPanel.json::sourceDetailPanel.refreshKaggleHint": "Re-download {{owner}}/{{ref}} from Kaggle with the source's own token, overwriting the staged file(s) in place.",
   "nl/sourceDetailPanel.json::sourceDetailPanel.refreshKaggleSubmit": "Refresh",
   "nl/sourceDetailPanel.json::sourceDetailPanel.refreshKaggleTitle": "Refresh from Kaggle",
   "nl/sourceDetailPanel.json::sourceDetailPanel.runProfilerTitle": "Run now for every member table",
@@ -8115,5 +8114,6 @@
   "nl/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
   "nl/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
   "nl/settings.json::settings.engine.duckdb_memory_limit.label": "DuckDB engine memory limit",
-  "nl/settings.json::settings.engine.duckdb_memory_limit.help": "The most memory any DuckDB engine of this deployment may use. Past it, a query spills to disk or is refused. Unset: DuckDB's own limit, most of the host's memory."
+  "nl/settings.json::settings.engine.duckdb_memory_limit.help": "The most memory any DuckDB engine of this deployment may use. Past it, a query spills to disk or is refused. Unset: DuckDB's own limit, most of the host's memory.",
+  "nl/serverErrors.json::serverErrors.schema.kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered."
 }

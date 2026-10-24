@@ -66545,7 +66545,8 @@
     matching amendments for why (the per-file design predates, and is strictly inferior to, this session''s
     `files`/pgwire-file recursive directory discovery, REQ-1690). Everything else this REQ already established
     (no eager registerTable, no domain picker here) still holds unchanged; only the number and type of
-    Source(s) created changed.'
+    Source(s) created changed.
+    (Amended 2026-10-24, THE TOKEN IS THE SOURCE''S CREDENTIAL:) The token the form''s first step validates is the new source''s credential field, stored as the user entered it (a value, or a ${secret:...}/${env:...} reference they typed) and resolved by the server at every use: validation, search, staging at creation, and each "Refresh from Kaggle", which no longer asks for it. The link /sources?new=kaggle&kaggle=<owner>/<dataset> opens the form on the Kaggle type with that dataset chosen once the token is checked; the assistant, which never takes a credential, gives that link for a Kaggle dataset it found instead of proposing createSource.'
   use_case: An operator adding a Kaggle source cannot search datasets before entering a valid token (Kaggle's
     own search endpoint requires it), so the form must gate the picker step on live token validation rather
     than present both steps at once.
@@ -67992,7 +67993,8 @@
     staging: a new _stage_kaggle_if_needed helper in provisa/api/admin/schema_common.py detects kaggle_owner/kaggle_ref
     in the source''s federation_hints_json, downloads and extracts the dataset to a real staging directory,
     and UNCONDITIONALLY OVERWRITES the input path with the actual staged path. No caller''s path is ever
-    trusted for Kaggle-hinted sources, making it impossible to create a source with zero backing files.'
+    trusted for Kaggle-hinted sources, making it impossible to create a source with zero backing files.
+    (Amended 2026-10-24, THE SOURCE''S OWN TOKEN:) _stage_kaggle_if_needed stages with the source''s own token, its credential field as entered, resolved in the org''s vault; a Kaggle-hinted source that holds none is refused by name (schema.kaggle_token_missing), naming the Sources form where its token is entered. The kaggle.api_token operator setting has no default -- it named a secret nobody created -- and is read only by the assistant''s Kaggle search tool, which has no form; unset, that tool fails naming the setting.'
   use_case: Before this fix, a caller could create a Kaggle source without staging the dataset, bypassing
     the mandatory download step that only the admin form's UI ensured. Centralizing staging inside the
     resolver closes that hole for all callers.

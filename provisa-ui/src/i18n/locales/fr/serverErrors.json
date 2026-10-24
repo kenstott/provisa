@@ -459,7 +459,8 @@
       "relationship_same_entity_direct": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : elle joint via une table de jonction ou une fonction, pas une ligne à une ligne",
       "relationship_same_entity_cardinality": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : elle est {{cardinality}}, et la même entité est une ligne à une ligne",
       "relationship_same_entity_not_grounded": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{source}} et {{target}} ne sont pas ancrées dans le même terme",
-      "relationship_same_entity_not_keys": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{columns}} n’est ni la clé primaire ni une clé unique de {{table}}"
+      "relationship_same_entity_not_keys": "La relation '{{relationship}}' ne peut pas être marquée comme même entité : {{columns}} n’est ni la clé primaire ni une clé unique de {{table}}",
+      "kaggle_token_missing": "Jeu de données Kaggle {{owner}}/{{ref}} : la source ne contient aucun jeton d'API Kaggle. Ajoutez-le dans le formulaire Sources de données, où son jeton est saisi."
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",

@@ -166,7 +166,10 @@ export function SourcesPage() {
   const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
   const [settingsLoading, setSettingsLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  // ?new=kaggle&kaggle=<owner>/<ref> (the assistant's link to a Kaggle dataset it found) opens a
+  // new source's form on the Kaggle type, that dataset chosen: the user enters the token there.
+  const opensKaggle = searchParams.get("new") === "kaggle";
+  const [showForm, setShowForm] = useState(opensKaggle);
   // The registered source whose settings the form's state holds for its read view.
   const [readSeeded, setReadSeeded] = useState<string | null>(null);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
@@ -243,9 +246,9 @@ export function SourcesPage() {
   const sortGroup = useListSortGroup(regionSources, listColumns, "sources");
   const [form, setForm] = useState<SourceFormState>({
     id: "",
-    type: "postgresql",
+    type: opensKaggle ? "kaggle" : "postgresql",
     host: "",
-    port: 5432,
+    port: opensKaggle ? getDefaultPort("kaggle") : 5432,
     database: "",
     username: "",
     password: "",

@@ -459,7 +459,8 @@
       "relationship_same_entity_direct": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: Sie verbindet über eine Zwischentabelle oder eine Funktion, nicht eine Zeile mit einer Zeile",
       "relationship_same_entity_cardinality": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: Sie ist {{cardinality}}, und dieselbe Entität ist eine Zeile zu einer Zeile",
       "relationship_same_entity_not_grounded": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{source}} und {{target}} sind nicht im selben Begriff verankert",
-      "relationship_same_entity_not_keys": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{columns}} ist weder der Primärschlüssel noch ein eindeutiger Schlüssel von {{table}}"
+      "relationship_same_entity_not_keys": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{columns}} ist weder der Primärschlüssel noch ein eindeutiger Schlüssel von {{table}}",
+      "kaggle_token_missing": "Kaggle-Dataset {{owner}}/{{ref}}: Die Datenquelle enthält keinen Kaggle-API-Token. Fügen Sie ihn im Formular unter „Datenquellen“ hinzu, wo der Token eingegeben wird."
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

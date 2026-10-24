@@ -262,4 +262,19 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     await expect(page.getByTestId("kaggle-token-valid")).toBeVisible({ timeout: 30000 });
     await expect(page.getByTestId("kaggle-dataset-search-input")).toBeVisible();
   });
+
+  test("the assistant's link opens the form on Kaggle with its dataset chosen; the token is entered there", async ({
+    page,
+  }) => {
+    test.setTimeout(60000);
+    // The link Polly gives for a Kaggle dataset she found (she never takes the token).
+    await page.goto("/sources?new=kaggle&kaggle=arshid/iris-flower-dataset");
+    await expect(page.getByTestId("sources-type-select")).toHaveValue("kaggle");
+    await page.getByTestId("kaggle-token-input").fill(KAGGLE_TOKEN!);
+    await page.getByTestId("kaggle-validate-token-button").click();
+    await expect(page.getByTestId("kaggle-token-valid")).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId("kaggle-selected-dataset")).toContainText(
+      "arshid/iris-flower-dataset",
+    );
+  });
 });

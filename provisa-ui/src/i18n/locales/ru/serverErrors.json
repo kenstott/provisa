@@ -459,7 +459,8 @@
       "relationship_same_entity_direct": "Связь '{{relationship}}' нельзя отметить как одну сущность: она соединяет через связующую таблицу или функцию, а не строку со строкой",
       "relationship_same_entity_cardinality": "Связь '{{relationship}}' нельзя отметить как одну сущность: она {{cardinality}}, а одна сущность — это строка к строке",
       "relationship_same_entity_not_grounded": "Связь '{{relationship}}' нельзя отметить как одну сущность: {{source}} и {{target}} не привязаны к одному термину",
-      "relationship_same_entity_not_keys": "Связь '{{relationship}}' нельзя отметить как одну сущность: {{columns}} не является первичным или уникальным ключом {{table}}"
+      "relationship_same_entity_not_keys": "Связь '{{relationship}}' нельзя отметить как одну сущность: {{columns}} не является первичным или уникальным ключом {{table}}",
+      "kaggle_token_missing": "Набор данных Kaggle {{owner}}/{{ref}}: у источника данных нет токена API Kaggle. Добавьте его в форме «Источники данных», где вводится его токен."
     },
     "secrets": {
       "name_refused": "{{name}} не является именем в пределах секретов этой организации в {{service}}: имя задаётся относительно организации и не может выходить за её пределы",
