@@ -37,27 +37,35 @@ _HOST = textwrap.dedent(
     """
     import base64, json, socket, struct, sys, threading, time
     import pyarrow as pa
+    import os
     path, log = sys.argv[1], sys.argv[2]
-    conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    conn.connect(path)
-    lock = threading.Lock()
+    # Protocol 4: the host connects PROVISA_HOST_CONNECTIONS times, each connection its own.
+    conns = []
+    for _ in range(int(os.environ["PROVISA_HOST_CONNECTIONS"])):
+        each = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        each.connect(path)
+        conns.append(each)
+    locks = {c: threading.Lock() for c in conns}
+    local = threading.local()
     cancelled = set()
 
-    def send(m):
+    def send(m, conn=None):
+        conn = conn or local.conn
         body = b"J" + json.dumps(m).encode()
-        with lock:
+        with locks[conn]:
             conn.sendall(struct.pack(">I", len(body)) + body)
 
     def send_rows(i, schema, rows):
+        conn = local.conn
         # Protocol 2: rows go as one Arrow IPC stream, against the call's schema.
         sink = pa.BufferOutputStream()
         with pa.ipc.new_stream(sink, schema) as stream:
             stream.write_batch(pa.RecordBatch.from_pylist(rows, schema=schema))
         body = b"A" + struct.pack(">Q", i) + sink.getvalue().to_pybytes()
-        with lock:
+        with locks[conn]:
             conn.sendall(struct.pack(">I", len(body)) + body)
 
-    def recv():
+    def recv(conn):
         head = b""
         while len(head) < 4:
             chunk = conn.recv(4 - len(head))
@@ -69,7 +77,8 @@ _HOST = textwrap.dedent(
             body += conn.recv(size - len(body))
         return json.loads(body[1:])
 
-    def serve(m):
+    def serve(conn, m):
+        local.conn = conn
         # Protocol 3: a table's several argument sets come as one call's `calls`, served in order.
         sets = [c["args"] for c in m["calls"]] if "calls" in m else [m["args"]]
         for args in sets:
@@ -112,18 +121,24 @@ _HOST = textwrap.dedent(
             import os
             os._exit(3)
 
-    import os
-    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "3")),
+    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "4")),
              "code_hash": os.environ["PROVISA_CODE_HASH"],
              "exports": ["many", "echo", "total", "boom", "slow", "ticks", "die"]}
-    send(hello)
-    while (m := recv()) is not None:
-        if m["op"] == "ping":
-            send({"op": "pong", "id": m["id"]})
-        elif m["op"] == "cancel":
-            cancelled.add(m["id"])
-        elif m["op"] == "call":
-            threading.Thread(target=serve, args=(m,), daemon=True).start()
+
+    def connection(conn):
+        send(hello, conn)
+        while (m := recv(conn)) is not None:
+            if m["op"] == "ping":
+                send({"op": "pong", "id": m["id"]}, conn)
+            elif m["op"] == "cancel":
+                cancelled.add(m["id"])
+            elif m["op"] == "call":
+                threading.Thread(target=serve, args=(conn, m), daemon=True).start()
+        os._exit(0)  # one connection closing is Provisa stopping the worker
+
+    for each in conns[1:]:
+        threading.Thread(target=connection, args=(each,), daemon=True).start()
+    connection(conns[0])
     """
 )
 
@@ -187,9 +202,9 @@ def test_a_tables_argument_sets_are_one_round_trip(worker, monkeypatch):
     sent = []
     original = w.Worker._send
 
-    def counting(self, message):
+    def counting(self, lane, message):
         sent.append(message.get("op"))
-        return original(self, message)
+        return original(self, lane, message)
 
     monkeypatch.setattr(w.Worker, "_send", counting)
     calls = [([n], ["n"]) for n in range(50)]
@@ -337,7 +352,7 @@ def test_a_host_speaking_another_protocol_is_refused_by_name(command, tmp_path):
     with pytest.raises(w.WorkerFailed) as failed:
         worker.start()
     assert str(failed.value) == (
-        "source 'orders-src': its host speaks protocol 1, and this Provisa speaks 3: "
+        "source 'orders-src': its host speaks protocol 1, and this Provisa speaks 4: "
         "run a host built for this Provisa version"
     )
     assert not worker.alive()
