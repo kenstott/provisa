@@ -1,0 +1,246 @@
+[
+ {
+  "columns": [
+   "message_id",
+   "flagged",
+   "sender",
+   "signals",
+   "outside_team",
+   "outside_bank",
+   "personal",
+   "before_announcement",
+   "to_counterparty",
+   "score"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:insider/1-review-queue.graphql",
+  "root_field": "b__viewReviewQueue",
+  "rows": [
+   [
+    "M0117",
+    "customer data",
+    "Tomas Lindqvist",
+    "ssn, account number, read customer records that week",
+    0,
+    1,
+    1,
+    0,
+    0,
+    "2.600"
+   ],
+   [
+    "M0118",
+    "customer data",
+    "Tomas Lindqvist",
+    "account number, read customer records that week",
+    0,
+    0,
+    0,
+    0,
+    0,
+    "0.500"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "message_id",
+   "flagged",
+   "sender",
+   "signals",
+   "outside_team",
+   "outside_bank",
+   "personal",
+   "before_announcement",
+   "to_counterparty",
+   "score"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:insider/1-review-queue.graphql",
+  "root_field": "b__viewReviewQueue",
+  "rows": [
+   [
+    "M0117",
+    "customer data",
+    "Tomas Lindqvist",
+    "ssn, account number, read customer records that week",
+    0,
+    1,
+    1,
+    0,
+    0,
+    "2.600"
+   ],
+   [
+    "M0118",
+    "customer data",
+    "Tomas Lindqvist",
+    "account number, read customer records that week",
+    0,
+    0,
+    0,
+    0,
+    0,
+    "0.500"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "reviewer",
+   "count_star()",
+   "max(score)"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:insider/2-cases-by-reviewer.graphql",
+  "root_field": "b__viewReviewQueueGroupBy",
+  "rows": [
+   [
+    "reviewer_ben",
+    2,
+    "2.600"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "reviewer",
+   "count",
+   "max"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:insider/2-cases-by-reviewer.graphql",
+  "root_field": "b__viewReviewQueueGroupBy",
+  "rows": [
+   [
+    "reviewer_ben",
+    2,
+    "2.600"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "deal_id",
+   "count_star()",
+   "max(meaning_match)"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:insider/3-matches-by-deal.graphql",
+  "root_field": "b__dealMatchGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "deal_id",
+   "count",
+   "max"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:insider/3-matches-by-deal.graphql",
+  "root_field": "b__dealMatchGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "employee_id",
+   "count_star()",
+   "sum(records_read)"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:insider/4-customer-reads-by-employee.graphql",
+  "root_field": "b__customerAccessGroupBy",
+  "rows": [
+   [
+    "E004",
+    2,
+    7
+   ],
+   [
+    "E006",
+    6,
+    256
+   ],
+   [
+    "E010",
+    5,
+    18
+   ],
+   [
+    "E016",
+    1,
+    5
+   ],
+   [
+    "E018",
+    7,
+    20
+   ],
+   [
+    "E022",
+    4,
+    13
+   ],
+   [
+    "E024",
+    6,
+    19
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "employee_id",
+   "count",
+   "sum"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:insider/4-customer-reads-by-employee.graphql",
+  "root_field": "b__customerAccessGroupBy",
+  "rows": [
+   [
+    "E004",
+    2,
+    7
+   ],
+   [
+    "E006",
+    6,
+    256
+   ],
+   [
+    "E010",
+    5,
+    18
+   ],
+   [
+    "E016",
+    1,
+    5
+   ],
+   [
+    "E018",
+    7,
+    20
+   ],
+   [
+    "E022",
+    4,
+    13
+   ],
+   [
+    "E024",
+    6,
+    19
+   ]
+  ]
+ }
+]
