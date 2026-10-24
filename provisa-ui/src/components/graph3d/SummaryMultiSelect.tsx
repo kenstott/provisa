@@ -83,7 +83,9 @@ export function SummaryMultiSelect({
     ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
     : options;
   return (
-    <Combobox store={combobox} onOptionSubmit={toggle} withinPortal>
+    // The list is as wide as its longest option (a served relationship type can outrun the
+    // input), so no option's mark is squeezed out.
+    <Combobox store={combobox} onOptionSubmit={toggle} withinPortal width="max-content">
       <Combobox.Target>
         <InputBase
           component="button"
@@ -126,9 +128,9 @@ export function SummaryMultiSelect({
               <Tip text={o.hint} position="right">
                 <Group gap={6} wrap="nowrap">
                   {value.includes(o.value) ? (
-                    <CheckIcon size={10} />
+                    <CheckIcon size={10} style={{ flex: "none" }} />
                   ) : (
-                    <span style={{ width: 10 }} />
+                    <span style={{ width: 10, flex: "none" }} />
                   )}
                   <span>{o.label}</span>
                 </Group>

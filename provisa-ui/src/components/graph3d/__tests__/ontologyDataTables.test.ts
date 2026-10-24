@@ -30,9 +30,9 @@ import {
   type TermRow,
 } from "../glossaryGraphData";
 
-const rel = (id: string, target: number, alias: string | null = null) => ({
+const rel = (id: string, target: number, cypherType: string) => ({
   id,
-  alias,
+  cypher_type: cypherType,
   target_table_id: target,
 });
 
@@ -104,7 +104,7 @@ const UNOWNED: ProductRow = {
       domain_id: "sales",
       table_name: "t13",
       table_columns: [],
-      source_relationships: [rel("returns_order", 11)],
+      source_relationships: [rel("returns_order", 11, "BELONGS_TO_ORDER")],
     },
   ],
 };
