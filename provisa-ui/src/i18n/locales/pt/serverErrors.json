@@ -530,7 +530,21 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "Não foi possível fazer uma contagem, então o total é desconhecido: {{statement}}: {{reason}}",
-      "access_violations": "Este papel não pode executar esta consulta:"
+      "access_violations": "Este papel não pode executar esta consulta:",
+      "invalid_regex": "O padrão \"{{pattern}}\" em {{expression}} não é uma expressão regular válida: {{reason}}. =~ espera uma expressão regular, p. ex. \".*{{word}}.*\", ou use CONTAINS \"{{word}}\".",
+      "unknown_label": "Não existe o rótulo :{{label}}. Rótulos registrados: {{suggestions}}.",
+      "no_labels": "Não existe o rótulo :{{label}}: este papel não pode ler nenhuma tabela.",
+      "unknown_relationship_type": "Não existe o tipo de relacionamento {{types}}. Tipos registrados: {{suggestions}}.",
+      "no_relationship_types": "Não existe o tipo de relacionamento {{types}}: este papel não pode percorrer nenhum relacionamento.",
+      "type_mismatch": "Em {{expression}}, {{value}} não pode ser comparado com {{property}}, do tipo {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE não pode usar o agregado {{aggregate}}: WHERE filtra linhas antes de agrupá-las. Agregue em um WITH e filtre depois.",
+      "nested_aggregate": "{{outer}} agrega o agregado {{inner}}: não é possível agregar outro agregado. Agregue primeiro em um WITH.",
+      "undefined_variable": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} não é um número inteiro de linhas: LIMIT espera uma contagem de 0 ou mais, p. ex. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} não é um número inteiro de linhas: SKIP espera uma contagem de 0 ou mais, p. ex. SKIP 10.",
+      "engine_refused": "O mecanismo recusou a consulta: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} lê {{variable}}, mas a instrução não vincula nenhuma variável: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL."
     },
     "requests": {
       "approver_outside_domains": "Seu direito de criar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",

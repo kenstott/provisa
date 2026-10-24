@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from provisa.api.app import AppState  # noqa: F401
     from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
     from provisa.core.database import Connection  # noqa: F401
+    from provisa.gql.translator_types import CypherMistake  # noqa: F401
 
 import re as _re
 from sqlalchemy import select
@@ -182,6 +183,12 @@ def cypher_error(
     return JSONResponse(status_code=status, content=content)
 
 
+def mistake_error(exc: "CypherMistake") -> JSONResponse:
+    """REQ-778: a mistake in the user's statement, refused before any engine ran it -- 400, its
+    own code and params, its message in the user's terms."""
+    return cypher_error(400, exc.code, str(exc), **exc.params)
+
+
 def _exec_error(status: int, exc: Exception, sql: str) -> JSONResponse:
     """Neutral execution-error response (scrubbed message + the physical SQL)."""
     error = _federation_error(exc)
@@ -264,15 +271,11 @@ def _build_sql_from_ast(
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
-        from provisa.gql.translator_types import (
-            CypherCrossSourceError,
-            CypherTranslateError,
-            UnregisteredRelationshipType,
-        )
+        from provisa.gql.translator_types import CypherMistake
+        from provisa.gql.translator_types import CypherCrossSourceError, CypherTranslateError
 
-        if isinstance(exc, UnregisteredRelationshipType):
-            # REQ-603: refused by the translation every Cypher surface performs.
-            return cypher_error(403, "cypher.unregistered_relationship", str(exc), reason=str(exc))
+        if isinstance(exc, CypherMistake):
+            return mistake_error(exc)
         if isinstance(exc, (CypherCrossSourceError, CypherTranslateError)):
             return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
         raise
@@ -346,7 +349,16 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
             return _exec_error(503, exc, physical_sql)
         if kind == "query":
             log.warning("Cypher execution: engine query error: %s", exc)
-            return _exec_error(400, exc, physical_sql)
+            # REQ-778: a statement the engine refused, after the translation took it: the
+            # engine's own text, said as the engine's.
+            error = _federation_error(exc)
+            return cypher_error(
+                400,
+                "cypher.engine_refused",
+                f"The engine refused the query: {error}",
+                sql=physical_sql,
+                error=error,
+            )
 
         import httpx as _httpx
 
@@ -634,8 +646,12 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     translation = kept.cached()
     if translation is None:
         # Stage 1: Parse
+        from provisa.gql.translator_types import CypherMistake
+
         try:
             ast = parse_cypher(query_text)
+        except CypherMistake as exc:
+            return mistake_error(exc)
         except CypherParseError as exc:
             return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
 

@@ -72,6 +72,10 @@ class NodeMapping:
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None (star-schema role)
     # REQ-1991: the cypher prop names whose columns are declared objects: map properties
     map_properties: frozenset[str] = frozenset()
+    # REQ-778: each cypher prop name's registered data type, (name, type) pairs, so a comparison of
+    # it to a literal of another kind is refused in the user's terms before an engine is asked.
+    # A tuple, so a mapping pickled before the field existed reads the empty default.
+    property_types: tuple[tuple[str, str], ...] = ()
     # The table's name as a statement queries it -- its _name_ (compiler.context); "" for a
     # traversal-only node built without its table's compilation.
     query_name: str = ""
@@ -559,6 +563,11 @@ def _build_node_mappings(
             native_filter_columns=nf_cols,
             physical_table_name=physical_table_name,
             map_properties=map_props,
+            property_types=tuple(
+                (_published_property(ctx_typed, table_meta.table_id, c), data_type)
+                for c, data_type in col_list
+                if (table_meta.table_id, c) not in _gov_obj
+            ),
         )
 
         if domain_label:

@@ -213,6 +213,16 @@ class TranslatorExprContext:
         info = t._var_table.get(var)
         return bool(info and info[1] is not None and info[1].properties.get(name))
 
+    def property_type(self, obj: exp.Expression, name: str) -> str | None:
+        """The registered data type of ``var.name`` where ``var`` is bound to one registered table
+        (REQ-778), or None where the property is no such table's column."""
+        if not self.property_is_table_column(obj, name):
+            return None
+        info = self._t._var_table.get(obj.name)
+        if not info or info[1] is None:
+            return None
+        return dict(info[1].property_types).get(name)
+
     def resolve_parameter(self, name: str) -> exp.Expression:
         t = self._t
         if name not in t._param_seen:
@@ -494,7 +504,8 @@ class TranslatorExprContext:
             # relationship of the source.
             from provisa.gql.translator_types import UnregisteredRelationshipType
 
-            raise UnregisteredRelationshipType([rel_type])
+            registered = set(t._lm.aliases) | {r.rel_type for r in t._lm.relationships.values()}
+            raise UnregisteredRelationshipType([rel_type], registered)
         if rel is None:
             src_nm = (t._var_table.get(src_var) or (None, None))[1]
             if src_nm is not None:
