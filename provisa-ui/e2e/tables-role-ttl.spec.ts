@@ -23,7 +23,9 @@ async function openPetsEditor(page: Page) {
     .filter({ hasText: "pets" })
     .first();
   await petsRow.waitFor({ timeout: 15000 });
-  await petsRow.click();
+  // Click the source cell, not the row's centre: the centre of the row lands on the table
+  // cell's "Edit tags" button, which opens the tag popover instead of expanding the row.
+  await petsRow.locator("td").first().click();
   const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 10000 });
   await editBtn.click();
@@ -36,12 +38,24 @@ async function openPetsEditor(page: Page) {
 
 async function save(page: Page) {
   await page.getByTestId("table-edit-save").click();
-  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+  // A save is the table's update and then the reload of the tables it rebuilds: measured on the CI
+  // runner at 10.0 s and 8.0 s (run 40104554330's trace), past a 15 s budget with nothing stalled.
+  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 60000 });
 }
 
 test("a table's role TTL list persists after reload", async ({ page }) => {
+  test.setTimeout(240000); // three saves, each up to the save budget above
   await openPetsEditor(page);
   const field = page.getByTestId("role-ttl-field");
+  // A row an earlier attempt saved is removed first: the test starts from none.
+  const left = field.getByTestId("role-ttl-row");
+  if ((await left.count()) > 0) {
+    while ((await left.count()) > 0) {
+      await left.first().getByRole("button", { name: /^Remove role TTL for / }).click();
+    }
+    await save(page);
+    await openPetsEditor(page);
+  }
   await expect(field.getByTestId("role-ttl-row")).toHaveCount(0);
 
   await field.getByRole("button", { name: "Add role TTL" }).click();

@@ -15,12 +15,18 @@
 #
 #   sampler.sh <file>     samples until killed (the job's end)
 #
+# Beside <file>, <file>.brief gets one line per sample -- load, memory, free disk on / and on the
+# workspace, the process holding the most memory -- which the lane's command step follows into
+# its own log (lane.yml "Run lane"): a runner stopped mid-step ("The runner has received a
+# shutdown signal", run 40108227693) uploads no artifact, and its last lines name what ran out.
+#
 # A process is shown by its NAME and its arguments, never its environment (`ps` is not asked for
 # it). Arguments are cut to 100 characters, and the value of any argument that names a
 # password, token, secret or key is replaced before it is written.
 set -euo pipefail
 
 out="${1:?the file to write samples to}"
+brief="$out.brief"
 mkdir -p "$(dirname "$out")"
 
 redact() {
@@ -43,6 +49,19 @@ while true; do
     top_by pcpu
     echo "  by memory:"
     top_by rss
+    df -h / "${GITHUB_WORKSPACE:-.}" | awk 'NR > 1 { printf "  disk %s: %s used, %s free (%s)\n", $6, $3, $4, $5 }'
   } >> "$out"
+  {
+    printf '%s load %s' "$(date -u +%H:%M:%S)" "$(cut -d' ' -f1 /proc/loadavg)"
+    free -m | awk 'NR == 2 { printf " mem %s/%s MiB (%s avail)", $3, $2, $7 }'
+    df -h / | awk 'NR == 2 { printf " disk / %s free", $4 }'
+    df -h "${GITHUB_WORKSPACE:-.}" | awk 'NR == 2 { printf " ws %s free", $4 }'
+    # The process holding the most memory, as the full sample shows it (named and redacted), and
+    # the three containers holding the most: a container's processes show in ps by their own
+    # command, which does not say which source started them.
+    printf ' top:%s' "$(top_by rss | head -n 1 | sed -E 's/ +/ /g')"
+    printf ' containers: %s\n' "$(timeout 10 docker stats --no-stream --format '{{.MemUsage}} {{.Name}}' 2>/dev/null \
+      | sort -h -r | head -n 3 | awk '{ printf "%s%s %s", (NR > 1 ? ", " : ""), $NF, $1 }')"
+  } >> "$brief"
   sleep 30
 done

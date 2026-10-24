@@ -177,6 +177,15 @@ on:
         required: false
       AZURE_TENANT_ID:
         required: false
+      # Live APIs the core UI lane's specs call: AskAmerica/govdata, Kaggle, OpenRouter, Stripe.
+      FREE_ASKAMERICA_KEY:
+        required: false
+      KAGGLE_API_TOKEN:
+        required: false
+      OPENROUTER_API_KEY:
+        required: false
+      STRIPE_API_KEY:
+        required: false
       # SharePoint (with SP_CERT_P12_BASE64 above)
       SP_TENANT_ID:
         required: false
@@ -348,6 +357,10 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
           SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
           SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
@@ -374,6 +387,14 @@ jobs:
           cat > "$RUNNER_TEMP/lane-run.sh" <<'PROVISA_LANE_RUN'
           ${{ inputs.run }}
           PROVISA_LANE_RUN
+          # The sampler's one line per 30 s, into this step's own log as it runs: a runner stopped
+          # mid-step uploads nothing, and the last of these lines say what ran out.
+          if [ "${{ inputs.sampler }}" = "true" ]; then
+            mkdir -p "$RUNNER_TEMP/sampler" && touch "$RUNNER_TEMP/sampler/samples.txt.brief"
+            tail -n 0 -F "$RUNNER_TEMP/sampler/samples.txt.brief" 2>/dev/null | sed -u 's/^/[runner] /' &
+            follow=$!
+            trap 'kill "$follow" 2>/dev/null || true' EXIT
+          fi
           sg "$PROVISA_LANE_ENGINE_GROUP" -c "bash -eo pipefail $RUNNER_TEMP/lane-run.sh"
 
       - name: After the lane

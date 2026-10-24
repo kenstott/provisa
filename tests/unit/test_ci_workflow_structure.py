@@ -252,6 +252,7 @@ _LIVE_SOURCE_SECRETS = {
     "FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
     "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
     "SP_TENANT_ID", "SP_CLIENT_ID", "SP_SITE_URL", "SP_CERT_PASSWORD",
+    "FREE_ASKAMERICA_KEY", "KAGGLE_API_TOKEN", "OPENROUTER_API_KEY", "STRIPE_API_KEY",
 }  # fmt: skip
 
 
@@ -616,7 +617,9 @@ def test_the_core_ui_jobs_report_what_did_not_execute_and_sample_the_runner():
     jobs = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"]
     for job in ("playwright", "provisioning"):
         given = jobs[job]["with"]
-        assert "--reporter=list,html,json" in given["run"]
+        # The line reporter prints each failure as it fails: a runner stopped early still leaves
+        # every failure it reached in the log.
+        assert "--reporter=line,html,json" in given["run"]
         # The run stops itself inside the job's bound, so a slow run still leaves its reports: a
         # run killed by the job timeout writes none (release .479's core lane).
         limit = re.search(r"--global-timeout=(\d+)", given["run"])

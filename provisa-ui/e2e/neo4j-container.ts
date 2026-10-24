@@ -51,6 +51,26 @@ export function startNeo4jContainer(): void {
   );
 }
 
+/** What the container is doing, for a spec that waited on it in vain: its state (running, exited
+ * with a code, OOM-killed) and the tail of its log. A wait that only said "not ready" named none of
+ * the ways it can fail -- an image that did not pull, a JVM that exited, a container killed for
+ * memory. */
+export function describeNeo4jContainer(): string {
+  const state = spawnSync(
+    "docker",
+    ["inspect", "--format", "{{json .State}}", CONTAINER_NAME],
+    { encoding: "utf8" },
+  );
+  const logs = spawnSync("docker", ["logs", "--tail", "40", CONTAINER_NAME], {
+    encoding: "utf8",
+  });
+  return [
+    `docker inspect ${CONTAINER_NAME}: ${(state.stdout || state.stderr).trim()}`,
+    `docker logs --tail 40 ${CONTAINER_NAME}:`,
+    `${logs.stdout}${logs.stderr}`.trim(),
+  ].join("\n");
+}
+
 export function removeNeo4jContainer(): void {
   spawnSync("docker", ["rm", "-f", CONTAINER_NAME], { stdio: "pipe" });
 }

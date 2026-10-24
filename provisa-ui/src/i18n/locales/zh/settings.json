@@ -72,6 +72,10 @@
       }
     },
     "engine": {
+      "duckdb_memory_limit": {
+        "label": "DuckDB 引擎内存上限",
+        "help": "此部署中任一 DuckDB 引擎可使用的最大内存。超出后，查询会溢出到磁盘或被拒绝。未设置：使用 DuckDB 自身的上限，即主机的大部分内存。"
+      },
       "ready_timeout": {
         "label": "引擎就绪超时",
         "help": "启动时等待联邦引擎就绪的最长时间，超时则启动失败。"

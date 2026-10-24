@@ -8114,5 +8114,7 @@
   "it/serverErrors.json::serverErrors.profile.classification_kind_unknown": "Unknown classification kind {{kind}}",
   "it/serverErrors.json::serverErrors.profile.classification_pii_refused": "The column could not be marked PII",
   "it/serverErrors.json::serverErrors.profile.classification_status_invalid": "A classification decision is accepted or rejected, not {{status}}",
-  "it/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads"
+  "it/serverErrors.json::serverErrors.profile.column_not_found": "Column {{column}} is not a column of the table the org admin reads",
+  "it/settings.json::settings.engine.duckdb_memory_limit.label": "DuckDB engine memory limit",
+  "it/settings.json::settings.engine.duckdb_memory_limit.help": "The most memory any DuckDB engine of this deployment may use. Past it, a query spills to disk or is refused. Unset: DuckDB's own limit, most of the host's memory."
 }

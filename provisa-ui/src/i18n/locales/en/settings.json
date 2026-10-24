@@ -72,6 +72,10 @@
       }
     },
     "engine": {
+      "duckdb_memory_limit": {
+        "label": "DuckDB engine memory limit",
+        "help": "The most memory any DuckDB engine of this deployment may use. Past it, a query spills to disk or is refused. Unset: DuckDB's own limit, most of the host's memory."
+      },
       "ready_timeout": {
         "label": "Engine ready timeout",
         "help": "How long startup waits for the federation engine to become ready before failing."

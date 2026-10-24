@@ -61,11 +61,17 @@ on:
         required: false
       FABRIC_SQL_SERVER:
         required: false
+      FREE_ASKAMERICA_KEY:
+        required: false
       GOOGLE_APPLICATION_CREDENTIALS_JSON:
         required: false
       GOOGLE_CLOUD_PROJECT:
         required: false
       GSHEETS_TEST_SHEET_ID:
+        required: false
+      KAGGLE_API_TOKEN:
+        required: false
+      OPENROUTER_API_KEY:
         required: false
       SNOWFLAKE_ACCOUNT:
         required: false
@@ -82,6 +88,8 @@ on:
       SP_CLIENT_ID:
         required: false
       SP_SITE_URL:
+        required: false
+      STRIPE_API_KEY:
         required: false
       SP_TENANT_ID:
         required: false
@@ -134,8 +142,11 @@ jobs:
         PROVISA_E2E_WORKERS=2
         PROVISA_E2E_SPECS=${{ inputs.specs }}
       working-directory: provisa-ui
-      # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
-      # its folder): the run's own record of what did not execute.
+      # json beside the line and the HTML report (in a file of its own: the HTML reporter empties
+      # its folder): the run's own record of what did not execute. The line reporter prints each
+      # failure's error as it fails, not in a summary at the end: a runner stopped before the end
+      # (run 40097774612, "The runner has received a shutdown signal" at 87 minutes, no report and
+      # no artifact) still leaves every failure it reached in the log.
       # Playwright stops ITSELF after 95 minutes, inside the job's bound: a run the job timeout
       # kills writes no report at all (release .479, run 38022153596: 108 failed attempts and
       # not one line of error text, no artifact). Stopped by its own limit it prints every
@@ -145,7 +156,7 @@ jobs:
       run: >-
         for spec in $PROVISA_E2E_SPECS; do test -f "${spec%%:*}" || { echo "::error::no spec ${spec%%:*}"; exit 1; }; done; 
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
-        npx playwright test --project=core --global-timeout=5700000 --reporter=list,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
+        npx playwright test --project=core --global-timeout=5700000 --reporter=line,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
       # prepare: the credential files of the live sources. after: every test that did not run,
       # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
       # the credential files removed.
@@ -182,6 +193,14 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      # The live APIs the job's specs call, each skipped by name without its key (run 40115205350
+      # reported 10 NOT EXECUTED with every one of these present in the repo's secrets):
+      # AskAmerica/govdata (askamerica-*, source-to-query-special-cases), Kaggle (kaggle-source),
+      # OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox (source-to-query-stripe).
+      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
   # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
   provisioning:
@@ -202,8 +221,11 @@ jobs:
         PROVISA_E2E_LANE=core
         PROVISA_E2E_SPECS=${{ inputs.specs }}
       working-directory: provisa-ui
-      # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
-      # its folder): the run's own record of what did not execute.
+      # json beside the line and the HTML report (in a file of its own: the HTML reporter empties
+      # its folder): the run's own record of what did not execute. The line reporter prints each
+      # failure's error as it fails, not in a summary at the end: a runner stopped before the end
+      # (run 40097774612, "The runner has received a shutdown signal" at 87 minutes, no report and
+      # no artifact) still leaves every failure it reached in the log.
       # Playwright stops ITSELF after 125 minutes, inside the job's bound: a run the job timeout
       # kills writes no report at all (release .479, run 38022153596: 108 failed attempts and
       # not one line of error text, no artifact). Stopped by its own limit it prints every
@@ -213,7 +235,7 @@ jobs:
       run: >-
         for spec in $PROVISA_E2E_SPECS; do test -f "${spec%%:*}" || { echo "::error::no spec ${spec%%:*}"; exit 1; }; done; 
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
-        npx playwright test --project=core-provisioning --workers=1 --global-timeout=7500000 --reporter=list,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
+        npx playwright test --project=core-provisioning --workers=1 --global-timeout=7500000 --reporter=line,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
       # prepare: the credential files of the live sources. after: every test that did not run,
       # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
       # the credential files removed.
