@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "Type {{userId}} to confirm",
     "deleteAccountButton": "Delete my account",
     "patEnvironment": "Environment",
-    "patEnvironmentHelp": "A token works in one environment: the one you were reading when you issued it. A new token will work in {{env}}."
+    "patEnvironmentHelp": "A token works in one environment: the one you were reading when you issued it. A new token will work in {{env}}.",
+    "emailPreferences": "Email preferences",
+    "receiveEmails": "Receive product update emails",
+    "receiveEmailsHelp": "Get occasional updates about Provisa features and product news."
   }
 }
