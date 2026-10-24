@@ -34,7 +34,7 @@ from typing import Any, TypeVar, cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.expr_ast import CypherExpr, MapLiteral, Property, Variable, walk
+from provisa.gql.expr_ast import Binary, CypherExpr, MapLiteral, Paren, Property, Variable, walk
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
@@ -222,6 +222,22 @@ def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: igno
     return node
 
 
+def _steps_where(steps: list) -> WhereClause | None:
+    """Every condition of a segment's MATCH steps, each step's own WHERE, ANDed: a WHERE after a
+    MATCH is that MATCH's, one after an OPTIONAL MATCH is folded into its join
+    (_fold_where_into_optional_joins), and none is dropped for another."""
+    wheres = [step.where.expression for step in steps if step.where is not None]
+    if not wheres:
+        return None
+    if len(wheres) == 1:
+        return WhereClause(wheres[0])
+    # Each step's WHERE one conjunct of the whole, which the fold routes to its own join.
+    joined: CypherExpr = Paren(wheres[0])
+    for w in wheres[1:]:
+        joined = Binary("AND", joined, Paren(w))
+    return WhereClause(joined)
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathExprMixin,
     TermsMixin,
@@ -291,6 +307,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._alternation_types: dict[int, dict[str, str]] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
+        self._optional_rel_vars: set[str] = set()
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
         # attributes — in RETURN r, in r.attr expressions, and in a WHERE on r.attr.
@@ -334,11 +351,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where = _steps_where(match_steps)
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
@@ -435,11 +448,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in final_match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where = _steps_where(final_match_steps)
 
         if not all_matches and not final_unwinds and cte_defs:
             last_cte_name = cte_defs[-1][0]
@@ -682,10 +691,6 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 select_exprs.append(cut.copy())
         where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
 
-        # Short-circuit: if any resolved node's WHERE props are all absent from its schema,
-        # the WHERE is always non-true → force FALSE to avoid scanning any tables.
-        if self._where_is_impossible_for_resolved_nodes():
-            where_expr = exp.false()
         order_exprs = self._build_order_by(
             self._ast.order_by,
             self._ast.return_clause.items if self._ast.return_clause is not None else [],
@@ -744,9 +749,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     ) -> "exp.Select | exp.Union":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Drop/renumber ``$N`` params no longer present in the final query.
 
-        The impossible-WHERE short-circuit (``_where_is_impossible_for_resolved_nodes``) replaces
-        the whole WHERE with a literal FALSE, discarding every ``$N`` placeholder that lived inside
-        it while ``self._param_order`` still lists the params those placeholders bound to. Left
+        A rewrite that drops part of the statement (a WHERE folded to a literal) discards every
+        ``$N`` placeholder that lived inside it while ``self._param_order`` still lists the params
+        those placeholders bound to. Left
         alone, the caller's positional ``[parameters.get(name) for name in ordered_params]`` either
         hands the executor more bound values than the query has placeholders for (crash) or, worse,
         shifts every surviving param's value onto the wrong ``$N`` (silent corruption) — so both
@@ -977,6 +982,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             ):
                 target = maps[target.obj.name][target.name]
             inner = self._parse_expr(target)
+            if isinstance(inner, exp.Null):
+                # A key null for every row (a property the label has not) orders nothing, and an
+                # engine refuses a literal one.
+                continue
             # Cypher orders null as the largest value: last ascending, first descending.
             desc = item.direction == "DESC"
             exprs.append(exp.Ordered(this=inner, desc=desc, nulls_first=desc))
@@ -1175,45 +1184,3 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             props = sorted(all_props)
 
         return props
-
-    def _collect_where_only_props(self, var: str) -> list[str]:
-        """Return property names referenced as var.prop in WHERE clauses only (not RETURN/WITH)."""
-        return _properties_of(
-            var,
-            [
-                step.where.expression
-                for step in self._ast.pipeline
-                if isinstance(step, (MatchStep, WithClause)) and step.where
-            ],
-        )
-
-    def _where_is_impossible_for_resolved_nodes(self) -> bool:
-        """Return True if any resolved node variable's WHERE props are ALL missing from its type.
-
-        When a property referenced in WHERE doesn't exist on the resolved node type, every
-        access returns NULL.  If *all* WHERE props for a variable are missing, the WHERE
-        condition on that variable is always non-true (NULL comparisons), so the result is
-        zero rows regardless of query structure — we can skip the engine round-trip.
-
-        This check is skipped for domain-union / passthrough vars because those are already
-        pruned per-branch inside _build_domain_union.
-
-        `nm.properties` is keyed by the CQL property name (GQL-convention-derived, e.g. camelCase
-        `customerId` under apollo_graphql — REQ-194: CQL derives from GQL, physical column names are
-        never client-facing in ANY query language, Cypher included). A WHERE reference written in the
-        raw physical casing (`customer_id`) is a caller bug, not a valid alternate spelling — it is
-        correctly treated as nonexistent here. (2026-09-26: do not "fix" this by also accepting
-        `nm.properties.values()` — that was tried and reverted; it would make the compiler silently
-        tolerate a naming-authority violation instead of surfacing it. The actual bug was
-        demo/named/perf/bench/queries.py's Cypher text using physical names; fix the query text via
-        the naming authority, never the compiler's naming enforcement.)
-        """
-        for var, (_, nm) in self._var_table.items():
-            if nm is None:
-                continue
-            if var in self._domain_nodes or var in self._passthrough_vars:
-                continue
-            where_props = self._collect_where_only_props(var)
-            if where_props and not any(nm.properties.get(p) for p in where_props):
-                return True
-        return False

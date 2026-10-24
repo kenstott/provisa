@@ -73,7 +73,9 @@ export function OpenAsQuery({
 
   const compile = () => {
     if (query === null || actingRoles === null || focused || current) return;
-    compileQuery(actingRoles, query).then(
+    // A graph view opens as a graph: its Cypher is its nodes and relationships, which the frame
+    // draws, not its fields.
+    compileQuery(actingRoles, query, undefined, false, false, true).then(
       (raw) => setCompiled({ query, result: compiledOf(raw), error: null }),
       (e: unknown) =>
         setCompiled({ query, result: null, error: e instanceof Error ? e.message : String(e) }),

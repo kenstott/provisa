@@ -71,8 +71,12 @@ class TestPropertyResolution:
     def test_native_filter_column(self):
         assert _sql("n.status") == 'n."_nf_status"'
 
-    def test_unmapped_property_quoted(self):
-        assert _sql("n.unknown") == 'n."unknown"'
+    def test_a_property_the_label_has_not_is_null(self):
+        # As a graph's missing property is: never a column read by a name the label does not give.
+        assert _sql("n.unknown") == "NULL"
+
+    def test_the_key_is_the_built_in_id(self):
+        assert _sql("n._id") == 'n."id"'
 
     def test_property_in_predicate(self):
         assert _sql("n.age > 30") == 'n."age_col" > 30'
