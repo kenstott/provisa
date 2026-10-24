@@ -91,6 +91,15 @@ def missing_parameters(
     )
 
 
+class ParameterRequired(ValueError):
+    """A read of a table that leaves a required parameter without a value: refused before anything
+    is sent to the source, naming the table and the parameters (REQ-1986)."""
+
+    def __init__(self, table: str, reason: str) -> None:
+        self.table = table
+        super().__init__(f"Table {table!r} {reason}")
+
+
 def missing_reason(missing: list[str]) -> str:
     """Why a read of a table is refused, after the table's name (``apply_dropped_tables``)."""
     return (
