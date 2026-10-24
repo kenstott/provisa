@@ -413,9 +413,9 @@ class _Lowering:
                 continue
             junction = self.junction(table, name, join)
             if junction is not None:
-                out.append(self.junction_field(table, nm, var, f, junction))
+                out.append(self.junction_field(table, nm, var, f, junction, steps))
             elif join.cardinality == "one-to-many":
-                out.append(self.to_many(table, var, f, join))
+                out.append(self.to_many(table, var, f, join, steps))
             else:
                 out.append(self.to_one(table, var, f, join, steps))
         return out
@@ -442,23 +442,38 @@ class _Lowering:
             sub = [_Entry(rel_var, Variable(rel_var)), *sub]
         return _Entry(f.name.value, None, var=child, level=sub)
 
-    def to_many(self, table: Any, var: str, f: FieldNode, join: Any) -> _Entry:
-        """The related rows, each a row of the projection, under that level's own arguments."""
+    def to_many(
+        self, table: Any, var: str, f: FieldNode, join: Any, steps: list[MatchStep | WithClause]
+    ) -> _Entry:
+        """The related rows, each a row of the projection, under that level's own arguments. As
+        nodes, the rows are an OPTIONAL MATCH of the statement under the level's where."""
         rel_var = self.rel_var() if self.projection == NODES else None
         target, tnm, child, pattern = self.hop(table, var, f.name.value, join, rel_var)
         args = self.arguments(f)
-        body_steps: list[MatchStep | WithClause] = [
-            MatchStep(
-                [MatchClause(pattern, None)],
-                _where(self.where(target, tnm, child, args["where"]) if "where" in args else None),
-            )
-        ]
-        sub = self.level(target, tnm, child, f, body_steps)
+        where = _where(self.where(target, tnm, child, args["where"]) if "where" in args else None)
         if self.projection == NODES:
             assert rel_var is not None
-            sub = [_Entry(rel_var, Variable(rel_var)), *sub]
+            self.flat(f.name.value, args)
+            steps.append(MatchStep([MatchClause(pattern, None, optional=True)], where))
+            sub = self.level(target, tnm, child, f, steps)
+            return _Entry(
+                f.name.value, None, var=child, level=[_Entry(rel_var, Variable(rel_var)), *sub]
+            )
+        body_steps: list[MatchStep | WithClause] = [MatchStep([MatchClause(pattern, None)], where)]
+        sub = self.level(target, tnm, child, f, body_steps)
         order = self.node_order(target, tnm, child, args["order_by"]) if "order_by" in args else []
         return self.collected(f, self.row(sub, child), body_steps, order, args)
+
+    @staticmethod
+    def flat(name: str, args: dict) -> None:
+        """A level as an OPTIONAL MATCH of the statement (NODES): one with its own order, offset or
+        limit has no such form -- those apply to its rows, not the statement's."""
+        paged = sorted(k for k in ("order_by", "offset", "limit") if k in args)
+        if paged:
+            raise GraphQLLoweringRefused(
+                f"the {paged[0]} of the relationship {name} as nodes and relationships "
+                "(the GraphQL-shaped statement keeps per-level limits)"
+            )
 
     def collected(
         self,
@@ -482,8 +497,6 @@ class _Lowering:
         """A related row as the projection collects it."""
         if self.projection == GRAPHQL:
             return MapLiteral([(e.key, e.expression()) for e in entries])
-        if self.projection == NODES:
-            return ListLiteral(_flatten(entries))
         return _map_projection(entries, var)
 
     def hop(
@@ -657,15 +670,27 @@ class _Lowering:
             return self.where(j.far, j.fnm, j.far_var, value) or Literal(True, "boolean")
         return self.where(table, nm, var, value) or Literal(True, "boolean")
 
-    def junction_field(self, table: Any, nm: Any, var: str, f: FieldNode, j: _Junction) -> _Entry:
+    def junction_field(
+        self,
+        table: Any,
+        nm: Any,
+        var: str,
+        f: FieldNode,
+        j: _Junction,
+        steps: list[MatchStep | WithClause],
+    ) -> _Entry:
         """The junction's rows beside ``var``'s: each relationship, its row's columns its
-        properties, and the far node."""
+        properties, and the far node. As nodes, an OPTIONAL MATCH of the statement."""
         name = f.name.value
         args = self.arguments(f)
         pattern, cond = self.junction_match(table, var, name, j, args.get("where") or {})
-        body_steps: list[MatchStep | WithClause] = [
-            MatchStep([MatchClause(pattern, None)], _where(cond))
-        ]
+        body_steps: list[MatchStep | WithClause]
+        if self.projection == NODES:
+            self.flat(name, args)
+            steps.append(MatchStep([MatchClause(pattern, None, optional=True)], _where(cond)))
+            body_steps = steps
+        else:
+            body_steps = [MatchStep([MatchClause(pattern, None)], _where(cond))]
         entries: list[_Entry] = (
             [_Entry(j.rel_var, Variable(j.rel_var))] if self.projection == NODES else []
         )
@@ -689,10 +714,10 @@ class _Lowering:
                 entries.append(_Entry(key, MapLiteral([(e.key, e.expression()) for e in sub])))
             else:
                 entries.append(_Entry(key, None, var=ends[2], level=sub))
+        if self.projection == NODES:
+            return _Entry(name, None, var=j.far_var, level=entries)
         if self.projection == GRAPHQL:
             row: CypherExpr = MapLiteral([(e.key, e.expression()) for e in entries])
-        elif self.projection == NODES:
-            row = ListLiteral(_flatten(entries))
         else:
             row = MapLiteral([(e.key, _entry_value(e)) for e in entries])
         order = (
@@ -849,14 +874,21 @@ def _where(expr: CypherExpr | None) -> WhereClause | None:
     return None if expr is None else WhereClause(expr)
 
 
-def _returned(projection: str, entries: list[_Entry]) -> list[ReturnItem]:
+def _returned(
+    projection: str, entries: list[_Entry], seen: set[str] | None = None
+) -> list[ReturnItem]:
     """A root's RETURN items: each field under its response key (GRAPHQL); its own and its
-    to-one fields' properties flat, unaliased (FIELDS); its nodes and relationships (NODES). A
-    to-many field is its COLLECT under its name in each."""
+    to-one fields' properties flat, unaliased (FIELDS); every node and relationship variable it
+    matches, each once (NODES). A to-many field is its COLLECT under its name in the first two."""
+    seen = set() if seen is None else seen
     out: list[ReturnItem] = []
     for e in entries:
         if e.level is not None:
-            out += _returned(projection, e.level)
+            out += _returned(projection, e.level, seen)
+        elif projection == NODES and isinstance(e.expr, Variable):
+            if e.expr.name not in seen:
+                seen.add(e.expr.name)
+                out.append(ReturnItem(e.expression()))
         elif projection == GRAPHQL or not (e.prop is not None or isinstance(e.expr, Variable)):
             out.append(ReturnItem(e.expression(), alias=e.key))
         else:

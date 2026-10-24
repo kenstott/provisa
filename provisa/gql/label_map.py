@@ -79,6 +79,9 @@ class NodeMapping:
     # The table's name as a statement queries it -- its _name_ (compiler.context); "" for a
     # traversal-only node built without its table's compilation.
     query_name: str = ""
+    #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
+    #: and its _id hold every one. Empty for a key of one column (``id_column``).
+    key_columns: tuple[str, ...] = ()
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -568,6 +571,11 @@ def _build_node_mappings(
                 for c, data_type in col_list
                 if (table_meta.table_id, c) not in _gov_obj
             ),
+            key_columns=tuple(
+                ctx_typed.physical_to_sql.get((table_meta.table_id, c), c) for c in user_pks
+            )
+            if len(user_pks) > 1
+            else (),
         )
 
         if domain_label:

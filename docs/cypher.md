@@ -182,6 +182,10 @@ Property names map to columns via domain-prefix stripping and alias resolution; 
 
 A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it -- the name GraphQL and SQL read it by -- in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
 
+A name that is no property of the label is null wherever it is read (`WHERE`, `RETURN`, `ORDER BY`, any expression), as a missing property is in Neo4j. A column the label does not publish (a governed object column) or the role may not see reads the same way: null, with no sign that it exists. A write is never silent: `CREATE` or `SET` of such a name is refused with `<Label> has no property <name>`.
+
+Every node has one built-in property, `_id`: its key. It is the key column's value, or for a compound key the node's identity, `Label|v1|v2` (each key column in key order, a `|` or `\` in a value escaped by a `\`). `_id` works in `WHERE`, `RETURN` and `ORDER BY`, and every returned node carries it among its properties. Where a source's own `_id` column is the key, as a MongoDB collection's is, the built-in reads the same value.
+
 Rules:
 
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. New labels or types cannot be created through Cypher.

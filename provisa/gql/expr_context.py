@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, cast
 
 import sqlglot.expressions as exp
 
+from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
 from provisa.gql.expr_ast import MapProjection, PatternComprehension, SubqueryExpr, Term
 from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.translator_helpers import (  # REQ-1586
@@ -174,13 +175,25 @@ class TranslatorExprContext:
                 if via_map.type_column is not None and name == via_map.type_attribute:
                     # The row's own type, as the junction stores it.
                     return _via_column(via_alias, via_map.type_column)
+                # A property the relationship has not is null, as a node's is.
+                return exp.Null()
+            if var in t._rel_var_types:
+                # An FK/PK relationship has no properties.
+                return exp.Null()
             info = t._var_table.get(var)
             if info and info[1] is not None:
-                sql_alias = info[1].properties.get(name)
+                nm = info[1]
+                if name == NODE_KEY_PROPERTY:
+                    return node_key(info[0], nm)
+                sql_alias = nm.properties.get(name)
                 if sql_alias:
                     return _col(sql_alias, info[0])
-                if name in info[1].native_filter_columns:
+                if name in nm.native_filter_columns:
                     return _col(f"_nf_{name}", info[0])
+                # A property the label has not -- one it does not publish, or the role may not
+                # see -- is null, as a graph's missing property is: a column is never read by a
+                # name the label does not give it.
+                return exp.Null()
             return _col(name, info[0] if info else var)
         if isinstance(obj, exp.Column) and obj.table and obj.name in t._map_vars:
             # A map literal a WITH carries: its key is the column that WITH carries it in (#287).
@@ -205,12 +218,14 @@ class TranslatorExprContext:
         ):
             return False
         via_bound = t._rel_var_via.get(var)
-        if via_bound is not None and (
-            via_bound[1].attributes.get(name) is not None
-            or (via_bound[1].type_column is not None and name == via_bound[1].type_attribute)
-        ):
-            return True
+        if via_bound is not None:
+            return via_bound[1].attributes.get(name) is not None or (
+                via_bound[1].type_column is not None and name == via_bound[1].type_attribute
+            )
         info = t._var_table.get(var)
+        if info and info[1] is not None and name == NODE_KEY_PROPERTY:
+            # A single key is the table's own column; a compound one is a string built from it.
+            return len(info[1].key_columns) <= 1
         return bool(info and info[1] is not None and info[1].properties.get(name))
 
     def property_type(self, obj: exp.Expression, name: str) -> str | None:

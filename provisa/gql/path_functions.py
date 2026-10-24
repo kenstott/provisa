@@ -572,6 +572,28 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
     # Recursive CTE (self-referential variable-length paths)
     # ------------------------------------------------------------------
 
+    def _textual_keys(
+        self, src_nm: NodeMapping, tgt_nm: NodeMapping, allowed_rels: list[RelationshipMapping]
+    ) -> bool:
+        """Whether a traversal carries each node's key as text: where a node it can reach has a
+        compound key, a node is told apart by every key column (node_key_text), and the one
+        frontier column holds keys of every type the walk meets."""
+        reached = [src_nm, tgt_nm]
+        for rel in allowed_rels:
+            reached += [self._lm.nodes.get(rel.source_label), self._lm.nodes.get(rel.target_label)]
+        return any(nm is not None and len(nm.key_columns) > 1 for nm in reached)
+
+    @staticmethod
+    def _path_key(nm: NodeMapping, alias: str, textual: bool) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The key a traversal tells ``alias``'s node by: its key column, or its key text."""
+        if textual:
+            from provisa.gql.select_builder import node_key_text
+
+            return node_key_text(alias, nm)
+        return exp.Column(
+            this=exp.Identifier(this=nm.id_column, quoted=True), table=exp.Identifier(this=alias)
+        )
+
     def _translate_path_function_recursive(
         self,
         clause: MatchClause,
@@ -596,12 +618,14 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         rows within it: a row past it means the walk was cut there (REQ-2135).
         """
         cte_name = f"_traverse_{src_var or src_type.lower()}"
+        textual = self._textual_keys(src_nm, tgt_nm, allowed_rels)
         cte_expr = self._build_recursive_cte(
             cte_name,
             src_nm,
             allowed_rels,
             max_hops + 1 if by_limit else max_hops,
             zero_length=min_hops == 0,
+            textual=textual,
         )
         self._recursive_ctes.append((cte_name, cte_expr))
 
@@ -625,10 +649,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                     this=exp.Identifier(this="src_id"),
                     table=exp.Identifier(this="_t"),
                 ),
-                expression=exp.Column(
-                    this=exp.Identifier(this=src_nm.id_column, quoted=True),
-                    table=exp.Identifier(this=src_alias),
-                ),
+                expression=self._path_key(src_nm, src_alias, textual),
             ),
             expression=exp.EQ(
                 this=exp.Column(
@@ -673,10 +694,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
 
         # JOIN tgt_table AS tgt_alias ON tgt_alias.id = _t.cur_id
         tgt_join_on = exp.EQ(
-            this=exp.Column(
-                this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
-                table=exp.Identifier(this=tgt_alias),
-            ),
+            this=self._path_key(tgt_nm, tgt_alias, textual),
             expression=exp.Column(
                 this=exp.Identifier(this="cur_id"),
                 table=exp.Identifier(this="_t"),
@@ -721,6 +739,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         allowed_rels: list[RelationshipMapping],
         max_hops: int,
         _tbl: Any,
+        textual: bool,
     ) -> exp.Select:
         """The recursive step over several relationships as one term: the traversal joined to
         the union of every candidate hop, each a (from_type, from_id, cur_type, cur_id) row."""
@@ -738,9 +757,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 continue
             hop = exp.select(
                 exp.alias_(exp.Literal.string(src_node_m.type_name), alias="from_type"),
-                exp.alias_(col(src_node_m.id_column, "_cur", quoted=True), alias="from_id"),
+                exp.alias_(self._path_key(src_node_m, "_cur", textual), alias="from_id"),
                 exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
-                exp.alias_(col(tgt_node_m.id_column, "_nxt", quoted=True), alias="cur_id"),
+                exp.alias_(self._path_key(tgt_node_m, "_nxt", textual), alias="cur_id"),
             ).from_(_tbl(src_node_m, "_cur"))
             hop = _apply_hop(hop, rel, "_cur", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             hops = hop if hops is None else exp.Union(this=hops, expression=hop, distinct=False)
@@ -773,6 +792,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         allowed_rels: list[RelationshipMapping],
         max_hops: int,
         zero_length: bool = False,
+        textual: bool = False,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build the UNION ALL body of the recursive CTE.
 
@@ -806,10 +826,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         # ------------------------------------------------------------------
         base_branches: list[exp.Select] = []
         if zero_length:
-            seed_id = exp.Column(
-                this=exp.Identifier(this=src_nm.id_column, quoted=True),
-                table=exp.Identifier(this="_seed"),
-            )
+            seed_id = self._path_key(src_nm, "_seed", textual)
             base_branches.append(
                 exp.select(
                     exp.alias_(seed_id, alias="src_id"),
@@ -829,21 +846,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 continue
 
             branch = exp.select(
-                exp.alias_(
-                    exp.Column(
-                        this=exp.Identifier(this=src_node_m.id_column, quoted=True),
-                        table=exp.Identifier(this="_seed"),
-                    ),
-                    alias="src_id",
-                ),
+                exp.alias_(self._path_key(src_node_m, "_seed", textual), alias="src_id"),
                 exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
-                exp.alias_(
-                    exp.Column(
-                        this=exp.Identifier(this=tgt_node_m.id_column, quoted=True),
-                        table=exp.Identifier(this="_nxt"),
-                    ),
-                    alias="cur_id",
-                ),
+                exp.alias_(self._path_key(tgt_node_m, "_nxt", textual), alias="cur_id"),
                 exp.alias_(exp.Literal.number(1), alias="hops"),
             ).from_(_tbl(src_node_m, "_seed"))
             branch = _apply_hop(branch, rel, "_seed", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
@@ -866,13 +871,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                         table=exp.Identifier(this="t"),
                     ),
                     exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
-                    exp.alias_(
-                        exp.Column(
-                            this=exp.Identifier(this=tgt_node_m.id_column, quoted=True),
-                            table=exp.Identifier(this="_nxt"),
-                        ),
-                        alias="cur_id",
-                    ),
+                    exp.alias_(self._path_key(tgt_node_m, "_nxt", textual), alias="cur_id"),
                     exp.alias_(
                         exp.Add(
                             this=exp.Column(
@@ -895,10 +894,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                     _tbl(src_node_m, "_cur"),
                     on=exp.And(
                         this=exp.EQ(
-                            this=exp.Column(
-                                this=exp.Identifier(this=src_node_m.id_column, quoted=True),
-                                table=exp.Identifier(this="_cur"),
-                            ),
+                            this=self._path_key(src_node_m, "_cur", textual),
                             expression=exp.Column(
                                 this=exp.Identifier(this="cur_id"),
                                 table=exp.Identifier(this="t"),
@@ -932,7 +928,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         if len(rec_branches) > 1:
             # One recursive term, reading the traversal once (#158): engines admit a single
             # recursive term, and one that names the traversal a single time.
-            rec_branches = [self._one_recursive_term(cte_name, allowed_rels, max_hops, _tbl)]
+            rec_branches = [
+                self._one_recursive_term(cte_name, allowed_rels, max_hops, _tbl, textual)
+            ]
 
         all_branches = base_branches + rec_branches
         if not all_branches:
