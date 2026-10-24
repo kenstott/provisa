@@ -754,13 +754,14 @@ def test_domain_union_includes_branch_when_any_required_prop_exists():
     assert "companies" in sql.lower()
 
 
-def test_labeled_node_where_missing_prop_short_circuits():
-    """MATCH (n:Person) WHERE n.date IS NOT NULL — Person has no 'date'; WHERE FALSE, no table scan."""
+def test_a_property_the_label_has_not_is_null():
+    """MATCH (n:Person) WHERE n.date IS NOT NULL -- Person has no 'date': it is null, as a graph's
+    missing property is, and no column is read by that name."""
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE n.date IS NOT NULL RETURN n.date LIMIT 25")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "where false" in sql.lower()
+    assert '"date"' not in sql and "NOT NULL IS NULL" in sql
 
 
 def test_labeled_node_where_existing_prop_not_short_circuited():
@@ -772,35 +773,18 @@ def test_labeled_node_where_existing_prop_not_short_circuited():
     assert "persons" in sql.lower()
 
 
-def test_short_circuit_drops_orphaned_bound_param():
-    """A bound $param used only in a now-discarded WHERE FALSE must not survive in param_order —
-    otherwise the caller's positional `[parameters.get(name) for name in ordered_params]` hands the
-    executor one more bound value than the query has `$N` placeholders for, and DuckDB/Postgres both
-    reject it as an argument-count mismatch (the exact crash this test guards against)."""
-    lm = _make_label_map()
-    ast = parse_cypher("MATCH (n:Person) WHERE n.missing_prop = $x RETURN n.name")
-    sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42})
-    sql = sql_ast.sql(dialect="postgres")
-    assert "where false" in sql.lower()
-    assert param_names == []
-    assert "$1" not in sql
-
-
-def test_short_circuit_renumbers_surviving_param():
-    """A bound param used ONLY inside the discarded WHERE must be pruned, and any surviving param
-    referenced elsewhere (here, in an UNWIND source) must be renumbered to stay contiguous from $1 —
-    dropping the dead entry without renumbering would silently rebind the surviving param's value to
-    the wrong ordinal."""
+def test_a_missing_property_compared_to_a_param_keeps_the_param_bound():
+    """The condition on a missing property stays the statement's (it is null, not dropped), and
+    every parameter keeps its own placeholder."""
     lm = _make_label_map()
     ast = parse_cypher(
         "MATCH (n:Person) WHERE n.missing_prop = $x UNWIND $keep AS k RETURN n.name, k"
     )
     sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42, "keep": [1, 2]})
     sql = sql_ast.sql(dialect="postgres")
-    assert "where false" in sql.lower()
-    assert param_names == ["keep"]
-    assert "$1" in sql
-    assert "$2" not in sql
+    assert sorted(param_names) == ["keep", "x"]
+    assert f"NULL = ${param_names.index('x') + 1}" in sql
+    assert '"missing_prop"' not in sql
 
 
 def test_type_and_domain_label_uses_type_table():
