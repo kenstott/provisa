@@ -694,6 +694,7 @@ async def ensure_resident(
     replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
+    asked_at = datetime.now(UTC)
     budget = request_deadline.remaining()
     while waiting:
         still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
@@ -703,7 +704,7 @@ async def ensure_resident(
                 view.read(org_id, key, record)
                 if record is not None and record.build_state == replica_state.FAILED:
                     raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
-                if _stale(source, t, record):
+                if _stale(source, t, record) and not _landed_since(record, asked_at):
                     still.append((source, t, key))
                 else:
                     _read_from(key, record)
@@ -718,6 +719,23 @@ async def ensure_resident(
         await asyncio.sleep(_BUILD_POLL_S)
     log.info("query residency: %s built before the read", built)
     return Residency(built=built, replicas_read=replicas_read, answered_in=answered_in)
+
+
+def _landed_since(record: Any, asked_at: datetime) -> bool:
+    """Whether ``record``'s replica landed after ``asked_at``, when the read began waiting for it:
+    that landing answers the read whatever its TTL. A cache_ttl of 0 (REQ-2003) makes a replica
+    stale the moment it lands, so a read that waited only for a current one would never be
+    answered."""
+    from provisa.federation.replica_state import BUILDING, REQUESTED
+
+    if record is None or record.build_state in (REQUESTED, BUILDING):
+        return False
+    completed = record.completed_at
+    if completed is None:
+        return False
+    if completed.tzinfo is None:
+        completed = completed.replace(tzinfo=UTC)  # every completion is stamped in UTC
+    return completed >= asked_at
 
 
 #: How often a read waiting for a build looks at its record.
