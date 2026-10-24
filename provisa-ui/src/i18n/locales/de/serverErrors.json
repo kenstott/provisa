@@ -529,7 +529,8 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Eine Zählung war nicht möglich, daher ist die Summe unbekannt: {{statement}}: {{reason}}"
+      "count_unknown": "Eine Zählung war nicht möglich, daher ist die Summe unbekannt: {{statement}}: {{reason}}",
+      "access_violations": "Diese Rolle darf diese Abfrage nicht ausführen:"
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",

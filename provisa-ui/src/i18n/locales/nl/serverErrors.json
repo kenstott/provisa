@@ -529,7 +529,8 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "Een telling kon niet worden gemaakt, dus het totaal is onbekend: {{statement}}: {{reason}}"
+      "count_unknown": "Een telling kon niet worden gemaakt, dus het totaal is onbekend: {{statement}}: {{reason}}",
+      "access_violations": "Deze rol mag deze query niet uitvoeren:"
     },
     "requests": {
       "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",

@@ -327,12 +327,12 @@ class TestCypherErrorPaths:
     async def test_malformed_cypher_returns_400(self, client):
         resp = await _cypher(client, "MATCH (n RETURN n")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
     async def test_unbound_param_returns_400(self, client):
         resp = await _cypher(client, "MATCH (n) WHERE n.id = $missing_param RETURN n LIMIT 1")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
     async def test_unknown_label_returns_error_not_500(self, client):
         resp = await _cypher(client, "MATCH (n:TotallyUnknownLabel) RETURN n LIMIT 1")
@@ -353,9 +353,9 @@ class TestCypherErrorPaths:
             pytest.skip("Engine coerced the type mismatch instead of erroring")
         assert resp.status_code in (400, 500, 503)
         data = resp.json()
-        assert "error" in data
-        assert "trino" not in data["error"].lower()
-        assert "postgresql" not in data["error"].lower()
+        assert data["code"] == "cypher.execution_failed", data
+        assert "trino" not in data["detail"].lower()
+        assert "postgresql" not in data["detail"].lower()
 
     async def test_query_id_removed_endpoint_returns_410(self, client):
         resp = await client.post(
@@ -363,12 +363,12 @@ class TestCypherErrorPaths:
             json={"query": "MATCH (n) RETURN n LIMIT 1"},
         )
         assert resp.status_code == 410
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.query_id_removed"
 
     async def test_merge_write_rejected(self, client):
         resp = await _cypher(client, "MERGE (n:TestNode {id: 999})")
         assert resp.status_code == 400
-        assert "error" in resp.json()
+        assert resp.json()["code"] == "cypher.refused"
 
 
 # --------------------------------------------------------------------------- #
@@ -407,8 +407,7 @@ class TestCypherResponseContract:
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data.get("type") == "cypher"
-        if "error" in data:
-            assert data["error"] is None
+        assert "detail" not in data and "code" not in data
 
     async def test_stats_header_includes_provisa_stats(self, client):
         schema = await _schema(client)

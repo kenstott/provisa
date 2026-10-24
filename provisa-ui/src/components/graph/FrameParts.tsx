@@ -14,6 +14,7 @@
 import { useTranslation } from "react-i18next";
 import { Loader } from "@mantine/core";
 import { StatementTabs } from "../StatementTabs";
+import { CopySymbolButton } from "../CopyButton";
 import { statementName } from "./frameStatements";
 import type { FrameData } from "./graph-model";
 
@@ -56,5 +57,29 @@ export function FrameStatementTabs({
       onChange={(i) => onStatement(frame.id, i)}
       testId="graph-statement-tab"
     />
+  );
+}
+
+/** A refused statement: its reason, each access violation listed under it, copyable whole. */
+export function FrameError({ frame }: { frame: FrameData }) {
+  const { t } = useTranslation();
+  return (
+    <div className="gf-error gf-error--copyable">
+      <div className="gf-error-text">
+        <span data-testid="graph-frame-error">{frame.error}</span>
+        {frame.violations && (
+          <ul className="gf-error-violations" data-testid="graph-frame-violations">
+            {frame.violations.map((v, i) => (
+              <li key={i}>{v}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <CopySymbolButton
+        text={[frame.error ?? "", ...(frame.violations ?? [])].join("\n")}
+        className="gf-error-copy-btn"
+        title={t("graphFrame.copyErrorTitle")}
+      />
+    </div>
   );
 }
