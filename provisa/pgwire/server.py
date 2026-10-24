@@ -1846,8 +1846,17 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return False
-        acting = named[0] if len(named) == 1 else meta_role_id(named)
-        ctx.session.act_as(acting, tuple(named))  # type: ignore[attr-defined]
+        # REQ-2057: a named declared derived role is held, as on the unsecured HTTP path
+        # (auth/middleware.py, named_unsecured); it qualifies the roles it is named with.
+        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+
+        roles, held_derived, _attributes = named_unsecured(named, declared_derived_roles(_state))
+        qualifiers = tuple(sorted(held_derived))
+        if qualifiers:
+            acting = meta_role_id([*roles, *qualifiers])
+        else:
+            acting = roles[0] if len(roles) == 1 else meta_role_id(roles)
+        ctx.session.act_as(acting, tuple(roles), qualifiers)  # type: ignore[attr-defined]
         ctx.session.user_id = username  # type: ignore[attr-defined]
         # REQ-1266: an unsecured deployment serves its own org, as the unsecured HTTP path does.
         ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]

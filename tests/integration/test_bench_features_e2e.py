@@ -102,6 +102,22 @@ def norm(value: Any) -> Any:
         return text
 
 
+def mongo_column_paths() -> dict[str, str]:
+    """order_docs' registered columns, each to the document path it reads (its name when flat)."""
+    config = yaml.safe_load((lp.PERF / "config.yaml").read_text())
+    (table,) = [t for t in config["tables"] if t["table"] == "order_docs"]
+    return {c["name"]: c.get("path") or c["name"] for c in table["columns"]}
+
+
+def _at(doc: dict[str, Any], path: str) -> Any:
+    value: Any = doc
+    for part in path.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
 class Oracle:
     """Every row of every contract table, read from its source once."""
 
@@ -141,9 +157,14 @@ class Oracle:
     def _read_mongo(self, port: int) -> None:
         from pymongo import MongoClient
 
+        # A registered column may read a nested field (shipping_carrier: path shipping.carrier):
+        # each document is read as the perf demo's registration names its columns.
+        paths = mongo_column_paths()
         client: MongoClient = MongoClient(host="127.0.0.1", port=port, directConnection=True)
         docs = client["provisa_bench"]["order_docs"].find({}, {"_id": 0})
-        self.tables[("bench-mongodb", "order_docs")] = [dict(d) for d in docs]
+        self.tables[("bench-mongodb", "order_docs")] = [
+            {name: _at(d, path) for name, path in paths.items()} for d in docs
+        ]
         client.close()
 
     def _read_neo4j(self, port: int) -> None:
@@ -208,11 +229,21 @@ def check_single(
 ) -> None:
     keys = _key_map(table)
     returned = {keys[c.lower()] for c in columns if c.lower() in keys}
-    # gRPC answers every column of the row, whatever the read mask (optimistic_load.NOTES).
-    if transport == "grpc":
-        assert set(spec.columns) <= returned, (columns, spec.columns)
-    else:
-        assert returned == set(spec.columns), (transport, columns, spec.columns)
+    # An empty answer names no column on a transport that reads its columns off its rows (GraphQL,
+    # Cypher, REST, JSON:API): the count check below still holds it to the expected rows.
+    if rows or columns:
+        if transport == "grpc":
+            # gRPC answers every column of the row, whatever the read mask (optimistic_load.NOTES).
+            assert set(spec.columns) <= returned, (columns, spec.columns)
+        elif transport == "jsonapi":
+            # a JSON:API resource always carries its id, the table's base column
+            assert set(spec.columns) <= returned <= {*spec.columns, table.base_column}, (
+                transport,
+                columns,
+                spec.columns,
+            )
+        else:
+            assert returned == set(spec.columns), (transport, columns, spec.columns)
     expected = expected_rows(oracle, table, spec, masked)
     got = Counter(_projected(r, keys, spec.columns) for r in rows)
     extra = got - expected
@@ -369,7 +400,14 @@ def start_server(ports: dict[str, int], **env: str) -> Any:
         await_flight=True,
         await_grpc=True,
         config=str(lp.PERF / "config.yaml"),
-        env={**lp._source_env(ports), "PROVISA_MCP_PORT": str(ports["mcp"]), **env},  # noqa: SLF001
+        env={
+            **lp._source_env(ports),  # noqa: SLF001
+            "PROVISA_MCP_PORT": str(ports["mcp"]),
+            # loopback: the harness's pinned roles apply to a call with no bearer (mcp_pin); off
+            # loopback a bearer is required
+            "PROVISA_MCP_HOST": "127.0.0.1",
+            **env,
+        },
     )
     server.start(timeout=600)
     deadline = time.monotonic() + 120
@@ -391,12 +429,15 @@ def variant(
     knobs: dict[str, Any] | None = None,
     raw_edit: Any = None,
 ) -> cm.Setup:
-    """The contract with one transport, the source weights given (else all on PostgreSQL), each
-    named distribution knob a constant, and ``raw_edit`` applied to the rest."""
+    """The contract with one transport, the source weights given (else all on PostgreSQL), no
+    request opted into the response cache, each named distribution knob a constant, and
+    ``raw_edit`` applied to the rest."""
     c = copy.deepcopy(stack.raw)
     k = c["knobs"]
     k["source_weights"] = weights or {s: 1.0 if s == "bench-postgresql" else 0.0 for s in SOURCES}
     c["transports"] = {transport: {}}
+    # the contract opts every request into the response cache; a test that measures it opts in
+    k["cache"] = {"probability": 0.0}
     for name, value in (knobs or {}).items():
         k[name] = {"probability": 1, "distribution": {"kind": "constant", "value": value}}
     if raw_edit is not None:
@@ -429,6 +470,10 @@ def send(
     t0 = time.perf_counter()
     try:
         answer = client.rows(query, role)
+    except httpx.HTTPStatusError as exc:
+        raise AssertionError(
+            f"{transport}: {exc.response.status_code} {exc.response.text[:600]}"
+        ) from exc
     finally:
         client.close()
     stack.latency.append(
@@ -459,7 +504,8 @@ def run_cell(
     for spec, query in specs(setup, transport, f"features/{cell}/{transport}"):
         if not spellable(query, transport):
             continue
-        as_role = setup.request_role(transport, role or spec.role or stack.ep.role)
+        # the spec's role is already what it is sent as (RequestGenerator: request_role)
+        as_role = role or spec.role
         columns, rows, _hit = send(stack, setup, transport, query, as_role, cell)
         if spec.joins:
             check_join(transport, setup, spec, rows, stack.oracle)
@@ -664,7 +710,7 @@ def test_a_cached_request_answers_the_same_rows_again(stack, transport):
         if not spellable(query, transport):
             continue
         assert spec.cached
-        role = setup.request_role(transport, spec.role or stack.ep.role)
+        role = spec.role
         first = send(stack, setup, transport, query, role, "cache:first")
         again = send(stack, setup, transport, query, role, "cache:again")
         table = table_of(setup, spec)
@@ -734,6 +780,8 @@ def test_load_mode_runs_a_step_with_no_failed_request(stack, transport, mode):
     def load(c: dict[str, Any]) -> None:
         c["load"]["mode"] = mode
         if mode == "open_loop":
+            # one step: the offered rate over this many connections (contract_parse)
+            c["load"]["connections"] = c["load"].pop("steps")[0]
             c["load"]["rate_per_s"] = 20
 
     setup = variant(stack, transport, knobs={"fields": 2, "filters": 1}, raw_edit=load)
@@ -766,24 +814,57 @@ def _table_ids(stack: Stack, setup: cm.Setup) -> dict[str, str]:
     }
 
 
-def _governed_cell(
-    stack: Stack, transport: str, setup: cm.Setup, cell: str, **check: Any
-) -> list[dict[str, Any]]:
-    """Run the cell under the setup's governance; its audit rows (each request's role and what was
-    enforced on it), one per request at least."""
+# Each knob is set up once, its transports run under it (the fixture is module-scoped and
+# parametrized, so pytest groups the tests by knob): setting one up rebuilds the model.
+GOVERNANCE = ("row_rules", "masks", "redaction", "role_depth", "derived_roles")
+
+
+@dataclass
+class Governed:
+    knob: str
+    knobs: dict[str, Any]  # the governance knob values
+    request_knobs: dict[str, Any]  # the request shape each transport is sent
+    report: dict[str, Any]  # what AdminGovernance set up
+    client: httpx.Client
+
+
+def _orders_columns(stack: Stack) -> int:
+    """How many columns orders is registered with (the share masks a count of these)."""
+    tid = _table_ids(stack, stack.bound)["orders"]
+    with httpx.Client(base_url=stack.server.base_url, timeout=60) as client:
+        gov = governance.AdminGovernance(client, stack.ep.role)
+        return len(gov._tables()[int(tid)]["columns"])  # noqa: SLF001 - the bench's own client
+
+
+@pytest.fixture(scope="module", params=GOVERNANCE)
+def governed(stack, request) -> Iterator[Governed]:
+    knob = request.param
+    request_knobs: dict[str, Any] = {"fields": 2}
+    if knob == "row_rules":
+        g: dict[str, Any] = {"row_rules_per_table": 2}
+    elif knob == "masks":
+        # one masked column of orders (its only nullable one no filter, join or base request
+        # reads), every column requested so it is in each answer
+        g = {"masked_column_share": 1 / _orders_columns(stack)}
+        request_knobs = {
+            "fields": next(
+                len(t["columns"])
+                for t in stack.raw["sources"]["bench-postgresql"]["tables"]
+                if t["table"] == "orders"
+            )
+        }
+    elif knob == "redaction":
+        g = {"central_redaction": True}
+    elif knob == "role_depth":
+        g = {"role_depth": 3}
+    else:
+        g = {"derived_roles": 2}
+    setup = _governed(stack, "data_sql", g, **request_knobs)
     with httpx.Client(base_url=stack.server.base_url, timeout=120) as client:
         with governance.AdminGovernance(client, stack.ep.role).applied(
-            setup, transport, stack.resolved
+            setup, "data_sql", stack.resolved
         ) as report:
-            baseline = _audit_baseline(stack)
-            masked = {c for cols in report.get("masked_columns", {}).values() for c in cols}
-            sent = run_cell(stack, transport, cell, setup, masked=masked, **check)
-            assert sent > 0
-            rows = [r for r in _audit_since(stack, baseline, sent) if r["status_code"] < 400]
-            assert len(rows) >= sent, (sent, rows)
-            for r in rows:
-                r["report"] = report
-            return rows
+            yield Governed(knob, g, request_knobs, report, client)
 
 
 def _enforced(row: dict[str, Any]) -> dict[str, Any]:
@@ -792,61 +873,43 @@ def _enforced(row: dict[str, Any]) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("transport", TRANSPORTS)
-def test_row_rules_keep_every_row_and_are_applied(stack, transport):
-    setup = _governed(stack, transport, {"row_rules_per_table": 2})
+def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
+    stack, governed, transport
+):
+    """Each answer is the expected rows (a masked column null); and the knob was applied: the
+    row rules and masks are what the audit records as enforced, the redaction rules are the org's,
+    the deepest role and the derived roles are the ones the request acted as."""
+    setup = _governed(stack, transport, governed.knobs, **governed.request_knobs)
+    masked = {c for cols in governed.report.get("masked_columns", {}).values() for c in cols}
+    request_role = setup.request_role(transport, stack.ep.role)
+    if governed.knob == "redaction":
+        rules = governed.client.get(
+            "/admin/redaction", headers={"X-Provisa-Role": stack.ep.role}
+        ).json()
+        names = {r["name"] for r in rules["org"]}
+        assert {r["name"] for r in governance.BENCH_REDACTION_RULES} <= names, names
+    baseline = _audit_baseline(stack)
+    sent = run_cell(stack, transport, f"governance.{governed.knob}", setup, masked=masked)
+    assert sent > 0
+    rows = [r for r in _audit_since(stack, baseline, sent) if r["status_code"] < 400]
+    assert len(rows) >= sent, (sent, rows)
     orders = _table_ids(stack, setup)["orders"]
-    for row in _governed_cell(stack, transport, setup, "governance.row_rules"):
-        # the tag rules (``<base column> IS NOT NULL``, two ANDed) are what was enforced
-        rule = _enforced(row)["row_filters"].get(orders, {}).get("filter", "")
-        assert rule.upper().count("IS NOT NULL") >= 2, (transport, rule)
-
-
-@pytest.mark.parametrize("transport", TRANSPORTS)
-def test_masked_columns_answer_null_and_the_rest_unchanged(stack, transport):
-    every = next(
-        len(t["columns"])
-        for t in stack.raw["sources"]["bench-postgresql"]["tables"]
-        if t["table"] == "orders"
-    )
-    setup = _governed(stack, transport, {"masked_column_share": 0.5}, fields=every)
-    orders = _table_ids(stack, setup)["orders"]
-    for row in _governed_cell(stack, transport, setup, "governance.masks"):
-        masked = set(row["report"]["masked_columns"]["orders"])
-        assert masked, row["report"]
-        assert masked <= set(_enforced(row)["masks"].get(orders, {})), _enforced(row)
-
-
-@pytest.mark.parametrize("transport", TRANSPORTS)
-def test_central_redaction_on_answers_the_same_rows(stack, transport):
-    setup = _governed(stack, transport, {"central_redaction": True})
-    with httpx.Client(base_url=stack.server.base_url, timeout=120) as client:
-        with governance.AdminGovernance(client, stack.ep.role).applied(
-            setup, transport, stack.resolved
-        ):
-            rules = client.get("/admin/redaction", headers={"X-Provisa-Role": stack.ep.role}).json()
-            names = {r["name"] for r in rules["org"]}
-            # applied: the bench's rules are in the org's list while the cell runs
-            assert {r["name"] for r in governance.BENCH_REDACTION_RULES} <= names, names
-            assert run_cell(stack, transport, "governance.redaction", setup) > 0
-
-
-@pytest.mark.parametrize("transport", TRANSPORTS)
-def test_the_deepest_role_answers_and_is_the_one_evaluated(stack, transport):
-    setup = _governed(stack, transport, {"role_depth": 3})
-    deepest = cm.chain_role(stack.ep.role, 3)
-    assert setup.request_role(transport, stack.ep.role) == deepest
-    rows = _governed_cell(stack, transport, setup, "governance.role_depth")
-    assert {r["role_id"] for r in rows} == {deepest}, {r["role_id"] for r in rows}
-
-
-@pytest.mark.parametrize("transport", TRANSPORTS)
-def test_derived_roles_answer_and_are_the_ones_evaluated(stack, transport):
-    setup = _governed(stack, transport, {"derived_roles": 2})
-    attrs = [cm.derived_attribute(i) for i in (1, 2)]
-    assert all(a in setup.request_role(transport, stack.ep.role) for a in attrs)
-    for row in _governed_cell(stack, transport, setup, "governance.derived_roles"):
-        evaluated = f"{row['role_id']} {' '.join(_enforced(row).get('acting_roles', []))}"
-        assert all(a in evaluated for a in attrs), (transport, evaluated)
+    for row in rows:
+        enforced = _enforced(row)
+        if governed.knob == "row_rules":
+            # the tag rules (``<base column> IS NOT NULL``, two ANDed) are what was enforced
+            rule = enforced["row_filters"].get(orders, {}).get("filter", "")
+            assert rule.upper().count("IS NOT NULL") >= 2, (transport, rule)
+        elif governed.knob == "masks":
+            assert masked, governed.report
+            assert masked <= set(enforced["masks"].get(orders, {})), enforced
+        elif governed.knob == "role_depth":
+            assert row["role_id"] == cm.chain_role(stack.ep.role, 3), (transport, row["role_id"])
+        elif governed.knob == "derived_roles":
+            attrs = [cm.derived_attribute(i) for i in (1, 2)]
+            assert all(a in request_role for a in attrs), request_role
+            evaluated = f"{row['role_id']} {' '.join(enforced.get('acting_roles', []))}"
+            assert all(a in evaluated for a in attrs), (transport, evaluated)
 
 
 # --------------------------------------------------------------------------------------------
