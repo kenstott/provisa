@@ -384,18 +384,26 @@ services:
       - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
     volumes:
       - provisa-code-rates-state:/var/lib/provisa
+      - provisa-code-rates-spill:/var/lib/provisa-spill
 volumes:
   provisa-code-rates-state: {}
+  # Size this volume to codesource.duckdb_spill_cap_mb with the platform's quota
+  # (Kubernetes ephemeral-storage or an emptyDir sizeLimit, an xfs project quota, or a
+  # volume driver's size option). Without a quota the disk the image spills to is not
+  # bounded.
+  provisa-code-rates-spill: {}
 ```
 
 On its first start the container prints a line beginning `pairing code:` in its log.
+
+**Its memory and its disk.** The container answers each statement with an embedded DuckDB, bounded by three settings: `codesource.duckdb_memory_mb`, `codesource.duckdb_threads` and `codesource.duckdb_spill_cap_mb`. Provisa gives them to the container when it pairs and with every call, and the container keeps the last ones on its state volume, so it's bounded again after a restart. A statement that needs more memory spills to the spill volume. The cap holds only when you size that volume to it with your platform's quota. A statement that fills the volume is refused, and the refusal names `codesource.duckdb_spill_cap_mb`. A source in dev mode runs its statements in Provisa's own DuckDB, under the same memory and threads, and spills into the data directory with no bound.
 
 **Connect it.**
 
 - On the form, enter the host Provisa reaches the container at, the port you published, and the pairing code. On a shared Docker network or in Kubernetes, enter the container or Service name and 7443, with nothing published.
 - Provisa pairs with the container over mutual TLS. The code is used once; from then on each side accepts only the other.
 - Provisa checks that the container runs the source's code and offers its exports, then switches the source to built mode.
-- Every Provisa process keeps its own connection to the host and dials again if the host stops answering. While it doesn't answer, reads of the source's tables fail and name the host.
+- Every Provisa process keeps its own 8 connections to the host, one for each call it runs at once, and dials again if the host stops answering. While it doesn't answer, reads of the source's tables fail and name the host.
 
 **If the code changes.**
 

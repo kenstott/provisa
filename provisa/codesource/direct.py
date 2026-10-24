@@ -142,6 +142,8 @@ async def read(state: Any, source_id: str, sql: str) -> Any:
 
     from provisa.codehost import residual
     from provisa.codesource.source import context_for, prepare
+    from provisa.codesource.worker import duckdb_bounds
+    from provisa.core.org_files import data_dir
     from provisa.federation.registry_view import registered_sources
 
     found = [s for s in await registered_sources(state) if s.id == source_id]
@@ -162,6 +164,9 @@ async def read(state: Any, source_id: str, sql: str) -> Any:
     def _run() -> Any:
         if len(reads) == 1 and reads[0].answered_by_image(prepared):
             return reads[0].answer_in_image(prepared, sql)
+        # A dev-mode source's statement runs on this process's DuckDB, under the operator's
+        # bounds, spilling into the node's data directory (REQ-2100).
+        residual.configure(**duckdb_bounds(), spill_dir=str(data_dir() / "code-spill"))
         rows = {r.name: r.rows(prepared) for r in reads}
         # The answer's batches as DuckDB makes them, held together without a copy: the driver's
         # result is the statement's rows.
