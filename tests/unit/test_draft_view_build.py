@@ -164,6 +164,25 @@ async def test_a_deleted_view_leaves_no_build_registered(rebuilt, model):
     assert "e2e_mv_a" not in state.view_sql_map and "e2e_mv_b" not in state.view_sql_map
 
 
+async def test_a_materialized_view_not_built_from_a_view_survives_whatever_its_id(rebuilt):
+    """What is unregistered is decided by what a build was made from, never by its name: a
+    materialized view declared in the config is no view's build, so a rebuild keeps it, even one
+    whose id reads like a view's."""
+    state = await rebuilt("big_orders", draft=False)
+    declared = MVDefinition(
+        id="view-declared_in_config",
+        source_tables=["orders"],
+        target_catalog="store",
+        target_schema="views",
+        target_table="declared_in_config",
+        sql="SELECT id FROM orders",
+    )
+    state.mv_registry.register(declared)
+    state = await rebuilt("big_orders", draft=False)
+    assert state.mv_registry.get("view-declared_in_config") is declared
+    assert state.mv_registry.get("view-big_orders").view_table == "big_orders"
+
+
 async def test_a_view_no_longer_materialized_has_no_build(rebuilt):
     state = await rebuilt("big_orders", draft=False)
     assert state.mv_registry.get("view-big_orders") is not None
