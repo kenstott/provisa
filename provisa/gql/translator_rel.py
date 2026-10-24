@@ -89,6 +89,8 @@ class _RelJoinMixin:  # mixin for _Translator
         _alternation_types: dict[int, dict[str, str]]
         _rel_var_endpoints: dict[str, tuple[str, NodeMapping, str, NodeMapping, bool]]
         _rel_var_via: dict[str, tuple[str, JunctionMapping]]
+        #: The relationship variables an OPTIONAL MATCH binds: null where it matched none.
+        _optional_rel_vars: set[str]
         _rel_step_endpoints: dict[int, tuple]
         _anon_node_aliases: dict[tuple[int, str], str]
         _passthrough_vars: set[str]
@@ -511,6 +513,8 @@ class _RelJoinMixin:  # mixin for _Translator
             )
         if rel.variable:
             self._rel_var_types[rel.variable] = primary_rm.rel_type
+            if clause.optional:
+                self._optional_rel_vars.add(rel.variable)
             if _src_alias and _tgt_alias:
                 self._rel_var_endpoints[rel.variable] = (
                     _src_alias,

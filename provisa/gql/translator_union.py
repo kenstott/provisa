@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
+from provisa.gql.select_builder import node_identity, node_key_text
 from provisa.gql.translator_helpers import (
     _const_literal,
     _make_junction_joins,
@@ -39,13 +40,7 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
     kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.JSONKeyValue(
             this=exp.Literal.string("id"),
-            expression=exp.DPipe(
-                this=exp.Literal.string(f"{nm.label}|"),
-                expression=exp.Cast(
-                    this=exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)),
-                    to=exp.DataType(this=exp.DataType.Type.VARCHAR),
-                ),
-            ),
+            expression=node_identity(None, nm),
         ),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
@@ -158,21 +153,8 @@ class _UnionMixin:  # mixin for _Translator
             sa = f"_s_{rm.rel_type.lower()[:20]}"
             ta = f"_t_{rm.rel_type.lower()[:20]}"
 
-            src_id_col = exp.Column(
-                this=exp.Identifier(this=src_nm.id_column, quoted=True),
-                table=exp.Identifier(this=sa),
-            )
-            tgt_id_col = exp.Column(
-                this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
-                table=exp.Identifier(this=ta),
-            )
-            src_compound_id = exp.DPipe(
-                this=exp.DPipe(
-                    this=exp.Literal.string(src_nm.label),
-                    expression=exp.Literal.string("|"),
-                ),
-                expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
-            )
+            # Each end's identity and key text hold every column of a compound key.
+            src_compound_id, tgt_compound_id = node_identity(sa, src_nm), node_identity(ta, tgt_nm)
             src_props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]
             for prop_name, col_name in src_nm.properties.items():
                 if prop_name not in src_props_wanted:
@@ -198,13 +180,6 @@ class _UnionMixin:  # mixin for _Translator
                     exp.Literal.string("properties"),
                     exp.Anonymous(this="JSON_OBJECT", expressions=src_props_exprs),
                 ],
-            )
-            tgt_compound_id = exp.DPipe(
-                this=exp.DPipe(
-                    this=exp.Literal.string(tgt_nm.label),
-                    expression=exp.Literal.string("|"),
-                ),
-                expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
             )
             tgt_props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]
             for prop_name, col_name in tgt_nm.properties.items():
@@ -233,11 +208,8 @@ class _UnionMixin:  # mixin for _Translator
                 ],
             )
             edge_id = exp.DPipe(
-                this=exp.DPipe(
-                    this=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
-                    expression=exp.Literal.string("-"),
-                ),
-                expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
+                this=exp.DPipe(this=node_key_text(sa, src_nm), expression=exp.Literal.string("-")),
+                expression=node_key_text(ta, tgt_nm),
             )
             # REQ-1586: the junction row's own columns are this edge's properties, so an
             # all-relationships result carries them exactly as a named pattern does.
@@ -385,19 +357,7 @@ class _UnionMixin:  # mixin for _Translator
                 continue
             select_items: list[exp.Expr] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
-                exp.alias_(
-                    exp.DPipe(
-                        this=exp.DPipe(
-                            this=exp.Literal.string(nm.label),
-                            expression=exp.Literal.string("|"),
-                        ),
-                        expression=exp.Cast(
-                            this=exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)),
-                            to=exp.DataType(this=exp.DataType.Type.VARCHAR),
-                        ),
-                    ),
-                    alias="__id",
-                ),
+                exp.alias_(node_identity(None, nm), alias="__id"),
             ]
             if as_one_value:
                 select_items.append(exp.alias_(_node_value(nm), alias=NODE_COLUMN))
