@@ -31,7 +31,12 @@ provisa/codesource/names.py) from the names file baked into the image.
 RESIDUAL. A ``call`` that carries a ``residual`` -- a read of one table, DIRECT from Provisa --
 is answered with the statement applied to the function's rows (provisa/codehost/residual.py): its
 ``sql`` in its ``dialect`` over the rows as its ``table``, each parameter's ``_nf_`` column holding
-the value of the one-row Arrow table ``arguments``.
+the value of the one-row Arrow table ``arguments``. The rows stream into DuckDB as the worker
+sends them, and the answer streams out a batch at a time.
+
+CONNECTIONS. The front starts the worker with :data:`CONNECTIONS` connections, and each call
+leases one for its whole run, on a thread of its own (REQ-2100): a call's frames wait for its
+Provisa connection to take them, so one slow reader holds back no other call.
 
 Its imports beside the standard library are cryptography's, DuckDB's, sqlglot's and Arrow's, in the
 image beside this program; the code's own environment is the code's.
@@ -46,6 +51,7 @@ import hashlib
 import itertools
 import json
 import os
+import queue
 import secrets
 import socket
 import socketserver
@@ -54,6 +60,7 @@ import struct
 import subprocess  # nosec B404 - argv-list invocation of the image's own worker
 import sys
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -224,87 +231,266 @@ class Connection:
                 self.open = False
 
 
-class _Collector:
-    """A call's answer, collected for the front end itself: its batches, then its end."""
+#: How many connections the front has to the code's worker, each serving one call at a time
+#: (provisa/codesource/worker.py CONNECTIONS).
+CONNECTIONS = 8
+#: How many of a call's frames its connection holds before it stops reading the worker.
+_QUEUED = 4
+
+
+class _Cancelled:
+    def __init__(self, call_id: int) -> None:
+        self.call_id = call_id
+
+
+class _Lane:
+    """One of the front's connections to the worker, leased by one call at a time: what the worker
+    sends under the call's id waits for the call's thread, at most :data:`_QUEUED` frames, so a
+    Provisa reading one call slowly holds back that call's connection alone."""
+
+    def __init__(self, conn: socket.socket) -> None:
+        self.conn = conn
+        self.waiting: queue.Queue = queue.Queue(maxsize=_QUEUED)
+        self._send_lock = threading.Lock()
+        self._lock = threading.Lock()
+        self._call_id: int | None = None
+
+    def send(self, message: dict) -> None:
+        with self._send_lock:
+            self.conn.sendall(frame(message))
+
+    def deliver(self, message: dict) -> None:
+        with self._lock:
+            current = self._call_id
+        if current is not None and message.get("id") == current:
+            self.waiting.put(message)
+
+    def force(self, item: object) -> None:
+        while True:
+            try:
+                self.waiting.put_nowait(item)
+                return
+            except queue.Full:
+                try:
+                    self.waiting.get_nowait()
+                except queue.Empty:
+                    pass  # the call's thread took one meanwhile: there is room now
+
+    def lease(self, call_id: int | None) -> None:
+        with self._lock:
+            self._call_id = call_id
+        while True:
+            try:
+                self.waiting.get_nowait()
+            except queue.Empty:
+                return
+
+
+class _Running:
+    """A Provisa call the front serves: cancelled before or while it runs."""
 
     def __init__(self) -> None:
-        self.batches: list[bytes] = []
-        self.error: str | None = None
-        self.done = threading.Event()
-
-    def send(self, data: bytes) -> None:
-        body = data[_HEAD.size :]
-        if body[:1] == _ARROW:
-            self.batches.append(body[1 + _ID.size :])
-            return
-        message = json.loads(body[1:])
-        if message["op"] == "error":
-            self.error = message.get("message", "the call failed")
-            self.done.set()
-        elif message["op"] == "end":
-            self.done.set()
+        self.cancelled = False
+        self.lane: _Lane | None = None
+        self.own: int | None = None
 
 
-class _Call:
-    def __init__(self, connection: Connection, call_id: int, residual: dict | None) -> None:
-        self.connection = connection
-        self.call_id = call_id
-        self.residual = residual
-        self.batches: list[bytes] = []
+class _Failed(Exception):
+    """The code's own failure, sent back to Provisa by its message and stack."""
+
+    def __init__(self, message: dict) -> None:
+        super().__init__(message.get("message", "the call failed"))
+        self.message = message
 
 
 class Worker:
-    """The code's worker, started once, its calls shared by every connection."""
+    """The code's worker, started once with :data:`CONNECTIONS` connections, each call leasing one
+    for its whole run on a thread of its own: a call's rows reach its Provisa connection as fast as
+    it reads them, and no faster."""
 
     def __init__(self, argv: list[str]) -> None:
-        mine, theirs = socket.socketpair()
-        self._sock = mine
-        argv = [a.replace("{fd}", f"fd:{theirs.fileno()}") for a in argv]
-        self.process = subprocess.Popen(argv, pass_fds=(theirs.fileno(),))  # noqa: S603  # nosec B603
-        theirs.close()
-        body = read_body(mine)
-        if body is None or body[:1] != _JSON:
-            raise RuntimeError("the code's worker ended before it said hello")
-        self.hello = json.loads(body[1:])
+        pairs = [socket.socketpair() for _ in range(CONNECTIONS)]
+        theirs = [t.fileno() for _, t in pairs]
+        argv = [a.replace("{fd}", f"fd:{','.join(map(str, theirs))}") for a in argv]
+        self.process = subprocess.Popen(argv, pass_fds=tuple(theirs))  # noqa: S603  # nosec B603
+        for _, t in pairs:
+            t.close()
+        hello: dict = {}
+        for mine, _ in pairs:
+            body = read_body(mine)
+            if body is None or body[:1] != _JSON:
+                raise RuntimeError("the code's worker ended before it said hello")
+            hello = json.loads(body[1:])
+        self.hello = hello
         self._ids = itertools.count(1)
-        self._calls: dict[int, _Call] = {}
+        self._lanes = [_Lane(mine) for mine, _ in pairs]
+        self._idle = list(self._lanes)
+        self._leases = threading.Condition()
+        self._running: dict[tuple[int, int], _Running] = {}
         self._lock = threading.Lock()
-        self._send_lock = threading.Lock()
-        threading.Thread(target=self._read, name="worker-reader", daemon=True).start()
+        for i, lane in enumerate(self._lanes):
+            threading.Thread(
+                target=self._read, args=(lane,), name=f"worker-reader-{i}", daemon=True
+            ).start()
 
-    def _send(self, message: dict) -> None:
-        with self._send_lock:
-            self._sock.sendall(frame(message))
+    def _read(self, lane: _Lane) -> None:
+        while True:
+            body = read_body(lane.conn)
+            if body is None:
+                sys.stderr.write("the code's worker ended\n")
+                os._exit(3)  # the container's restart policy starts it again
+            if body[:1] == _ARROW:
+                own = _ID.unpack(body[1 : 1 + _ID.size])[0]
+                lane.deliver({"op": "rows", "id": own, "arrow": body[1 + _ID.size :]})
+            else:
+                lane.deliver(json.loads(body[1:]))
+
+    def _lease(self) -> tuple[_Lane, int]:
+        with self._leases:
+            self._leases.wait_for(lambda: self._idle)
+            lane = self._idle.pop()
+        own = next(self._ids)
+        lane.lease(own)
+        return lane, own
+
+    def _release(self, lane: _Lane) -> None:
+        lane.lease(None)
+        with self._leases:
+            self._idle.append(lane)
+            self._leases.notify()
+
+    @staticmethod
+    def _frames(lane: _Lane, own: int) -> Iterator[dict]:
+        """The call's messages up to its end, the last: a cancel ends them before it, the code's
+        error raises :class:`_Failed`."""
+        while True:
+            message = lane.waiting.get()
+            if isinstance(message, _Cancelled):
+                if message.call_id == own:
+                    return
+                continue
+            if message.get("id") != own:
+                continue  # an earlier call on the connection, still sending
+            if message["op"] == "error":
+                raise _Failed(message)
+            yield message
+            if message["op"] == "end":
+                return
 
     def call(self, connection: Connection, message: dict) -> None:
-        """A connection's call, sent to the worker under an id of the worker's own."""
-        residual = message.pop("residual", None)
-        own = next(self._ids)
+        """A connection's call, served on a thread of its own."""
+        running = _Running()
         with self._lock:
-            self._calls[own] = _Call(connection, message["id"], residual)
-        self._send({**message, "id": own})
+            self._running[(id(connection), message["id"])] = running
+        threading.Thread(
+            target=self._serve, args=(connection, message, running), daemon=True
+        ).start()
 
-    def read(self, export: str, args: list, names: list[str], schema: str) -> list[bytes]:
-        """REQ-2100: a table function's rows, each batch an Arrow IPC stream, for a read the front
-        end answers itself (pgfront.py)."""
-        collector = _Collector()
-        self.call(
-            collector,  # pyright: ignore[reportArgumentType]
-            {
-                "op": "call",
-                "id": 1,
-                "export": export,
-                "kind": "table",
-                "args": args,
-                "names": names,
-                "schema": schema,
-                "traceparent": None,
-            },
-        )
-        collector.done.wait()
-        if collector.error is not None:
-            raise RuntimeError(f"{export}: {collector.error}")
-        return collector.batches
+    def _serve(self, connection: Connection, message: dict, running: _Running) -> None:
+        call_id = message["id"]
+        residual = message.pop("residual", None)
+        lane, own = self._lease()
+        try:
+            with self._lock:
+                if running.cancelled:
+                    return
+                running.lane, running.own = lane, own
+            lane.send({**message, "id": own})
+            if residual is not None:
+                self._answer(connection, call_id, lane, own, residual)
+                return
+            for each in self._frames(lane, own):
+                if each["op"] == "rows":
+                    connection.send(rows_frame(call_id, each["arrow"]))
+                else:
+                    connection.send(frame({**each, "id": call_id}))
+        except _Failed as failed:
+            connection.send(frame({**failed.message, "id": call_id}))
+        finally:
+            with self._lock:
+                self._running.pop((id(connection), call_id), None)
+            self._release(lane)
+
+    def _answer(
+        self, connection: Connection, call_id: int, lane: _Lane, own: int, residual: dict
+    ) -> None:
+        """REQ-2100: the call's statement over its function's rows, streamed: the rows into
+        DuckDB as the worker sends them, the answer to Provisa a batch at a time. A statement
+        answered before the function's last row (a limit) stops the function."""
+        import importlib
+
+        import pyarrow as pa
+
+        statement = importlib.import_module("residual")  # beside this program, in the image
+        ended: list[dict] = []
+
+        def ipcs() -> Iterator[bytes]:
+            for each in self._frames(lane, own):
+                if each["op"] == "rows":
+                    yield each["arrow"]
+                elif each["op"] == "end":
+                    ended.append(each)
+
+        schema = _schema(residual["schema"])
+        arguments = _table(base64.b64decode(residual["arguments"]))
+        rows = pa.RecordBatchReader.from_batches(schema, statement.batches(ipcs()))
+        try:
+            answered = statement.answer(
+                residual["sql"],
+                residual["dialect"],
+                residual["table"],
+                statement.with_arguments(rows, arguments),
+            )
+            sent = False
+            for batch in answered:
+                connection.send(rows_frame(call_id, _ipc(batch)))
+                sent = True
+            if not sent:
+                # An empty answer still names its columns: one empty batch of them.
+                empty = pa.RecordBatch.from_pylist([], schema=answered.schema)
+                connection.send(rows_frame(call_id, _ipc(empty)))
+        except _Failed:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- the statement's failure, named to Provisa
+            connection.send(frame({"op": "error", "id": call_id, "message": str(exc), "stack": ""}))
+            return
+        finally:
+            if not ended:
+                lane.send({"op": "cancel", "id": own})
+        connection.send(frame({**(ended[0] if ended else {"op": "end"}), "id": call_id}))
+
+    def read(self, export: str, args: list, names: list[str], schema: str) -> Iterator[bytes]:
+        """REQ-2100: a table function's rows, each batch an Arrow IPC stream as the worker sends
+        it, for a read the front end answers itself (pgfront.py). Closing it before its end stops
+        the function."""
+        lane, own = self._lease()
+        ended = False
+        try:
+            lane.send(
+                {
+                    "op": "call",
+                    "id": own,
+                    "export": export,
+                    "kind": "table",
+                    "args": args,
+                    "names": names,
+                    "schema": schema,
+                    "traceparent": None,
+                }
+            )
+            try:
+                for each in self._frames(lane, own):
+                    if each["op"] == "rows":
+                        yield each["arrow"]
+                    elif each["op"] == "end":
+                        ended = True
+            except _Failed as failed:
+                ended = True
+                raise RuntimeError(f"{export}: {failed}") from None
+        finally:
+            if not ended:
+                lane.send({"op": "cancel", "id": own})
+            self._release(lane)
 
     def forward(self, connection: Connection, message: dict) -> None:
         """A connection's cancel or ping, for the call it names."""
@@ -312,71 +498,32 @@ class Worker:
             connection.send(frame({"op": "pong", "id": message["id"]}))
             return
         with self._lock:
-            own = next(
-                (
-                    k
-                    for k, c in self._calls.items()
-                    if c.connection is connection and c.call_id == message["id"]
-                ),
-                None,
-            )
-        if own is not None:
-            self._send({**message, "id": own})
+            running = self._running.get((id(connection), message["id"]))
+        if running is not None:
+            self._cancel(running)
+
+    def _cancel(self, running: _Running) -> None:
+        with self._lock:
+            running.cancelled = True
+            lane, own = running.lane, running.own
+        if lane is not None and own is not None:
+            lane.force(_Cancelled(own))
+            lane.send({"op": "cancel", "id": own})
 
     def closed(self, connection: Connection) -> None:
         """A connection has ended: its calls still running are cancelled."""
         with self._lock:
-            ended = [k for k, c in self._calls.items() if c.connection is connection]
-            for k in ended:
-                del self._calls[k]
-        for k in ended:
-            self._send({"op": "cancel", "id": k})
-
-    def _read(self) -> None:
-        while True:
-            body = read_body(self._sock)
-            if body is None:
-                sys.stderr.write("the code's worker ended\n")
-                os._exit(3)  # the container's restart policy starts it again
-            if body[:1] == _ARROW:
-                own = _ID.unpack(body[1 : 1 + _ID.size])[0]
-                with self._lock:
-                    call = self._calls.get(own)
-                if call is None:
-                    continue  # its connection ended: the call was cancelled
-                ipc = body[1 + _ID.size :]
-                if call.residual is not None:
-                    call.batches.append(ipc)
-                else:
-                    call.connection.send(rows_frame(call.call_id, ipc))
-                continue
-            message = json.loads(body[1:])
-            own = message.get("id")
-            with self._lock:
-                call = self._calls.get(own)
-                if call is not None and message["op"] in ("end", "error", "value"):
-                    if message["op"] != "value":
-                        del self._calls[own]
-            if call is None:
-                continue
-            if message["op"] == "end" and call.residual is not None:
-                try:
-                    answered = _answer(call.residual, call.batches)
-                except Exception as exc:  # noqa: BLE001 -- the statement's failure, named to Provisa
-                    call.connection.send(
-                        frame({"op": "error", "id": call.call_id, "message": str(exc), "stack": ""})
-                    )
-                    continue
-                call.connection.send(rows_frame(call.call_id, answered))
-            call.connection.send(frame({**message, "id": call.call_id}))
+            ended = [r for (c, _), r in self._running.items() if c == id(connection)]
+        for running in ended:
+            self._cancel(running)
 
 
-def _ipc(table: Any) -> bytes:  # a pyarrow Table
+def _ipc(batch: Any) -> bytes:  # a pyarrow RecordBatch
     import pyarrow as pa
 
     sink = pa.BufferOutputStream()
-    with pa.ipc.new_stream(sink, table.schema) as stream:
-        stream.write_table(table)
+    with pa.ipc.new_stream(sink, batch.schema) as stream:
+        stream.write_batch(batch)
     return sink.getvalue().to_pybytes()
 
 
@@ -386,25 +533,10 @@ def _table(ipc: bytes) -> Any:
     return pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
 
 
-def _answer(residual: dict, batches: list[bytes]) -> bytes:
-    """The rows of a read's statement over its function's ``batches``, as one Arrow IPC stream."""
-    import importlib
-
+def _schema(text: str) -> Any:  # a pyarrow Schema
     import pyarrow as pa
 
-    statement = importlib.import_module("residual")  # beside this program, in the image
-
-    schema = _table(base64.b64decode(residual["schema"])).schema
-    tables = [_table(b) for b in batches]
-    rows = pa.concat_tables(tables) if tables else schema.empty_table()
-    arguments = _table(base64.b64decode(residual["arguments"]))
-    answered = statement.answer(
-        residual["sql"],
-        residual["dialect"],
-        residual["table"],
-        statement.with_arguments(rows, arguments),
-    )
-    return _ipc(answered)
+    return pa.ipc.open_stream(pa.py_buffer(base64.b64decode(text))).schema
 
 
 # -- the listener ---------------------------------------------------------------------------------

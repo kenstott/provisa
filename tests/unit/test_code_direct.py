@@ -119,7 +119,7 @@ def test_the_statement_is_applied_to_the_rows_with_exact_numerics():
         "duckdb",
         "scores",
         _rows(),
-    )
+    ).read_all()
     assert answer.to_pylist() == [{"id": 1, "amount": Decimal("10.50")}]
 
 
@@ -130,7 +130,7 @@ def test_an_aggregate_and_a_schema_qualified_column_are_the_rows():
         "duckdb",
         "scores",
         _rows(),
-    )
+    ).read_all()
     assert answer.to_pylist() == [{"region": "EU", "n": 2}, {"region": "US", "n": 1}]
 
 
@@ -142,7 +142,7 @@ def test_a_parameters_column_holds_its_value_on_every_row():
         "duckdb",
         "scores",
         rows,
-    )
+    ).read_all()
     assert answer.column("id").to_pylist() == [1, 2, 3]
 
 

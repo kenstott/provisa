@@ -91,8 +91,8 @@ def _postgres(pg, sql: str) -> list[tuple]:
         return [tuple(r) for r in conn.execute(cast(LiteralString, sql)).fetchall()]
 
 
-def _rows(table: pa.Table) -> list[tuple]:
-    return [tuple(r.values()) for r in table.to_pylist()]
+def _rows(answer: pa.RecordBatchReader) -> list[tuple]:
+    return [tuple(r.values()) for r in answer.read_all().to_pylist()]
 
 
 @pytest.mark.parametrize("sql", _STATEMENTS)

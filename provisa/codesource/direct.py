@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 from provisa.executor.drivers.base import DirectDriver
@@ -162,7 +163,9 @@ async def read(state: Any, source_id: str, sql: str) -> Any:
         if len(reads) == 1 and reads[0].answered_by_image(prepared):
             return reads[0].answer_in_image(prepared, sql)
         rows = {r.name: r.rows(prepared) for r in reads}
-        return residual.answer_reads(sql, DIALECT, rows)
+        # The answer's batches as DuckDB makes them, held together without a copy: the driver's
+        # result is the statement's rows.
+        return residual.answer_reads(sql, DIALECT, rows).read_all()
 
     return await asyncio.to_thread(_run)
 
@@ -234,10 +237,11 @@ class _Read:
 
         from provisa.codesource.arrow_rows import schema_text
 
+        from provisa.codehost import residual
+
         schema = schema_text(self._schema(prepared))
-        answered = [
-            pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
-            for ipc in prepared.worker().batches(
+        answered = residual.batches(
+            prepared.worker().batches(
                 self.export.name,
                 "table",
                 self.args,
@@ -251,24 +255,26 @@ class _Read:
                     "arguments": _ipc_text(self.arguments),
                 },
             )
-        ]
-        return pa.concat_tables(answered)
+        )
+        # The front end sends at least one batch, empty when the answer is: it names the columns.
+        return pa.Table.from_batches(list(answered))
 
     def rows(self, prepared: Any) -> Any:
-        """The function's rows, typed by its row type, each parameter's value beside them."""
+        """The function's rows as its host sends them, batch by batch, each parameter's value
+        beside them."""
+        import pyarrow as pa
+
         from provisa.codehost import residual
         from provisa.codesource.arrow_rows import schema_text
 
         schema = self._schema(prepared)
-        ipcs = list(
-            prepared.worker().batches(
-                self.export.name, "table", self.args, self.names, schema=schema_text(schema)
-            )
+        ipcs = prepared.worker().batches(
+            self.export.name, "table", self.args, self.names, schema=schema_text(schema)
         )
         rows = (
             _registered(self.table, self.name, ipcs)
             if self._loose(prepared)
-            else _as_returned(ipcs, schema)
+            else pa.RecordBatchReader.from_batches(schema, residual.batches(ipcs))
         )
         return residual.with_arguments(rows, self.arguments)
 
@@ -302,16 +308,6 @@ def _ipc_text(table: Any) -> str:  # a pyarrow Table
     return base64.b64encode(sink.getvalue().to_pybytes()).decode()
 
 
-def _as_returned(ipcs: list[bytes], schema: Any) -> Any:  # a pyarrow Schema
-    """The function's rows as its host sent them, typed by its row type."""
-    import pyarrow as pa
-
-    batches = [
-        b for ipc in ipcs for b in pa.ipc.open_stream(pa.py_buffer(ipc)).read_all().to_batches()
-    ]
-    return pa.Table.from_batches(batches) if batches else schema.empty_table()
-
-
 def _arrow_field(name: str, data_type: str) -> Any:
     """A registered column's Arrow form, by its IR type; a numeric's digits and a json value's
     text, as every host sends them (provisa/codesource/arrow_rows.py)."""
@@ -336,8 +332,9 @@ def _arrow_field(name: str, data_type: str) -> Any:
     raise TypeError(f"column {name!r}: the IR type {data_type!r} has no Arrow form")
 
 
-def _registered(table: dict, name: str, ipcs: list[bytes]) -> Any:
-    """Whole rows read out into ``table``'s registered columns (``pipeline_rows.project``)."""
+def _registered(table: dict, name: str, ipcs: Iterable[bytes]) -> Any:
+    """Whole rows read out into ``table``'s registered columns (``pipeline_rows.project``), batch
+    by batch."""
     import json
 
     import pyarrow as pa
@@ -362,10 +359,15 @@ def _registered(table: dict, name: str, ipcs: list[bytes]) -> Any:
             return json.dumps(encode(value), separators=(",", ":"))
         return value
 
-    rows = [
-        {c.name: _cell(row[c.name], c.data_type) for c in outputs}
-        for ipc in ipcs
-        for whole in rows_of(ipc)
-        for row in [project(name, whole, outputs)]
-    ]
-    return pa.Table.from_pylist(rows, schema=pa.schema(fields))
+    schema = pa.schema(fields)
+
+    def each() -> Iterator[pa.RecordBatch]:
+        for ipc in ipcs:
+            rows = [
+                {c.name: _cell(row[c.name], c.data_type) for c in outputs}
+                for whole in rows_of(ipc)
+                for row in [project(name, whole, outputs)]
+            ]
+            yield pa.RecordBatch.from_pylist(rows, schema=schema)
+
+    return pa.RecordBatchReader.from_batches(schema, each())

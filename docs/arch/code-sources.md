@@ -57,11 +57,11 @@ One long-running process per code source per Provisa process, in its runtime, st
   | Provisa | `cancel {id}` | stop the call; the host closes the iterator or generator |
   | either | `ping` / `pong` | health |
 
-- **Lifecycle:** as Node's note section 7 has it. The process is started lazily, health is a ping, one that has exited is dropped so the next call starts another, it is stopped when its source is edited or deleted and when the app shuts down, and it exits when its socket closes.
-- **Calls:** multiplexed by id; a request's deadline sends `cancel`; a crash fails every call in flight, naming the source and the export.
+- **Lifecycle:** as Node's note section 7 has it. The process is started lazily, health is a ping, one that has exited is dropped so the next call starts another, it is stopped when its source is edited or deleted and when the app shuts down, and it exits when one of its sockets closes.
+- **Calls:** each call leases one of the worker's 8 connections (`CONNECTIONS`) for its whole run, and a call that finds every connection leased waits for one. A connection holds at most 4 of a call's frames for the call's thread, and past that it isn't read, so a slow reader holds back its own function and no other call. A built image's front end does the same on its own 8 connections to the host. A request's deadline sends `cancel`; a crash fails every call in flight, naming the source and the export.
 - **Pool:** keyed by `(source, content hash)`.
 
-`codesource/worker.py` is Provisa's side (`Worker`, `WorkerPool`, `HostCommand`); `host.mjs` (Node part 4) is Node's host. Deno is granted the socket as `--allow-net=unix:<socket>`. `provisa/python/host.py` is the same program in Python, built on asyncio (standard library only): it imports the code's module, says hello, and serves calls; a coroutine is awaited, a generator or async generator iterated (a sync one a step at a time on a thread), any other function run on a thread. A row is a dict, a dataclass, a NamedTuple or an annotated object.
+`codesource/worker.py` is Provisa's side (`Worker`, `WorkerPool`, `HostCommand`); `host.mjs` (Node part 4) is Node's host. Deno is granted the socket as `--allow-net=unix:<socket>`. `provisa/python/host.py` is the same program in Python, built on asyncio (standard library only): it imports the code's module, says hello on each connection, and serves calls; a coroutine is awaited, a generator or async generator iterated (a sync one up to a batch of 1000 rows per thread hop), any other function run on a thread. A row is a dict, a dataclass, a NamedTuple or an annotated object; Arrow the code returns or yields (a Table, a RecordBatch or a RecordBatchReader) is sent as it is, cast to the call's schema.
 
 ## 4. The sandbox, for every runtime
 
