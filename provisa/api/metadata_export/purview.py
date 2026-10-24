@@ -173,6 +173,10 @@ def product_body(
         "description": "\n\n".join(p for p in parts if p),
         "businessUse": product.usage,
         "status": catalog_status(product),
+        # The service requires a type (400, "Property \"type\" is required."), though the
+        # published schema marks it optional. A Provisa data product is curated, governed data
+        # for analysis: Analytical, of the catalog's data product types.
+        "type": "Analytical",
         "contacts": {"owner": [{"id": oid, "description": email} for email, oid in owners.items()]},
     }
     frequency = update_frequency(members)
@@ -224,7 +228,8 @@ class PurviewExport(AtlasExport):  # REQ-2118
                     AssetError(
                         asset=AssetRefStub("glossary"),
                         message=(
-                            f"Unified Catalog glossary: HTTP {exc.response.status_code}: "
+                            f"Unified Catalog glossary: {exc.request.method} "
+                            f"{exc.request.url.path}: HTTP {exc.response.status_code}: "
                             f"{exc.response.text[:500]}"
                         ),
                     )
@@ -247,7 +252,8 @@ class PurviewExport(AtlasExport):  # REQ-2118
                     result.errors.append(
                         AssetError(
                             asset=product.ref,
-                            message=f"HTTP {exc.response.status_code}: {exc.response.text[:500]}",
+                            message=f"{exc.request.method} {exc.request.url.path}: HTTP "
+                            f"{exc.response.status_code}: {exc.response.text[:500]}",
                         )
                     )
                 except httpx.HTTPError as exc:
@@ -400,7 +406,9 @@ class PurviewExport(AtlasExport):  # REQ-2118
                 json={
                     "name": _asset_name(tables[guid]),
                     "type": "General",
-                    "source": {"assetId": guid},
+                    # The asset is the Data Map entity's: its source names the Data Map, as the
+                    # service answers it.
+                    "source": {"type": "DataMap", "assetId": guid},
                 },
                 headers=headers,
             )

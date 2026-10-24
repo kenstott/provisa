@@ -54,6 +54,23 @@ pytestmark = pytest.mark.unit
 
 TENANT = "tenant-1"
 CATALOG = f"https://{TENANT}-api.purview-service.microsoft.com/datagovernance/catalog"
+# CatalogModelDataProductTypeEnum, 2026-03-20-preview.
+PRODUCT_TYPES = {
+    "Master",
+    "Reference",
+    "Analytical",
+    "AI",
+    "MasterDataAndReferenceData",
+    "BusinessSystemOrApplication",
+    "ModelTypes",
+    "DashboardsOrReports",
+    "Operational",
+    "MLAITrainingDataSet",
+    "MLAITestingDataSet",
+    "TransactionalDataset",
+    "AnalyticsModel",
+    "SemanticModel",
+}
 DOMAIN_ID = "11111111-1111-1111-1111-111111111111"
 PROVISA_OID = "oid-provisa"
 
@@ -176,9 +193,22 @@ class _Purview:
                 errors = {k: [f"Required property '{k}' not found in JSON."] for k in missing}
                 return httpx.Response(400, json={"errors": errors})
             assert body["type"] == "General"
+            if (body.get("source") or {}).get("type") != "DataMap":
+                return httpx.Response(400, json={"error": {"code": "DataCatalogInvalidEntity"}})
             asset_id = f"asset-{body['source']['assetId']}"
             self.assets[body["source"]["assetId"]] = asset_id
             return httpx.Response(201, json={"id": asset_id})
+        if (
+            path.startswith("/dataProducts")
+            and method in ("POST", "PUT")
+            and "relationships" not in path
+        ):
+            # The service requires a data product's type (run 40105170193).
+            if body.get("type") not in PRODUCT_TYPES:
+                message = 'Property "type" is required.'
+                return httpx.Response(
+                    400, json={"error": {"code": "DataCatalogInvalidEntity", "message": message}}
+                )
         if path == "/dataProducts" and method == "POST":
             self.products[body["id"]] = body
             return httpx.Response(201, json=body)
