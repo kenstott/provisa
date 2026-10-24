@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 from contextlib import asynccontextmanager
 from datetime import datetime
 from types import SimpleNamespace
@@ -356,7 +357,13 @@ def test_a_call_carries_the_requests_trace_and_holds_its_scope_while_it_runs(tmp
     frame = w._call_frame(5, "rates", "table", [1, worker.ABSENT], ["n", "d"], None)  # noqa: SLF001
     assert frame["traceparent"] == "00-trace-span-01"
     assert worker.call_scope("tok", 5) is not None
-    w._close(5)  # noqa: SLF001
+    mine, theirs = socket.socketpair()
+    try:
+        # The call's connection, given back when the call closes.
+        w._close(worker._Lane(mine), 5)  # noqa: SLF001
+    finally:
+        mine.close()
+        theirs.close()
     assert worker.call_scope("tok", 5) is None
 
 

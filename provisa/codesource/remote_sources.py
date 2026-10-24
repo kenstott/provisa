@@ -41,6 +41,7 @@ from typing import Any
 
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.remote import Identity, RemoteWorker, host_certificate, new_identity, pair
+from provisa.codesource.worker import duckdb_bounds
 
 DEV = "dev"
 BUILT = "built"
@@ -184,7 +185,7 @@ async def connect(state: Any, source_id: str, host: str, port: int, code: str) -
     prepared = await prepare(source.id, source.type.value, mapping, await context_for(state))
     me = await identity(require_current_org())
     try:
-        pin = await asyncio.to_thread(pair, host, int(port), code, me)
+        pin = await asyncio.to_thread(pair, host, int(port), code, me, duckdb_bounds())
     except ValueError as refused:  # PairingRefused: the code, or the host's answer, named
         raise RemoteRefused("pairing", str(refused)) from None
     exports = sorted(e.name for e in prepared.manifest.exports)

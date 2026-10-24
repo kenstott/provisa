@@ -148,6 +148,9 @@ def test_evaluating_licensing_leaves_the_real_locations_untouched():
     real = [monotonic.default_highwater_path(), *anchors.default_anchor_paths()]
     assert all(Path.home() in p.parents for p in real)
     before = {p: (p.stat().st_mtime_ns if p.exists() else None) for p in real}
+    # The session's pin, as conftest set it when the session began: a session that runs past
+    # midnight began on an earlier day than this test's.
+    pinned = os.environ.get("PROVISA_LICENSING_FIRST_SEEN")
 
     today = datetime.date.today()
     evaluate(now_epoch=_epoch(today), today_iso=today.isoformat())
@@ -157,7 +160,8 @@ def test_evaluating_licensing_leaves_the_real_locations_untouched():
     assert monotonic.read_highwater(sandbox / "highwater.json") >= _epoch(today)
     # The session's trial clock is pinned (tests/conftest.py): its first-use date is the pin, read
     # from no anchor and written to none.
-    assert os.environ.get("PROVISA_LICENSING_FIRST_SEEN") == today.isoformat()
+    assert pinned is not None and pinned <= today.isoformat()
+    assert os.environ.get("PROVISA_LICENSING_FIRST_SEEN") == pinned
     assert anchors.read_anchor(sandbox / "anchor.json", stable_machine_id()) is None
 
 
