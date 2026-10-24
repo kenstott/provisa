@@ -87885,7 +87885,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     data steward accepts or rejects it. Accepting links the column to the glossary Property term for
     that kind; for a sensitive kind it also marks the column PII (PII lives on columns or Property
     terms) and offers the kind's mask preset (for example ssn_last4). A rejected suggestion is not
-    raised again for the same column and kind.
+    raised again for the same column and kind. The classification kinds are listed in the admin UI,
+    each with its test, threshold and whether it is sensitive; an org admin can disable a kind, and a
+    disabled kind is not tested and raises no suggestions until it is enabled again.
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
@@ -87896,3 +87898,6 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When a steward accepts its world-city suggestion
     Then the column is linked to the City Property term and is not marked PII
     And a rejected suggestion for a column and kind is not raised on the next run
+    Given an org admin has disabled the world-city kind
+    When a profile run completes
+    Then no column gets a world-city suggestion
