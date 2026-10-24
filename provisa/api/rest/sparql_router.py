@@ -186,3 +186,37 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     else:
         body = write_select(compiled.variables, rows, vocab.base, fmt)
     return Response(content=body, media_type=media)
+
+
+@router.get("/data/sparql/vocabulary")
+async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
+    """The caller's role's vocabulary as IRIs, for a client to offer as a query is written: its
+    base and prefixes, classes, predicates, edge types and the live Concept terms
+    (provisa.sparql_query.vocabulary.vocabulary_document)."""
+    from fastapi.responses import JSONResponse
+
+    from provisa.api.app import state
+    from provisa.api.role_surface import role_surface
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.gql.translator_types import CypherTranslateError
+    from provisa.sparql_query.vocabulary import concepts_of, vocabulary_document
+
+    role_id = _resolve_role_id(request, state)
+    surface = role_surface(state, role_id)
+    if surface is None:
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
+    label_map = _build_label_map(surface.context, role_id, state)
+    try:
+        vocab = await vocabulary_for(state, role_id, surface.context, label_map)
+    except CypherTranslateError as exc:
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+    # The concepts the role may read: those scoped to a domain its label map holds, and the org's
+    # shared ones (glossary_repo.list_terms's readable_term rule).
+    domains = frozenset(nm.domain_id for nm in label_map.nodes.values() if nm.domain_id)
+    pool = state.model_db
+    assert pool is not None, "the control plane is opened before any request is served"
+    async with pool.acquire() as conn:
+        terms = await glossary_repo.list_terms(conn, include_deprecated=False, domains=domains)
+    return JSONResponse(vocabulary_document(vocab, concepts_of(vocab.base, terms)))
