@@ -101,6 +101,12 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
             "Each read of the dependence statements, as JSON [{statement, percent, rows}]; a block "
             "sample under half its target is read again at four times the percentage.",
         ),
+        (
+            "classification_attempts",
+            "varchar",
+            "The classification statement's read of the sample (REQ-2147), as JSON "
+            "[{statement, percent, rows}], rows the sample held; empty where none ran.",
+        ),
         ("duration_ms", "bigint", "How long the run took."),
         ("status", "varchar", "succeeded | failed."),
         ("error", "varchar", "Why the run failed; empty when it succeeded."),
@@ -425,6 +431,25 @@ def parse_result_table_name(name: str) -> tuple[str, int, str]:
             f"<profiled table>_<its id>_profile_<kind>, kind one of {list(RESULT_KINDS)}"
         )
     return m["table"], int(m["id"]), m["kind"]
+
+
+async def ensure_result_table(conn: Any, profiled_table: str, table_id: int, kind: str) -> sa.Table:
+    """The relation ``kind`` of ``profiled_table``, created empty where it is not there yet, with
+    every column of the shipped schema: a column the schema gained after the relation was created
+    is added in place (V1, no migration)."""
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateTable
+
+    table = result_sa_table(profiled_table, table_id, kind)
+    await conn.execute_core(CreateTable(table, if_not_exists=True))
+    dialect = postgresql.dialect()
+    prep = dialect.identifier_preparer
+    adds = ", ".join(
+        f"ADD COLUMN IF NOT EXISTS {prep.format_column(c)} {c.type.compile(dialect=dialect)}"
+        for c in table.columns
+    )
+    await conn.execute_core(sa.text(f"ALTER TABLE {prep.format_table(table)} {adds}"))
+    return table
 
 
 def result_sa_table(profiled_table: str, table_id: int, kind: str) -> sa.Table:

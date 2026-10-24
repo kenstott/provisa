@@ -256,9 +256,7 @@ async def register_org_profilers(scheduler: Any, org_id: str) -> int:
     from provisa.api.app import state
 
     assert state.model_db is not None, "the org's model store is bound with its runtime"
-    from sqlalchemy.schema import CreateTable
-
-    from provisa.profiler.schema import RESULT_KINDS, result_sa_table
+    from provisa.profiler.schema import RESULT_KINDS, ensure_result_table
 
     async with state.model_db.acquire() as conn:
         profilers = await profiler_sources(conn)
@@ -267,8 +265,7 @@ async def register_org_profilers(scheduler: Any, org_id: str) -> int:
             # run, so a result table registered over one compiles and reads as an empty history.
             for member in await members(conn, p["id"]):
                 for kind in RESULT_KINDS:
-                    table = result_sa_table(member["table_name"], member["id"], kind)
-                    await conn.execute_core(CreateTable(table, if_not_exists=True))
+                    await ensure_result_table(conn, member["table_name"], member["id"], kind)
     wanted = {profiler_job_id(p["id"], org_id) for p in profilers}
     suffix = f":org_{org_id}"
     for job in scheduler.get_jobs():

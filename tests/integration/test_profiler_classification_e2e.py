@@ -24,6 +24,7 @@ suggested again. A kind the org disables is not tested, so a run records nothing
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import httpx
@@ -244,3 +245,14 @@ def test_a_disabled_kind_is_not_tested(server, table_id):
     rows = _by_column(_run(server, table_id))
     assert ("city", "city") not in rows, rows
     assert ("tax_id", "us_ssn") in rows
+    # The classification statement's read is recorded on the run, as the dependence statements'
+    # are: a whole-table read of the table's 30 rows.
+    runs = _ok(
+        httpx.get(
+            _url(server, f"/admin/tables/{table_id}/profile-runs"), headers=_HEADERS, timeout=60
+        )
+    )
+    assert isinstance(runs, list)
+    assert json.loads(runs[0]["classification_attempts"]) == [
+        {"statement": "classification", "percent": 100.0, "rows": 30}
+    ]

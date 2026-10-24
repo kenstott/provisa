@@ -40,15 +40,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.schema import CreateTable
 
 from provisa.profiler import classifications, classify, constraints, dependence, measures, plausible
 from provisa.profiler.dependence import ParentSpec
 from provisa.profiler.source import ProfilerSettings
 from provisa.profiler.schema import (
     RESULT_KINDS,
+    ensure_result_table,
     field_names,
-    result_sa_table,
 )
 from provisa.profiler.statement import (
     QUANTILE_POINTS,
@@ -443,8 +442,7 @@ async def write_results(
 ) -> None:
     """Append one run's rows, creating any result relation not yet there."""
     for kind in RESULT_KINDS:
-        table = result_sa_table(table_name, table_id, kind)
-        await conn.execute_core(CreateTable(table, if_not_exists=True))
+        table = await ensure_result_table(conn, table_name, table_id, kind)
         await conn.execute_core_many(table.insert(), rows.get(kind, []))
 
 
@@ -591,26 +589,32 @@ async def read_classifications(
     read: ProfileRead,
     kinds: tuple[classify.Kind, ...],
     limit: int,
-) -> list[classifications.Suggestion]:
+) -> tuple[list[classifications.Suggestion], list[dict]]:
     """The classification suggestions of the run (REQ-2147): up to ``limit`` rows drawn at random
     from the run's sample, in one further statement over it, each column's values tested in
-    memory against the enabled ``kinds`` and never stored."""
+    memory against the enabled ``kinds`` and never stored. With its read, as the dependence
+    statements' are recorded: ``[{statement, percent, rows}]``, rows the sample held; none when no
+    column is classified."""
     families = frozenset(f for k in kinds for f in k.families)
     columns = [c for c in target.columns if c.family in families]
     if not columns:
-        return []
+        return [], []
+    sample = read.sample
     names, rows = await _run_further(
-        classification_sql(target.pgwire_name, columns, read.sample, limit),
-        read.sample,
+        classification_sql(target.pgwire_name, columns, sample, limit),
+        sample,
         read.where,
         target.table_name,
     )
-    values = parse_classification_result(names, rows, columns)
-    return [
+    values, sample_rows = parse_classification_result(names, rows, columns)
+    percent = 100.0 if sample.fraction is None else sample.percent
+    attempts = [{"statement": "classification", "percent": percent, "rows": sample_rows}]
+    suggestions = [
         classifications.Suggestion(c.name, c.physical, match)
         for c in columns
         for match in classify.classify(c.family, values[c.name], kinds)
     ]
+    return suggestions, attempts
 
 
 def classified_plausible_types(
@@ -816,6 +820,7 @@ async def profile_table(
     freshness: float | None = None
     read: ProfileRead | None = None
     dep: DependenceRead | None = None
+    classification_attempts: list[dict] = []
     try:
         async with state.model_db.acquire() as conn:
             tags = await column_tags(conn, table_id)
@@ -842,7 +847,7 @@ async def profile_table(
         results = result_rows(target, read.agg, run_id, run_time, settings.low_cardinality_max)
         wanted = row_count if fraction is None else fraction * row_count
         dep = await read_dependence(target, read, settings, wanted)
-        suggestions = await read_classifications(
+        suggestions, classification_attempts = await read_classifications(
             target, read, kinds, settings.classification_sample
         )
         classified_plausible_types(results, suggestions, table_name)
@@ -902,6 +907,9 @@ async def profile_table(
             "dependence_rows": None if dep is None else dep.rows_read,
             "network_rows": None if dep is None else dep.network_rows,
             "dependence_attempts": None if dep is None else json.dumps(dep.attempts),
+            "classification_attempts": (
+                json.dumps(classification_attempts) if classification_attempts else None
+            ),
             "duration_ms": int((time.monotonic() - started) * 1000),
             "status": status,
             "error": error,

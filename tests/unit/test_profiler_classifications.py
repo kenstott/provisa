@@ -275,6 +275,8 @@ def test_the_value_sample_is_drawn_at_random_from_the_runs_own_sample():
     sql = classification_sql("sales.customers", cols, Sample("block", 0.1), 500)
     assert "TABLESAMPLE SYSTEM (10.0)" in sql
     assert sql.endswith("ORDER BY RANDOM() LIMIT 500")
+    # The rows the sample held, counted before the limit: what the statement read of the source.
+    assert 'COUNT(*) OVER () AS "__sample_rows"' in sql
     assert 'CAST(s."tax_id" AS VARCHAR)' in sql
 
 
@@ -318,7 +320,8 @@ async def test_the_run_tests_only_the_columns_of_the_enabled_kinds_families(monk
 
     async def _further(sql, sample, where, table_name):
         seen.append(sql)
-        return ["city"], [("Paris",)] * 12
+        # Twelve rows of a sample that held forty: the statement's limit, and what the source read.
+        return ["city", "__sample_rows"], [("Paris", 40)] * 12
 
     monkeypatch.setattr(run, "_run_further", _further)
     target = types.SimpleNamespace(
@@ -330,10 +333,15 @@ async def test_the_run_tests_only_the_columns_of_the_enabled_kinds_families(monk
         ],
     )
     read = types.SimpleNamespace(sample=Sample("whole"), where="whole table")
-    (suggestion,) = await run.read_classifications(
+    (suggestion,), attempts = await run.read_classifications(
         cast(Any, target), cast(Any, read), (kind_of("city"),), 500
     )
     assert suggestion.match.kind.id == "city" and suggestion.match.share == 1.0
+    # Its read is recorded as the dependence statements' are: the rows the sample held.
+    assert attempts == [{"statement": "classification", "percent": 100.0, "rows": 40}]
     assert '"opened"' not in seen[0]
-    assert await run.read_classifications(cast(Any, target), cast(Any, read), (), 500) == []
+    assert await run.read_classifications(cast(Any, target), cast(Any, read), (), 500) == (
+        [],
+        [],
+    )
     assert len(seen) == 1  # no kinds, no statement
