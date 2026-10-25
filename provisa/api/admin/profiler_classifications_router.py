@@ -89,11 +89,13 @@ async def _steward_of(request: Request, conn: Any, table_id: int) -> None:
         )
 
 
-def _physical(table_id: int, column: str) -> str:
+def _physical(table_id: int, column: str, served: set[str] | None) -> str:
+    """``column``'s registered name; a column the caller is not served (``served``, from
+    ``_member``) is answered as one the table does not have (REQ-2152)."""
     from provisa.api.admin.profiler_checks_router import _physical_names
 
     physical = _physical_names(table_id).get(column)
-    if physical is None:
+    if physical is None or (served is not None and physical not in served):
         raise ApiError(
             404,
             "profile.column_not_found",
@@ -117,10 +119,18 @@ async def list_classifications(request: Request, table_id: int) -> dict:
     from provisa.profiler import classifications
 
     async with _db().acquire() as conn:
-        await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         await _steward_of(request, conn, table_id)
         decided = await classifications.decisions(conn, table_id)
-    return {"decisions": [_jsonable(d) for d in decided.values()]}
+    served = member["served"]
+    # REQ-2152: only the decisions on columns the caller is served.
+    return {
+        "decisions": [
+            _jsonable(d)
+            for (physical, _kind_id), d in decided.items()
+            if served is None or physical in served
+        ]
+    }
 
 
 @router.post("/tables/{table_id}/profile-classifications")
@@ -139,11 +149,11 @@ async def decide_classification(
             status=body.status,
         )
     kind = _kind(body.kind)
-    physical = _physical(table_id, body.column)
     accepted = None
     async with _db().acquire() as conn:
-        await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         await _steward_of(request, conn, table_id)
+        physical = _physical(table_id, body.column, member["served"])
         try:
             async with conn.transaction():
                 if body.status == "accepted":
@@ -201,9 +211,14 @@ async def forget_classification(
 
     kind = _kind(body.kind)
     async with _db().acquire() as conn:
-        await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         await _steward_of(request, conn, table_id)
-        if not await classifications.forget(conn, table_id, body.physicalColumn, kind.id):
+        # REQ-2152: a decision on a column the caller is not served is answered as missing.
+        served = member["served"]
+        readable = served is None or body.physicalColumn in served
+        if not readable or not await classifications.forget(
+            conn, table_id, body.physicalColumn, kind.id
+        ):
             raise ApiError(
                 404,
                 "profile.classification_decision_not_found",

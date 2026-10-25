@@ -106,3 +106,36 @@ def test_a_column_drop_names_per_column_only_what_is_readable():
         "total (referred to by: table big_orders); "
         "secret (referred to by objects outside your grants)"
     )
+
+
+async def test_a_tables_served_columns_are_read_from_its_context_or_its_stored_grants(model):
+    """REQ-2152: one table's columns as the caller is served them -- from the acting role's
+    compiled context, or, for a table no build compiled yet, by the rule over its stored grants;
+    None for a caller nothing narrows."""
+    from provisa.api.admin.catalog_scope import CatalogScope
+    from provisa.api.admin.read_rights import served_columns_of
+
+    db, ids, _refused = model
+    compiled = CatalogScope(
+        whole=False,
+        reach=None,
+        served={ids["orders"]: {"id"}},
+        governance=False,
+        role="seller",
+        compiled=frozenset({ids["orders"], ids["payroll"]}),
+        subjects=({"id": "seller", "domain_access": ["sales"]},),
+    )
+    fresh = CatalogScope(
+        whole=False,
+        reach=None,
+        served={},
+        governance=False,
+        role="seller",
+        subjects=({"id": "seller", "domain_access": ["sales"]},),
+    )
+    whole = CatalogScope(whole=True, reach=None, served={}, governance=True, role=None)
+    async with db.acquire() as conn:
+        assert await served_columns_of(conn, compiled, ids["orders"]) == {"id"}
+        assert await served_columns_of(conn, compiled, ids["payroll"]) == set()
+        assert await served_columns_of(conn, fresh, ids["payroll"]) == {"id"}
+        assert await served_columns_of(conn, whole, ids["payroll"]) is None

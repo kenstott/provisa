@@ -1643,7 +1643,10 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await check_catalog_for(
-                cast("Connection", conn), checker=checker, dataset=dataset
+                cast("Connection", conn),
+                checker=checker,
+                dataset=dataset,
+                scope=catalog_scope(info),
             )
         return DqCheckCatalogType(
             dataset_checks=[_dq_kind(k) for k in result["dataset_checks"]],
