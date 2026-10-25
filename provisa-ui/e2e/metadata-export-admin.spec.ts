@@ -29,6 +29,7 @@ const PREMIUM_STATE = {
   entitled: true,
   required_tier: "premium",
   providers: ["openlineage", "openmetadata"],
+  beta_providers: [],
   config: {
     enabled: true,
     reconcile_cron: "0 * * * *",

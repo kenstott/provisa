@@ -26,7 +26,6 @@ from provisa.executor.serialize import (
     _to_hashable,
     serialize_aggregate,
     serialize_connection,
-    serialize_group_by,
     serialize_rows,
 )
 
@@ -255,25 +254,28 @@ class TestSerializeAggregate:
     def test_basic_aggregate_no_nodes(self):
         agg_columns = [_cr("count")]
         agg_rows = [(5,)]
-        result = serialize_aggregate(agg_rows, agg_columns, None, None, "orders")
+        result = serialize_aggregate(agg_rows, agg_columns, "orders")
         assert result == {"data": {"orders": {"aggregate": {"count": 5}}}}
 
     def test_aggregate_with_sub_path(self):
         agg_columns = [_cr("amount", nested_in="aggregate.sum")]
         agg_rows = [(Decimal("100.00"),)]
-        result = serialize_aggregate(agg_rows, agg_columns, None, None, "orders")
+        result = serialize_aggregate(agg_rows, agg_columns, "orders")
         assert result["data"]["orders"]["aggregate"]["sum"]["amount"] == 100
 
     def test_aggregate_empty_rows(self):
-        result = serialize_aggregate([], [_cr("count")], None, None, "orders")
+        result = serialize_aggregate([], [_cr("count")], "orders")
         assert result == {"data": {"orders": {"aggregate": {}}}}
 
     def test_aggregate_with_nodes(self):
-        agg_columns = [_cr("count")]
-        agg_rows = [(2,)]
-        nodes_columns = [_cr("id"), _cr("name")]
-        nodes_rows = [(1, "Rex"), (2, "Fido")]
-        result = serialize_aggregate(agg_rows, agg_columns, nodes_rows, nodes_columns, "orders")
+        # Its nodes are a JSON list column of its one row (aggregates._nodes_column).
+        agg_columns = [
+            _cr("count"),
+            _cr("nodes", cardinality="one-to-many", is_agg=True),
+        ]
+        agg_rows = [(2, '[{"id": 1, "name": "Rex"}, {"id": 2, "name": "Fido"}]')]
+        result = serialize_aggregate(agg_rows, agg_columns, "orders")
+        assert result["data"]["orders"]["aggregate"] == {"count": 2}
         assert result["data"]["orders"]["nodes"] == [
             {"id": 1, "name": "Rex"},
             {"id": 2, "name": "Fido"},
@@ -282,14 +284,12 @@ class TestSerializeAggregate:
     def test_custom_agg_alias(self):
         agg_columns = [_cr("count", nested_in="derived")]
         agg_rows = [(3,)]
-        result = serialize_aggregate(
-            agg_rows, agg_columns, None, None, "orders", agg_alias="derived"
-        )
+        result = serialize_aggregate(agg_rows, agg_columns, "orders", agg_alias="derived")
         assert result == {"data": {"orders": {"derived": {"count": 3}}}}
 
 
 # ---------------------------------------------------------------------------
-# serialize_group_by
+# group-by rows: a group's nodes are a column of its own row
 # ---------------------------------------------------------------------------
 
 
@@ -297,31 +297,28 @@ class TestSerializeGroupBy:
     def test_group_by_without_nodes(self):
         columns = [_cr("region", nested_in="groupKey")]
         rows = [("east",)]
-        result = serialize_group_by(rows, columns, None, None, "sales")
+        result = serialize_rows(rows, columns, "sales")
         assert result == {"data": {"sales": [{"groupKey": {"region": "east"}}]}}
 
     def test_group_by_with_nodes(self):
-        columns = [_cr("region", nested_in="groupKey")]
-        rows = [("east",), ("west",)]
-        nodes_columns = [
-            _cr("region", nested_in="__join_key__"),
-            _cr("id"),
+        columns = [
+            _cr("region", nested_in="groupKey"),
+            _cr("nodes", cardinality="one-to-many", is_agg=True),
         ]
-        nodes_rows = [("east", 1), ("east", 2), ("west", 3)]
-        result = serialize_group_by(rows, columns, nodes_rows, nodes_columns, "sales")
-        groups = result["data"]["sales"]
-        east = next(g for g in groups if g["groupKey"]["region"] == "east")
-        west = next(g for g in groups if g["groupKey"]["region"] == "west")
-        assert east["nodes"] == [{"id": 1}, {"id": 2}]
-        assert west["nodes"] == [{"id": 3}]
+        rows = [("east", '[{"id": 1}, {"id": 2}]'), ("west", '[{"id": 3}]')]
+        groups = serialize_rows(rows, columns, "sales")["data"]["sales"]
+        assert groups == [
+            {"groupKey": {"region": "east"}, "nodes": [{"id": 1}, {"id": 2}]},
+            {"groupKey": {"region": "west"}, "nodes": [{"id": 3}]},
+        ]
 
-    def test_group_by_with_nodes_no_match(self):
-        columns = [_cr("region", nested_in="groupKey")]
-        rows = [("north",)]
-        nodes_columns = [_cr("region", nested_in="__join_key__"), _cr("id")]
-        nodes_rows = []
-        result = serialize_group_by(rows, columns, nodes_rows, nodes_columns, "sales")
-        assert result["data"]["sales"][0]["nodes"] == []
+    def test_groups_with_the_same_nodes_stay_two_groups(self):
+        columns = [
+            _cr("count", nested_in="aggregate"),
+            _cr("nodes", cardinality="one-to-many", is_agg=True),
+        ]
+        rows = [(1, '[{"id": 1}]'), (1, '[{"id": 2}]')]
+        assert len(serialize_rows(rows, columns, "sales")["data"]["sales"]) == 2
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "Classificaties van {{table}}",
+    "suggested": "Voorgesteld door de laatste run",
+    "none": "De laatste run stelt geen classificatie voor.",
+    "column": "Kolom",
+    "kindHeader": "Lijkt op",
+    "evidence": "Bewijs",
+    "sensitive": "Gevoelig",
+    "suggestion": "{{table}}.{{column}} lijkt op {{kind}}: {{share}} van de steekproefwaarden doorstaat de toets.",
+    "accept": "Aannemen",
+    "reject": "Afwijzen",
+    "status_suggested": "Voorgesteld",
+    "status_accepted": "Aangenomen",
+    "status_rejected": "Afgewezen",
+    "decided": "Beslissingen",
+    "noneDecided": "Er is nog geen voorstel aangenomen of afgewezen.",
+    "withdraw": "Intrekken",
+    "linked": "De kolom betekent nu {{term}}.",
+    "keyColumn": "De kolom houdt haar klasseterm: de betekenis van een sleutelkolom is haar klasseterm.",
+    "markedPii": "Ze is gemarkeerd als PII.",
+    "maskOffered": "Voorgesteld masker: {{mask}}. Voeg het toe bij de maskers van de kolom."
+  }
+}

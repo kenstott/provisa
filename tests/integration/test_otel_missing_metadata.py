@@ -75,20 +75,31 @@ def _s3():
     )
 
 
-def _metadata_gone(signal: str) -> None:
-    """Remove everything under ``signal``'s table location, as a bucket served empty would."""
+def _location(signal: str) -> tuple[str, str]:
+    """``signal``'s table location, as its registration names it: (bucket, prefix)."""
     [[ddl]] = _Engine().execute_engine_sync(f"SHOW CREATE TABLE otel.signals.{signal}").rows
     location = re.search(r"location = '(s3://[^']+)'", ddl)
     assert location, ddl
     bucket, prefix = location.group(1).removeprefix("s3://").split("/", 1)
-    s3 = _s3()
-    keys = [
-        {"Key": obj["Key"]}
-        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
+    return bucket, prefix
+
+
+def _keys_under(bucket: str, prefix: str) -> list[str]:
+    return [
+        obj["Key"]
+        for page in _s3().get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
         for obj in page.get("Contents", [])
     ]
-    assert keys, f"nothing under {location.group(1)}"
-    s3.delete_objects(Bucket=bucket, Delete={"Objects": keys})
+
+
+def _metadata_gone(signal: str) -> tuple[str, str]:
+    """Remove everything under ``signal``'s table location, as a bucket served empty would; the
+    location it was removed from."""
+    bucket, prefix = _location(signal)
+    keys = _keys_under(bucket, prefix)
+    assert keys, f"nothing under s3://{bucket}/{prefix}"
+    _s3().delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in keys]})
+    return bucket, prefix
 
 
 def test_compaction_says_a_table_whose_metadata_is_unreadable_and_changes_nothing(booted, caplog):
@@ -100,7 +111,7 @@ def test_compaction_says_a_table_whose_metadata_is_unreadable_and_changes_nothin
     from provisa.core.trino_system_catalogs import otel_object_store
     from provisa.scheduler.jobs import _compact_signal
 
-    _metadata_gone("traces")
+    gone = _metadata_gone("traces")
     store = otel_object_store()
     today = datetime.now(UTC)
     key = (
@@ -133,7 +144,14 @@ def test_compaction_says_a_table_whose_metadata_is_unreadable_and_changes_nothin
         "otel.signals.traces is registered but its metadata cannot be read" in m for m in said
     ), said
     s3.head_object(Bucket=store["bucket"], Key=key)  # its file is kept for a later run
-    # The registration is untouched: the table is not made again, so it still cannot be read.
-    with pytest.raises(trino.exceptions.TrinoQueryError, match="ICEBERG_MISSING_METADATA"):
-        _Engine().execute_engine_sync("SELECT count(*) FROM otel.signals.traces")
+    # The registration is untouched and the table is not made again: it names the same location,
+    # which still holds no metadata file. (A read is no witness: the catalog answers a table with
+    # no snapshot from its metadata cache without reading the bucket.)
+    assert _location("traces") == gone
+    bucket, prefix = gone
+    assert not [
+        k
+        for k in _keys_under(bucket, f"{prefix.rstrip('/')}/metadata/")
+        if k.endswith(".metadata.json")
+    ]
     s3.delete_object(Bucket=store["bucket"], Key=key)

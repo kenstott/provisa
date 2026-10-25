@@ -26,6 +26,7 @@ import logging
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import source_to_catalog
+from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
 from provisa.security.rights import Capability, reaches_all_domains
@@ -59,7 +60,6 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "roles": "roles_meta",
     "glossary_terms": "glossary_terms_meta",  # REQ-1584
     "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
-    "glossary_term_table_refs": "glossary_term_table_refs_meta",  # REQ-2130
     "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
     "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
     "glossary_term_domains": "glossary_term_domains_meta",  # REQ-1591
@@ -68,6 +68,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
     "data_products": "data_products_meta",  # REQ-2125
+    "sources": "sources_meta",  # REQ-1443: identity and type only
 }
 
 
@@ -389,7 +390,7 @@ async def _build_source_pools_and_enums(
     from provisa.api.app import state
     from provisa.api.data.pgwire_write import start_write_server
     from provisa.executor.drivers.registry import has_driver
-    from provisa.transpiler.router import CODE_DIRECT_SOURCES, VIRTUAL_SOURCES
+    from provisa.transpiler.router import VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.core.secrets_store import bound_to_request_org
 
@@ -419,9 +420,7 @@ async def _build_source_pools_and_enums(
             start_write_server(src)
             _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
             if has_driver(src.type.value) and (
-                src.type.value not in VIRTUAL_SOURCES
-                or _is_flat_file
-                or src.type.value in CODE_DIRECT_SOURCES  # REQ-2100
+                src.type.value not in VIRTUAL_SOURCES or _is_flat_file
             ):
                 resolved_pw = resolve_secrets(src.password)
                 resolved_host = (
@@ -433,10 +432,15 @@ async def _build_source_pools_and_enums(
                 state.source_dsns[src.id] = (
                     resolved_database
                     if _is_flat_file
-                    # REQ-2100: a code source is no database another source can share.
-                    else f"code:{src.id}"
-                    if src.type.value in CODE_DIRECT_SOURCES
-                    else f"{resolved_host}:{src.port}/{src.database}"
+                    # REQ-863: one database under one login, never two logins' grants as one.
+                    else colocation_key(
+                        resolved_host,
+                        src.port,
+                        src.database,
+                        src.username,
+                        resolved_pw,
+                        {k: resolve_secrets(v) for k, v in src.federation_hints.items()},
+                    )
                 )
                 # Best-effort: an unreachable/misconfigured source must not abort startup —
                 # the engine-routed path still works. See startup_resilience.
@@ -1948,11 +1952,12 @@ _META_TABLES = [
     "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
     "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
-    "glossary_term_table_refs",  # REQ-2130: term -> table groundings, resolved likewise
     "glossary_term_edges",  # REQ-1584
     "glossary_term_experts",  # REQ-1584
     "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
+    "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
+    "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
     "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
 ]
@@ -1979,7 +1984,6 @@ _RLS_TENANT_TABLES = [
     # ROW LEVEL SECURITY errors on a view.
     "glossary_terms",
     "glossary_term_refs",
-    "glossary_term_table_refs",  # REQ-2130
     "glossary_term_edges",
     "glossary_term_experts",
 ]

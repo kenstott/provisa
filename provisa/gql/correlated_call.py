@@ -37,6 +37,33 @@ from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.ir import CallSubquery
 
 
+def _all_optional(call: CallSubquery) -> bool:
+    """Whether every MATCH of ``call``'s body is OPTIONAL."""
+    from provisa.gql.ir import MatchStep
+
+    matches = [
+        m for step in call.body.pipeline if isinstance(step, MatchStep) for m in step.matches
+    ]
+    return bool(matches) and all(m.optional for m in matches)
+
+
+def _aggregates(lateral: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """Whether the lateral's body aggregates its rows into one (a collect, a count, ...)."""
+    select = lateral.find(exp.Select)
+    if select is None:
+        return False
+    return any(
+        isinstance(n, exp.AggFunc)
+        or (isinstance(n, exp.Anonymous) and n.name.lower() in _AGGREGATES)
+        for e in select.expressions
+        for n in e.walk()
+    )
+
+
+# The aggregates a lowered body names as plain calls (expr_visitor builds ARRAY_AGG by name).
+_AGGREGATES = frozenset({"array_agg", "count", "sum", "avg", "min", "max"})
+
+
 class CorrelatedCallMixin:  # REQ-573
     """Mixin for _Translator: translates correlated CALL { WITH x MATCH ... }."""
 
@@ -59,17 +86,21 @@ class CorrelatedCallMixin:  # REQ-573
             lateral_alias = f"_call{i}"
             lateral_expr = self._build_lateral(call, lateral_alias)
             if lateral_expr is not None:
+                # A body of OPTIONAL MATCHes yields a row of nulls where nothing matches, so the
+                # outer row is kept: the lateral is a LEFT join, never a CROSS one that drops it.
+                # (An aggregating body yields its one row either way.)
+                optional = _all_optional(call) and not _aggregates(lateral_expr)
                 lateral_joins.append(
                     {
                         "table": lateral_expr,
-                        "on": None,
-                        "join_type": "CROSS",
+                        "on": exp.true() if optional else None,
+                        "join_type": "LEFT" if optional else "CROSS",
                     }
                 )
                 # Register return variables so the outer RETURN can qualify them
                 if call.body.return_clause:
                     for item in call.body.return_clause.items:
-                        var_name = item.alias or item.expression.strip()
+                        var_name = item.alias or item.name.strip()
                         if var_name:
                             self._call_var_to_lateral[var_name] = lateral_alias
         return lateral_joins
@@ -81,10 +112,7 @@ class CorrelatedCallMixin:  # REQ-573
     ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Translate one correlated CALL body to a LATERAL subquery."""
         from provisa.gql.translator import _Translator
-        from provisa.gql.translator_types import (
-            CypherTranslateError,
-            UnregisteredRelationshipType,
-        )
+        from provisa.gql.translator_types import CypherMistake, CypherTranslateError
 
         # Build inner translator with outer _var_table pre-loaded for imported vars
         outer_bindings = {v: self._var_table[v] for v in call.imported_vars if v in self._var_table}
@@ -98,8 +126,10 @@ class CorrelatedCallMixin:  # REQ-573
 
         try:
             inner_select, inner_params, _ = inner_translator.translate()
-        except UnregisteredRelationshipType:
-            raise  # REQ-603: a refusal of the statement, not a body to run some other way
+        except CypherMistake:
+            # REQ-603, REQ-778: the user's mistake is a refusal of the statement, not a body to
+            # run some other way.
+            raise
         except CypherTranslateError:
             return None
 

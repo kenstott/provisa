@@ -93,8 +93,20 @@ function readStoredBool(key: string, fallback: boolean): boolean {
 }
 
 function writeStoredBool(key: string, value: boolean): void {
+  writeStored(key, String(value));
+}
+
+function readStoredString(key: string): string | null {
   try {
-    setStored(key, String(value));
+    return getStored(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    setStored(key, value);
   } catch {
     // Private mode / storage disabled: the preference just doesn't persist this session.
   }
@@ -107,8 +119,21 @@ export function GlossaryTab() {
   // look a term up — but every control that writes is withheld rather than disabled, because the
   // endpoints behind them answer 403 and a greyed-out button says nothing about why.
   const canEdit = useCapability("glossary_rw");
-  // REQ-2130: the Ontology View, in place of the term list while it is open.
-  const [ontology, setOntology] = useState(false);
+  // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
+  // a shared URL, or the back/forward buttons all resolve to the same term this state does.
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
+  // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
+  // them; only the reader's own changes are.
+  // REQ-2130: the Ontology View, in place of the term list while it is open. A ?term= link opens
+  // the term, so it opens the list.
+  const [ontology, setOntologyState] = useState(
+    () => !searchParams.has("term") && readStoredString("glossary.view") === "ontology",
+  );
+  const setOntology = (open: boolean) => {
+    setOntologyState(open);
+    writeStored("glossary.view", open ? "ontology" : "list");
+  };
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
@@ -123,7 +148,13 @@ export function GlossaryTab() {
       : null;
   const [terms, setTerms] = useState<GlossaryTermSummary[]>([]);
   const [listLoading, setListLoading] = useState(true);
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState(
+    () => searchParams.get("search") ?? readStoredString("glossary.search") ?? "",
+  );
+  const setQuery = (value: string) => {
+    setQueryState(value);
+    writeStored("glossary.search", value);
+  };
   // REQ-1387: checked = show that category; both default on so the list starts unfiltered. Choice
   // is a per-viewer UI preference, not server state, so it's remembered in localStorage.
   const [showDeprecated, setShowDeprecated] = useState(() =>
@@ -133,7 +164,13 @@ export function GlossaryTab() {
   // curated — unchecking this narrows the list to terms in service or past it.
   const [showDraft, setShowDraft] = useState(() => readStoredBool("glossary.showDraft", true));
   // REQ-2146: narrow the list to the terms with findings.
-  const [toReviewOnly, setToReviewOnly] = useState(false);
+  const [toReviewOnly, setToReviewOnlyState] = useState(() =>
+    readStoredBool("glossary.toReview", false),
+  );
+  const setToReviewOnly = (on: boolean) => {
+    setToReviewOnlyState(on);
+    writeStoredBool("glossary.toReview", on);
+  };
 
   useEffect(() => {
     writeStoredBool("glossary.showDeprecated", showDeprecated);
@@ -143,9 +180,6 @@ export function GlossaryTab() {
     writeStoredBool("glossary.showDraft", showDraft);
   }, [showDraft]);
 
-  // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
-  // a shared URL, or the back/forward buttons all resolve to the same term this state does.
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const raw = searchParams.get("term");
@@ -432,17 +466,21 @@ export function GlossaryTab() {
     }
   };
 
-  const relTypeOptions = GLOSSARY_REL_TYPES.map((rt) => ({
-    value: rt,
-    label: t(`glossaryTab.rel_${rt}`),
-  }));
+  // Kept from render to render: the term graph (REQ-2150) is drawn again only when its words change.
+  const relTypeOptions = useMemo(
+    () => GLOSSARY_REL_TYPES.map((rt) => ({ value: rt, label: t(`glossaryTab.rel_${rt}`) })),
+    [t],
+  );
   const kindOptions = GLOSSARY_EXPERT_KINDS.map((k) => ({
     value: k,
     label: t(`glossaryTab.kind_${k}`),
   }));
   // REQ-1590: a reader sees the same sentence a curator does, without the picker that changes it.
-  const relLabel = (options: { value: string; label: string }[], relType: string) =>
-    options.find((o) => o.value === relType)?.label ?? relType;
+  const relLabel = useCallback(
+    (options: { value: string; label: string }[], relType: string) =>
+      options.find((o) => o.value === relType)?.label ?? relType,
+    [],
+  );
   const otherTermOptions = terms
     .filter((term) => term.id !== detail?.id)
     .map((term) => ({ value: String(term.id), label: term.name }));

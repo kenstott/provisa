@@ -38,6 +38,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from tests.integration.isolated_server import audited_route_reason
+
 pytestmark = [pytest.mark.requires_trino, pytest.mark.integration]
 
 pytest.importorskip("duckdb")
@@ -273,10 +275,15 @@ def test_a_busy_table_is_replicated_for_every_process_then_read_live_again(deplo
     try:
         for server in (a, b):
             assert _read(server) == [1, 2, 3], "a read reached the upstream"
-            refused = _direct_hint(server, "busyItems")
-            assert refused.status_code == 403, _explain(server, refused)
-            assert refused.json()["code"] == "query.operator_floor", refused.text
-            assert "replicate" in refused.text
+            # REQ-030 (amended 2026-10-23): a direct hint the replica floor does not allow is
+            # ignored, and said; the read is answered from the replica, never the upstream.
+            hinted = _direct_hint(server, "busyItems")
+            body = hinted.json()
+            assert hinted.status_code == 200 and not body.get("errors"), _explain(server, hinted)
+            assert sorted(r["id"] for r in body["data"]["busyItems"]) == [1, 2, 3]
+            assert audited_route_reason(
+                server, "route hint ignored: landed: not_forced: operator floor: replicate on "
+            ), "the ignored hint was not noted in the route reason"
             _traffic()  # keep it busy while it is being proven
     finally:
         _upstream(f"ALTER TABLE {_SCHEMA}.busy_items_gone RENAME TO busy_items")

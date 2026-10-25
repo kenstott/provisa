@@ -279,6 +279,4 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
     assert "POSITION('|*|' IN term_domains) > 0" in narrowed[400]
     edges = narrowed[ids["glossary_term_edges_meta"]]
     assert "from_term_domains" in edges and "to_term_domains" in edges
-    # REQ-2130: a class term's table groundings are scoped by the term, as its column refs are.
-    assert "term_domains" in narrowed[ids["glossary_term_table_refs_meta"]]
     assert rules(["*"]) == {}

@@ -205,6 +205,25 @@ class NativeEngineBackend(EngineBackend):
     # renders each value as a literal of the engine's dialect instead.
     _cache_bind_placeholder: str | None = None
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """The engine driver's errors (REQ-778): those that mean the engine is not reachable, then
+        those that mean it refused the statement (a value it cannot convert, a name it does not
+        know). The driver is imported here, the one place it is needed for this."""
+        return (), ()
+
+    def classify_error(self, exc: Exception) -> str | None:
+        """``"connection"`` (503) or ``"query"`` (400, cypher.engine_refused) by the driver's own
+        errors, a lost engine read first (a driver's connection error may share a base with its
+        statement errors); None for an error the driver did not raise."""
+        connection, query = self._driver_errors()
+        if isinstance(exc, connection):
+            return "connection"
+        if isinstance(exc, query):
+            return "query"
+        return None
+
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
         self._runtime: Any = None
@@ -517,7 +536,7 @@ class NativeEngineBackend(EngineBackend):
         native = {
             (t["source_id"], t["schema_name"], t["table_name"])
             for t in (getattr(state, "tables", None) or [])
-            if is_native_read(t, _types, state)
+            if is_native_read(t, _types)
         }
 
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:

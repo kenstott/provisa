@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:insurance/1-tiv-by-risk-rating.graphql",
+  "root_field": "i__viewExposureByCountyGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:insurance/2-most-exposed-high-risk-counties.graphql",
+  "root_field": "i__viewExposureByCounty"
+ }
+]

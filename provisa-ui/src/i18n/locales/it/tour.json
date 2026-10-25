@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Pubblica negli strumenti della tua organizzazione",
-        "description": "📤 <strong>Pubblicalo dove la tua organizzazione già guarda.</strong> Escono le voci di catalogo (tabelle, colonne, domini, steward, relazioni approvate), i prodotti di dati e il lineage a livello di colonna, e ogni destinazione riceve ciò che supporta: <strong>DataHub, OpenMetadata, Collibra, Atlan e Apache Atlas</strong> come cataloghi, <strong>Snowflake Horizon</strong> e <strong>BigQuery Dataplex</strong> come elenchi di prodotti di dati, e il lineage tramite <strong>OpenLineage</strong>.<p>La pubblicazione è solo in uscita: Provisa non rilegge mai una destinazione come fonte di verità.</p>"
+        "description": "📤 <strong>Pubblicalo dove la tua organizzazione già guarda.</strong> Escono le voci di catalogo (tabelle, colonne, domini, steward, relazioni approvate), i prodotti di dati e il lineage a livello di colonna, e ogni destinazione riceve ciò che supporta: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} e Apache Atlas</strong> come cataloghi, <strong>Snowflake Horizon</strong> e <strong>BigQuery Dataplex</strong> come elenchi di prodotti di dati, e il lineage tramite <strong>OpenLineage</strong>.<p>La pubblicazione è solo in uscita: Provisa non rilegge mai una destinazione come fonte di verità.</p>"
       },
       "stepRelsAgents": {
         "title": "Relazioni e agenti IA",
@@ -1727,6 +1727,50 @@
       "bankingAsAdmin": {
         "title": "Di nuovo come amministratore",
         "description": "La dashboard è ciò che vedono le operazioni. Il resto del tour torna come amministratore, e ogni istruzione che segue indica il ruolo con cui viene eseguita."
+      },
+      "groupexposureScenario": {
+        "title": "Di cosa tratta questa demo",
+        "description": "Una banca di Praga presta a società e registra la società che possiede ciascuna con il suo Legal Entity Identifier (LEI). Le norme UE limitano quanto può prestare a un cliente, o a un gruppo di società controllato da un unico proprietario, al 25% del suo capitale di classe 1 (Tier 1). La domanda: verso quali gruppi la banca supera quel limite? I suoi libri indicano il proprietario di ogni debitore, non chi possiede il proprietario. La banca, i suoi debitori e i suoi prestiti sono inventati; i gruppi che li possiedono sono reali."
+      },
+      "groupexposureJoin": {
+        "title": "Collegati dal LEI",
+        "description": "La tabella dei proprietari della banca e le tabelle di Wikidata condividono il LEI del proprietario, e queste relazioni le collegano. I dati della banca restano nel suo database e quelli di Wikidata nella loro replica; il collegamento avviene nella query."
+      },
+      "groupexposureAnswer": {
+        "title": "La risposta in SQL",
+        "description": "La vista group_exposure riconduce ogni linea di credito al gruppo del suo debitore, tramite il LEI del proprietario e Wikidata. I gruppi Veolia e Vinci superano ciascuno il 25% del capitale di classe 1, e una joint venture di Veolia ed EPH conta in entrambi. Né i libri della banca né Wikidata lo mostrano da soli. I debitori e i loro prestiti sono inventati."
+      },
+      "groupexposureExample": {
+        "title": "La risposta in GraphQL",
+        "description": "La stessa vista in GraphQL: i gruppi a cui la banca presta di più, i loro debitori, l'importo accordato e se ciascuno supera il limite."
+      },
+      "groupexposureRecap": {
+        "title": "Cosa hai visto",
+        "description": "Il portafoglio prestiti di una banca inventata e dati collegati pubblici di Wikidata, uniti tramite LEI in un unico modello governato. Le catene di proprietà di Wikidata trasformano molti piccoli prestiti in poche grandi esposizioni di gruppo, e la risposta è servita in SQL, GraphQL e REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Chi possiede i proprietari, da Wikidata",
+        "description": "Wikidata, il grafo di conoscenza pubblico, registra il LEI di ogni società e la sua organizzazione controllante. Questa fonte lo legge tramite il servizio di query SPARQL di Wikidata. Le sue tabelle sono state caricate una sola volta, alla creazione della demo, quindi la demo non chiama mai Wikidata mentre la usi."
+      },
+      "groupexposureFacilities": {
+        "title": "Le linee di credito della banca",
+        "description": "Ogni prestito a termine, linea di credito revolving e garanzia concessi dalla banca, con il debitore, l'importo accordato e quello utilizzato. Il limite conta l'importo accordato."
+      },
+      "groupexposureGroups": {
+        "title": "Il gruppo di ogni proprietario",
+        "description": "Per ogni proprietario registrato dalla banca, la società in cima alla sua catena di organizzazioni controllanti su Wikidata, trovata con un solo percorso di proprietà SPARQL. Wikidata sa che una holding ceca appartiene a Veolia o a E.ON, anche se i libri della banca non lo sanno."
+      },
+      "groupexposureTerms": {
+        "title": "In parole semplici",
+        "description": "Il glossario spiega i termini con cui lavora un risk manager: grande esposizione, capitale di classe 1, Legal Entity Identifier e organizzazione controllante. Un gruppo di clienti connessi è un insieme di società che costituiscono un unico rischio perché una controlla le altre."
+      },
+      "groupexposureAlone": {
+        "title": "Solo i libri",
+        "description": "L'esposizione propria di ogni debitore, come la vedono i libri della banca. La più grande è sotto il 10% del capitale di classe 1, quindi nessun debitore si avvicina al limite del 25%."
+      },
+      "groupexposureRest": {
+        "title": "La stessa risposta via REST",
+        "description": "La vista è anche un endpoint REST, qui raggruppato in base al superamento del limite e sommato sul server, pronto per un report sui rischi o un foglio di calcolo."
       }
     },
     "status": {
@@ -1843,6 +1887,10 @@
       "banking": {
         "title": "Reporting di chiusura senza copiare il libro mastro",
         "summary": "I totali di fine giornata di una banca, calcolati a ogni chiusura direttamente da un libro mastro che non viene mai copiato nel data warehouse, letti come comunicati e come rettificati in seguito, con la stessa risposta via GraphQL, SQL e un agente."
+      },
+      "groupexposure": {
+        "title": "Esposizione per gruppo tramite Wikidata",
+        "summary": "Verso quali gruppi societari una banca supera il proprio limite alle grandi esposizioni? Il suo portafoglio prestiti, collegato tramite il LEI del proprietario di ogni debitore alle catene di organizzazioni controllanti di Wikidata via SPARQL, riconduce ogni debitore al suo gruppo. La banca e i suoi debitori sono inventati; i gruppi sono reali."
       }
     }
   }

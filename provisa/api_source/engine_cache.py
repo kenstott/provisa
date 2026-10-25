@@ -41,6 +41,7 @@ from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
+from provisa.core.org_forget import on_forget, schema_of_org
 
 log = logging.getLogger(__name__)
 
@@ -54,9 +55,19 @@ _DEFAULT_CACHE_SCHEMA = "api_cache"
 _TABLE_EXISTS_CACHE: dict[tuple[str, str, str], float] = {}
 _TABLE_EXISTS_SAFETY_MARGIN = 30  # expire this many seconds before the engine TTL
 
-# In-process cache for schema existence — evicted only on process restart.
-# Schema DROP is not expected in normal operation; safe to cache indefinitely.
+# In-process cache for schema existence. A schema is dropped with its org (a demo sandbox's at its
+# expiry, REQ-2006), which forgets it here (_forget_existence); nothing else drops one.
 _SCHEMA_EXISTS_CACHE: set[tuple[str, str]] = set()
+
+
+@on_forget(size=lambda: len(_SCHEMA_EXISTS_CACHE) + len(_TABLE_EXISTS_CACHE))
+def _forget_existence(org_id: str) -> None:
+    """A deleted org's schemas are dropped: known to exist no longer (REQ-2006)."""
+    for key in [k for k in _SCHEMA_EXISTS_CACHE if schema_of_org(org_id, k[1])]:
+        _SCHEMA_EXISTS_CACHE.discard(key)
+    for key in [k for k in _TABLE_EXISTS_CACHE if schema_of_org(org_id, k[1])]:
+        _TABLE_EXISTS_CACHE.pop(key, None)
+
 
 _API_TYPE_TO_IR: dict[str, str] = {
     "string": "VARCHAR",

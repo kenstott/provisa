@@ -521,6 +521,21 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN sources s ON s.id = rt.source_id
         WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
     """,
+    # REQ-1443 clause 10: a checker table's rules, one row per check of its contract in the order
+    # authored -- parsed once at registration (provisa.dq.registration) and stored on the table.
+    "dq_rules": """
+        CREATE OR REPLACE VIEW dq_rules AS
+        SELECT CAST(rt.id AS TEXT) || ':' || CAST(r.position AS TEXT) AS id,
+               rt.id AS table_id, rt.domain_id, s.type AS checker, r.position,
+               r.rule ->> 'column_name' AS column_name,
+               r.rule ->> 'check_type' AS check_type,
+               r.rule ->> 'definition' AS definition,
+               rt.tenant_id
+        FROM registered_tables rt
+        JOIN sources s ON s.id = rt.source_id
+        CROSS JOIN LATERAL jsonb_array_elements(rt.dq_rules) WITH ORDINALITY AS r(rule, position)
+        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft
+    """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
     # REQ-2126: a data product's links to the rest of the model, one row per product, target and
@@ -603,13 +618,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
             SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
             FROM (SELECT term_id, table_id, tenant_id FROM glossary_term_refs
                   UNION
-                  SELECT term_id, table_id, tenant_id FROM glossary_term_table_refs) r
+                  SELECT class_term_id, id, tenant_id FROM registered_tables
+                  WHERE class_term_id IS NOT NULL) r
             JOIN registered_tables rt ON rt.id = r.table_id
             UNION ALL
             SELECT g.term_id, g.domain_id, g.tenant_id
             FROM glossary_term_domains g
             WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
-              AND NOT EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = g.term_id)
+              AND NOT EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = g.term_id)
         ),
         s AS (
             SELECT term_id, '|' || STRING_AGG(domain_id, '|') || '|' AS term_domains
@@ -653,7 +669,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
             SELECT DISTINCT r.term_id AS id
             FROM (SELECT term_id FROM glossary_term_refs
                   UNION
-                  SELECT term_id FROM glossary_term_table_refs) r
+                  SELECT class_term_id FROM registered_tables WHERE class_term_id IS NOT NULL) r
             JOIN in_service s ON s.id = r.term_id
             UNION
             SELECT ce.b
@@ -671,22 +687,23 @@ _META_TABLE_VIEWS: dict[str, str] = {
             FROM relationships r WHERE r.same_entity
         ),
         identity_reach (term_id, table_id) AS (
-            SELECT term_id, MIN(table_id) FROM glossary_term_table_refs GROUP BY term_id
+            SELECT class_term_id, MIN(id) FROM registered_tables
+            WHERE class_term_id IS NOT NULL GROUP BY class_term_id
             UNION
             SELECT ir.term_id, se.b
             FROM identity_reach ir
             JOIN same_entity_edges se ON se.a = ir.table_id
-            JOIN glossary_term_table_refs gt ON gt.term_id = ir.term_id AND gt.table_id = se.b
+            JOIN registered_tables gt ON gt.class_term_id = ir.term_id AND gt.id = se.b
         )
         SELECT t.id, t.name, t.definition,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
-                      OR EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = t.id)
+                      OR EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = t.id)
                     THEN FALSE ELSE TRUE END AS is_abstract,
                t.deprecated, t.retired,
                t.export_excluded,
                (SELECT COUNT(*) FROM glossary_term_refs r WHERE r.term_id = t.id) AS ref_count,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
-                      OR EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = t.id)
+                      OR EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = t.id)
                     THEN TRUE ELSE FALSE END AS is_rooted,
                CASE WHEN t.id IN (SELECT id FROM grounded)
                      AND TRIM(COALESCE(t.definition, '')) <> ''
@@ -699,7 +716,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                      AND TRIM(COALESCE(t.definition, '')) <> '' THEN 'live'
                     ELSE 'draft' END AS status,
                t.status_reason, t.retire_on,
-               CASE WHEN (SELECT COUNT(*) FROM glossary_term_table_refs r WHERE r.term_id = t.id)
+               CASE WHEN (SELECT COUNT(*) FROM registered_tables r WHERE r.class_term_id = t.id)
                          > (SELECT COUNT(*) FROM identity_reach ir WHERE ir.term_id = t.id)
                     THEN TRUE ELSE FALSE END AS identity_gap,
                (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = t.id) AS term_domains
@@ -713,16 +730,6 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.tenant_id,
                (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
         FROM glossary_term_refs r
-        JOIN registered_tables rt ON rt.id = r.table_id
-    """,
-    # REQ-2130: a class term's tables and views, resolved to their address.
-    "glossary_term_table_refs": """
-        CREATE OR REPLACE VIEW glossary_term_table_refs_meta AS
-        SELECT r.id, r.term_id, r.table_id,
-               rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
-               r.tenant_id,
-               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
-        FROM glossary_term_table_refs r
         JOIN registered_tables rt ON rt.id = r.table_id
     """,
     "glossary_term_edges": """
@@ -771,10 +778,15 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS checked_table_id,
                -- The table's class term, NULL when none grounds it. Last, like the two
                -- above, so an existing view is replaced in place.
-               (SELECT g.term_id FROM glossary_term_table_refs g WHERE g.table_id = rt.id)
-                   AS class_term_id
+               rt.class_term_id
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
+    """,
+    # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality
+    # table's rules are parsed with. Its connection settings stay out of the catalog.
+    "sources": """
+        CREATE OR REPLACE VIEW sources_meta AS
+        SELECT id, type FROM sources
     """,
     # REQ-2125: one row per data product, its own fields only. Everything one-to-many about a
     # product -- members, commands, tags, terms, profiles -- is reached through meta-domain

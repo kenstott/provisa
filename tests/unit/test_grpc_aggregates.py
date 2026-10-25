@@ -526,3 +526,49 @@ class TestServicerAggregateDispatch:
         servicer = ProvisaServicer(MagicMock(), pb2)
         handler = servicer.__getattr__("QueryOrdersGroupBy")
         assert callable(handler)
+
+
+@pytest.mark.parametrize(
+    "suffix, column",
+    [
+        ("SumFields", "amount"),
+        ("AvgFields", "amount"),
+        ("StddevFields", "amount"),
+        ("VarianceFields", "amount"),
+        ("MinFields", "id"),
+        ("MaxFields", "status"),
+    ],
+)
+def test_an_aggregate_over_no_rows_arrives_unset_not_as_zero(suffix, column):
+    """A sum, average, deviation, minimum or maximum over an empty group is NULL; it arrives as
+    the field left unset, never as its type's zero (a sum of no orders is not an amount of 0)."""
+    from provisa.grpc.descriptor import OrgDescriptor
+
+    compiled = OrgDescriptor(generate_proto(_make_si(enable_aggregates=True)))
+    fields = getattr(compiled, f"Inquiries{suffix}")
+    assert not fields().HasField(column)
+    read = fields.FromString(
+        fields(
+            **{column: fields.DESCRIPTOR.fields_by_name[column].default_value}
+        ).SerializeToString()
+    )
+    assert read.HasField(column)  # a real zero (or "") is set, and read as set
+
+
+def test_an_empty_group_s_null_aggregates_are_left_unset():
+    from types import SimpleNamespace
+
+    from provisa.grpc.descriptor import OrgDescriptor
+    from provisa.grpc.query_ir import split_agg_columns
+
+    compiled = OrgDescriptor(generate_proto(_make_si(enable_aggregates=True)))
+    columns = [
+        SimpleNamespace(column="count", nested_in="aggregate"),
+        SimpleNamespace(column="amount", nested_in="aggregate.sum"),
+    ]
+    top, nested = split_agg_columns(columns, (0, None))
+    result = compiled.InquiriesAggregateResult(
+        **top, sum=compiled.InquiriesSumFields(**nested.get("sum", {}))
+    )
+    assert result.count == 0
+    assert not result.sum.HasField("amount")

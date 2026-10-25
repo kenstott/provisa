@@ -256,10 +256,15 @@
       "database_unavailable": "データベースが利用できません",
       "query_engine_unavailable": "クエリエンジンが利用できません",
       "role_header_required": "ビューをプロファイルするには X-Provisa-Role ヘッダーが必要です",
-      "table_not_found": "テーブル {{table_id}} が見つかりません"
+      "table_not_found": "テーブル {{table_id}} が見つかりません",
+      "column_not_found": "列 {{column}} は org_admin が読むテーブルの列ではありません",
+      "classification_kind_unknown": "不明な分類の種類 {{kind}}",
+      "classification_status_invalid": "分類の決定は承認または却下のどちらかで、{{status}} ではありません",
+      "classification_decision_not_found": "{{column}} の {{kind}} としての決定はありません",
+      "classification_pii_refused": "列を PII としてマークできませんでした"
     },
     "replication": {
-      "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
+      "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
       "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",
       "page_limit_reached": "{{table}} のレプリカはビルドされませんでした: エンドポイントのページングは max_pages={{max_pages}} で止まり、ページ {{max_pages}} の後にもデータがありました（{{rows}} 行を読み取り）。レプリカはテーブル全体であるため、上限で切り詰められることはありません。エンドポイントの max_pages またはページサイズを増やしてください。",
       "row_limit_reached": "{{table}} のレプリカはビルドされませんでした: 読み取りは max_rows={{max_rows}}（graphql_remote.max_rows）で止まり、{{rows}} 行の後にもリモートにデータがありました。レプリカはテーブル全体であるため、上限で切り詰められることはありません。graphql_remote.max_rows を増やしてください。",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "ソース「{{source}}」のテーブル「{{table}}」は変更シグナル kafka を使用していますが、live.kafka.topic に topic を指定していないため、何も更新しません。",
       "change_signal_no_receiver": "Provisa は種類 {{type}} のソースから変更シグナル {{signal}} を受信しないため、ソース「{{source}}」のテーブルがそれによって更新されることはありません。ソースを Debezium でキャプチャし、debezium を使用してください。",
       "change_signal_not_honoured": "種類 {{type}} のソースは、まだ変更の有無を確認できないため、変更シグナル {{signal}} が問い合わせられることはありません。ソース「{{source}}」には ttl を使用してください。",
+      "row_materialize_no_key_fetch": "{{table}} は行単位でレプリケートできません: リモートスキーマに、主キーのリストに対して行を返すフィールドがありません。",
       "sentinel_path_not_applicable": "種類 {{type}} のソースにはセンチネルパスを設定できません。データの変更を知らせられるお客様側の生成元がないか、このソースはプローブされません。ソース「{{source}}」からセンチネルパスを削除してください。",
       "source_cache_ttl_required": "ソース「{{source}}」にはキャッシュTTLが必要です。このソースのテーブルはすべてレプリカであり、変更シグナル {{signal}} のもとでその時計に従って更新されます。ソースの「負荷管理と鮮度」で設定してください。",
       "landing_ttl_required": "テーブル「{{table}}」はキャッシュTTLに従って更新されるレプリカですが、テーブルにもそのソース「{{source}}」にも設定がありません。ソースの「負荷管理と鮮度」でキャッシュTTLを設定するか、登録後にテーブル自体に設定してください。",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}"
+      "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}",
+      "access_violations": "このロールはこのクエリを実行できません:",
+      "invalid_regex": "{{expression}} のパターン \"{{pattern}}\" は有効な正規表現ではありません: {{reason}}。=~ には正規表現を指定します (例: \".*{{word}}.*\")。または CONTAINS \"{{word}}\" を使用してください。",
+      "unknown_label": "ラベル :{{label}} はありません。登録済みのラベル: {{suggestions}}。",
+      "no_labels": "ラベル :{{label}} はありません: このロールが読めるテーブルはありません。",
+      "unknown_relationship_type": "リレーションシップタイプ {{types}} はありません。登録済みのタイプ: {{suggestions}}。",
+      "no_relationship_types": "リレーションシップタイプ {{types}} はありません: このロールがたどれるリレーションシップはありません。",
+      "type_mismatch": "{{expression}} では、{{value}} を型 {{property_type}} の {{property}} と比較できません。{{fix}}",
+      "aggregate_in_where": "WHERE では集約 {{aggregate}} を使えません: WHERE はグループ化の前に行を絞り込みます。WITH で集約してから絞り込んでください。",
+      "nested_aggregate": "{{outer}} は集約 {{inner}} を集約しています: 集約の集約はできません。先に WITH で集約してください。",
+      "undefined_variable": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。",
+      "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
+      "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
+      "engine_refused": "エンジンがクエリを拒否しました: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} は {{variable}} を読みますが、文は変数を一つもバインドしていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。",
+      "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
+      "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
+      "non_finite_number": "回答に JSON で表せない数値が含まれています: {{column}} は {{value}} です。",
+      "try_cast_needs_postgres_16": "変換できない可能性がある値に対する toInteger、toFloat、toBoolean には、このエンジンでは PostgreSQL 16 以降が必要です。"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",
@@ -542,7 +567,9 @@
     "statement": {
       "rows_cut": "回答は {{limit}} 行で打ち切られました。これはこの読み取りに適用される行数制限です ({{kind}})。返された行より多くの行が一致します。",
       "rows_cut_unchecked": "回答は {{limit}} 行で、この読み取りに適用される行数制限と同じです ({{kind}})。さらに一致する行があるかどうかは確認できませんでした: {{reason}}",
-      "approximate_index": "最も類似した行は近似ベクトルインデックスで見つけました。返された最後の行よりわずかに類似度の高い行が欠けている可能性があります。"
+      "list_at_ceiling": "リストには、この読み取りの行数制限で許される最大 {{limit}} 件のエントリが含まれています ({{kind}})。さらにある可能性があります。",
+      "approximate_index": "最も類似した行は近似ベクトルインデックスで見つけました。返された最後の行よりわずかに類似度の高い行が欠けている可能性があります。",
+      "path_cut": "上限のないパスがグラフの深さ上限 {{limit}} ホップで打ち切られました。それより長いパスは結果に含まれていません。"
     },
     "wikipedia": {
       "no_pages": "開始ページを1つ以上指定してください",

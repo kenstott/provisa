@@ -92,6 +92,7 @@
     "openApiQueryAria": "Executar requisição REST de exemplo para {{table}}",
     "detail": {
       "field": {
+        "details": "Detalhes",
         "customProperties": "Propriedades personalizadas",
         "relatedTables": "Tabelas relacionadas",
         "relationships": "Relacionamentos",
@@ -111,12 +112,11 @@
       "lineageLoading": "Carregando linhagem…",
       "lineageHint": "Grafo de linhagem de colunas mostrando as tabelas deste produto como o endpoint publicado, mais toda tabela upstream usada para derivá-las. Somente informativo — requer a capacidade view_governance.",
       "inputPortsEmpty": "Nenhuma entrada upstream registrada",
-      "inputPortsHint": "Entrada(s) → transformação → saída de um salto, derivada da linhagem. Requer a capacidade view_governance.",
-      "inputPortsColInputs": "Entrada(s)",
-      "inputPortsColTransform": "Transformação",
-      "inputPortsColOutput": "Saída",
-      "outputPortsHint": "A interface consultável deste produto: suas tabelas/colunas membros e commands, com consultas de exemplo abaixo em Consultas e commands de exemplo.",
-      "customPropertiesEmpty": "Nenhuma propriedade personalizada"
+      "inputPortsHint": "As tabelas que este produto lê diretamente, segundo a linhagem. Expanda uma tabela para ver as colunas que ele lê. Requer a capacidade view_governance.",
+      "outputPortsHint": "A superfície consultável deste produto: suas tabelas membro e seus comandos. Consultas de exemplo para cada uma estão em Padrões de acesso.",
+      "customPropertiesEmpty": "Nenhuma propriedade personalizada",
+      "lineageLaneUpstream": "A montante, salto {{n}}",
+      "lineageLaneDownstream": "A jusante, salto {{n}}"
     },
     "readOnly": "Somente leitura",
     "readOnlyHint": "Você tem apenas data_product_read — um org_admin pode conceder data_product_rw para editar.",

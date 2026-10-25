@@ -193,8 +193,15 @@ async def test_each_orgs_trigger_writes_only_its_own_orgs_table(two_orgs):
         assert await jobs.register_org_triggers(scheduler, org, None) == 1
     # Each org's own trigger, and its per-org jobs, keyed by the org: the service-level evaluation
     # (REQ-506), the fakes' daily adequacy checks (REQ-2091), the hourly review of judgments
-    # (REQ-2094) and the sweep of expired and unused role grants (REQ-2077).
-    per_org = ("sla:evaluate", "fake_adequacy", "judgments:review", "roles:sweep_grants")
+    # (REQ-2094), the sweep of expired and unused role grants (REQ-2077) and the retirement of
+    # deprecated glossary terms on their planned date (REQ-2144).
+    per_org = (
+        "sla:evaluate",
+        "fake_adequacy",
+        "judgments:review",
+        "roles:sweep_grants",
+        "glossary_term_retirement",
+    )
     assert {j.id for j in scheduler.get_jobs()} == {
         job
         for org in _ORGS

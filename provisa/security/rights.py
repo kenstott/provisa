@@ -613,7 +613,6 @@ GOVERNANCE_META_ROWS: dict[str, str] = {
 GLOSSARY_SCOPED_META_VIEWS: dict[str, tuple[str, ...]] = {
     "glossary_terms_meta": ("term_domains",),
     "glossary_term_refs_meta": ("term_domains",),
-    "glossary_term_table_refs_meta": ("term_domains",),  # REQ-2130
     "glossary_term_edges_meta": ("from_term_domains", "to_term_domains"),
     "glossary_term_domains_meta": ("term_domains",),
 }

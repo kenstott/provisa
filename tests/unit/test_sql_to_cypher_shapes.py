@@ -325,12 +325,11 @@ _META_COLUMNS = {
         ("to_term_id", "integer"),
         ("rel_type", "varchar"),
     ],
-    "glossary_term_table_refs": [
+    "registered_tables": [
         ("id", "integer"),
-        ("term_id", "integer"),
-        ("table_id", "integer"),
         ("table_name", "varchar"),
         ("domain_id", "varchar"),
+        ("class_term_id", "integer"),
     ],
 }
 
@@ -385,9 +384,11 @@ def meta():
             "via_type_column": vty,
             "via_type_value": value,
             "via_label_source": label_source,
+            "alias": alias,
         }
-        for (rid, _s, st, sc, tc, card, _t, tt, vt, vs, vtc, vty, value, label_source)
+        for (rid, _s, st, sc, tc, card, _t, tt, vt, vs, vtc, vty, value, label_source, alias)
         in META_JUNCTION_RELATIONSHIPS
+        if st in ids and tt in ids and vt in ids
     ]  # fmt: skip
     si = SchemaInput(
         tables=tables,
@@ -423,10 +424,10 @@ def meta():
         "(9,3,2,'KIND_OF'),(10,2,4,'KIND_OF'),(11,5,1,'ANTONYM_OF')"
     )
     c.execute(
-        "CREATE TABLE meta.glossary_term_table_refs (id INTEGER, term_id INTEGER, "
-        "table_id INTEGER, table_name VARCHAR, domain_id VARCHAR)"
+        "CREATE TABLE meta.registered_tables (id INTEGER, table_name VARCHAR, domain_id VARCHAR, "
+        "class_term_id INTEGER)"
     )
-    c.execute("INSERT INTO meta.glossary_term_table_refs VALUES (1, 1, 10, 'orders', 'sales')")
+    c.execute("INSERT INTO meta.registered_tables VALUES (10, 'orders', 'sales', 1)")
     # The Cypher read names the tables physically, in the admin store's own schema.
     c.execute("ATTACH ':memory:' AS provisa_admin")
     c.execute("CREATE SCHEMA provisa_admin.public")
@@ -446,7 +447,7 @@ _ONTOLOGY = (
     f"{{ edgesIn: {{ {_KEPT}, sourceTerm: {{ retired: {{ eq: false }} }} }} }}, "
     "{ tables: {} } ] }) { id name "
     f"edgesOut(where: {{ {_KEPT} }}) {{ id fromTermId toTermId relType targetTerm {{ id }} }} "
-    "tables { tableId tableName domainId } } }"
+    "tables { id tableName domainId } } }"
 )
 
 
@@ -511,3 +512,48 @@ def test_a_join_with_no_cypher_form_is_not_returned_unbound(meta):
         "ON TRUE"
     )
     assert semantic_sql_to_cypher(sql, lm, ctx) is None
+
+
+# --- a to-many field's own pick of each parent's rows (Open as query, REQ-2136) -----------------
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        '{ customers(where: { name: { eq: "Ann" } }) { id name '
+        "orders(order_by: { amount: desc }, limit: 1) { id amount } } }",
+        "{ customers { id name orders(order_by: { amount: desc }, limit: 1) { id amount } } }",
+        "{ customers { id orders(order_by: { amount: asc }, offset: 1, limit: 1) { id amount } } }",
+        "{ customers { id orders(limit: 1, order_by: { id: asc }) { id } } }",
+    ],
+)
+def test_a_to_many_field_s_order_and_limit_are_each_parent_s(model, con, query):
+    cypher = _same_rows(model, con, query)
+    assert "CALL {" in cypher and "LIMIT 1\n}" in cypher, cypher
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # A condition beside the relationship's own.
+        '{ customers { id orders(where: { status: { eq: "shipped" } }, limit: 1) { id } } }',
+        # Nulls placed otherwise than Cypher places them.
+        "{ customers { id orders(order_by: { amount: asc_nulls_first }, limit: 1) { id } } }",
+        "{ customers { id orders(order_by: { amount: desc_nulls_last }, limit: 1) { id } } }",
+        # distinct_on.
+        "{ customers { id orders(distinct_on: [status], limit: 1) { id } } }",
+    ],
+)
+def test_a_pick_cypher_cannot_state_exactly_has_no_export(model, query):
+    schema, ctx, lm = model
+    (root,) = compile_query(parse(query), ctx)
+    assert (
+        semantic_sql_to_cypher(
+            make_semantic_sql(root.sql, ctx),
+            lm,
+            ctx,
+            override_limit=root.result_limit,
+            params=root.params,
+        )
+        is None
+    )

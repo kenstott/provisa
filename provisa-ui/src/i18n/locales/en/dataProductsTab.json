@@ -92,6 +92,7 @@
     "openApiQueryAria": "Run example REST request for {{table}}",
     "detail": {
       "field": {
+        "details": "Details",
         "customProperties": "Custom Properties",
         "relatedTables": "Related Tables",
         "relationships": "Relationships",
@@ -111,12 +112,11 @@
       "lineageLoading": "Loading lineage…",
       "lineageHint": "Column lineage graph showing this product's tables as the published endpoint, plus every upstream table used to derive them. Informational only — requires the view_governance capability.",
       "inputPortsEmpty": "No upstream inputs recorded",
-      "inputPortsHint": "One-hop input(s) → transform → output, derived from lineage. Requires the view_governance capability.",
-      "inputPortsColInputs": "Input(s)",
-      "inputPortsColTransform": "Transform",
-      "inputPortsColOutput": "Output",
-      "outputPortsHint": "This product's queryable surface: its member tables/columns and commands, with example queries below under Sample Queries and Commands.",
-      "customPropertiesEmpty": "No custom properties"
+      "inputPortsHint": "The tables this product reads directly, from lineage. Expand a table for the columns it reads. Requires the view_governance capability.",
+      "outputPortsHint": "This product's queryable surface: its member tables and commands. Example queries for each are under Access Patterns.",
+      "customPropertiesEmpty": "No custom properties",
+      "lineageLaneUpstream": "Upstream, hop {{n}}",
+      "lineageLaneDownstream": "Downstream, hop {{n}}"
     },
     "readOnly": "Read-only",
     "readOnlyHint": "You have data_product_read only — an org_admin can grant data_product_rw to edit.",

@@ -33,6 +33,7 @@
     "showPropertiesPanel": "הצגת חלונית המאפיינים",
     "copyErrorTitle": "העתקת השגיאה",
     "expandedDialogLabel": "תצוגת גרף מורחבת",
-    "firstNodesShown": "מוצגים {{count}} הצמתים הראשונים; יש עוד. הגדילו את המגבלה בתפריט הצד."
+    "firstNodesShown": "מוצגים {{count}} הצמתים הראשונים; יש עוד. הגדילו את המגבלה בתפריט הצד.",
+    "deleteFrame": "מחיקת תוצאה זו"
   }
 }

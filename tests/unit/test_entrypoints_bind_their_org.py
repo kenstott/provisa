@@ -247,7 +247,7 @@ async def test_bolt_authenticates_in_the_deployment_org(monkeypatch):
 def test_bolt_builds_a_meta_role_in_the_sessions_org(monkeypatch):
     seen: list[str | None] = []
 
-    def _resolve(_state, _held, named):
+    def _resolve(_state, _held, named, _derived=None):
         seen.append(current_org.get())
         return named
 

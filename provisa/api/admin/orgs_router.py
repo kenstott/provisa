@@ -1079,6 +1079,10 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
     # that still exists.
     # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
     _app_state.org_registry.invalidate_org(org_id)
+    # What this process holds for it, kept by its id, its schemas or its users (REQ-2006).
+    from provisa.core.org_forget import forget_org
+
+    forget_org(org_id)
     # And the connector servers started for its sources (a files source's JVM, hundreds of
     # megabytes): nothing else stops them, so every reaped demo sandbox left its own running.
     from provisa.federation.pgwire_replica import stop_org_servers

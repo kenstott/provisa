@@ -396,3 +396,14 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
     def close(self) -> None:
         self._conn.close()
+
+
+def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+    """REQ-778: the SQL warehouse says a statement it refused as a ServerOperationError (a
+    DatabaseError of its own, not one of PEP 249's), a lost connection as a RequestError."""
+    import databricks.sql.exc as dbx
+
+    from provisa.federation.dbapi_errors import dbapi_errors
+
+    connection, query = dbapi_errors(dbx)
+    return connection, (*query, dbx.ServerOperationError)

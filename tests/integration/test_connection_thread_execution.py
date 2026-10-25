@@ -38,6 +38,7 @@ import pytest
 
 from provisa.core.connection_loop import LOOP_POOL
 from tests.role_state import RoleState
+from provisa.api.flight.relay import serve_in_background
 
 pytestmark = [pytest.mark.integration]
 
@@ -85,7 +86,7 @@ def flight_server():
         port = _free_port()
         location = f"grpc://127.0.0.1:{port}"
         server = ProvisaFlightServer(state, location=location)
-        threading.Thread(target=server.serve, daemon=True).start()
+        serve_in_background(server)
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             try:

@@ -92,6 +92,7 @@
     "openApiQueryAria": "Exécuter l'exemple de requête REST pour {{table}}",
     "detail": {
       "field": {
+        "details": "Détails",
         "customProperties": "Propriétés personnalisées",
         "relatedTables": "Tables associées",
         "relationships": "Relations",
@@ -111,12 +112,11 @@
       "lineageLoading": "Chargement de la traçabilité…",
       "lineageHint": "Graphe de traçabilité des colonnes montrant les tables de ce produit comme endpoint publié, ainsi que chaque table en amont utilisée pour les dériver. À titre informatif uniquement ; nécessite la capacité view_governance.",
       "inputPortsEmpty": "Aucune entrée en amont enregistrée",
-      "inputPortsHint": "Entrée(s) → transformation → sortie à un saut, dérivées de la traçabilité. Nécessite la capacité view_governance.",
-      "inputPortsColInputs": "Entrée(s)",
-      "inputPortsColTransform": "Transformation",
-      "inputPortsColOutput": "Sortie",
-      "outputPortsHint": "La surface interrogeable de ce produit : ses tables/colonnes membres et ses commandes, avec des exemples de requêtes ci-dessous sous Exemples de requêtes et commandes.",
-      "customPropertiesEmpty": "Aucune propriété personnalisée"
+      "inputPortsHint": "Les tables que ce produit lit directement, d'après la traçabilité. Dépliez une table pour voir les colonnes lues. Nécessite la capacité view_governance.",
+      "outputPortsHint": "La surface interrogeable de ce produit : ses tables membres et ses commandes. Des exemples de requêtes pour chacune se trouvent sous Modèles d'accès.",
+      "customPropertiesEmpty": "Aucune propriété personnalisée",
+      "lineageLaneUpstream": "En amont, saut {{n}}",
+      "lineageLaneDownstream": "En aval, saut {{n}}"
     },
     "readOnly": "Lecture seule",
     "readOnlyHint": "Vous disposez uniquement de data_product_read ; un org_admin peut accorder data_product_rw pour modifier.",

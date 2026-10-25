@@ -105,8 +105,7 @@ def _session_trino_etc() -> str:
     (``catalog.store=memory``), never in a file.
     """
     path = os.path.join(_REPO_ROOT, ".itest-trino", ITEST_PROJECT)
-    # REQ-2100: codehost-client/ holds each org's remote-host identity for a built code host.
-    for sub in ("kafka", "redis", "codehost-client"):
+    for sub in ("kafka", "redis"):
         os.makedirs(os.path.join(path, sub), exist_ok=True)
     # The engine's own config, which Trino mounts from this tree and the in-process app renders
     # into it (trino_setup.write_trino_config): seeded from the repo's.

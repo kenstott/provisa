@@ -70,6 +70,7 @@ function state(
     entitled: true,
     required_tier: "premium",
     providers: ["atlas", "openlineage", "openmetadata"],
+    beta_providers: [],
     config: { enabled: true, reconcile_cron: "0 * * * *", targets },
     last_publish: null,
     ...overrides,
@@ -96,6 +97,24 @@ describe("MetadataExportTab", () => {
     expect(screen.getByTestId("metadata-export-id-0")).toHaveValue("marquez");
     expect(screen.getByTestId("metadata-export-endpoint-0")).toHaveValue("http://marquez:5000");
     expect(screen.getByTestId("metadata-export-reconcile-cron")).toHaveValue("0 * * * *");
+  });
+
+  it("names a provider not yet proven against a live catalog as beta", async () => {
+    mockFetch.mockResolvedValue(
+      state({ providers: ["atlan", "atlas"], beta_providers: ["atlan"] }, [
+        { ...MARQUEZ, id: "atlan-prod", provider: "atlan" },
+        { ...MARQUEZ, id: "atlas-prod", provider: "atlas" },
+      ]),
+    );
+    render(<MetadataExportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("metadata-export-provider-0")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("metadata-export-provider-0")).toHaveValue("atlan (beta)");
+    expect(screen.getByTestId("metadata-export-provider-1")).toHaveValue("atlas");
+    expect(screen.getByText(/atlan-prod · atlan \(beta\)/)).toBeInTheDocument();
+    expect(screen.getByText(/atlas-prod · atlas$/)).toBeInTheDocument();
   });
 
   it("renders two targets of one provider, each with its own settings", async () => {

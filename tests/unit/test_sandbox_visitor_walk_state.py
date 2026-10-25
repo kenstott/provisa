@@ -97,7 +97,8 @@ def test_every_published_demo_is_a_parameter():
     names = walk_module.published_demos()
     assert "testdata" in names and "weblogs" in names
     assert "retail" in names  # a regions-tier demo is walked like any other published one
-    assert "banking" not in names  # published: false
+    assert "banking" not in names and "perf" not in names  # published: false
+    assert "groupexposure" in names  # published once its card was taken from its real answer
 
 
 _CLOSE = 'SELECT c.category FROM "provisioning"."view_close_by_category" AS c'

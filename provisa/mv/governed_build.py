@@ -255,6 +255,7 @@ async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | No
         region_admin.ROLE,
         session_vars=region_admin.session_vars(state),
         route_hint=route_hint,
+        building=mv.id,  # the view answers none of its own build
     )
     if plan.route not in (Route.ENGINE, Route.DIRECT):
         raise ViewNotBuildable(

@@ -256,10 +256,15 @@
       "database_unavailable": "数据库不可用",
       "query_engine_unavailable": "查询引擎不可用",
       "role_header_required": "分析视图需要 X-Provisa-Role 请求头",
-      "table_not_found": "未找到表 {{table_id}}"
+      "table_not_found": "未找到表 {{table_id}}",
+      "column_not_found": "列 {{column}} 不是 org_admin 读取的表中的列",
+      "classification_kind_unknown": "未知的分类类型 {{kind}}",
+      "classification_status_invalid": "分类决定只能是已接受或已拒绝，而不是 {{status}}",
+      "classification_decision_not_found": "没有关于 {{column}} 作为 {{kind}} 的决定",
+      "classification_pii_refused": "无法将该列标记为 PII"
     },
     "replication": {
-      "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：{{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
+      "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：[{{content_type}}] {{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
       "no_whole_copy": "源 {{source}} 的表 {{schema}}.{{table}} 没有可构建的完整副本：它按行复制，或者带有参数列。",
       "page_limit_reached": "未构建 {{table}} 的副本：其端点的分页在 max_pages={{max_pages}} 处停止，而端点在第 {{max_pages}} 页之后仍有数据（已读取 {{rows}} 行）。副本是整张表，因此不会在上限处截断。请提高端点的 max_pages 或页面大小。",
       "row_limit_reached": "未构建 {{table}} 的副本：其读取在 max_rows={{max_rows}}（graphql_remote.max_rows）处停止，而远程端在 {{rows}} 行之后仍有数据。副本是整张表，因此不会在上限处截断。请提高 graphql_remote.max_rows。",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "数据源 '{{source}}' 的表 '{{table}}' 使用 kafka 变更信号，但未在 live.kafka.topic 中指定 topic，因此不会有任何东西刷新它。",
       "change_signal_no_receiver": "Provisa 不会从 {{type}} 类型的数据源接收变更信号 {{signal}}，因此数据源 '{{source}}' 的表永远不会因此刷新。请使用 Debezium 捕获该数据源，并使用 debezium。",
       "change_signal_not_honoured": "类型为 {{type}} 的数据源尚不能检查是否有变更，因此变更信号 {{signal}} 永远不会被询问。请为数据源“{{source}}”使用 ttl。",
+      "row_materialize_no_key_fetch": "{{table}} 无法按行复制：其远程架构中没有可按主键列表返回其行的字段。",
       "sentinel_path_not_applicable": "类型为 {{type}} 的数据源不能有哨兵路径：没有您自己的生产方可以标记其数据的变更，或者该数据源不被探测。请从数据源“{{source}}”中移除哨兵路径。",
       "source_cache_ttl_required": "数据源“{{source}}”需要缓存 TTL：它的每个表都是副本，在 {{signal}} 变更信号下按该时钟刷新。请在数据源的“负载管理与时效性”中设置。",
       "landing_ttl_required": "表“{{table}}”是按缓存 TTL 刷新的副本，但它和它的数据源“{{source}}”都没有设置。请在数据源的“负载管理与时效性”中设置缓存 TTL，或在表注册后在表本身上设置。",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "有一项计数无法完成，因此总数未知：{{statement}}：{{reason}}"
+      "count_unknown": "有一项计数无法完成，因此总数未知：{{statement}}：{{reason}}",
+      "access_violations": "此角色无权运行此查询：",
+      "invalid_regex": "{{expression}} 中的模式 \"{{pattern}}\" 不是有效的正则表达式：{{reason}}。=~ 需要正则表达式，例如 \".*{{word}}.*\"，或使用 CONTAINS \"{{word}}\"。",
+      "unknown_label": "不存在标签 :{{label}}。已注册的标签：{{suggestions}}。",
+      "no_labels": "不存在标签 :{{label}}：此角色无法读取任何表。",
+      "unknown_relationship_type": "不存在关系类型 {{types}}。已注册的类型：{{suggestions}}。",
+      "no_relationship_types": "不存在关系类型 {{types}}：此角色无法遍历任何关系。",
+      "type_mismatch": "在 {{expression}} 中，{{value}} 无法与类型为 {{property_type}} 的 {{property}} 比较。{{fix}}",
+      "aggregate_in_where": "WHERE 不能使用聚合 {{aggregate}}：WHERE 在分组之前筛选行。请在 WITH 中聚合，然后再筛选。",
+      "nested_aggregate": "{{outer}} 对聚合 {{inner}} 再次聚合：不能对另一个聚合取聚合。请先在 WITH 中聚合。",
+      "undefined_variable": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。",
+      "invalid_limit": "LIMIT {{value}} 不是整数行数：LIMIT 需要 0 或更大的计数，例如 LIMIT 10。",
+      "invalid_skip": "SKIP {{value}} 不是整数行数：SKIP 需要 0 或更大的计数，例如 SKIP 10。",
+      "engine_refused": "引擎拒绝了查询：{{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} 读取了 {{variable}}，但语句未绑定任何变量：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。",
+      "undefined_variable_property": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestion}} 吗？{{owner}} 绑定到 :{{label}}，它有属性 {{variable}}。",
+      "undefined_variable_properties": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestions}} 吗？它们各自绑定到具有属性 {{variable}} 的标签。",
+      "non_finite_number": "结果包含 JSON 无法表示的数字：{{column}} 为 {{value}}。",
+      "try_cast_needs_postgres_16": "对可能无法转换的值使用 toInteger、toFloat 和 toBoolean 时，此引擎需要 PostgreSQL 16 或更高版本。"
     },
     "requests": {
       "approver_outside_domains": "你创建关系的权限未覆盖此请求涉及的任何域（{{domains}}）",
@@ -542,7 +567,9 @@
     "statement": {
       "rows_cut": "结果在 {{limit}} 行处被截断，这是适用于此次读取的行数限制（{{kind}}）：匹配的行多于返回的行。",
       "rows_cut_unchecked": "结果有 {{limit}} 行，即适用于此次读取的行数限制（{{kind}}）。无法检查是否还有更多匹配的行：{{reason}}",
-      "approximate_index": "最相似的行是通过近似向量索引找到的：可能缺少一行比最后返回的行稍微更相似的行。"
+      "list_at_ceiling": "列表包含此次读取的行数限制所允许的最多 {{limit}} 个条目（{{kind}}）；可能还有更多。",
+      "approximate_index": "最相似的行是通过近似向量索引找到的：可能缺少一行比最后返回的行稍微更相似的行。",
+      "path_cut": "一条没有上限的路径在图深度上限 {{limit}} 跳处被截断：更长的路径未包含在结果中。"
     },
     "wikipedia": {
       "no_pages": "至少指定一个起始页面",

@@ -324,3 +324,75 @@ def test_copy_fields_keep_null_distinct_from_empty_and_render_postgres_text() ->
     # The psycopg dialect's JSON/JSONB bind processors wrap values; COPY gets the JSON text.
     assert _copy_text(Jsonb({"k": 1}, dumps=json.dumps)) == '{"k": 1}'
     assert _copy_text(Json([1, 2], dumps=json.dumps)) == "[1, 2]"
+
+
+class _StuckPgConn(_FakePgConn):
+    """A notify connection whose drain does not return until ``release`` is set: the listener
+    thread stays busy after it is told to stop."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def notifies(self, *, timeout: float | None = None):
+        self.entered.set()
+        self.release.wait(30)
+        yield from super().notifies(timeout=timeout)
+
+
+def _is_open(fd: int) -> bool:
+    try:
+        os.fstat(fd)
+    except OSError:
+        return False
+    return True
+
+
+async def test_a_listener_whose_thread_has_not_ended_keeps_its_descriptors_and_says_so(
+    monkeypatch,
+) -> None:
+    """The listener thread select()s and reads the wake pipe. Closed while that thread still ran,
+    its descriptor numbers went to the next socket the process opened, and the thread then read
+    that socket's bytes. So the pipe is closed only once the thread has ended; a thread that has
+    not ended in time is named, and nothing it uses is closed."""
+    import provisa.core.database as database
+
+    monkeypatch.setattr(database, "_LISTENER_STOP_S", 0.2)
+    conn = _StuckPgConn()
+    listener = _PgListener(_fake_engine(conn))  # type: ignore[arg-type]
+    listener.subscribe("ch", lambda *a: None, object(), asyncio.get_running_loop())
+    conn.notify("ch", "x")
+    assert conn.entered.wait(5)  # the thread is inside the drain
+    wake_r, wake_w = listener._wake_r, listener._wake_w  # noqa: SLF001 - what must stay open
+    try:
+        with pytest.raises(RuntimeError, match="provisa-pg-listen.*did not end"):
+            listener.close()
+        assert _is_open(wake_r) and _is_open(wake_w) and _is_open(conn.fileno())
+    finally:
+        conn.release.set()
+    listener.close()  # the thread has ended now: everything it used is closed
+    assert not _is_open(wake_r) and not _is_open(wake_w)
+
+
+def test_a_database_whose_listener_has_not_stopped_keeps_it_for_the_next_close(control_plane):
+    """Closing the database closes its listener first; one whose thread has not ended says so,
+    and the database keeps it, so the next close finishes it rather than leaving it unreachable."""
+    db = _db(control_plane)
+
+    class _Running:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def close(self) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("LISTEN thread provisa-pg-listen did not end within 10s")
+
+    running = _Running()
+    db._listener = running  # type: ignore[assignment]  # noqa: SLF001 - the state under test
+    with pytest.raises(RuntimeError, match="did not end"):
+        asyncio.run(db.close())
+    assert db._listener is running  # noqa: SLF001
+    asyncio.run(db.close())
+    assert running.calls == 2 and db._listener is None  # noqa: SLF001

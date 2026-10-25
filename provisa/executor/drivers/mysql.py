@@ -21,10 +21,13 @@ from __future__ import annotations
 
 import ssl
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 import pymysql
+import pymysql.converters
 import pymysql.cursors
+from pymysql.constants import FIELD_TYPE
 
 from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
@@ -35,6 +38,19 @@ from provisa.executor.result import QueryResult
 
 def _is_broken(exc: BaseException) -> bool:
     return isinstance(exc, (pymysql.err.OperationalError, pymysql.err.InterfaceError))
+
+
+def _timestamp_in_utc(raw: Any) -> Any:
+    """A TIMESTAMP, given in the session's zone (UTC, the connection's ``init_command``), as its
+    instant in UTC (REQ-2050). A value pymysql cannot read as a datetime (a zero date) is handed on
+    as pymysql hands it on."""
+    value = pymysql.converters.convert_datetime(raw)
+    return value.replace(tzinfo=timezone.utc) if isinstance(value, datetime) else value
+
+
+#: pymysql's conversions with a TIMESTAMP read as its instant in UTC; a DATETIME, which has no
+#: zone, stays a wall time.
+CONVERSIONS = {**pymysql.converters.conversions, FIELD_TYPE.TIMESTAMP: _timestamp_in_utc}
 
 
 class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
@@ -73,9 +89,10 @@ class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
                 password=password,
                 ssl=ssl.create_default_context() if require_ssl else None,
                 autocommit=True,
-                # REQ-2050: a TIMESTAMP is an instant, read in the session's zone -- UTC here, so
-                # the value handed on is the instant in UTC.
+                # REQ-2050: a TIMESTAMP is an instant, read in the session's zone -- UTC here --
+                # and handed on as that instant in UTC (mysql_conversions).
                 init_command="SET time_zone = '+00:00'",
+                conv=CONVERSIONS,
             )
 
         self._connect = _create

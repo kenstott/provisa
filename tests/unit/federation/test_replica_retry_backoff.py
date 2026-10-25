@@ -19,6 +19,7 @@ once. The rule is computed from ``failed_attempts`` and ``failed_at``: nothing e
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -30,6 +31,12 @@ from provisa.federation.replica_state import Failure, RetryPolicy
 
 KEY = ("src", "public", "orders")
 DEFAULT = RetryPolicy(60, 3600)
+
+# PostgreSQL advisory locks are held server-wide, not per database, and every xdist worker's
+# control plane is a database on one server: each worker process names an org and an engine of
+# its own, or a lock another worker's test holds reads here as another build's.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
+ENGINE = f"engine-{uuid.uuid4().hex[:8]}"
 T0 = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
 
 
@@ -334,9 +341,9 @@ async def test_a_build_that_keeps_failing_is_not_attempted_again_until_its_wait_
     locks._slots = tmp_path / "slots"  # noqa: SLF001
     runner = ReplicaRunner(
         db=db,
-        org_id="org1",
+        org_id=ORG,
         locks=locks,
-        engine_key=lambda: "engine",
+        engine_key=lambda: ENGINE,
         build=build,
         source_cap=none,
         permits=None,

@@ -32,8 +32,11 @@ import time
 import httpx
 import pytest
 
-from provisa.api.metadata_export.atlas import CLUSTER
+from provisa.api.metadata_export.atlas import ASSIGNMENT_SOURCE, CLUSTER, _glossary_qn
 from tests.integration.metadata_export_server import (
+    AUDIENCE,
+    CLASS_TERM,
+    GLOSSARY_TERM,
     DOMAIN,
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
@@ -43,6 +46,7 @@ from tests.integration.metadata_export_server import (
     VIEW,
     publish,
     published_server,
+    refused,
 )
 
 # REQ-1388/1389: the native Atlas path (to_native_entities) rides its own typed attribute,
@@ -95,7 +99,7 @@ async def published():
     publishes over the admin API. The server stays up for the test, which republishes."""
     async with published_server(ORG) as client:
         result = await publish(client, _target())
-        assert result["ok"], result["errors"]
+        assert result["ok"], refused(result)
         yield client, result
 
 
@@ -141,10 +145,11 @@ async def test_governance_signals_arrive_as_atlas_classifications(published):
     masked = next(c for c in ssn["classifications"] if c["typeName"] == "provisa_masked")
     assert (
         masked["attributes"]["ruleId"]
-        == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:regex"
+        # REQ-2059: the mask list's entry 1 (entry 0 leaves admin unmasked).
+        == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:1:regex"
     )
     assert masked["attributes"]["exemptRoles"] == ["admin"]
-    assert masked["attributes"]["restrictedRoles"] == ["analyst", "data_owner"]
+    assert masked["attributes"]["restrictedRoles"] == [r for r in AUDIENCE if r != "admin"]
 
     margin = await _entity("provisa_column", f"{_ORDERS}.margin@{CLUSTER}")
     assert [c["typeName"] for c in margin["classifications"]] == ["provisa_visibility_restricted"]
@@ -191,8 +196,13 @@ async def test_republishing_lands_the_same_catalog_state(published):
     has to be an upsert rather than a duplicate."""
     client, first = published
     (again,) = (await client.post("/admin/metadata-export/publish")).json()["targets"]
-    assert again["ok"], again["errors"]
-    assert again["published"] == first["published"]
+    assert again["ok"], refused(again)
+    # Entities are upserted and counted on every publish; a term assignment is counted when it
+    # is added, so the second publish, finding all three in place, adds none.
+    assert first["published"]["term_assignment"] == 3
+    assert again["published"] == {
+        k: v for k, v in first["published"].items() if k != "term_assignment"
+    }
     orders = await _entity("provisa_table", ORDERS)
     assert [c["typeName"] for c in orders["classifications"]] == ["provisa_rls_restricted"]
 
@@ -218,3 +228,23 @@ async def test_no_rule_body_is_stored_in_the_external_catalog(published):
     assert MASK_PATTERN not in stored
     assert RLS_FILTER not in stored
     assert "current_setting" not in stored
+
+
+async def test_provisa_assigns_its_terms_as_semantic_assignments_it_sourced(published):
+    """REQ-1389 (amended): the Class term is assigned to the table it grounds and the Property
+    term to its columns, each an AtlasGlossarySemanticAssignment whose source is Provisa."""
+    orders = await _entity("provisa_table", ORDERS)
+    customer_id = await _entity("provisa_column", f"{_ORDERS}.customer_id@{CLUSTER}")
+    customers_id = await _entity("provisa_column", f"{SOURCE}.{SCHEMA}.customers.id@{CLUSTER}")
+    for term, entities in ((CLASS_TERM, [orders]), (GLOSSARY_TERM, [customer_id, customers_id])):
+        found = await _entity("AtlasGlossaryTerm", f"{term}@{_glossary_qn(ORG)}")
+        assigned = found["relationshipAttributes"]["assignedEntities"]
+        assert sorted(
+            (a["guid"], a["relationshipAttributes"]["attributes"]["source"]) for a in assigned
+        ) == sorted((entity["guid"], ASSIGNMENT_SOURCE) for entity in entities)
+
+
+async def test_each_term_carries_its_role(published):
+    """REQ-2141: the role rides the term's additionalAttributes under provisaRole."""
+    order = await _entity("AtlasGlossaryTerm", f"{CLASS_TERM}@{_glossary_qn(ORG)}")
+    assert order["attributes"]["additionalAttributes"]["provisaRole"] == "class"

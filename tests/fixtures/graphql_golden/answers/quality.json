@@ -1,0 +1,132 @@
+[
+ {
+  "columns": [
+   "sale_id",
+   "run_id",
+   "viewDqResults"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:quality/1-checks-that-admitted-silver.graphql",
+  "root_field": "s__viewSilver",
+  "rows": []
+ },
+ {
+  "columns": [
+   "sale_id",
+   "run_id",
+   "viewDqResults"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:quality/1-checks-that-admitted-silver.graphql",
+  "root_field": "s__viewSilver",
+  "rows": []
+ },
+ {
+  "columns": [
+   "batch_id",
+   "run_id",
+   "check_name",
+   "definition",
+   "failing_rows"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:quality/2-what-the-bad-batch-failed-on.graphql",
+  "root_field": "s__viewDqResults",
+  "rows": []
+ },
+ {
+  "columns": [
+   "batch_id",
+   "run_id",
+   "check_name",
+   "definition",
+   "failing_rows"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:quality/2-what-the-bad-batch-failed-on.graphql",
+  "root_field": "s__viewDqResults",
+  "rows": []
+ },
+ {
+  "columns": [
+   "batch_id",
+   "outcome",
+   "count_star()"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:quality/3-every-batch-and-its-outcome.graphql",
+  "root_field": "s__viewDqResultsGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "batch_id",
+   "outcome",
+   "count"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:quality/3-every-batch-and-its-outcome.graphql",
+  "root_field": "s__viewDqResultsGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "batch_id",
+   "count_star()"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:quality/4-batches-landed-in-bronze.graphql",
+  "root_field": "s__bronzeGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "batch_id",
+   "count"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:quality/4-batches-landed-in-bronze.graphql",
+  "root_field": "s__bronzeGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "sale_day",
+   "product",
+   "sales",
+   "items",
+   "revenue",
+   "min_price",
+   "max_price"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:quality/5-gold-revenue-by-product.graphql",
+  "root_field": "s__viewGold",
+  "rows": []
+ },
+ {
+  "columns": [
+   "sale_day",
+   "product",
+   "sales",
+   "items",
+   "revenue",
+   "min_price",
+   "max_price"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:quality/5-gold-revenue-by-product.graphql",
+  "root_field": "s__viewGold",
+  "rows": []
+ }
+]

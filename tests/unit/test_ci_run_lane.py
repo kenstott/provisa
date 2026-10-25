@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shlex
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -69,7 +71,9 @@ def test_the_lane_selectors_are_test_alls(lane):
 def test_the_base_exclusions_are_test_alls():
     test_all = (REPO / "scripts" / "test-all").read_text()
     run_lane = _runner()
-    assert f'_BASE="{run_lane._BASE}"' in test_all
+    assert f'_BASE_NO_BENCH="{run_lane._BASE_NO_BENCH}"' in test_all
+    assert '_BASE="$_BASE_NO_BENCH and not bench"' in test_all
+    assert run_lane._BASE == f"{run_lane._BASE_NO_BENCH} and not bench"
     assert f'_KAFKA="{run_lane._KAFKA}"' in test_all
     assert f'_DATASTORE="{run_lane._DATASTORE}"' in test_all
 
@@ -872,3 +876,22 @@ def test_the_plan_routes_the_cluster_job_and_passes_the_included_live_lanes():
     assert "run_lane.py --has-targets cluster" in step["run"]
     for lane in ("warehouse", "salesforce", "athena", "servicenow"):
         assert f"inputs.include_{lane} && '{lane}'" in step["env"]["PROVISA_INCLUDE_LIVE"]
+
+
+def test_the_leak_lane_runs_only_when_named(monkeypatch):
+    """REQ-2149: the leak loop takes about half an hour, so an "all" run leaves it out; a dispatch
+    naming it runs it, and no other lane selects its test."""
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    run_lane = _runner()
+    lanes = lambda selection: [job["lane"] for job in run_lane.matrix(selection)["include"]]  # noqa: E731
+    assert "leak" not in lanes("all")
+    assert lanes("leak") == ["leak"]
+    assert "not leak" in run_lane._BASE
+    # deselected by default: a term of addopts' -m expression, wherever it stands in it
+    addopts = shlex.split(
+        tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"][
+            "addopts"
+        ]
+    )
+    marks = addopts[addopts.index("-m") + 1]
+    assert "not leak" in marks.split(" and "), marks

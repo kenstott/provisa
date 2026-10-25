@@ -23,7 +23,6 @@
     "descriptionLabel": "描述",
     "descriptionPlaceholder": "顯示於 SDL 文件中",
     "dataProductLabel": "數據產品",
-    "dataProductHint": "（發佈至目錄／匯出至 Atlas、Atlan 等）",
     "discoverLabel": "探索欄位",
     "discoverHint": "（於註冊時從即時數據來源推斷欄位——適用於無結構描述／NoSQL 數據來源；無需手動選取欄位）",
     "watermarkLabel": "水位線欄位",

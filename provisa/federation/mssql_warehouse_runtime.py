@@ -489,3 +489,12 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
 
     def close(self) -> None:
         self._conn.close()
+
+
+def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+    """REQ-778: pyodbc's own (PEP 249)."""
+    import pyodbc
+
+    from provisa.federation.dbapi_errors import dbapi_errors
+
+    return dbapi_errors(pyodbc)

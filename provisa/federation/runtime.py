@@ -776,6 +776,11 @@ class EngineRuntime:  # REQ-825, REQ-840
         status without importing engine-specific exception types."""
         return self._backend.classify_error(exc)
 
+    def refusal_of(self, exc: Exception) -> Any:
+        """What the engine cannot answer because of what it is, said by name (REQ-778), else
+        None (``EngineBackend.refusal_of``)."""
+        return self._backend.refusal_of(exc)
+
     def write_config(self, config_path: str) -> None:
         """Lifecycle: render the engine's cluster config from platform config (no-op for native)."""
         self._backend.write_config(self._state, config_path)

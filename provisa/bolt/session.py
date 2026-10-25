@@ -16,6 +16,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -24,7 +25,11 @@ import provisa.bolt.messages as msg
 from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
-from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
+from provisa.compiler.directives import (
+    NO_CACHE_HINT,
+    cache_hint_for,
+    extract_directives_from_cypher_comments,
+)
 from provisa.core import request_deadline
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
@@ -317,10 +322,12 @@ class BoltSession:
         all_roles = [r for r in app_state.contexts if not is_meta_role_id(r)]
 
         if provider == "none" or not getattr(app_state, "auth_middleware_active", False):
-            # No auth — every role is available; default to principal if it names a real role.
+            # No auth — every role is available; default to principal if it names a real role,
+            # or a set of roles: unsecured, the set acts as its meta-role, resolved once the
+            # session's org is bound (_meta_role), as X-Provisa-Role is on HTTP (REQ-1952).
             ordered = (
                 [principal, *[r for r in all_roles if r != principal]]
-                if principal and principal in app_state.contexts
+                if principal and (principal in app_state.contexts or "," in principal)
                 else all_roles
             )
             self._identity = None
@@ -407,8 +414,16 @@ class BoltSession:
         try:
             # REQ-2057: a derived role the session's identity holds is named like any role.
             identity = self._identity
-            if identity is None:  # an unsecured session holds no derived role
-                return resolve_requested_role(app_state, set(self.roles), named)
+            if identity is None:
+                # Unsecured: a declared derived role named in the set is held, taken at its word
+                # as the HTTP middleware takes X-Provisa-Role's (REQ-1952, REQ-2057).
+                from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+
+                def named_derived() -> dict[str, str]:
+                    names = [r.strip() for r in named.split(",") if r.strip()]
+                    return named_unsecured(names, declared_derived_roles(app_state))[1]
+
+                return resolve_requested_role(app_state, set(self.roles), named, named_derived)
             from provisa.auth.derived_roles import principal_of
 
             return resolve_requested_role(
@@ -453,7 +468,29 @@ class BoltSession:
         self.send_failure("Neo.ClientError.Security.Forbidden", role_probe.NOT_PERMITTED)
         self.state = State.DEFUNCT
 
-    def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
+    def _derived_held(self, app_state: Any) -> Callable[[str], bool]:
+        """Whether a name is a derived role this session holds (REQ-2057), read in its bound org:
+        signed in, one the identity's attributes give it; unsecured, any the org declares, taken at
+        its word as X-Provisa-Role's are on HTTP (REQ-1952) -- what :meth:`_meta_role` resolves."""
+        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._bound_org())
+        try:
+            identity = self._identity
+            if identity is None:
+                declared = declared_derived_roles(app_state)
+                return lambda name: bool(named_unsecured([name], declared)[1])
+            from provisa.auth.derived_roles import principal_of
+
+            held = principal_of(app_state, identity)[1]
+            return lambda name: name in held
+        finally:
+            reset_current_org(token)
+
+    def _resolve_db(
+        self, db: Any, derived_held: Callable[[str], bool] | None = None
+    ) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
 
         The db name encodes two axes:
@@ -462,7 +499,8 @@ class BoltSession:
         Empty / "system" / "provisa" → default role, business view.
         ``<role>`` may be a comma-separated set of held roles, which acts as their meta-role
         (security/meta_role.py; resolved once the session's org is bound). Every role must be in
-        the user's set; anything else → None.
+        the user's set, or a derived role the session holds (``derived_held``, read once its org
+        is bound; None before then: no derived role is known held); anything else → None.
         """
         from provisa.security.meta_role import RoleNotHeld, is_meta_role_id
 
@@ -476,7 +514,11 @@ class BoltSession:
                 named = [r.strip() for r in db[len(prefix) :].split(",") if r.strip()]
                 if any(is_meta_role_id(r) for r in named):
                     return None  # a meta-role is never named; the roles it is made of are
-                unheld = [r for r in named if r not in self.roles]
+                unheld = [
+                    r
+                    for r in named
+                    if r not in self.roles and not (derived_held is not None and derived_held(r))
+                ]
                 if named and unheld:
                     # REQ-2076: a role named that the caller does not hold, not an unknown name.
                     raise RoleNotHeld(unheld[0], set(self.roles))
@@ -695,8 +737,18 @@ class BoltSession:
         from provisa.security import role_probe
         from provisa.security.meta_role import RoleNotHeld
 
+        derived_held: Callable[[str], bool] | None = None
+        if self.roles and self.state != State.FAILED:
+            # A derived role the session holds is known only in its org (REQ-2057, REQ-1952): the
+            # org is resolved before the database's roles are checked.
+            try:
+                await self._ensure_org(database_org)
+            except OrgResolutionError as exc:
+                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+                return
+            derived_held = self._derived_held(_app_state)
         try:
-            resolved = self._resolve_db(db) if self.roles else None
+            resolved = self._resolve_db(db, derived_held) if self.roles else None
         except RoleNotHeld as refused:
             await self._probed(refused, database_org)
             return
@@ -742,8 +794,9 @@ class BoltSession:
             self.state = State.DEFUNCT
             return
 
-        if "," in role_id:
-            # A set of held roles acts as their meta-role, built in this session's org.
+        if "," in role_id or role_id not in self.roles:
+            # A set of held roles, or a held derived role, acts as their meta-role, built in this
+            # session's org.
             try:
                 role_id = self._meta_role(_app_state, role_id)
             except RoleNotHeld as refused:
@@ -1585,6 +1638,7 @@ async def _execute_cypher(
         assemble_rows,
         register_node_ids,
         register_rel_ids,
+        take_cut,
         to_serializable,
     )
     from provisa.cypher.params import CypherParamError, bind_params, collect_param_names
@@ -1680,12 +1734,11 @@ async def _execute_cypher(
         except CypherWriteParseError:
             pass
 
+        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
         try:
-            ast = parse_cypher(cypher)
+            ast = parse_cypher(cypher, label_map)
         except CypherParseError as exc:
             raise ValueError(str(exc)) from exc
-
-        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
 
         param_names = collect_param_names(cypher)
         try:
@@ -1732,6 +1785,8 @@ async def _execute_cypher(
         buffered=True,
         # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
         cache_hint=cache_hint_for("cypher", cypher),
+        # REQ-030: the statement's own `// @provisa route=...` comment.
+        steward_hint=extract_directives_from_cypher_comments(cypher).steward_hint,
         # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
         serve_cached=True,
         sdl_joins=False,
@@ -1740,7 +1795,7 @@ async def _execute_cypher(
     if result.redirect is not None:
         # Materialized to a sink — no records stream; the handle rides the trailing SUCCESS metadata.
         return [], [], result.redirect
-    raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    raw_rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
 

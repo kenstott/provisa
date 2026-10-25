@@ -50,6 +50,7 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/metadata-export": "org_settings",
   "/admin/import": "org_settings", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "org_settings",
+  "/admin/classification-kinds": "org_settings", // REQ-2147: the kinds the org's profiler tests for
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   // REQ-1590: the org's own business glossary, on its own read right. Looking a term up to
   // understand a column is not administering the org, so every seeded role reaches the surface;

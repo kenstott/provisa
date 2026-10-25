@@ -256,10 +256,15 @@
       "database_unavailable": "Base de datos no disponible",
       "query_engine_unavailable": "Motor de consultas no disponible",
       "role_header_required": "Se requiere el encabezado X-Provisa-Role para perfilar una vista",
-      "table_not_found": "No se encontró la tabla {{table_id}}"
+      "table_not_found": "No se encontró la tabla {{table_id}}",
+      "column_not_found": "La columna {{column}} no es una columna de la tabla que lee org_admin",
+      "classification_kind_unknown": "Tipo de clasificación desconocido {{kind}}",
+      "classification_status_invalid": "Una decisión de clasificación es aceptada o rechazada, no {{status}}",
+      "classification_decision_not_found": "No hay ninguna decisión sobre {{column}} como {{kind}}",
+      "classification_pii_refused": "No se pudo marcar la columna como PII"
     },
     "replication": {
-      "answer_not_json": "La respuesta leída para la réplica de {{table}} no es JSON válido: {{cause}} (en los {{kib}} KiB anteriores al byte {{before_byte}} de la respuesta).",
+      "answer_not_json": "La respuesta leída para la réplica de {{table}} no es JSON válido: [{{content_type}}] {{cause}} (en los {{kib}} KiB anteriores al byte {{before_byte}} de la respuesta).",
       "no_whole_copy": "La tabla {{schema}}.{{table}} del origen {{source}} no tiene una copia completa que compilar: se replica fila a fila o tiene una columna de parámetro.",
       "page_limit_reached": "No se compiló la réplica de {{table}}: la paginación de su endpoint se detiene en max_pages={{max_pages}} y el endpoint tenía más datos después de la página {{max_pages}} ({{rows}} filas leídas). Una réplica es la tabla completa, así que no se corta en el límite. Aumente max_pages o el tamaño de página del endpoint.",
       "row_limit_reached": "No se compiló la réplica de {{table}}: una lectura se detiene en max_rows={{max_rows}} (graphql_remote.max_rows) y el remoto tenía más datos después de {{rows}} filas. Una réplica es la tabla completa, así que no se corta en el límite. Aumente graphql_remote.max_rows.",
@@ -336,6 +341,7 @@
       "change_signal_no_topic": "La tabla '{{table}}' del origen '{{source}}' usa la señal de cambio kafka pero no indica ningún topic en live.kafka.topic, así que nada la actualizaría.",
       "change_signal_no_receiver": "Provisa no recibe la señal de cambio {{signal}} de un origen de tipo {{type}}, por lo que una tabla del origen '{{source}}' nunca se actualizaría con ella. Capture el origen con Debezium y use debezium.",
       "change_signal_not_honoured": "Un origen de tipo {{type}} aún no puede comprobarse en busca de cambios, por lo que la señal de cambio {{signal}} nunca se consultaría. Use ttl para el origen «{{source}}».",
+      "row_materialize_no_key_fetch": "{{table}} no se puede replicar fila por fila: su esquema remoto no tiene ningún campo que devuelva sus filas para una lista de su clave primaria.",
       "sentinel_path_not_applicable": "Un origen de tipo {{type}} no puede tener una ruta centinela: ningún productor suyo puede marcar un cambio en sus datos, o el origen no se sondea. Quite la ruta centinela del origen «{{source}}».",
       "source_cache_ttl_required": "El origen «{{source}}» necesita un TTL de caché: cada una de sus tablas es una réplica que se actualiza según ese reloj con la señal de cambio {{signal}}. Establézcalo en «Gestión de carga y actualidad» del origen.",
       "landing_ttl_required": "La tabla «{{table}}» es una réplica que se actualiza según un TTL de caché, y ni ella ni su origen «{{source}}» tienen uno. Establezca el TTL de caché en «Gestión de carga y actualidad» del origen, o en la propia tabla una vez registrada.",
@@ -528,7 +534,26 @@
     },
     "cypher": {
       "command_call_refused": "{{reason}}",
-      "count_unknown": "No se pudo hacer un recuento, así que el total es desconocido: {{statement}}: {{reason}}"
+      "count_unknown": "No se pudo hacer un recuento, así que el total es desconocido: {{statement}}: {{reason}}",
+      "access_violations": "Este rol no puede ejecutar esta consulta:",
+      "invalid_regex": "El patrón \"{{pattern}}\" en {{expression}} no es una expresión regular válida: {{reason}}. =~ espera una expresión regular, p. ej. \".*{{word}}.*\", o use CONTAINS \"{{word}}\".",
+      "unknown_label": "No existe la etiqueta :{{label}}. Etiquetas registradas: {{suggestions}}.",
+      "no_labels": "No existe la etiqueta :{{label}}: este rol no puede leer ninguna tabla.",
+      "unknown_relationship_type": "No existe el tipo de relación {{types}}. Tipos registrados: {{suggestions}}.",
+      "no_relationship_types": "No existe el tipo de relación {{types}}: este rol no puede recorrer ninguna relación.",
+      "type_mismatch": "En {{expression}}, {{value}} no se puede comparar con {{property}}, que es de tipo {{property_type}}. {{fix}}",
+      "aggregate_in_where": "WHERE no puede usar el agregado {{aggregate}}: WHERE filtra filas antes de agruparlas. Agregue en un WITH y filtre después.",
+      "nested_aggregate": "{{outer}} agrega el agregado {{inner}}: no se puede agregar otro agregado. Agregue primero en un WITH.",
+      "undefined_variable": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}.",
+      "invalid_limit": "LIMIT {{value}} no es un número entero de filas: LIMIT espera una cantidad de 0 o más, p. ej. LIMIT 10.",
+      "invalid_skip": "SKIP {{value}} no es un número entero de filas: SKIP espera una cantidad de 0 o más, p. ej. SKIP 10.",
+      "engine_refused": "El motor rechazó la consulta: {{error}}",
+      "parameter_required": "{{reason}}",
+      "no_variables": "{{clause}} lee {{variable}}, pero la sentencia no vincula ninguna variable: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL.",
+      "undefined_variable_property": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tiene una propiedad {{variable}}.",
+      "undefined_variable_properties": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestions}}? Cada una está vinculada a una etiqueta con una propiedad {{variable}}.",
+      "non_finite_number": "La respuesta contiene un número que JSON no puede representar: {{column}} es {{value}}.",
+      "try_cast_needs_postgres_16": "toInteger, toFloat y toBoolean de un valor que quizá no se pueda convertir necesitan PostgreSQL 16 o posterior en este motor."
     },
     "requests": {
       "approver_outside_domains": "Su derecho a crear relaciones no alcanza ningún dominio que toque esta solicitud ({{domains}})",
@@ -542,7 +567,9 @@
     "statement": {
       "rows_cut": "La respuesta se cortó en {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}): coinciden más filas de las devueltas.",
       "rows_cut_unchecked": "La respuesta tiene {{limit}} filas, el límite de filas que se aplica a esta lectura ({{kind}}). No se pudo comprobar si coinciden más filas: {{reason}}",
-      "approximate_index": "Las filas más similares se encontraron mediante un índice vectorial aproximado: puede faltar una fila algo más similar que la última devuelta."
+      "list_at_ceiling": "Una lista contiene el máximo de {{limit}} entradas que permite el límite de filas para esta lectura ({{kind}}); puede haber más.",
+      "approximate_index": "Las filas más similares se encontraron mediante un índice vectorial aproximado: puede faltar una fila algo más similar que la última devuelta.",
+      "path_cut": "Una ruta sin límite superior se cortó en el límite de profundidad del grafo de {{limit}} saltos: faltan en la respuesta las rutas más largas."
     },
     "wikipedia": {
       "no_pages": "Indique al menos una página de inicio",

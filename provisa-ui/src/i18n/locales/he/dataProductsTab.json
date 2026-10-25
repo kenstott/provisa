@@ -92,6 +92,7 @@
     "openApiQueryAria": "הרצת בקשת REST לדוגמה עבור {{table}}",
     "detail": {
       "field": {
+        "details": "פרטים",
         "customProperties": "מאפיינים מותאמים אישית",
         "relatedTables": "טבלאות קשורות",
         "relationships": "קשרים",
@@ -111,12 +112,11 @@
       "lineageLoading": "טוען Data Lineage…",
       "lineageHint": "גרף Column-Level Lineage שמציג את טבלאות המוצר כנקודת הקצה המפורסמת, וכן כל טבלה במעלה הזרם ששימשה לגזירתן. לעיון בלבד — דורש את היכולת view_governance.",
       "inputPortsEmpty": "לא תועדו קלטים במעלה הזרם",
-      "inputPortsHint": "קלט/ים ← טרנספורמציה ← פלט בקפיצה אחת, הנגזרים מ-Data Lineage. דורש את היכולת view_governance.",
-      "inputPortsColInputs": "קלט/ים",
-      "inputPortsColTransform": "טרנספורמציה",
-      "inputPortsColOutput": "פלט",
-      "outputPortsHint": "משטח השאילתות של מוצר זה: הטבלאות/העמודות והפקודות החברות בו, עם שאילתות לדוגמה בהמשך תחת Sample Queries and Commands.",
-      "customPropertiesEmpty": "אין מאפיינים מותאמים אישית"
+      "inputPortsHint": "הטבלאות שמוצר זה קורא ישירות, לפי Data Lineage. הרחיבו טבלה כדי לראות את העמודות שהוא קורא. דורש את היכולת view_governance.",
+      "outputPortsHint": "המשטח הניתן לשאילתה של המוצר הזה: טבלאות החברות והפקודות שלו. שאילתות לדוגמה לכל אחת נמצאות תחת דפוסי גישה.",
+      "customPropertiesEmpty": "אין מאפיינים מותאמים אישית",
+      "lineageLaneUpstream": "במעלה הזרם, דילוג {{n}}",
+      "lineageLaneDownstream": "במורד הזרם, דילוג {{n}}"
     },
     "readOnly": "לקריאה בלבד",
     "readOnlyHint": "יש לך רק data_product_read — org_admin יכול להעניק data_product_rw לעריכה.",

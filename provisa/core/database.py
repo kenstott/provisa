@@ -394,6 +394,10 @@ def statement_cancel(sc: sa.Connection) -> Callable[[], None]:
 _NotifyCallback = Callable[[Any, int, str, str], None]
 
 
+#: How long closing waits for the LISTEN thread to end before it says so (``_PgListener.close``).
+_LISTENER_STOP_S = 10.0
+
+
 class _PgListener:
     """Delivers PostgreSQL NOTIFY payloads to registered callbacks.
 
@@ -414,6 +418,7 @@ class _PgListener:
         self._thread: threading.Thread | None = None
         self._wake_r, self._wake_w = os.pipe()
         self._stopping = False
+        self._closed = False
         self._conn: Any = None
 
     def _connect(self) -> Any:
@@ -506,14 +511,27 @@ class _PgListener:
                 self._dispatch()
 
     def close(self) -> None:
+        """Stop the listener thread, then close what it used: its connection and the wake pipe.
+        Closed under a thread still in ``select()`` or ``os.read()``, a descriptor number goes to
+        the next socket the process opens and the thread reads that socket's bytes -- so a thread
+        that has not ended within ``_LISTENER_STOP_S`` is named and nothing is closed; a later
+        call, once it has ended, closes them."""
+        if self._closed:
+            return
         self._stopping = True
         os.write(self._wake_w, b"x")
         if self._thread is not None:
-            self._thread.join(timeout=10)
+            self._thread.join(timeout=_LISTENER_STOP_S)
+            if self._thread.is_alive():
+                raise RuntimeError(
+                    f"LISTEN thread {self._thread.name} did not end within {_LISTENER_STOP_S:g}s; "
+                    "its connection and wake pipe are left open while it runs"
+                )
         if self._conn is not None:
             self._conn.close()
         os.close(self._wake_r)
         os.close(self._wake_w)
+        self._closed = True
 
 
 # --------------------------------------------------------------------------- #
@@ -1524,9 +1542,12 @@ class Database:
     # Async only to keep the awaitable call-site contract; disposes the pool synchronously.
     async def close(self) -> None:
         with self._listener_lock:
-            listener, self._listener = self._listener, None
+            listener = self._listener
         if listener is not None:
+            # Raises naming a LISTEN thread that has not ended; kept, so the next close finishes it.
             listener.close()
+            with self._listener_lock:
+                self._listener = None
         self._engine.dispose()
 
 

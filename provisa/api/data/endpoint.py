@@ -59,7 +59,7 @@ from provisa.api.data.mutations import (
     _handle_mutation,
     _split_action_fields,
 )
-from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+from provisa.executor.serialize import serialize_aggregate
 from provisa.api.data.endpoint_helpers import (
     _format_response,
     _append_mermaid,
@@ -611,7 +611,7 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
         deliver=delivery,
         # REQ-1224: a buffered transport — the terminal inlines a result under the threshold and
         # lands one over it. An aggregate's answer is always small.
-        buffered=compiled.nodes_sql is None,
+        buffered=not compiled.has_nodes,
         compiled=compiled,
         **common,
         sdl_joins=True,
@@ -623,31 +623,9 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     if result.redirect is not None:
         return root_field, None, result.redirect, hit
 
-    nodes_rows = None
-    if compiled.nodes_sql is not None:
-        nodes_plan = await _govern_and_route_compiled(
-            compiled.nodes_sql,
-            role_id,
-            exec_params=compiled.nodes_params or None,
-            api_args=compiled.api_args or None,
-            extra_selections=compiled.gql_remote_extra_selections or None,
-            **common,
-            sdl_joins=True,
-        )
-        nodes_rows = (await _executed(nodes_plan, state, root_field)).rows
-
-    if compiled.nodes_sql is not None and compiled.is_group_by:
-        response = serialize_group_by(
-            result.rows, compiled.columns, nodes_rows, compiled.nodes_columns, root_field
-        )
-    elif compiled.nodes_sql is not None:
+    if compiled.has_nodes and not compiled.is_group_by:
         response = serialize_aggregate(
-            result.rows,
-            compiled.columns,
-            nodes_rows,
-            compiled.nodes_columns,
-            root_field,
-            agg_alias=compiled.agg_alias,
+            result.rows, compiled.columns, root_field, agg_alias=compiled.agg_alias
         )
     else:
         response = _format_response(

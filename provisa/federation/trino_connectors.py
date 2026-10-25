@@ -21,13 +21,12 @@ Trino connector classes follow the ``_TrinoConnector`` base: declare ``trino_con
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
 
 from provisa.federation.connector_base import Capability, Connector, Mechanism
-from provisa.federation.codehost_connectors import CodeHost, trino_details
 
 # --- Trino: a broad federator (many source types, all ATTACH via catalogs) ---
 
@@ -60,6 +59,45 @@ class _TrinoConnector(Connector):
         return
 
 
+# The source types whose instant (a column declared timestamptz, REQ-2050) Trino types as a plain
+# TIMESTAMP, the UTC wall time with no zone (Trino 481): the MySQL family's TIMESTAMP and an
+# Elasticsearch date. Their declared instants are read as with_timezone(col, 'UTC') in Trino's
+# physical SQL (transpiler.transpile.rewrite_instants_for_trino).
+TRINO_INSTANT_AS_TIMESTAMP = frozenset({"mariadb", "mysql", "tidb", "elasticsearch"})
+
+
+def trino_utc_wall_columns(state: Any) -> dict[tuple[str, str, str], set[str]]:
+    """``(catalog, schema, table)`` -> the columns declared timestamptz of each registered table
+    whose source is one of :data:`TRINO_INSTANT_AS_TIMESTAMP`, as Trino addresses it: the source's
+    catalog, under the org being served."""
+    from provisa.core.ir_types import to_ir
+
+    types = getattr(state, "source_types", None) or {}
+    catalogs = getattr(state, "source_catalogs", None) or {}
+    out: dict[tuple[str, str, str], set[str]] = {}
+    for table in getattr(state, "tables", None) or []:
+        source_id = table.get("source_id")
+        if types.get(source_id) not in TRINO_INSTANT_AS_TIMESTAMP or source_id not in catalogs:
+            continue
+        instants = {
+            c["column_name"]
+            for c in table.get("columns") or []
+            if c.get("data_type") and to_ir(c["data_type"]) == "timestamptz"
+        }
+        if instants:
+            key = (catalogs[source_id], table["schema_name"].lower(), table["table_name"].lower())
+            out[key] = instants
+    return out
+
+
+# The Trino JDBC connectors that take ``statistics.enabled`` (their client module binds
+# JdbcStatisticsConfig, Trino 481). Any other refuses a catalog that sets it ("Configuration
+# property 'statistics.enabled' was not used"): Oracle, SingleStore and ClickHouse among them.
+_STATISTICS_CONNECTORS = frozenset(
+    {"postgresql", "mysql", "mariadb", "sqlserver", "redshift", "exasol"}
+)
+
+
 class _TrinoJdbcConnector(_TrinoConnector):
     """Any JDBC-reachable relational/warehouse/lake source: a connection-url + credentials, built from
     the source's ``jdbc_url``. One class parametrized by ``source_type`` + ``trino_connector``."""
@@ -71,12 +109,14 @@ class _TrinoJdbcConnector(_TrinoConnector):
         jdbc_url = source.jdbc_url(host=host, port=source.port)
         if not jdbc_url:
             return {}
-        return {
+        props = {
             "connection-url": jdbc_url,
             "connection-user": resolve_secrets(source.username or ""),
             "connection-password": resolve_secrets(source.password or ""),
-            "statistics.enabled": "false",
         }
+        if self.trino_connector in _STATISTICS_CONNECTORS:
+            props["statistics.enabled"] = "false"
+        return props
 
 
 class TrinoPostgresConnector(_TrinoJdbcConnector):
@@ -1118,30 +1158,6 @@ class TrinoKafkaConnector(_TrinoConnector):
         }
 
 
-class TrinoCodeHostConnector(CodeHost, _TrinoConnector):  # REQ-2100
-    """A built code host, through Trino's postgresql connector (codehost_connectors)."""
-
-    trino_connector = "postgresql"
-    mechanism = Mechanism.ATTACH_R
-    files_for = "trino"
-    opt_in_reach = True
-
-    def __init__(self, source_type: str) -> None:
-        self.source_type = source_type
-
-    def capability(self) -> Capability:
-        return Capability(predicate_pushdown=True)
-
-    def details(self, source: Source) -> dict:
-        mapping = getattr(source, "mapping", None) or {}
-        # A dev-mode source is landed, never attached: it has no catalog. A built one's catalog
-        # is created by the schema build once its identity is written where Trino reads it
-        # (codesource.attach.prepare), which registers the source on the engine again.
-        if mapping.get("mode") != "built" or not self.ready():
-            return {}
-        return trino_details(self, source)
-
-
 def build_trino_connectors() -> list[_TrinoConnector]:
     """Every Trino catalog connector (REQ-842) — the complete, authoritative reach of the Trino
     engine. This is THE source of truth for a type's Trino ``connector.name`` (``trino_connector``):
@@ -1181,8 +1197,6 @@ def build_trino_connectors() -> list[_TrinoConnector]:
     ]
     if TRINO_READS_PGWIRE_ADAPTER_LIVE:
         connectors.append(TrinoGovdataConnector())
-    # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-    connectors.extend(TrinoCodeHostConnector(t) for t in ("node", "python"))
     connectors.extend(
         cls() for cls in (_jdbc_trino(st, tc) for st, tc in _TRINO_JDBC_TYPES.items())
     )

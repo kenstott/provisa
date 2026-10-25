@@ -27,6 +27,7 @@ from provisa.federation.execution_auth import system_auth
 
 from sqlalchemy import delete as _delete, func, select
 
+from provisa.core.held_sizes import held
 from provisa.core.schema_org import source_catalog_cache
 
 log = logging.getLogger(__name__)
@@ -170,6 +171,7 @@ COLUMNS_UNAVAILABLE = "unavailable"  # could not be loaded for this index of the
 #: schema is filled at most once per generation; a source still starting is left to a later
 #: search. A generation ends when the source is indexed again or invalidated.
 _COLUMN_FILLS: dict[tuple[str | None, str, str], str] = {}
+held(__name__, "_COLUMN_FILLS", _COLUMN_FILLS)
 
 
 def _fill_key(source_id: str, schema_name: str) -> tuple[str | None, str, str]:

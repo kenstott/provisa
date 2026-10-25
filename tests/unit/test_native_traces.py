@@ -287,6 +287,87 @@ def test_compaction_leaves_full_files_and_a_lone_file_as_they_are(tmp_path):
     assert len(_files(root)["_date=2026-10-17"]) == 2
 
 
+def _trace_ids(root: str) -> list[str]:
+    return sorted(r["trace_id"] for r in nt._landed(root).to_pylist())
+
+
+def test_compactions_racing_on_one_folder_keep_each_row_once(tmp_path):
+    # Every process of a host that shares a telemetry folder compacts it each minute. Two that
+    # merged the same files both wrote their merged copy, and every row was then there twice:
+    # four servers sharing one folder multiplied a day's rows minute by minute.
+    from concurrent.futures import ThreadPoolExecutor
+
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 40})
+    before = _trace_ids(root)
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(lambda _: nt.compact(root), range(8)))
+    assert _trace_ids(root) == before
+
+
+def test_a_folder_another_process_is_compacting_is_left_to_it(tmp_path):
+    from pathlib import Path
+
+    from provisa.core.host_lock import FileLock
+
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 3})
+    held = FileLock(Path(root) / nt.COMPACT_LOCK)
+    assert held.try_acquire()
+    try:
+        assert nt.compact(root) == 0
+        assert len(_files(root)["_date=2026-10-17"]) == 3
+    finally:
+        held.release()
+    assert nt.compact(root) == 3
+
+
+def test_compaction_holds_one_input_file_of_arrow_at_a_time(tmp_path):
+    # A day's small files were read into one Arrow table before any was written: the whole day,
+    # in every process that compacted it. Each input is now written as it is read.
+    import gc
+
+    import pyarrow as pa
+
+    root = str(tmp_path / "traces")
+    folder = tmp_path / "traces" / "_date=2026-10-17"
+    _land(root, {"2026-10-17": 1})
+    template = nt._landed(root).to_pylist()[0]
+    for f in folder.iterdir():
+        f.unlink()
+    for n in range(20):
+        rows = [dict(template, trace_id=f"{n}-{i}", span_attributes="x" * 4096) for i in range(256)]
+        pq.write_table(
+            pa.Table.from_pylist(rows, schema=nt.TRACES_SCHEMA),
+            str(folder / f"batch-{n:02d}.parquet"),
+        )
+    one = pq.ParquetFile(str(folder / "batch-00.parquet")).read().nbytes
+    before = _trace_ids(root)
+    default = pa.default_memory_pool()
+    pool = pa.proxy_memory_pool(default)
+    pa.set_memory_pool(pool)
+    try:
+        assert nt.compact(root) == 20
+    finally:
+        gc.collect()
+        pa.set_memory_pool(default)
+    assert pool.max_memory() < 3 * one
+    assert _trace_ids(root) == before
+
+
+def test_a_pass_an_input_fails_leaves_the_day_as_it_was(tmp_path):
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 6})
+    before = _files(root)
+    one = os.path.getsize(os.path.join(root, "_date=2026-10-17", before["_date=2026-10-17"][0]))
+    with open(os.path.join(root, "_date=2026-10-17", before["_date=2026-10-17"][4]), "wb") as f:
+        f.write(b"not parquet")
+    # A target of two inputs: the first two are rolled into a file before the bad one is read.
+    with pytest.raises(Exception, match="Parquet"):
+        nt.compact(root, target_bytes=2 * one + 1)
+    assert _files(root) == before
+
+
 def test_with_no_folder_compaction_has_nothing_to_do(tmp_path):
     assert nt.compact(str(tmp_path / "absent")) == 0
 

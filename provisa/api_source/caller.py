@@ -38,6 +38,30 @@ class ApiNotFoundError(Exception):
     """Raised when the API returns 404 — caller should yield empty rows."""
 
 
+class ApiAnswerNotJson(ValueError):
+    """An endpoint answered with a body that is not JSON: what it answered, so the reason (an XML
+    or HTML page, an empty body) is in the message rather than a decoder's position."""
+
+
+# How much of a non-JSON answer its error quotes.
+_QUOTED_CHARS = 300
+
+
+def _decoded(resp: httpx.Response) -> Any:
+    """``resp``'s JSON body; :class:`ApiAnswerNotJson` naming its status, URL, content type and
+    the start of its body when it is not JSON."""
+    import json
+
+    try:
+        return resp.json()
+    except json.JSONDecodeError as exc:
+        raise ApiAnswerNotJson(
+            f"{resp.request.method} {resp.request.url} answered {resp.status_code} "
+            f"{resp.headers.get('content-type') or 'with no content type'}, not JSON ({exc}): "
+            f"{resp.text[:_QUOTED_CHARS]!r}"
+        ) from None
+
+
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_BASE = 1.0
 _DEFAULT_TIMEOUT = 30.0
@@ -232,7 +256,7 @@ async def _pages(
             form_body=form_body,
             timeout=timeout,
         )
-        yield await loop.run_in_executor(None, resp.json)
+        yield await loop.run_in_executor(None, _decoded, resp)
         return
 
     max_pages = pagination.max_pages
@@ -252,7 +276,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            page = await loop.run_in_executor(None, resp.json)
+            page = await loop.run_in_executor(None, _decoded, resp)
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
             next_url = match.group(1) if match else None
@@ -279,7 +303,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             cursor = data.get(cursor_field) if isinstance(data, dict) else None
             if paging is not None:
                 paging.more = bool(cursor)
@@ -308,7 +332,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -332,7 +356,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -356,7 +380,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break

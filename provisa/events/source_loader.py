@@ -282,6 +282,7 @@ class SourceRowLoader:
             self._adapter_loaders.get(stype)
             or _floored_file_loader(source, stype)
             or _floored_server_loader(source, stype)
+            or _floored_mongodb_loader(source, stype)
         )
         if loader is not None:
             return await loader(source, table)
@@ -304,7 +305,8 @@ class SourceRowLoader:
           cursor or Arrow stream where its client has one, else whole, as a single document.
         - A floored csv or parquet source, which no engine attaches, is read from its file
           (:func:`_floored_file_loader`); a floored source served by its own pgwire server, through
-          that server (:func:`_floored_server_loader`).
+          that server (:func:`_floored_server_loader`); a floored MongoDB source, over its driver
+          (:func:`_floored_mongodb_loader`).
         - Any other type is read by the engine, which streams Arrow batches; where the engine
           attaches the source in place it is also declared engine-reachable.
 
@@ -367,6 +369,7 @@ class SourceRowLoader:
             self._adapter_loaders.get(stype)
             or _floored_file_loader(source, stype)
             or _floored_server_loader(source, stype)
+            or _floored_mongodb_loader(source, stype)
         )
         if (
             loader is not None
@@ -765,6 +768,20 @@ def _floored_server_loader(source: Any, stype: str) -> AdapterLoader | None:
     if stype not in PGWIRE_REPLICA_TYPES or floor_setting(source) is None:
         return None
     return load_through_server
+
+
+def _floored_mongodb_loader(source: Any, stype: str) -> AdapterLoader | None:
+    """The reader of a MongoDB source the operator floors, None for any other.
+
+    A floored source has no live attach on any engine (REQ-1912), so an engine that attaches
+    MongoDB in place (DuckDB) has no catalog of it to read; its rows are read over its driver, as
+    on an engine with no MongoDB connector (:func:`make_mongodb_loader`, REQ-1730). A source that
+    is not floored keeps the engine's read of its attach."""
+    from provisa.core.operator_floor import floor_setting
+
+    if stype != "mongodb" or floor_setting(source) is None:
+        return None
+    return make_mongodb_loader()
 
 
 def make_file_loader(source_type: str) -> AdapterLoader:
@@ -1459,6 +1476,16 @@ def _integer_runs(values: list[int]) -> tuple[list[tuple[int, int]], list[int]]:
     return runs, singles
 
 
+def _mongodb_columns(table: Any) -> list[tuple[str, str]]:
+    """The table's registered data columns as (name, document path): a column with no ``path``
+    is the document field of its own name."""
+    return [
+        (c.name, c.path or c.name)
+        for c in table.columns
+        if getattr(c, "native_filter_type", None) is None
+    ]
+
+
 def make_mongodb_loader() -> AdapterLoader:
     """Build the MongoDB row-fetch (REQ-1730): the table's registered data columns, projected from
     ``<database>.<collection>`` over pymongo and landed like any other fetched source. Wired only on
@@ -1481,10 +1508,10 @@ def make_mongodb_loader() -> AdapterLoader:
             return await asyncio.to_thread(
                 lambda: [r for b in whole_batches(conn, database, table, 1000) for r in b]
             )
-        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not names:
+        columns = _mongodb_columns(table)
+        if not columns:
             return []
-        return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, names)
+        return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, columns)
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         from provisa.federation.replica_source import BlockingCursorSource
@@ -1499,11 +1526,10 @@ def make_mongodb_loader() -> AdapterLoader:
             return BlockingCursorSource(
                 lambda batch_rows: whole_batches(conn, database, table, batch_rows), columns
             )
-        names = [name for name, _ in columns]
+        paths = dict(_mongodb_columns(table))
+        read = [(name, paths[name]) for name, _ in columns]
         return BlockingCursorSource(
-            lambda batch_rows: iter_row_batches(
-                conn, database, table.table_name, names, batch_rows
-            ),
+            lambda batch_rows: iter_row_batches(conn, database, table.table_name, read, batch_rows),
             columns,
         )
 
@@ -1523,11 +1549,11 @@ def make_mongodb_keyed_loader() -> AdapterKeyedLoader:
             return []
         conn = MongoConnection.from_source(source)
         database = getattr(source, "database", None) or table.schema_name
-        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not names:
+        columns = _mongodb_columns(table)
+        if not columns:
             return []
         return await asyncio.to_thread(
-            fetch_rows_by_keys, conn, database, table.table_name, names, pk_columns, keys
+            fetch_rows_by_keys, conn, database, table.table_name, columns, pk_columns, keys
         )
 
     return _load
@@ -1810,6 +1836,122 @@ def make_grpc_remote_loader(grpc_sources: dict[str, Any]) -> AdapterLoader:  # R
     return _load
 
 
+def _graphql_remote_registration(
+    gql_sources: dict[str, Any], source: Any, table: Any
+) -> tuple[dict, dict]:
+    """``table``'s registration in ``state.graphql_remote_sources``: its source's, and its own
+    (by ``sql_name``). A table with none raises :class:`UnsupportedSourceFetch`."""
+    from provisa.compiler.naming import apply_sql_name
+
+    normalised = apply_sql_name(table.table_name)
+    for reg in gql_sources.values():
+        for tbl in reg.get("tables", []):
+            if tbl.get("sql_name") in (table.table_name, normalised):
+                return reg, tbl
+    raise UnsupportedSourceFetch(
+        f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
+        f"registration in graphql_remote_sources"
+    )
+
+
+def _graphql_remote_request(gql_sources: dict[str, Any], source: Any, table: Any) -> dict:
+    """The remote call for ``table``: url, auth, field name and column selections."""
+    from provisa.compiler.naming import apply_gql_name, apply_sql_name
+    from provisa.graphql_remote.executor import NO_POLICY
+
+    reg, tbl = _graphql_remote_registration(gql_sources, source, table)
+
+    # The store lands under the semantic sql name; the remote keys the field by its GraphQL
+    # name. Both derive from the naming authority. When they differ, emit a GraphQL alias
+    # ``<sql_name>: <gqlField>`` so the outbound field matches the remote AND the response comes
+    # back keyed by the sql name the store expects; when they coincide, the bare field.
+    # gql_selection (nested object path) still wins.
+    def _selection(c: dict) -> str:
+        if c.get("gql_selection"):
+            return c["gql_selection"]
+        sql_name = apply_sql_name(c["name"])
+        gql_field = apply_gql_name(c["name"])
+        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
+
+    return {
+        "url": reg["url"],
+        "auth": reg.get("auth"),
+        "field_name": tbl.get("field_name") or tbl["name"],
+        "columns": [_selection(c) for c in tbl.get("columns", [])],
+        "rows_path": tbl.get("rows_path"),
+        "error_policy": reg.get("error_policy") or NO_POLICY,
+        # REQ-2061: the table's fixed arguments, sent on every read of it.
+        "variables": dict(tbl.get("arguments") or {}) or None,
+        "required_args": [
+            *(tbl.get("required_args") or []),
+            *(tbl.get("optional_args") or []),
+        ]
+        or None,
+    }
+
+
+def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1865
+    """The ``load_keys`` counterpart to :func:`make_graphql_remote_loader`: the rows of a list of
+    keys in one request, through the field the table's spec names for its key
+    (``graphql_remote.by_keys``) -- ``where: {<key>: {_in: [...]}}`` on the table's own field, or
+    a field taking the list of IDs. A table is row-materialized only where it has such a field
+    (refused at registration otherwise), so a table without one is a defect here, raised by
+    name. The registration is looked up in state at each read."""
+    from provisa.graphql_remote.by_keys import BY_KEYS, WHERE_IN
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        from provisa.graphql_remote.executor import execute_remote
+
+        if not keys:
+            return []
+        gql_sources = state.graphql_remote_sources
+        _reg, tbl = _graphql_remote_registration(gql_sources, source, table)
+        request = _graphql_remote_request(gql_sources, source, table)
+        (key,) = pk_columns
+        fetch = (tbl.get(BY_KEYS) or {}).get(key)
+        if fetch is None:
+            raise UnsupportedSourceFetch(
+                f"graphql_remote source {source.id!r} table {table.table_name!r}: its remote "
+                f"schema has no field returning its rows for a list of {key!r}"
+            )
+        values = [k[0] for k in keys]
+        columns = request["columns"]
+        if fetch["style"] == WHERE_IN:
+            # The table's own field, with its fixed arguments and the filter on the key.
+            variables = {
+                **(request["variables"] or {}),
+                fetch["arg"]: {fetch["key"]: {"_in": values}},
+            }
+            fixed = [a for a in request["required_args"] or [] if a["name"] in variables]
+            rows_path = request["rows_path"]
+        else:
+            variables = {fetch["arg"]: values}
+            fixed = []
+            rows_path = None
+            if fetch["on"] is not None:
+                # The field returns an interface or union: the table's fields are its type's.
+                columns = [f"... on {fetch['on']} {{ {' '.join(columns)} }}"]
+        answer = await execute_remote(
+            request["url"],
+            request["auth"],
+            fetch["field"],
+            columns,
+            variables=variables,
+            required_args=[
+                *(a for a in fixed if a["name"] != fetch["arg"]),
+                {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
+            ],
+            rows_path=rows_path,
+            error_policy=request["error_policy"],
+        )
+        # A list of IDs answers null for an ID it does not know.
+        return [row for row in answer.rows if row is not None]
+
+    return _load
+
+
 def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
@@ -1822,48 +1964,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
     :class:`UnsupportedSourceFetch`."""
 
     def _request(source: Any, table: Any) -> dict:
-        """The remote call for ``table``: url, auth, field name and column selections."""
-        from provisa.compiler.naming import apply_gql_name, apply_sql_name
-        from provisa.graphql_remote.executor import NO_POLICY
-
-        normalised = apply_sql_name(table.table_name)
-        for reg in gql_sources.values():
-            for tbl in reg.get("tables", []):
-                if tbl.get("sql_name") in (table.table_name, normalised):
-                    cols = tbl.get("columns", [])
-
-                    # The store lands under the semantic sql name; the remote keys the field by its
-                    # GraphQL name. Both derive from the naming authority. When they differ, emit a
-                    # GraphQL alias ``<sql_name>: <gqlField>`` so the outbound field matches the remote
-                    # AND the response comes back keyed by the sql name the store expects; when they
-                    # coincide, the bare field. gql_selection (nested object path) still wins.
-                    def _selection(c: dict) -> str:
-                        if c.get("gql_selection"):
-                            return c["gql_selection"]
-                        sql_name = apply_sql_name(c["name"])
-                        gql_field = apply_gql_name(c["name"])
-                        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
-
-                    col_selections = [_selection(c) for c in cols]
-                    return {
-                        "url": reg["url"],
-                        "auth": reg.get("auth"),
-                        "field_name": tbl.get("field_name") or tbl["name"],
-                        "columns": col_selections,
-                        "rows_path": tbl.get("rows_path"),
-                        "error_policy": reg.get("error_policy") or NO_POLICY,
-                        # REQ-2061: the table's fixed arguments, sent on every read of it.
-                        "variables": dict(tbl.get("arguments") or {}) or None,
-                        "required_args": [
-                            *(tbl.get("required_args") or []),
-                            *(tbl.get("optional_args") or []),
-                        ]
-                        or None,
-                    }
-        raise UnsupportedSourceFetch(
-            f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
-            f"registration in graphql_remote_sources"
-        )
+        return _graphql_remote_request(gql_sources, source, table)
 
     def _pages(source: Any, table: Any) -> Any:
         """A connection table's whole collection, page by page; a read reaching max_rows with

@@ -76,14 +76,24 @@ _MODELS = {
 }
 
 
+_ADDED_AFTER_THE_SPLIT = frozenset({"property_types", "key_columns"})
+
+
 def _structure(value):
     """A label map as plain data, compared field by field: it defines no equality of its own."""
     import dataclasses
 
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        # A field added after the split carries what the split never built (REQ-778: each
+        # property's registered type; REQ-2136: a compound key's columns); the comparison is of
+        # what the split moved.
         return (
             type(value).__name__,
-            {f.name: _structure(getattr(value, f.name)) for f in dataclasses.fields(value)},
+            {
+                f.name: _structure(getattr(value, f.name))
+                for f in dataclasses.fields(value)
+                if f.name not in _ADDED_AFTER_THE_SPLIT
+            },
         )
     if isinstance(value, dict):
         return {k: _structure(v) for k, v in value.items()}
@@ -99,7 +109,7 @@ def _structure(value):
 _MODEL_MAPS = {}
 for _entry in _ENTRIES:
     _origin = _entry["origin"].split("#", 1)[0]
-    if not _origin.startswith("test:"):
+    if not _origin.startswith(("test:", "approved:")):
         _MODEL_MAPS.setdefault(_origin, _entry["label_map"])
 
 

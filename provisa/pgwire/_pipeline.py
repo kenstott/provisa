@@ -160,6 +160,9 @@ class _Plan:
     # REQ-1949: the row limit that bounds this read, when a limit and not the statement's own
     # LIMIT is what bounds it (compiler/row_limit.RowLimit). None for every other statement.
     row_limit: Any = None
+    # REQ-005: the limit that bounds each list the read nests (compiler/list_cap), when it
+    # nests any; None otherwise.
+    list_limit: Any = None
     # REQ-1949: what the check of that limit found, for the statement's audit row: "cut" (more
     # rows matched than were returned) or "unchecked" (the check could not be made). None when
     # the answer was whole, or was not checked because it did not fill the limit.
@@ -353,6 +356,7 @@ async def _optimize_and_route(
     steward_hint: str | None = None,
     extra_selections: dict | None = None,
     read_args: dict | None = None,
+    building: str | None = None,
 ):
     """REQ-863 post-governance optimization stage (may REMOVE sources) + routing on the reduced
     set — shared by both governed-SQL entrypoints so routing observes the optimized source set,
@@ -384,7 +388,7 @@ async def _optimize_and_route(
     # REQ-849, REQ-882: a fresh materialized view that answers the governed statement is read in
     # its place -- the one place a view is put back into a statement, for every surface. After
     # governance: the role's row filters and masks are part of what it answers.
-    _view = _view_answering(exec_sql, ctx, state, is_mutation=is_mutation)
+    _view = _view_answering(exec_sql, ctx, state, is_mutation=is_mutation, building=building)
     if _view is not None:
         exec_sql = _view.sql
     # ``extra_selections``: the fields a GraphQL query reads of a graphql_remote table beyond its
@@ -460,113 +464,40 @@ async def _optimize_and_route(
     )
     from provisa.federation.registry_view import operator_floor
 
+    routed = sources or {default_source}
     decision = decide_route(
-        sources=sources or {default_source},
+        sources=routed,
         source_types=state.source_types,
         source_dialects=state.source_dialects,
+        statement=governed_sql,
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
         is_mutation=is_mutation,
         operator_floor=operator_floor(state, table_ids),
-        steward_hint=steward_hint,  # the request's route hint (REQ-1203); the floor still binds
+        steward_hint=steward_hint,  # the request's route hint (REQ-1203, REQ-030): tried, not forced
         reads_fakes=reads_fakes(governed_sql),  # REQ-1494
         # The engine decides a write's route (its connector may be the only way to the source,
         # REQ-910); a read's route does not depend on it here.
         engine=state.federation_engine.engine if is_mutation else None,
+        forced=()
+        if is_mutation
+        else _forced_engine(
+            routed, optimized and not sources, _view, _rewrites, ctx, state, table_ids
+        ),
+        **({} if is_mutation else await _proxy_plan(routed, governed_sql, ctx, state, table_ids)),
     )
-    if (
-        decision.route == Route.DIRECT
-        and not is_mutation
-        and decision.source_id is not None
-        and decision.source_id != "provisa-admin"
-        and not state.source_pools.has(decision.source_id)
-    ):
-        # A read of one source this node holds no connection for is the engine's: the engine
-        # reaches the source through its own catalog, and the DIRECT terminal would refuse it
-        # (data.no_direct_route). The provisa-admin terminal needs no pool.
-        from provisa.transpiler.router import RouteDecision
-
-        decision = RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason=f"source {decision.source_id!r} has no direct connection on this node",
-        )
     from provisa.api.region_ops_views import reads_region_views
 
     if (
-        decision.route == Route.DIRECT
-        and decision.source_id == "provisa-admin"
+        decision.route == Route.ENGINE
+        and "provisa-admin" in routed
         and reads_region_views(ctx, table_ids)
     ):
-        # REQ-1922: in a region, an ops view over the region's own record or state is the
-        # engine's, which reads those stores where they are kept; the provisa-admin terminal
-        # reads only the model's database.
-        from provisa.transpiler.router import RouteDecision
-
-        decision = RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason="an ops view over this region's own record or state",
-        )
+        # REQ-1922: the engine's definitions of a region's own ops views, made before it reads
+        # one (an engine that defines them in its attach walk does nothing here).
         import asyncio
 
-        # The engine's definitions of those views, made before it reads one (an engine that
-        # defines them in its attach walk does nothing here).
         await asyncio.to_thread(state.federation_engine.engine.backend.prepare_region_ops, state)
-    if (
-        decision.route == Route.DIRECT
-        and not is_mutation
-        and decision.source_id is not None
-        and state.source_types.get(decision.source_id) == "qdrant"
-    ):
-        # REQ-2000: a read on a Qdrant source runs there only where Qdrant's API states it
-        # exactly; anything else is the engine's, over the collection's part read live for the
-        # statement (below), so no rule of the role's is skipped. Writes are always made in Qdrant (the engine does not write it).
-        from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
-        from provisa.qdrant.direct import route_reason
-        from provisa.transpiler.router import RouteDecision
-
-        _why = await route_reason(
-            state,
-            decision.source_id,
-            rewrite_semantic_to_physical(governed_sql, ctx),
-            table_ids,
-        )
-        if _why is not None:
-            decision = RouteDecision(
-                route=Route.ENGINE,
-                source_id=None,
-                dialect=None,
-                reason=f"source {decision.source_id!r}: {_why}",
-            )
-    if decision.route == Route.DIRECT and _similarity_needs_engine(governed_sql, decision, state):
-        # REQ-423: a similarity search runs on a source only where the source's own SQL computes
-        # it (similarity.DIRECT_DIALECTS); elsewhere the engine computes it.
-        from provisa.transpiler.router import RouteDecision
-
-        decision = RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason=f"source {decision.source_id!r} cannot compute cosine_similarity",
-        )
-    if decision.route == Route.DIRECT and not is_mutation:
-        from provisa.transpiler.engine_functions import uncomputable
-
-        # REQ-345: a Cypher read's map, list and quantifier functions are the engine's; a source
-        # whose own SQL lacks one is answered by the engine, as a similarity search is above.
-        _fn = uncomputable(governed_sql, state.source_dialects.get(decision.source_id) or "")
-        if _fn is not None:
-            from provisa.transpiler.router import RouteDecision
-
-            decision = RouteDecision(
-                route=Route.ENGINE,
-                source_id=None,
-                dialect=None,
-                reason=f"source {decision.source_id!r} cannot compute {_fn}",
-            )
     if decision.route == Route.ENGINE and not is_mutation:
         # REQ-2000: a live-only table the engine reads is read live for this statement -- its
         # part of it -- and handed to the engine; it has no replica.
@@ -578,43 +509,24 @@ async def _optimize_and_route(
         if _live or _live_inline:
             optimized = True
             opt_labels.extend(f"read live: {_tn}" for _tn in sorted({*_live, *_live_inline}))
-    if _view is not None and decision.route != Route.ENGINE:
-        # The view is stored where the engine reads it: no source's driver knows it.
-        from provisa.transpiler.router import RouteDecision
-
-        decision = RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason=f"read from materialized view {_view.mv.id!r}",
-        )
-    if _rewrites and decision.route != Route.ENGINE:
-        # A cache rewrite points the SQL at a materialized table living in the engine's
-        # attached mat_store catalog — no native pool or API caller can see it, so the
-        # query MUST route through the engine regardless of what decide_route picked
-        # (e.g. Route.API for a query whose only remaining source is the API source
-        # that got rewritten away).
-        from provisa.transpiler.router import RouteDecision
-
-        decision = RouteDecision(
-            route=Route.ENGINE,
-            source_id=None,
-            dialect=None,
-            reason="query rewritten to a materialized cache table",
-        )
     return exec_sql, decision, default_source, optimized, sources, tuple(opt_labels)
 
 
-def _view_answering(exec_sql: str, ctx, state, *, is_mutation: bool) -> Any:
+def _view_answering(
+    exec_sql: str, ctx, state, *, is_mutation: bool, building: str | None = None
+) -> Any:
     """The fresh materialized view that answers the governed read ``exec_sql``, rewritten to
-    read it (``mv.view_reinject``), or None. A write is never answered from a view."""
+    read it (``mv.view_reinject``), or None. A write is never answered from a view, nor a view's
+    build (``building``, its id) from that view."""
     if is_mutation:
         return None
     from provisa.mv.load_window import readable_now
     from provisa.mv.view_reinject import reinject
 
     # REQ-2066: a view outside its load management window answers none of a user's reads.
-    return reinject(exec_sql, readable_now(state.mv_registry.get_fresh(), state), ctx)
+    return reinject(
+        exec_sql, readable_now(state.mv_registry.get_fresh(), state), ctx, exclude=building
+    )
 
 
 async def _read_live_parts(
@@ -643,16 +555,77 @@ async def _read_live_parts(
     return rewrites, inline
 
 
-def _similarity_needs_engine(governed_sql: str, decision: Any, state: Any) -> bool:  # REQ-423
-    from provisa.vector.similarity import DIRECT_DIALECTS, mentions
+def _forced_engine(
+    routed: set[str],
+    all_inlined: bool,
+    view: Any,
+    rewrites: dict,
+    ctx: Any,
+    state: Any,
+    table_ids: tuple[int, ...],
+) -> tuple[str, ...]:
+    """Why the engine must run a read, whatever else holds of it (REQ-863's not_forced gate):
+    each condition named for the route's reason."""
+    from provisa.api.region_ops_views import reads_region_views
 
-    if not mentions(governed_sql):
-        return False
-    dialect = state.source_dialects.get(decision.source_id) or ""
-    if dialect == "qdrant":
-        # REQ-2000: Qdrant's own similarity search, decided by its route check above.
-        return False
-    return dialect not in DIRECT_DIALECTS
+    # A live-only part is read live for the engine when the engine runs the statement; on its
+    # own it sends nothing there -- its source may answer the statement itself (REQ-2000).
+    forced: list[str] = []
+    if all_inlined:
+        # Never a direct read of a source the statement does not read.
+        forced.append("every source it reads was inlined as rows")
+    if view is not None:
+        # The view is stored where the engine reads it: no source's driver knows it.
+        forced.append(f"read from materialized view {view.mv.id!r}")
+    from provisa.federation.connector_contract import contract_for
+
+    proxied = (
+        len(routed) == 1
+        and contract_for(state.source_types.get(next(iter(routed)), "")) is not None
+    )
+    if rewrites and not proxied:
+        # A source with a proxy has its own rows landed: trusted_to_answer says why.
+        forced.append("reads landed rows (a materialized cache table)")
+    from provisa.transpiler.router import API_SOURCES, CODE_SOURCES
+
+    for sid in sorted(routed):
+        # An API or a code source holds no connection by design: its rows are landed.
+        if state.source_types.get(sid) in API_SOURCES | CODE_SOURCES:
+            continue
+        if sid != "provisa-admin" and not state.source_pools.has(sid):
+            forced.append(f"source {sid!r} has no direct connection on this node")
+    if "provisa-admin" in routed and reads_region_views(ctx, table_ids):
+        forced.append("an ops view over this region's own record or state")
+    return tuple(forced)
+
+
+async def _proxy_plan(
+    routed: set[str], governed_sql: str, ctx: Any, state: Any, table_ids: tuple[int, ...]
+) -> dict[str, Any]:
+    """The trusted_to_answer gate's input (REQ-863, REQ-1756): whether the one source's proxy
+    plans the statement's read as its complete dataset, and if not, why."""
+    if len(routed) != 1:
+        return {}
+    (sid,) = routed
+    from provisa.federation.connector_contract import Read, contract_for
+
+    proxy = contract_for(state.source_types.get(sid, ""))
+    if proxy is None:
+        return {}
+    tables = [t for t in getattr(state, "tables", None) or [] if t.get("id") in set(table_ids)]
+    if len(tables) != 1:
+        return {"incomplete": "the statement reads more than one of its tables"}
+    plan = await proxy.plan(
+        state,
+        Read(
+            table=tables[0],
+            name=tables[0]["table_name"],
+            statement=governed_sql,
+            source_id=sid,
+        ),
+        ctx,
+    )
+    return {"complete_dataset": plan.complete_dataset, "incomplete": plan.incomplete_because}
 
 
 @functools.lru_cache(maxsize=4096)
@@ -775,23 +748,23 @@ async def _await_source_servers(decision: Any, sources: Any, state: Any) -> None
 
     if decision.route != Route.ENGINE:
         return
-    from provisa.federation.pgwire_replica import (
-        PGWIRE_REPLICA_TYPES,
-        STATEMENT_START_WAIT_SECONDS,
-        await_serving,
-    )
+    from provisa.federation.pgwire_replica import STATEMENT_START_WAIT_SECONDS, await_serving
+    from provisa.federation.strategy import read_through_its_server
 
     # REQ-2031: a source every table of which never expires and has landed is read from its
-    # replicas alone; nothing contacts it, so there is no server of it to wait for.
+    # replicas alone; nothing contacts it, so there is no server of it to wait for. A source the
+    # engine reads with a connector of its own (Splunk on Trino) is not read through its server
+    # either, though a discovery call may have started one.
+    engine = state.federation_engine.engine
     kept = state.replica_routes.kept_sources
     served = [
         (sid, state.source_types.get(sid, ""))
         for sid in sorted(sources)
-        if state.source_types.get(sid, "") in PGWIRE_REPLICA_TYPES and sid not in kept
+        if read_through_its_server(engine, state.source_types.get(sid, "")) and sid not in kept
     ]
     if not served:
         return
-    backend = state.federation_engine.engine.backend
+    backend = engine.backend
     # The attach is the engine's own (idempotent; a complete one is not walked again). An engine
     # that attaches nothing reads such a source from its replica, and has no server to wait for.
     attach = getattr(backend, "_attached_runtime", None)
@@ -823,6 +796,7 @@ async def _optimize_and_route_cached(
     steward_hint: str | None = None,
     extra_selections: dict | None = None,
     read_args: dict | None = None,
+    building: str | None = None,
 ):
     """REQ-1877 routing addendum: cache `_optimize_and_route`'s output for the ONE case proven
     safe — see `provisa/compiler/compiled_query_cache.py`'s "ROUTING-DECISION CACHING" section
@@ -847,7 +821,8 @@ async def _optimize_and_route_cached(
     if (
         steward_hint is not None
         or would_materialize_optimize(exec_sql, state, table_ids=table_ids)
-        or _view_answering(exec_sql, ctx, state, is_mutation=is_mutation) is not None
+        or _view_answering(exec_sql, ctx, state, is_mutation=is_mutation, building=building)
+        is not None
     ):
         return await _optimize_and_route(
             exec_sql,
@@ -862,6 +837,7 @@ async def _optimize_and_route_cached(
             steward_hint=steward_hint,
             extra_selections=extra_selections,
             read_args=read_args,
+            building=building,
         )
 
     from provisa.compiler.compiled_query_cache import RoutingOutcome
@@ -897,6 +873,7 @@ async def _optimize_and_route_cached(
         is_mutation=is_mutation,
         extra_selections=extra_selections,
         read_args=read_args,
+        building=building,
     )
     _exec_sql_out, decision, default_source, optimized, sources, opt_labels = result
     # Guaranteed by would_materialize_optimize(exec_sql, state) being False (see module docstring):
@@ -1302,14 +1279,6 @@ async def vector_registry(state: Any) -> Any:  # REQ-419, REQ-423
     )
 
 
-def _attached_parameters(state: Any, table_ids: Any) -> set[str]:  # REQ-2100
-    """The parameters of the code tables the engine attaches (codesource.attach): their
-    conditions stay in the statement, which the engine hands to the host."""
-    from provisa.codesource.attach import parameters
-
-    return parameters(state, table_ids)
-
-
 def context_parameters(ctx: Any) -> set[str]:  # REQ-1986
     """The parameter columns of ``ctx``, every table's (``native_filter_columns``)."""
     return {name for columns in ctx.native_filter_columns.values() for name in columns}
@@ -1329,10 +1298,12 @@ async def _govern_and_route(
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
     product_statement: bool = False,
+    building: str | None = None,
 ) -> _Plan:
     """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044).
 
-    ``serve_cached`` / ``wire_formats`` / ``route_hint``: see :func:`route_governed`.
+    ``serve_cached`` / ``wire_formats`` / ``route_hint`` / ``building``: see
+    :func:`route_governed`.
     ``product_statement``: see :func:`govern_statement`."""
     from provisa.api.app import state
 
@@ -1353,6 +1324,7 @@ async def _govern_and_route(
             wire_formats=wire_formats,
             route_hint=route_hint,
             product_statement=product_statement,
+            building=building,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -1380,6 +1352,7 @@ async def _govern_and_route_planned(
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
     product_statement: bool = False,
+    building: str | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     """Govern, then route: the two stages of the one pipeline, run back to back."""
     if explain is not None and opening_write_verb(sql) is not None:
@@ -1423,6 +1396,7 @@ async def _govern_and_route_planned(
         serve_cached=serve_cached,
         wire_formats=wire_formats,
         route_hint=route_hint,
+        building=building,
     )
 
 
@@ -1783,9 +1757,10 @@ async def govern_statement(
                 ) from exc
 
         if violations:
-            msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
+            from provisa.compiler.sql_validator import GovernanceRefused
+
             await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
-            raise PermissionError(msgs)
+            raise GovernanceRefused(violations)
 
         state.compiled_query_cache.put(_cq_key, CompiledOutcome())
 
@@ -1889,6 +1864,7 @@ async def _route_bounded(governed: "_Governed", **how: Any) -> _Plan:
     plan.scratch = tuple(scratch)
     if how.get("explain") is None:
         plan.row_limit = governed.gov_ctx.row_limit
+        plan.list_limit = governed.gov_ctx.list_limit
     plan.embedded = governed.memo.get("embed")  # REQ-2002
     plan.columns = governed.memo.get("columns")  # REQ-2131
     return plan
@@ -2022,6 +1998,7 @@ async def route_governed(
     serve_cached: bool = False,
     wire_formats: list[int] | None = None,
     route_hint: str | None = None,
+    building: str | None = None,
 ) -> _Plan:
     """Stage two of the one pipeline: bind the statement's parameter values, optimize, route and
     build the executable plan. Runs against live state, so it runs once per execution; it accepts
@@ -2030,6 +2007,9 @@ async def route_governed(
     ``route_hint`` (REQ-1203): the caller's route override, ``"engine"`` or ``"direct"`` — the
     operator's floor still binds. A view's build passes ``"engine"``: what it reads lands through
     the engine into the view's storage (REQ-1921/1922, ``mv.governed_build``).
+
+    ``building``: the id of the view the statement is the build of, which answers none of it
+    (``mv.view_reinject``).
 
     ``serve_cached`` (REQ-1897, amended 2026-10-01): the caller's terminal serves a Route.CACHE
     plan (``cached_result`` / ``_execute_plan``). The response cache is then read HERE, before any
@@ -2132,9 +2112,14 @@ async def route_governed(
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
     # cache=true` / `cache_ttl=N` comment on the statement; without one no read and no write.
-    from provisa.compiler.directives import cache_hint_for
+    from provisa.compiler.directives import cache_hint_for, extract_directives_from_sql_comments
 
     _cache_hint = cache_hint_for("sql", sql)
+    # REQ-030: the statement's own `-- @provisa route=...` comment, read from the text its cache
+    # comment is read from; a caller's route_hint (a view's build asks for the engine) applies
+    # in its place.
+    if route_hint is None:
+        route_hint = extract_directives_from_sql_comments(sql).steward_hint
     # REQ-1910: resolved per EXECUTION, not only when the statement was governed — a prepared
     # statement is governed once and executed many times, across windows opening and closing.
     await resolve_trace_scope(state, role_id, hint=_cache_hint.debug_trace)
@@ -2211,7 +2196,7 @@ async def route_governed(
     # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys() - _attached_parameters(state, _table_ids)
+    _parameters = context_parameters(ctx) - _frozen.keys()
     _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _physical_sql, embedded_params or [], _parameters, _frozen
@@ -2241,6 +2226,7 @@ async def route_governed(
         nf_args=_nf_args,
         steward_hint=route_hint,
         read_args=_read_args,
+        building=building,
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(_sources))
@@ -2454,10 +2440,6 @@ async def route_governed(
 
     await _await_source_servers(decision, _sources, state)
     if decision.route == Route.ENGINE:
-        from provisa.api.data.materialization import land_deferred
-
-        # REQ-2100: a code table held for its source's own read is landed for the engine.
-        _qualified = await land_deferred(_qualified, state)
         # REQ-135/REQ-1163: optimization — a view governance kept as its reference (its region's
         # copy, an as-of read of a bitemporal view, a materialized view the reader sees whole) is
         # answered here, BEFORE the unknown-catalog check and transpile (mv/view_read.py). Same
@@ -3256,7 +3238,19 @@ async def _warn_if_cut(plan: _Plan, result: QueryResult, state: Any) -> None:
     in the statement's warnings. An answer within the limit is whole and says nothing. A landed
     result (redirect, materialize, export) is counted by the rows its handle says were landed:
     the engine landed them, bounded at the same limit, and is asked for the row after it the
-    same way."""
+    same way.
+
+    REQ-005: a list the answer nests holding exactly its limit's entries may have more, and the
+    answer says so (compiler/list_cap). A landed result's lists are not read here."""
+    if plan.list_limit is not None and result.redirect is None:
+        from provisa.compiler.list_cap import at_ceiling, list_at_ceiling_warning
+        from provisa.core.statement_warnings import tell
+
+        if at_ceiling(result.rows, plan.list_limit.limit):
+            tell(
+                list_at_ceiling_warning(plan.list_limit.limit, plan.list_limit.kind),
+                plan.warnings,
+            )
     if plan.row_limit is None:
         return
     if result.cache_entry is not None:
@@ -4614,6 +4608,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         )
     plan.scratch = tuple(_scratch)
     plan.row_limit = gov_ctx.row_limit  # REQ-1949
+    plan.list_limit = gov_ctx.list_limit  # REQ-005
     return plan
 
 
@@ -4866,8 +4861,10 @@ async def _govern_compiled(
     if violations:
         from provisa.audit.pipeline import write_denial
 
+        from provisa.compiler.sql_validator import GovernanceRefused
+
         await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)  # REQ-1386
-        raise PermissionError("; ".join(f"[{v.code}] {v.message}" for v in violations))
+        raise GovernanceRefused(violations)
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
 
@@ -5001,7 +4998,7 @@ async def _route_compiled(
         )
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
     _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = context_parameters(ctx) - _frozen.keys() - _attached_parameters(state, _table_ids)
+    _parameters = context_parameters(ctx) - _frozen.keys()
     _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _exec_sql, exec_params or [], _parameters, _frozen
@@ -5158,10 +5155,6 @@ async def _route_compiled(
     # instead. A single-source neo4j query now always falls through to Route.ENGINE.
     await _await_source_servers(decision, sources, state)
     if decision.route == Route.ENGINE:
-        from provisa.api.data.materialization import land_deferred
-
-        # REQ-2100: a code table held for its source's own read is landed for the engine.
-        _exec_sql = await land_deferred(_exec_sql, state)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
         _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
         return _Plan(

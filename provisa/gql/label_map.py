@@ -72,9 +72,16 @@ class NodeMapping:
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None (star-schema role)
     # REQ-1991: the cypher prop names whose columns are declared objects: map properties
     map_properties: frozenset[str] = frozenset()
+    # REQ-778: each cypher prop name's registered data type, (name, type) pairs, so a comparison of
+    # it to a literal of another kind is refused in the user's terms before an engine is asked.
+    # A tuple, so a mapping pickled before the field existed reads the empty default.
+    property_types: tuple[tuple[str, str], ...] = ()
     # The table's name as a statement queries it -- its _name_ (compiler.context); "" for a
     # traversal-only node built without its table's compilation.
     query_name: str = ""
+    #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
+    #: and its _id hold every one. Empty for a key of one column (``id_column``).
+    key_columns: tuple[str, ...] = ()
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -120,6 +127,9 @@ class JunctionMapping:  # REQ-1586
     type_column: str | None = None
     type_value: str | None = None
     attributes: dict[str, str] = field(default_factory=dict)
+    #: The type column's property name: a row's own type, read where a hop reads every row of the
+    #: junction (an untyped hop), whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — see junction_rel_type.
     label_source: str = ""
     label_fixed: str = ""
@@ -556,6 +566,16 @@ def _build_node_mappings(
             native_filter_columns=nf_cols,
             physical_table_name=physical_table_name,
             map_properties=map_props,
+            property_types=tuple(
+                (_published_property(ctx_typed, table_meta.table_id, c), data_type)
+                for c, data_type in col_list
+                if (table_meta.table_id, c) not in _gov_obj
+            ),
+            key_columns=tuple(
+                ctx_typed.physical_to_sql.get((table_meta.table_id, c), c) for c in user_pks
+            )
+            if len(user_pks) > 1
+            else (),
         )
 
         if domain_label:
@@ -603,6 +623,7 @@ def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # 
         type_column=via.type_column,
         type_value=via.type_value,
         attributes=dict(via.attributes),
+        type_attribute=via.type_attribute,
         label_source=via.label_source,
         label_fixed=via.label_fixed,
     )
@@ -696,6 +717,7 @@ def _junction_from_rel_dict(  # REQ-1586
             for c in all_column_types.get(via_id, [])
             if c.column_name not in keys
         },
+        type_attribute=_apply_cql_property(type_column) if type_column else None,
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )
@@ -868,7 +890,9 @@ def _resolve_id_column(  # REQ-392, REQ-394
     3. Single column ending in _id / _pk / _oid (unambiguous).
     4. Single column starting with id_.
     5. First column in the column list.
-    6. Fallback: "id".
+
+    A table with no column to resolve one from is refused, naming it: its node has no identity,
+    and none is invented for it.
     """
     # 0. User-designated PK
     if user_pks:
@@ -898,8 +922,7 @@ def _resolve_id_column(  # REQ-392, REQ-394
     if col_names:
         return col_names[0]
 
-    # 6. Hard fallback
-    return "id"
+    raise ValueError(f"{type_name!r} has no column to identify its rows by: it is no graph node")
 
 
 def _to_rel_type(field_name: str, cardinality: str | None = None) -> str:

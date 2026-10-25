@@ -58,6 +58,7 @@ from provisa.api_source.engine_cache import (
 )
 from provisa.api_source.models import ApiEndpoint
 from provisa.core.statement_warnings import warn
+from provisa.core.org_forget import on_forget, schema_of_org
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +75,17 @@ _mem_fresh_lock = threading.Lock()
 #: The column shape each fill table was last made with in this process: (catalog, schema,
 #: table) -> digest. A table made for another shape is dropped and made again.
 _shapes: dict[tuple[str, str, str], str] = {}
+
+
+@on_forget(size=lambda: len(_shapes) + len(_mem_fresh))
+def _forget_fills(org_id: str) -> None:
+    """A deleted org's cache store schemas: their freshness and the shapes they were made as."""
+    for key in [k for k in _shapes if schema_of_org(org_id, k[1])]:
+        _shapes.pop(key, None)
+    for key in [k for k in _mem_fresh if schema_of_org(org_id, k[0])]:
+        _mem_fresh.pop(key, None)
+
+
 _shapes_lock = threading.Lock()
 
 

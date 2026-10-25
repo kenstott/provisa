@@ -28,6 +28,10 @@ Two kinds of view answer:
 
 A statement is rewritten only when every column it reads of a covered table is qualified by
 that table's alias, and reads none of them through ``*``: anything else is left as it is.
+
+A view's own build is never answered by that view (``exclude``): its definition is what it
+holds, so a build would read back what the view held before it, and an empty first build would
+keep it empty.
 """
 
 # Requirements: REQ-849, REQ-882, REQ-1586
@@ -246,13 +250,21 @@ def _rewrite_join(
     return select.sql(dialect="postgres")
 
 
-def reinject(sql: str, fresh_mvs: list[MVDefinition], ctx: CompilationContext) -> Reinjected | None:
+def reinject(
+    sql: str,
+    fresh_mvs: list[MVDefinition],
+    ctx: CompilationContext,
+    *,
+    exclude: str | None = None,
+) -> Reinjected | None:
     """``sql`` -- a governed read lowered to catalog-physical -- rewritten to read the fresh
     view that answers it, or None. A join-pattern view that covers every join wins over one
-    that covers fewer; among partial ones, the widest; then an aggregate view."""
+    that covers fewer; among partial ones, the widest; then an aggregate view. ``exclude`` is
+    the view ``sql`` is the build of, which answers none of it."""
     from provisa.mv.aggregate_catalog import rewrite_aggregate_query
 
-    fresh_mvs = [mv for mv in fresh_mvs if mv.is_fresh]  # a stale view answers nothing
+    # A stale view answers nothing, nor a view its own build.
+    fresh_mvs = [mv for mv in fresh_mvs if mv.is_fresh and mv.id != exclude]
     if not fresh_mvs:
         return None
     try:

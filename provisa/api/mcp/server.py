@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import time
 import os
 from contextvars import ContextVar
 from typing import Any
@@ -61,10 +62,47 @@ _request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", d
 _request_identity: ContextVar[Any | None] = ContextVar("provisa_mcp_request_identity", default=None)
 _request_org_id: ContextVar[str | None] = ContextVar("provisa_mcp_request_org_id", default=None)
 # REQ-2076: the MCP session (``Mcp-Session-Id``) a tool call belongs to, and the sessions ended
-# because a call in them named a role the caller does not hold. A request in an ended session is
-# answered 404, which tells an MCP client its session is over.
+# because a call in them named a role the caller does not hold, each with when it ended. A request
+# in an ended session is answered 404, which tells an MCP client its session is over.
 _request_session: ContextVar[str | None] = ContextVar("provisa_mcp_request_session", default=None)
-_ended_sessions: set[str] = set()
+_ended_sessions: dict[str, float] = {}
+# How long a tombstone is kept, and how many: the session manager's idle timeout and its session
+# cap, set when the server is built (build_mcp_server). A request in an ended session is answered
+# here and never reaches the manager, which reaps the session after its idle timeout; past it the
+# tombstone guards nothing, and the manager never keeps more sessions than its cap. None, as the
+# manager reads it: no idle timeout (a session is never reaped) or no cap.
+_session_bounds: tuple[float | None, int | None] | None = None
+
+
+def _end_session(session: str) -> None:
+    """End ``session`` (a security event): its requests are answered 404 from now on."""
+    assert _session_bounds is not None, "an MCP session ended before the server was built"
+    _, most = _session_bounds
+    now = time.monotonic()
+    _drop_expired(now)
+    while most is not None and len(_ended_sessions) >= most:
+        _ended_sessions.pop(next(iter(_ended_sessions)))
+    _ended_sessions.pop(session, None)
+    _ended_sessions[session] = now
+
+
+def _session_ended(session: str) -> bool:
+    """Whether ``session`` was ended, within its tombstone's lifetime."""
+    if session not in _ended_sessions:
+        return False
+    _drop_expired(time.monotonic())
+    return session in _ended_sessions
+
+
+def _drop_expired(now: float) -> None:
+    # Oldest first: a tombstone is (re)inserted when its session ends.
+    assert _session_bounds is not None
+    lasts, _ = _session_bounds
+    while lasts is not None and _ended_sessions:
+        session, ended = next(iter(_ended_sessions.items()))
+        if now - ended < lasts:
+            return
+        _ended_sessions.pop(session)
 
 
 async def _validate_mcp_token(token: str, state: Any):
@@ -332,6 +370,8 @@ def build_mcp_server(state: Any):
             "the caller's role."
         ),
     )
+    global _session_bounds
+    _session_bounds = (mcp.settings.session_idle_timeout, mcp.settings.max_sessions)
 
     from provisa.security.meta_role import RoleNotHeld
 
@@ -354,7 +394,7 @@ def build_mcp_server(state: Any):
         await run_on_request_thread(lambda: role_probe.record(probe))
         session = _request_session.get()
         if session:
-            _ended_sessions.add(session)
+            _end_session(session)
         return PermissionError(role_probe.NOT_PERMITTED if identity is not None else str(refused))
 
     def _tool(fn):
@@ -1038,7 +1078,7 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             return
         headers = dict(scope.get("headers") or [])
         session = (headers.get(b"mcp-session-id") or b"").decode("latin-1") or None
-        if session is not None and session in _ended_sessions:
+        if session is not None and _session_ended(session):
             # REQ-2076: the session ended on a security event; the client must start another.
             body = _json.dumps({"error": "session ended"}).encode("utf-8")
             await send(
@@ -1066,10 +1106,15 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
                 await _send_401(send, "bearer token required")
                 return
             # Loopback stdio-style: the pinned role applies, in the deployment's own org -- the
-            # unsecured HTTP path's org (REQ-1266).
+            # unsecured HTTP path's org (REQ-1266). REQ-074/REQ-1386: no principal, but a
+            # request: its statements are recorded as the anonymous user's, as every transport
+            # records an unauthenticated request. The role each call names is the audit row's.
+            from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
+
             loopback_token = set_current_org(state.org_id)
             try:
-                await app(scope, receive, send)
+                with audit_identity_scope(ANONYMOUS_USER, "mcp"):
+                    await app(scope, receive, send)
             finally:
                 reset_current_org(loopback_token)
             return

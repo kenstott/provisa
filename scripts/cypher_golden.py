@@ -27,15 +27,20 @@ AST otherwise, the label map, the parameters -- pickled under ``blobs/`` by cont
 it produced. A model's label map is built offline from its config (``model_label_map``), as the
 server builds one from its schema, for the role org_admin.
 
+A result that differs from that commit's, approved query by query, is held in approved.jsonl:
+captured from the checkout that produces it, each entry with the approval it was given.
+
 Usage, on a checkout of the commit to capture from:
 
     python scripts/cypher_golden.py capture-tests OUT tests/unit/test_cypher_*.py ...
     python scripts/cypher_golden.py capture-corpora OUT
 
 A result that differs from that commit's, approved query by query, is held in approved.jsonl:
-captured from the checkout that produces it, each entry with the approval it was given:
+captured from the checkout that produces it, each entry with the approval it was given -- a
+test's translations, or one statement over a model:
 
     python scripts/cypher_golden.py capture-approved-tests OUT APPROVAL tests/unit/...::test ...
+    python scripts/cypher_golden.py capture-approved OUT ORIGIN CONFIG CYPHER APPROVAL
 """
 
 from __future__ import annotations
@@ -70,13 +75,13 @@ _IR = {
 
 
 def _module(name: str) -> Any:
-    """The compiler module ``name`` wherever this checkout keeps it."""
-    for package in ("provisa.gql", "provisa.cypher"):
-        try:
-            return importlib.import_module(f"{package}.{name}")
-        except ModuleNotFoundError:
-            continue
-    raise ModuleNotFoundError(name)
+    """The compiler module ``name`` where this checkout keeps it. Decided by this checkout's own
+    files: ``provisa`` can be extended by another checkout's (an editable install), whose
+    ``provisa.gql`` would otherwise be found first."""
+    package = (
+        "provisa.gql" if (REPO / "provisa" / "gql" / f"{name}.py").exists() else "provisa.cypher"
+    )
+    return importlib.import_module(f"{package}.{name}")
 
 
 class _Unpickler(pickle.Unpickler):
@@ -87,7 +92,7 @@ class _Unpickler(pickle.Unpickler):
             short = module.rsplit(".", 1)[1]
             if short == "parser" and name in _IR:
                 return super().find_class(_ir_module(), name)
-            if short in _MOVED and importlib.util.find_spec(f"provisa.gql.{short}") is not None:
+            if short in _MOVED and (REPO / "provisa" / "gql" / f"{short}.py").exists():
                 return super().find_class(f"provisa.gql.{short}", name)
         return super().find_class(module, name)
 
@@ -103,11 +108,26 @@ def load_blob(digest: str) -> Any:
         return _Unpickler(f).load()
 
 
+#: Every dialect a statement may be rendered in: one node shape can render alike in one and not in
+#: another (a parameter is $1 in postgres and @1 in trino).
+DIALECTS = (
+    "postgres", "trino", "duckdb", "snowflake", "bigquery", "databricks", "spark", "mysql", "tsql",
+    "oracle",
+)  # fmt: skip
+
+
+def _render(sql_ast: Any, dialect: str) -> str:
+    try:
+        return sql_ast.sql(dialect=dialect)
+    except Exception as exc:  # a dialect that cannot render a construct: that is what it gives
+        return f"!{type(exc).__name__}: {exc}"
+
+
 def rendered(result: tuple) -> dict:
     """What a translation produced, as the golden set compares it."""
     sql_ast, ordered, graph_vars = result
     return {
-        "sql": sql_ast.sql(dialect="postgres"),
+        "sql": {dialect: _render(sql_ast, dialect) for dialect in DIALECTS},
         "params": list(ordered),
         "graph_vars": {k: getattr(v, "name", str(v)) for k, v in sorted(graph_vars.items())},
     }
@@ -244,8 +264,25 @@ def capture_tests(out: Path, test_args: list[str], approved: str | None = None) 
 def model_label_map(config_path: Path) -> Any:
     """The label map the server builds from ``config_path``'s model for org_admin, built offline:
     its tables (views among them), relationships and declared column types."""
-    from provisa.compiler import naming
     from provisa.compiler.context import build_context
+
+    schema_input, tables, relationships, column_types = model_inputs(config_path)
+    ctx = build_context(schema_input)
+    return _module("label_map").CypherLabelMap.from_schema(
+        ctx,
+        domain_access=["*"],
+        all_tables=tables,
+        all_relationships=relationships,
+        all_column_types=column_types,
+    )
+
+
+def model_inputs(config_path: Path, *, parameters: bool = False) -> tuple[Any, list, list, dict]:
+    """What the server's schema build is given from ``config_path``'s model for org_admin, built
+    offline: the schema input, and its tables, relationships and declared column types.
+    ``parameters``: a table's parameter columns are its arguments (the GraphQL golden reads them;
+    the Cypher golden's label maps were captured without them)."""
+    from provisa.compiler import naming
     from provisa.compiler.introspect import ColumnMetadata
     from provisa.compiler.schema_gen import SchemaInput
     from provisa.core.config_loader import read_config_with_includes, views_as_tables
@@ -274,6 +311,16 @@ def model_label_map(config_path: Path) -> Any:
                         "data_type": c["data_type"],
                         **({"is_primary_key": True} if c.get("is_primary_key") else {}),
                         **({"alias": c["alias"]} if c.get("alias") else {}),
+                        # A parameter of the table (core/parameters.py): an argument of its field.
+                        **{
+                            k: c[k]
+                            for k in (
+                                "native_filter_type",
+                                "native_filter_required",
+                                "required_by_steward",
+                            )
+                            if parameters and c.get(k) is not None
+                        },
                     }
                     for c in columns
                 ],
@@ -310,14 +357,7 @@ def model_label_map(config_path: Path) -> Any:
         domains=config.get("domains") or [],
         domain_prefix=(config.get("naming") or {}).get("domain_prefix", False),
     )
-    ctx = build_context(schema_input)
-    return _module("label_map").CypherLabelMap.from_schema(
-        ctx,
-        domain_access=["*"],
-        all_tables=tables,
-        all_relationships=relationships,
-        all_column_types=column_types,
-    )
+    return schema_input, tables, relationships, column_types
 
 
 def _tour_statements(tour: Path) -> list[str]:
@@ -401,8 +441,20 @@ def capture_corpora(out: Path) -> None:
             _translate_text(recorder, label_map, text, f"{origin}#{i}")
 
 
+def capture_approved(out: Path, origin: str, config: Path, text: str, approval: str) -> None:
+    """Hold a translation whose result differs from the commit the set was captured from, approved
+    as it is: captured from this checkout into approved.jsonl, with the approval it was given."""
+    recorder = Recorder(out, entries="approved.jsonl", approved=approval)
+    recorder.install()
+    _translate_text(recorder, model_label_map(config), text, origin)
+
+
 def main(argv: list[str]) -> int:
     command, out = argv[0], Path(argv[1])
+    if command == "capture-approved":
+        origin, config, text, approval = argv[2:6]
+        capture_approved(out, origin, Path(config), text, approval)
+        return 0
     if command == "capture-tests":
         return int(capture_tests(out, argv[2:]))
     if command == "capture-approved-tests":

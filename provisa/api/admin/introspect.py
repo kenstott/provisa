@@ -1829,17 +1829,13 @@ async def require_live_attach(state, source_id: str, what: str) -> None:
 
 def _listed_by_its_server(source_type: str, state) -> bool:
     """Whether a source of ``source_type`` is read through its bundled connector server on the
-    bound engine: a pgwire-replica type the engine lands through that server, or attaches through
-    it (``Connector.served_by_bundle``). Trino reads files with its own file catalog, for one."""
+    bound engine (``strategy.read_through_its_server``)."""
     from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES
-    from provisa.federation.strategy import engine_attaches
+    from provisa.federation.strategy import read_through_its_server
 
     if source_type not in PGWIRE_REPLICA_TYPES:
         return False
-    engine = state.federation_engine.engine
-    if not engine_attaches(engine, source_type):
-        return True
-    return engine.connector_for(source_type).served_by_bundle
+    return read_through_its_server(state.federation_engine.engine, source_type)
 
 
 async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147

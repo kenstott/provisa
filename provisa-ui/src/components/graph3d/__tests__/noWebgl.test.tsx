@@ -38,8 +38,14 @@ vi.mock("../useProductGraph", () => ({
   useProductGraph: (_product: string | null, enabled: boolean) => ({
     data: enabled ? DATA : null,
     error: null,
+    scoped: enabled ? { data: DATA, query: "query DataProductGraph { x }" } : null,
+    onScope: () => {},
   }),
 }));
+
+// The panel is the product graph in place, Open as query among its controls: it compiles as the
+// acting roles.
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 
 import { KnowledgeGraphPanel } from "../KnowledgeGraphPanel";
 
@@ -48,7 +54,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("the 3D stage without WebGL", () => {
   it("shows that the 3D view could not start, logs it, and is never ready", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
+    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" graph={DATA} />);
     act(() => observed.fire.forEach((f) => f()));
     const alert = await screen.findByTestId("kg-panel-stage-error", {}, { timeout: 10_000 });
     expect(alert).toHaveTextContent("The 3D view could not start");

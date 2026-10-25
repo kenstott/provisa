@@ -549,3 +549,12 @@ def resolve_snowflake_iceberg_metadata_location(source: Any) -> str:  # REQ-1867
         raise ValueError(f"SYSTEM$GET_ICEBERG_TABLE_INFORMATION('{table}') returned no row")
     info = json.loads(row[0])
     return info["metadataLocation"]
+
+
+def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+    """REQ-778: the Snowflake connector's own (PEP 249)."""
+    import snowflake.connector.errors as sf
+
+    from provisa.federation.dbapi_errors import dbapi_errors
+
+    return dbapi_errors(sf)

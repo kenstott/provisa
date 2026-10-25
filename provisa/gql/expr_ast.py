@@ -27,8 +27,12 @@ comprehension ``[(a)-[r]->(b) WHERE p | e]``, and subquery expressions ``EXISTS/
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Union
+from collections.abc import Iterator
+from dataclasses import dataclass, field, fields
+from typing import TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from provisa.gql.ir import CypherAST, PathPattern
 
 
 class CypherExpr:
@@ -175,10 +179,10 @@ class ListComprehension(CypherExpr):
 
 @dataclass
 class PatternComprehension(CypherExpr):
-    """``[path_var = pattern WHERE predicate | projection]`` — pattern kept as raw text for the path
-    translator; ``path_var`` binds the whole matched path when the ``p =`` prefix is present."""
+    """``[path_var = pattern WHERE predicate | projection]`` — ``path_var`` binds the whole matched
+    path when the ``p =`` prefix is present."""
 
-    pattern: str
+    pattern: PathPattern
     predicate: CypherExpr | None
     projection: CypherExpr
     path_var: str | None = None
@@ -217,10 +221,43 @@ class Reduce(CypherExpr):
 
 @dataclass
 class SubqueryExpr(CypherExpr):
-    """``EXISTS { … }`` / ``COUNT { … }`` / ``COLLECT { … }`` — body kept as raw Cypher text."""
+    """``EXISTS { … }`` / ``COUNT { … }`` / ``COLLECT { … }`` — its body the statement it is."""
 
     kind: str  # EXISTS | COUNT | COLLECT
-    body: str
+    body: CypherAST
+
+
+# --- RDF values (REQ-2135) ----------------------------------------------- #
+
+
+@dataclass
+class IriConst(CypherExpr):
+    """An absolute IRI written in the query (``<http://…>``, ``skos:Concept``). It is a value of
+    the answer only; one that names a subject is parsed back to its table and keys by the front
+    end (:func:`provisa.gql.iri.parse_subject_iri`) before the back end sees it."""
+
+    iri: str
+
+
+@dataclass
+class TypedLiteral(CypherExpr):
+    """A literal with a datatype IRI (``"42"^^xsd:integer``) or a language tag (``"chat"@fr``),
+    lowered to the SQL value of its datatype."""
+
+    lexical: str
+    datatype: str | None = None
+    lang: str | None = None
+
+
+@dataclass
+class Term(CypherExpr):
+    """``value`` as an RDF term of the answer: a node variable as its subject (its table and key
+    values, the IRI built outside SQL), an IriConst as that IRI, anything else as a literal with
+    ``datatype`` or ``lang`` when given. Lowered to one JSON value (:mod:`provisa.gql.terms`)."""
+
+    value: CypherExpr
+    datatype: str | None = None
+    lang: str | None = None
 
 
 AnyExpr = Union[
@@ -244,4 +281,23 @@ AnyExpr = Union[
     Quantifier,
     Reduce,
     SubqueryExpr,
+    IriConst,
+    TypedLiteral,
+    Term,
 ]
+
+
+def walk(node: CypherExpr) -> "Iterator[CypherExpr]":
+    """``node`` and every expression under it, in the order a statement writes them (each node
+    before its operands, operands left to right)."""
+    yield node
+    for f in fields(node):  # type: ignore[arg-type]
+        yield from _walk_value(getattr(node, f.name))
+
+
+def _walk_value(value: object) -> "Iterator[CypherExpr]":
+    if isinstance(value, CypherExpr):
+        yield from walk(value)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _walk_value(item)
