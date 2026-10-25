@@ -42,7 +42,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -79,6 +79,16 @@ SOURCES = tuple(lp.SOURCES)
 LATENCY_OUT = REPO / "results" / "bench_features" / "latency.json"
 READER = "bench_feat_reader"  # the second contract role: a child of org_admin
 PER_CELL = 3  # requests per (knob, transport[, source]) cell
+# The roles the MCP server may act as over loopback (mcp.role, a pin): every role a request names --
+# the contract's two, the governance knobs' deepest chain (role_depth 3) and derived roles (2).
+MCP_ROLES = ",".join(
+    [
+        "org_admin",
+        READER,
+        *(cm.chain_role("org_admin", level) for level in (1, 2, 3)),
+        *(f"{cm.derived_attribute(i)}__{cm.DERIVED_VALUE}" for i in (1, 2)),
+    ]
+)
 
 
 # --------------------------------------------------------------------------------------------
@@ -406,6 +416,7 @@ def start_server(ports: dict[str, int], **env: str) -> Any:
             # loopback: the harness's pinned roles apply to a call with no bearer (mcp_pin); off
             # loopback a bearer is required
             "PROVISA_MCP_HOST": "127.0.0.1",
+            "PROVISA_MCP_ROLE": MCP_ROLES,
             **env,
         },
     )
@@ -497,7 +508,7 @@ def run_cell(
     setup: cm.Setup,
     *,
     role: str | None = None,
-    masked: set[str] = frozenset(),  # type: ignore[assignment]
+    masked: Mapping[str, list[str]] | None = None,
 ) -> int:
     """Send ``cell``'s requests and check each; returns how many were sent (0: none spellable)."""
     sent = 0
@@ -510,9 +521,10 @@ def run_cell(
         if spec.joins:
             check_join(transport, setup, spec, rows, stack.oracle)
         else:
-            check_single(
-                transport, table_of(setup, spec), spec, columns, rows, stack.oracle, masked
-            )
+            table = table_of(setup, spec)
+            # the masks are the table's own (AdminGovernance reports them by table name)
+            own = set((masked or {}).get(table.name, ()))
+            check_single(transport, table, spec, columns, rows, stack.oracle, own)
         sent += 1
     return sent
 
@@ -914,7 +926,7 @@ def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
     row rules and masks are what the audit records as enforced, the redaction rules are the org's,
     the deepest role and the derived roles are the ones the request acted as."""
     setup = _governed(stack, transport, governed.knobs, **governed.request_knobs)
-    masked = {c for cols in governed.report.get("masked_columns", {}).values() for c in cols}
+    masked: dict[str, list[str]] = governed.report.get("masked_columns", {})
     request_role = setup.request_role(transport, stack.ep.role)
     if governed.knob == "redaction":
         rules = governed.client.get(
@@ -935,8 +947,8 @@ def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
             rule = enforced["row_filters"].get(orders, {}).get("filter", "")
             assert rule.upper().count("IS NOT NULL") >= 2, (transport, rule)
         elif governed.knob == "masks":
-            assert masked, governed.report
-            assert masked <= set(enforced["masks"].get(orders, {})), enforced
+            assert masked.get("orders"), governed.report
+            assert set(masked["orders"]) <= set(enforced["masks"].get(orders, {})), enforced
         elif governed.knob == "role_depth":
             assert row["role_id"] == cm.chain_role(stack.ep.role, 3), (transport, row["role_id"])
         elif governed.knob == "derived_roles":
