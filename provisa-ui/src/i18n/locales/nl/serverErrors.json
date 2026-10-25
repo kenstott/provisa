@@ -278,7 +278,7 @@
     "roles": {
       "cannot_delete_system": "Systeemrollen kunnen niet worden verwijderd",
       "cannot_modify_administrative": "Beheerdersrollen kunnen niet worden gewijzigd",
-      "has_dependents": "Naar rol {{role}} wordt nog verwezen door {{count}} object(en); verwijder eerst die verwijzingen",
+      "has_dependents": "Naar rol {{role}} wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen",
       "not_found": "Rol niet gevonden",
       "org_selection_required": "Organisatieselectie vereist",
       "already_exists": "Rol '{{role}}' bestaat al",
@@ -293,7 +293,7 @@
       "cache_purged": "{{count}} cache-items verwijderd",
       "cache_purged_table": "{{count}} cache-items verwijderd voor tabel {{table}}",
       "calendar_deleted": "kalender '{{calendar}}' verwijderd",
-      "calendar_in_use": "kalender '{{calendar}}' is in gebruik door {{count}} gematerialiseerde view(s) — verwijder eerst hun snapshotschema voordat de kalender wordt verwijderd",
+      "calendar_in_use": "kalender '{{calendar}}' is in gebruik door gematerialiseerde views — verwijder eerst hun snapshotschema voordat de kalender wordt verwijderd",
       "calendar_not_found": "kalender '{{calendar}}' niet gevonden",
       "calendar_saved": "kalender '{{calendar}}' {{version}} opgeslagen",
       "column_natively_nested": "Registreren niet mogelijk: kolom {{column}} is in de bron van nature {{native_type}}, dus het type is json, niet {{type}}.",

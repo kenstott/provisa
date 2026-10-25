@@ -413,12 +413,16 @@ async def delete_term(request: Request, term_id: int) -> dict:
         try:
             deleted = await glossary_repo.delete_term(_conn, term_id)
         except glossary_repo.TermDeleteRefused as refused:
-            # REQ-1918: the term's physical refs block it; each table it is rooted in is named.
+            from provisa.api.admin.read_rights import reader_for_request, refusal
+
+            # REQ-1918: the term's physical refs block it; each table it is rooted in that the
+            # caller may read is named (REQ-2152). The message names none of them.
+            _said, named = await refusal(_conn, reader_for_request(request), refused)
             raise ApiError(
                 400,
                 "glossary.invalid",
                 str(refused),
-                dependents=[d.as_dict() for d in refused.dependents],
+                dependents=named,
             ) from refused
     if not deleted:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")

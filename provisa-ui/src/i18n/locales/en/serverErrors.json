@@ -278,7 +278,7 @@
     "roles": {
       "cannot_delete_system": "Cannot delete system roles",
       "cannot_modify_administrative": "Cannot modify administrative roles",
-      "has_dependents": "Role {{role}} is still referred to by {{count}} object(s); remove those references first",
+      "has_dependents": "Role {{role}} is still referred to by other objects; remove those references first",
       "not_found": "Role not found",
       "org_selection_required": "Org selection required",
       "already_exists": "Role '{{role}}' already exists",
@@ -293,7 +293,7 @@
       "cache_purged": "Purged {{count}} cache entries",
       "cache_purged_table": "Purged {{count}} cache entries for table {{table}}",
       "calendar_deleted": "calendar '{{calendar}}' deleted",
-      "calendar_in_use": "calendar '{{calendar}}' is in use by {{count}} materialized view(s) — clear their snapshot schedule before deleting",
+      "calendar_in_use": "calendar '{{calendar}}' is in use by materialized views — clear their snapshot schedule before deleting",
       "calendar_not_found": "calendar '{{calendar}}' not found",
       "calendar_saved": "calendar '{{calendar}}' {{version}} saved",
       "column_natively_nested": "Cannot register: column {{column}} is natively {{native_type}} at its source, so its type is json, not {{type}}.",

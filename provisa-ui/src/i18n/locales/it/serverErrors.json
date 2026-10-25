@@ -278,7 +278,7 @@
     "roles": {
       "cannot_delete_system": "Impossibile eliminare i ruoli di sistema",
       "cannot_modify_administrative": "Impossibile modificare i ruoli amministrativi",
-      "has_dependents": "Il ruolo {{role}} è ancora referenziato da {{count}} oggetto/i; rimuovere prima tali riferimenti",
+      "has_dependents": "Il ruolo {{role}} è ancora referenziato da altri oggetti; rimuovere prima tali riferimenti",
       "not_found": "Ruolo non trovato",
       "org_selection_required": "Selezione dell'organizzazione richiesta",
       "already_exists": "Il ruolo '{{role}}' esiste già",
@@ -293,7 +293,7 @@
       "cache_purged": "Eliminate {{count}} voci della cache",
       "cache_purged_table": "Eliminate {{count}} voci della cache per la tabella {{table}}",
       "calendar_deleted": "calendario '{{calendar}}' eliminato",
-      "calendar_in_use": "il calendario '{{calendar}}' è in uso da {{count}} vista/e materializzata/e — rimuovere la loro pianificazione di snapshot prima di eliminarlo",
+      "calendar_in_use": "il calendario '{{calendar}}' è in uso da viste materializzate — rimuovere la loro pianificazione di snapshot prima di eliminarlo",
       "calendar_not_found": "calendario '{{calendar}}' non trovato",
       "calendar_saved": "calendario '{{calendar}}' {{version}} salvato",
       "column_natively_nested": "Impossibile registrare: la colonna {{column}} è nativamente {{native_type}} nella sua origine, quindi il suo tipo è json, non {{type}}.",

@@ -1268,6 +1268,9 @@ class TermDeleteRefused(ValueError):
     def __init__(self, term_id: int, dependents: list[Dependent]) -> None:
         self.term_id = term_id
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = "The term has physical refs in"
         super().__init__(
             "term has physical refs; retire it, or move its refs to another term, first"
         )

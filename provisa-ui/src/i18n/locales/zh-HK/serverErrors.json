@@ -278,7 +278,7 @@
     "roles": {
       "cannot_delete_system": "無法刪除系統角色",
       "cannot_modify_administrative": "無法修改管理角色",
-      "has_dependents": "仍有 {{count}} 個物件引用角色 {{role}}；請先移除這些引用",
+      "has_dependents": "仍有其他物件引用角色 {{role}}；請先移除這些引用",
       "not_found": "找不到角色",
       "org_selection_required": "需要選取組織",
       "already_exists": "角色 '{{role}}' 已存在",
@@ -293,7 +293,7 @@
       "cache_purged": "已清除 {{count}} 個快取項目",
       "cache_purged_table": "已清除資料表 {{table}} 的 {{count}} 個快取項目",
       "calendar_deleted": "行事曆「{{calendar}}」已刪除",
-      "calendar_in_use": "行事曆「{{calendar}}」正被 {{count}} 個具體化檢視使用——請先清除其快照排程再刪除",
+      "calendar_in_use": "行事曆「{{calendar}}」正被具體化檢視使用——請先清除其快照排程再刪除",
       "calendar_not_found": "找不到行事曆「{{calendar}}」",
       "calendar_saved": "行事曆「{{calendar}}」{{version}} 已儲存",
       "column_natively_nested": "無法註冊：欄位 {{column}} 在其數據來源中的原生類型為 {{native_type}}，因此其類型為 json，而不是 {{type}}。",

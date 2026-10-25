@@ -34,6 +34,7 @@ from provisa.core.schema_org import (
 )
 
 if TYPE_CHECKING:
+    from provisa.api.admin.read_rights import DependentsReader
     from provisa.core.database import Connection
 
 from provisa.compiler.sql_types import key_list
@@ -1795,8 +1796,9 @@ def _residency_refusal(
     return None
 
 
-async def _delete_source(id: str) -> MutationResult:
-    """Delete source ``id`` (the deleteSource mutation, its capability already checked)."""
+async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
+    """Delete source ``id`` (the deleteSource mutation, its capability already checked); a
+    refusal names only what ``reader`` may read (REQ-2152)."""
     from provisa.core.repositories import source as source_repo
     from provisa.api.app import state
 
@@ -1808,7 +1810,7 @@ async def _delete_source(id: str) -> MutationResult:
         # the ServiceNow source's deletion too.
         from provisa.openapi.servicenow import companion_id
 
-        _companion = await _delete_source(companion_id(id))
+        _companion = await _delete_source(companion_id(id), reader)
         if not _companion.success and _companion.code != "schema.source_not_found":
             return _companion
     async with pool.acquire() as conn:
@@ -1819,10 +1821,14 @@ async def _delete_source(id: str) -> MutationResult:
         try:
             deleted = await source_repo.delete(_conn, id)
         except source_repo.SourceDeleteRefused as refused:
+            from provisa.api.admin.read_rights import refusal
+
+            # REQ-2152: only the dependents the caller may read, never how many.
+            _said, _named = await refusal(_conn, reader, refused)
             # REQ-1918: nothing is removed; every dependent is named.
             return MutationResult(
                 success=False,
-                message=str(refused),
+                message=_said,
                 code=(
                     "schema.source_has_dependents"
                     if refused.reason == "dependents"
@@ -1830,7 +1836,7 @@ async def _delete_source(id: str) -> MutationResult:
                 ),
                 params={
                     "source": id,
-                    "dependents": [d.as_dict() for d in refused.dependents],
+                    "dependents": _named,
                 },
             )
     if deleted:
@@ -2112,14 +2118,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 removed = await calendar_repo.delete(_conn, name)
             except calendar_repo.CalendarDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(_conn, reader_for(info), refused)
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.calendar_in_use",
                     params={
                         "calendar": name,
-                        "count": len(refused.dependents),
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if removed == 0:
@@ -2837,7 +2846,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def delete_source(self, info: StrawberryInfo, id: str) -> MutationResult:
         require_capability(info, "source_registration")
-        return await _delete_source(id)
+        from provisa.api.admin.read_rights import reader_for
+
+        return await _delete_source(id, reader_for(info))
 
     @strawberry.mutation
     async def create_domain(
@@ -2933,11 +2944,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await domain_repo.delete(cast("Connection", conn), id)
             except domain_repo.DomainDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1917: a domain is deleted only when nothing refers to it; every
                 # dependent is named and nothing is removed.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code=(
                         "schema.domain_has_dependents"
                         if refused.reason == "dependents"
@@ -2945,7 +2960,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     ),
                     params={
                         "domain": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -2995,14 +3010,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await data_product_repo.delete(cast("Connection", conn), id)
             except data_product_repo.DataProductDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: a data product is blocked by its members; each is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.data_product_has_dependents",
                     params={
                         "data_product": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -3060,15 +3079,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await tag_repo.delete(cast("Connection", conn), id)
             except tag_repo.TagDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1384: a tag that carries a row filter is not deleted; the filter is named
                 # and nothing is removed.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.tag_has_dependents",
                     params={
                         "tag": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if not deleted:
@@ -3486,14 +3509,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await metric_repo.delete(cast("Connection", conn), name)
             except metric_repo.MetricDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: a view uses it; nothing is removed, each is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.metric_has_dependents",
                     params={
                         "metric": name,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -3793,13 +3820,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                             )
                         )
                     except table_repo.ColumnDropRefused as _drop:
-                        # REQ-1918: a column something still refers to is not dropped; each is named.
+                        # REQ-1918: a column something still refers to is not dropped; each is
+                        # named, with only the dependents the caller may read (REQ-2152).
+                        from provisa.api.admin.read_rights import (
+                            column_drop_text,
+                            reader_for,
+                            readable_columns_report,
+                        )
+
+                        _report = await readable_columns_report(
+                            _conn, reader_for(info), _drop.columns
+                        )
                         raise TableSaveRefused(
                             MutationResult(
                                 success=False,
-                                message=str(_drop),
+                                message=column_drop_text(_drop.table_name, _report),
                                 code="schema.column_has_dependents",
-                                params={"table": _drop.table_name, "columns": _drop.report()},
+                                params={"table": _drop.table_name, "columns": _report},
                             )
                         )
                     except SqlAddressTaken as _taken:
@@ -3953,15 +3990,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await table_repo.delete(cast("Connection", conn), id)
             except table_repo.TableDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: nothing is removed; every dependent is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.table_has_dependents",
                     params={
                         "table": id,
                         "name": refused.name,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -4017,11 +4058,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: refused while anything depends on the role, naming each dependent;
                 # and for a role the deployment defines.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code=(
                         "schema.role_has_dependents"
                         if refused.reason == "dependents"
@@ -4029,7 +4074,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     ),
                     params={
                         "role": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -4544,14 +4589,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             except (TagLossRefused, TermTagRefused) as refused:
                 return _tag_move_refusal(refused)
             except rel_repo.RelationshipDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(_conn, reader_for(info), refused)
                 # REQ-1918: a published view relies on it; nothing is removed, each is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.relationship_has_dependents",
                     params={
                         "relationship": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:

@@ -43,7 +43,7 @@ def _column(name: str, **governance):
         "masks": [],
     }
     fields.update(governance)
-    return types.SimpleNamespace(name=name, description=None, **fields)
+    return types.SimpleNamespace(name=name, description=None, scope="domain", **fields)
 
 
 # The table as stored: one granted and masked column, one open column.

@@ -212,7 +212,16 @@ def editor_input(request: Any, t: Any) -> Any:
     edited = table_input(t)
     # REQ-2152: only the columns the caller is served; the save keeps the rest as stored
     # (``_hiding_guard.keep_unserved_columns``) and refuses a payload naming one.
-    served = catalog_scope(types.SimpleNamespace(context={"request": request})).columns(t.id)
+    served = catalog_scope(types.SimpleNamespace(context={"request": request})).answered_columns(
+        {
+            "id": t.id,
+            "domain_id": t.domain_id,
+            "columns": [
+                {"column_name": c.name, "visible_to": c.visible_to, "scope": c.scope}
+                for c in edited.columns
+            ],
+        }
+    )
     if served is not None:
         edited.columns = [c for c in edited.columns if c.name in served]
     if has_capability_request(request, "view_governance"):

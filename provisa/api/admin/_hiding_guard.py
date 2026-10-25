@@ -341,10 +341,18 @@ async def keep_unserved_columns(info: Any, input_: Any) -> Any:  # REQ-2152
         stored = await stored_table(conn, input_)
     if stored is None:
         return input_
-    served = scope.columns(stored["id"])
+    held = table_input(await read_table(stored["id"])).columns
+    served = scope.answered_columns(
+        {
+            "id": stored["id"],
+            "domain_id": stored["domain_id"],
+            "columns": [
+                {"column_name": c.name, "visible_to": c.visible_to, "scope": c.scope} for c in held
+            ],
+        }
+    )
     if served is None:
         return input_
-    held = table_input(await read_table(stored["id"])).columns
     held_names = {c.name for c in held}
     given = {c.name: c for c in input_.columns}
     if any(name in held_names and name not in served for name in given):

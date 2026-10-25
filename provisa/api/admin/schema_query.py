@@ -39,7 +39,6 @@ from provisa.core.schema_org import (
 )
 
 if TYPE_CHECKING:
-    from provisa.api.admin.column_dependents import DependentsReader
     from provisa.core.database import Connection
 
 from provisa.core.repositories import rls as rls_repo
@@ -257,7 +256,16 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
     """``table`` as the caller is answered it (REQ-1958): the columns it administers or is
     served, and grant lists, mask settings and the view's SQL only with ``view_governance``
     (REQ-1134)."""
-    columns = scope.columns(table.id)
+    columns = scope.answered_columns(
+        {
+            "id": table.id,
+            "domain_id": table.domain_id,
+            "columns": [
+                {"column_name": c.column_name, "visible_to": c.visible_to, "scope": c.scope}
+                for c in table.columns
+            ],
+        }
+    )
     if columns is not None:
         table.columns = [c for c in table.columns if c.column_name in columns]
     if not scope.governance:
@@ -282,40 +290,6 @@ def _sees_metric(info: StrawberryInfo, row: Any) -> bool:
     if "*" in granted:
         return scope.role is not None and scope.role in state.contexts
     return scope.role is not None and any(r in granted for r in acting_roles(state, scope.role))
-
-
-def _dependents_reader(info: StrawberryInfo) -> "DependentsReader":
-    """What the caller of the dependents scan may read (REQ-2152): the columns its acting role is
-    served, the metrics and commands granted to it, the terms its domains read."""
-    from provisa.api.admin.column_dependents import DependentsReader
-    from provisa.api.app import state
-    from provisa.core.glossary import readable_term
-    from provisa.security.meta_role import acting_roles
-    from provisa.security.mutation_authz import command_reachable
-
-    scope = catalog_scope(info)
-    context = info.context
-    request = context.get("request") if isinstance(context, dict) else context.request
-    allowed = None if scope.whole else allowed_domains_request(request)
-
-    def _command(name: str) -> bool:
-        if scope.whole:
-            return True
-        command = (getattr(state, "tracked_functions", None) or {}).get(name)
-        if command is None or scope.role is None:
-            return False
-        return any(
-            command_reachable(command, {"id": r, **state.roles[r]})
-            for r in acting_roles(state, scope.role)
-            if r in state.roles
-        )
-
-    return DependentsReader(
-        column=scope.lists_column,
-        metric=lambda row: _sees_metric(info, row),
-        term=lambda domains: scope.whole or readable_term(allowed, domains),
-        command=_command,
-    )
 
 
 async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType]:
@@ -882,12 +856,15 @@ class Query:  # REQ-021, REQ-042
                     ).where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
                 )
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
-                # REQ-1958: the caller is answered the tables it administers or is served.
+                # REQ-1958, REQ-2152: the caller is answered the tables it is served; one the last
+                # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
-                listed = [r for r in rows if scope.lists_table(r["id"])]
+                listed = [
+                    r for r in rows if scope.lists_table(r["id"]) or r["id"] not in scope.compiled
+                ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
-                return [
+                answered = [
                     _trim_table(
                         scope,
                         await _fetch_table_with_columns(
@@ -896,6 +873,7 @@ class Query:  # REQ-021, REQ-042
                     )
                     for r in listed
                 ]
+                return [t for t in answered if scope.whole or t.columns]
 
     @strawberry.field
     async def relationships(
@@ -2063,6 +2041,7 @@ class Query:  # REQ-021, REQ-042
         this must be asked BEFORE the save."""
         require_capability(info, "table_registration")
         from provisa.api.admin.column_dependents import dependents_for
+        from provisa.api.admin.read_rights import reader_for
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -2071,7 +2050,7 @@ class Query:  # REQ-021, REQ-042
                 int(table_id),
                 renamed=list(renamed or []),
                 removed=list(removed or []),
-                reader=_dependents_reader(info),
+                reader=reader_for(info),
             )
         return [
             ColumnDependentsType(
