@@ -273,3 +273,58 @@ async def test_a_fresh_disk_in_bundled_mode_keeps_the_shared_template(
     assert await demo_templates._queue_template(platform, demo) == "ready"
     assert retired == []
     assert queue.state_of("alpha") == "queued"
+
+
+async def test_a_regions_tiers_finished_template_is_recorded_and_not_replaced_at_the_next_open(
+    platform, monkeypatch
+):
+    """A regions tier's template is recorded ready when its build finishes, as any tier's is: the
+    record says which demo version it is (_templated, _built_for). Unrecorded, every visitor's open
+    after the build took the finished template for another version's, retired it and built it
+    again, and the demo was never ready to open."""
+    from types import SimpleNamespace
+
+    demo = _demo("alpha")
+    async with platform.acquire() as conn:
+        await conn.execute_core(
+            insert(orgs).values(id=demo.template_org, name=demo.title, provisioning_state="ready")
+        )
+
+    async def _runtime(org_id):
+        return SimpleNamespace(org_id=org_id)
+
+    async def _nothing(*_args, **_kwargs):
+        return None
+
+    async def _all_landed(_rt):
+        return 1, [], 1, ""
+
+    async def _no_failed_runs(_demo, _org_id):
+        return []
+
+    monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: True)
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _runtime)
+    monkeypatch.setattr("provisa.api.admin.orgs_router._admin_pool", lambda: platform)
+    monkeypatch.setattr(demo_templates, "create_environments", _nothing)
+    monkeypatch.setattr(demo_templates, "demo_environments", lambda _directory: [])
+    monkeypatch.setattr(demo_templates, "seeding_release", lambda: False)
+    monkeypatch.setattr(demo_templates, "_replica_progress", _all_landed)
+    monkeypatch.setattr(demo_templates, "profile_template", _no_failed_runs)
+    monkeypatch.setattr(demo_templates, "_ready_hooks", [])
+    monkeypatch.setattr("provisa.api.demo_synthetic.prepare", _nothing)
+    monkeypatch.setattr("provisa.api.demo_synthetic.synthetic_envs", lambda _envs: [])
+    _on_disk(monkeypatch, {demo.template_org: _BUILT})
+
+    assert await demo_templates._prepare(demo, False)
+    assert await demo_templates._templated(platform, "alpha") == demo.directory.name
+
+    retired: list[str] = []
+
+    async def _retire(name):
+        retired.append(name)
+
+    queue = TemplateBuilds()
+    monkeypatch.setattr(demo_templates, "template_builds", queue)
+    monkeypatch.setattr(demo_templates, "_retire_template", _retire)
+    assert await demo_templates._queue_template(platform, demo) == "ready"
+    assert retired == []

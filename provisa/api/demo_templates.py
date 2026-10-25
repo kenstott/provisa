@@ -1113,8 +1113,11 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
                 log.exception("demo template %s: ready hook %r failed", demo.name, hook)
     finally:
         reset_current_org(token)
-    if not regional() and not exporting:
-        # REQ-2006: the next start serves this template as it is built (warm_ready).
+    if not exporting:
+        # REQ-2006: the record says which demo version the template is (_templated, _built_for),
+        # on every tier: a regions tier's unrecorded template read as another version's, and the
+        # next open retired it and built it again. The next start serves it as it is built
+        # (warm_ready) only off a regions tier (_served_as_built).
         from provisa.api.admin.orgs_router import _admin_pool
 
         await record_ready(_admin_pool(), demo)
