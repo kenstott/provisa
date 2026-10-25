@@ -172,7 +172,7 @@ def test_germany_played_under_every_name(server):
     rows = _cypher(
         server,
         "MATCH (c:W__ViewCountries)-[:PLAYED_HOME]->(m:W__Matches) WHERE c.code = 'GER' "
-        "RETURN DISTINCT m.home_team_name AS listed_as ORDER BY listed_as",
+        "RETURN DISTINCT m.homeTeamName AS listed_as ORDER BY listed_as",
     )
     assert [r["listed_as"] for r in rows] == ["Germany", "Germany FR"]
 
@@ -181,7 +181,7 @@ def test_the_1954_final_s_scorers_scored_in_it(server):
     rows = _cypher(
         server,
         "MATCH (g:W__ViewGoals)-[:SCORED_IN]->(m:W__Matches) "
-        "WHERE m.year = 1954 AND m.stage = 'Final' RETURN g.player_name AS scorer ORDER BY scorer",
+        "WHERE m.year = 1954 AND m.stage = 'Final' RETURN g.playerName AS scorer ORDER BY scorer",
     )
     assert [r["scorer"] for r in rows] == [
         "Ferenc PUSKAS",
