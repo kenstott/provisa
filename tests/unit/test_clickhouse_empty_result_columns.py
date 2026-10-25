@@ -103,3 +103,22 @@ def test_a_query_with_no_block_names_the_statements_columns():
     result = asyncio.run(driver.execute("SELECT event_type, order_id FROM t WHERE 1 = 0"))
     assert result.rows == []
     assert result.column_names == ["event_type", "order_id"]
+
+
+def test_the_engine_runtimes_query_with_no_block_names_the_statements_columns(monkeypatch):
+    import clickhouse_connect
+
+    from provisa.federation.clickhouse_runtime import _ServerBackend
+
+    client = _Client([("event_type", "String")])
+    monkeypatch.setattr(clickhouse_connect, "get_client", lambda **_k: client)
+    backend = _ServerBackend(host="ch", port=8123, username="default", password="")
+    rows, names = backend.query(
+        "SELECT event_type FROM t WHERE customer_id = {p1:Int64}", {"p1": 44}
+    )
+    assert rows == []
+    assert names == ["event_type"]
+    assert client.queries[-1] == (
+        "DESCRIBE (SELECT event_type FROM t WHERE customer_id = {p1:Int64})",
+        {"p1": 44},
+    )

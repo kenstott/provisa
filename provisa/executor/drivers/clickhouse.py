@@ -143,7 +143,7 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         with self._require_pool().connection(is_broken=_is_broken) as client:
             with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
                 res = client.query(exec_sql, parameters=ch_params, settings={"query_id": query_id})
-                names = _result_names(client, exec_sql, ch_params, res.column_names)
+                names = result_names(client, exec_sql, ch_params, res.column_names)
         return QueryResult(rows=[tuple(r) for r in res.result_rows], column_names=names)
 
     # Async only for the awaitable call-site contract; executes synchronously in-thread.
@@ -219,7 +219,7 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         return self._pool is not None
 
 
-def _result_names(
+def result_names(
     client: Any, sql: str, parameters: dict[str, Any] | None, answered: Sequence[str]
 ) -> list[str]:
     """The statement's result columns. ClickHouse can answer a query that matches no row with no
@@ -249,7 +249,7 @@ class _BlockStreamCursor:
         )
         stream = self._context.__enter__()
         self._blocks = iter(stream)
-        names = _result_names(self._client, sql, parameters, stream.source.column_names)
+        names = result_names(self._client, sql, parameters, stream.source.column_names)
         self.description = [(name,) for name in names]
 
     def fetchmany(self, size: int) -> list[tuple]:
