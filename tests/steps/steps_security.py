@@ -25,11 +25,8 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
-from provisa.security.visibility import (
-    is_column_visible,
-    visible_column_names,
-    visible_tables,
-)
+from provisa.security.visibility import visible_tables
+from tests.served_columns import is_column_visible, visible_column_names
 from provisa.security.rights import (
     Capability,
     InsufficientRightsError,

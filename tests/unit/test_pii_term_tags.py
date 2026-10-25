@@ -384,7 +384,7 @@ async def test_a_column_pii_through_its_term_is_masked_and_held_to_its_fake(
             rule = ColumnRule(
                 physical="home_address",
                 exposed="home_address",
-                visible_to=frozenset({"analyst"}),
+                served_to=frozenset({"analyst"}),
                 masks=(),
                 pii="pii" in tags["home_address"],
             )

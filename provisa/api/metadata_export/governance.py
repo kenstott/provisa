@@ -69,11 +69,15 @@ def _mask_tags(
 
 
 def _visibility_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
+    table: Table,
+    column: Column,
+    all_roles: tuple[str, ...],
+    served: frozenset[str],
+    org_id: str | None,
 ) -> list[GovernanceTag]:
-    # Membership is literal — provisa/security/visibility.py enforces ``role_id in visible_to``
-    # with no wildcard for columns. The tag says exactly what the engine does.
-    visible = set(column.visible_to)
+    # ``served``: the roles the engine serves the column to, by the one rule
+    # (``rights.served_roles``, REQ-2152). The tag says exactly what the engine does.
+    visible = set(served)
     restricted = tuple(r for r in all_roles if r not in visible)
     if not restricted:
         return []
@@ -141,12 +145,23 @@ def build_governance_tags(
     config: ProvisaConfig, org_id: str | None
 ) -> list[GovernanceTag]:  # REQ-1071
     """Every enforcement fact in the config, as catalog tags."""
+    from provisa.security.inheritance import role_chains
+    from provisa.security.rights import served_roles
+
     all_roles = tuple(sorted(role.id for role in config.roles))
+    definitions = {role.id: role.model_dump() for role in config.roles}
+    chains = role_chains(definitions.values())
     index = TableIndex(config.tables)
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:
             tags.extend(_mask_tags(table, column, all_roles, org_id))
-            tags.extend(_visibility_tags(table, column, all_roles, org_id))
+            served = served_roles(
+                definitions,
+                chains,
+                table.domain_id,
+                {"visible_to": column.visible_to, "scope": column.scope},
+            )
+            tags.extend(_visibility_tags(table, column, all_roles, served, org_id))
     tags.extend(_rls_tags(config, index, all_roles, org_id))
     return tags
