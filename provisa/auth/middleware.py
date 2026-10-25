@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+from collections.abc import Callable
 
 import jwt
 
@@ -182,6 +183,13 @@ def _loaded_roles() -> dict[str, dict]:  # REQ-1337
     from provisa.api.app import state
 
     return getattr(state, "roles", {})
+
+
+def _app_state():
+    """The runtime the request is served from (read at call time: the org runtime bound now)."""
+    from provisa.api.app import state
+
+    return state
 
 
 def _loaded_derived_roles() -> list[str]:  # REQ-2057
@@ -538,20 +546,26 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
     ) -> str:
         """The meta-role acting as ``acting_set`` qualified by the derived roles ``qualifiers``,
         built in the request's org runtime."""
-        from provisa.api.app import state as _app_state
+        from provisa.security.meta_role import ensure_meta_role
+
+        def build() -> str:
+            # A set naming no derived role is built as it always was, from its roles alone.
+            if qualifiers:
+                return ensure_meta_role(_app_state(), acting_set, qualifiers)
+            return ensure_meta_role(_app_state(), acting_set)
+
+        return AuthMiddleware._in_org(org_binding, build)
+
+    @staticmethod
+    def _in_org(org_binding: tuple[str, str | None] | None, build: Callable[[], str]) -> str:
+        """``build()`` run with the request's org (and environment) bound, where the role it
+        resolves is built."""
         from provisa.core.request_context import (
             reset_current_env,
             reset_current_org,
             set_current_env,
             set_current_org,
         )
-        from provisa.security.meta_role import ensure_meta_role
-
-        def build() -> str:
-            # A set naming no derived role is built as it always was, from its roles alone.
-            if qualifiers:
-                return ensure_meta_role(_app_state, acting_set, qualifiers)
-            return ensure_meta_role(_app_state, acting_set)
 
         if org_binding is None:
             return build()
@@ -676,16 +690,17 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 if isinstance(bound, JSONResponse):
                     return bound
                 served = bound
-            if named_derived:
-                try:
-                    unsecured_role = self._meta_role(unsecured_roles, served, named_derived)
-                except PermissionError as refused:
-                    return _deny(request, 403, str(refused))
-            # Several roles: the request acts as their meta-role (security/meta_role.py).
-            elif len(set(unsecured_roles)) > 1:
-                unsecured_role = self._meta_role(unsecured_roles, served)
-            else:
-                unsecured_role = unsecured_roles[0]
+            # One role is that role; several, or any named derived role, act as their meta-role
+            # (security/meta_role.py) -- the one resolver every unsecured transport uses (REQ-1952).
+            from provisa.auth.derived_roles import unsecured_acting_role
+
+            try:
+                unsecured_role = self._in_org(
+                    served,
+                    lambda: unsecured_acting_role(_app_state(), unsecured_roles, held_derived),
+                )
+            except PermissionError as refused:
+                return _deny(request, 403, str(refused))
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,

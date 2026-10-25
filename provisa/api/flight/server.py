@@ -69,6 +69,7 @@ if TYPE_CHECKING:
     from graphql import DocumentNode, GraphQLSchema
 
     from provisa.api.app import AppState
+    from provisa.api.rate_limit import RateLimiter
     from provisa.compiler.sql_gen import CompilationContext, CompiledQuery
     from provisa.transpiler.router import RouteDecision
 
@@ -336,7 +337,7 @@ class _CallHeaders(flight.ServerMiddleware):  # pyright: ignore[reportPrivateImp
 
 
 class _CallHeadersFactory(flight.ServerMiddlewareFactory):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    def start_call(self, info: object, headers: dict[str, list[str]]) -> _CallHeaders:  # noqa: ARG002  # required by the override signature
+    def start_call(self, info: flight.CallInfo, headers: dict[str, list[str]]) -> _CallHeaders:  # noqa: ARG002  # required by the override signature
         return _CallHeaders(headers)
 
 
@@ -741,27 +742,36 @@ class ProvisaFlightServer(
         try:
             from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
+            import contextlib
+
+            from provisa.auth.derived_roles import (
+                principal_scope,
+                session_vars_scope,
+                unsecured_principal,
+            )
+
             # The role is authorized with the org bound: a set of held roles is made into its
             # meta-role in the org's runtime, which is a tenant-data path like any other.
-            acting: str | None = None
+            # REQ-1682/REQ-1382: what a row filter reads for this caller, as on every transport.
+            principal: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
             if identity is not None:
                 acting = self._authorize_role(identity, request)
                 request["role"] = acting
+                principal = principal_scope(self._state, identity, acting)
+            elif request.get("role"):
+                # REQ-1952: unsecured, a set of roles (or a declared derived role) acts as its
+                # meta-role and binds a named derived role's attribute, as the HTTP middleware
+                # resolves and binds X-Provisa-Role.
+                try:
+                    role, session_vars = unsecured_principal(self._state, str(request["role"]))
+                except PermissionError as exc:
+                    raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                request["role"] = role
+                principal = session_vars_scope(session_vars)
 
             # REQ-074/REQ-1386: the validated principal, or — on a deployment that authenticates
             # nobody — the anonymous one: the request is audited either way.
             user_id = identity.user_id if identity is not None else ANONYMOUS_USER
-            import contextlib
-
-            from provisa.auth.derived_roles import principal_scope
-
-            # REQ-1682/REQ-1382: what a row filter reads for this caller, as on every transport;
-            # a deployment that authenticates nobody has no principal to bind.
-            principal = (
-                contextlib.nullcontext()
-                if identity is None
-                else principal_scope(self._state, identity, acting)
-            )
             with principal:
                 with audit_identity_scope(user_id, "flight"):
                     return self._do_get_inner(request, ticket)
@@ -872,18 +882,18 @@ class ProvisaFlightServer(
             raise _flight_error(str(exc), exc) from exc
 
     def _execute_with_role_cap(  # REQ-369
-        self, request: dict[str, object], limiter: object | None, role_id: str, cap: int | None
+        self, request: dict[str, object], limiter: RateLimiter | None, role_id: str, cap: int | None
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute the query ticket under the role's own ``max_flight_streams`` gate, if any."""
         if limiter and cap:
             key = f"rl:flight:{role_id}"
-            ok = run_on_connection_loop(limiter.acquire(key, cap))  # type: ignore[attr-defined]
+            ok = run_on_connection_loop(limiter.acquire(key, cap))
             if not ok:
                 raise _flight_error("max concurrent Arrow Flight streams reached")
             try:
                 return self._execute_query(request)
             finally:
-                run_on_connection_loop(limiter.release(key))  # type: ignore[attr-defined]
+                run_on_connection_loop(limiter.release(key))
         return self._execute_query(request)
 
     def list_actions(

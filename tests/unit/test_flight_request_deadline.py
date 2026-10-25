@@ -41,6 +41,7 @@ class _State:
         self.flight_global_cap = cap
         _flight_timeout(request_timeout)
         self.security_high = False
+        self.settings_overrides = {"derived_roles": []}  # the org declares no derived role
 
 
 @pytest.fixture(autouse=True)
