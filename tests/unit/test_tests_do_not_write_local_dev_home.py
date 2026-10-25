@@ -206,3 +206,39 @@ def test_an_app_built_in_the_test_process_exports_to_the_sessions_receiver(monke
     request = urllib.request.Request(f"{endpoint}/v1/traces", data=b"", method="POST")
     with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310 - loopback
         assert response.status == 200
+
+
+# --- the trace folder ---------------------------------------------------------------------------
+
+
+def test_this_session_lands_traces_outside_the_real_home():
+    """A native engine lands its traces under the telemetry folder, ~/.provisa/telemetry by
+    default: local-dev's own. The session names one of its own, forced as PROVISA_HOME is."""
+    from provisa.observability.ops_schema import telemetry_dir
+
+    folder = Path(telemetry_dir()).resolve()
+    real = (Path.home() / ".provisa").resolve()
+    assert real not in (folder, *folder.parents)
+    assert Path(os.environ["PROVISA_TELEMETRY_DIR"]).resolve() == folder
+
+
+def test_every_server_a_test_starts_names_a_telemetry_folder_of_its_own():
+    """Each server compacts its trace folder every minute; servers sharing one compacted each
+    other's files (four e2e backends in ~/.provisa/telemetry multiplied a day's rows minute by
+    minute). Every harness that starts a server gives it its own folder."""
+    import inspect
+
+    from tests.integration import isolated_server, worker_boot_harness
+
+    assert '"PROVISA_TELEMETRY_DIR":' in inspect.getsource(isolated_server.IsolatedServer.start)
+    assert '"PROVISA_TELEMETRY_DIR": os.path.join(self.data_dir' in inspect.getsource(
+        worker_boot_harness.WorkerBoot.start
+    )
+    repo = Path(__file__).resolve().parents[2]
+    conftest = (repo / "tests" / "conftest.py").read_text()
+    live = conftest[conftest.index("server_env = {") :]
+    assert '"PROVISA_TELEMETRY_DIR":' in live[: live.index("}")]
+    playwright = (repo / "provisa-ui" / "playwright.config.ts").read_text()
+    servers = playwright.count("exec .venv/bin/uvicorn main:app")
+    assert servers == 2  # the core backends' entry, and the Trino backend's
+    assert playwright.count("PROVISA_TELEMETRY_DIR: path.resolve(") == servers
